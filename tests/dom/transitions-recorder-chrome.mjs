@@ -515,10 +515,12 @@ const readsAroundClick = async (r) => {
   const reads = r.raw.frames.map((f, i) => ({ f, i })).filter(({ f }) => f[1] !== null);
   return { before: reads.filter(({ i }) => i < mark), after: reads.filter(({ i }) => i >= mark) };
 };
-// The frames read after the press and before the click handler started.
+// The frames read after the press reached the page and before the click handler started:
+// since revision 6 the window holds a frame by whether its read saw the input, not by its
+// begin time.
 async function framesBeforeClick(r) {
   const { before } = await readsAroundClick(r);
-  return before.filter(({ f }) => f[0] >= pressAt(r)).length;
+  return before.filter(({ f }) => f[4] === 1).length;
 }
 // The ready frame is the first frame read after the click handler started. This is
 // checked on the frames themselves rather than through `framesToReady`, which counts
@@ -1229,8 +1231,8 @@ try {
         window.__raf ??= window.requestAnimationFrame.bind(window);
         window.requestAnimationFrame = ${ms} ? (cb) => window.__raf((t) => cb(t - ${ms})) : window.__raf;
       })()`);
-    const pressed = async (name) => {
-      await skew(34);
+    const pressed = async (name, ms = 34) => {
+      await skew(ms);
       await sleep(200);
       try {
         return await measure(name, { timeoutMs: 3000 });
@@ -1245,6 +1247,20 @@ try {
       assert.equal(r.framesToReady, 1, JSON.stringify(r.frameStates));
       assert.ok(r.readyMs > 0, `ready ${r.readyMs}`);
     });
+    await check(
+      "a frame read before the input is out of its window though stamped after it",
+      async () => {
+        // Stamped 34 ms late, the frames read just before the press begin, by their stamps,
+        // after it; revision 6 before its fix counted them, from the shown origin, as blank.
+        const r = await pressed("downShow", -34);
+        assert.equal(r.ok, true, JSON.stringify(r.refusals));
+        const down = await d.evaluate("window.downFrameMark");
+        const late = r.raw.frames.slice(0, down).filter((f) => f[1] !== null && f[0] >= pressAt(r));
+        assert.ok(late.length >= 1, `no frame read before the press was stamped after it`);
+        assert.equal(r.framesToReady, 1, JSON.stringify(r.frameStates));
+        assert.equal(r.blankFramesBeforeReady, 0, JSON.stringify(r.frameStates));
+      },
+    );
     await check("a blank frame stamped before the input is counted", async () => {
       const r = await pressed("downBlank");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));

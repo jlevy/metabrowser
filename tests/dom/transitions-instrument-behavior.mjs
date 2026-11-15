@@ -371,6 +371,10 @@ check("blank frames that still show the origin's prompt are reported apart", () 
   assert.equal(b.blankFramesOriginPrompt, 0);
 });
 
+const REG = {
+  pane: { selector: "#p", track: ["y"] },
+  row: { selector: ".sel", track: ["y"], group: "tree", identity: "data-path" },
+};
 // Revision 6, mb-s0e4: a frame is [begin, state, read, read cost, seen].
 check("the input's own frame is in its window though stamped before the input", () => {
   // The input at 100; Chrome stamps the frame that draws it 0.2 ms earlier, and a frame
@@ -416,6 +420,40 @@ check("the input's own frame is in its window though stamped before the input", 
     0,
   );
 });
+check("a frame read before the input is out of its window though stamped after it", () => {
+  // Review of #442: the input at 1000; a frame Chrome stamped 0.3 ms after it was read
+  // before it, so it shows the origin and is not the transition's.
+  const frames = [
+    [983.4, "E", 984, 0.1, 0],
+    [1000.3, "E", 1001, 0.1, 0],
+    [1016.9, "E", 1018, 0.1, 1],
+    [1033.6, "U", 1035, 0.1, 1],
+    [1050.2, "U", 1051, 0.1, 1],
+  ];
+  const a = accountFrames({
+    frames,
+    origin: 1000,
+    windowEnd: 1500,
+    readyAt: 1033.6,
+    readyRead: 1035,
+    readyNext: 1050.2,
+    initialCode: "E",
+  });
+  assert.equal(a.framesToReady, 2);
+  assert.equal(a.blankFramesBeforeReady, 1);
+  assert.equal(a.framesInWindow, 3);
+  // A 40 px move its pre-input read logged is where the region stood at the input.
+  const m = regionMovement(
+    { pane: [0, 0, 10, 10] },
+    [
+      [1000.3, "pane", [0, 40, 10, 10], 0],
+      [1033.6, "pane", [0, 40, 10, 10], 1],
+    ],
+    1000,
+    REG,
+  );
+  assert.equal(m.groups.page.path, 0);
+});
 check("the origin's prompt lasts while only the pending modifier changes", () => {
   const frames = grid(["E", "Eb", "Eb", "EPb", "U"]);
   const a = accountFrames({
@@ -445,10 +483,6 @@ check("the origin's prompt lasts while only the pending modifier changes", () =>
 
 // ---------------------------------------------------------------------- region movement
 
-const REG = {
-  pane: { selector: "#p", track: ["y"] },
-  row: { selector: ".sel", track: ["y"], group: "tree", identity: "data-path" },
-};
 check("movement over two frames is net and path, not the largest step", () => {
   const m = regionMovement(
     { pane: [0, 100, 10, 10] },

@@ -37,7 +37,7 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 57 checks passed\n"
+    assert result.stdout == "transitions instrument: 58 checks passed\n"
 
 
 # The longest group is landing: 28.4 to 28.6 s in CI, and 29 to 38 s on a loaded 10-core
@@ -61,7 +61,7 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
         ("network", 2),
         ("landing", 11),
         ("search", 12),
-        ("window", 3),
+        ("window", 4),
         ("readings", 4),
     ],
 )
