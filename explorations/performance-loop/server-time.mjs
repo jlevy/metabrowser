@@ -30,6 +30,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { buildProvenance, getJson, harnessProvenance } from "./provenance.mjs";
 import {
+  checkRecord,
   formatRecord,
   INSTRUMENT,
   inFlight,
@@ -439,7 +440,13 @@ async function main() {
       usage("--summarize needs a result file");
     }
     for (const file of positionals) {
-      console.log(formatRecord(JSON.parse(fs.readFileSync(file, "utf8"))));
+      let record;
+      try {
+        record = checkRecord(JSON.parse(fs.readFileSync(file, "utf8")), file);
+      } catch (error) {
+        usage(error.message);
+      }
+      console.log(formatRecord(record));
     }
     return;
   }

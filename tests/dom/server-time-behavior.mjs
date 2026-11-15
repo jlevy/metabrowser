@@ -10,6 +10,7 @@ const HERE = import.meta.dirname;
 const LOOP = path.resolve(HERE, "../../explorations/performance-loop");
 const {
   busyMs,
+  checkRecord,
   formatRecord,
   inFlight,
   landingAssets,
@@ -318,6 +319,16 @@ check("a record prints as tables, saying when a build logged its ends coarsely",
     formatRecord({ instrument: "x", warmup: 1, address: "/" }),
     /warm server: 1 unrecorded/,
   );
+});
+
+check("a record of another revision is refused by name, not read", () => {
+  const current = { instrument: "server-time/2" };
+  assert.equal(checkRecord(current), current);
+  assert.throws(
+    () => checkRecord({ instrument: "server-time/1" }, "old.json"),
+    /old\.json is a server-time\/1 record, which sums latency and has no busy time/,
+  );
+  assert.throws(() => checkRecord({}, "x.json"), /x\.json is not a server-time\/2 record/);
 });
 
 check("the server's time is the union of the requests' spans, not their sum", () => {

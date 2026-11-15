@@ -440,6 +440,27 @@ export function formatWindow(title, account) {
   return lines.join("\n");
 }
 
+/**
+ * *record* when it is one this revision reads; otherwise an error that names what it is.
+ * A server-time/1 record has no busy time, only the summed latency revision 2 renamed, so
+ * it is refused rather than read as if it had one; take it again.
+ */
+export function checkRecord(record, source = "the record") {
+  const instrument = record?.instrument;
+  if (instrument === INSTRUMENT) {
+    return record;
+  }
+  if (instrument === "server-time/1") {
+    throw new Error(
+      `${source} is a server-time/1 record, which sums latency and has no busy time; ` +
+        `take it again with this server-time.mjs (${INSTRUMENT})`,
+    );
+  }
+  throw new Error(
+    `${source} is not a ${INSTRUMENT} record: its instrument is ${JSON.stringify(instrument)}`,
+  );
+}
+
 /** A whole record (the JSON server-time.mjs writes) as text. */
 export function formatRecord(record) {
   const out = [
