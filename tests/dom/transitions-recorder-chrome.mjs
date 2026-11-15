@@ -251,6 +251,9 @@ const actions = {
   // The origin's prompt, kept on screen beside the pending modifier until content shows.
   pendingPrompt: () => { pane.classList.add("preview-navigation-pending"); setTimeout(() => { pane.classList.remove("preview-navigation-pending"); show("pendingPrompt"); }, 150); },
 };
+// The "u" key shows text in the stage, for a transition armed on a blank screen past a
+// long list, where the content search stops at its budget before the input.
+addEventListener("keydown", (e) => { const st = document.getElementById("stage"); if (e.key === "u" && st) { st.innerHTML = "<p>shown after the key</p>"; st.scrollTop = 0; } });
 const buttons = document.getElementById("buttons");
 for (const [name, fn] of Object.entries(actions)) {
   const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickFrameMark = window.__tr.frames.length; fn(); }); buttons.appendChild(b);
@@ -1005,6 +1008,10 @@ try {
           sparseTopAfterBound: () => { st.innerHTML = lines(3000) + '<div style="height:900px"><h1 data-target style="margin:8px 40px;font-size:20px">A heading at the top</h1></div>'; st.scrollTop = st.scrollHeight; },
           pointerNoneAfterBound: () => { st.innerHTML = lines(3000) + '<div style="pointer-events:none">' + lines(60) + '</div>'; st.scrollTop = st.scrollHeight; },
           blankAfterBound: () => { st.innerHTML = lines(40000) + '<div style="height:3000px"></div>'; st.scrollTop = st.scrollHeight; },
+          // Text, then blank lines, with only the blank lines on screen: one long node, and
+          // one short enough to be measured whole (review of #442).
+          longBlankTail: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 3000 }, (_, i) => "line " + i).join("\\n") + "\\n" + Array.from({ length: 3000 }, () => "      ").join("\\n") + "</pre>"; st.scrollTop = 60000; },
+          shortBlankTail: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 40 }, (_, i) => "line " + i).join("\\n") + "\\n" + Array.from({ length: 200 }, () => "   ").join("\\n") + "</pre>"; st.scrollTop = 2000; },
           longText: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 200000 }, (_, i) => String(i)).join("\\n") + '</pre>'; st.scrollTop = window.__longTextScroll ?? 0; },
           overlayAfterBound: () => { st.innerHTML = lines(3000) + '<div data-target style="position:fixed;top:200px;left:40px;width:900px;height:300px;font-size:40px">fixed text under overlay</div>'; st.scrollTop = st.scrollHeight; const o = document.createElement("div"); o.className = "probe-overlay"; o.style.cssText = "position:fixed;inset:0;background:#fff;z-index:9"; document.body.appendChild(o); },
           // A root hidden by its own content-visibility, a zero-size box under paint
@@ -1075,6 +1082,45 @@ try {
       // Revision 6 tried 60 points there, 68 to 123 ms a call over 40,000 lines.
       assert.ok(r.search.truncated && r.search.points < 60, JSON.stringify(r.search));
     });
+    await check("blank lines on screen after text that is not are not content", async () => {
+      for (const shape of ["longBlankTail", "shortBlankTail"]) {
+        const r = await shapeFound(shape);
+        assert.equal(r.found, false, `${shape} ${JSON.stringify(r.search)}`);
+      }
+    });
+    await check(
+      "a search cut short at arm and before the input marks the guard uncertain",
+      async () => {
+        await d.evaluate(`(() => {
+        const view = document.getElementById("view");
+        const st = document.createElement("div"); st.id = "stage";
+        st.innerHTML = Array.from({ length: 40000 }, (_, i) => '<div style="height:20px">line ' + i + '</div>').join("") + '<div style="height:3000px"></div>';
+        view.replaceChildren(st); st.scrollTop = st.scrollHeight;
+        return true;
+      })()`);
+        await sleep(300);
+        try {
+          const r = await take({
+            id: "armCut",
+            subject: "armCut",
+            input: { kind: "key", key: "u" },
+            ready: `() => window.__tr.hasUseful(document.getElementById("view"))`,
+            converged: `() => ""`,
+            settleMs: 300,
+            timeoutMs: 5000,
+          });
+          assert.equal(r.ok, true, JSON.stringify(r.refusals));
+          assert.ok(
+            r.searchTruncatedBeforeInput >= 1,
+            `truncated before input ${r.searchTruncatedBeforeInput}`,
+          );
+          assert.equal(r.readyBeforeInputUncertain, true);
+          assert.equal(r.convergedUncertain, false);
+        } finally {
+          await d.evaluate(`document.getElementById("view").replaceChildren(); true`);
+        }
+      },
+    );
     await check("a long text node is measured near the viewport, not whole", async () => {
       // One text node of 200,000 lines, at its top and scrolled to its middle: found both
       // times, without measuring every line's box (about 60 ms a call before the bound).

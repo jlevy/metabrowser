@@ -327,12 +327,49 @@ function recorderMain(config) {
   };
   const range = document.createRange();
   // A text node's own boxes, one of them on screen; its parent is already known rendered.
+  // Only the slice's non-blank parts are measured: each run of lines that holds a non-space
+  // character, trimmed to its first and last one, so a stretch of blank lines on screen
+  // after text that is not is not content (revision 6). At most TEXT_RUNS runs are
+  // measured apart; any after them are measured as one.
+  const TEXT_RUNS = 32;
+  const textRuns = (text, start, end) => {
+    const runs = [];
+    let a = -1;
+    let b = -1;
+    for (let i = start; i < end; i++) {
+      const ch = text.charCodeAt(i);
+      if (ch === 10) {
+        if (a >= 0 && runs.length < TEXT_RUNS - 1) {
+          // A line break closes the run when the next line is blank.
+          let j = i + 1;
+          while (j < end && text.charCodeAt(j) !== 10 && /\s/.test(text[j])) {
+            j += 1;
+          }
+          if (j >= end || text.charCodeAt(j) === 10) {
+            runs.push([a, b + 1]);
+            a = -1;
+          }
+        }
+      } else if (!/\s/.test(text[i])) {
+        if (a < 0) {
+          a = i;
+        }
+        b = i;
+      }
+    }
+    if (a >= 0) {
+      runs.push([a, b + 1]);
+    }
+    return runs;
+  };
   const sliceShown = (node, parent, start, end) => {
-    range.setStart(node, start);
-    range.setEnd(node, end);
-    for (const r of range.getClientRects()) {
-      if (r.width > 0 && r.height > 0 && clipped(parent, r)) {
-        return true;
+    for (const [a, b] of textRuns(node.nodeValue, start, end)) {
+      range.setStart(node, a);
+      range.setEnd(node, b);
+      for (const r of range.getClientRects()) {
+        if (r.width > 0 && r.height > 0 && clipped(parent, r)) {
+          return true;
+        }
       }
     }
     return false;
@@ -1581,6 +1618,9 @@ export function accountFrames({
     }
   }
   const atOrigin = last;
+  // Frames read after arm and before the input whose content search stopped at its
+  // budget: the frames the ready-before-input guard read (revision 6).
+  const truncatedBeforeInput = frames.slice(0, start).filter((f) => f[5] === 1).length;
   const window = frames.slice(start).filter((f) => f[0] <= windowEnd);
   const filled = window.map((f) => {
     if (f[1] !== null) {
@@ -1673,6 +1713,7 @@ export function accountFrames({
     // Frames whose content search stopped at its hit-test budget, where on-screen content
     // can have read as blank (revision 6).
     searchTruncatedFrames: window.filter((f) => f[5] === 1).length,
+    searchTruncatedBeforeInput: truncatedBeforeInput,
     readCostToReadyMs: readyAt === null ? null : round2(costsToReady.reduce((a, c) => a + c, 0)),
     frameStates: states.slice(0, 24),
   };
@@ -2128,7 +2169,9 @@ export function driver(browser) {
         R.readyAt = null; R.readyRead = null; R.readyNext = null; R.readyBeforeInput = null;
         R.inputAt = null; R.startEvents = ${JSON.stringify(startEvents)};
         R.readyFn = (${spec.ready});
+        R.searchTruncated = false;
         R.readyAtArm = (() => { try { return Boolean(R.readyFn()); } catch (_error) { return false; } })();
+        R.armTruncated = R.searchTruncated;
         R.dom0 = document.getElementsByTagName("*").length;
         ${armExtras}
         R.armedAt = performance.now();
@@ -2184,7 +2227,7 @@ export function driver(browser) {
         events: R.events, inputs: R.inputs, alerts: R.alerts, hiddenFrames: R.hiddenFrames,
         visibilityChanges: R.visibilityChanges, readyAt: R.readyAt, readyRead: R.readyRead,
         readyNext: R.readyNext, readyBeforeInput: R.readyBeforeInput,
-        readyAtArm: R.readyAtArm === true, inputAt: R.inputAt,
+        readyAtArm: R.readyAtArm === true, armTruncated: R.armTruncated === true, inputAt: R.inputAt,
         armedAt: R.armedAt, observers: R.observers, kept, spans, state0: R.state0 ?? "",
         dom0: R.dom0 ?? null, dom1: document.getElementsByTagName("*").length,
         w: innerWidth, h: innerHeight, vis: document.visibilityState, path: location.pathname,
@@ -2192,8 +2235,14 @@ export function driver(browser) {
       };
     })()`);
     await evaluate("window.__tr.readyFn = null; window.__tr.listSpec = null");
-    const converged =
-      raw.readyAt === null ? "never ready" : await evaluate(`(${spec.converged})()`);
+    // A converged check whose content search stopped at its budget can report content
+    // missing that is on screen; it is marked uncertain (revision 6).
+    const [converged, convergedTruncated] =
+      raw.readyAt === null
+        ? ["never ready", false]
+        : await evaluate(
+            `(() => { const R = window.__tr; R.searchTruncated = false; const v = (${spec.converged})(); return [v, R.searchTruncated === true]; })()`,
+          );
     const landingSeen =
       spec.landing && raw.readyAt !== null ? await evaluate(`(${spec.landing})()`) : null;
     const net = browser.net.slice(netMark);
@@ -2228,7 +2277,10 @@ export function driver(browser) {
     if (!reached || raw.readyAt === null) {
       refusals.push(["converged", `not ready within ${timeoutMs} ms`]);
     } else if (converged !== "") {
-      refusals.push(["converged", String(converged)]);
+      refusals.push([
+        "converged",
+        `${converged}${convergedTruncated ? " (uncertain: the content search stopped at its budget)" : ""}`,
+      ]);
     }
     if (viewport0.vis !== "visible" || raw.vis !== "visible" || raw.hiddenFrames > 0) {
       refusals.push([
@@ -2368,6 +2420,14 @@ export function driver(browser) {
       refusals,
       ...(spec.landing ? { landing: landingSeen, landingAtReady: raw.readyBranch } : {}),
       ...frameAccount,
+      // The ready-before-input guard read the arm check and the frames before the input;
+      // when a content search in any of them stopped at its budget, a false "not ready"
+      // there can have hidden a subject shown before the input (revision 6).
+      searchTruncatedBeforeInput:
+        frameAccount.searchTruncatedBeforeInput + (raw.armTruncated ? 1 : 0),
+      readyBeforeInputUncertain:
+        frameAccount.searchTruncatedBeforeInput > 0 || raw.armTruncated === true,
+      convergedUncertain: convergedTruncated === true,
       // DOM work after the subject was shown, reported apart from readiness: when the
       // preview, and the navigation panels, last changed inside the window; 0 when they
       // did not change at all.

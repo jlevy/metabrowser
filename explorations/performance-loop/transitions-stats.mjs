@@ -27,16 +27,42 @@ export function instrumentDisturbed(entries) {
     if (cost.length && Math.max(...cost) > READ_COST_CEILING_MS) {
       out.slow.push(`${e.id} (longest read ${Math.max(...cost)} ms)`);
     }
-    const cut = (e.values.search_truncated_frames ?? []).map((x) => x.v);
-    const total = cut.reduce((a, v) => a + v, 0);
-    if (total > 0) {
-      out.truncated.push(
-        `${e.id} (${total} frame(s) in ${cut.filter((v) => v > 0).length} run(s))`,
-      );
+    const cut = truncation(e);
+    if (cut.total > 0) {
+      out.truncated.push(`${e.id} (${cut.total} frame(s) in ${cut.runs} run(s))`);
     }
   }
   return out;
 }
+
+/**
+ * The frames of one transition, from arm to the end of its window, whose content search
+ * stopped at its hit-test budget, summed over a condition's runs: in the window, and in
+ * the arm check and the frames before the input, which the ready-before-input guard read.
+ */
+export function truncation(entry) {
+  const byRun = new Map();
+  for (const key of ["search_truncated_frames", "search_truncated_before_input"]) {
+    for (const x of entry?.values[key] ?? []) {
+      byRun.set(x.pair, (byRun.get(x.pair) ?? 0) + x.v);
+    }
+  }
+  const counts = [...byRun.values()];
+  return { total: counts.reduce((a, v) => a + v, 0), runs: counts.filter((v) => v > 0).length };
+}
+
+// The judged metrics a truncated search can bend: a frame that read blank with content on
+// screen, readiness found late, or a subject shown before the input not seen. On a
+// transition with truncated searches on either side they are a gap, not a judgement.
+const BENT_BY_TRUNCATION = new Set([
+  "painted_ready_ms",
+  "ready_ms",
+  "frames_to_ready",
+  "blank_frames",
+  "blank_frames_after_ready",
+  "blank_ms",
+  "ready_after_last_input_ms",
+]);
 
 // What an older revision's rows record differently. `compare` judges two sets of rows of
 // one revision against each other, with this note, and refuses to mix revisions.
@@ -131,6 +157,7 @@ export const METRICS = [
   T("read_cost_max_ms", (t) => t.readCostMaxMs, null),
   T("read_cost_to_ready_ms", (t) => t.readCostToReadyMs, null),
   C("search_truncated_frames", (t) => t.searchTruncatedFrames, null),
+  C("search_truncated_before_input", (t) => t.searchTruncatedBeforeInput, null),
   ...[
     ["shell_tools_ready_ms", "shellToolsReady"],
     ["styled_markdown_ms", "styledMarkdown"],
@@ -687,6 +714,13 @@ export function compareRuns(
       const sa = stat(va);
       const sb = stat(vb);
       const j = judge(m, sa, sb, pairRatios(ea, eb, m.key), tolerance);
+      const [ta, tb] = [truncation(ea), truncation(eb)];
+      if (BENT_BY_TRUNCATION.has(m.key) && m.better !== null && (ta.total || tb.total)) {
+        j.outcome = "truncated";
+        j.wrongWay = false;
+        j.verdict = `not judged: the content search stopped at its hit-test budget in ${ta.total} ${A.label} and ${tb.total} ${B.label} frame(s) of this transition, from arm to the end of its window, where on-screen content can have read as blank, readiness as late, or a subject shown before the input as not shown (gap)`;
+        gaps.push({ id, metric: m.key, reason: j.verdict });
+      }
       // The window ends a settle time after the ready frame, so a condition that is ready
       // sooner is watched for less time: a settle time one side reached after the other
       // side's window closed cannot be compared. Revision 6 marks both directions (before,
@@ -1139,6 +1173,9 @@ export function keepTransition(t) {
     readCostMaxMs: t.readCostMaxMs,
     readCostToReadyMs: t.readCostToReadyMs,
     searchTruncatedFrames: t.searchTruncatedFrames,
+    searchTruncatedBeforeInput: t.searchTruncatedBeforeInput,
+    readyBeforeInputUncertain: t.readyBeforeInputUncertain,
+    convergedUncertain: t.convergedUncertain,
     inputSpanMs: t.inputSpanMs,
     hoverDwellMs: t.hoverDwellMs,
     readyAfterLastInputMs: t.readyAfterLastInputMs,
