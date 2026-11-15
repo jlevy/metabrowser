@@ -4,8 +4,7 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Approved.
-The lanes and the order of work follow the
+**Status:** Active. The lanes and the order of work follow the
 [architecture review](../../research/research-2026-11-14-performance-architecture-review.md)
 of 2026-11-14.
 
@@ -107,7 +106,7 @@ Its timed series still queue behind the others.
 | S | Server work per request | H115, encode once or not at all (`mb-9uyq`); H116, one git process per comparison (`mb-83zg`) | Their server-side instruments; revision 5 |
 | C | Retention | H112, one surface store (`mb-wki1`), which absorbs H95, H98, H99 (a), H100 and H105 | Lane 0 |
 | P | Pull request page | H114, the first screen in one answer (`mb-3zvb`), then whatever H108 (`mb-nitp`) still covers | Nothing |
-| D | Landing | H113, Markdown render by GET (`mb-mbf4`), with H118, landing data with the document (`mb-gdmt`), as one round; H109 and H110 (`mb-mjc0`) only if U2 shows the server does not bound the landing; H102 (`mb-4ufj`) after H113 | H115 (a) before H118 |
+| D | Landing | H113, Markdown render by GET (`mb-mbf4`), with H118, landing data with the document (`mb-gdmt`), as one round; H109 and H110 (`mb-mjc0`), and H96’s concatenated startup scripts (`mb-a1nu`), only if U2 shows the server does not bound the landing, with H96’s remote value judged in H44’s regime; H102 (`mb-4ufj`) after H113 | H115 (a) before H118 |
 | R | Resident server | H117, a resident server and shell (`mb-obgj`), then Loop 1’s counters | `mb-qzny` and H97 |
 | B | Background and prediction | H93 (a), a client cap that pauses on input (`mb-16d7`), then H94 (`mb-fejb`) and H104 (`mb-b7ru`); H93 (b) only if (a) fails | H112 before H94 |
 | E | Render cost | U6 (`mb-xws3`), then H101 with H99 (b) as one row (`mb-y04k`, `mb-1bh1`) | U6 |
@@ -121,7 +120,7 @@ Its code at `6b876c54` is H113’s fallback.
 Rounds that compete for the same cost, and so must not be judged against one another’s
 control:
 
-- **Cold landing:** H113, H118, H115, and H109 or H110. H115 changes the basis of
+- **Cold landing:** H113, H118, H115, H96, and H109 or H110. H115 changes the basis of
   `startup_script_transfer_kb`, which is read on loopback.
 - **Retained revisits:** H112 sets one memory budget, and H94 fills its hosts.
 - **Git routes:** H116 and H111 both move `commits.cold.*`; each carries the other’s
@@ -139,7 +138,7 @@ open pays for the first and the fourth is off the app’s path.
 
 | Rank | Loop | Order | Build first |
 | --- | --- | --- | --- |
-| 1 | A folder’s first frame, and server start | H117 (Lane R), then H56, H54, H52; H14 and H17 as attribution only; H57’s open half runs as H115 and H118 | A `visual_states` counter; a deep-against-shallow spawn pair; startup pairs with cached bytecode and an adopt arm |
+| 1 | A folder’s first frame, and server start | H117 (Lane R), then H56, H54, H52; H14 and H17 as attribution only; H57’s open half runs as H115, H118 and H96 | A `visual_states` counter; a deep-against-shallow spawn pair; startup pairs with cached bytecode and an adopt arm |
 | 2 | Scan and walker | U3 (`mb-wb7e`), fdu against the Python provider, first; H39, H40 (`mb-hej8`), H18, H72, H22, H33, H43, H34 and H47 wait on it | One paired run: walk to settled, footprint, foreground latency during the walk |
 | 3 | Revisit and persistence | H49’s adapters; H21 and H46 wait on U3 | Warm-reopen and server-memory adapters |
 | 4 | Remote link, `metab --remote` only | H44, H29, H25, H45 | A prefetch-total metric; a batched `/api/trees` prototype |
@@ -170,8 +169,7 @@ rows the audits found overtaken are retired or merged there.
 6. **Lane B:** H93 (a), H94, H104.
 7. **Lane W** whenever the user can be at the machine, with everything waiting on
    `WKWebView` batched into that session, U1 and U5 first.
-8. **Lane E** after U6, with H102; from Loops 2 and 3, only U3 and H49’s adapters; Loop
-   4 last.
+8. **Lane E** after U6; from Loops 2 and 3, only U3 and H49’s adapters; Loop 4 last.
 9. **The Phase 2–3 closing round** (`mb-vmb4`) once the lanes that are going to land
    have landed.
 

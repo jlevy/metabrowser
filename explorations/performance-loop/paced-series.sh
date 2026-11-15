@@ -14,13 +14,19 @@
 #   paced-series.sh --config FILE              run the series
 #   paced-series.sh --config FILE --check      check every gate once
 #   paced-series.sh --config FILE --self-test  test the lock's mechanics, the stopping
-#                                              count, the busy skip and the config's
-#                                              isolation on scratch fixtures under OUT,
-#                                              then run --check under command shims and
-#                                              show it left the lock and series files alone
+#                                              count, the busy skip, the config's
+#                                              isolation and a queued run on scratch
+#                                              fixtures under OUT, then run --check under
+#                                              command shims and show it left the lock and
+#                                              series files alone
 #
 # The coordinator starts a run detached, its output appended to a log in OUT, such as
 #   paced-series.sh --config "$CFG" >>"$OUT/$ROUND-paced.log" 2>&1 &
+#
+# A run queues quietly. Before the lock it checks only what --check checks while a series
+# holds the lock (config, fresh state, power), then waits for the lock without running git
+# status, metab or node. Once it holds the lock it runs the protocol, build, harness and
+# corpus gates; if any fails, it exits 4 and its exit trap releases the lock.
 #
 # The lock is $(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock,
 # one directory for every worktree of the checkout, taken by one atomic mkdir with an
@@ -77,7 +83,8 @@
 #   1     a --check gate or a self-test failed
 #   2     --check or --self-test skipped gates because a series is running; none failed
 #   3     the lock was not taken in LOCK_WAIT_HOURS
-#   4     a registered input does not hold at the start; nothing was timed
+#   4     a registered input does not hold, before the lock or once it is held; nothing
+#         was timed, and a lock taken was released
 #   5     MAX_ATTEMPTS ran out before TARGET judged pairs
 #   6     the corpus moved
 #   7     power was unreadable before the first attempt, so no judged mode was read
@@ -722,17 +729,19 @@ snap() { # one line per path: absent, or its type, inode, mtime and size, and a 
   done
 }
 state_now() { snap "$LOCK" "$BENCH" "$RUNS" "$POWER" "$SAMPLES" "$MODEFILE" "$PAIRLOGS"; }
+shim_one() { # shim_one NAME REAL: $SHIMS/NAME logs each call to CALLS, then runs REAL
+  cat >"$SHIMS/$1" <<EOF
+#!/bin/bash
+printf '%s\n' "$1 \$*" >>'$CALLS'
+exec '$2' "\$@"
+EOF
+  chmod +x "$SHIMS/$1"
+}
 make_shims() { # shims that log every mkdir, rmdir, rm, node, caffeinate and git call to CALLS
-  local name real
+  local name
   mkdir -p "$SHIMS"
   for name in mkdir rmdir rm node caffeinate git; do
-    real=$(command -v "$name" || echo /usr/bin/false)
-    cat >"$SHIMS/$name" <<EOF
-#!/bin/bash
-printf '%s\n' "$name \$*" >>'$CALLS'
-exec '$real' "\$@"
-EOF
-    chmod +x "$SHIMS/$name"
+    shim_one "$name" "$(command -v "$name" || echo /usr/bin/false)"
   done
   : >"$CALLS"
 }
@@ -864,6 +873,137 @@ t_check() { # --check in a child, under the shims: the lock and the series files
   echo "--check (exit $CHILD_RC) reported all $((n_pass + n_fail + n_skip)) gates: $n_pass PASS, $n_fail FAIL, $n_skip SKIP; of its $(grep -c -E '^(mkdir|rmdir|rm|node|caffeinate|git) ' "$CALLS") logged calls none names the series lock, starts transitions.mjs, or is caffeinate; the series lock ($(snap "$LOCK" | cut -d' ' -f2-)), bench, runs file, power log, samples, mode file and pair logs are as they were"
 }
 
+# A queued run, as a child process in run mode against a scratch Git repo whose series
+# lock is a scratch path. Its config fails the protocol and candidate gates on purpose, so
+# it can never reach a pair; its builds' metab runs through logging shims.
+queued_repo() { # queued_repo REPO: a scratch repo with an ignored attic/
+  rm -rf "$1" && mkdir -p "$1" && git init -q --template= "$1" && printf 'attic/\n' >"$1/.gitignore"
+}
+queued_config() { # queued_config REPO: the config, moved to REPO
+  cat "$CONFIG"
+  printf '%s\n' "WORKTREE='$1'" "OUT='$1/attic/queued'" \
+    "PROTOCOL=explorations/performance-loop/experiments/paced-series-self-test-no-protocol.txt" \
+    "CANDIDATE_HEAD=0000000000000000000000000000000000000000" \
+    "LOAD_FILTER='$LOAD_FILTER'" "COUNT='$COUNT'" \
+    "CONTROL_METAB='$SHIMS/metab-control'" "CANDIDATE_METAB='$SHIMS/metab-candidate'" \
+    "CAFFEINATE=0" "QUIET_SECONDS=10" "MAX_LOAD=100000" "LOCK_WAIT_HOURS=1"
+}
+queued_setup() { # queued_setup REPO: shims, the repo, and its lock path in QLOCK
+  make_shims
+  shim_one metab-control "$CONTROL_METAB"
+  shim_one metab-candidate "$CANDIDATE_METAB"
+  scratch_ok "$1" && queued_repo "$1" || {
+    echo "no scratch repo at $1"
+    return 1
+  }
+  QLOCK=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock
+  scratch_ok "$QLOCK" || {
+    echo "the scratch repo's lock $QLOCK is not a scratch path"
+    return 1
+  }
+}
+stop_child() { # stop_child PID: TERM the driver and its sleep, so its trap runs now
+  kill -TERM "$1" 2>/dev/null
+  pkill -TERM -P "$1" 2>/dev/null
+  wait "$1" 2>/dev/null
+}
+heavy_calls() { grep -E '^(git .*status|node |metab-)' "$CALLS"; }
+n_calls() { grep -c -E '^(mkdir|rmdir|rm|node|caffeinate|git|metab-[a-z]+) ' "$CALLS"; }
+t_queued() { # queued behind a held lock: light gates only, no heavy work, the lock left alone
+  local repo=$ST/queued-repo cfg=$ST/queued.env out=$ST/queued.out child i rc before after g ran=""
+  queued_setup "$repo" || return 1
+  mkdir "$QLOCK" && printf 'pid %s: queued-run fixture\n' "$$" >"$QLOCK/owner"
+  queued_config "$repo" >"$cfg"
+  before=$(state_now && snap "$QLOCK")
+  : >"$CALLS"
+  PATH="$SHIMS:$PATH" "$BASH" "$SELF" --config "$cfg" >"$out" 2>&1 &
+  child=$!
+  for i in $(seq 1 30); do
+    grep -q 'waiting behind the lock' "$out" && break
+    kill -0 "$child" 2>/dev/null || break
+    sleep 1
+  done
+  sleep 1
+  stop_child "$child"
+  rc=$?
+  after=$(state_now && snap "$QLOCK")
+  grep -F -q "waiting behind the lock: pid $$: queued-run fixture" "$out" || {
+    echo "the run never waited behind the fixture lock (exit $rc): $(tr '\n' '/' <"$out" | cut -c1-400)"
+    return 1
+  }
+  for g in protocol control candidate harness corpus; do
+    grep -E -q "^(PASS|FAIL|SKIP)  $g: " "$out" && ran="$ran, $g"
+  done
+  [ -z "$ran" ] || {
+    echo "a heavy gate ran while queued: ${ran#, }"
+    return 1
+  }
+  for g in config "fresh state" power; do
+    grep -E -q "^PASS  $g: " "$out" || {
+      echo "the light gate '$g' did not pass: $(grep -E '^(PASS|FAIL)' "$out" | cut -c1-80 | tr '\n' '/')"
+      return 1
+    }
+  done
+  if heavy_calls >/dev/null; then
+    echo "heavy work while queued: $(heavy_calls | head -3 | tr '\n' ' ')"
+    return 1
+  fi
+  calls_clean || return 1
+  ! grep -q 'lock taken' "$out" && [ ! -e "$repo/attic/queued/$ROUND-power-samples.log" ] || {
+    echo "the queued run took a lock or started sampling"
+    return 1
+  }
+  [ "$before" = "$after" ] || {
+    echo "state changed: before [$before] after [$after]"
+    return 1
+  }
+  grep -q 'driver exits 143' "$out" || {
+    echo "TERM did not stop the queued run through its trap (exit $rc)"
+    return 1
+  }
+  rm -rf "$repo"
+  echo "a run queued behind a fixture lock with a live owner passed config, fresh state and power and waited; it ran no protocol, build, harness or corpus gate, and none of its $(n_calls) logged calls is git status, node or metab; the fixture lock, the series lock and the series files are as they were; TERM stopped it through its trap (exit $rc)"
+}
+t_queued_release() { # the lock free: heavy gates under the lock, a failure, the lock released
+  local repo=$ST/release-repo cfg=$ST/release.env out=$ST/release.out child i rc before after lt lp
+  queued_setup "$repo" || return 1
+  queued_config "$repo" >"$cfg"
+  before=$(state_now)
+  : >"$CALLS"
+  PATH="$SHIMS:$PATH" "$BASH" "$SELF" --config "$cfg" >"$out" 2>&1 &
+  child=$!
+  for i in $(seq 1 120); do
+    kill -0 "$child" 2>/dev/null || break
+    sleep 1
+  done
+  if kill -0 "$child" 2>/dev/null; then
+    stop_child "$child"
+    echo "the run did not finish in 120 s: $(tail -3 "$out" | tr '\n' '/')"
+    return 1
+  fi
+  wait "$child"
+  rc=$?
+  after=$(state_now)
+  lt=$(grep -n 'lock taken' "$out" | head -1 | cut -d: -f1)
+  lp=$(grep -n -E '^FAIL  protocol: ' "$out" | head -1 | cut -d: -f1)
+  [ "$rc" = 4 ] && [ -n "$lt" ] && [ -n "$lp" ] && [ "$lt" -lt "$lp" ] && grep -q 'lock released' "$out" &&
+    [ ! -e "$QLOCK" ] && [ ! -e "$repo/attic/queued/$ROUND-power-samples.log" ] || {
+    echo "exit $rc; lock taken at line ${lt:-none}, protocol failed at line ${lp:-none}; scratch lock $([ -e "$QLOCK" ] && echo left || echo released): $(grep -E 'lock|FAIL|exits' "$out" | cut -c1-90 | tr '\n' '/')"
+    return 1
+  }
+  heavy_calls >/dev/null || {
+    echo "the gates under the lock made no heavy call, so this proves nothing"
+    return 1
+  }
+  calls_clean || return 1
+  [ "$before" = "$after" ] || {
+    echo "state changed: before [$before] after [$after]"
+    return 1
+  }
+  rm -rf "$repo"
+  echo "with the scratch lock free, the run took it, then ran the protocol, build, harness and corpus gates; the protocol failed, so it exited 4 and its trap released the lock, with no pair, no samples, and the series lock and series files as they were"
+}
+
 if [ "$ACTION" = self-test ]; then
   out_ok || {
     echo "FAIL  self-test: OUT $OUT is not a Git-ignored directory inside WORKTREE; no fixtures written"
@@ -882,6 +1022,8 @@ if [ "$ACTION" = self-test ]; then
   if [ -n "$BUSY" ]; then gate "stopping count" g_skipped; else gate "stopping count" t_count; fi
   gate "busy skip" t_busy
   gate "config isolation" t_config_isolation
+  gate "queued run" t_queued
+  if [ -n "$BUSY" ]; then gate "gates under the lock" g_skipped; else gate "gates under the lock" t_queued_release; fi
   gate "check leaves state" t_check
   [ -f "$ST/check.out" ] && sed 's/^/    /' "$ST/check.out"
   log "$FAILS self-test(s) failed, $SKIPS skipped; each --check's output and the call log are in $ST"
@@ -912,17 +1054,14 @@ for v in $(compgen -e | grep -E '^(METABROWSER_|TRANSITIONS_BENCH$)'); do
   log "unsetting $v for the series (the servers run with the default environment)"
   unset "$v"
 done
+# 0. Before the lock, only what --check checks while a series holds it: no git status,
+#    metab or node, so a run queued behind another series' lock cannot disturb its pair.
 fail=0
 gate "config" g_config || fail=1
-gate "protocol" g_protocol || fail=1
-gate "control" g_build "$CONTROL_WT" "$CONTROL_HEAD" "$CONTROL_METAB" "$CONTROL_VERSION" || fail=1
-gate "candidate" g_build "$CANDIDATE_WT" "$CANDIDATE_HEAD" "$CANDIDATE_METAB" "$CANDIDATE_VERSION" || fail=1
-gate "harness" g_harness || fail=1
-gate "corpus" g_corpus "$CORPUS_EXPECT" || fail=1
 gate "fresh state" g_fresh || fail=1
 gate "power" g_power || fail=1
 [ "$fail" = 0 ] || {
-  log "a registered input does not hold; nothing started"
+  log "a registered input does not hold; nothing started, no lock taken"
   exit 4
 }
 mkdir -p "$OUT" "$PAIRLOGS"
@@ -971,6 +1110,19 @@ while :; do
   sleep 15
 done
 log "lock taken at load $(sysctl -n vm.loadavg); lowpowermode $(lpm); $(src); $LOCK"
+# 1b. The gates that run git status, metab or node, now that no other series is timing a
+#     pair. A failure exits 4, and the exit trap releases the lock; nothing was timed.
+fail=0
+gate "protocol" g_protocol || fail=1
+gate "control" g_build "$CONTROL_WT" "$CONTROL_HEAD" "$CONTROL_METAB" "$CONTROL_VERSION" || fail=1
+gate "candidate" g_build "$CANDIDATE_WT" "$CANDIDATE_HEAD" "$CANDIDATE_METAB" "$CANDIDATE_VERSION" || fail=1
+gate "harness" g_harness || fail=1
+gate "corpus" g_corpus "$CORPUS_EXPECT" || fail=1
+gate "fresh state" g_fresh || fail=1
+[ "$fail" = 0 ] || {
+  log "a registered input does not hold under the lock; nothing timed; the exit trap releases the lock"
+  exit 4
+}
 log "driver sha256 $(sha "$SELF"); config $CONFIG sha256 $(sha "$CONFIG"); count sha256 $(sha "$COUNT"); load filter sha256 $(sha "$LOAD_FILTER"); runs $RUNS"
 (while :; do
   echo "$(iso) lowpowermode $(lpm) $(src)"

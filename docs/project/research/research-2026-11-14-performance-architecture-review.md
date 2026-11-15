@@ -10,8 +10,8 @@
 
 [exp-079](../../../explorations/performance-loop/experiments/exp-079-every-accepted-change-at-final-main.md)
 closed Phase 1 of the November 11 campaign.
-Nothing it measured moves during a transition any more, warm data routes answer in about
-a millisecond, and inventory delivery is progressive.
+Nothing it measured moves during a transition any more, warm data routes answer in 1 to
+11 ms, and inventory delivery is progressive.
 The rows still open in
 [the load-time registry](../specs/active/plan-2026-08-21-load-time-performance.md#hypotheses)
 were nearly all registered as tuning: a cap, a cache, a preload, a faster walk.
@@ -131,9 +131,12 @@ store, and nothing for a folder”).
   3.3 to 26x; the worst, 13 to 26x, were Git routes, tree prefetches, and warm renders
   (apparent UI research).
 - **Probed.**
-  - gzip is 12.3 ms of the 14.8 ms a warm 311 KB render answer takes.
-  - The landing’s 41 startup assets, requested one at a time, take 98 to 106 ms of
-    server time with gzip and 44 to 66 ms without.
+  - A warm `GET` of a 211 KB document’s render answers in 3.8 ms uncompressed and 14.8
+    ms gzipped.
+  - The shell’s scripts and stylesheets and its on-demand bundles, 41 requests made one
+    at a time, sum to 98 to 106 ms of round trips with gzip and 44 to 66 ms without.
+    That is a client-side sum of timed requests, not Server-Timing, and U2 is the
+    reading a round would use.
   - `git;dur` per comparison is 82 to 118 ms, the same on a repeat.
     One Git process costs 16.6 ms to start; the four take 80 to 98 ms, and one
     `git diff --patch-with-raw --numstat` takes 20 to 39 ms for the same answer.
@@ -166,7 +169,8 @@ server already knows the path it is rendering (`index(view_path=…)` in `server
 - **Recorded.** A rewriting proxy that started content early made the cold landing on
   `README.md` 1.60x faster, 357 to 223 ms (apparent UI research).
 - **Probed.** The shell answer is 16 ms of server time.
-- **Registered as** H118, landing data starts with the document, amending H96.
+- **Registered as** H118, landing data starts with the document, which takes H96’s early
+  content request. H96 keeps its concatenated startup scripts, after U2.
 
 ## Key Insights
 
@@ -196,7 +200,7 @@ server already knows the path it is rendering (`index(view_path=…)` in `server
 | R4 | H115 | Encode once, or not at all | H103, widened |
 | R5 | H116 | One Git process per comparison | Nothing; new |
 | R6 | H117 | A resident server and shell | The core half of `mb-bbod` and `mb-25nv` |
-| R7 | H118 | Landing data starts with the document | H96, amended |
+| R7 | H118 | Landing data starts with the document | H96’s early content request; H96 keeps its concatenation, after U2 |
 
 Every predicted size in those rows, beyond a cited record or probe, is an inference.
 
@@ -206,13 +210,19 @@ Every predicted size in those rows, beyond a cited record or probe, is an infere
   accessors throughout; the review counted 42 uses in 10 files, a count not re-derived
   here. A resident server that adopts one root (H117) gets the saving without that
   rewrite.
-- **HTTP/2.** Browsers speak it only over TLS, and the wait it would remove is server
-  work, not connections.
 - **A server-rendered or stored first-screen DOM.** It needs a second renderer, and H118
   shortens the chain without one.
 - **A client-side tree replica (H42).** The shell document comes from the same process a
   relaunch waits for, so a replica cannot paint before it.
   A restored window’s snapshot is native work.
+
+### Deferred Behind U2
+
+- **HTTP/2.** Browsers speak it only over TLS, and the review read the landing’s wait as
+  server work rather than connections.
+  But H57 recorded an 81 ms local HTTP/1.1 queue before one `app.js` response, so U2’s
+  reading of the server’s share decides it, not this review.
+  The same holds for H96’s concatenated startup scripts on loopback.
 
 ## Recommendations
 
@@ -222,11 +232,11 @@ These are measurements, not hypotheses, and take no H number:
 
 | # | Question | Cheapest reading | What it reorders | Bead |
 | --- | --- | --- | --- | --- |
-| U1 | What a kept surface costs in WebKit, which lays out 1.1 to 5 times slower than Chrome ([rendering large content](../../large-content-rendering.md)) | `wkprobe-steps.mjs`: a toggle against a re-attach on three surfaces, and the footprint per surface | H112’s tiers, and whether a detached tier is worth having | `mb-r303` |
+| U1 | What a kept surface costs in WebKit, which lays out 1.1 to 5 times slower than Chrome ([rendering large content](../../large-content-rendering.md)) | A toggle against a re-attach on three surfaces, and the footprint per surface, in a `wkprobe.mjs` scenario that must be built (`wkprobe-steps.mjs` only attributes requests to steps) | H112’s tiers, and whether a detached tier is worth having | `mb-r303` |
 | U2 | Whether the server’s one thread bounds the cold landing | Server-Timing summed to the end of each body over one landing per build | If it does by over half, H109 and H110 retire and H115 (a) goes first | `mb-cejc` |
 | U3 | The fdu provider against the Python provider | One paired run: walk to settled, footprint, foreground latency during the walk | The whole scan-and-walker loop, and H21 | `mb-wb7e` |
 | U4 | How k pages on one origin share connections, when each holds one of six for `/api/events` (`startInventoryEventStream()` in `app.js`) | `explorations/page-connections/measure.mjs` with k live tabs, then k web views | A parked or shared stream before native tabs | `mb-7nm6` |
-| U5 | The app’s frame rate: WebKit drew 30 frames a second in Low Power Mode (rendering large content) | `wkprobe.mjs` frame gaps | States the 50 ms goal in frames | `mb-ttfq` |
+| U5 | The app’s frame rate: WebKit drew 30 frames a second in Low Power Mode (rendering large content) | A frame-gap reading in `wkprobe.mjs`, which must be built | States the 50 ms goal in frames | `mb-ttfq` |
 | U6 | Whether highlight.js can continue a lexer state | A twenty-line check | If it can, highlight the visible lines first and the rest at idle, in place of H101’s worker | `mb-xws3` |
 
 ### Retire, Merge, Demote
@@ -234,9 +244,10 @@ These are measurements, not hypotheses, and take no H number:
 - **H90:** not re-tested a fourth time.
   Its deciding metrics were met and it failed only on one-frame flags (exp-086). H112
   takes its revisits and H113 its request-free render.
-- **Merged:** H95, H98, H99 (a), H100 and H105 into H112; H103 into H115; H96 into H118.
-  H108 is re-scoped: H114 takes its description half and H112 (d) its Changes half.
-  H102 runs after H113, keyed by source digest.
+- **Merged:** H95, H98, H99 (a), H100 and H105 into H112; H103 into H115; H96’s early
+  content request into H118, while its concatenated startup scripts stay open under H96,
+  after U2. H108 is re-scoped: H114 takes its description half and H112 (d) its Changes
+  half. H102 runs after H113, keyed by source digest.
 - **Behind U2:** H109 and H110. exp-062’s numbers fit a serial server queue: shell tools
   61 ms sooner, KPress 40 ms later, the total unchanged.
 - **Split:** H93 into (a) a client cap that pauses on input, and (b) a server lane only
@@ -294,8 +305,9 @@ not a result: no probe was paired, interleaved, or judged.
 The probes are committed in
 [architecture-probes](../../../explorations/performance-loop/architecture-probes/). Each
 file is the script the review ran, reformatted and typed to pass the repository’s lint
-and type checks with the same requests and commands; the committed versions have not
-been run again.
+and type checks with the same requests and commands.
+`render_probe.py` also prints each `POST`’s status, which the run above did not record.
+The committed versions have not been run again.
 
 All from the checkout root, with
 `UVR="uv --config-file $PWD/uv.toml run --frozen --no-sync"` and

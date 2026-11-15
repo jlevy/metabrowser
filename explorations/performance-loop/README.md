@@ -1031,8 +1031,8 @@ rules it enforces are the round’s registered ones:
   `387f68dc4e8eb8e0` (`provenance.mjs`’s `corpusProvenance`). The driver refuses to
   start a pair on any other digest.
   On 2026-11-14 an unidentified `git fetch --quiet origin` moved its `origin/main`
-  between rounds (exp-079’s protocol records it); the trunk and the refs digest both
-  showed it, and the driver checks both.
+  during exp-086’s round (exp-079’s protocol records it); the trunk and the refs digest
+  both showed it, and the driver checks both.
 - **Order.** Which condition leads alternates by attempt.
 - **Stops.** The series stops at its target of judged pairs, or with a nonzero exit at
   its cap on attempts, and an exit trap releases the lock.
@@ -1828,12 +1828,13 @@ A candidate is accepted when all of these hold:
 The first three are arithmetic.
 The fourth is a judgment and gets written as one.
 
-**Which tool applies the pair rule.** Only the transition scenario’s `compare`
-(`transitions-stats.mjs`) applies it: it computes each pair’s ratio and judges at 1.3x
-unless the protocol registers another `--tolerance`. `run.py compare` and `probe-server`
-compute no pair ratios, and `startup_pairs.py summarize --ratios` prints them but judges
-nothing. A round on those tools registers, in its protocol, the tolerance it judges at
-(careful or rough cut, as
+**Which tool applies the pair rule.** Only `judge()` in `transitions-stats.mjs` applies
+it, for the transition scenario’s `compare` and for `wkprobe-stats.mjs`: it computes
+each pair’s ratio and judges at 1.3x unless the protocol registers another
+`--tolerance`. `run.py compare` and `probe-server` compute no pair ratios, and
+`startup_pairs.py summarize --ratios` prints them but judges nothing.
+A round on those tools registers, in its protocol, the tolerance it judges at (careful
+or rough cut, as
 [Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release)
 defines them) and the script that applies the rule.
 

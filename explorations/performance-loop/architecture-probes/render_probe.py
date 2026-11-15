@@ -75,9 +75,11 @@ def main() -> None:
         first = call(conn, "POST", "/api/kpress/render", "gzip", body)
         posts = [call(conn, "POST", "/api/kpress/render", "gzip", body) for _ in range(7)]
         print(
-            f"  POST upload {len(body) / 1024:.1f} KB: first {first.ms:.1f} ms;"
+            f"  POST upload {len(body) / 1024:.1f} KB: first {first.ms:.1f} ms"
+            f" status={first.status};"
             f" warm accept=gzip median {statistics.median(x.ms for x in posts):6.1f} ms"
-            f" (min {min(x.ms for x in posts):.1f})  [{posts[-1].server_timing}]"
+            f" (min {min(x.ms for x in posts):.1f})"
+            f" statuses={[x.status for x in posts]}  [{posts[-1].server_timing}]"
         )
         envelope = [call(conn, "GET", f"/api/file?path={rel}", "gzip") for _ in range(7)]
         print(
