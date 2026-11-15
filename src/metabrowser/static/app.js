@@ -1365,20 +1365,15 @@ async function groupedSectionsSettled() {
   }
 }
 
-// While the groups are on their way the tree on screen stays, and the Group by trigger
-// breathes as refreshing text does (docs/design-system.md, "Refreshing Content"). For a
+// While the groups are on their way the tree on screen stays, and the panel is busy. For a
 // choice's first sections, the tree on screen is the arrangement the reader left, so past
 // the quiet period it dims and the scan row says what is on its way (renderRegrouping);
-// an answer inside --loading-state-delay shows none of it.
-var _groupingPending = false;
-
+// an answer inside --loading-state-delay shows none of it. The Group by trigger does not
+// breathe: it reads the choice in the link's ink on the accent ground, and only primary
+// ink breathes (docs/design-system.md, "Refreshing Content"), so the dim and the scan row
+// say what is waiting.
 function setGroupingPending(pending) {
-  _groupingPending = pending;
   var grouped = filesPanelUsesGroupedSource();
-  queryHtml('[data-chip-menu-toggle="group"]')?.classList.toggle(
-    "mb-refreshing",
-    pending && grouped,
-  );
   document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
   renderRegrouping(
     pending && grouped && _groupedLoad?.first === true
@@ -5656,9 +5651,6 @@ function renderNavFilterBar() {
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
   bar.innerHTML = main + drawer;
-  if (_groupingPending && filesPanelUsesGroupedSource()) {
-    queryHtml('[data-chip-menu-toggle="group"]', bar)?.classList.add("mb-refreshing");
-  }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
   fc.fitOpenMenus(bar);

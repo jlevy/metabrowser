@@ -430,8 +430,12 @@
      tests/test_github_pulls_stacks_chrome.py): at 16px, one step wider than
      the glyph, a Files name started 22px from the row's content edge, and a
      Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
-     pull request's title 4px wider. */
-  --tree-icon-slot: 14px;
+     pull request's title 4px wider. It is --icon-glyph, so the two cannot part. */
+  --tree-icon-slot: var(--icon-glyph);
+  /* The disclosure chevron's glyph (.toggle-chevron), 2px under --icon-glyph. A tree's
+     folder and container toggles center it in the slot, half the slot's spare width each
+     side, 1px. */
+  --toggle-chevron-size: 12px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -465,13 +469,15 @@
      button (gear, printer, copy), a file-type mark in a row, or a menu
      row's leading mark, so icons stay interchangeable wherever they
      appear. --icon-btn-size is the hit target the interactive ones get;
-     see the `── Icon buttons ──` primitive below. The alignment boxes
-     that reserve a palette or menu row's icon column are 16px, one step
-     wider than the glyph, so the glyph has room to sit optically
-     centered; a tree row's is --tree-icon-slot, the glyph's own width. The one deliberate exception is
-     `.menu-seg svg`, where the glyph is the whole label of a segmented
-     chooser rather than a mark beside text; it is sized in place. */
+     see the `── Icon buttons ──` primitive below. The alignment box that
+     reserves a palette or menu row's icon column, and a file identity's,
+     is --icon-box, one step wider than the glyph, so the glyph has room to
+     sit optically centered; a tree row's is --tree-icon-slot, the glyph's
+     own width. The one deliberate exception is `.menu-seg svg`, where the
+     glyph is the whole label of a segmented chooser rather than a mark
+     beside text; it is sized in place. */
   --icon-glyph: 14px;
+  --icon-box: 16px;
   --icon-btn-size: 24px;
 
   /* Border-radius tokens — split into "chrome" (interactive UI:
@@ -596,6 +602,16 @@
   --refreshing-text-dim-opacity: 0.8;
   --refreshing-muted-rest-opacity: 0.605;
   --refreshing-muted-lift-opacity: 0.755;
+  /* The wait for a Group by choice's first sections (docs/design-system.md, "Grouping the
+     Files Tree", Waiting): the one place loading chrome dims content already shown,
+     because what is shown is the arrangement the reader left, not the answer coming. It
+     is the tree's dimmest level, the dimmed content token's, so a waiting tree reads as
+     an ignored row does at rest; a row already dimmed is held there rather than dimmed
+     twice (`.tree-regrouping` below). Measured in headless Chrome on the Files tab, light
+     theme (tests/test_files_tab_chrome.py, 2026-11-15): a name under the wait is drawn
+     at 0.45 and reads 2.86:1 on the tree's ground, an ignored row's at rest; dimmed
+     twice, an ignored row's name was drawn at 0.2025 and read 1.54:1. */
+  --loading-dim-opacity: 0.45;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -1865,13 +1881,13 @@ summary {
   cursor: default;
   pointer-events: none;
 }
-/* 16px alignment box + --icon-glyph mark, same as a palette row, so a
-   menu row's icon column lines up with a palette row's. A tree row's slot
-   is the glyph's own width (--tree-icon-slot). */
+/* The --icon-box alignment box and an --icon-glyph mark, as a palette row
+   has, so a menu row's icon column lines up with a palette row's. A tree
+   row's slot is the glyph's own width (--tree-icon-slot). */
 .menu-item-icon {
   display: flex;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -2556,7 +2572,7 @@ html.theme-anim .menu {
 }
 .source-ref-selector-commit {
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 .source-ref-selector-note,
 .source-ref-selector-error {
@@ -2882,9 +2898,9 @@ html[data-prose-font="sans"] .kpress-prose h2,
    this alignment box supplies the common geometry and base tone. */
 .file-identity-icon {
   display: inline-flex;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
+  flex: 0 0 var(--icon-box);
   align-items: center;
   justify-content: center;
   color: var(--muted);
@@ -2987,7 +3003,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
    phrase in its own type, "4 files (38 B)", not a column of chips. */
 .size {
   color: var(--size-color);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   font-weight: var(--weight-normal);
 }
 .size-large {
@@ -3001,7 +3017,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
    formatters.js) the same way `.size-large` does for byte counts. */
 .count {
   color: var(--size-color);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   font-weight: var(--weight-normal);
 }
 .count-large {
@@ -3465,7 +3481,7 @@ a.tab-btn {
 }
 .chip-menu-count {
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   font-size: var(--ui-small-font-size);
 }
 /* Age menu rows inherit the same foreground as tree and header ages.
@@ -3513,7 +3529,7 @@ a.tab-btn {
   font-size: var(--micro-font-size);
   line-height: 14px;
   text-align: center;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 /* Rendered only when something is set: a permanently visible Clear on
    a clean state is noise. */
@@ -3823,11 +3839,11 @@ a.tab-btn {
 .filter-drawer:has(.chip-menu[aria-expanded="true"]) > * {
   overflow: visible;
 }
-/* No section headings in here: an extension menu, a size ramp, and a
-   checkbox labelled "Gitignored" already say what they are, and four
-   uppercase labels cost more vertical space in a 300px pane than they
-   were paying for. Its menus wrap on the toolbar's spacing, so an open
-   drawer's lines sit as far apart as the row's over them. */
+/* No section headings in here: its three menus, Modified within, File
+   type, and Minimum file size, already say what they are on their
+   triggers, and uppercase labels cost more vertical space in a 300px pane
+   than they were paying for. Its menus wrap on the toolbar's spacing, so
+   an open drawer's lines sit as far apart as the row's over them. */
 .filter-drawer-row {
   display: flex;
   align-items: center;
@@ -3903,20 +3919,32 @@ a.tab-btn {
   font-weight: var(--weight-normal);
   letter-spacing: 0;
   text-transform: none;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 /* Regrouping (docs/design-system.md, "Grouping the Files Tree", Waiting): while a
    grouping's first sections are on their way, the tree on screen is the arrangement
-   the reader left, so once the wait passes the quiet period it dims to the dimmed
-   content token, and the scan row below says what is coming. The metadata band and
-   notices above it keep their ink. Opacity only, set in one step, so nothing moves and
-   reduced motion has nothing to stop. */
+   the reader left, so once the wait passes the quiet period it dims to
+   --loading-dim-opacity, and the scan row below says what is coming. The metadata band
+   and notices above it keep their ink. Opacity only, set in one step, so nothing moves
+   and reduced motion has nothing to stop.
+   A row already dimmed, an ignored file or an empty folder, would take both opacities:
+   0.45 of 0.45 drew its name at 0.2025, 1.54:1, near invisible. Over the same quiet
+   period it lifts by the dim's own factor, so it ends at --dimmed-content-opacity, the
+   tree's dimmest, and no lower (--loading-dim-opacity says what was measured). */
 #tab-files.tree-regrouping > :not(.nav-metadata, .notice) {
   animation: tree-regrouping-dim 0s linear var(--loading-state-delay) forwards;
 }
+#tab-files.tree-regrouping :is(.tree-item-gitignored, .tree-item-empty) {
+  animation: tree-regrouping-hold 0s linear var(--loading-state-delay) forwards;
+}
 @keyframes tree-regrouping-dim {
   to {
-    opacity: var(--dimmed-content-opacity);
+    opacity: var(--loading-dim-opacity);
+  }
+}
+@keyframes tree-regrouping-hold {
+  to {
+    opacity: min(1, calc(var(--dimmed-content-opacity) / var(--loading-dim-opacity)));
   }
 }
 .recent-truncated-note {
@@ -4149,7 +4177,7 @@ a.tab-btn {
 .folder-header-age {
   font-size: var(--ui-small-font-size);
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
 .file-header:hover .file-header-copy {
@@ -5093,7 +5121,7 @@ pre.code-block.metabrowser-source-lines > code {
    See ``.size`` / ``.count`` for the same convention elsewhere. */
 .data-table td.numeric-cell {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 /* Zebra striping reuses the panel header fill so the alternating rows
    read as part of the same table envelope (same hue family) rather
@@ -5400,8 +5428,8 @@ pre.code-block.metabrowser-source-lines > code {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
   color: var(--ft-color, var(--muted));
 }
 .search-palette-icon svg {
@@ -5697,8 +5725,8 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 12px;
-  margin: 0 calc((var(--tree-icon-slot) - 12px) / 2);
+  width: var(--toggle-chevron-size);
+  margin: 0 calc((var(--tree-icon-slot) - var(--toggle-chevron-size)) / 2);
   flex: none;
 }
 .tree-container-badge {
@@ -5719,8 +5747,8 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* Shared toggle chevron (used by tree folders and tally tree) */
 .toggle-chevron {
-  width: 12px;
-  height: 12px;
+  width: var(--toggle-chevron-size);
+  height: var(--toggle-chevron-size);
   flex-shrink: 0;
   color: var(--muted);
   stroke-width: 2.5;
@@ -5743,7 +5771,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-inline: calc((var(--tree-icon-slot) - 12px) / 2);
+  margin-inline: calc((var(--tree-icon-slot) - var(--toggle-chevron-size)) / 2);
   flex-shrink: 0;
   border-radius: var(--radius-circle);
 }

@@ -27,8 +27,10 @@ opens the Modified within menu in both. This judges what it measured against
 - a file written into a folder open in a section refreshes the sections in place, keeping
   that folder open, the scroll position, and the focused row;
 - with the grouped requests held, a choice reads on the trigger in its click and takes
-  the request its press asked for ahead; past the quiet period the tree dims and the
-  scan row says "Grouping by file type…"; a refresh waits for the sections on their way,
+  the request its press asked for ahead; past the quiet period the tree dims to
+  ``--loading-dim-opacity`` and the scan row says "Grouping by file type…", while the
+  trigger does not breathe and a row already dimmed is not dimmed twice; a refresh waits
+  for the sections on their way,
   and a reveal made meanwhile lands once they paint;
   and a newer choice, or No grouping, ends the wait at once ("Grouping the Files Tree",
   Waiting);
@@ -399,12 +401,27 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     waiting = measured["waiting"]
     assert waiting["chosenInFrame"] == "By file type", waiting
     assert waiting["requestsForChoice"] == {"prefetched": 1, "afterChoice": 1}, waiting
-    # Past the quiet period the tree dims and the scan row says what is happening.
+    # Past the quiet period the tree dims to the wait's own token and the scan row says what
+    # is happening. The trigger does not breathe: only primary ink does ("Refreshing
+    # Content"), and it reads the choice in the link's ink on the accent ground, so while
+    # the choice waits it is drawn exactly as once its sections have painted, in both
+    # themes. Measured 2026-11-15: 4.15:1 in light and 5.98:1 in dark, where breathing took
+    # it to 3.03:1 and 4.45:1 at its dimmest (mb-xlla).
     slow = waiting["slow"]
-    assert slow["trigger"] == "By file type" and slow["breathing"], slow
+    assert slow["trigger"] == "By file type" and not slow["breathing"], slow
     assert slow["progress"] == "Grouping by file type…" and slow["progressShown"], slow
-    assert slow["treeOpacity"] == slow["dimmedToken"] < 1, slow
+    assert slow["treeOpacity"] == slow["loadingDimToken"] < 1, slow
     assert slow["busy"] == "true" and slow["sections"] == 0, slow
+    assert waiting["triggerInk"] == waiting["triggerInkAfter"], waiting
+    for theme, ink in waiting["triggerInk"].items():
+        assert ink["active"] == "true" and ink["rest"] > ink["breathingDimmest"], (theme, ink)
+    # A row already dimmed, as an ignored file's is, is held at the tree's dimmest under the
+    # wait rather than dimmed twice: 0.45 of 0.45 drew its name at 0.2025, 1.54:1, where at
+    # rest and now under the wait it is 0.45, 2.86:1.
+    dimmed = slow["dimmedToken"]
+    assert waiting["ignoredUnderDim"]["opacity"] == pytest.approx(dimmed, abs=0.001), waiting
+    assert waiting["ignoredAtRest"]["opacity"] == pytest.approx(dimmed, abs=0.001), waiting
+    assert waiting["ignoredUnderDim"]["contrast"] == waiting["ignoredAtRest"]["contrast"], waiting
     # The refresh the changed file asks for waits for the sections on their way, and
     # follows them once they paint.
     assert waiting["refreshWaits"] == {"requests": 1, "held": 1}, waiting
