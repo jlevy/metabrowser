@@ -1050,8 +1050,11 @@ async def _run_git(
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
     # Past the cap, a run asked to stop there is killed, and the drain then ends at once.
-    stop = partial(_kill, proc) if stop_at_cap else None
-    stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes, stop))
+    stdout_task = asyncio.ensure_future(
+        _read_capped(proc.stdout, max_bytes, partial(_kill, proc))
+        if stop_at_cap
+        else _read_capped(proc.stdout, max_bytes)
+    )
     stderr_task = asyncio.ensure_future(_read_stderr(proc.stderr, on_progress))
 
     async def feed_stdin() -> None:
