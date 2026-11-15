@@ -416,7 +416,7 @@ Keep consumer plugin fixtures in the consumer repository.
 The Metabrowser suite should use generic sample plugins so it cannot pass only because
 an unrelated workspace package happens to be installed.
 
-The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
+The [v0.12 alpha test plan](project/specs/done/plan-2026-09-22-v012-alpha-testing.md)
 sequences foundation testing, GitHub URL browsing, and direct PRs, with manual and
 automated scenarios and the landing checklist.
 The step-by-step procedure is
@@ -583,7 +583,7 @@ scheme.
 ### Pulls Watch and Reconnect
 
 The
-[watch verification plan](project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md)
+[watch verification plan](project/specs/done/plan-2026-11-06-pr-watch-and-reconnect.md)
 covers incremental provider updates, cached use during an outage, connection recovery,
 and the Reload action in both repository modes.
 

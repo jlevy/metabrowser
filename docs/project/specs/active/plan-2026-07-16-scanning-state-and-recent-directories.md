@@ -1,15 +1,17 @@
 # Feature: Scanning State and Recent Directories
 
-**Date:** 2026-07-16 (last updated 2026-07-17)
+**Date:** 2026-07-16 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Partly implemented; recent-directory items remain planned.
+**Status:** Partly implemented; recent-directory items remain planned (`mb-f42e`).
 
 Inventory lifecycle and coverage, bounded Recent counts, and pending directory
-aggregates are implemented.
-Tree ages represent the newest descendant; the Recent API still returns file leaves,
-with ancestor directories used only for presentation.
+aggregates are implemented, under the
+[inventory provider contract](plan-2026-08-23-pluggable-inventory-engine.md).
+`/api/index/progress` reports scan status, indexed and maximum file counts, truncation,
+and completion. Tree ages represent the newest descendant; the Recent API still returns
+file leaves, with ancestor directories used only for presentation.
 The directory-recency contract and remaining acceptance work below are not complete.
 
 ## Overview

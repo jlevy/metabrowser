@@ -1,6 +1,6 @@
 # Feature: Functional UI and CLI Parity
 
-**Date:** 2026-09-10 (last updated 2026-09-14)
+**Date:** 2026-09-10 (last updated 2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
@@ -228,6 +228,11 @@ responsible for declaring the smaller set of observable aspects within each surf
   APIs, image decoding, printing, and performance timing.
 
 The migration is tracked by `mb-n9xg` and its children.
+Feature work has registered rows for the surfaces it changed: preview states and
+Markdown by v0.10.0, then Git history, the pull-request pages, diff, the folder
+Overview, and the shell.
+Each child starts by reading the functional table for what is already covered.
+The Phase 4 items themselves remain open.
 The first three phases establish an enforced release gate for changed behavior; they do
 not retroactively prove every legacy interaction.
 Until Phase 4 is complete, documentation and release notes must call the functional
