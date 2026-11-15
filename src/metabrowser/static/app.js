@@ -157,18 +157,12 @@ function eventTargetElement(event) {
   return event.target instanceof Element ? event.target : null;
 }
 
+// Size and size-weight conventions — every shell surface delegates to the
+// shared formatter runtime, as `mb.formatSize` and `mb.sizeClass` do, so
+// plugins and core use the same units and the same threshold.
 function formatSize(bytes) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return window.MetabrowserFormatters.formatBytes(Number(bytes) || 0);
 }
-
-// Size-weight convention — every shell surface delegates to the shared
-// formatter runtime so plugins and core use the same threshold.
 function sizeClass(bytes) {
   return window.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
 }
