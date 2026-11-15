@@ -40,7 +40,7 @@
 
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
    set holds and is the disclosure toggle of its files as a tree by folder. The header is a
-   row-like trigger, so it leads with the registry's chevron in the tree's 16px box. Its text
+   row-like trigger, so it leads with the registry's chevron in the tree's icon slot. Its text
    is one size, so its parts share a line box and need no baseline opt-in. */
 .metabrowser-diff-host .diff-summary {
   display: flex;
@@ -80,7 +80,7 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
 }
 
 .metabrowser-diff-host .diff-summary-breakdown {
@@ -154,7 +154,7 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
 }
 
 .metabrowser-diff-host .diff-summary-row-name {

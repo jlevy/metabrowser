@@ -50,7 +50,14 @@
 }
 .github-pull-number {
   color: var(--text);
-  font-weight: var(--weight-normal);
+}
+/* A pull request's number is bold wherever it names the pull request: the page's title, a
+   Pulls row, and a stack menu's member, at the shell's one weight for it
+   (`--pull-number-weight`; docs/design-system.md, "Pull Request Numbers"). */
+.github-pull-number,
+.github-pulls-number,
+.github-pull-stack-member-number {
+  font-weight: var(--pull-number-weight);
 }
 .github-pull-title-with-state > .github-pull-number {
   align-self: end;
@@ -650,13 +657,13 @@
 .github-pull-state-icon[data-state="closed"] {
   color: var(--github-pull-closed);
 }
-/* The 16px alignment box of a row's icon, around the app's one glyph size. */
+/* A Pulls row's icon in the tree's icon slot, at the app's one glyph size. */
 .github-pull-state-icon {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
 }
 .github-pull-state-icon svg {
   width: var(--icon-glyph);
@@ -762,7 +769,8 @@
    file trees, so remounting a retained expansion preserves the scroll geometry. */
 /* Two lines and one target: the chevron, the state icon, the title, and the age on the
    first, and the muted line under the title. A row is a container, so its chevron leads in
-   the 16px box a folder's takes (docs/design-system.md, "Container Rows"). The row centers
+   the slot a folder's takes, as its icon does (`--tree-icon-slot`, docs/design-system.md,
+   "Container Rows"). The row centers
    its boxes and its text opts in to the first line's baseline (docs/design-system.md, "Row
    Text Shares a Baseline"); the muted line is alone on its own, with no baseline to share. */
 /* The age has a column of one width, so an age that grows a digit does not move the title's
@@ -773,7 +781,7 @@
    number (`.github-pulls-place`, mb-dzsi), so the title has that room. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: 16px 16px minmax(0, 1fr) 5ch;
+  grid-template-columns: var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch;
   align-items: center;
   min-height: var(--ui-row-height);
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
@@ -898,15 +906,15 @@
   grid-row: 1;
   grid-column: 3;
 }
-/* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
-   on the row turn it, as they turn a folder's. */
+/* The registry's chevron, at the tree's 12px glyph in the tree's icon slot; `.collapsed` and
+   `.expanded` on the row turn it, as they turn a folder's. */
 .github-pulls-toggle,
 .github-pull-files-toggle {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
 }
 
 /* A pull request's changed files, under its row: the Files tree's row contract, drawn a window
@@ -1014,7 +1022,8 @@
 }
 .github-pull-files-line {
   margin: 0;
-  padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent) + 22px);
+  padding: 2px 12px 2px
+    calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent) + var(--tree-icon-slot) + 6px);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }

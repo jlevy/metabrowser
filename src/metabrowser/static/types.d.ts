@@ -3044,6 +3044,8 @@ declare global {
   type MetabrowserSourceRefSelectorModel = {
     selectedRef: { name: string; label: string; kind: string } | null;
     button: string;
+    /** The served pull request's number, "#7", when the page is a pull request's head. */
+    pullNumber: string | null;
     open: boolean;
     kind: MetabrowserSourceRefKind;
     query: string;

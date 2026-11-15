@@ -3587,7 +3587,7 @@ export function mountPullsPanel(container, ctx, mb) {
     const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
     const meta = rowMeta(row, stack);
     const icon = pullStateIcon(row.state);
-    // The registry's chevron in the 16px box a folder's takes, since the row is a container.
+    // The registry's chevron in the slot a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place.

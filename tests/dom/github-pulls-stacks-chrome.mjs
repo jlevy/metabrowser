@@ -147,6 +147,35 @@ const LIST = `(() => {
         chip: document.querySelector(".github-pulls-group-toggle") !== null,
       };
     })(),
+    // A row's leading slots, the chevron's and the icon's, from the row's content edge: a
+    // pull request's (#106, first level) and a stack's (mb-hmv7, --tree-icon-slot).
+    slots: (() => {
+      const round = (value) => Math.round(value * 100) / 100;
+      const of = (row, toggle, icon, text) => {
+        if (!row) return null;
+        const r = row.getBoundingClientRect();
+        const style = getComputedStyle(row);
+        const inset = r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+        const t = row.querySelector(toggle).getBoundingClientRect();
+        const i = row.querySelector(icon).getBoundingClientRect();
+        const g = row.querySelector(icon + " svg").getBoundingClientRect();
+        return {
+          toggle: round(t.width),
+          toggleFromInset: round(t.left - inset),
+          chevron: round(row.querySelector(toggle + " svg").getBoundingClientRect().width),
+          icon: round(i.width),
+          iconFromInset: round(i.left - inset),
+          glyph: round(g.width),
+          text: round(row.querySelector(text).getBoundingClientRect().left - inset),
+          gap: parseFloat(style.columnGap),
+        };
+      };
+      return {
+        token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
+        pull: of(flat, ".github-pulls-toggle", ".github-pull-state-icon", ".github-pulls-title"),
+        stack: of(stackRow, ".github-pulls-toggle", ".github-pull-stack-icon", ".github-pull-stack-label"),
+      };
+    })(),
   };
 })()`;
 
@@ -358,6 +387,26 @@ try {
         Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.treeIndent)) < 0.5,
       JSON.stringify(list.titleRoom),
     );
+    // The leading slots are the tree's one icon slot, 14 px, the Files tree's too: at 16 px
+    // a title and a stack's label started 44 px from the row's content edge, and at 14,
+    // 40 (mb-hmv7).
+    const slots = list.slots;
+    check(
+      "a row's chevron and icon, and a stack row's, are each the tree's 14 px icon slot",
+      slots.token === "14px" &&
+        [slots.pull, slots.stack].every(
+          (row) =>
+            row !== null &&
+            row.toggle === 14 &&
+            row.toggleFromInset === 0 &&
+            row.chevron === 12 &&
+            row.glyph === 14 &&
+            near(row.iconFromInset, 14 + row.gap) &&
+            near(row.text, 2 * 14 + 2 * row.gap),
+        ) &&
+        slots.pull.icon === 14,
+      JSON.stringify(slots),
+    );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
       near(list.stackToggle, list.flatToggle),
@@ -564,6 +613,21 @@ try {
           text,
         };
       })(),
+      // A pull request's number where it names the pull request, and a stack's position:
+      // their computed weights (mb-vrvs).
+      weights: (() => {
+        const weight = (selector) => {
+          const el = document.querySelector(selector);
+          return el === null ? null : getComputedStyle(el).fontWeight;
+        };
+        return {
+          row: weight(".github-pulls-row .github-pulls-number"),
+          member: weight(".github-pull-stack-menu .github-pull-stack-member-number"),
+          title: weight(".github-pull-title .github-pull-number"),
+          position: weight(".github-pull-stack-menu .github-pull-stack-member-position"),
+          place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
+        };
+      })(),
     };
   })()`);
   measured.menu = menu;
@@ -606,6 +670,11 @@ try {
         menu.ink.title === menu.ink.number &&
         menu.ink.position === menu.ink.text,
       JSON.stringify(menu.ink),
+    );
+    check(
+      "a pull request's number is bold in a Pulls row, a stack member, and the page's title, as a stack's position is",
+      ["row", "member", "title", "position", "place"].every((key) => menu.weights[key] === "700"),
+      JSON.stringify(menu.weights),
     );
     check(
       "a Pulls row's place is in its number's ink, the row's text",

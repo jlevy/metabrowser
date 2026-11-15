@@ -541,6 +541,35 @@ const PULLS_ROWS = `async (rows, width) => {
     };
   });
 }`;
+// A pull request's number in the shell's two surfaces that show one, Quick Search's result
+// and the ref selector on a pull request's head, built as search-palette.js#appendPullResult
+// and source-ref-selector.js#paint build them, over the shell's own stylesheet: their
+// computed weights, and a stack's position's (mb-vrvs). The GitHub plugin's three surfaces
+// are read where they are drawn, in github-pulls-stacks-chrome.mjs.
+const NUMBERS = `(() => {
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  const palette = h("span", { class: "search-palette-pull-number" }, ["#455"]);
+  const selector = h("span", { class: "source-ref-selector-pull-number" }, ["#455"]);
+  const position = h("span", { class: "github-pull-stack-position" }, ["1/6"]);
+  document.getElementById("preview-pane").replaceChildren(
+    h("div", { class: "search-palette-option search-palette-option-pull" }, [
+      h("span", { class: "search-palette-option-text" }, [
+        h("span", { class: "search-palette-description" }, [palette, " · Open"]),
+      ]),
+    ]),
+    h("button", { class: "chip-menu-trigger source-ref-selector-toggle" }, [
+      h("span", { class: "source-ref-selector-label" }, ["Pull request: ", selector]),
+    ]),
+    position,
+  );
+  const weight = (node) => getComputedStyle(node).fontWeight;
+  return { palette: weight(palette), selector: weight(selector), position: weight(position) };
+})()`;
 const PULLS = [
   {
     number: 370,
@@ -836,6 +865,14 @@ async function main() {
       }
       if (runs("badges")) {
         lap("the run badge");
+      }
+      if (runs("pulls")) {
+        const numbers = await browser.evaluate(NUMBERS);
+        check(
+          "a pull request's number is bold in Quick Search and the ref selector, as a stack's position is",
+          numbers.palette === "700" && numbers.selector === "700" && numbers.position === "700",
+          JSON.stringify(numbers),
+        );
       }
       for (const width of runs("pulls") ? PULLS_WIDTHS : []) {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
