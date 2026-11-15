@@ -21,6 +21,18 @@ here.
   Until then the app runs the `metab` of a source checkout, as
   [The macOS App](#the-macos-app) describes.
 
+## Requirements
+
+| To | You need |
+| --- | --- |
+| Run `metab` | Python 3.12 or later, which uv downloads when the machine has none |
+| Read commits, open repositories, and review pull requests | Git, and the GitHub CLI for GitHub, as [Git and GitHub Setup](#git-and-github-setup) describes |
+| Run the macOS app | A Mac with Apple silicon, on macOS 26 or later |
+| Build the macOS app | Xcode 26.6 or later, with Swift 6.3 or later |
+
+`tests/test_installation_requirements.py` holds each figure here to the file that sets
+it.
+
 ## Install uv
 
 Install uv with its
@@ -41,9 +53,6 @@ The standalone installer puts uv in `~/.local/bin`, where `uv tool install` puts
 too, and adds that directory to your shell’s `PATH` for new terminals.
 Homebrew does neither: after `brew install uv` and `uv tool install`, run
 `uv tool update-shell` once and open a new terminal, or the shell does not find `metab`.
-
-By default uv downloads a Python in the range that `requires-python` in `pyproject.toml`
-names when the machine has none.
 
 ## Install metab
 
@@ -155,16 +164,9 @@ folder you open, and shows each folder in its own window.
 It installs nothing itself.
 [The macOS app guide](macos-app.md) describes using it.
 
-To build it you need:
-
-- an Apple silicon Mac (the default `ARCHES` in `apps/macos/scripts/build-app.sh`) on
-  the macOS release that `LSMinimumSystemVersion` in `apps/macos/Resources/Info.plist`
-  names;
-- the Xcode that provides the Swift tools version `apps/macos/Package.swift` declares;
-- a source checkout of this repository, set up as [Development](development.md#set-up)
-  describes.
-
-From the repository root:
+To build it you need the Mac and the Xcode that [Requirements](#requirements) names, and
+a source checkout of this repository, set up as [Development](development.md#set-up)
+describes. From the repository root:
 
 ```shell
 make install
