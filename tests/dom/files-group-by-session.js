@@ -91,7 +91,9 @@ function choose(label, patch) {
     source: cursor.source,
     action: transition.action,
     request,
+    // Clear shows while any filter is set; the chevron's badge counts only the drawer's.
     activeFilters: filter.activeCount(),
+    drawerFilters: model.drawerFilterCount(state),
   });
   return transition.action;
 }
@@ -144,7 +146,23 @@ check(
   transcript.steps.at(-1).request.includes("recency=1h"),
   transcript.steps.at(-1),
 );
-// Clear undoes the filters and keeps the grouping.
+// Show ignored, on the row beside Group by, narrows every group too. Clear counts it, so
+// it shows; the chevron's badge leaves it out, since the row shows its own state (mb-x1h6).
+check(
+  "Show ignored off reloads the groups",
+  choose("Show ignored off", { showIgnored: false }) === "load-groups",
+);
+check(
+  "a grouped request leaves out ignored entries",
+  transcript.steps.at(-1).request.includes("include_ignored=0"),
+  transcript.steps.at(-1),
+);
+check(
+  "Clear counts Show ignored and the badge does not",
+  transcript.steps.at(-1).activeFilters === 3 && transcript.steps.at(-1).drawerFilters === 2,
+  transcript.steps.at(-1),
+);
+// Clear undoes the filters, Show ignored included, and keeps the grouping.
 filter.clear();
 const cleared = model.recentFilterTransition(
   cursor,
@@ -157,9 +175,11 @@ transcript.steps.push({
   action: cleared.action,
   request: cleared.action === "load-groups" ? model.groupsUrl(filter.get(), floors, 2) : null,
   activeFilters: filter.activeCount(),
+  drawerFilters: model.drawerFilterCount(filter.get()),
 });
 check("Clear reloads the groups without the filters", cleared.action === "load-groups", cleared);
 check("Clear keeps Group by", filter.get().group === "type", filter.get());
+check("Clear shows ignored entries again", filter.get().showIgnored === true, filter.get());
 
 // Age: the same request with the other grouping.
 check("choosing Age loads the groups", choose("Age", { group: "age" }) === "load-groups");

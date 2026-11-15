@@ -446,19 +446,23 @@ def test_group_by_and_the_three_filters_are_dropdowns() -> None:
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_group_by_rides_the_row_and_the_filters_sit_in_the_drawer() -> None:
-    """Group by is the row's one control: it removes nothing, so it needs no drawer.
-    The three filters and Show ignored sit behind the disclosure, whose badge counts
-    the ones set (mb-sogv)."""
+def test_group_by_and_show_ignored_ride_the_row_and_the_filters_sit_in_the_drawer() -> None:
+    """Group by leads the row: it removes nothing, so it needs no drawer. Show ignored
+    follows it, its tick stating its own direction. The three filters sit behind the
+    disclosure, whose badge counts only them; Clear, which resets Show ignored too,
+    shows while any filter is set (mb-sogv, mb-x1h6)."""
 
     fn_block = _render_nav_filter_bar()
     main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
     drawer = fn_block[fn_block.index("var drawer =") :]
-    assert 'key: "group"' in main
+    group_at = main.index('key: "group"')
+    assert group_at < main.index('"Show ignored"') < main.index("nav-filter-bar-end")
     for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
         assert menu not in main
     assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
-    assert '"Show ignored"' in drawer
+    assert '"Show ignored"' not in drawer
+    assert "badge: drawerCount," in main
+    assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
 
 def test_option_lists_omit_the_any_value() -> None:
@@ -492,9 +496,7 @@ def test_only_one_dropdown_is_open_at_a_time() -> None:
 
 
 def test_clear_is_only_rendered_when_something_is_set() -> None:
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = _render_nav_filter_bar()
     assert "count > 0" in fn_block
 
 
@@ -505,9 +507,7 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     aria-label describes the action and carries the count the badge
     shows visually."""
 
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = _render_nav_filter_bar()
     assert "icon: ICONS.toggle" in fn_block
     assert '"Hide filters" : "Show filters"' in fn_block
     assert "active)" in fn_block
@@ -1421,9 +1421,7 @@ def test_clear_sits_with_the_dropdowns_it_undoes() -> None:
     opening the drawer to undo a filter set from the row above is a
     step too many. Short label so it shares the row."""
 
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 4200]
+    fn_block = _render_nav_filter_bar()
     clear_at = fn_block.index("fc.clearHtml(")
     assert clear_at < fn_block.index('class="filter-drawer"')
     assert '{ label: "Clear" }' in fn_block

@@ -13,8 +13,8 @@ stack of seven pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
-2. **Files:** a Group by menu becomes the Files tab’s main control, and the three
-   filters move into the drawer.
+2. **Files:** a Group by menu becomes the Files tab’s main control, with Show ignored
+   beside it (`mb-x1h6`), and the three filters move into the drawer.
 3. **Rendered Markdown diffs:** the unchanged-blocks fold expands in place, with no
    border.
 4. **Diff summary:** one collapsible tree of changed files with folder roll-ups,
@@ -39,10 +39,10 @@ request must prove.
   - The Files type filter menu takes its natural height, up to about 16 rows, and always
     stays inside the window.
 - **Files Group by** (`mb-sogv`):
-  - “Group by” is the only control on the Files filter row.
-    Its values are No grouping (the default), Age, and File type.
-  - The three filters (Modified within, File type, Minimum file size) and Show ignored
-    move into the chevron drawer.
+  - “Group by” leads the Files filter row, and Show ignored follows it (`mb-x1h6`). Its
+    values are No grouping (the default), Age, and File type.
+  - The three filters (Modified within, File type, Minimum file size) move into the
+    chevron drawer.
   - When grouping is on, the tree splits into headed sections.
     Each section holds a full tree of the items in its group, under the active filters.
   - File type groups list Documentation before Code, in the filter and in Group by
@@ -122,7 +122,7 @@ it:
 | # | Branch | Beads | Why it sits here |
 | --- | --- | --- | --- |
 | 1 | `claude/menu-group-pattern` | `mb-s6vu`, `mb-1wfn`, this plan | The group heading pattern that pull requests 2 and 5 reuse |
-| 2 | `claude/menu-groups-height` | `mb-sogv` | Reuses the heading pattern for the Files tree’s group headings |
+| 2 | `claude/menu-groups-height` | `mb-sogv`, `mb-x1h6` | Reuses the heading pattern for the Files tree’s group headings |
 | 3 | `claude/diff-fold-inline` | `mb-m5dd` | Stacked to serialize merges, with no code dependency on the layer below; shares `diff/styles.css` with pull request 4 |
 | 4 | `claude/diff-summary` | `mb-epw2` | Shares the Pulls tree model with pull request 5 |
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
@@ -149,6 +149,11 @@ it:
 
 ### Files Group By
 
+- **Row:** Group by, then Show ignored (`mb-x1h6`, the owner’s follow-up of 2026-11-15),
+  then Clear and the chevron at the trailing edge; a Git revision has no Show ignored.
+  The chevron’s badge counts only the drawer’s three filters, since the row shows Show
+  ignored’s own state, and Clear resets all four, keeping the grouping.
+  The row fits the default 299 px pane at its widest, measured in Chrome.
 - **Age groups:** disjoint bands built from the age filter’s windows: Live; then Past
   hour, Past day, Past week and Past month, each holding only what the earlier windows
   don’t; then Older. A Git revision source has no modification times, so it doesn’t offer
@@ -293,6 +298,8 @@ it:
 
 - [ ] `mb-sogv`: the Group by control, the drawer layout, age and type groups, the
   shared type order, sections, persistence, and the route or model with its golden.
+- [ ] `mb-x1h6`: Show ignored on the row after Group by, and a badge that counts only
+  the drawer’s filters.
 
 ### Phase 3: Diff Fold in Place (pull request 3)
 
@@ -361,7 +368,7 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).
