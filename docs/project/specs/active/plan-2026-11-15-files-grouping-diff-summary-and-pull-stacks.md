@@ -203,8 +203,9 @@ it:
 
 ### Pull Stack Groups
 
-- **The option:** a control in the Pulls tab’s toolbar groups the list by stack.
-  The choice persists.
+- **Always on** (`mb-vmwh`, the owner’s decision after review A on #450): the Pulls tab
+  always groups by stack once the stacks are known, with no toolbar control.
+  A Group by stack chip fit in no form at the default 299 px pane.
 
 - **Stack rows:**
   - Each stack with at least one pull request in the current list gets a row reading
@@ -218,8 +219,8 @@ it:
 - **Shared membership:** a pull request in more than one stack appears once, under the
   first stack that lists it, and its badge names the others.
 
-- **Missing or stale stack data:** the list stays flat, the option says why, and nothing
-  waits for the stack poller.
+- **Missing or stale stack data:** the list stays flat, and nothing waits for the stack
+  poller.
 
 - **Keyboard:** a stack row is a tree row, like a folder, for the Pulls keys (J, K, and
   the expand and collapse keys).
@@ -340,9 +341,8 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 
 ## Open Questions
 
-- **Stack grouping default:** should grouping by stack be on by default?
-  This plan turns it on when the repository has native stack metadata.
-  The choice persists either way.
+- **Stack grouping default (answered, `mb-vmwh`):** grouping is always on when the
+  repository has native stack metadata, with no option to turn it off.
 - **Shared membership:** should a pull request in two stacks appear under each, rather
   than once under the first?
 - **Open folders in the Diff summary (answered):** an open folder shows its line counts

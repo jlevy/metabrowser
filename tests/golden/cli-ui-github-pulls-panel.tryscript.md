@@ -547,9 +547,8 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
 `numbers` runs the production shortcut registry and plugin facade around the panel: the
-Open, Closed, and All chips, Group by stack, and Reload take `1` to `5` in reading
-order, before the page’s numbered link, and each number asks for what its control’s
-click asks for; Group by stack, unavailable while no stacks are known, does nothing.
+Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
+page’s numbered link, and each number asks for what its control’s click asks for.
 A hidden or disposed panel’s controls give up their numbers.
 
 ```console
@@ -954,20 +953,12 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Stacks",
-      "5 Reload",
-      "6 View on GitHub"
-    ],
-    "Group by stack, unavailable": [
-      {
-        "what": "press 4",
-        "handled": true,
-        "focused": "Stacks"
-      }
+      "4 Reload",
+      "5 View on GitHub"
     ],
     "Reload waits": [
       {
-        "what": "press 5",
+        "what": "press 4",
         "handled": true
       },
       {
@@ -978,13 +969,12 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Stacks",
-      "5 Reload",
-      "6 View on GitHub"
+      "4 Reload",
+      "5 View on GitHub"
     ],
     "Reload": [
       {
-        "what": "press 5",
+        "what": "press 4",
         "handled": true,
         "asked": [
           "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
@@ -1054,7 +1044,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Stacks 4, Reload 5, Modified within none, File type none, View on GitHub 6",
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, View on GitHub 5",
     "the Files tab": [
       "1 Modified within",
       "2 File type",

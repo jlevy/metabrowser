@@ -5,14 +5,14 @@
 // request in the list has a "Stack #N" row, open by default, with its pull requests under it
 // in the stack menu's order, top of the stack first; pull requests in no stack follow, in the
 // list's order; one in two stacks sits once, under the first; and with no stacks known for
-// the list's reader the list stays flat and the Group by stack option says why. Its answers
+// the list's reader the list stays flat. The tab always groups; there is no option. Its answers
 // are the server's: the lists in tests/fixtures/github-pulls-panel-responses.json and the
 // stack snapshots in tests/fixtures/github-stacks-responses.json, which
 // tests/test_github_pulls_panel_session.py records from the real routes.
 //
 // The page's stack menu (pull-page.js, `createStackMenu`) is mounted over a stand-in for the
 // DOM, and its member links are read back: the groups list a stack's pull requests in the
-// order the menu does. Each step prints the option, the rows, the row marks, and what opened;
+// order the menu does. Each step prints the rows, the row marks, and what opened;
 // `invariants` are relations every grouped step holds.
 
 const assert = require("node:assert/strict");
@@ -48,14 +48,13 @@ async function settle() {
  * Mount the production panel over a stand-in for the DOM, on the recorded All list and
  * stack snapshot, and drive what its handle and its list do with a stack's row: Space's
  * toggle, Right and Left (a member's files open, then closed), and a press. Each step
- * prints the tree's drawn rows with their roles and places, and the option's chip.
+ * prints the tree's drawn rows with their roles and places.
  */
 async function mountStory() {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
   const { FakeNode } = require("./pulls-test-dom.js");
-  /** The toolbar's markup: the filter chips and the Group by stack chip it was drawn from. */
+  /** The toolbar's markup: the filter chips it was drawn from. */
   let filterOptions = [];
-  let toggleSpec = null;
   class PanelElement extends FakeElement {
     set innerHTML(markup) {
       super.innerHTML = markup;
@@ -66,13 +65,6 @@ async function mountStory() {
           chip.append(option.label);
           this.append(chip);
         }
-        const toggle = new PanelElement("button");
-        toggle.className = `chip chip-toggle ${toggleSpec.className}`;
-        toggle.setAttribute("data-chip-key", toggleSpec.key);
-        toggle.setAttribute("aria-label", toggleSpec.ariaLabel);
-        toggle.setAttribute("data-tip-text", toggleSpec.tip);
-        toggle.append(toggleSpec.label);
-        this.append(toggle);
       }
     }
     querySelectorAll(selector) {
@@ -173,10 +165,6 @@ async function mountStory() {
             filterOptions = options;
             return "<div></div>";
           },
-          toggleHtml(spec) {
-            toggleSpec = spec;
-            return "<button></button>";
-          },
           bind: () => () => {},
         },
         formatAge: () => ({ label: "1m", className: "age-min" }),
@@ -185,12 +173,6 @@ async function mountStory() {
     );
     await paint();
     const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
-    const filters = container.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-filters"),
-    );
-    const chip = filters.childNodes.find(
-      (node) => node.dataset.chipKey === "github-pulls-group-by-stack",
-    );
     const rowOf = (item) => item.childNodes[0];
     const drawnRows = () =>
       list.childNodes.filter((item) => item.classList.contains("github-pulls-item")).map(rowOf);
@@ -229,14 +211,6 @@ async function mountStory() {
       });
     };
     await step("mounted: Stack #286 open, its pull requests a level in", () => undefined);
-    const option = {
-      word: chip.textContent,
-      name: chip.getAttribute("aria-label"),
-      pressed: chip.getAttribute("aria-pressed"),
-      disabled: chip.getAttribute("aria-disabled"),
-      tip: chip.dataset.tipText,
-      description: chip.getAttribute("aria-description"),
-    };
     await step("Space on the stack's row (the handle's toggleStack) closes it", () =>
       handle.toggleStack(286),
     );
@@ -259,7 +233,6 @@ async function mountStory() {
     );
     handle.dispose();
     return {
-      option,
       files: { "Right on #8": filesOpen, "then Left": filesClosed },
       label: { text: label.textContent, classes: label.className },
       steps,
@@ -283,8 +256,8 @@ async function mountStory() {
   const index = (name) => createStackIndex(stacks[name].body);
 
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
-  function mount({ filter = "all", list = "current", groupByStack = null } = {}) {
-    const log = { opened: [], marks: [], choices: [], prefetch: [] };
+  function mount({ filter = "all", list = "current" } = {}) {
+    const log = { opened: [], marks: [], prefetch: [] };
     let model = null;
     let anchor = null;
     const timers = new Map();
@@ -327,11 +300,8 @@ async function mountStory() {
           log.opened.push(route.number);
         },
         filterChanged() {},
-        groupingChanged(on) {
-          log.choices.push(on);
-        },
       },
-      { filter, current: null, groupByStack },
+      { filter, current: null },
     );
     /** Run the timers the opening of a row waits on: its record's read already answered. */
     async function runTimers() {
@@ -434,11 +404,7 @@ async function mountStory() {
     const model = story.model();
     steps.push({
       step,
-      option: {
-        available: model.stacks.available,
-        on: model.stacks.on,
-        tip: model.stacks.tip,
-      },
+      grouped: model.stacks.rows !== null,
       rows: drawn(model, story.identity, stackIndex),
       ...(story.log.marks.length > 0 ? { marks: story.log.marks.splice(0) } : {}),
       ...(story.log.opened.length > 0 ? { opened: story.log.opened.splice(0) } : {}),
@@ -454,7 +420,7 @@ async function mountStory() {
   record("the list arrives before any stacks: flat", story, createStackIndex(null));
   for (const name of ["absent", "missing"]) {
     story.controller.setStacks(index(name));
-    record(`stacks ${name}: flat, and the option says why`, story, index(name));
+    record(`stacks ${name}: flat`, story, index(name));
   }
   const current = index("current");
   story.controller.setStacks(current);
@@ -494,19 +460,6 @@ async function mountStory() {
     closed: story.controller.snapshot().closedStacks,
     tabStop: story.anchor(),
   });
-
-  // ── The option, and the choice that persists.
-  story.controller.setGroupByStack(false);
-  record("Group by stack off: flat, and the choice is kept", story, current, {
-    kept: story.log.choices.slice(),
-  });
-  story.controller.setGroupByStack(true);
-  record("on again", story, current, { kept: story.log.choices.splice(0) });
-  const kept = mount({ groupByStack: false });
-  kept.controller.setStacks(current);
-  await kept.controller.start({ shown: true });
-  await settle();
-  record("a panel mounted with the kept choice off starts flat", kept, current);
 
   // ── A filter, shared membership, a snapshot kept through a failed refresh, and none.
   const open = mount({ filter: "open", list: "open_current" });

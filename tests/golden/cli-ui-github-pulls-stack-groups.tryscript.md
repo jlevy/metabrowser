@@ -6,13 +6,13 @@ env:
 ---
 # Golden Test: The Pulls Tab Grouped by Stack
 
-The Pulls tab’s Group by stack option groups a native stack’s pull requests under a
-“Stack #N” row, open by default.
-This browserless session runs the production code that decides it on the server’s own
-answers, the lists and the stack snapshots `tests/test_github_pulls_panel_session.py`
-records: `builtin_plugins/github/pull-stacks.js` for how the rows group and what a badge
-says, and the Pulls controller in `builtin_plugins/github/pulls-panel.js` for the
-option, the rows the list draws, and the keys that walk them.
+The Pulls tab always groups a native stack’s pull requests under a “Stack #N” row, open
+by default. This browserless session runs the production code that decides it on the
+server’s own answers, the lists and the stack snapshots
+`tests/test_github_pulls_panel_session.py` records:
+`builtin_plugins/github/pull-stacks.js` for how the rows group and what a badge says,
+and the Pulls controller in `builtin_plugins/github/pulls-panel.js` for the rows the
+list draws and the keys that walk them.
 
 Each stack with a pull request in the list has a row, and under it the stack’s pull
 requests in the list, top of the stack first, as the pull request page’s stack menu
@@ -23,8 +23,7 @@ A pull request in two stacks sits once, under the first, and its badge names the
 by the Layers glyph, written ⧉ here, before its number; the other stack’s row still
 counts it, and its tip says where it sits.
 Until stacks are known for the list’s own GitHub account, and while none of the list’s
-pull requests is in one, the list stays flat and the option says why.
-The reader’s choice persists; with none made, grouping is on.
+pull requests is in one, the list stays flat; there is no option.
 A stack’s row is a row of the tree, as a folder is: J and K stop on it and open nothing,
 Enter opens or closes it, Right opens it or goes to its first pull request, and Left
 closes it, or from a pull request in it goes to it.
@@ -48,11 +47,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
   "steps": [
     {
       "step": "the list arrives before any stacks: flat",
-      "option": {
-        "available": false,
-        "on": false,
-        "tip": "Group by stack: reading this repository's stacks…"
-      },
+      "grouped": false,
       "rows": [
         "#106",
         "#105",
@@ -62,12 +57,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ]
     },
     {
-      "step": "stacks absent: flat, and the option says why",
-      "option": {
-        "available": false,
-        "on": false,
-        "tip": "Group by stack: reading this repository's stacks…"
-      },
+      "step": "stacks absent: flat",
+      "grouped": false,
       "rows": [
         "#106",
         "#105",
@@ -77,12 +68,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       ]
     },
     {
-      "step": "stacks missing: flat, and the option says why",
-      "option": {
-        "available": false,
-        "on": false,
-        "tip": "Group by stack: needs GitHub CLI's stack extension, gh stack."
-      },
+      "step": "stacks missing: flat",
+      "grouped": false,
       "rows": [
         "#106",
         "#105",
@@ -93,11 +80,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "stacks known: Stack #286 first, open, top of the stack first",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -112,11 +95,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "J walks into the stack and out past it, K steps back; only pulls open",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -150,11 +129,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "Left on a pull request in a stack goes to the stack's row",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -171,11 +146,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "Left on the stack's row closes it",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▸ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "#106 [2/100]",
@@ -186,11 +157,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "J from a closed stack goes past it, and K comes back to it",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▸ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "#106 [2/100]",
@@ -208,11 +175,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "Right opens it",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -226,11 +189,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "Right again goes to its first pull request, which opens",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -250,11 +209,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "Enter on the stack's row closes it",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▸ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "#106 [2/100]",
@@ -271,11 +226,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "an address that names #7 opens the stack that holds it",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -290,67 +241,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "tabStop": 7
     },
     {
-      "step": "Group by stack off: flat, and the choice is kept",
-      "option": {
-        "available": true,
-        "on": false,
-        "tip": "Group by stack"
-      },
-      "rows": [
-        "#106",
-        "#105",
-        "#104",
-        "…",
-        "#5"
-      ],
-      "kept": [
-        false
-      ]
-    },
-    {
-      "step": "on again",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
-      "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
-        "    #8 3/3 [1/3]",
-        "    #7 2/3 [2/3]",
-        "    #6 1/3 [3/3]",
-        "#106 [2/100]",
-        "#105 [3/100]",
-        "…",
-        "#5 [100/100]"
-      ],
-      "kept": [
-        false,
-        true
-      ]
-    },
-    {
-      "step": "a panel mounted with the kept choice off starts flat",
-      "option": {
-        "available": true,
-        "on": false,
-        "tip": "Group by stack"
-      },
-      "rows": [
-        "#106",
-        "#105",
-        "#104",
-        "…",
-        "#5"
-      ]
-    },
-    {
       "step": "Open: #8 is closed, so Stack #286 holds 2 of its 3",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (2 of 3) [1/99] · Stack #286, 3 pull requests, 2 in this list",
         "    #7 2/3 [1/2]",
@@ -363,11 +255,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "#8 in two stacks: once, under the first listed, its badge naming the other",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #290 (3) [1/99] · Stack #290, 3 pull requests",
         "    #10 3/3 [1/3]",
@@ -384,11 +272,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "Closed: #286's one listed pull request sits under #290, so #286 has no row",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #290 (2 of 3) [1/1] · Stack #290, 3 pull requests, 2 in this list",
         "    #9 2/3 [1/2]",
@@ -397,11 +281,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "a failed refresh keeps the snapshot, which still groups",
-      "option": {
-        "available": true,
-        "on": true,
-        "tip": "Group by stack"
-      },
+      "grouped": true,
       "rows": [
         "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
@@ -415,11 +295,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "a repository with no stacks: flat",
-      "option": {
-        "available": false,
-        "on": false,
-        "tip": "Group by stack: no pull request in this list is in a stack."
-      },
+      "grouped": false,
       "rows": [
         "#106",
         "#105",
@@ -430,11 +306,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     },
     {
       "step": "stacks read for another account: flat",
-      "option": {
-        "available": false,
-        "on": false,
-        "tip": "Group by stack: the stacks known are another GitHub account's."
-      },
+      "grouped": false,
       "rows": [
         "#106",
         "#105",
@@ -445,14 +317,6 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     }
   ],
   "mounted": {
-    "option": {
-      "word": "Stacks",
-      "name": "Group by stack",
-      "pressed": "true",
-      "disabled": "false",
-      "tip": "Group by stack",
-      "description": null
-    },
     "files": {
       "Right on #8": "true",
       "then Left": "false"

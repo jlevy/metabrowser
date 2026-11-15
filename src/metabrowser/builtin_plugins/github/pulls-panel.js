@@ -97,17 +97,6 @@ export const CORE_BUSY_RETRY_MS = 1000;
 export const LISTS = Object.freeze(["open", "closed", "all"]);
 const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" });
 const FILTER_GROUP = "github-pulls-filter";
-// The Group by stack option's chip, and the preference that keeps the reader's choice.
-const GROUP_TOGGLE = "github-pulls-group-by-stack";
-// The chip's word: short enough for the toolbar of the narrowest pane, beside the three
-// filters and Reload; its name and tip say the rest.
-const GROUP_CHIP_WORD = "Stacks";
-const GROUP_PREFERENCE = "github.pulls.groupByStack";
-
-/** A stored choice, or null for none: on by default. @param {unknown} value */
-function storedGrouping(value) {
-  return typeof value === "boolean" ? value : null;
-}
 
 // The backend caches every PR, and the list has no end of its own: it reads the first 500
 // from the cache, then one more cache page each time the reader nears its tail, as
@@ -241,29 +230,19 @@ const CHECKOUT_NOT_LISTED =
  */
 
 /**
- * The Pulls tab's Group by stack option and, while it groups, the rows in their order:
- * each stack's row, its pull requests under it, and then every pull request in no stack.
- * `rows` is null while the list is flat. `version` changes whenever the rows do.
+ * The Pulls tab's rows grouped by stack, in their order: each stack's row, its pull
+ * requests under it, and then every pull request in no stack. The tab always groups once
+ * its stacks are known; `rows` is null while the list is flat, before then or with no
+ * listed pull request in a stack. `version` changes whenever the rows do.
  *
  * @typedef {{
- *   available: boolean,
- *   on: boolean,
- *   tip: string,
  *   rows: import("./pull-stacks.js").GroupedRow[] | null,
  *   version: number,
  * }} StackGrouping
  */
 
-/** The option's name, which every tip of it starts with. */
-export const GROUP_BY_STACK = "Group by stack";
 /** @type {StackGrouping} */
-const NO_GROUPING = Object.freeze({
-  available: false,
-  on: false,
-  tip: `${GROUP_BY_STACK}: reading this repository's stacks…`,
-  rows: null,
-  version: 0,
-});
+const NO_GROUPING = Object.freeze({ rows: null, version: 0 });
 
 /** @param {unknown} value */
 function text(value) {
@@ -393,64 +372,6 @@ function rateHoldMs(envelope, nowMs) {
 /** @param {PullsEnvelope | null} envelope */
 function watchPaused(envelope) {
   return WATCH_PAUSED.has(envelope?.last_refresh?.outcome ?? "");
-}
-
-/**
- * Whether the Group by stack option can group this list, whether it does, and the tip that
- * says so or says why not. Pure.
- *
- * Stacks are optional and arrive on their own (pull-stacks.js), so nothing waits for them:
- * until a snapshot of this repository's stacks for the list's own reader is known, and while
- * no pull request in the list is in one, the list stays flat and the option, unavailable,
- * says why. A snapshot kept through a failed or expired refresh still groups, as the rows'
- * badges and the page's stack menu still show it (docs/design-system.md, "Stacks"). The
- * reader's choice, *choice*, persists; with none made, grouping is on.
- *
- * Why there is no snapshot is the stack refresh's outcome, which names its remedy as the
- * connection line does for the list's own (`FAILURES`); one not tried yet is being read.
- * With more of the list still to read (*more*), the rows read so far are all it can judge.
- *
- * @param {import("./pull-stacks.js").StackIndex} index
- * @param {import("./pull-stacks.js").StackIdentity | null} identity The list's.
- * @param {boolean | null} choice
- * @param {{stacks: number}} grouped `groupByStack`'s answer for the list.
- * @param {boolean} [more] Whether the list has rows not read yet.
- * @returns {{available: boolean, on: boolean, tip: string}}
- */
-export function describeStackGrouping(index, identity, choice, grouped, more = false) {
-  const off = (/** @type {string} */ why) => ({
-    available: false,
-    on: false,
-    tip: `${GROUP_BY_STACK}: ${why}`,
-  });
-  const reason = index.reason;
-  if (!index.known || identity === null || reason === "not_cached") {
-    return off("reading this repository's stacks…");
-  }
-  if (reason === "gh_stack_missing") {
-    return off("needs GitHub CLI's stack extension, gh stack.");
-  }
-  if (reason === "rate_limited") {
-    return off("GitHub rate limit reached; the stacks are read again once it resets.");
-  }
-  if (reason !== null) {
-    const remedy = Object.hasOwn(FAILURES, reason)
-      ? ` ${FAILURES[/** @type {keyof typeof FAILURES} */ (reason)]}`
-      : "";
-    return off(`this repository's stacks could not be read.${remedy}`);
-  }
-  if (index.source !== identity.source || index.reader !== identity.reader) {
-    return off("the stacks known are another GitHub account's.");
-  }
-  if (grouped.stacks === 0) {
-    return off(
-      more
-        ? "no pull request read so far is in a stack."
-        : "no pull request in this list is in a stack.",
-    );
-  }
-  const on = choice ?? true;
-  return { available: true, on, tip: GROUP_BY_STACK };
 }
 
 /**
@@ -674,7 +595,6 @@ function pinChanged(response) {
  *     },
  *   }): unknown,
  *   filterChanged(state: string): void,
- *   groupingChanged?(on: boolean): void,
  *   recheckTail?(): void,
  * }} PullsDependencies
  */
@@ -731,16 +651,15 @@ function contentOf(envelope) {
 /**
  * The filters, windows, polling, and selection of one panel.
  *
- * Its rows are in the list's order, or grouped by stack (`groupByStack` in pull-stacks.js)
- * while the Group by stack option is on and the stacks are known: a stack's row, "Stack #N",
+ * Its rows are grouped by stack (`groupByStack` in pull-stacks.js) once the stacks are known
+ * for the list's own reader, and are in the list's order until then: a stack's row, "Stack #N",
  * then its pull requests, then every pull request in no stack. The keys walk the rows as
  * they are drawn. A stack's row is a row of the tree as a folder is: J and K stop on it and
  * open nothing, Enter and Space open or close it, Right opens it or goes to its first pull
- * request, and Left closes it, or from a pull request in it goes to it. *groupByStack* is
- * the reader's persisted choice, or null for the default, on.
+ * request, and Left closes it, or from a pull request in it goes to it.
  *
  * @param {PullsDependencies} deps
- * @param {{filter?: string, current?: number | null, checkout?: boolean, groupByStack?: boolean | null}} [options]
+ * @param {{filter?: string, current?: number | null, checkout?: boolean}} [options]
  */
 export function createPullsController(deps, options = {}) {
   const checkout = options.checkout === true;
@@ -886,17 +805,15 @@ export function createPullsController(deps, options = {}) {
   }
 
   // Grouping by stack. The stacks are the shared optional snapshot's, which the panel hands
-  // on as they arrive (`setStacks`); the reader's choice and the stacks they closed are this
-  // panel's. `grouping()` is the rows' order, recomputed only when one of its inputs moves.
+  // on as they arrive (`setStacks`); the stacks the reader closed are this panel's.
+  // `grouping()` is the rows' order, recomputed only when one of its inputs moves.
   let stackIndex = createStackIndex(null);
-  /** @type {boolean | null} */
-  let groupChoice = typeof options.groupByStack === "boolean" ? options.groupByStack : null;
   /** The stacks the reader closed, by number. @type {Set<number>} */
   const closedStacks = new Set();
   let groupingInputs = 0;
   /**
    * @type {{
-   *   key: string, version: number, option: {available: boolean, on: boolean, tip: string},
+   *   key: string, version: number,
    *   rows: import("./pull-stacks.js").GroupedRow[] | null, closed: import("./pull-stacks.js").StackGroupRow[],
    *   keys: number[], at: Map<number, number>,
    * } | null}
@@ -910,14 +827,7 @@ export function createPullsController(deps, options = {}) {
     const identity =
       envelope === null ? null : { source: envelope.source, reader: envelope.reader };
     const setSize = envelope?.total ?? Math.max(envelope?.fetched ?? 0, list.rows.length);
-    const key = JSON.stringify([
-      filter,
-      list.version,
-      groupingInputs,
-      identity,
-      setSize,
-      list.nextAfter !== null,
-    ]);
+    const key = JSON.stringify([filter, list.version, groupingInputs, identity, setSize]);
     if (grouped?.key === key) {
       return grouped;
     }
@@ -926,19 +836,13 @@ export function createPullsController(deps, options = {}) {
       collapsed: closedStacks,
       setSize,
     });
-    const option = describeStackGrouping(
-      stackIndex,
-      identity,
-      groupChoice,
-      answer,
-      list.nextAfter !== null,
-    );
-    const rows = option.available && option.on ? answer.rows : null;
+    // Stacks unknown, another reader's, or holding no listed pull request group nothing
+    // (`groupByStack` places a row only by the list's own reader's membership).
+    const rows = answer.stacks > 0 ? answer.rows : null;
     const keys = rows === null ? numbers : rows.map((row) => row.key);
     grouped = {
       key,
       version: (grouped?.version ?? 0) + 1,
-      option,
       rows,
       closed: (rows ?? []).flatMap((row) => (row.kind === "stack" && !row.expanded ? [row] : [])),
       keys,
@@ -1539,7 +1443,7 @@ export function createPullsController(deps, options = {}) {
     const list = held();
     const order = grouping();
     return describePulls(list.envelope, {
-      stacks: { ...order.option, rows: order.rows, version: order.version },
+      stacks: { rows: order.rows, version: order.version },
       filter,
       rows: list.rows,
       rowsVersion: list.version,
@@ -3052,20 +2956,6 @@ export function createPullsController(deps, options = {}) {
         regroup();
       }
     },
-    /**
-     * The reader turned Group by stack on or off: the choice persists, through
-     * `groupingChanged`, and does nothing while the option is unavailable.
-     *
-     * @param {boolean} on
-     */
-    setGroupByStack(on) {
-      if (disposed || !grouping().option.available || groupChoice === on) {
-        return;
-      }
-      groupChoice = on;
-      deps.groupingChanged?.(on);
-      regroup();
-    },
     setStackOpen,
     /** Right on a stack's row: open it, or go to its first pull request. */
     enterStack() {
@@ -3231,34 +3121,17 @@ export function mountPullsPanel(container, ctx, mb) {
     throw new Error("metabrowser github plugin: the shared filter controls are unavailable");
   }
   const filters = h("div", { class: "github-pulls-filters" });
-  filters.innerHTML =
-    controls.groupHtml({
-      key: FILTER_GROUP,
-      select: "one",
-      layout: "joined",
-      label: "Show",
-      options: LISTS.map((value) => ({
-        value,
-        label: LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (value)],
-      })),
-      value: nav.filter,
-    }) +
-    // Group by stack: a standalone boolean chip of the filter family (docs/design-system.md,
-    // "Filter Controls"), drawn by the shared renderer with its word. Its name says what it
-    // does, and its tip whether it can and, when it cannot, why ("Stacks").
-    controls.toggleHtml({
-      key: GROUP_TOGGLE,
-      label: GROUP_CHIP_WORD,
-      ariaLabel: GROUP_BY_STACK,
-      tip: GROUP_BY_STACK,
-      className: "github-pulls-group-toggle",
-    });
-  /** The Group by stack chip the renderer drew. @type {HTMLButtonElement | null} */
-  const groupToggle =
-    [...filters.querySelectorAll("button")].find(
-      (button) => button.dataset.chipKey === GROUP_TOGGLE,
-    ) ?? null;
-  groupToggle?.setAttribute("aria-disabled", "true");
+  filters.innerHTML = controls.groupHtml({
+    key: FILTER_GROUP,
+    select: "one",
+    layout: "joined",
+    label: "Show",
+    options: LISTS.map((value) => ({
+      value,
+      label: LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (value)],
+    })),
+    value: nav.filter,
+  });
   /** @type {{chip: HTMLButtonElement, value: keyof typeof LIST_LABELS, tally: HTMLElement}[]} */
   const tallies = [...filters.querySelectorAll("button")].flatMap((chip) => {
     const value = chip.dataset.chipValue;
@@ -4234,31 +4107,6 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
-  /** @param {StackGrouping} grouping */
-  function paintGroupToggle(grouping) {
-    if (groupToggle === null) {
-      return;
-    }
-    const pressed = String(grouping.available && grouping.on);
-    const disabled = String(!grouping.available);
-    if (groupToggle.getAttribute("aria-pressed") !== pressed) {
-      groupToggle.setAttribute("aria-pressed", pressed);
-    }
-    if (groupToggle.getAttribute("aria-disabled") !== disabled) {
-      groupToggle.setAttribute("aria-disabled", disabled);
-    }
-    if (groupToggle.dataset.tipText !== grouping.tip) {
-      groupToggle.dataset.tipText = grouping.tip;
-      // Its name stays what it does; unavailable, its description says why, as its tip
-      // shows the pointer.
-      if (grouping.available) {
-        groupToggle.removeAttribute("aria-description");
-      } else {
-        groupToggle.setAttribute("aria-description", grouping.tip);
-      }
-    }
-  }
-
   /** @param {PullsModel} model @param {number[]} arrivals */
   function paint(model, arrivals) {
     // A filter's rows are their own list: nothing is kept across a change of filter.
@@ -4308,7 +4156,6 @@ export function mountPullsPanel(container, ctx, mb) {
     } else if (model.setSize !== placedSize) {
       placeRows(model.setSize);
     }
-    paintGroupToggle(model.stacks);
     for (const { chip, value, tally } of tallies) {
       const count = model.filterTotals?.[value] ?? null;
       const pending =
@@ -4519,25 +4366,14 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
-      groupingChanged: (on) => mb.prefs?.set(GROUP_PREFERENCE, on),
     },
-    {
-      filter: nav.filter,
-      current: nav.current,
-      checkout: nav.checkout === true,
-      groupByStack: storedGrouping(mb.prefs?.get(GROUP_PREFERENCE, null)),
-    },
+    { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
 
   const unbindFilters = controls.bind(filters, {
     onChange(key, value, select) {
       if (key === FILTER_GROUP && select === "one") {
         controller.setFilter(String(value));
-      }
-    },
-    onToggle(key, pressed) {
-      if (key === GROUP_TOGGLE) {
-        controller.setGroupByStack(pressed);
       }
     },
   });
@@ -4556,18 +4392,6 @@ export function mountPullsPanel(container, ctx, mb) {
           chip.focus();
         },
         id: `github.pulls.filter.${value}`,
-        numbered: true,
-        signal,
-      });
-    }
-    // Group by stack's number turns it, as its click does; unavailable, it does nothing.
-    if (groupToggle !== null) {
-      mb.shortcuts.attach(groupToggle, {
-        activate() {
-          controller.setGroupByStack(groupToggle.getAttribute("aria-pressed") !== "true");
-          groupToggle.focus();
-        },
-        id: "github.pulls.group-by-stack",
         numbered: true,
         signal,
       });

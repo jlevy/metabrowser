@@ -1128,17 +1128,6 @@
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
-/* The Group by stack chip is the shared renderer's worded `.chip-toggle`; it keeps its
-   word on the toolbar's line, and unavailable it waits as Reload does. */
-.github-pulls-group-toggle {
-  flex: none;
-}
-.github-pulls-group-toggle[aria-disabled="true"],
-.github-pulls-group-toggle[aria-disabled="true"]:hover {
-  color: var(--muted);
-  background: var(--viz-surface);
-  cursor: default;
-}
 .github-pull-loading {
   margin: 0;
 }
