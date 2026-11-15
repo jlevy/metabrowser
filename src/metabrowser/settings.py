@@ -104,8 +104,8 @@ INVENTORY_MAX_DEPTH = 20
 # routes answer from a partial index at once; this is where it stops. At the cap the
 # provider reports partial coverage with a resource-budget issue, keeps what it found
 # readable, and stops observing the tree; see "The Cap" in
-# docs/project/architecture/arch-inventory-provider.md. Measured walk times are in
-# docs/scale-benchmark.md.
+# docs/project/architecture/arch-inventory-provider.md. docs/scale-benchmark.md measures
+# walk times.
 INVENTORY_MAX_FILES = 500_000
 # One provider read may materialize this many tree rows. Complete route and event
 # snapshots follow version-pinned pages, so this bounds individual projection work

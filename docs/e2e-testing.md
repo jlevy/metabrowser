@@ -124,7 +124,8 @@ transcript from passing while wrong:
   The limit, the measurement it was chosen from, and the files excepted until a named
   bead shrinks them are beside `MAX_GOLDEN_LINES`. An excepted file has its line count
   as a ceiling, so it can shrink and cannot grow.
-  `python -m devtools.check_goldens --report` prints the current distribution.
+  `uv --config-file uv.toml run --frozen python -m devtools.check_goldens --report`
+  prints the current distribution.
 
 ### What a Transcript May Replace
 
@@ -353,8 +354,8 @@ make test-report LOG=run.log
 - **Skips** are the cases `-rs` listed in the log, counted by reason.
   [Skips](#skips) says which reason belongs to which tier.
 
-`python -m devtools.check_goldens --report` gives the size distribution of the goldens
-and recordings against their review budget.
+`uv --config-file uv.toml run --frozen python -m devtools.check_goldens --report` gives
+the size distribution of the goldens and recordings against their review budget.
 
 ## Adding Coverage
 

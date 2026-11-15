@@ -30,8 +30,8 @@ Every route, kind, and model the browser consumes, and every state the system pe
 has a `metab` equivalent and a golden transcript.
 Every user-visible functional aspect is also runnable from a command line.
 
-- Data semantics — membership, ordering, grouping inputs, counts, bounds, persisted
-  state, actions, and errors — belong to a route or model reached through `metab` and a
+- Data semantics (membership, ordering, grouping inputs, counts, bounds, persisted
+  state, actions, and errors) belong to a route or model reached through `metab` and a
   nontrivial golden.
 
 - Browser-owned interaction state machines run browserlessly against the exact
@@ -103,8 +103,8 @@ this repository’s structural facts and standing answers.
 - Run Biome and TypeScript check-JS through the Make targets for browser changes.
 - Keep new browser modules under the fully strict `tsconfig.json` gate.
   Do not expand the explicit legacy allowlist without a documented reason.
-- Give every browser asset a loading tier — eager, prefetched, or on demand — and pick
-  it from measured cost, not from convenience.
+- Give every browser asset a loading tier (eager, prefetched, or on demand), and pick it
+  from measured cost, not from convenience.
   A script in the shell’s eager path is fetched, parsed, and evaluated whether or not
   anything uses it, so a large or narrowly used library does not belong there.
   See
@@ -121,9 +121,10 @@ this repository’s structural facts and standing answers.
   beside its definition, with the measurement that set it where there is one.
   A document names the constant and its file and says what it means, and restates the
   value only where a test pins the copy, as `tests/test_keymap.py` does for the keyboard
-  table. A restated value drifts silently from its constant: the large-content limits
-  table gave `DEFAULT_ACCENT_RUN_BUDGET` as 60,000 while the constant was 400,000. No
-  check can find a restated value, so this is a rule; `tests/test_docs_discipline.py`
+  table and `tests/test_user_guide_values.py` for the values user guides state.
+  A restated value drifts silently from its constant, as the large-content limits
+  table’s copy of `DEFAULT_ACCENT_RUN_BUDGET` did.
+  No check can find an unpinned copy, so this is a rule; `tests/test_docs_discipline.py`
   checks the rest: that links and document paths in source resolve, and that every
   document is reachable from its index.
 - Architecture documents follow the layout convention in
@@ -149,7 +150,6 @@ checks experiment records.
 
 Do not add a rule or restriction here or in `docs/development.md` without deciding from
 first principles that it is necessary.
-See [Changing This Guidance](docs/development.md#changing-this-guidance).
 
 - State the reason with the rule, so a later reader can tell when it stops applying.
 - Prefer a check to a sentence: if `make verify` can enforce it, put it there instead of
