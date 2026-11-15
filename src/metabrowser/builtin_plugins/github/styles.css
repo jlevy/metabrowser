@@ -685,7 +685,7 @@
 .github-pulls-filters {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nav-toolbar-gap);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -704,12 +704,13 @@
   overflow-wrap: anywhere;
   white-space: normal;
 }
-/* In the navigation's toolbar slot the slot is the row (static/styles.css, .nav-toolbar):
-   the filters take its height and keep to one line. */
+/* In the navigation's toolbar slot the filters are a toolbar row (`.nav-toolbar-row` in
+   static/styles.css), which lays them out and wraps them in a narrow pane; the slot
+   supplies the inset, the rule, and the background. The chips keep their words on one
+   line: the row wraps between controls, never inside one. */
 .github-pulls-filters:where(.nav-toolbar > *) {
   position: static;
-  flex: 1 0 auto;
-  padding: 0;
+  padding-inline: 0;
   background: none;
 }
 .github-pulls-filters:where(.nav-toolbar > *) .chip {

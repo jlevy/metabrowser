@@ -1009,15 +1009,18 @@ async function mainTabShortcuts() {
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
-  // F for Files, R for pull Requests, H for commit History ("Keyboard Shortcuts" in
-  // docs/design-system.md). A digit no longer names a main tab.
+  // F for Files, P for Pulls, H for commit History ("Keyboard Shortcuts" in
+  // docs/design-system.md). A digit no longer names a main tab, nor R the Pulls tab (mb-6rfu).
   assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
   assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
   assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
   assert.equal(press("3", { code: "Digit3" }), false, "3 is no main tab's");
-  assert.equal(press("r", { code: "KeyR" }), true, "Pulls is R while Git is absent");
+  assert.equal(press("r", { code: "KeyR" }), false, "R is no main tab's");
+  assert.equal(press("p", { code: "KeyP", ctrlKey: true }), false, "Control-P is no main tab's");
+  assert.equal(sandbox.mainTabs.active(), "files");
+  assert.equal(press("p", { code: "KeyP" }), true, "Pulls is P while Git is absent");
   assert.equal(sandbox.mainTabs.active(), "pulls");
-  assert.equal(press("R", { code: "KeyR", shiftKey: true }), true, "Shift does not change R");
+  assert.equal(press("P", { code: "KeyP", shiftKey: true }), true, "Shift does not change P");
   await settle();
 
   sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
@@ -1050,7 +1053,7 @@ async function mainTabShortcuts() {
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
   assert.equal(help.context, "Available outside text fields.");
-  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["F", "R", "H"]);
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["F", "P", "H"]);
   return {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),

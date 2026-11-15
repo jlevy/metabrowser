@@ -12,8 +12,15 @@ opens the Modified within menu in both. This judges what it measured against
 - the Modified within menu, with few rows, keeps its natural height in both windows;
 - Group by and Show ignored are the row and the three filters wait in the closed drawer;
   the row fits the default pane at its widest, under every Group by value with Clear and
-  the chevron's badge showing, and the badge leaves Show ignored out; and the keyboard
-  numbers follow what is on screen ("Grouping the Files Tree");
+  the chevron's badge showing, and the badge leaves Show ignored out; Group by's rows read
+  as its trigger does, and its open menu's letters choose them while T stays Quick
+  Search's with the menu closed; every key that opens a menu focuses its checked row,
+  Escape and a choice that closes it give focus back to its trigger, and a pick in File
+  type keeps focus on its row through the bar's rebuilds ("Keys in a Menu"); and the
+  keyboard numbers follow what is on screen ("Grouping the Files Tree");
+- in a narrower pane the row wraps by the toolbar rule, at every width from the narrowest
+  in both font sets, read in Tab order, its numbers working, and the closed drawer adding
+  nothing to it ("Navigation Toolbars Wrap");
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
@@ -218,6 +225,39 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # not count it, since the row shows it.
     off = measured["ignoredOff"]
     assert off["clear"] and off["badge"] is None, off
+    # In a narrower pane the row wraps by the toolbar rule (tests/dom/nav-toolbar-wrap.mjs
+    # says what it holds): at every width from the narrowest, 179 px, to 420, in both font
+    # sets, with no filter set and with one set under each Group by value, nothing is cut,
+    # it is one line exactly while its controls fit, it breaks in order and as late as it
+    # can with Clear and the chevron last and at the line's end, and its lines are the
+    # toolbar's line height and gap apart, the closed drawer adding nothing.
+    wrap = measured["wrap"]
+    assert set(wrap) == {
+        f"{state}, {fonts}"
+        for state in ("no filter", "No grouping", "By age", "By file type")
+        for fonts in ("clean", "system")
+    }, sorted(wrap)
+    for case, verdict in wrap.items():
+        assert verdict["failures"] == [], (case, verdict["failures"][:10])
+        assert verdict["tokens"] == {"gap": 6, "line": 24}, (case, verdict["tokens"])
+        # Group by leads at every width, and the narrowest pane wraps the row.
+        assert verdict["narrowest"][0] == ["group"], (case, verdict["narrowest"])
+        assert len(verdict["narrowest"]) >= 2, (case, verdict["narrowest"])
+    # The default pane holds the row on one line in the default font set, at its widest.
+    for state in ("no filter", "No grouping", "By age", "By file type"):
+        assert wrap[f"{state}, clean"]["oneLineFrom"] <= 299, (state, wrap)
+    assert measured["themesAlike"], "the themes lay the row out alike"
+    # At the narrowest, a filter set, the row is three lines, read in Tab order; the numbers
+    # still open Group by and, with the drawer, File type; and the drawer closes back to the
+    # lines with no gap left standing.
+    narrow = measured["narrow"]
+    assert narrow["stops"] == ["group", "showIgnored", "clear", "drawer"], narrow
+    assert narrow["lines"] == 3 and narrow["readInTabOrder"], narrow
+    assert narrow["height"] == 3 * 24 + 2 * 6 + 2 * 6 + 1, narrow
+    assert measured["narrowKeyOne"] == {"menu": "group", "drawerOpen": "false"}
+    assert measured["narrowKeyThree"] == {"menu": "types", "drawerOpen": "true"}
+    assert measured["narrowOpen"]["height"] > narrow["height"], measured["narrowOpen"]
+    assert measured["narrowClosed"]["height"] == narrow["height"], measured["narrowClosed"]
     # A folder's chevron and a file's icon are one slot wide, from the row's content edge,
     # each glyph centred in it, and the names after them start on one column (mb-hmv7). At
     # 16 px the names started at 22 px; the slot is 14 px since, so they start at 20.
@@ -256,6 +296,48 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
+    # Group by's rows read as its closed trigger does (mb-4mir).
+    assert measured["groupRows"] == ["No grouping", "By age", "By file type"]
+    # With the menu open from 1, A, T, and N choose its rows and close it; with the menu
+    # closed, T is Quick Search and chooses nothing (mb-ibo4).
+    letters = measured["letters"]
+    assert letters["a"]["trigger"] == "By age" and letters["a"]["sections"] > 0, letters
+    assert letters["t"]["trigger"] == "By file type" and letters["t"]["sections"] > 1, letters
+    assert letters["n"] == {"trigger": "No grouping", "open": None, "sections": 0}, letters
+    assert all(state["open"] is None for state in letters.values()), letters
+    assert measured["closedT"] == {
+        "focus": "combobox",
+        "trigger": "No grouping",
+        "open": None,
+        "sections": 0,
+    }
+    # Every key that opens a menu focuses its checked row: the numbers, and ↓ and Enter on
+    # a trigger. Escape, and a letter's choice that closes the menu, give focus back to the
+    # trigger (mb-spqw).
+    assert measured["focus"] == {
+        "one": "group: No grouping, checked",
+        "oneEscaped": "group trigger",
+        "one before a": "group: No grouping, checked",
+        "a": "group trigger",
+        "one before t": "group: By age, checked",
+        "t": "group trigger",
+        "one before n": "group: By file type, checked",
+        "n": "group trigger",
+        "three": "types: Any type, checked",
+        "threeEscaped": "types trigger",
+        "two": "recency: Any age, checked",
+        "twoEscaped": "recency trigger",
+        "arrowDown": "group: No grouping, checked",
+        "arrowDownEscaped": "group trigger",
+        "enter": "group: No grouping, checked",
+        "enterEscaped": "group trigger",
+    }, measured["focus"]
+    # Enter on a File type row picks it and the menu stays open; through the bar's rebuilds
+    # as the filter answers, focus stays on that row, checked, and unchecked again.
+    row = measured["typesRow"]
+    assert row.startswith("types: ") and not row.endswith("checked"), row
+    assert measured["typesPicked"] == f"{row}, checked", measured
+    assert measured["typesUnpicked"] == row, measured
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at

@@ -15,6 +15,42 @@ All notable changes to Metabrowser are documented here.
   the path the trail already shows, and a Files tree row’s tooltip leaves out the size
   or count its row shows, keeping the exact date.
 
+- In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
+  lines instead of cutting off what does not fit.
+  The Files filter row moves Show ignored down, then Clear and the chevron, which stay
+  together at the line’s end; the Pulls toolbar moves Reload down to the line’s end; the
+  Commits tally breaks between “12,345 commits” and “begun 1y ago”; and the Files,
+  Pulls, and Commits tabs wrap too.
+  The Files row overflowed the pane below about 297 px with a filter set, and its
+  chevron was out of sight at the narrowest pane, 180 px.
+  The Pulls toolbar, which scrolled sideways, ran past the default pane in the system
+  font set, so Reload was cut off.
+  A toolbar that fits stays one line, as before, and a wrapped one keeps one spacing
+  between its lines and its controls.
+  The Pulls tab’s Show choice, when even its own line is too narrow for it, shows its
+  three choices as separate pills that wrap, and joins them again when there is room.
+  Reload in the Pulls toolbar is now a chip’s height, 2 px shorter.
+  See [Navigation Toolbars Wrap](docs/design-system.md#navigation-toolbars-wrap).
+  For plugin authors, a row of controls in the navigation’s toolbar slot takes the
+  `nav-toolbar-row` class, and `filterControls.bind` keeps a joined group in a
+  navigation toolbar fitted to its line; `filterControls.fitJoinedGroups(root)` fits one
+  at once, and `filterControls.joinedGroupFits` is the pure rule.
+
+- `P` now opens the Pulls tab, as `F` opens Files and `H` Commits; it was `R`, for pull
+  Requests, while `P` walked a stack.
+  `R` now does nothing, and for plugin authors a manifest view may take it as its key,
+  while `P` is reserved in every kind.
+  See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
+
+- Walking a pull request’s stack is now Control-N, to the next member toward the stack’s
+  top, and Control-P, to the previous one toward its base, so `N` and `P` alone are
+  free. Help and the Shift strip write them `⌃N` and `⌃P` on a Mac and `Ctrl+N` and
+  `Ctrl+P` elsewhere. A text field keeps both, since macOS moves its caret with them, and
+  AltGr with `N` or `P` still types its character.
+  On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
+  the stack. For plugin authors, a manifest view may now take `N` as its key.
+  See [Control Chords](docs/design-system.md#control-chords).
+
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
   description, comments, and reviews, and in any document when you chose the Sans
   reading font. It was italic under either reading font, an accent of the serif that read
@@ -74,27 +110,52 @@ All notable changes to Metabrowser are documented here.
   and tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
-- The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
-  type. Grouped, the tree splits into sections, each headed like a menu group with the
-  group’s file count and holding a full tree of the group’s files after the filters.
+- The Files tab has a Group by menu, first on its filter row: No grouping, By age, or By
+  file type, each read the same in the menu and on its closed trigger.
+  Grouped, the tree splits into sections, each headed like a menu group with the group’s
+  file count and holding a full tree of the group’s files after the filters.
   Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
   month, each holding only what the bands before it do not, then Older.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the type registry does not recognize; a group the filters leave empty
-  is not shown, and a Git revision offers no Age.
+  is not shown, and a Git revision offers no By age.
   Show ignored moves out of the drawer to follow it on the row, and Modified within and
   File type move into the drawer behind the chevron beside Minimum file size; the
   chevron’s badge counts the ones of those three that are set.
   Clear resets every filter, Show ignored included, and keeps the grouping.
   Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
   drawer is open; a filter’s number opens the drawer with its menu.
-  Grouping keeps symbolic links: File type puts them in Other, and Age places them by
-  their own modification time.
+  Grouping keeps symbolic links: By file type puts them in Other, and By age places them
+  by their own modification time.
   When files change, the sections refresh in place, keeping the open folders, the scroll
   position, and the focused row.
-  For plugin authors, a `filterControls` option may carry a `summary`, the words its
-  closed trigger shows when it is the one chosen: Group by’s trigger reads “By age”
-  where its row reads “Age”.
+
+- With the Files tab’s Group by menu open, `A` chooses By age, `T` By file type, and `N`
+  No grouping, as a click on the row does.
+  The letters work only while the menu is open and has focus; anywhere else `T` is still
+  Quick Search, and `/` opens Quick Search from the menu too.
+  Holding Shift shows each row’s letter on it, and Help lists them in a new Menus group.
+  While a menu’s letter takes `T`, the strip Shift reveals offers Quick Search by `/`
+  alone, since `T` no longer reaches it.
+  See [Keys in a Menu](docs/design-system.md#keys-in-a-menu).
+  For plugin authors, `filterControls.menuGroupHtml` options take a `key` and the menu
+  an `anyKey`, the letter of each row, and `filterControls.activateMenuRow(row)` runs a
+  row’s click path; the shell reads the letters in the Files filter bar only.
+
+- Every way a Files filter menu opens now puts focus in it, as its number already did: a
+  click on its trigger, Enter or Space on it, and `↓` or `↑` on it.
+  Focus lands on the checked row, or the first, so the arrow keys, Enter, Escape, and
+  the menu’s letters work at once.
+  Escape, a second click, or a choice that closes the menu gives focus back to its
+  trigger, where it used to fall to the page.
+  A pick in File type keeps focus on its row while the bar refreshes, and so does any
+  refresh of the bar, where focus also used to fall to the page and the next arrow key
+  did nothing. An Escape that closes Quick Search or Help no longer also closes a filter
+  menu open behind it.
+  See [Keys in a Menu](docs/design-system.md#keys-in-a-menu).
+  For plugin authors, `filterControls.focusMenu(root, key)` focuses an open dropdown’s
+  checked row, and `filterControls.keepFocus(root)`, called before a rebuild, returns
+  the function that puts focus back after it.
 
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.

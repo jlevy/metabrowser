@@ -8,8 +8,9 @@
 
 ## Overview
 
-Seven changes from the owner’s requests of 2026-11-15. They land as one native GitHub
-stack of seven pull requests on `main`:
+Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
+menu, and a rule for tooltips, from the same day.
+They land as one native GitHub stack of eleven pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -25,6 +26,15 @@ stack of seven pull requests on `main`:
    spacing, with a timeline line joining them.
 7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
    reading font) is upright; serif documents keep the italic.
+8. **Stack keys:** Control-N and Control-P walk a pull request’s stack, freeing `N` and
+   `P`, and `P` then opens the Pulls tab.
+9. **Narrow toolbars:** the navigation’s toolbars and its tab bar wrap when the pane is
+   too narrow for them, by one design-system rule with a set line height (`mb-nm4z`).
+10. **Group by menu:** its rows read “By age” and “By file type”, as its closed trigger
+    does (`mb-4mir`); `A`, `T`, and `N` choose them while it is open (`mb-ibo4`); and
+    every key that opens a menu puts focus in it (`mb-spqw`).
+11. **Tooltips:** the Pulls column shows no tooltips, and elsewhere a tooltip appears
+    only when it adds information that is not already visible (`mb-8mpo`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -40,7 +50,8 @@ request must prove.
     stays inside the window.
 - **Files Group by** (`mb-sogv`):
   - “Group by” leads the Files filter row, and Show ignored follows it (`mb-x1h6`). Its
-    values are No grouping (the default), Age, and File type.
+    values are No grouping (the default), By age, and By file type, which read the same
+    in the menu and on its closed trigger (`mb-4mir`).
   - The three filters (Modified within, File type, Minimum file size) move into the
     chevron drawer.
   - When grouping is on, the tree splits into headed sections.
@@ -67,6 +78,15 @@ request must prove.
 - **Sans headings** (`mb-l4vm`): KPress italicizes `.kpress-prose h2`. That italic stays
   in serif documents, and an h2 in any sans context is upright.
   The h4 and h6 italics are unchanged.
+- **Stack keys** (`mb-lnqj`): next and previous in a stack move from `N` and `P` to
+  Control-N and Control-P, so the letters are free.
+  The registry accepts a declared Control chord, Control alone and never from a text
+  field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
+- **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
+  mechanism, as `F` opens Files and `H` Commits; `R` is freed.
+- **Narrow toolbars** (`mb-nm4z`): in a pane too narrow for one line, every navigation
+  toolbar wraps at its natural break, so no control is cut, scrolled out of reach, or
+  cut short, with a line height and gap from tokens; one that fits stays one line.
 
 ## Non-Goals
 
@@ -128,6 +148,9 @@ it:
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
+| 8 | `claude/keymap-ctrl-np` | `mb-lnqj`, `mb-6rfu` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
+| 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
+| 10 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | On pull request 9; changes the Group by menu that pull request 2 adds, on the Files filter row as pull requests 4 and 9 left it |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -153,11 +176,12 @@ it:
   then Clear and the chevron at the trailing edge; a Git revision has no Show ignored.
   The chevron’s badge counts only the drawer’s three filters, since the row shows Show
   ignored’s own state, and Clear resets all four, keeping the grouping.
-  The row fits the default 299 px pane at its widest, measured in Chrome.
+  The row fits the default 299 px pane at its widest, measured in Chrome; in a narrower
+  pane, or the system font set, it wraps ([Narrow Toolbars](#narrow-toolbars)).
 - **Age groups:** disjoint bands built from the age filter’s windows: Live; then Past
   hour, Past day, Past week and Past month, each holding only what the earlier windows
   don’t; then Older. A Git revision source has no modification times, so it doesn’t offer
-  Age.
+  By age.
 - **File type groups:** the taxonomy’s groups, with Documentation before Code, then
   Data, Archives and Media in their current order, and Other last for files in no group.
   The order is defined in one place and shared by every surface that lists the groups.
@@ -170,6 +194,12 @@ it:
 - **Keys:** the filter shortcuts keep working once the filters move into the drawer.
   Group by, on the row, is `1`, and the drawer’s filters keep their numbers whether or
   not the drawer is open; a filter’s number opens the drawer with its menu.
+  With the menu open and focused, `N`, `A`, and `T` choose No grouping, By age, and By
+  file type (`mb-ibo4`), in the menu’s own scope, so `T` is Quick Search everywhere
+  else; the convention is one section of `docs/design-system.md`, “Keys in a Menu”.
+  Every way a filter menu opens, a number or a key on its trigger, focuses its checked
+  row through one path in the filter controls, and Escape gives focus back to the
+  trigger (`mb-spqw`).
 - **Section semantics:** a Files section takes the `.group-heading` look and names its
   section and its tree through `aria-labelledby`; it keeps the tree’s own semantics, a
   `role="tree"` per section, and takes no `role="group"`, which in a tree means a tree
@@ -305,6 +335,41 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - An h2 keeps its size, weight and spacing; serif documents keep KPress’s italic.
 - The rule is stated once in `docs/design-system.md`, beside “Serif Is for Documents”.
 
+### Stack Keys
+
+- Control-N and Control-P are the registry’s only chords (`CONTROL_CHORD_KEYS`). A chord
+  matches Control alone, so AltGr’s Control and Alt types its character, and never in a
+  text field, where macOS moves the caret with it.
+- Help, the Shift strip, and badges write the chord as the platform does, read from the
+  page’s navigator. The rule, and the platform limit (Chrome on Windows and Linux keeps
+  Ctrl+N for a new window), is stated once, in “Control Chords” in
+  `docs/design-system.md`.
+- `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
+  `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
+
+### Narrow Toolbars
+
+- **The decision** (the owner, 2026-11-15, `mb-nm4z`): “on narrow screens wrap when
+  narrow on the tabs” and “make sure line height on tabs is appropriate too.
+  This should be a consistent design system that works everywhere.
+  Tabs containers become too narrow.”
+- **One rule,** stated once in `docs/design-system.md` (“Navigation Toolbars Wrap”), for
+  the Files filter row, the Pulls toolbar, the Commits tally, and the tab bar.
+  The rows of controls are one primitive, `.nav-toolbar-row`, with
+  `--nav-toolbar-line-height` (a chip’s height) and `--nav-toolbar-gap` between lines,
+  between controls, and around them.
+  A row breaks between its controls in order; the trailing group (Clear and the chevron,
+  Reload) moves down whole and right-aligned.
+  The Commits tally wraps as text, and the tab bar between its tabs.
+- **A segmented group** that its whole line cannot hold, the Pulls Show group below
+  about 218 px, takes the cluster layout until it can, fitted by `filterControls.bind`,
+  the one exception beside “segmented controls never wrap”.
+- **Reload** in the Pulls toolbar is held to a line’s height, a chip’s, 2 px shorter.
+- **Measured first** in headless Chrome at every pane width from 179 to 420 px, in both
+  font sets and both themes; the break widths are in the design system and beside the
+  rules in `styles.css`, for the Pulls toolbar without the Stacks chip that pull request
+  5 removed.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -360,6 +425,40 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - [ ] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
   #438’s Chrome session.
 
+### Phase 8: Stack Keys (pull request 8)
+
+- [ ] `mb-lnqj`: Control-N and Control-P walk the stack; the registry’s Control chord,
+  its guards, its platform naming, and the keymap goldens, sessions, Help copy, and
+  docs.
+- [ ] `mb-6rfu`: `P` opens the Pulls tab; `R` is freed, and the reserved table,
+  sessions, goldens, and docs say so.
+
+### Phase 9: Narrow Toolbars (pull request 9)
+
+- [ ] `mb-nm4z`: one wrap rule for every navigation toolbar and the tab bar, with token
+  line spacing, the segmented group’s cluster fallback, and the Files, Pulls, and
+  Commits Chrome tests sweeping every pane width in both font sets.
+
+### Phase 10: The Group By Menu (pull request 10)
+
+- [ ] `mb-4mir`: Group by’s rows read “By age” and “By file type”, as its trigger does,
+  pinned in Chrome and in the Group by session’s golden.
+- [ ] `mb-ibo4`: Group by’s rows take `N`, `A`, and `T` while it is open and has focus,
+  shown by the Shift reveal and in Help’s Menus group, with one menu-key convention in
+  the design system; the key reveal session and its golden, and a Chrome check.
+- [ ] `mb-spqw`: every key that opens a menu focuses its checked row through one path in
+  the filter controls, and Escape gives focus back to the trigger; the key reveal
+  session and the filter controls behavior test, and a Chrome check of
+  `document.activeElement`.
+
+### Phase 11: Tooltips Add Information (pull request 11)
+
+- [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
+  once in the design system; the app’s other tooltips audited, those that repeat visible
+  text removed and the owner’s decisions on the borderline ones applied; the shell
+  shows a tip equal to its element’s text only while that text is cut short; checks in
+  `devtools/check_tooltips.py` and the Pulls, header, and Files Chrome tests.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -385,7 +484,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 7 merges.
+This plan moves to `docs/project/specs/done/` when pull request 11 merges.
 
 ## Open Questions
 
@@ -402,7 +501,9 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
+  `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
+  follow-ups on the Group by menu.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

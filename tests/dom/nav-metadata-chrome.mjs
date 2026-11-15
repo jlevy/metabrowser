@@ -22,7 +22,10 @@
 // band is its lines and nothing else. At the wide width, where every state's text fits on
 // its lines, each tab's band is one height in every state; at the default width a Pulls
 // remedy and the Files split wrap, as they should. In a narrow pane the Pulls count is cut
-// short on its one line.
+// short on its one line. And in a pane too narrow for it, the Commits tally, which stands in
+// the toolbar slot, wraps between its phrases at its own line height, as the tab bar over
+// it wraps between its tabs (docs/design-system.md, "Navigation Toolbars Wrap"), held to
+// that rule by tests/dom/nav-toolbar-wrap.mjs at every width from the narrowest.
 //
 // The states are the real ones where the running app can reach them, and otherwise the
 // markup the production code writes: the server's own Commits slot, read from the page it
@@ -33,6 +36,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { judge, linesOf, NARROWEST, SWEEP, WIDTHS } from "./nav-toolbar-wrap.mjs";
 
 const [base] = process.argv.slice(2);
 const { GH_HOLD: HOLD, GH_SCENARIO: SCENARIO, GH_BIN } = process.env;
@@ -215,6 +219,84 @@ try {
   await click('.nav-tab-bar [data-tab="git"]');
   await waitFor(`document.querySelector(".git-history-summary-count") !== null`);
   await measure("commits");
+  // The Commits tally and the tab bar wrap in a pane too narrow for them: every width from
+  // the narrowest, in both font sets, the tally as the stand-in has it and as a large, old
+  // repository's reads. Each is held to the wrap rule; the tally's lines are its own line
+  // height apart, with no gap, and the tabs' a tab's height.
+  const COMMITS = {
+    bar: "#nav-toolbar-git",
+    row: "#nav-toolbar-git .nav-metadata",
+    tokens: {
+      pad: "var(--nav-metadata-padding-y)",
+      line: "calc(var(--nav-metadata-line-height) * var(--nav-font-size))",
+      column: "var(--nav-metadata-gap)",
+    },
+  };
+  const TABS = { bar: ".nav-tab-bar", row: ".nav-tab-bar", tokens: {} };
+  // The spans git-panel.js (renderHistorySummary) writes, with a large, old repository's text.
+  const LONG_TALLY = `(() => {
+    document.querySelector("#nav-toolbar-git .git-history-summary").innerHTML =
+      '<span class="git-history-summary-count">123,456 commits</span>' +
+      '<span class="git-history-summary-first"><span>begun</span>' +
+      '<span class="git-history-summary-age age-old">12mo</span><span>ago</span></span>';
+  })()`;
+  const sweep = (spec, before = "undefined") =>
+    evaluate(`(${before}, (${SWEEP})(${JSON.stringify({ widths: WIDTHS, ...spec })}))`);
+  const wrapped = {};
+  for (const set of ["clean", "system"]) {
+    await evaluate(
+      `document.documentElement.setAttribute("data-app-font", ${JSON.stringify(set)})`,
+    );
+    await evaluate("document.fonts.ready.then(() => true)");
+    await frames();
+    for (const [name, before] of [
+      ["the tally", "undefined"],
+      ["a long tally", LONG_TALLY],
+    ]) {
+      const measured = await sweep(COMMITS, before);
+      const { pad, line, column } = measured.tokens;
+      const verdict = judge(`Commits, ${name}, ${set} fonts`, measured, {
+        pad,
+        line,
+        gap: 0,
+        column,
+      });
+      check(
+        `Commits, ${name}, ${set} fonts: keeps the wrap rule`,
+        verdict.failures.length === 0,
+        verdict.failures.slice(0, 6).join("\n"),
+      );
+      wrapped[`commits, ${name}, ${set}`] = verdict.oneLineFrom;
+    }
+    const tabs = await sweep(TABS);
+    // A tab is its own line: its height, as the widest pane draws it.
+    const tab = tabs.rows.at(-1).units[0];
+    const verdict = judge(`the tab bar, ${set} fonts`, tabs, {
+      pad: 0,
+      line: tab.bottom - tab.top,
+      gap: 0,
+      column: 0,
+      overlap: 1,
+    });
+    check(
+      `the tab bar, ${set} fonts: keeps the wrap rule`,
+      verdict.failures.length === 0,
+      verdict.failures.slice(0, 6).join("\n"),
+    );
+    check(
+      `the tab bar, ${set} fonts: wraps at the narrowest pane, Commits under Files and Pulls`,
+      JSON.stringify(
+        linesOf(tabs.rows.find((row) => row.width === NARROWEST)).map((l) =>
+          l.units.map((u) => u.name),
+        ),
+      ) === JSON.stringify([["files", "pulls"], ["git"]]),
+    );
+    wrapped[`tabs, ${set}`] = verdict.oneLineFrom;
+  }
+  await evaluate(`document.documentElement.setAttribute("data-app-font", "clean")`);
+  await evaluate("document.fonts.ready.then(() => true)");
+  await frames();
+  phase(`wrapped ${JSON.stringify(wrapped)}`);
   // The slot as the server ships it, before the count arrives, read from the page it serves.
   await evaluate(`(async () => {
     const page = await (await fetch("/view/")).text();

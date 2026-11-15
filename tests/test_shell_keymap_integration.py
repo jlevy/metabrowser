@@ -54,7 +54,9 @@ def test_the_view_tab_bar_is_a_tablist_carrying_each_declared_key() -> None:
 
 def test_a_filter_number_opens_its_menu_through_the_triggers_path() -> None:
     """The trigger's click and the filter numbers share toggleFilterMenu, extracted from the
-    filter bar's closure; the keymap's openFilterMenu then focuses the menu's row."""
+    filter bar's closure; the keymap's openFilterMenu then focuses the menu's checked row
+    through the filter controls' one focus path, which a trigger's own keys and click take
+    too (mb-spqw)."""
 
     js = _read_app_js()
     init = _function_source(js, "initFilterBar")
@@ -64,9 +66,48 @@ def test_a_filter_number_opens_its_menu_through_the_triggers_path() -> None:
     open_menu = keymap[keymap.index("function openFilterMenu(") :]
     open_menu = open_menu[: open_menu.index("\n    }\n")]
     assert "shell.toggleFilterMenu(key, true)" in open_menu
-    assert '.chip-menu-item[aria-checked="true"]' in open_menu
-    assert "row?.focus()" in open_menu
+    assert "filterControls?.focusMenu(bar, key)" in open_menu
+    assert ".focus()" not in open_menu
     assert ".click()" not in open_menu
+    controls = proc_browser.STATIC_DIR.joinpath("filter-controls.js").read_text()
+    focus_menu = controls[controls.index("function focusMenu(") :]
+    focus_menu = focus_menu[: focus_menu.index("\n  }\n")]
+    assert '.chip-menu-item[aria-checked="true"]' in focus_menu
+    assert "row?.focus()" in focus_menu
+
+
+def test_the_filter_bar_keeps_focus_across_its_rebuild() -> None:
+    """Every rebuild of the filter bar holds focus on the control that had it, or on the
+    trigger of a menu the rebuild closed, so a pick or a tally refresh never drops focus
+    on the page (mb-spqw); the session's stand-in rebuilds the same way."""
+
+    render = _function_source(_read_app_js(), "renderNavFilterBar")
+    keep = render.index("var restoreFocus = fc.keepFocus(bar);")
+    rebuild = render.index("bar.innerHTML = main + drawer;")
+    sync = render.index("shellKeymap?.syncFilters();")
+    restore = render.index("restoreFocus();")
+    assert keep < rebuild < sync < restore
+
+
+def test_group_by_rows_declare_the_letters_the_keymap_reads() -> None:
+    """Group by's rows declare N, A, and T beside their labels, as the session's stand-in
+    renders them; the keymap reads `data-menu-key` from the filter bar and runs each row
+    through `filterControls.activateMenuRow`, never a synthesized click (mb-ibo4)."""
+
+    js = _read_app_js()
+    options = _function_source(js, "filterGroupOptions")
+    assert '{ value: "age", label: "By age", key: "a" }' in options
+    assert '{ value: "type", label: "By file type", key: "t" }' in options
+    render = _function_source(js, "renderNavFilterBar")
+    group = render[render.index('key: "group"') : render.index('menuId: "filter-group-menu"')]
+    assert 'anyLabel: "No grouping",' in group
+    assert 'anyKey: "n",' in group
+    keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
+    letters = keymap[keymap.index("function syncMenuLetters(") :]
+    letters = letters[: letters.index("\n    }\n")]
+    assert '".chip-menu-item[data-menu-key]"' in letters
+    assert "filterControls?.activateMenuRow(target)" in letters
+    assert ".click()" not in letters
 
 
 def test_the_branch_switcher_handle_is_kept_by_its_module() -> None:
