@@ -6,7 +6,7 @@
 import path from "node:path";
 
 export const SCENARIO = "transition-navigation/v1";
-export const SCENARIO_REVISION = 5;
+export const SCENARIO_REVISION = 6;
 export const MIN_RUNS = 3;
 
 // What an older revision's rows record differently. `compare` judges two sets of rows of
@@ -16,6 +16,7 @@ export const REVISION_NOTES = {
   2: "revision 2 credited a frame only when no DOM change followed it, so its times and frame counts mean something else",
   3: "revision 3 recorded a request a worker made as network even when the wire answered 304 (the cache disposition counts), took a region's first match even when it was hidden, and gave up looking for useful content after 400 text nodes whether or not they were displayed",
   4: "revision 4 took a switch to Commits as ready only on the tab's prompt, so it refused every build that lands on the newest commit, and its rows record no Commits landing",
+  5: "revision 5 placed a frame in a transition's window by its begin time alone, so it could leave out the input's own frame (framesToReady 0, a blank frame dropped); its content search passed over content laid out outside an ancestor's box and was unbounded on long documents; it took a collapsed or parked hidden surface for the region on screen, counted the origin's prompt only until any state letter changed, and read a placeholder root's own text as content; and its rows record no read cost, retained memory, time to highlighted, or dwell journey",
 };
 
 /**
@@ -94,9 +95,14 @@ export const METRICS = [
   T("long_task_max_ms", (t) => t.longTasks?.maxMs),
   T("input_span_ms", (t) => t.inputSpanMs, null),
   T("ready_after_last_input_ms", (t) => t.readyAfterLastInputMs),
+  // The recorder's own work in each frame (revision 6): shown, so a comparison can see
+  // when the instrument cost one condition more, and never judged.
+  T("read_cost_max_ms", (t) => t.readCostMaxMs, null),
+  T("read_cost_to_ready_ms", (t) => t.readCostToReadyMs, null),
   ...[
     ["shell_tools_ready_ms", "shellToolsReady"],
     ["styled_markdown_ms", "styledMarkdown"],
+    ["source_highlighted_ms", "sourceHighlighted"],
     ["pr_header_ms", "prHeader"],
     ["pr_description_shown_ms", "prDescriptionShown"],
     ["pr_description_final_ms", "prDescriptionFinal"],
@@ -348,6 +354,21 @@ export function judge(m, sa, sb, pairs, tolerance) {
     out.direction = out.pairs.up.length > out.pairs.down.length ? "higher" : "lower";
   }
   const dir = out.direction;
+  // Equal medians with as many pairs beyond the tolerance each way give no direction:
+  // the pairs of both ways are named (revision 6; before, one pair of one way was named
+  // as "same beyond"). Equal medians always overlap.
+  if (dir === "same" && out.pairs.up.length > 0) {
+    const n = out.pairs.up.length;
+    const named = `higher ${out.pairs.up.join(", ")}; lower ${out.pairs.down.join(", ")}`;
+    if (n === 1) {
+      out.outcome = "pair";
+      out.verdict = `ranges overlap and the medians are equal; one pair of ${P} is higher and one lower beyond the ${tolerance}x tolerance (${named}): rerun both pairs back to back before a release (listed, not a wrong-way result)`;
+    } else {
+      out.outcome = "explain";
+      out.verdict = `ranges overlap and the medians are equal, but ${n} of ${P} pairs are higher and ${n} lower beyond the ${tolerance}x tolerance (${named}): explain before accepting`;
+    }
+    return finish();
+  }
   const beyond = dir === "lower" ? out.pairs.down : out.pairs.up;
   const k = beyond.length;
   if (!overlap && k >= 2) {
@@ -579,14 +600,20 @@ export function compareRuns(
       const sa = stat(va);
       const sb = stat(vb);
       const j = judge(m, sa, sb, pairRatios(ea, eb, m.key), tolerance);
-      // The window ends a settle time after the ready frame, so a candidate that is ready
-      // sooner is watched for less time: a settle time the control reached after the
-      // candidate's window closed cannot be compared.
+      // The window ends a settle time after the ready frame, so a condition that is ready
+      // sooner is watched for less time: a settle time one side reached after the other
+      // side's window closed cannot be compared. Revision 6 marks both directions (before,
+      // a candidate watched longer than the control was not marked).
       if (m.key === "settled_ms" || m.key === "nav_settled_ms") {
+        const wa = stat(valuesOf(ea, "window_ms"));
         const wb = stat(valuesOf(eb, "window_ms"));
         if (wb && sa.median > wb.min) {
           j.windowCut = true;
           j.verdict += `; the control settled at ${fmtNum(sa.median, "time")} ms, after the candidate's shortest window (${fmtNum(wb.min, "time")} ms) closed, so a lower candidate value may only be a shorter window`;
+        }
+        if (wa && sb.median > wa.min) {
+          j.windowCut = true;
+          j.verdict += `; the candidate settled at ${fmtNum(sb.median, "time")} ms, after the control's shortest window (${fmtNum(wa.min, "time")} ms) closed, so a higher candidate value may only be a longer window`;
         }
       }
       if (j.outcome === "unpaired") {
@@ -679,7 +706,7 @@ export function formatComparison(result) {
   const pr = (e) =>
     e.pairs?.median === null || e.pairs?.median === undefined
       ? "n/a"
-      : `${e.pairs.median.toFixed(2)}x (${e.pairs.min.toFixed(2)}–${Number.isFinite(e.pairs.max) ? e.pairs.max.toFixed(2) : "∞"}), ${(e.direction === "lower" ? e.pairs.down : e.pairs.up).length} of ${e.pairs.n} beyond`;
+      : `${e.pairs.median.toFixed(2)}x (${e.pairs.min.toFixed(2)}–${Number.isFinite(e.pairs.max) ? e.pairs.max.toFixed(2) : "∞"}), ${e.direction === "same" ? `${e.pairs.up.length} higher and ${e.pairs.down.length} lower` : (e.direction === "lower" ? e.pairs.down : e.pairs.up).length} of ${e.pairs.n} beyond`;
   out.push(
     `| Transition | ${A.label} painted ready ms | ${B.label} painted ready ms | Pair ratio, median (range) | Verdict |`,
     "| --- | ---: | ---: | ---: | --- |",
@@ -983,6 +1010,9 @@ export function keepTransition(t) {
     shifts: { count: t.shifts?.count, sumNoInput: t.shifts?.sumNoInput },
     longTasks: { maxMs: t.longTasks?.maxMs },
     dom: { end: t.dom?.end },
+    memory: t.memory,
+    readCostMaxMs: t.readCostMaxMs,
+    readCostToReadyMs: t.readCostToReadyMs,
     inputSpanMs: t.inputSpanMs,
     readyAfterLastInputMs: t.readyAfterLastInputMs,
     milestones: t.milestones,

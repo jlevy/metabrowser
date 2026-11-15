@@ -4,10 +4,13 @@
 // the DOM but not on screen, blank and placeholder frames after ready, region movement,
 // input fidelity, cache disposition against a server that logs its 304s, and the
 // journeys' Commits landing (revision 5) on a page that lands on the prompt, on the newest
-// commit, or on another commit.
+// commit, or on another commit. Revision 6's groups: `search`, content laid out outside an
+// ancestor's box, hidden text ahead, a long document's bounds, a placeholder root, and
+// collapsed or parked retained pages; and `window`, frames Chrome stamps before the input
+// and the origin's prompt beside the pending modifier.
 //
-//   node tests/dom/transitions-recorder-chrome.mjs frames|frames2|content|network|landing \
-//     <profile dir>
+//   node tests/dom/transitions-recorder-chrome.mjs \
+//     frames|frames2|content|network|landing|search|window <profile dir>
 //
 // The profile directory is the caller's: tests/test_transitions_instrument.py creates it,
 // runs this in a process group of its own, stops that whole group however the run ends,
@@ -194,6 +197,74 @@ window.keys = [];
 addEventListener("keydown", (e) => { window.keys.push([e.key, e.repeat]); if (e.key === "ArrowDown" && !e.repeat) { show("held"); } });
 </script></body></html>`;
 
+// Revision 6's search, window, and region definitions, on a page whose preview starts near
+// the top of the viewport. Its buttons follow the probe page's conventions (`#go-NAME`,
+// `#go-reset`, `window.clickFrameMark`), so `measure` drives both. `#stage` is a fixed,
+// full-viewport scroller for the shapes that need content scrolled above the viewport.
+const SEARCH_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>search probe</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  #buttons { display: flex; flex-wrap: wrap; height: 60px; overflow: hidden; }
+  button { width: 110px; height: 28px; }
+  #preview-pane { min-height: 600px; }
+  #stage { position: fixed; inset: 0; overflow: auto; background: #fff; z-index: 1; }
+  .loading { display: block; width: 300px; height: 40px; background: #ccc; }
+  .scroller { height: 400px; overflow: auto; position: relative; }
+  .anchor { position: relative; height: 0; }
+  .anchor > div { position: absolute; left: 0; right: 0; height: 25px; }
+</style></head><body>
+<div id="buttons"></div>
+<div id="tree-content"></div>
+<div id="preview-pane"><div data-active-view="true" id="view"></div></div>
+<script>
+const view = document.getElementById("view");
+const pane = document.getElementById("preview-pane");
+const show = (name, text) => { view.replaceChildren(document.createTextNode(text ?? name + " subject")); view.dataset.subject = name; };
+// A windowed list: a zero-height positioned anchor and 300 absolutely positioned rows in
+// a scroll container of its own.
+const windowed = (name) => {
+  const sc = document.createElement("div"); sc.className = "scroller";
+  const a = document.createElement("div"); a.className = "anchor";
+  for (let i = 0; i < 300; i++) { const r = document.createElement("div"); r.style.top = (i * 25) + "px"; r.textContent = "row " + i; a.appendChild(r); }
+  sc.appendChild(a); view.replaceChildren(sc); view.dataset.subject = name; return sc;
+};
+const pullHost = (n, height) => {
+  const host = document.createElement("div");
+  host.className = "pull-request-host";
+  host.dataset.number = String(n);
+  host.innerHTML = '<div class="github-pull-header" style="height:' + height + 'px">#' + n + '</div><div class="tab-bar">Conversation</div><div class="github-pull-body">body of #' + n + '</div>';
+  return host;
+};
+const retain = (hide) => { const old = pane.querySelector(".pull-request-host"); hide(old); old.after(pullHost(351, 203)); };
+const actions = {
+  reset: () => { view.replaceChildren(); delete view.dataset.subject; pane.classList.remove("preview-navigation-pending"); for (const h of pane.querySelectorAll(".pull-request-host")) { h.remove(); } },
+  prA: () => { pane.prepend(pullHost(353, 137)); },
+  // A build that retains the old page collapsed to nothing, or parked off screen.
+  prCollapse: () => retain((old) => { old.style.height = "0px"; old.style.overflow = "hidden"; }),
+  prPark: () => retain((old) => { old.style.position = "absolute"; old.style.left = "-10000px"; old.style.top = "0px"; }),
+  // Mounted already scrolled 1,500 px, and mounted at its top and scrolled 200 ms later.
+  windowedScrolled: () => { windowed("windowedScrolled").scrollTop = 1500; },
+  windowedLate: () => { const sc = windowed("windowedLate"); setTimeout(() => { sc.scrollTop = 1500; }, 200); },
+  // 500 text nodes under visibility: hidden ahead of the one shown.
+  hiddenVis: () => { const w = document.createElement("div"); for (let i = 0; i < 500; i++) { const s = document.createElement("span"); s.style.visibility = "hidden"; s.textContent = "hidden " + i; w.appendChild(s); } const p = document.createElement("p"); p.textContent = "the visible subject"; w.appendChild(p); view.replaceChildren(w); view.dataset.subject = "hiddenVis"; },
+  // The origin's prompt, kept on screen beside the pending modifier until content shows.
+  pendingPrompt: () => { pane.classList.add("preview-navigation-pending"); setTimeout(() => { pane.classList.remove("preview-navigation-pending"); show("pendingPrompt"); }, 150); },
+};
+const buttons = document.getElementById("buttons");
+for (const [name, fn] of Object.entries(actions)) {
+  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickFrameMark = window.__tr.frames.length; fn(); }); buttons.appendChild(b);
+}
+// Work done on the press itself, before the click: \`downShow\` shows the subject in the
+// pointerdown handler, \`downBlank\` empties the view there and shows the subject 60 ms
+// later. Where each step ran is kept as a position in the recorder's frame log.
+for (const [name, fn] of Object.entries({
+  downShow: () => show("downShow"),
+  downBlank: () => { view.replaceChildren(); window.showFrameMark = null; setTimeout(() => { window.showFrameMark = window.__tr.frames.length; show("downBlank"); }, 60); },
+})) {
+  const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("pointerdown", () => { window.downFrameMark = window.__tr.frames.length; fn(); }); buttons.appendChild(b);
+}
+</script></body></html>`;
+
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
@@ -217,6 +288,9 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === "/view/landing") {
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
     res.end(LANDING_PAGE);
+  } else if (u.pathname === "/view/search") {
+    res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    res.end(SEARCH_PAGE);
   } else if (u.pathname === "/slow.png") {
     setTimeout(() => {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
@@ -385,13 +459,15 @@ async function check(name, fn, { retryable = true } = {}) {
 }
 
 try {
-  const landingGroup = group === "landing";
-  await d.navigate(`${base}/view/${landingGroup ? "landing" : "probe"}`);
+  // Each group's page, and an element that shows it has loaded.
+  const [pagePath, loaded] = {
+    landing: ["landing", "to-git"],
+    search: ["search", "go-reset"],
+    window: ["search", "go-reset"],
+  }[group] ?? ["probe", "go-reset"];
+  await d.navigate(`${base}/view/${pagePath}`);
   assert.ok(
-    await d.waitFor(
-      `!!window.__tr && !!document.getElementById(${JSON.stringify(landingGroup ? "to-git" : "go-reset")})`,
-      20000,
-    ),
+    await d.waitFor(`!!window.__tr && !!document.getElementById(${JSON.stringify(loaded)})`, 20000),
   );
   await sleep(500);
 
@@ -777,8 +853,202 @@ try {
       assert.equal(r.landing, "newest");
       assert.ok(r.readyMs >= 450, `ready ${r.readyMs}`);
     });
+  } else if (group === "search") {
+    // Revision 6, mb-86b9 and mb-5xzz: what the content search finds and what it costs,
+    // and which retained surface a region is.
+    const shapeFound = (shape) =>
+      d.evaluate(`(async () => {
+        const view = document.getElementById("view");
+        view.replaceChildren();
+        const st = document.createElement("div"); st.id = "stage"; view.appendChild(st);
+        const lines = (n, h = 20) => Array.from({ length: n }, (_, i) => '<div style="height:' + h + 'px">line ' + i + '</div>').join("");
+        const SHAPES = {
+          inlineAbs: () => { st.innerHTML = '<span><div data-target style="position:absolute;left:40px;top:120px">inline text</div></span>'; },
+          zeroTop: () => { st.innerHTML = '<div style="position:absolute;top:0;left:0;right:0;height:0"><div style="height:40px"></div><div data-target>overflowing text</div></div>'; },
+          floatsOnly: () => { st.innerHTML = '<div><div style="float:left;width:300px;height:300px;padding-top:300px"><span data-target>float text</span></div></div><div style="height:3000px"></div>'; st.scrollTop = 100; },
+          windowed: () => { st.innerHTML = '<div class="anchor">' + Array.from({ length: 300 }, (_, i) => '<div style="top:' + (i * 25) + 'px"' + (i === 70 ? " data-target" : "") + '>row ' + i + '</div>').join("") + '</div>'; st.scrollTop = 1500; },
+          overflowParent: () => { st.innerHTML = '<div style="height:100px">' + lines(39) + '<div data-target>line 39</div></div><div style="height:3000px"></div>'; st.scrollTop = 300; },
+          fixedInSection: () => { st.innerHTML = '<section style="height:300px"><div data-target style="position:fixed;top:200px;left:0;width:600px;height:120px">fixed text<br>more fixed text<br>and more</div></section><div style="height:3000px"></div>'; st.scrollTop = 1000; },
+          translated: () => { st.innerHTML = '<div style="height:200px"><div data-target style="transform:translateY(600px)">translated text</div></div><div style="height:3000px"></div>'; st.scrollTop = 400; },
+          longEnd: () => { st.innerHTML = lines(10000); st.scrollTop = st.scrollHeight; },
+        };
+        SHAPES[${JSON.stringify(shape)}]();
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const t = st.querySelector("[data-target]") || st.lastElementChild;
+        const r = t.getBoundingClientRect();
+        const onScreen = r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+        const found = window.__tr.hasUseful(view);
+        const search = window.__tr.lastSearch ?? null;
+        view.replaceChildren();
+        return { onScreen, found, search };
+      })()`);
+    await check("content laid out outside an ancestor's box is found", async () => {
+      const missed = [];
+      for (const shape of [
+        "inlineAbs",
+        "zeroTop",
+        "floatsOnly",
+        "windowed",
+        "overflowParent",
+        "fixedInSection",
+        "translated",
+      ]) {
+        const r = await shapeFound(shape);
+        assert.ok(r.onScreen, `${shape}: the shape's text is not on screen`);
+        if (!r.found) {
+          missed.push(`${shape} ${JSON.stringify(r.search)}`);
+        }
+      }
+      assert.deepEqual(missed, []);
+    });
+    await check("a long document scrolled to its end is found within the bounds", async () => {
+      const r = await shapeFound("longEnd");
+      assert.ok(r.found, JSON.stringify(r.search));
+      assert.ok(r.search.visits <= 1500 && r.search.points <= 8, JSON.stringify(r.search));
+    });
+    await check("a windowed list mounted scrolled is ready at once, its reads costed", async () => {
+      const r = await measure("windowedScrolled", { timeoutMs: 3000 });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.blankFrames, await framesBeforeClick(r), JSON.stringify(r.frameStates));
+      // Every frame read carries its own cost, and the row its longest and its total to ready.
+      assert.ok(
+        r.raw.frames.every((f) => f[1] === null || typeof f[3] === "number"),
+        JSON.stringify(r.raw.frames.slice(0, 4)),
+      );
+      assert.equal(typeof r.readCostMaxMs, "number");
+      assert.ok(r.readCostToReadyMs >= 0, `reads to ready ${r.readCostToReadyMs}`);
+    });
+    await check("a windowed list scrolled after ready shows no blank frame", async () => {
+      const r = await measure("windowedLate", { settleMs: 600, timeoutMs: 3000 });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.equal(r.blankFramesAfterReady, 0, JSON.stringify(r.frameStates));
+    });
+    await check("hidden text ahead of the shown text does not use up the search", async () => {
+      for (const hide of [
+        "visibility:hidden",
+        "opacity:0",
+        "display:block;height:0;overflow:hidden",
+      ]) {
+        const found = await d.evaluate(`(() => {
+          const view = document.getElementById("view");
+          const w = document.createElement("div");
+          for (let i = 0; i < 500; i++) { const s = document.createElement("span"); s.style.cssText = ${JSON.stringify(hide)}; s.textContent = "hidden " + i; w.appendChild(s); }
+          const p = document.createElement("p"); p.textContent = "the visible subject"; w.appendChild(p);
+          view.replaceChildren(w);
+          const found = window.__tr.hasUseful(view);
+          view.replaceChildren();
+          return found;
+        })()`);
+        assert.equal(found, true, hide);
+      }
+      const r = await measure("hiddenVis", { timeoutMs: 3000 });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      await assertReadyInFirstFrameAfterClick(r);
+    });
+    await check("a placeholder root's own text is not content", async () => {
+      const code = await d.evaluate(`(() => {
+        const pane = document.getElementById("preview-pane");
+        const view = document.getElementById("view");
+        const l = document.createElement("div"); l.className = "loading"; l.textContent = "Loading the file";
+        pane.replaceChildren(l);
+        const code = window.__tr.state();
+        pane.replaceChildren(view);
+        return code;
+      })()`);
+      assert.equal(code, "P");
+    });
+    for (const [name, label] of [
+      ["prCollapse", "collapsed to height 0"],
+      ["prPark", "parked off screen"],
+    ]) {
+      await check(`a retained page ${label} is not taken for the one on screen`, async () => {
+        await d.click("#go-reset");
+        await sleep(200);
+        await d.click("#go-prA");
+        await sleep(300);
+        const r = await take({
+          id: name,
+          subject: "#351",
+          input: { kind: "click", selector: `#go-${name}` },
+          ready: `() => { const h = document.querySelector('#preview-pane > .pull-request-host[data-number="351"]'); return !!h && window.__tr.hasUseful(h); }`,
+          converged: `() => ""`,
+          settleMs: 400,
+          timeoutMs: 5000,
+        });
+        assert.equal(r.ok, true, JSON.stringify(r.refusals));
+        assert.deepEqual(r.regions.prTabs.present, [true, true]);
+        assert.deepEqual(r.regions.prTabs.net, [0, 66, 0, 0], JSON.stringify(r.regions.prTabs));
+        assert.equal(r.movementPathPx, 66, `path ${r.movementPathPx}`);
+        await sleep(300);
+      });
+    }
+  } else if (group === "window") {
+    // Revision 6, mb-s0e4: Chrome can stamp the frame that draws an input before the
+    // input's own time stamp (0.2 ms early in 1 of 8 probe runs). That is made to happen
+    // in every frame here: requestAnimationFrame is wrapped to report each frame's begin
+    // 34 ms early, two frames, so the first frames drawn after the press all begin, by
+    // their stamps, before it.
+    const skew = (ms) =>
+      d.evaluate(`(() => {
+        window.__raf ??= window.requestAnimationFrame.bind(window);
+        window.requestAnimationFrame = ${ms} ? (cb) => window.__raf((t) => cb(t - ${ms})) : window.__raf;
+      })()`);
+    const pressed = async (name) => {
+      await skew(34);
+      await sleep(200);
+      try {
+        return await measure(name, { timeoutMs: 3000 });
+      } finally {
+        await skew(0);
+      }
+    };
+    await check("the input's own frame is in its window when stamped before it", async () => {
+      const r = await pressed("downShow");
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.ok(r.raw.readyAt < pressAt(r), `ready frame ${r.raw.readyAt}, press ${pressAt(r)}`);
+      assert.equal(r.framesToReady, 1, JSON.stringify(r.frameStates));
+      assert.ok(r.readyMs > 0, `ready ${r.readyMs}`);
+    });
+    await check("a blank frame stamped before the input is counted", async () => {
+      const r = await pressed("downBlank");
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      const down = await d.evaluate("window.downFrameMark");
+      const shown = await d.evaluate("window.showFrameMark");
+      const blank = r.raw.frames.slice(down, shown).filter((f) => f[1] !== null);
+      assert.ok(blank.length >= 2, `${blank.length} frames between the press and the subject`);
+      assert.ok(blank[0][0] < pressAt(r), `first frame ${blank[0][0]}, press ${pressAt(r)}`);
+      assert.equal(r.blankFramesBeforeReady, blank.length, JSON.stringify(r.frameStates));
+      assert.equal(r.framesToReady, blank.length + 1, JSON.stringify(r.frameStates));
+    });
+    await check("the origin's prompt beside the pending modifier is the prompt", async () => {
+      await d.click("#go-reset");
+      await sleep(300);
+      await d.evaluate(
+        `document.getElementById("view").innerHTML = '<div class="preview-empty">Select a file.</div>'`,
+      );
+      await sleep(200);
+      const r = await take({
+        id: "pendingPrompt",
+        subject: "pendingPrompt",
+        input: { kind: "click", selector: "#go-pendingPrompt" },
+        ready: subjectReady("pendingPrompt"),
+        converged: `() => ""`,
+        settleMs: 400,
+        timeoutMs: 3000,
+        debug: true,
+      });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.ok(
+        r.frameStates.some(([, code]) => code === "Eb"),
+        JSON.stringify(r.frameStates),
+      );
+      assert.ok(r.blankFramesBeforeReady >= 3, JSON.stringify(r.frameStates));
+      assert.equal(r.blankFramesOriginPrompt, r.blankFramesBeforeReady);
+    });
   } else {
-    throw new Error(`unknown group ${group}; frames, frames2, content, network, or landing`);
+    throw new Error(
+      `unknown group ${group}; frames, frames2, content, network, landing, search, or window`,
+    );
   }
 } finally {
   // Stops every Chrome process of the profile, then removes the profile.
