@@ -5,7 +5,7 @@ title: "Epic: instant transitions and stable layout for the native app"
 kind: epic
 status: open
 priority: 1
-version: 64
+version: 66
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
 dependencies: []
@@ -67,8 +67,10 @@ child_order_hints:
   - is-01m7d6qymfet9180bcn40m0bjb
   - is-01m7d6qz1nstxweev0yg5488rb
   - is-01m78r70ve0sy3ytznj2vyjjad
+  - is-01m7exbshjz1sx7r322nye458d
+  - is-01m7exbt3pbayekf7qtjhxmtwq
 created_at: 2026-11-12T05:46:57.364Z
-updated_at: 2026-11-14T18:46:37.236Z
+updated_at: 2026-11-15T06:12:25.845Z
 ---
 Implement the ranked improvements in docs/project/research/research-2026-11-11-ui-apparent-performance.md. Every item is a measured performance-loop round (hypothesis in the load-time plan, exp record, verdict) and closes on its verdict. Ends with a campaign summary covering every item, in Chrome and WKWebView.
 

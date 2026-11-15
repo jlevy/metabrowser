@@ -5,13 +5,15 @@ title: "H89 follow-up: parallel loading with a preload cap or low fetch priority
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m774r9n7z8bymhs94yjq67sw
 parent_id: is-01m774q0ep0jq6vhb790rart0v
 created_at: 2026-11-13T07:23:47.841Z
-updated_at: 2026-11-14T18:45:44.138Z
+updated_at: 2026-11-15T06:12:37.714Z
 ---
 Follow-up to H89 after exp-062 rejected it. Make the parallel loading pay off on a cold load without delaying the first styled view. Two candidates, each a round of its own: cap the preloads (only the next few scripts of a bundle are in flight at once), or start them at low fetch priority (`fetchpriority="low"`) so the first view's KPress stylesheets go first.
 

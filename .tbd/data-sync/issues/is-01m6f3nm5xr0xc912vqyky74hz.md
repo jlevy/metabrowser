@@ -5,7 +5,7 @@ title: Re-run the folder comparison after this branch merges
 kind: task
 status: open
 priority: 1
-version: 15
+version: 16
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -16,7 +16,7 @@ parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-15T05:57:20.905Z
+updated_at: 2026-11-15T06:18:19.795Z
 started_at: 2026-11-03T09:32:28.834Z
 closed_at: null
 close_reason: null
@@ -58,3 +58,5 @@ The qualified 55-file fixture matched the published v0.11.0 control byte-for-byt
 Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
 
 Reopened: Reopened by PR #434 review A (A1): the comparison last ran on 426ce7b6, whose tree differs from the v0.12.0 tag 87b8ec81 (84 files, including c83c3178's folder-recovery fix), and the bead's own notes keep it open for the tag head. It is one of the release-head checks the owner deferred at mb-4bd2.
+
+2026-11-14 correction (PR #434 review B, B1): the reopen reason above is wrong about the run. The 55-file comparison passed on 0.11.1.dev1308+a53907948 (November 9 note), and a5390794's tree cdb95f00 is the v0.12.0 tag's (87b8ec81 has a5390794 as its second parent). The bead stays open for what its notes keep open: attributing the run to the release commit, and owner acceptance, which the owner deferred at mb-4bd2.
