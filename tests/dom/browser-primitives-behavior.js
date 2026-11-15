@@ -77,7 +77,11 @@ for (const name of [
 }
 
 (async () => {
-  check("bytes reach GB", sandbox.MetabrowserFormatters.formatBytes(1024 ** 3) === "1.0 GB");
+  check(
+    "bytes reach GB at the first count past megabytes",
+    sandbox.MetabrowserFormatters.formatBytes(1024 ** 3 - 1) === "1024.0 MB" &&
+      sandbox.MetabrowserFormatters.formatBytes(1024 ** 3) === "1.0 GB",
+  );
   check("file singular", sandbox.MetabrowserFormatters.formatFileCount(1).endsWith(" file"));
   check(
     "byte emphasis uses the shared navigation boundary",
