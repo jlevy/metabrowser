@@ -325,8 +325,10 @@ def test_the_keyboard_shortcuts_reference_documents_command_r() -> None:
     browser_keys = section[section.index("\n### Browser and App Keys\n") :]
     assert "| Command-R (Control-R or F5 elsewhere) | Reload |" in browser_keys
     assert "`tests/test_modified_keys.py`" in browser_keys
-    readme = (_REPO / "apps" / "macos" / "README.md").read_text(encoding="utf-8")
-    assert "- **Reload:** Command-R, View > Reload Page, reloads in every state" in readme
+    app = (_REPO / "docs" / "project" / "architecture" / "arch-macos-app.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- **Reload.** Command-R reloads in every state a folder window can be in" in app
 
 
 def test_a_handler_that_cancels_a_chord_is_named() -> None:

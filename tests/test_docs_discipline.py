@@ -232,7 +232,7 @@ def _published(root: Path) -> list[str]:
         capture_output=True,
         text=True,
         check=True,
-        timeout=60,
+        timeout=30,
     ).stdout
     return [name for name in listed.split("\0") if name and (root / name).is_file()]
 
