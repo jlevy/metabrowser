@@ -3759,10 +3759,7 @@ function renderSelectionOutsideFilterNote(selectedPath) {
   var path = selectedPath === undefined ? currentPath : selectedPath;
   var existing = panel.querySelector(".tree-selection-note");
   var filtered = filterState ? filterHasConstraints(filterState.get()) : false;
-  var absent =
-    filtered &&
-    !!path &&
-    !panel.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
+  var absent = filtered && !!path && treeOmitsPath(panel, path);
   if (!absent) {
     existing?.remove();
     return;
@@ -3783,6 +3780,53 @@ function renderSelectionOutsideFilterNote(selectedPath) {
   } else {
     panel.insertAdjacentElement("afterbegin", note);
   }
+}
+
+/**
+ * Whether the tree in *panel* leaves *path* out, rather than holding it somewhere the
+ * reader has not opened. A folder the filter keeps but the reader closed, or whose rows
+ * are not read yet, may still hold it, and a page of a long folder not yet drawn may; then
+ * the tree cannot say. A folder above it that has no row at all is one the filter left out.
+ *
+ * @param {HTMLElement} panel
+ * @param {string} path
+ */
+function treeOmitsPath(panel, path) {
+  if (panel.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`)) {
+    return false;
+  }
+  var segments = path.split("/");
+  var current = "";
+  for (var i = 0; i < segments.length - 1; i++) {
+    current = current ? `${current}/${segments[i]}` : segments[i];
+    var folders = Array.from(
+      queryHtmlAll(`.tree-folder[data-path="${escapePathForSelector(current)}"]`, panel),
+    );
+    if (folders.length === 0) {
+      return !treePageHolds(current);
+    }
+    for (const folder of folders) {
+      var children = folder.nextElementSibling;
+      if (
+        !children ||
+        children.classList.contains("tree-children-collapsed") ||
+        children.querySelector(":scope > .tree-lazy-placeholder")
+      ) {
+        return false;
+      }
+    }
+  }
+  return !treePageHolds(path);
+}
+
+/** Whether a page of a long folder, not yet drawn, holds *path*'s row. @param {string} path */
+function treePageHolds(path) {
+  for (const page of pendingTreePages.values()) {
+    if (page.nodes.some((/** @type {{path: string}} */ node) => node.path === path)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ── Nav pane ────────────────────────────────────────────────────
@@ -4392,6 +4436,7 @@ function attachMainTabs() {
       isPullAddress,
       openRoot: () => navigateToPath(""),
       restore: () => navigationController.restore(),
+      revealFile: (how) => revealFileRow(addressedFilePath(), how),
       scrollShadow: () => navScrollShadowUpdate?.(),
     }) ?? null;
   return mainTabs;
@@ -8676,7 +8721,12 @@ async function openQuickSearchPull(number) {
     return { status: "cancelled" };
   }
   mainTabs?.remember();
+  const shown = window.location.pathname;
   const outcome = await host.open({ number, tab: "" });
+  // An open of the page shown changes no address, so nothing else reveals its row.
+  if (outcome.status === "opened" && window.location.pathname === shown) {
+    void mainTabs?.reveal("open");
+  }
   return outcome.status === "opened"
     ? { ...outcome, focusTarget: document.getElementById("preview-pane") }
     : outcome;
@@ -8733,19 +8783,20 @@ function pullPageHostDeps(routes) {
       }),
     mountList: (claim) => mountView(claim, "pull-request-list", {}),
     pathname: () => window.location.pathname,
+    // A pull request's page opened by a link, a key, or a row: the Pulls tab reveals its row
+    // (main-tabs.js, `reveal`).
     pushHref: (href) => {
       mainTabIntent += 1;
       window.history.pushState(null, "", href);
       mainTabs?.remember();
-      mainTabs?.activate("pulls");
-      window.MetabrowserPullsNav?.routeChanged();
+      void mainTabs?.reveal("open");
     },
-    // A key's skim replaces, as openTreeRow does.
+    // A key's skim through the Pulls tab's rows replaces, as openTreeRow does.
     replaceHref: (href) => {
       mainTabIntent += 1;
       window.history.replaceState(null, "", href);
       mainTabs?.remember();
-      window.MetabrowserPullsNav?.routeChanged();
+      void mainTabs?.reveal("nav");
     },
   };
 }
@@ -8805,7 +8856,8 @@ async function applyNavigationTarget(target, context) {
   if (context.source === "user") {
     mainTabIntent += 1;
   }
-  const keepFilesScroll = mainTabs?.takeFilesScroll() ?? false;
+  // How the reader came: an open, a tab's landing, Back, or the page's own address.
+  const route = mainTabs?.landingRoute(context.source) ?? null;
   if (isGitHistoryLanding()) {
     if (context.source !== "user") {
       // The neutral Commits entry is the Git panel's, as a /commit/ address is: the
@@ -8851,9 +8903,11 @@ async function applyNavigationTarget(target, context) {
     showNavigationLanding();
     return { status: "cancelled" };
   }
-  mainTabs?.fileLanding();
-  window.MetabrowserPullsNav?.routeChanged();
   var path = target.path.replace(/\/$/, "");
+  // The file's tab comes to the front before the pane is read: a switch from another tab
+  // takes the pane from what that tab showed there.
+  void revealAddressedItem("step", path, context.isCurrent);
+  window.MetabrowserPullsNav?.routeChanged();
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
   // the line-anchor module, which arrives with the view compositor. That load starts
@@ -8864,6 +8918,11 @@ async function applyNavigationTarget(target, context) {
   // fragment alone. After a failure, or once the Git panel owns the pane,
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
+    // A fragment or a line anchor is a step within the file shown, which reveals nothing.
+    // Opening the file shown again, as Quick Search does, reveals its row.
+    if (context.source === "user" && !target.fragment && !target.query) {
+      await revealAddressedItem(route, path, context.isCurrent);
+    }
     // A line anchor added to the file shown opens its Source tab, as opening it does.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
@@ -8876,7 +8935,7 @@ async function applyNavigationTarget(target, context) {
       status: "opened",
     };
   }
-  await revealInTree(path, { isCurrent: context.isCurrent, scroll: !keepFilesScroll });
+  await revealAddressedItem(route, path, context.isCurrent);
   // A held arrow key opens only the row its walk stops on.
   var walk = treeKeyboard?.walking(path);
   if (walk) {
@@ -8891,6 +8950,57 @@ async function applyNavigationTarget(target, context) {
     deliverNavigationFragment(navigationController.current() || target);
   }
   return outcome;
+}
+
+/**
+ * Show the item the address names in the navigation pane (docs/design-system.md,
+ * "Navigation Reveals the Item"): main-tabs.js's `reveal` brings its tab to the front and
+ * has that tab's panel reveal it, by the one rule for every route. Before the tab
+ * controller has loaded, Files is the tab in front and reveals the file itself.
+ *
+ * @param {MetabrowserRevealRoute | null} route Null before the tab controller has loaded.
+ * @param {string} path The file or folder the address names.
+ * @param {() => boolean} isCurrent
+ * @returns {Promise<void>}
+ */
+async function revealAddressedItem(route, path, isCurrent) {
+  if (mainTabs && route !== null) {
+    await mainTabs.reveal(route, { isCurrent });
+  } else if (route !== "step") {
+    await revealFileRow(path, { scroll: "nearest", isCurrent });
+  }
+}
+
+/** The file or folder the address names, without a folder's trailing slash; "" for none. */
+function addressedFilePath() {
+  var target = window.MetabrowserNavigationRoute.parse(
+    window.location.pathname,
+    window.location.search,
+    window.location.hash,
+  );
+  return target ? target.path.replace(/\/$/, "") : "";
+}
+
+/**
+ * The Files panel's reveal: open the folders above *path*, and the page of a long folder
+ * that holds it, select its row, and scroll it into view unless *how* keeps the tree's
+ * place. A path the tree cannot show still takes the selection from the row that had it,
+ * so no other row stays selected under it, and when a filter hides it the tree says so
+ * (renderSelectionOutsideFilterNote).
+ *
+ * @param {string} path
+ * @param {MetabrowserRevealHow} how
+ * @returns {Promise<boolean>} Whether its row is shown.
+ */
+async function revealFileRow(path, how) {
+  var shown = await revealInTree(path, {
+    isCurrent: how.isCurrent,
+    scroll: how.scroll === "nearest",
+  });
+  if (!shown && how.isCurrent()) {
+    setSelectedPath(path || null);
+  }
+  return shown;
 }
 
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
@@ -9000,6 +9110,12 @@ async function revealWithin(
       `.tree-folder[data-path="${escapePathForSelector(current)}"]`,
       /** @type {HTMLElement} */ (scope),
     );
+    if (!folder && mountTreePageHolding(scope, current)) {
+      folder = queryHtml(
+        `.tree-folder[data-path="${escapePathForSelector(current)}"]`,
+        /** @type {HTMLElement} */ (scope),
+      );
+    }
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
@@ -9026,7 +9142,11 @@ async function revealWithin(
   if (!isCurrent()) {
     return false;
   }
-  var target = scope.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
+  var selector = `.tree-item[data-path="${escapePathForSelector(path)}"]`;
+  var target = scope.querySelector(selector);
+  if (!target && mountTreePageHolding(scope, path)) {
+    target = scope.querySelector(selector);
+  }
   if (!target) {
     return false;
   }
@@ -9036,6 +9156,28 @@ async function revealWithin(
   }
   synchronizeTreeNow();
   return true;
+}
+
+/**
+ * Mount the rest of a long folder when *path*'s row is in it. A folder draws its first
+ * TREE_PAGE_SIZE rows and holds the rest behind a "more" row until it is asked for, and a
+ * reveal asks for it (docs/design-system.md, "Navigation Reveals the Item").
+ *
+ * @param {Document | HTMLElement} scope
+ * @param {string} path
+ * @returns {boolean} Whether a page holding it was mounted.
+ */
+function mountTreePageHolding(scope, path) {
+  for (const sentinel of queryHtmlAll(
+    ".tree-page-more[data-page-id]",
+    /** @type {HTMLElement} */ (scope),
+  )) {
+    var page = pendingTreePages.get(sentinel.dataset.pageId);
+    if (page?.nodes.some((/** @type {{path: string}} */ node) => node.path === path)) {
+      return mountNextTreePage(sentinel) !== null;
+    }
+  }
+  return false;
 }
 
 /**

@@ -2069,7 +2069,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, [row.title])' in panel
+    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
     assert 'h("span", { class: "github-pull-stack-member-title" })' in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:

@@ -6322,6 +6322,16 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
+/* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",
+   at regular weight, and the rest at the title's own: bold wherever a title is bold
+   (docs/design-system.md, "Titles"; mb-z57p). formatters.js's titleNodes and titleHtml
+   put the prefix in this span wherever a title is drawn, and only its weight is set
+   here, so it keeps the title's face, size, and ink. One rule, on the shell's weight
+   token: no surface sets a prefix's weight of its own. */
+.title-prefix {
+  font-weight: var(--weight-normal);
+}
+
 /* ── Ref badges ─────────────────────────────────────────────── */
 
 /* Branch chips are their own vocabulary, not filter chips: at this

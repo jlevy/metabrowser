@@ -17,6 +17,19 @@ All notable changes to Metabrowser are documented here.
   and as its name and color in `/api/plugin/github/pulls`. See
   [Label Colors](docs/design-system.md#label-colors).
 
+- Going to a file, a pull request, or a commit now shows it in the navigation pane by
+  every route: Quick Search, a link, the address, Back and Forward, and the keys that
+  open one. Its tab comes to the front, the folders or the stack that hold it open, and
+  its row is selected and scrolled into view, while focus stays where you are reading.
+  Back and Forward now scroll to the row too, as a tab’s own button still does not.
+  Quick Search for the item already shown reveals it again, a file past a long folder’s
+  first 200 rows is drawn, and a commit’s address scrolls the Commits list to its row.
+  A file a filter hides no longer leaves the previous file selected: the tree says
+  “src/app.txt is outside this filter.”, and no longer says that of a file that is only
+  in a closed folder. A pull request the Pulls list does not hold is named under its
+  count, “#8 is not listed under Open.”
+  See [Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item).
+
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one
@@ -102,6 +115,16 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request’s number is bold wherever it names the pull request: a Pulls row, the
   pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- A commit’s or pull request’s title that starts with a conventional-commit prefix, such
+  as `feat(ledger):` or `fix:`, sets the prefix at regular weight and the rest of the
+  title bold, wherever the title appears: a Pulls row, the pull request page’s title,
+  its stack menu, its Conversation’s commits, Quick Search, a commit’s page, and its
+  tooltip. A Commits tab row’s subject is regular, so there the prefix looks as before.
+  A prefix counts only when it is 16 characters or fewer, colon included, and its type
+  is lowercase; any other title looks as before.
+  For plugin authors, `metabrowser.titleNodes(title)` draws a title the same way.
+  See [Titles](docs/design-system.md#titles).
 
 - The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
   one width for a chevron and a file type icon alike, so names start 2px sooner and a
