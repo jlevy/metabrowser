@@ -1,12 +1,12 @@
 // Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
 // from the heading above them.
 (() => {
-  // In tab order, each with its letter: F for Files, R for pull Requests, H for commit
-  // History. The letters name what each tab holds and mean the same wherever they are
-  // pressed (docs/design-system.md, "Keyboard Shortcuts").
+  // In tab order, each with its letter: F for Files, P for Pulls, H for commit History.
+  // The letters name what each tab holds and mean the same wherever they are pressed
+  // (docs/design-system.md, "Keyboard Shortcuts").
   const MAIN_TABS = [
     { id: "files", label: "Files", key: "f" },
-    { id: "pulls", label: "Pulls", key: "r" },
+    { id: "pulls", label: "Pulls", key: "p" },
     { id: "git", label: "Commits", key: "h" },
   ];
 

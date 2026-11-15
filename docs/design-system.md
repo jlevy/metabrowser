@@ -287,9 +287,11 @@ ARIA policy together with formatter tests.
 
 #### Main Tab Shortcuts
 
-The sidebar orders Files, Pulls, and Commits in that order, and their keys are `F`, `R`,
-and `H` ([Keyboard Shortcuts](#keyboard-shortcuts)). The letters work outside text
-fields and dialogs, with or without Shift.
+The sidebar orders Files, Pulls, and Commits in that order, and their keys are `F`, `P`,
+and `H` ([Keyboard Shortcuts](#keyboard-shortcuts)): Files and Pulls take the first
+letter of their label, and Commits takes `H`, for commit History: `C` is Charts’ and
+Conversation’s, view tabs that a shell letter, reserved everywhere, would leave without
+a key. The letters work outside text fields and dialogs, with or without Shift.
 A letter opens its tab, or keeps the tab already shown, and moves focus to the panel’s
 roving row, so `F` then `↓` walks the file tree; while the panel has no rows yet, the
 tab button takes focus.
@@ -1910,8 +1912,8 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 ### The Rules
 
 - **Letters for known meanings.** A letter names something a reader can guess and keep:
-  `F` for Files, `R` for pull Requests, `H` for commit History, `T` for the file finder,
-  `U` for up. A letter means the same thing wherever it is live.
+  `F` for Files, `P` for Pulls, `H` for commit History, `T` for the file finder, `U` for
+  up. A letter means the same thing wherever it is live.
 - **Reusable semantics.** Some letters are verbs that apply wherever their meaning does,
   as Vim’s motions do.
   `J` and `K` move down and up a row in every row list.
@@ -1942,7 +1944,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 
 ### Scopes and Collisions
 
-- **Shell letters are reserved everywhere.** `F`, `R`, `H`, `T`, `J`, `K`, `U`, and `W`
+- **Shell letters are reserved everywhere.** `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`
   keep their meaning even where they do nothing, so a letter never means one thing on
   one screen and another elsewhere.
   Control-N and Control-P reserve no letter: a view’s key is one letter alone.
@@ -1974,7 +1976,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 | `?` | Help | Always | Punctuation, by convention |
 | `T` or `/` | Quick Search, the file finder | Always | Letter |
 | `F` | The Files tab | Always | Letter, main tab |
-| `R` | The Pulls tab: pull Requests | The tab is drawn: a hosted origin | Letter, main tab |
+| `P` | The Pulls tab | The tab is drawn: a hosted origin | Letter, main tab |
 | `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus | Reusable |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields | Reusable, Control chord |
@@ -2040,7 +2042,7 @@ They walk a pull request’s stack: Control-N to the next member toward the stac
 Control-P to the previous one toward its base.
 
 - **Why these two.** The letters alone are worth more to the keymap than one walk
-  through a stack, so `N` and `P` are left free.
+  through a stack: `N` is free, and `P` opens the Pulls tab.
   With Control they mean next and previous in Emacs, readline, and the macOS text
   system, which moves a field’s caret down and up a line with them, so the chords keep
   the meaning they have elsewhere.

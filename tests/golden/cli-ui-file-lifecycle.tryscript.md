@@ -553,7 +553,7 @@ $ node tests/dom/preview-pane-state-session.js
       ],
       "ariaKeys": [
         "F",
-        "R",
+        "P",
         "H"
       ],
       "keyboardRoutes": [

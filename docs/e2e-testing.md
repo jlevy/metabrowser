@@ -558,9 +558,10 @@ Check titles, ordinal and PR number, current-member indication, focus, Escape, o
 click, and keyboard selection.
 Use Control-P toward the base and Control-N toward the top, with and without Shift;
 preserve the selected PR tab and clear the old file selection.
-Check that `N` and `P` alone do not walk the stack, that Help and the Shift strip write
-the chords `⌃N` and `⌃P` on a Mac and `Ctrl+N` and `Ctrl+P` elsewhere, and, on a
-keyboard with AltGr, that AltGr with `N` or `P` types its character.
+Check that `N` alone does nothing there and `P` alone focuses the Pulls list rather than
+walking the stack, that Help and the Shift strip write the chords `⌃N` and `⌃P` on a Mac
+and `Ctrl+N` and `Ctrl+P` elsewhere, and, on a keyboard with AltGr, that AltGr with `N`
+or `P` types its character.
 With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row and not the
 stack. Confirm endpoint handling, that an editor or open dialog retains its keys, and
 that Control-N and Control-P in Quick Search’s field move its caret on macOS. On Windows
@@ -584,10 +585,11 @@ In a plain folder, the dialog should still say Quick Search and search only file
 
 After Git discovery, check Files, Pulls, and Commits order and their letters in Help,
 with no `⌘` beside them.
-Check that `F`, `R`, and `H` open each tab with and without Shift, and that Command or
-Ctrl with a letter or digit is left to the browser, so Command or Ctrl with a digit
-still switches browser tabs.
-In a plain folder, check that `F` still opens Files and that `R` and `H` leave the
+Check that `F`, `P`, and `H` open each tab with and without Shift, that `R` opens
+nothing, and that Command or Ctrl with a letter or digit is left to the browser, but for
+Control-N and Control-P on a stack’s pull request, so Command or Ctrl with a digit still
+switches browser tabs.
+In a plain folder, check that `F` still opens Files and that `P` and `H` leave the
 selection alone. [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the full
 scheme.
 

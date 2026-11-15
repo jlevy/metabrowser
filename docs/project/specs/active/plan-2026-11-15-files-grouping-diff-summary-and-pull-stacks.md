@@ -26,7 +26,7 @@ stack of eight pull requests on `main`:
 7. **Sans headings:** an h2 in sans Markdown (chrome prose, or a document under the sans
    reading font) is upright; serif documents keep the italic.
 8. **Stack keys:** Control-N and Control-P walk a pull request’s stack, freeing `N` and
-   `P`.
+   `P`, and `P` then opens the Pulls tab.
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -73,6 +73,8 @@ request must prove.
   Control-N and Control-P, so the letters are free.
   The registry accepts a declared Control chord, Control alone and never from a text
   field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
+- **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
+  mechanism, as `F` opens Files and `H` Commits; `R` is freed.
 
 ## Non-Goals
 
@@ -134,7 +136,7 @@ it:
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
 | 6 | `claude/pull-timeline` | `mb-g3ao` | Restyles the pull request page that #438 and pull request 4 change |
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
-| 8 | `claude/keymap-ctrl-np` | `mb-lnqj` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
+| 8 | `claude/keymap-ctrl-np` | `mb-lnqj`, `mb-6rfu` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -287,6 +289,8 @@ it:
   page’s navigator. The rule, and the platform limit (Chrome on Windows and Linux keeps
   Ctrl+N for a new window), is stated once, in “Control Chords” in
   `docs/design-system.md`.
+- `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
+  `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
 ### API Changes
 
@@ -340,6 +344,8 @@ it:
 - [ ] `mb-lnqj`: Control-N and Control-P walk the stack; the registry’s Control chord,
   its guards, its platform naming, and the keymap goldens, sessions, Help copy, and
   docs.
+- [ ] `mb-6rfu`: `P` opens the Pulls tab; `R` is freed, and the reserved table,
+  sessions, goldens, and docs say so.
 
 ## Testing Strategy
 
@@ -384,7 +390,7 @@ This plan moves to `docs/project/specs/done/` when pull request 8 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

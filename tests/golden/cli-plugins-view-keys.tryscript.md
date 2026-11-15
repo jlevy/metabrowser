@@ -10,15 +10,16 @@ env:
 patterns:
   PYDANTIC_URL: 'https://errors\.pydantic\.dev/\d+\.\d+/v/value_error'
 before: >-
-  mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes reserved/reskey override/steal &&
+  mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
   printf '# Notes\n' > mdroot/a.md &&
   printf '[plugin]\nname = "alpha"\nsdk_version = "0.7"\n[[kind]]\nid = "myk"\nmatch = { ext = ".myk" }\n[[view]]\nkind = "myk"\nid = "main"\nlabel = "Main"\nkey = "m"\ndefault = true\n' > pair/alpha/manifest.toml &&
   printf '[plugin]\nname = "beta"\nsdk_version = "0.7"\n[[view]]\nkind = "myk"\nid = "more"\nlabel = "More"\nkey = "M"\n' > pair/beta/manifest.toml &&
   printf '[plugin]\nname = "prnotes"\nsdk_version = "0.7"\n[[view]]\nkind = "pull-request"\nid = "notes"\nlabel = "Notes"\nkey = "N"\n' > stack/prnotes/manifest.toml &&
+  printf '[plugin]\nname = "pullkey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "preview"\nlabel = "Preview"\nkey = "P"\n' > pulls/pullkey/manifest.toml &&
   printf '[plugin]\nname = "reskey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "outline"\nlabel = "Outline"\nkey = "T"\n' > reserved/reskey/manifest.toml &&
   printf '[plugin]\nname = "steal"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "rendered"\nlabel = "Document"\nkey = "s"\ndefault = true\n' > override/steal/manifest.toml &&
-  for dir in pair/alpha pair/beta stack/prnotes reserved/reskey override/steal; do printf '// No renderer: these plugins exist for their manifests.\n' > "$dir/index.js"; done
+  for dir in pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal; do printf '// No renderer: these plugins exist for their manifests.\n' > "$dir/index.js"; done
 ---
 # Golden tests: view keys across plugin manifests
 
@@ -100,6 +101,23 @@ $ metab --doctor --json --plugins-dir stack 2>/dev/null
   "problems": []
 }
 ? 0
+```
+
+## Test: a view keyed P is refused at load, since P opens the Pulls tab everywhere
+
+`P` is the Pulls tab’s letter in every kind, as `F` is the Files tab’s, so the loader
+refuses a view that takes it, a Preview included.
+
+```console
+$ metab --doctor --json --plugins-dir pulls 2>/dev/null
+{
+  "ok": false,
+  "plugin_count": 11,
+  "problems": [
+    "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
+  ]
+}
+? 1
 ```
 
 ## Test: a key the shell reserves everywhere is refused at load

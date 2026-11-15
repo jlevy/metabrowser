@@ -295,7 +295,7 @@ async function heldTabKeys(page) {
     document: globalThis.document,
     HTMLElement: LiveElement,
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjkuw123456789"].map((key) => [key, null])),
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."fphtjkuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;

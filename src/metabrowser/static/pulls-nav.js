@@ -371,9 +371,9 @@
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
     return [
       // Control-N and Control-P, next and previous as in Emacs and the macOS text system,
-      // walk the stack, so the letters N and P stay free. They are global, so a focused
-      // Pulls row keeps J and K, and Shift changes neither pair; a text field keeps them
-      // (docs/design-system.md, "Control Chords").
+      // walk the stack, so N stays free and P opens the Pulls tab. They are global, so a
+      // focused Pulls row keeps J and K, and Shift changes neither pair; a text field keeps
+      // them (docs/design-system.md, "Control Chords").
       shortcuts.register({
         bindings: [{ key: "n", control: true }],
         available: () => nav.hasStack(),

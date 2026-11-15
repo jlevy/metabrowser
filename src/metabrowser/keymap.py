@@ -58,7 +58,7 @@ class ReservedKey:
 RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
     {
         "f": ReservedKey("Files tab"),
-        "r": ReservedKey("Pulls tab"),
+        "p": ReservedKey("Pulls tab"),
         "h": ReservedKey("Commits tab"),
         "t": ReservedKey("Quick Search"),
         "j": ReservedKey("next row"),

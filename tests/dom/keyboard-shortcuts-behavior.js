@@ -708,14 +708,14 @@ closeResults();
 // The permanent view-tabs scope sits below global, so a letter both use keeps
 // one meaning at a time: a global P while its command is available, a view tab's
 // P otherwise. The commands are stand-ins: the shell reserves P, so no view takes it.
-let stackOpen = false;
+let globalLive = false;
 layouts.register(
   command({
-    available: () => stackOpen,
+    available: () => globalLive,
     bindings: [{ key: "p" }],
     group: "pull-stack",
-    handler: record("stack"),
-    id: "pulls.stack.base",
+    handler: record("global"),
+    id: "test.global.p",
     surfaces: { help: "always" },
   }),
 );
@@ -736,18 +736,18 @@ try {
   check("view tab registration", false, String(error));
 }
 check("a global P and a view-tabs P register together", viewTabRegistered);
-typed("P reaches the view tab while no stack is open", { key: "p" }, "preview");
+typed("P reaches the view tab while the global P is unavailable", { key: "p" }, "preview");
 typed("Shift+P reaches the view tab too", { key: "P", shiftKey: true }, "preview");
-stackOpen = true;
-typed("the global P outranks the view tab while a stack is open", { key: "p" }, "stack");
+globalLive = true;
+typed("the global P outranks the view tab while it is available", { key: "p" }, "global");
 // A permanent scope is always active in its fixed place, so activating one, which
-// would lift view-tabs above global and hand the stack's P to the view tab, is refused.
+// would lift view-tabs above global and hand the global P to the view tab, is refused.
 for (const permanent of ["global", "view-tabs", "plugin"]) {
   rejects(`activating the permanent ${permanent} scope is refused`, () =>
     layouts.activateScope(permanent),
   );
 }
-typed("the global P still outranks the view tab after the refusal", { key: "p" }, "stack");
+typed("the global P still outranks the view tab after the refusal", { key: "p" }, "global");
 // The plugin facade's permanent plugin scope sits below view-tabs, so a plugin letter
 // registers beside a shell one and loses at dispatch while the shell's is live, and
 // heldAbove() tells the facade so, for its badges.
@@ -768,10 +768,10 @@ try {
   check("plugin registration", false, String(error));
 }
 check("a plugin P registers beside the global and the view-tabs P", pluginRegistered);
-typed("the global P outranks a plugin P", { key: "p" }, "stack");
+typed("the global P outranks a plugin P", { key: "p" }, "global");
 check("the global P holds P above the plugin scope", layouts.heldAbove("plugin", "P"));
 check("nothing is above global", !layouts.heldAbove("global", "p"));
-stackOpen = false;
+globalLive = false;
 typed("the view tab's P outranks a plugin P", { key: "p" }, "preview");
 check("the view tab holds P above the plugin scope", layouts.heldAbove("plugin", "p"));
 check("no shell key holds Q", !layouts.heldAbove("plugin", "q"));
@@ -780,7 +780,7 @@ rejects("two P bindings in one scope still fail", () =>
     command({
       bindings: [{ key: "P" }],
       group: "pull-stack",
-      id: "pulls.stack.other",
+      id: "test.global.other",
     }),
   ),
 );

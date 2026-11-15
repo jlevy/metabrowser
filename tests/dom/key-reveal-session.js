@@ -1470,7 +1470,7 @@ const PARTS = {
     hosted.open(files[""]);
     hosted.build();
     steps.push(
-      hosted.record("Pulls drawn before Commits has R, and H does nothing until Commits comes", {
+      hosted.record("Pulls drawn before Commits has P, and H does nothing until Commits comes", {
         pressed: { key: "h", handled: hosted.press("h") },
         tabs: hosted.tabOrder(),
       }),
@@ -1492,11 +1492,19 @@ const PARTS = {
       }),
     );
 
-    hosted.press("r");
+    // P is the Pulls tab (mb-6rfu), freed when the stack's walk moved to Control-N and
+    // Control-P.
+    const toPulls = hosted.press("p");
     await settle();
     steps.push(
-      hosted.record("R again, once the list has rows, moves focus to the selected row", {
-        pressed: { key: "r", handled: hosted.press("r") },
+      hosted.record("P opens the Pulls tab from a file", {
+        pressed: { key: "p", handled: toPulls },
+        active: hosted.mainTabs.active(),
+      }),
+    );
+    steps.push(
+      hosted.record("P again, once the list has rows, moves focus to the selected row", {
+        pressed: { key: "p", handled: hosted.press("p") },
         focus: hosted.document.activeElement.textContent,
       }),
     );
@@ -1530,13 +1538,22 @@ const PARTS = {
         pressed: { key: "Control-p", handled: hosted.press("p", { ctrlKey: true }) },
       }),
     );
-    // The letters alone are free, and AltGr, which reports Control and Alt, types its
-    // character rather than walking.
+    // N alone is free, AltGr, which reports Control and Alt, types its character rather
+    // than walking, and P alone is the Pulls tab's, which is in front, so it moves focus
+    // to the list and walks nothing.
+    hosted.document.body.focus();
+    const alone = {
+      n: hosted.press("n"),
+      altGr: hosted.press("n", { altKey: true, ctrlKey: true }),
+    };
     steps.push(
-      hosted.record("N and P alone, and Control-Alt-N as AltGr reports it, walk nothing", {
-        n: hosted.press("n"),
-        p: hosted.press("p"),
-        altGr: hosted.press("n", { altKey: true, ctrlKey: true }),
+      hosted.record("N alone and Control-Alt-N walk nothing, and P alone is the Pulls tab", {
+        ...alone,
+        p: {
+          handled: hosted.press("p"),
+          active: hosted.mainTabs.active(),
+          focus: hosted.document.activeElement.textContent,
+        },
       }),
     );
 

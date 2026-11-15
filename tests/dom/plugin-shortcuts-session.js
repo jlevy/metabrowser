@@ -29,7 +29,7 @@ const staticDir = path.join(repoRoot, "src/metabrowser/static");
 // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py.
 const RESERVED_SHELL_KEYS = Object.freeze({
   f: null,
-  r: null,
+  p: null,
   h: null,
   t: null,
   j: null,

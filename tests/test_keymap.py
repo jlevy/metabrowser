@@ -111,6 +111,21 @@ def test_next_and_previous_are_chords_that_reserve_no_letter() -> None:
         assert check.problems == [], kind
 
 
+def test_p_is_the_pulls_tab_in_every_kind_and_r_is_free() -> None:
+    """``P`` opens the Pulls tab wherever it is pressed (mb-6rfu), so no view takes it.
+
+    The Pulls tab's letter was ``R``, for pull Requests, while ``P`` walked a stack; with the
+    walk on Control-P, the tab takes the first letter of its label, as Files takes ``F``
+    (Commits keeps ``H``, for commit History), and ``R`` is free for a view.
+    """
+    assert RESERVED_SHELL_KEYS["p"].purpose == "Pulls tab"
+    assert "r" not in RESERVED_SHELL_KEYS
+    for kind in ("html", "pull-request", "markdown"):
+        check = check_view_keys(kind, [{"id": "page", "key": "P"}, {"id": "rendered", "key": "R"}])
+        assert check.views == [{"id": "page"}, {"id": "rendered", "key": "r"}], kind
+        assert ["Pulls tab" in str(problem) for problem in check.problems] == [True], kind
+
+
 def test_a_contextual_shell_key_is_reserved_only_for_its_kinds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -424,16 +439,16 @@ def test_swapping_two_documented_shell_letters_fails_the_meaning_check() -> None
     text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
     commands = _golden_shell_commands()
     files_row = "| `F` | The Files tab |"
-    pulls_row = "| `R` | The Pulls tab: pull Requests |"
+    pulls_row = "| `P` | The Pulls tab |"
     assert files_row in text and pulls_row in text
     swapped = (
         text.replace(files_row, "\0")
-        .replace(pulls_row, "| `F` | The Pulls tab: pull Requests |")
-        .replace("\0", "| `R` | The Files tab |")
+        .replace(pulls_row, "| `F` | The Pulls tab |")
+        .replace("\0", "| `P` | The Files tab |")
     )
     problems = _shell_meaning_problems(_documented_keymap(swapped), commands)
     assert any(problem.startswith("F is main-tabs.files") for problem in problems), problems
-    assert any(problem.startswith("R is main-tabs.pulls") for problem in problems), problems
+    assert any(problem.startswith("P is main-tabs.pulls") for problem in problems), problems
     for pair, reversed_pair in (
         ("| `J` or `K` |", "| `K` or `J` |"),
         ("| `Control-N` or `Control-P` |", "| `Control-P` or `Control-N` |"),
