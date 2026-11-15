@@ -5,7 +5,7 @@ title: "Sans Markdown: h2 headings upright; serif documents keep the italic"
 kind: bug
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:54:00.615Z
-updated_at: 2026-11-15T08:49:51.751Z
+updated_at: 2026-11-15T17:52:42.057Z
 started_at: 2026-11-15T07:10:23.619Z
 ---
 The user's request (2026-11-15), verbatim: "on the chrome or sans markdown docs let's not make the h2s italic. we can preserve the italic on the serif mode as that is more consistent with our standared past kpress stylings."
@@ -57,3 +57,5 @@ Local: make -o install format and lint-check pass; pytest tests/test_prose_faces
 Not verified: the macOS app's WebKit; the size guard cannot see a change confined to chrome prose, which is sans in both passes; make verify not run.
 
 2026-11-15 restack: rebased onto origin/claude/pull-timeline (PR 6, 48165b77e) as 5d366e2c1. Only CHANGELOG conflicted; both entries kept, this one first. The styles.css and design-system.md hunks merged clean, and the layers below do not touch the session files, so CHECKS stays 92. After the rebase: make -o install format and lint-check pass (parity 53 routes covered, 5 exempt); test_prose_faces_chrome, test_design_vocabulary and test_process_group pass, 84 tests. Not pushed, no PR yet: the push was refused by the permission system. A draft PR body is ready for the coordinator.
+
+2026-11-15 second restack and push: 5d366e2c1 sat on an older #451 head (48165b77e), so it was rebased again, while still unpushed, onto #451's final tip f98c4af45, as 55b7a5e50. The rebase was clean, and test_prose_faces_chrome passes (1 test, 11.2 s). Pushed at the user's go-ahead ("Yes, push PR 7"), and opened as draft PR #456 (https://github.com/jlevy/metabrowser/pull/456), base claude/pull-timeline, linked into stack #446 at position 7. From here on it takes merges only: no rebase, no force-push.
