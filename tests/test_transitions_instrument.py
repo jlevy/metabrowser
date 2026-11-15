@@ -5,8 +5,8 @@ event sequences, frame accounting, region movement, every refusal and verdict of
 ``compare`` over fixture rows, and process cleanup. Its recorder runs in a real headless
 Chrome on synthetic pages, because what it measures is paint and the frame clock:
 readiness against the input, the presentation of the ready frame, content on screen,
-304s a server logged, and the journeys' Commits landing on either side of main's
-19a36c5b.
+304s a server logged, the journeys' Commits landing on either side of main's 19a36c5b,
+and revision 6's content search, frame window, and retained surfaces.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def test_transition_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "transitions instrument: 49 checks passed\n"
+    assert result.stdout == "transitions instrument: 55 checks passed\n"
 
 
 # The longest group is landing: 28.4 to 28.6 s in CI, and 29 to 38 s on a loaded 10-core
@@ -59,6 +59,8 @@ pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
         ("content", 10),
         ("network", 2),
         ("landing", 11),
+        ("search", 8),
+        ("window", 3),
     ],
 )
 def test_transition_recorder_in_chrome(group: str, count: int, chrome_profile: Path) -> None:

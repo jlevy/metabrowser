@@ -371,6 +371,78 @@ check("blank frames that still show the origin's prompt are reported apart", () 
   assert.equal(b.blankFramesOriginPrompt, 0);
 });
 
+// Revision 6, mb-s0e4: a frame is [begin, state, read, read cost, seen].
+check("the input's own frame is in its window though stamped before the input", () => {
+  // The input at 100; Chrome stamps the frame that draws it 0.2 ms earlier, and a frame
+  // read before the input began 16 ms earlier still.
+  const frames = [
+    [83.5, "U", 85, 0.1, 0],
+    [99.8, "", 101, 0.2, 1],
+    [99.8 + I, "U", 101 + I, 0.4, 1],
+    [99.8 + 2 * I, "U", 101 + 2 * I, 0.3, 1],
+  ];
+  const a = accountFrames({
+    frames,
+    origin: 100,
+    windowEnd: frames.at(-1)[0],
+    readyAt: frames[2][0],
+    readyRead: frames[2][2],
+    readyNext: frames[3][0],
+    initialCode: "U",
+  });
+  assert.equal(a.framesToReady, 2);
+  assert.equal(a.blankFramesBeforeReady, 1);
+  assert.equal(a.framesInWindow, 3);
+  // The read's own cost: the longest in the window, and the sum up to the ready frame.
+  assert.equal(a.readCostMaxMs, 0.4);
+  assert.equal(a.readCostToReadyMs, 0.6);
+  // The input's own frame is the ready frame: in the window with the flag, and placed by
+  // its begin time alone, as revision 5 placed every frame, outside it.
+  const ready = [
+    [83.5, "U", 85, 0.1, 0],
+    [99.8, "U", 101, 0.2, 1],
+    [99.8 + I, "U", 101 + I, 0.2, 1],
+  ];
+  const args = {
+    origin: 100,
+    windowEnd: ready.at(-1)[0],
+    readyAt: ready[1][0],
+    readyRead: ready[1][2],
+    readyNext: ready[2][0],
+  };
+  assert.equal(accountFrames({ ...args, frames: ready }).framesToReady, 1);
+  assert.equal(
+    accountFrames({ ...args, frames: ready.map((f) => f.slice(0, 3)) }).framesToReady,
+    0,
+  );
+});
+check("the origin's prompt lasts while only the pending modifier changes", () => {
+  const frames = grid(["E", "Eb", "Eb", "EPb", "U"]);
+  const a = accountFrames({
+    frames,
+    origin: 99,
+    windowEnd: frames.at(-1)[0],
+    readyAt: frames[4][0],
+    readyRead: frames[4][2],
+    readyNext: null,
+    initialCode: "E",
+  });
+  assert.equal(a.blankFramesBeforeReady, 4);
+  assert.equal(a.blankFramesOriginPrompt, 4);
+  // Anything else on screen ends it: here nothing at all.
+  const b = accountFrames({
+    ...a,
+    frames: grid(["Eb", "", "E", "U"]),
+    origin: 99,
+    windowEnd: 200,
+    readyAt: 100 + 3 * I,
+    readyRead: 102 + 3 * I,
+    readyNext: null,
+    initialCode: "E",
+  });
+  assert.equal(b.blankFramesOriginPrompt, 1);
+});
+
 // ---------------------------------------------------------------------- region movement
 
 const REG = {
@@ -440,6 +512,29 @@ check("a row re-created with its identity moves; another identity is a replaceme
   assert.equal(other.groups.tree.path, 0);
   assert.equal(other.groups.tree.replaced, 1);
 });
+check("a box is in the window when its frame's read saw the input", () => {
+  // The input at 100. A box its own frame logged, stamped 0.3 ms before the input, moves
+  // the region; one a frame logged 0.5 ms before the input, read before it, is where the
+  // region stood (revision 5 took everything from 1 ms before the input).
+  const m = regionMovement(
+    { pane: [0, 100, 10, 10] },
+    [
+      [99.5, "pane", [0, 110, 10, 10], 0],
+      [99.7, "pane", [0, 140, 10, 10], 1],
+    ],
+    100,
+    REG,
+  );
+  assert.equal(m.groups.page.net, 30);
+  assert.equal(m.groups.page.path, 30);
+  const early = regionMovement(
+    { pane: [0, 100, 10, 10] },
+    [[90, "pane", [0, 140, 10, 10], 1]],
+    100,
+    REG,
+  );
+  assert.equal(early.groups.page.net, 40);
+});
 check("list changes after the first rows", () => {
   const c = listChanges(
     [
@@ -495,7 +590,7 @@ const transition = (id, over = {}) => ({
 });
 const row = (condition, run, over = {}) => ({
   schema: "transition-navigation/v1",
-  scenario_revision: 5,
+  scenario_revision: stats.SCENARIO_REVISION,
   exp: "exp-900",
   series: "s1",
   condition,
@@ -960,6 +1055,49 @@ check("a settle time beyond the candidate's window is marked", () => {
   const e = find(res, "files.a", "settled_ms");
   assert.equal(e.windowCut, true);
   assert.match(e.verdict, /after the candidate's shortest window \(250\.0 ms\) closed/);
+});
+check("a settle time beyond the control's window is marked too", () => {
+  // The mirror of the check above (review C, C3): the candidate is ready later and watched
+  // longer, so its higher settle time may be only the longer window.
+  const res = cmp(
+    series(
+      (r) => setT(r, "files.a", { settledMs: 120, windowMs: 250 }),
+      (r) => setT(r, "files.a", { settledMs: 650, windowMs: 800 }),
+    ),
+  );
+  const e = find(res, "files.a", "settled_ms");
+  assert.equal(e.windowCut, true);
+  assert.match(
+    e.verdict,
+    /the candidate settled at 650\.0 ms, after the control's shortest window \(250\.0 ms\) closed/,
+  );
+});
+check("equal medians with a pair beyond each way name both pairs", () => {
+  const res = cmp(
+    series(
+      (r, k) => setT(r, "files.a", { paintedReadyMs: [40, 50, 60][k - 1] }),
+      (r, k) => setT(r, "files.a", { paintedReadyMs: [60, 50, 40][k - 1] }),
+    ),
+  );
+  const e = find(res, "files.a", "painted_ready_ms");
+  assert.equal(e.direction, "same");
+  assert.equal(e.outcome, "pair");
+  assert.equal(e.wrongWay, false);
+  assert.match(e.verdict, /one pair of 3 is higher and one lower .*higher s1#1; lower s1#3/);
+  assert.doesNotMatch(e.verdict, /same beyond/);
+  const text = stats.formatComparison(res).join("\n");
+  assert.match(text, /1 higher and 1 lower of 3 beyond/);
+});
+check("revision 5 rows compare with each other, noting what revision 6 changed", () => {
+  const five = (r) => {
+    r.scenario_revision = 5;
+  };
+  const res = cmp(series(five, five));
+  assert.equal(stats.SCENARIO_REVISION, 6);
+  assert.ok(
+    res.notes.some((n) => /revision 5, compared with each other.*input's own frame/.test(n)),
+  );
+  refuses(() => cmp(series(() => {}, five)), /scenario revision differs across the runs: 6 \/ 5/);
 });
 check("an older revision compares with itself, with a note, and not with this one", () => {
   const old = cmp(
