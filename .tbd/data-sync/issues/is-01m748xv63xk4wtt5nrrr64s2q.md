@@ -5,7 +5,7 @@ title: "Host mode: ready line after bind, sticky port, stdin token, idle exit"
 kind: feature
 status: open
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 labels: []
 dependencies:
@@ -17,9 +17,11 @@ dependencies:
     target: is-01m748y1pa5yyy4wf2t16cpf0y
   - type: blocks
     target: is-01m774re9ewc3k6c8hp5x78376
+  - type: blocks
+    target: is-01m7ezsmcn4k6h57vwcaxq9tsx
 parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 created_at: 2026-11-11T03:02:52.354Z
-updated_at: 2026-11-14T18:46:30.337Z
+updated_at: 2026-11-15T06:54:55.892Z
 ---
 Phase 3, core metab. A JSON ready line printed after bind; a sticky port remembered per root with an OS-chosen fallback; a per-launch token on stdin; --idle-exit. The stdin-EOF exit already ships as metab --exit-on-eof (jlevy/metabrowser#366, src/metabrowser/cli/stdin_lifeline.py), which the app passes to every server. Generalizes the draft VS Code host design (mb-x4y5); a reference-host test covers it.
 

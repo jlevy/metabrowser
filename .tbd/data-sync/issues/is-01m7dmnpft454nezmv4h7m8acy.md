@@ -5,7 +5,7 @@ title: "Rendered Markdown: chrome always sans, documents serif unless the sans p
 kind: task
 status: in_progress
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-14T18:21:18.188Z
-updated_at: 2026-11-15T06:20:18.018Z
+updated_at: 2026-11-15T07:08:26.484Z
 started_at: 2026-11-14T18:21:23.995Z
 ---
 The user (2026-11-14): "Let's make sure we have a clear system about when we use serif and sans-serif for rendered markdown. chrome and PR descriptions etc are always sans. but document rendering is by default serif, unless we have preferences settings set to sans serif, and then they are sans serif too. for documents, when we render them in rendered view, they should use document rendering, so be serif unless sans is enabled in preferences."
@@ -48,3 +48,4 @@ Review A (https://github.com/jlevy/metabrowser/pull/438#pullrequestreview-590937
 - A4, adopted: the waits are named constants, each failure is printed as it is found, and CHECKS = 56 is pinned.
 - A5, deferred to mb-o11s (P2, under mb-eevh).
 - Docs: the md-body and chrome-prose wording is narrowed, the parity row now credits the commit-body evidence, and the test checks that docs/plugins.md names chrome-prose.
+Merge-ready head 26928734 merges origin/main 4f79b47c (#435, #437). CHANGELOG keeps every entry; the Chrome registry and e2e list name both test_nav_metadata_chrome and test_prose_faces_chrome. CI run 43687016793 passed all 9 jobs. The review-A head 48a12946 also passed all jobs (run 43684887066).
