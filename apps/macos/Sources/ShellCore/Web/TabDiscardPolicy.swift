@@ -27,14 +27,22 @@ public nonisolated struct TabActivity<ID: Hashable & Sendable>: Equatable, Senda
 public nonisolated struct TabDiscardPolicy: Equatable, Sendable {
     /// Background tabs that keep their pages.
     ///
-    /// A web view is one WebContent process of 155 to 210 MB with real pages (the
-    /// server-topology brief), and of 111 to 143 MB on Metabrowser pages measured with
-    /// `scripts/measure-web-views.swift` on macOS 26.5.2, which also found that the
-    /// process ends within a second of its view's release and that a fresh view reloads
-    /// the page from a warm server in a few hundred milliseconds (README, "Files, Tabs,
-    /// Recents, and the Last Session"). Three background tabs then hold at most about
-    /// 0.6 GB beyond the windows on screen. It is a conservative default, not a measured
-    /// optimum.
+    /// Measured on macOS 26.5.2 with `scripts/measure-web-views.swift` against this
+    /// repository's own server:
+    ///
+    /// - Each web view that loaded a page is one WebContent process; a view that never
+    ///   loaded has none, and a released view's process is gone within 1 s.
+    /// - One view's footprint, 8 s after loading: 120 to 143 MB on the folder page (4
+    ///   views), 111 to 112 MB on a Markdown page (3 views). The server-topology brief
+    ///   measured 155 to 210 MB with real pages.
+    /// - A fresh view loading the page from the warm server, to `didFinish`: 155 to 489 ms
+    ///   in 9 of 10 loads, and one of 3.7 s. In a run started 5 s after the server, while
+    ///   it was likely still walking the tree, two of five took 3.6 and 17.9 s.
+    ///
+    /// Three background tabs then hold at most about 0.6 GB beyond the windows on screen,
+    /// at the brief's upper figure. It is a conservative default, not a measured optimum:
+    /// showing a discarded tab costs a reload of a few hundred milliseconds, and how often
+    /// people return to a tab past the third is unmeasured.
     public static let defaultLiveBackgroundTabs = 3
 
     public var liveBackgroundTabs: Int
