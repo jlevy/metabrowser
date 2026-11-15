@@ -5,7 +5,7 @@ title: Small UI fixes (2026-11-14 round)
 kind: epic
 status: open
 priority: 2
-version: 39
+version: 42
 labels: []
 dependencies: []
 child_order_hints:
@@ -47,7 +47,10 @@ child_order_hints:
   - is-01m7g6xxdj3rmcb6530pej4qdn
   - is-01m7g6xxw3q44b9fp1ehr3nfq1
   - is-01m7g7k4yj24780pbdw21skwgh
+  - is-01m7gasjz3qnvc0v9dzsrt2w2p
+  - is-01m7gaskf11fbd1rbaxbefq9re
+  - is-01m7gaskxmbjp91w7y96chkkj6
 created_at: 2026-11-14T18:11:16.565Z
-updated_at: 2026-11-15T18:30:26.513Z
+updated_at: 2026-11-15T19:26:24.179Z
 ---
 Small fixes the user asked for on 2026-11-14, each tracked as a child bead and done at once.
