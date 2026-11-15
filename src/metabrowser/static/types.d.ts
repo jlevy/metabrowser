@@ -99,7 +99,13 @@ type MetabrowserPullsPanelHandle = Readonly<{
   activateAnchor(): boolean;
   /** Space on a pull request's row toggles its changed files in place. */
   toggleFiles(number: number): boolean;
-  /** Right and Left on a pull request's row: its changed files open, or close. */
+  /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
+  toggleStack(number: number): boolean;
+  /**
+   * Right and Left on a pull request's row: its changed files open, or close, and Left from
+   * a closed one goes to the stack's row it is under. On a stack's row: it opens, or Right
+   * goes to its first pull request, and Left closes it.
+   */
   expand(): boolean;
   collapse(): boolean;
   /** The keys of a changed file's row. */

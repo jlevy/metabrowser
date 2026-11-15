@@ -457,7 +457,7 @@ const PULLS = [
     head: "feature/some-long-branch",
     headLabel: "fork:feature/some-long-branch",
     base: "release/2026-11",
-    stack: "3/3 · 1/2",
+    stack: "3/3 · #900 1/2",
   },
   {
     number: 7,
@@ -478,7 +478,7 @@ const PULLS = [
     head: "stack/part",
     headLabel: "stack/part",
     base: "main",
-    stack: "12/23 · 10/14",
+    stack: "12/23 · #901 10/14",
   },
   {
     number: 4243,
@@ -488,7 +488,7 @@ const PULLS = [
     head: "x",
     headLabel: "x",
     base: "main",
-    stack: "3/3 · 1/2 · 4/7",
+    stack: "3/3 · #900 1/2 · #902 4/7",
   },
 ];
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];

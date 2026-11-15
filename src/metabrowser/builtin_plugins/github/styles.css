@@ -668,7 +668,8 @@
     5ch;
   align-items: center;
   min-height: var(--ui-row-height);
-  padding: 2px 12px 2px 10px;
+  /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
+  padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
   column-gap: 6px;
   color: var(--text);
@@ -838,7 +839,13 @@
   align-items: center;
   box-sizing: border-box;
   height: var(--ui-row-height);
-  padding: 2px 12px 2px calc(10px + var(--github-pull-file-depth, 1) * var(--tree-indent));
+  padding: 2px 12px 2px
+    calc(
+      10px +
+      var(--github-pulls-indent, 0px) +
+      var(--github-pull-file-depth, 1) *
+      var(--tree-indent)
+    );
   border-left: 2px solid transparent;
   gap: 6px;
   color: var(--text);
@@ -906,7 +913,7 @@
 }
 .github-pull-files-line {
   margin: 0;
-  padding: 2px 12px 2px calc(10px + var(--tree-indent) + 22px);
+  padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent) + 22px);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
@@ -923,7 +930,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 2px 12px 4px calc(10px + var(--tree-indent));
+  margin: 2px 12px 4px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
   padding: 4px 8px;
 }
 .github-pulls-foot {
@@ -1039,8 +1046,14 @@
   color: var(--muted);
   font-size: var(--micro-font-size);
 }
+/* A member row is a link, so its parts set their own ink, as a pull request's title does
+   (docs/design-system.md, "Stacks"): the position inherited the link's, and was the one
+   blue part of the row. */
+.github-pull-stack-member-position,
 .github-pull-stack-member-number {
   color: var(--text);
+}
+.github-pull-stack-member-number {
   white-space: nowrap;
 }
 .github-pull-stack-member-title {
@@ -1050,6 +1063,69 @@
 }
 .github-pull-stack-member[aria-current="page"] {
   background: var(--hover-bg);
+}
+
+/* ── Stacks (docs/design-system.md, "Stacks") ─────────────────────
+   One design names a stack wherever one is shown: the pull request page's stack button
+   and menu, a Pulls row's position badge, and the Pulls tab's stack groups.
+     .github-pull-stack-label     "Stack #N": on the shell's .group-heading, the label
+                                  register (gray, all caps, tracked), so the menu's
+                                  heading and a stack row's are one class and resolve to
+                                  the same --label-* tokens. Never restyled here.
+     .github-pull-stack-icon      the Layers glyph, at --icon-glyph.
+     .github-pull-stack-position  the bold position, "2/4".
+   Grouped by stack, the Pulls list's first level is a stack's row, then the rows of its
+   pull requests a tree level in, top of the stack first, then the rows in no stack. A
+   stack's row starts on the list's row inset, as every first-level row does, as a menu
+   group's heading starts on the menu's row inset rather than on its rows' labels. */
+.github-pull-stack-label {
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+/* The rows under a stack's row, and their changed files, are a tree level in. */
+.github-pulls-item[data-level="2"] {
+  --github-pulls-indent: var(--tree-indent);
+}
+/* A stack's row is one line: the chevron, the Layers icon, the label, and the count, which
+   takes the age's place at the row's end. It is a row of the tree, and hovers, focuses, and
+   takes the pointer as a pull request's row does (`.github-pulls-row`). Its label sits in
+   the title's column, cut short rather than pushing the count out of the row. */
+.github-pulls-stack-row > .github-pull-stack-icon {
+  grid-column: 2;
+  justify-self: center;
+  color: var(--muted);
+}
+.github-pulls-stack-row > .github-pull-stack-label {
+  grid-column: 3;
+  min-width: 0;
+  overflow: hidden;
+  /* The row's grid places the heading; the menu's padding is its inset in a menu. */
+  padding: 0;
+  text-overflow: ellipsis;
+}
+.github-pulls-stack-count {
+  grid-column: 4 / -1;
+  justify-self: end;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+/* The Group by stack chip holds the Layers glyph and no word, at the height a chip of
+   words has (--chip-height): with the glyph alone it was 20 px beside the filters' 24. */
+.github-pulls-group-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--chip-height);
+  padding-inline: 6px;
+}
+.github-pulls-group-toggle[aria-disabled="true"],
+.github-pulls-group-toggle[aria-disabled="true"]:hover {
+  color: var(--muted);
+  background: var(--viz-surface);
+  cursor: default;
 }
 .github-pull-loading {
   margin: 0;

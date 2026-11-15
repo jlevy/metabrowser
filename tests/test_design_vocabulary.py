@@ -1594,7 +1594,10 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     "diff/diff-summary.js": ('"diff-summary-row diff-summary-folder disclosure-toggle"',),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
-    "github/pulls-panel.js": ('"github-pulls-row disclosure-toggle collapsed"',),
+    "github/pulls-panel.js": (
+        '"github-pulls-row disclosure-toggle collapsed"',
+        '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
+    ),
     "github/pull-files-view.js": ('"github-pull-folder-row disclosure-toggle"',),
     "github/pull-page.js": (
         '"btn github-pull-stack-trigger disclosure-toggle"',
@@ -1641,7 +1644,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
-    "github/pulls-panel.js": (("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),),
+    "github/pulls-panel.js": (
+        ("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),
+        ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
+    ),
     "github/pull-files-view.js": (
         ("host.chevron()", '"github-pull-folder-row disclosure-toggle"'),
     ),
@@ -1682,6 +1688,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "diff-summary-toggle",
         "diff-summary-folder",
         "github-pulls-row",
+        "github-pulls-stack-row",
         "github-pull-folder-row",
         "btn",
         "github-pull-stack-trigger",

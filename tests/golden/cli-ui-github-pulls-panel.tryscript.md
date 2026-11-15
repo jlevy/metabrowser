@@ -547,8 +547,9 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
 `numbers` runs the production shortcut registry and plugin facade around the panel: the
-Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
-page’s numbered link, and each number asks for what its control’s click asks for.
+Open, Closed, and All chips, Group by stack, and Reload take `1` to `5` in reading
+order, before the page’s numbered link, and each number asks for what its control’s
+click asks for; Group by stack, unavailable while no stacks are known, does nothing.
 A hidden or disposed panel’s controls give up their numbers.
 
 ```console
@@ -953,12 +954,20 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Reload",
-      "5 View on GitHub"
+      "4 Group by stack",
+      "5 Reload",
+      "6 View on GitHub"
+    ],
+    "Group by stack, unavailable": [
+      {
+        "what": "press 4",
+        "handled": true,
+        "focused": "Group by stack"
+      }
     ],
     "Reload waits": [
       {
-        "what": "press 4",
+        "what": "press 5",
         "handled": true
       },
       {
@@ -969,12 +978,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Reload",
-      "5 View on GitHub"
+      "4 Group by stack",
+      "5 Reload",
+      "6 View on GitHub"
     ],
     "Reload": [
       {
-        "what": "press 4",
+        "what": "press 5",
         "handled": true,
         "asked": [
           "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
@@ -1044,7 +1054,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, View on GitHub 5",
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Group by stack 4, Reload 5, Modified within none, File type none, View on GitHub 6",
     "the Files tab": [
       "1 Modified within",
       "2 File type",
@@ -1105,7 +1115,7 @@ overwrite a new owner.
 
 ```console
 $ node tests/dom/github-pull-stacks-behavior.js
-{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3"},"shared":{"text":"3/3 · 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2"},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
+{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3"},"shared":{"text":"3/3 · #900 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2"},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
 ? 0
 ```
 

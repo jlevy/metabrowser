@@ -222,9 +222,10 @@
      */
     function focusRow() {
       const container = deps.container();
+      // A pull request's row, or a stack's while the list is grouped by stack.
       const row =
-        container?.querySelector('a.github-pulls-row[tabindex="0"]') ??
-        container?.querySelector("a.github-pulls-row");
+        container?.querySelector('.github-pulls-row[tabindex="0"]') ??
+        container?.querySelector(".github-pulls-row");
       if (!(row instanceof HTMLElement)) {
         return false;
       }
@@ -334,6 +335,8 @@
       activateAnchor: () => handle?.activateAnchor() ?? false,
       /** @param {number} number */
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
+      /** @param {number} number */
+      toggleStack: (number) => handle?.toggleStack(number) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -405,7 +408,7 @@
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
           action: "Previous pull request",
-          description: "Open the previous pull request in the list.",
+          description: "Open the previous pull request in the list, or go to a stack's row.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -420,7 +423,7 @@
         bindings: [{ key: "ArrowDown" }, { key: "j" }],
         copy: {
           action: "Next pull request",
-          description: "Open the next pull request in the list.",
+          description: "Open the next pull request in the list, or go to a stack's row.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -435,7 +438,7 @@
         bindings: [{ key: "Enter" }],
         copy: {
           action: "Open pull request",
-          description: "Open the focused pull request.",
+          description: "Open the focused pull request, or open or close the focused stack.",
           hint: "Open",
         },
         group: "pull-requests",
@@ -449,7 +452,8 @@
         bindings: [{ key: " " }],
         copy: {
           action: "Toggle changed files",
-          description: "Expand or collapse the focused pull request's changed files.",
+          description:
+            "Expand or collapse the focused pull request's changed files, or the focused stack.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -457,11 +461,15 @@
           const event = /** @type {{event?: KeyboardEvent}} */ (context).event;
           const target = event?.target;
           // Consume held Space without toggling again. The row's actual focus can
-          // outlast a catalog update that changes the tab stop.
+          // outlast a catalog update that changes the tab stop. A stack's row, while the
+          // list is grouped by stack, carries its stack's number.
           return (
             target instanceof HTMLElement &&
-            target.matches("a.github-pulls-row") &&
-            (event?.repeat === true || nav.toggleFiles(Number(target.dataset.number)))
+            target.matches(".github-pulls-row") &&
+            (event?.repeat === true ||
+              (target.dataset.stack === undefined
+                ? nav.toggleFiles(Number(target.dataset.number))
+                : nav.toggleStack(Number(target.dataset.stack))))
           );
         },
         id: "pulls.toggle-files",
@@ -474,7 +482,8 @@
         bindings: [{ key: "ArrowRight" }],
         copy: {
           action: "Show changed files",
-          description: "Show the focused pull request's changed files, or go to the first.",
+          description:
+            "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -488,7 +497,8 @@
         bindings: [{ key: "ArrowLeft" }],
         copy: {
           action: "Hide changed files",
-          description: "Hide the focused pull request's changed files.",
+          description:
+            "Hide the focused pull request's changed files, or go to its stack; on a stack, close it.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -601,7 +611,7 @@
   const scopeOf = (target) =>
     !(target instanceof Element)
       ? null
-      : target.closest("a.github-pulls-row") !== null
+      : target.closest(".github-pulls-row") !== null
         ? KEY_SCOPE
         : target.closest(".github-pull-file-row, .github-pull-folder-row") !== null
           ? FILE_KEY_SCOPE

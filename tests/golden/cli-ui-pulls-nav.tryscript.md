@@ -582,32 +582,32 @@ $ node tests/dom/pulls-nav-session.js
       {
         "keys": "Up arrow or K",
         "action": "Previous pull request",
-        "description": "Open the previous pull request in the list."
+        "description": "Open the previous pull request in the list, or go to a stack's row."
       },
       {
         "keys": "Down arrow or J",
         "action": "Next pull request",
-        "description": "Open the next pull request in the list."
+        "description": "Open the next pull request in the list, or go to a stack's row."
       },
       {
         "keys": "Enter",
         "action": "Open pull request",
-        "description": "Open the focused pull request."
+        "description": "Open the focused pull request, or open or close the focused stack."
       },
       {
         "keys": "Space",
         "action": "Toggle changed files",
-        "description": "Expand or collapse the focused pull request's changed files."
+        "description": "Expand or collapse the focused pull request's changed files, or the focused stack."
       },
       {
         "keys": "Right arrow",
         "action": "Show changed files",
-        "description": "Show the focused pull request's changed files, or go to the first."
+        "description": "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests."
       },
       {
         "keys": "Left arrow",
         "action": "Hide changed files",
-        "description": "Hide the focused pull request's changed files."
+        "description": "Hide the focused pull request's changed files, or go to its stack; on a stack, close it."
       },
       {
         "keys": "Up arrow or K",

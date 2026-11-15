@@ -135,5 +135,57 @@
       "complete": true,
       "stacks": []
     }
+  },
+  "shared": {
+    "status": 200,
+    "etag": "\"pulls-6\"",
+    "body": {
+      "state": "current",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "reader": "gh:octo-reader",
+      "fetched_at": "2026-09-17T12:20:04Z",
+      "fresh_for_s": 300.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "succeeded",
+        "message": null,
+        "reset_at": null,
+        "at": "2026-09-17T12:20:04Z"
+      },
+      "complete": true,
+      "stacks": [
+        {
+          "number": 286,
+          "base_ref": "main",
+          "open": true,
+          "pulls": [
+            6,
+            7,
+            8
+          ],
+          "titles": [
+            "Stack change 6",
+            "Stack change 7",
+            "Stack change 8"
+          ]
+        },
+        {
+          "number": 290,
+          "base_ref": "main",
+          "open": true,
+          "pulls": [
+            8,
+            9,
+            10
+          ],
+          "titles": [
+            "Stack change 8",
+            "Stack change 9",
+            "Stack change 10"
+          ]
+        }
+      ]
+    }
   }
 }

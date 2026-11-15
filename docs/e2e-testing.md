@@ -306,7 +306,8 @@ Strict mode is off on a developer machine, which can add these:
   and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
   the Folder Overview’s labels start at several window widths; the layout checks in
   `tests/test_github_pull_header_chrome.py`, `tests/test_github_pull_text_chrome.py`,
-  `tests/test_nav_metadata_chrome.py`, and `tests/test_staged_fonts_chrome.py`;
+  `tests/test_github_pulls_stacks_chrome.py`, `tests/test_nav_metadata_chrome.py`, and
+  `tests/test_staged_fonts_chrome.py`;
   `tests/test_prose_faces_chrome.py`, which reads the face documents and chrome prose
   are drawn in under each reading font and font set; and
   `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer Chrome kept

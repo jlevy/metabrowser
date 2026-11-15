@@ -1599,7 +1599,8 @@ async function numberStory(panel) {
     }
   }
   /** A control's own label: its first text, before a tally or a badge. */
-  const name = (node) => node.childNodes[0]?.textContent.trim();
+  // A control's words, or, for one that is a glyph, its accessible name.
+  const name = (node) => node.childNodes[0]?.textContent.trim() || node.getAttribute("aria-label");
   const element = (tag, label) => {
     const made = new NumberedElement(tag);
     made.append(label);
@@ -1762,6 +1763,9 @@ async function numberStory(panel) {
     const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
     const reload = filters.childNodes.at(-1);
     assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
+    const grouping = filters.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-group-toggle"),
+    );
     const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
     /** What one act asked of the server and the list, what else ran, and where it moved focus. */
     async function acted(what, act) {
@@ -1830,18 +1834,28 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
-      "the chips and Reload take 1 to 4 in reading order, before the page's link",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Group by stack,5 Reload,6 View on GitHub",
+      "the chips, Group by stack, and Reload take 1 to 5 in reading order, before the page's link",
+    );
+    // While the list and its stacks are unknown, Group by stack keeps its number and, like
+    // its click, does nothing; its description says why.
+    story["Group by stack, unavailable"] = [await press("4")];
+    assert(
+      grouping.getAttribute("aria-disabled") === "true" &&
+        grouping.getAttribute("aria-pressed") === "false" &&
+        grouping.getAttribute("aria-description")?.startsWith("Group by stack: ") &&
+        story["Group by stack, unavailable"][0].asked === undefined,
+      "an unavailable Group by stack's number changes nothing",
     );
     assert(
       reload.getAttribute("aria-disabled") === "true",
       "positive control: Reload waits while the list loads",
     );
-    story["Reload waits"] = [await press("4"), await clickReload()];
+    story["Reload waits"] = [await press("5"), await clickReload()];
     await answer("/api/plugin/github/pulls", recorded.more_done);
     assert(reload.getAttribute("aria-disabled") === "false", "the settled Reload is available");
     story["the Pulls tab, settled"] = numbers();
-    const byKey = await press("4");
+    const byKey = await press("5");
     await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
     const byClick = await clickReload();
     story.Reload = [byKey, byClick];
@@ -1890,7 +1904,14 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
+    story["the keycaps while Shift is held"] = [
+      ...chips,
+      grouping,
+      reload,
+      recency,
+      types,
+      onGitHub,
+    ]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;
@@ -1906,7 +1927,7 @@ async function numberStory(panel) {
     );
     story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
     show("pulls");
-    assert(numbers().length === 5, "the Pulls tab shows its numbers again");
+    assert(numbers().length === 6, "the Pulls tab shows its numbers again");
     // Disposal ends the panel's numbers, and the page's link moves up to 1. Put back in the
     // page, the disposed panel's controls still hold none: their numbers were let go.
     mounted.dispose();
@@ -1914,7 +1935,7 @@ async function numberStory(panel) {
     pullsTab.append(filters);
     assert(
       numbers().join() === "1 View on GitHub",
-      "a disposed panel's chips and Reload hold no number",
+      "a disposed panel's chips, Group by stack, and Reload hold no number",
     );
     filters.remove();
     story["after disposal"] = [await press("1"), await press("2")];

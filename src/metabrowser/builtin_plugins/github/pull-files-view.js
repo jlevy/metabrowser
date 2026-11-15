@@ -126,6 +126,12 @@ export function mountFileTree(host) {
     return rowHeight;
   }
 
+  /** The level of the pull request's row the tree hangs from. */
+  function ownerLevel() {
+    const level = Number(owner?.getAttribute("aria-level"));
+    return Number.isInteger(level) && level > 0 ? level : 1;
+  }
+
   /** @param {TreeRow} row */
   function contentOf(row) {
     return row.kind === "folder"
@@ -225,7 +231,9 @@ export function mountFileTree(host) {
     element.style.top = `${at * heightOfRow()}px`;
     element.style.setProperty("--github-pull-file-depth", String(row.depth + 1));
     element.setAttribute("tabindex", row.id === controller.anchor() ? "0" : "-1");
-    element.setAttribute("aria-level", String(row.depth + 2));
+    // A level under the pull request's row, which is itself a level under a stack's row
+    // while the list is grouped by stack (pulls-panel.js).
+    element.setAttribute("aria-level", String(row.depth + 1 + ownerLevel()));
     element.setAttribute("aria-posinset", String(row.position));
     element.setAttribute("aria-setsize", String(row.setSize));
     if (row.kind === "folder") {

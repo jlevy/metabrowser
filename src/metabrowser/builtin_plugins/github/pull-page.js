@@ -35,7 +35,16 @@
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
 import { createComparisonPrefetch } from "./comparison-prefetch.js";
-import { createStackIndex, memberRoute, stackMembership, watchStacks } from "./pull-stacks.js";
+import {
+  createStackIndex,
+  memberRoute,
+  stackLabel,
+  stackMembership,
+  stackMenuOrder,
+  stackPosition,
+  stackPositionHint,
+  watchStacks,
+} from "./pull-stacks.js";
 import {
   displayState,
   listedState,
@@ -3112,7 +3121,10 @@ function outside(mb, href, base, children, className = "") {
 let stackMenuSerial = 0;
 
 /**
- * The native stack's compact trigger and lazy, keyboard-navigable member menu.
+ * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
+ * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
+ * position badge, the menu's heading is the stack's label, and its members come in
+ * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
  * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, onOpen(): void}} deps
@@ -3122,7 +3134,7 @@ export function createStackMenu(initial, number, deps) {
   let currentTitle = deps.currentTitle;
   const position = stack.pulls.indexOf(number);
   const count = h("span", { class: "github-pull-stack-position" }, [
-    `${position + 1}/${stack.pulls.length}`,
+    stackPosition(position, stack.pulls.length),
   ]);
   const menuId = `github-pull-stack-menu-${++stackMenuSerial}`;
   const root = /** @type {HTMLDetailsElement} */ (
@@ -3132,7 +3144,9 @@ export function createStackMenu(initial, number, deps) {
     "summary",
     {
       class: "btn github-pull-stack-trigger disclosure-toggle",
-      "aria-label": `Navigate Stack #${stack.number}, position ${position + 1} of ${stack.pulls.length}`,
+      "aria-label": `Navigate ${stackPositionHint(stack, position)}`,
+      // The tip a Pulls row's badge has: the stack and the place in it.
+      "data-tip-text": stackPositionHint(stack, position),
       "aria-haspopup": "menu",
       "aria-controls": menuId,
       "aria-expanded": "false",
@@ -3148,7 +3162,7 @@ export function createStackMenu(initial, number, deps) {
     class: "menu github-pull-stack-menu",
     id: menuId,
     role: "menu",
-    "aria-label": `Stack #${stack.number}`,
+    "aria-label": stackLabel(stack.number),
   });
   root.append(trigger);
   const listening = new AbortController();
@@ -3158,9 +3172,12 @@ export function createStackMenu(initial, number, deps) {
   /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
   const rows = new Map();
   // The members are one named group, in the host's menu group pattern
-  // (docs/design-system.md, "Groups in a Menu").
+  // (docs/design-system.md, "Groups in a Menu"), headed by the stack's label, which a
+  // Pulls stack group's row is headed by too ("Stacks").
   const labelId = `${menuId}-heading`;
-  const label = h("div", { class: "group-heading", id: labelId }, [`Stack #${stack.number}`]);
+  const label = h("div", { class: "group-heading github-pull-stack-label", id: labelId }, [
+    stackLabel(stack.number),
+  ]);
   const group = h("div", { class: "menu-group", role: "group", "aria-labelledby": labelId });
   let populated = false;
 
@@ -3171,7 +3188,7 @@ export function createStackMenu(initial, number, deps) {
       if (row) {
         row.title.textContent =
           stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
-        row.position.textContent = `${at + 1}/${stack.pulls.length}`;
+        row.position.textContent = stackPosition(at, stack.pulls.length);
         row.number.textContent = `#${target}`;
       }
     }
@@ -3192,8 +3209,7 @@ export function createStackMenu(initial, number, deps) {
       }
     }
     links.length = 0;
-    for (let at = stack.pulls.length - 1; at >= 0; at -= 1) {
-      const target = stack.pulls[at];
+    for (const target of stackMenuOrder(stack)) {
       let row = rows.get(target);
       if (!row) {
         const link = deps.link(target);
@@ -3381,12 +3397,10 @@ export function createStackMenu(initial, number, deps) {
         stack.pulls.some((target, index) => target !== next.pulls[index]);
       stack = next;
       currentTitle = title;
-      const at = stack.pulls.indexOf(number) + 1;
-      count.textContent = `${at}/${stack.pulls.length}`;
-      trigger.setAttribute(
-        "aria-label",
-        `Navigate Stack #${stack.number}, position ${at} of ${stack.pulls.length}`,
-      );
+      const at = stack.pulls.indexOf(number);
+      count.textContent = stackPosition(at, stack.pulls.length);
+      trigger.setAttribute("aria-label", `Navigate ${stackPositionHint(stack, at)}`);
+      trigger.setAttribute("data-tip-text", stackPositionHint(stack, at));
       if (populated && reordered) {
         populate(true);
       } else {
