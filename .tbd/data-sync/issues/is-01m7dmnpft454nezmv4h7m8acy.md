@@ -3,9 +3,9 @@ type: is
 id: is-01m7dmnpft454nezmv4h7m8acy
 title: "Rendered Markdown: chrome always sans, documents serif unless the sans preference is on"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-14T18:21:18.188Z
-updated_at: 2026-11-15T07:08:26.484Z
+updated_at: 2026-11-15T07:09:16.427Z
 started_at: 2026-11-14T18:21:23.995Z
+closed_at: 2026-11-15T07:09:16.426Z
+close_reason: "Merged in #438 (03a79f0c) at 26928734: one .chrome-prose class for chrome prose; documents keep the reading font; review A's A1-A4 and docs fixed, A5 deferred to mb-o11s; all 9 CI checks green."
+resolution: null
+duplicate_of: null
 ---
 The user (2026-11-14): "Let's make sure we have a clear system about when we use serif and sans-serif for rendered markdown. chrome and PR descriptions etc are always sans. but document rendering is by default serif, unless we have preferences settings set to sans serif, and then they are sans serif too. for documents, when we render them in rendered view, they should use document rendering, so be serif unless sans is enabled in preferences."
 
