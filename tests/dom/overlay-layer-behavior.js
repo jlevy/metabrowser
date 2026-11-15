@@ -273,6 +273,20 @@ check("forward Tab wraps", document.activeElement === modal.closeButton);
 modal.closeButton.focus();
 modal.dialog.dispatchEvent(event("keydown", { key: "Tab", shiftKey: true }));
 check("reverse Tab wraps", document.activeElement === extraButton);
+// Tab held with Command or Control is the browser's and the platform's, as every
+// modified key is; Option-Tab still moves focus in Safari, so the trap keeps it.
+for (const modifier of ["metaKey", "ctrlKey"]) {
+  extraButton.focus();
+  const chord = event("keydown", { key: "Tab", [modifier]: true });
+  modal.dialog.dispatchEvent(chord);
+  check(`${modifier} Tab is left to the browser`, !chord.defaultPrevented);
+  check(`${modifier} Tab moves no focus`, document.activeElement === extraButton);
+}
+extraButton.focus();
+const optionTab = event("keydown", { key: "Tab", altKey: true });
+modal.dialog.dispatchEvent(optionTab);
+check("Option-Tab stays in the dialog", optionTab.defaultPrevented);
+check("Option-Tab wraps", document.activeElement === modal.closeButton);
 
 modal.element.dispatchEvent(event("pointerdown", { target: modal.element }));
 check("scrim invokes close descriptor", closeCalls === 1 && !modal.isOpen());

@@ -490,7 +490,15 @@
       const ev = /** @type {KeyboardEvent} */ (event);
       const key = ev.key;
       const target = /** @type {Element | null} */ (ev.target);
-      if (!target || typeof target.closest !== "function") {
+      // A key held with Command, Control, or Option is the browser's: Command-Left and
+      // Alt-Left go back, and Command-Up scrolls to the top.
+      if (
+        !target ||
+        typeof target.closest !== "function" ||
+        ev.altKey ||
+        ev.ctrlKey ||
+        ev.metaKey
+      ) {
         return;
       }
       // Inside an open dropdown, Up/Down walk the rows. The menu is a
@@ -565,7 +573,8 @@
     // traversal stays scoped to the bar and nothing fires twice.
     /** @param {Event} event */
     function onDocumentEscape(event) {
-      if (/** @type {KeyboardEvent} */ (event).key !== "Escape") {
+      const ev = /** @type {KeyboardEvent} */ (event);
+      if (ev.key !== "Escape" || ev.altKey || ev.ctrlKey || ev.metaKey) {
         return;
       }
       const openKey = openMenuKey();
