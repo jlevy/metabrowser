@@ -153,11 +153,10 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   A failed refresh leaves the page as it was and reports the failure in its status.
 - **Large repositories.** A full clone is slower than a blobless one.
   The earlier measurement (mypy: 5.8–5.9 s to serve the default tree blobless, 8.8–17.8
-  s full;
-  [architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md)) is
-  the baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is
-  checked first, and a clone that cannot finish inside the acquisition deadline is
-  refused with a typed state rather than killed partway.
+  s full; [architecture](../../../../explorations/repository-cache/README.md)) is the
+  baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is checked
+  first, and a clone that cannot finish inside the acquisition deadline is refused with
+  a typed state rather than killed partway.
   The first clone says on stderr where it goes, then reports Git’s own progress, read as
   numbers and never passed through as text, with the elapsed time (`mb-4cg7`).
 
@@ -182,7 +181,7 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   A control beside the short commit copies the full one.
   `/api/source/status` reports the same as `name`, `origin`, and `location`, and
   `location` is the one field of any route’s answer that names a path in the cache;
-  [the architecture document](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)
+  [the architecture document](../../architecture/arch-mirror-acquisition-and-refresh.md#what-a-mirrors-page-is-called)
   holds the rule and its bounds.
 
 ### Background refresh

@@ -241,7 +241,7 @@ changes to source ranges.
 - [Source Sessions and Pins](arch-source-sessions-and-pins.md)
 - [General diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md),
   the design history of this pipeline
-- [File patch formats](../research/research-2026-08-19-file-patch-formats.md)
+- [File patch formats](../research/archive/research-2026-08-19-file-patch-formats.md)
 - [Rendering large content](../../large-content-rendering.md)
 
 <!-- This document follows common-doc-guidelines.md.

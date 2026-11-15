@@ -4,8 +4,6 @@ The Metabrowser app is an alpha preview built from source;
 [Release Status](installation.md#release-status) says what that means today, and
 [Installation](installation.md#the-macos-app) says how to build it.
 
-![The Metabrowser app showing a folder in its own window](../images/screenshot-macos-app.jpg)
-
 The app is a native shell over `metab`. Everything inside a window is the page `metab`
 serves, the same page a browser shows.
 What the app adds is what a browser tab cannot give:

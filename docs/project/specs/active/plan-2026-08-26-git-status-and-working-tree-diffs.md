@@ -1252,7 +1252,7 @@ directory placeholders or hide untracked files while claiming complete status.
 - [Unbounded logical Git history](../done/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [Repository library and Git URL opening](plan-2026-08-11-open-repo-from-git-url.md)
 - [File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md)
-- [Diff sources, context, and anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
+- [Diff sources, context, and anchoring](../../architecture/arch-diff-pipeline.md)
 - [Views, models, and routes](../../architecture/arch-views-models-routes.md)
 - [Design system](../../../design-system.md)
 - [Git status documentation](https://git-scm.com/docs/git-status)

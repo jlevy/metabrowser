@@ -12,9 +12,8 @@ The parity mechanism and the rule it rests on stand.
 Three parts below record the earlier design: the cache module table in Part 2, the
 GitHub rows of the golden table, and the sequence under “What lands for the v0.12.0
 PR-first slice”. The modules as built are in
-[Implementation Seams](../../architecture/arch-repository-sources-and-provider-mirrors.md#implementation-seams),
-and the goldens as built are in the
-[parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
+[Implementation Seams](../../../architecture.md#layers), and the goldens as built are in
+the [parity table](../../architecture/arch-parity-registry.md).
 
 **Status:** Done. The parity foundation shipped in v0.10.0, and the v0.12.0
 implementation, [stack #218](https://github.com/jlevy/metabrowser/stack/218), shipped in
@@ -381,7 +380,7 @@ The session/content seams live outside the cache package:
 
 The exact types, invariants, and phase ownership live in the
 [repository plan](../active/plan-2026-08-11-open-repo-from-git-url.md) and
-[repository-source architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+[repository-source architecture](../../architecture/arch-repository-cache.md).
 This map deliberately links to those authorities instead of duplicating signatures that
 can drift.
 

@@ -4,7 +4,7 @@
 contract freeze. The decisions are recorded where the implementation reads them: the
 [repository-library plan](../../docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions)
 and
-[Repository Sources and Provider Mirrors](../../docs/project/architecture/arch-repository-sources-and-provider-mirrors.md#measured-decisions).
+[Repository Sources and Provider Mirrors](../../docs/project/architecture/arch-repository-cache.md#measured-choices).
 The machine-checkable contracts are in `tests/fixtures/repository-cache/`, pinned by
 `tests/test_repository_cache_contract_fixtures.py`.
 

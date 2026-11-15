@@ -568,7 +568,7 @@ Two Phase 2 optimizations remain measurement-gated:
 
 - [Pluggable inventory engine](plan-2026-08-23-pluggable-inventory-engine.md)
 - [fdu and Metabrowser inventory-engine alignment](../../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
-- [State and delivery](../../architecture/arch-state-and-delivery.md)
+- [State and delivery](../../architecture/arch-live-delivery.md)
 - [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md)
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md)
 - [Metabrowser performance loop](../../../../explorations/performance-loop/README.md)

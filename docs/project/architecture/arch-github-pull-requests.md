@@ -7,7 +7,7 @@ record, the Conversation timeline, native stack metadata, revision snapshots, re
 Markdown diffs, background prefetch, and pull requests beside a served checkout.
 Not built: opening a timeline commit in Metabrowser rather than on GitHub, and hosted
 releases and other providers, which the
-[GitHub provider plan](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
+[GitHub provider plan](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md)
 leaves to later work.
 
 GitHub support is the built-in `github` plugin under `builtin_plugins/github/`. It keeps
@@ -19,7 +19,7 @@ The store, its layout, and its locks are in
 [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md); the comparison
 service the Changes tab uses is in [Diff Pipeline](arch-diff-pipeline.md).
 The designs come from the
-[Pulls tab plan](../specs/active/plan-2026-10-01-github-pulls-tab.md) and the
+[Pulls tab plan](../specs/done/plan-2026-10-01-github-pulls-tab.md) and the
 [pull-request review plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md);
 what a reader does with them is in
 [Reviewing Pull Requests](../../reviewing-pull-requests.md).

@@ -107,7 +107,8 @@ this repository’s structural facts and standing answers.
   it from measured cost, not from convenience.
   A script in the shell’s eager path is fetched, parsed, and evaluated whether or not
   anything uses it, so a large or narrowly used library does not belong there.
-  See [asset loading tiers](docs/development.md#asset-loading-tiers).
+  See
+  [asset loading tiers](docs/project/architecture/arch-browser-shell.md#asset-loading-tiers).
 
 ## Documentation and Public Hygiene
 
@@ -140,8 +141,9 @@ transient location**: `/tmp`, `$TMPDIR`, or an agent’s session scratchpad unde
 `/private/tmp`. A restart empties them; on 2026-11-14 one took a measurement campaign’s
 lock, scripts, and the protocols its records cite by hash.
 A transient location is only for output that rerunning a command recreates.
-[Durable Storage](docs/development.md#durable-storage) says where each kind of file and
-lock belongs instead, and `tests/test_experiment_storage.py` checks experiment records.
+[Durable Storage](explorations/performance-loop/README.md#durable-storage) says where
+each kind of file and lock belongs instead, and `tests/test_experiment_storage.py`
+checks experiment records.
 
 ## Changing This Guidance
 

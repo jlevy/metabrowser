@@ -121,7 +121,7 @@ anchoring, availability states instead of ambiguous absence, machine-validatable
 structure, and apply semantics with an oracle.
 The full survey, including agent edit formats and the ingest/emit compatibility matrix,
 is in the
-[file patch formats research](../../research/research-2026-08-19-file-patch-formats.md).
+[file patch formats research](../../research/archive/research-2026-08-19-file-patch-formats.md).
 
 ## Conformance Corpus
 

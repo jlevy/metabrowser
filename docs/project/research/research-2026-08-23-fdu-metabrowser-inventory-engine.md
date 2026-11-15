@@ -891,7 +891,7 @@ interface findings follow from current code and documented contracts.
 
 ## References
 
-- [State and delivery](../architecture/arch-state-and-delivery.md)
+- [State and delivery](../architecture/arch-live-delivery.md)
 - [File Rollup Format](../architecture/file-rollup-format/file-rollup-format.md)
 - [Views, models, and routes](../architecture/arch-views-models-routes.md)
 - [End-to-end load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)

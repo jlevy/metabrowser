@@ -214,7 +214,7 @@ one path, and two rows with one virtual path would open the same thing.
 - **Addresses:** a child extends its container’s address.
   `/view/changes.patch` is the overview and `/view/changes.patch/src/app.py` is one
   file’s diff, the same shape as `/commit/<rev>/src/app.py`; see
-  [Browser URL Grammar](../../architecture.md#browser-url-grammar).
+  [Browser URL Grammar](arch-views-models-routes.md#browser-url-grammar).
 - **Tree mechanics:** roving focus, `aria-expanded`, lazy pagination, filtering, and
   selection-follows-focus apply to every container.
   Filters filter inner entries like any rows.
@@ -234,7 +234,7 @@ proposed: any folder-like entry is a possible root.
 No plugin can register a router, an address space, a URL reducer, a provider adapter, a
 route-backed resource kind, or a navigation panel.
 The
-[thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md#retired-from-earlier-plans)
+[thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md#retired-from-earlier-plans)
 set those SDKs aside for v0.12 in favor of the existing reducer hook and plugin routes.
 The Commits and Pulls tabs register through `window.MetabrowserShell`, an internal seam
 for core modules that is not part of the SDK.

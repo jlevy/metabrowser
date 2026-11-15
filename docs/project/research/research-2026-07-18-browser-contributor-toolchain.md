@@ -208,7 +208,7 @@ conveniences or rejected designs; none may become an installed-product requireme
 ### Asset Loading Tiers
 
 Bundling does not erase the eager, prefetched, and on-demand tiers in
-[development](../../development.md#asset-loading-tiers).
+[development](../architecture/arch-browser-shell.md#asset-loading-tiers).
 A generated chunk is still a browser cost.
 The build manifest must preserve enough ownership to show which route or feature loads
 each emitted asset and why.

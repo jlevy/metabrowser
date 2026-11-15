@@ -356,12 +356,12 @@ Still-open ingest gaps, confirmed by probe or by reading the parser against the 
   discarded; the file is honestly `binary`, but a `--binary` patch that fully contains
   the new content cannot hydrate an apply.
 - **`index` lines are ignored entirely.** Both consequences matter: blob oids that
-  [diff-sources-and-anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
-  plans to use for the path-6 oid precheck are discarded, and the mode carried on the
-  `index` line when modes don’t change is lost, so unchanged-mode executables parse as
-  `100644`. Note the schema’s `contentRef.oid` pattern requires 40–64 hex chars, so
-  abbreviated `index` oids cannot currently be stored at all — capturing them is a
-  schema decision, not just a parser fix.
+  [diff-sources-and-anchoring](../../architecture/arch-diff-pipeline.md) plans to use
+  for the path-6 oid precheck are discarded, and the mode carried on the `index` line
+  when modes don’t change is lost, so unchanged-mode executables parse as `100644`. Note
+  the schema’s `contentRef.oid` pattern requires 40–64 hex chars, so abbreviated `index`
+  oids cannot currently be stored at all — capturing them is a schema decision, not just
+  a parser fix.
 - **`git format-patch` mbox framing.** The `-- ` signature line after the final hunk
   breaks hunk-count validation and degrades the last file to `unsupported`; From/
   Subject/message metadata and the `---` commentary/diffstat region are not modeled.
@@ -380,7 +380,7 @@ Still-open ingest gaps, confirmed by probe or by reading the parser against the 
 1. **Git’s extended unified format is the convergence point.** GitHub serves it,
    Mercurial documents plain unified as lossy and adopts it, jj emits it, and every
    pipeline in
-   [diff-sources-and-anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
+   [diff-sources-and-anchoring](../../architecture/arch-diff-pipeline.md#where-documents-come-from)
    already flows through it.
    Compatibility means fidelity to this one dialect, in both directions.
 2. **Classic patch text has no identity; git smuggles it in `index` lines.** Blob oids
@@ -580,8 +580,8 @@ Project sources:
 
 - [File Diff Format v1 contract](../../architecture/file-diff-format/file-diff-format.md)
   (repo doc)
-- [Diff sources, context, and anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
-  (repo doc)
+- [Diff sources, context, and anchoring](../../architecture/arch-diff-pipeline.md) (repo
+  doc)
 - [file-diff.schema.json](../../../../src/metabrowser/data/file-diff-format/file-diff.schema.json)
   (schema)
 - [patch_file.py parser](../../../../src/metabrowser/diff/adapters/patch_file.py),

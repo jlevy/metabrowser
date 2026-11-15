@@ -186,7 +186,8 @@ That trade is recorded here and beside the size cap.
   — the research behind this plan
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md) — the loading tier
   this depends on
-- [Asset loading tiers](../../../development.md#asset-loading-tiers) — the policy
+- [Asset loading tiers](../../architecture/arch-browser-shell.md#asset-loading-tiers) —
+  the policy
 - [Rendering large content](../../../large-content-rendering.md) — the cost model
 - [Mermaid](https://github.com/mermaid-js/mermaid) — upstream project, MIT licensed
 

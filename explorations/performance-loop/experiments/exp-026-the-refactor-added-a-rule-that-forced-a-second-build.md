@@ -149,7 +149,7 @@ the change contract and not a local optimization.
 The rule this round generalizes to is
 [the engine performance model](../../../docs/engine-performance-model.md), and the
 numbers it produced are kept in
-[Python inventory cost](../../../docs/project/architecture/arch-python-inventory-cost.md).
+[Python inventory cost](../../../docs/project/architecture/arch-inventory-engine-python.md#unit-costs).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -676,9 +676,9 @@ check adds `server.PIN_STARTUP_SCRIPTS` to the folder’s scripts and
 `tests/test_serve_pin.py` holds a real pin’s shell to that list.
 
 What would bring the pull-request shell back under the ceiling is recorded in
-[Asset Loading Tiers](../../../docs/development.md#justifying-a-tier): the rest of the
-SDK’s view-phase surface is 5,957 compressed bytes of `plugin-sdk.js` that only a view’s
-renderer calls.
+[Asset Loading Tiers](../../../docs/project/architecture/arch-browser-shell.md#justifying-a-tier):
+the rest of the SDK’s view-phase surface is 5,957 compressed bytes of `plugin-sdk.js`
+that only a view’s renderer calls.
 
 Raising the ceiling was the other way to pass, and would have needed what the budget
 file asks of any ceiling, a measurement showing the headroom is still real.

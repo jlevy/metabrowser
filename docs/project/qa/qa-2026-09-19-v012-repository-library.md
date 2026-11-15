@@ -21,7 +21,7 @@ The [command-line guide](../../command-line.md) is the other half: what each mod
 for. Where the two disagree, believe `--help`. Test layering lives in
 [end-to-end testing](../../e2e-testing.md).
 Acquisition, GitPath wires, and the one-subject rule live in
-[repository sources and provider mirrors](../architecture/arch-repository-sources-and-provider-mirrors.md).
+[repository sources and provider mirrors](../architecture/arch-mirror-acquisition-and-refresh.md).
 The HTML-trust invariant lives in
 [full-page HTML rendering and an explicit trust model](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
 and [SECURITY.md](../../../SECURITY.md).

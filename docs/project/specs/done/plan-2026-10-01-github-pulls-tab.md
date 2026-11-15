@@ -436,7 +436,7 @@ Three facts shape the design:
   plugin may not reach `window.MetabrowserShell` (AGENTS.md, Browser and Plugin
   Boundary).
 - The thin-mirror plan retired the public `registerNavPanel` declaration for the alpha;
-  [Views, Models, and Routes](../../architecture/arch-views-models-routes.md#planned-plugin-registration-surfaces)
+  [Views, Models, and Routes](../../architecture/arch-plugin-system.md#registration-surfaces-not-built)
   keeps its row as background.
 
 ### One Pull Request per Server
@@ -980,9 +980,10 @@ No spinner appears before the shared loading-state delay.
 ### Changed Files in a Row
 
 A row is a container in the sense of
-[Nav Containers](../../architecture/arch-nav-containers.md): item-like, because
-selecting it opens the pull request, and folder-like, because it expands to its changed
-files. That document’s Collection panels section promised this.
+[Nav Containers](../../architecture/arch-plugin-system.md#navigation-containers):
+item-like, because selecting it opens the pull request, and folder-like, because it
+expands to its changed files.
+That document’s Collection panels section promised this.
 It predates the thin mirror, so its `ChangeRequestIndex` wording is corrected in step 4.
 
 **What a reader sees.** Expanding a row shows the changed files as a tree, with folders
@@ -1096,7 +1097,7 @@ Before each prefix publication and the final list, the worker checks that the ac
 account still matches the list’s reader.
 An observed account change stops publication and marks previously checked prefixes
 stale; the
-[changed-file contract](../../architecture/arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request)
+[changed-file contract](../../architecture/arch-github-pull-requests.md#changed-files)
 describes the ownership and cache behavior.
 While it fills, the panel says how much it has: N of M files where the record gives M
 (`changed_files`), and otherwise N files with the page count from the `Link` header,
@@ -1137,7 +1138,7 @@ Pointer or focus prefetch reads the cached list only.
 
 **Opening a file.** A file row is a link to `/pull/<n>/files/<path>`, extending the
 container’s address the way `/commit/<rev>/<path>` does
-([Browser URL Grammar](../../../architecture.md#browser-url-grammar)).
+([Browser URL Grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar)).
 
 - The page opens on Files changed, narrowed to that file as a patch’s child is, with
   Back and Forward through the page host.

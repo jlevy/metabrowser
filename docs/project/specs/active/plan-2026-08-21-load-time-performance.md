@@ -313,7 +313,7 @@ host.
 
 Any change to `/api/tree`’s progressive contract or to `INVENTORY_MAX_FILES` is
 observable, so it lands in `CHANGELOG.md` and in
-[state and delivery](../../architecture/arch-state-and-delivery.md).
+[state and delivery](../../architecture/arch-live-delivery.md#pulled-aggregates).
 
 ## Implementation Plan
 
@@ -967,10 +967,10 @@ comparison says so before the change ships.
   follows
 - [Benchmarking scan and serve](../../../development.md#benchmarking-scan-and-serve) —
   the existing harness and its discipline
-- [Asset loading tiers](../../../development.md#asset-loading-tiers) — the policy Phase
-  1 implements
-- [State and delivery](../../architecture/arch-state-and-delivery.md) — what the
-  inventory holds and how it reaches the browser
+- [Asset loading tiers](../../architecture/arch-browser-shell.md#asset-loading-tiers) —
+  the policy Phase 1 implements
+- [State and delivery](../../architecture/arch-live-delivery.md) — what the inventory
+  holds and how it reaches the browser
 - [Mermaid diagrams](plan-2026-08-21-mermaid-diagram-rendering.md) — the first on-demand
   consumer, which depends on Phase 1
 

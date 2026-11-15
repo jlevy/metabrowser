@@ -5,8 +5,8 @@ migration, source and store identity, the SoftSchema record contracts, owner-onl
 storage, the lock hierarchy and side locks, the runtime probe, the startup sweep of
 staging, and the read-only `/api/cache/` routes.
 Planned: size accounting and a purge command for repository stores, which the
-[thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md) defers until
-after the alpha.
+[thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md) defers until after
+the alpha.
 
 The repository cache holds what Metabrowser keeps about a Git source it browses from a
 URL: a worktree-free Git store for each repository, the records that name it, and the

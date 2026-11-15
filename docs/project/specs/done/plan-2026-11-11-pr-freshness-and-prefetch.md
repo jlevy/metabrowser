@@ -378,7 +378,7 @@ Filled in as each budget lands, beside its constant.
 - [Watching pull requests](plan-2026-11-06-pr-watch-and-reconnect.md)
 - [The Pulls tab](plan-2026-10-01-github-pulls-tab.md)
 - [Review mirror and checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
-- [Repository sources and provider mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+- [Repository sources and provider mirrors](../../architecture/arch-github-pull-requests.md)
 - [Reviewing pull requests](../../../reviewing-pull-requests.md)
 - [GitHub REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
 

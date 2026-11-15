@@ -47,7 +47,7 @@ Overview aligns its panel stack with the same prose gutter and keeps its nested 
 suppressed.
 
 Verify with the
-[reading layout playbook](../../../e2e-testing.md#markdown-reading-layout).
+[reading layout playbook](../../qa/qa-2026-11-14-manual-browser-checks.md#markdown-reading-layout).
 
 ## Public Contracts
 
@@ -91,11 +91,12 @@ Primary-root links retain `/view/<path>`. Mounted targets use `/view/@/<root>/<p
 Identity stays in the path, so a mounted root is a path sigil rather than a parameter.
 
 Presentation uses the reserved query namespace defined in the
-[browser URL grammar](../../../architecture.md#browser-url-grammar): Metabrowser owns
-keys beginning with `_mb_`, and every other key remains the document’s and is passed
-through untouched. Source locations therefore use `_mb_view=source` and
-`_mb_lines=<start>-<end>` rather than rendered heading fragments, and rather than the
-unprefixed `view` and `line` keys an earlier draft of this plan specified.
+[browser URL grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar):
+Metabrowser owns keys beginning with `_mb_`, and every other key remains the document’s
+and is passed through untouched.
+Source locations therefore use `_mb_view=source` and `_mb_lines=<start>-<end>` rather
+than rendered heading fragments, and rather than the unprefixed `view` and `line` keys
+an earlier draft of this plan specified.
 Unprefixed keys are not available: an authored `?view=` belongs to the document, and a
 repository whose own links carry one must not be read as issuing Metabrowser directives.
 
@@ -158,7 +159,7 @@ resolvers and returned nodes, resolved and unresolved edges, backlinks, diagnost
 completeness. It is no longer exported.
 The replacement must use KPress’s parser and sanitizer transaction rather than a second
 Markdown grammar, following the
-[current architecture](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
+[current architecture](../../../development.md#cli-and-functional-ui-parity).
 
 Original acceptance criteria, retained as design history:
 

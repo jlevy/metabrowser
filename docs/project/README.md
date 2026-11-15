@@ -51,11 +51,12 @@ It links each document below and the contributor standards in `docs/`.
 ### Formats
 
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md): the JSON
-  change-set document, its schema, and its apply oracle, with
-  [diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
+  change-set document, its schema, and its apply oracle
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md):
   file-type classification and directory totals by type, with the
-  [recommended type definitions](architecture/file-rollup-format/recommended-file-types.toml)
+  [recommended type definitions](architecture/file-rollup-format/recommended-file-types.toml);
+  [File Rollup Format in this repository](architecture/file-rollup-format/README.md)
+  says how to change the definitions and export a packet
 
 ## Active Plans
 
@@ -210,6 +211,12 @@ A research record stays here while it informs open work, and moves to
 
 ## QA Runs
 
+The first two are current checklists; the dated runs after them are records.
+
+- [Manual browser checks](qa/qa-2026-11-14-manual-browser-checks.md): what only a person
+  in a real browser can judge, run before each release on the public-safe manual corpus
+- [macOS app hand checks](qa/qa-macos-app-hand-checks.md): what AppKit, WebKit, and
+  macOS decide, checked against a built app after a change to the behavior they cover
 - [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md): the
   integrated candidate, installation evidence, and release gates before the 0.12.0 tag
 - [v0.12 alpha acceptance on the integrated stack](qa/qa-2026-09-24-v012-alpha-acceptance.md):

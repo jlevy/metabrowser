@@ -377,7 +377,7 @@ Before that point their lifetimes differ and must not share one vague “cache�
 3. **Transient materialization.** A detached worktree, patch anchor, or unpacked archive
    exists only while a container or bounded job needs filesystem bytes, then follows the
    materialization policy in
-   [nav containers](../../architecture/arch-nav-containers.md).
+   [nav containers](../../architecture/arch-plugin-system.md#navigation-containers).
 4. **Recomputable comparison cache.** Manifests, patches, enrichments, and browser
    projections are bounded in-memory or request caches, never repository-library state.
 
@@ -392,10 +392,10 @@ The existing shell maps onto it with three customizations, each extending a mech
 that already exists rather than adding one:
 
 0. **A comparison is a container in the tree.** The durable ontology is in
-   [nav containers](../../architecture/arch-nav-containers.md): every tree entry is
-   item-like (opens views), folder-like (expands to children; selecting the entry itself
-   opens an overview), or both, and directories are the already-working precedent rather
-   than a special case.
+   [nav containers](../../architecture/arch-plugin-system.md#navigation-containers):
+   every tree entry is item-like (opens views), folder-like (expands to children;
+   selecting the entry itself opens an overview), or both, and directories are the
+   already-working precedent rather than a special case.
    A patch file or PR mirror is a folder-like entry whose children are its file changes;
    selecting the container opens the change-set summary, and selecting a child opens
    that file’s diff tabs.
@@ -421,10 +421,10 @@ that already exists rather than adding one:
 3. **The context is addressable, on its own route.** A comparison scopes what the tree
    shows and what the tabs mean, so it lives in the URL like every other selection.
    The grammar is decided and documented in
-   [Browser URL Grammar](../../../architecture.md#browser-url-grammar): one route per
-   address space, with a uniform `<container address>/<inner path>` shape after it —
-   `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one file’s
-   diff, `/compare/<base>..<head>` for an explicit comparison.
+   [Browser URL Grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar):
+   one route per address space, with a uniform `<container address>/<inner path>` shape
+   after it — `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one
+   file’s diff, `/compare/<base>..<head>` for an explicit comparison.
    Revisions get their own route because they are not served-tree paths; the shape after
    the route is the container contract written as a URL, so a patch file
    (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read

@@ -740,8 +740,8 @@ figure below it is an observation, and a recommendation resting on one says so.
 - [Design system](../../design-system.md), principle 6 and Motion
 - [Web performance framework](../../web-performance-framework.md), stateful navigation
 - [Rendering large content](../../large-content-rendering.md)
-- [Asset loading tiers](../../development.md#asset-loading-tiers)
-- [State and delivery](../architecture/arch-state-and-delivery.md)
+- [Asset loading tiers](../architecture/arch-browser-shell.md#asset-loading-tiers)
+- [State and delivery](../architecture/arch-live-delivery.md)
 - [Native app server topology](research-2026-11-10-native-app-server-topology.md)
 - [macOS app packaging](research-2026-11-08-macos-app-packaging.md)
 - [Native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md)

@@ -22,7 +22,7 @@ It revised the original
 Files changed case, and the store invariant;
 [The Rule This Changes](#the-rule-this-changes) records that design change.
 Current runtime contracts are in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md)
 and [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
 ## Goal
@@ -239,7 +239,7 @@ without it is a full store, which is what absence means.
   `Mirror of <origin> at <commit>, stored in <location>, borrowing objects from <checkout>`.
 - `/api/source/status` carries `borrows`, null for a full store, beside `location`,
   under the same exception that admitted `location`
-  ([What a mirror’s page is called](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)),
+  ([What a mirror’s page is called](../../architecture/arch-mirror-acquisition-and-refresh.md#what-a-mirrors-page-is-called)),
   and `shallow`, true when the store has a boundary.
   The path is the user’s own checkout, so the leak argument there applies unchanged;
   `tests/test_serve_pin.py` extends its path-leak check to it.
@@ -562,7 +562,7 @@ Three written rules say an overlay is not allowed or read the checkout instead:
 - The same section’s Files changed case: “The commits are in the checkout.
   The page checks for the base and head commits with a read-only Git command and shows
   the diff through the existing comparison route”, which reads the checkout directly.
-- [Shared Repository Store](../../architecture/arch-repository-sources-and-provider-mirrors.md#shared-repository-store):
+- [Shared Repository Store](../../architecture/arch-repository-cache.md#repository-stores):
   “repository content is self-contained: every object is present, and nothing depends on
   alternates into a user-owned checkout or on the origin after acquisition”.
 
@@ -941,7 +941,7 @@ weighed.
 
 - [GitHub Pulls Tab for Mirrors and Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md)
 - [v0.12 Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md)
-- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+- [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md)
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - Git: `gitrepository-layout` (`objects/info/alternates`, `shallow`), `git-fetch`
   (`--negotiation-tip`, `--deepen`, `--unshallow`), `git-repack` (`-l`), `git-config`

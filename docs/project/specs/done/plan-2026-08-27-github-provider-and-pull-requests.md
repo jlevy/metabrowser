@@ -116,7 +116,7 @@ and virtual navigation containers are specified in
 [Hosted Review Model and Provider Boundary](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md).
 Shared Git stores, attached local checkouts, repository-scoped provider mirrors, and
 multi-client behavior are specified in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-cache.md).
 The general entity/artifact/resource vocabulary, trusted registries, transparent
 Markdown/YAML formats, and external-system mapping workflow are specified in
 [External Resources, Artifact Contracts, and Views](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-external-resources-and-views.md).
@@ -701,7 +701,7 @@ Git credentials, SSH agents, or a newly active `gh` account.
 the token never enters argv, the child environment, files, ref names, cache records, or
 diagnostics. The run’s environment, configuration, and prompt-binding isolation is
 defined in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#transports-and-credentials).
 Provider-observed object identity is stored independently from local object
 availability. The selected-ref service reports `not_requested`, `present`,
 `missing_fetchable`, `fetch_failed`, `unavailable`, or `outside_bound` without rewriting
@@ -1151,7 +1151,7 @@ below will not be done as written.
 - [ ] Measure and implement the cross-platform askpass bridge through the sole
   `git/process.py` runner (`mb-s123`) under the environment, configuration, and
   prompt-binding isolation in
-  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials):
+  [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#transports-and-credentials):
   an allowlisted environment with no `.netrc`, SSH agent, injected configuration, or
   trace variables; a temporary empty-template repository with no system or global
   configuration, credential helpers, hooks, or non-HTTPS protocols; and disabled
@@ -1524,8 +1524,8 @@ or deleted; the last validated reachable observation is never automatically remo
   — the design review that produced this model
 - [Delivery order for Git status, the repository cache, and providers](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
   — the review that separated this plan from the cache
-- [Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md) —
-  the provider boundary this plan must not cross
+- [Git and comparison sources](../../architecture/arch-git.md#providers) — the provider
+  boundary this plan must not cross
 - [Hosted Review Model and Provider Boundary](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md)
   — the durable format, adapter, activity, view, and cache boundaries
 - [File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md)

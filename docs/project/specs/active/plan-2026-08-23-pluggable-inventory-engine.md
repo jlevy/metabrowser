@@ -81,8 +81,7 @@ rollup, progressive-open, and watch work, while narrowing three premature requir
 - the full maintained reducer union must be measured together.
 
 Metabrowser already exports a self-contained File Rollup adoption packet as documented
-under
-[File Rollup Format maintenance](../../../development.md#file-rollup-format-maintenance).
+under [File Rollup Format maintenance](../../architecture/file-rollup-format/README.md).
 The missing conformance fact is logical-extension derivation: current metadata cases
 supply `logical_extension` to the classifier.
 The first spike closes that gap before the packet becomes the cross-repository oracle.
@@ -427,8 +426,8 @@ verifies its own registry packet.
 
 - [Inventory-engine research](../../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
 - [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md)
-- [File Rollup maintenance and packet export](../../../development.md#file-rollup-format-maintenance)
-- [State and delivery](../../architecture/arch-state-and-delivery.md)
+- [File Rollup maintenance and packet export](../../architecture/file-rollup-format/README.md)
+- [State and delivery](../../architecture/arch-live-delivery.md)
 - [End-to-end load-time plan](plan-2026-08-21-load-time-performance.md)
 - [Load-time performance review](../../reviews/review-2026-08-22-load-time-performance.md)
 - [Metabrowser performance loop](../../../../explorations/performance-loop/README.md)

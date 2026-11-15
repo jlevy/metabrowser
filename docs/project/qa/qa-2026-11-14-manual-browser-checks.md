@@ -107,7 +107,7 @@ After Git discovery:
 
 ## Pulls Watch and Reconnect
 
-The [watch verification plan](../specs/active/plan-2026-11-06-pr-watch-and-reconnect.md)
+The [watch verification plan](../specs/done/plan-2026-11-06-pr-watch-and-reconnect.md)
 covers incremental provider updates, cached use during an outage, connection recovery,
 and Reload in both repository modes.
 
