@@ -1,11 +1,15 @@
 # Plan for the Native macOS App
 
-**Date:** 2026-11-10 (last updated 2026-11-12)
+**Date:** 2026-11-10 (last updated 2026-11-14)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Draft. Epic `mb-1apq` tracks every item below as a bead.
-Phase 1 is in progress, and the v1 milestone (`mb-s4y1`, below) is under way.
+The v1 stack (jlevy/metabrowser#341, #359, #361, #362, and #363) merged to `main` on
+2026-11-13: `apps/macos/` and its workflow, `.github/workflows/macos-app.yml`, are live,
+and the spike branch and `claude/macos-release-build` are gone.
+The v1 milestone (`mb-s4y1`, below) stays open for its end-to-end check (`mb-hwxu`), and
+Phase 1 is in progress.
 
 ## Overview
 
@@ -234,9 +238,9 @@ One command produces a downloadable release, adapted from the sister app’s pip
 - **What a downloader needs:** the app uses a `metab` CLI install and shows the install
   command when it finds none; Phase 5 adds a first-run flow that makes that install for
   the user.
-- **Status:** built and tested end to end with ad-hoc signing on
-  `claude/macos-release-build`. This Mac has no Developer ID identity, so the first real
-  release needs one installed, plus notary credentials.
+- **Status:** built and tested end to end with ad hoc signing, on `main` and in
+  `.github/workflows/macos-app.yml`. This Mac has no Developer ID identity, so the first
+  real release needs one installed, plus notary credentials.
 
 ### Servers, Switching, and Agents
 
@@ -308,7 +312,7 @@ The steps run in this order, which the beads record as dependencies:
    A failure goes back to the brief’s fallback, Electron, before steps 6 and 7.
 
    The gate ran on 2026-11-11 and failed; the numbers and method are in
-   [rendering large content](../../../large-content-rendering.md#measured-in-webkit).
+   [the app’s architecture](../../architecture/arch-macos-app.md#measured-in-webkit).
    Its largest failure, the source view’s Load more at 4.5 to 5.8 times Chrome, has a
    measured cause and a core fix (`mb-551q`, its own pull request to `main`), and the
    gate reruns under normal conditions after that fix (`mb-76nv`). The binary view’s
@@ -353,13 +357,13 @@ Outside the milestone, each for a stated reason:
   jlevy/metabrowser#353.
 - [x] The page title is `<short name> • Metabrowser` (`mb-2agt`), in the same pull
   request.
-- [ ] Native window title, tab title, subtitle, and proxy icon (`mb-wgl7`).
+- [x] Native window title, tab title, subtitle, and proxy icon (`mb-wgl7`).
 - [ ] App icon in the sister app’s style, from its vector originals (`mb-mpm3`).
-- [ ] Adopt the sister app’s build, signing, and download pipeline for the Swift app
+- [x] Adopt the sister app’s build, signing, and download pipeline for the Swift app
   (`mb-nnhs`).
 - [ ] Developer ID signing, notarization, a DMG, and a Homebrew cask (`mb-e9fm`).
-- [ ] Development builds with their own bundle id, scheme, and icon (`mb-9xl0`).
-- [ ] A macOS CI job (`mb-x4fy`), approved for the v1 milestone; a signed release
+- [x] Development builds with their own bundle id, scheme, and icon (`mb-9xl0`).
+- [x] A macOS CI job (`mb-x4fy`), approved for the v1 milestone; a signed release
   workflow comes later.
 - [ ] tbd desktop guideline updates from what that pipeline teaches (`mb-s5ay`).
 
@@ -367,10 +371,10 @@ Outside the milestone, each for a stated reason:
 
 - [ ] Fix the activity tracker’s idle cost first (`mb-z46o`).
 - [ ] Keep folders warm after their windows close (`mb-e7im`).
-- [ ] Native tabs across folders with a tabs-or-windows preference (`mb-ssed`).
-- [ ] Lazy session restore (`mb-lc8c`).
-- [ ] Open a file from `open -a` and select it inside its folder (`mb-tssz`).
-- [ ] Health-check servers before attaching; send stderr straight to the log
+- [x] Native tabs across folders with a tabs-or-windows preference (`mb-ssed`).
+- [x] Lazy session restore (`mb-lc8c`).
+- [x] Open a file from `open -a` and select it inside its folder (`mb-tssz`).
+- [x] Health-check servers before attaching; send stderr straight to the log
   (`mb-1poj`).
 
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door

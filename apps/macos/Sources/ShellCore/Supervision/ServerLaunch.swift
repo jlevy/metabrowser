@@ -26,7 +26,8 @@ public nonisolated enum WebAuthorization: Equatable, Sendable {
 ///
 /// The supervisor and the windows depend only on this, so the brief's host mode (port
 /// 0, a JSON ready line, a stdin token, `/healthz`, a session cookie) replaces
-/// `CLIServeLaunch` without touching either. See README.md, "Gaps to Close".
+/// `CLIServeLaunch` without touching either. See "Planned" in
+/// `docs/project/architecture/arch-macos-app.md`.
 public nonisolated protocol ServerLaunch: Sendable {
     /// The arguments after the executable that serve `root`.
     func arguments(serving root: URL) -> [String]

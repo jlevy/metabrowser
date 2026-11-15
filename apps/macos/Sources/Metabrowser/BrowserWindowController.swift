@@ -389,6 +389,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         UserDefaults.standard.set(webView.pageZoom, forKey: Self.zoomKey)
     }
 
+    /// File > Print, and the page's own Print button (`PagePrintRequests`).
+    ///
+    /// The operation runs modally for the window. Run synchronously with `run()` instead,
+    /// the same operation printed blank pages until it was stopped at 865 MB (the WebKit
+    /// gate's checks, macOS 26.5.2), while modally it printed the document alone.
     @objc func printPage(_ sender: Any?) {
         guard let window else { return }
         let operation = webView.printOperation(with: NSPrintInfo.shared)
