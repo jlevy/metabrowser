@@ -4,6 +4,9 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Pulls row no longer names its branches, so its title has more room; the pull
+  request’s page still names them, head → base.
+
 - The Pulls tab groups a native GitHub stack’s pull requests under a “Stack #N” row,
   open by default, with the stack’s pull requests under it top of the stack first, as
   the pull request page’s stack menu lists them, and the pull requests in no stack after

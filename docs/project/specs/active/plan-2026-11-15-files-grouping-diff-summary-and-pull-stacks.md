@@ -228,6 +228,9 @@ it:
 - **Parity:** grouping, ordering and membership belong to the browserless Pulls model,
   with a session and golden.
 
+- **More of each title** (the owner’s requests after review A on #450): a Pulls row
+  names no branches (`mb-ghff`); the pull request’s page keeps them.
+
 - **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
   the pull request page’s stack button and menu (`pull-page.js`) share one design,
   stated once in a “Stacks” section of `docs/design-system.md`. It covers:

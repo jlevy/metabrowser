@@ -929,8 +929,7 @@ ages come from [Age](#age), change counts from
 [Inline Change Stats](#inline-change-stats), and rows follow the shared
 [row height and hover](#one-chevron-one-row-contract).
 [Branch Chips](#branch-chips), defined here, is the reference for a ref chip on every
-surface: a pull request’s header, a Pulls row, and the ref selector as much as a history
-row.
+surface: a pull request’s header and the ref selector as much as a history row.
 
 ### Lane Colors
 
@@ -1059,7 +1058,7 @@ ref it is, whether it is trunk, and whether `HEAD` is on it.
 
 A chip is slightly smaller than the text around it, wherever it appears: one ratio, not
 one size. Its size is `--git-ref-font-size`, `--git-ref-font-scale` (0.9) of the size it
-inherits, so a chip in a 14px header line is 12.6px and one in a 12px Pulls row is
+inherits, so a chip in a 14px header line is 12.6px and one in the 12px ref selector is
 10.8px. One rule on `.git-ref` sets its type and box.
 No context overrides them, and the box a chip sits in — a merge’s grid, a history row’s
 ref group, a summary’s identity group, the ref selector’s label — sets no size of its
@@ -1072,7 +1071,6 @@ Measured in Chrome, light theme, the text each context sets and the chip it gets
 | A Git history row | 13px subject | 11.7px | 12px |
 | A commit’s summary and its tooltip | 14px metadata | 12.6px | 12px |
 | A pull request’s header | 14px action line | 12.6px | 12px |
-| A Pulls row | 12px muted line | 10.8px | 12px |
 | The ref selector’s button and list | 12px | 10.8px | 12px |
 
 | Property | Value | Why |
@@ -1116,7 +1114,6 @@ so a definition cannot differ between two places.
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| A Pulls row | `mb.mergeRefs`, head → base | Remote | Never | Never | Beside the row |
 | The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Remote for a branch, tag for a tag | Never; the list says “default” beside the default branch | Never | Button beside it; list none |
 
 The reasons:
@@ -1128,8 +1125,8 @@ The reasons:
   server-side by `is_trunk_ref` in `git/log.py` from the same names that scope the
   history walk. The history page, a commit’s detail, and `/api/git/refs` all carry it.
 - **A merge never draws trunk.** The arrow already names the target, and a solid base on
-  nearly every Pulls row would stop trunk standing out where it is worth finding: in a
-  history of many refs.
+  nearly every pull request would stop trunk standing out where it is worth finding: in
+  a history of many refs.
 - **The ref selector never draws trunk.** Its default branch is the mirror’s default,
   which need not be the branch the history draws solid, so it says “default” in words.
 - **`HEAD` belongs to a checkout.** Only refs from Git carry `is_head`, and a pin, a
@@ -1184,25 +1181,10 @@ A rename in a diff reads the same way, `old → new`.
 | Arrow | `.merge-refs-arrow`: `→` (U+2192) in `--muted`, at the size of the text around the merge, which the group inherits; each chip is slightly smaller. The spaces around it are text, so a copied selection reads `wip → topic` |
 | Accessible name | The arrow is `role="img"` with `aria-label="merges into"`, so a screen reader reads “wip merges into topic” in document order. Its tooltip states the whole merge with both full names |
 | Right to left | The group is `dir="ltr"`, an isolated left-to-right run as a path or a branch name is. The arrow points from source to target whatever the surrounding direction, the glyph is never mirrored, and the document order, source first, is the order a screen reader reads |
-| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own, as a Pulls row does; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
+| Narrow places | The group is a three-column grid in which the names shrink and the arrow never does. The two names share the room equally: a name that fits in its half keeps all of it, the longer one gives way first, and each ellipsizes inside its chip with the full name in the chip’s tooltip. The group is never narrower than both chips’ padding and copy slot, an ellipsis in each, and the arrow. A place too narrow for that gives the merge a line of its own; the pull request header, which is one line, cuts its sentence and then its author to their floors first, so the merge stays whole there, down to a 320 px pane with a long login and an avatar |
 
-On the Pulls tab the muted line wraps rather than clips, so both chips and the arrow are
-always whole inside the row, down to the narrowest navigation pane (180px) with a
-five-digit number, a long login, and an avatar.
-The author and the branches each start with their separator.
-The stack position is not on this line: it arrives late, and here it took its width from
-the names, moving the arrow up to 54 px, or a line of its own, moving every row below.
-It has a column on the title line, before the age, where it cuts the title shorter and
-moves nothing. A part moves to the next line when the line cannot hold its floor: the
-author’s is its separator, its avatar if it has one, and a little of the name, so
-neither the separator nor the avatar stands without a visible name, even when the avatar
-fails to load and keeps its slot, and the branches’ is their separator and the merge’s
-floor. A part that stays grows by equal amounts toward its full width, so the line
-shortens names before it wraps.
-The line starts one separator to the left of the row, so the separator of a part that
-starts a line is clipped.
-It is a wrapping flex line rather than a line of text with `text-overflow: ellipsis`,
-because an overflowing line of text loses the arrow in Chrome.
+A Pulls row names no branches (`mb-ghff`): the pull request’s page names them, and the
+row’s room goes to its title.
 
 The rendered group, for a pull request from `wip` into `topic`:
 
@@ -1593,14 +1575,15 @@ The PR number beside a title keeps its regular weight.
 The metadata line gives the PR number normal row size and text ink.
 Usernames use the same small metadata size and bold normal text ink; the repository
 summary above the list is the [navigation metadata line](#navigation-metadata-line).
-Branch names use the remote [ref chip](#branch-chips), slightly smaller than the line,
-head → base, as [Merge Direction](#merge-direction) sets them.
-Known native stack membership uses a small Layers icon and bold position in a column of
-the title line, before the age, in all the room the title and it share but 4ch of the
-title, and cut short with an ellipsis past that; a second stack’s position is named by
-its number, and the tooltip names the stack and every position ([Stacks](#stacks)).
-Their shared repository snapshot is indexed once by PR number; rows make no stack
-requests, and enrichment updates retain the row and any focused changed-file tree.
+A row names no branches: the pull request’s page names them, head → base, as
+[Merge Direction](#merge-direction) sets them, and the row’s room goes to its title
+(`mb-ghff`). Known native stack membership uses a small Layers icon and bold position in
+a column of the title line, before the age, in all the room the title and it share but
+4ch of the title, and cut short with an ellipsis past that; a second stack’s position is
+named by its number, and the tooltip names the stack and every position
+([Stacks](#stacks)). Their shared repository snapshot is indexed once by PR number; rows
+make no stack requests, and enrichment updates retain the row and any focused
+changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1675,10 +1658,9 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
-| Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
+| Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
 | Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip ([Stacks](#stacks)) |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
-| Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
 | Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |

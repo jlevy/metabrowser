@@ -186,7 +186,8 @@ const CHECKOUT_NOT_LISTED =
  */
 
 /**
- * What a row shows. Text only.
+ * What a row shows. Text only. A row names no branches: the pull request's page does, and
+ * the row's room goes to its title (docs/design-system.md, "The Pulls Tab").
  *
  * @typedef {{
  *   number: number,
@@ -196,11 +197,7 @@ const CHECKOUT_NOT_LISTED =
  *   title: string,
  *   author: string,
  *   avatar: string | null,
- *   baseRef: string,
- *   headRef: string,
- *   headLabel: string,
  *   updatedAt: string | null,
- *   refs: string,
  *   meta: string,
  * }} PullRow
  */
@@ -261,38 +258,14 @@ export function repositoryName(source) {
 }
 
 /**
- * One side of a row's branches, as the page's header names it: a bare branch when head and
- * base are one repository, and `owner:branch` when the head is another's.
- *
- * @param {Record<string, any>} row
- * @param {string | null} repository
- */
-function rowHead(row, repository) {
-  const head = text(row.head_ref);
-  const from =
-    typeof row.head_repository !== "string"
-      ? `${head} (deleted fork)`
-      : row.head_repository.toLowerCase() === repository?.toLowerCase()
-        ? head
-        : `${row.head_repository.split("/")[0]}:${head}`;
-  return from;
-}
-
-/**
  * What one row of the route shows. Pure.
  *
  * @param {Record<string, any>} row
- * @param {string | null} repository
  * @returns {PullRow}
  */
-export function describeRow(row, repository) {
+export function describeRow(row) {
   const state = displayState(row);
   const author = text(row.author) || "ghost";
-  const headLabel = rowHead(row, repository);
-  const baseRef = text(row.base_ref);
-  const headRef = text(row.head_ref);
-  // Source → target, as `mb.mergeRefs` draws it (docs/design-system.md, "Merge Direction").
-  const refs = `${headLabel} → ${baseRef}`;
   return {
     number: row.number,
     href: `/pull/${row.number}`,
@@ -301,12 +274,8 @@ export function describeRow(row, repository) {
     title: text(row.title),
     author,
     avatar: avatarUrl(row.author_avatar_url),
-    baseRef,
-    headRef,
-    headLabel,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
-    refs,
-    meta: `#${row.number} · ${author} · ${refs}`,
+    meta: `#${row.number} · ${author}`,
   };
 }
 
@@ -1080,7 +1049,7 @@ export function createPullsController(deps, options = {}) {
         queueCores();
         return;
       }
-      const rows = envelope.rows.map((row) => describeRow(row, repositoryName(envelope.source)));
+      const rows = envelope.rows.map((row) => describeRow(row));
       prepareBatch(rows, "all", envelope.generation, contentOf(envelope), "background");
     } catch {
       if (!controller.signal.aborted) {
@@ -1533,8 +1502,7 @@ export function createPullsController(deps, options = {}) {
    * @param {string | null} source
    */
   function holdRows(list, rows, source) {
-    const repository = repositoryName(source);
-    const next = rows.map((row) => describeRow(row, repository));
+    const next = rows.map((row) => describeRow(row));
     if (source !== null) {
       noteListed(source, next);
     }
@@ -2365,9 +2333,8 @@ export function createPullsController(deps, options = {}) {
           list.etag = null;
           return;
         }
-        const repository = repositoryName(response.body.source);
         const fresh = response.body.rows
-          .map((row) => describeRow(row, repository))
+          .map((row) => describeRow(row))
           .filter((row) => !list.keys.has(row.number))
           .slice(0, list.displayLimit - list.rows.length);
         for (const row of fresh) {
@@ -3207,7 +3174,6 @@ export function mountPullsPanel(container, ctx, mb) {
    *   key: string,
    *   at: number | null,
    *   label: string,
-   *   releaseCopies: () => void,
    * }} PaintedRow
    */
   /** @type {Map<number, PaintedRow>} */
@@ -3542,9 +3508,10 @@ export function mountPullsPanel(container, ctx, mb) {
    * @param {PullRow} row
    */
   function rowMeta(row) {
-    // A line that wraps (github/styles.css, `.github-pulls-line`): the author and the
-    // branches each carry the separator before them, so either moves to the next line
-    // whole, and a separator that starts a line is clipped.
+    // A line that wraps (github/styles.css, `.github-pulls-line`): the author carries the
+    // separator before it, so it moves to the next line whole, and a separator that starts
+    // a line is clipped. A row names no branches: the page does, and the row's room goes to
+    // its title (docs/design-system.md, "The Pulls Tab").
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-line" }, [
@@ -3556,14 +3523,6 @@ export function mountPullsPanel(container, ctx, mb) {
           // as the list scrolls back draws its avatar at once: WebKit fetches a new lazy
           // image again (docs/design-system.md, "A Repaint Keeps Its Images").
           authorLabel(row.author, row.avatar, "github-pulls-author", { loading: "eager" }),
-        ]),
-        h("span", { class: "github-pulls-merge" }, [
-          separator(),
-          mb.mergeRefs(
-            { name: row.headRef, label: row.headLabel },
-            { name: row.baseRef },
-            { kind: "remote", copy: "sibling" },
-          ),
         ]),
       ]),
     ]);
@@ -3594,17 +3553,11 @@ export function mountPullsPanel(container, ctx, mb) {
         entry.age.dataset.tipText = mb.formatTimestamp(when.at);
       }
     }
-    if (
-      row.avatar !== before.avatar ||
-      row.meta !== before.meta ||
-      row.headRef !== before.headRef
-    ) {
-      entry.releaseCopies();
+    if (row.avatar !== before.avatar || row.meta !== before.meta) {
       const meta = rowMeta(row);
       entry.row.insertBefore(meta, entry.meta);
       entry.meta.remove();
       entry.meta = meta;
-      entry.releaseCopies = mb.mountRefCopies(entry.row, entry.item);
     }
     entry.info = row;
     entry.key = key;
@@ -3675,7 +3628,6 @@ export function mountPullsPanel(container, ctx, mb) {
       key,
       at,
       label: when.label,
-      releaseCopies: mb.mountRefCopies(anchor, item),
     };
   }
 
@@ -3939,7 +3891,6 @@ export function mountPullsPanel(container, ctx, mb) {
       }
       rowSizes?.unobserve(entry.item);
       trees.get(number)?.detach();
-      entry.releaseCopies();
       entry.item.remove();
       painted.delete(number);
     }
@@ -4115,7 +4066,6 @@ export function mountPullsPanel(container, ctx, mb) {
       list.dataset.filter = model.filter;
       for (const [number, entry] of painted) {
         rowSizes?.unobserve(entry.item);
-        entry.releaseCopies();
         trees.get(number)?.detach();
       }
       painted.clear();
@@ -4708,9 +4658,6 @@ export function mountPullsPanel(container, ctx, mb) {
         tree.dispose();
       }
       trees.clear();
-      for (const entry of painted.values()) {
-        entry.releaseCopies();
-      }
       painted.clear();
       paintedStacks.clear();
       container.classList.remove("github-pulls");

@@ -726,16 +726,14 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line: the number, the author, and the branches
-   (docs/design-system.md, "Merge Direction"). It wraps rather than clips, so the merge is
-   always whole inside the row: the author and the branches each start with their separator
-   and may move to the next line, and the line is laid out as wide as the row plus one
-   separator, starting one separator to the left, so that the separator of a part that
-   starts a line falls outside the row and is clipped. The number makes up that offset.
-   Line breaks are decided by each part's floor, and a part that stays grows by equal
-   amounts toward its full width, so a line shortens names before it wraps. A line of text
-   with `text-overflow: ellipsis` would not do: when it overflows, Chrome hides the
-   merge's arrow and clips the last chip at the edge. */
+/* The muted line: the number and the author. A row names no branches: the pull request's
+   page does, and the row's room goes to its title (docs/design-system.md, "The Pulls
+   Tab"). It wraps rather than clips: the author starts with its separator and may move to
+   the next line, and the line is laid out as wide as the row plus one separator, starting
+   one separator to the left, so that the separator of a part that starts a line falls
+   outside the row and is clipped. The number makes up that offset. A line breaks at the
+   author's floor, and above it the author grows toward its full width, its name ending in
+   an ellipsis. */
 .github-pulls-meta {
   grid-column: 3 / -1;
   min-width: 0;
@@ -755,17 +753,6 @@
   flex: none;
   width: var(--github-pulls-sep);
   text-align: center;
-}
-/* The branches never get narrower than their separator and the merge's floor, so a line
-   that cannot hold that moves them to a line of their own. */
-.github-pulls-merge {
-  display: flex;
-  flex: 1 1 0;
-  align-items: baseline;
-  max-width: max-content;
-}
-.github-pulls-merge > .merge-refs {
-  flex: 1 1 auto;
 }
 .github-pulls-number {
   color: var(--text);

@@ -386,10 +386,6 @@ const PULLS_ROWS = `async (rows, width) => {
         h("span", { class: "github-pulls-line" }, [
           h("span", { class: "github-pulls-number" }, ["#" + row.number]),
           h("span", { class: "github-pulls-by" }, [separator(), identity]),
-          h("span", { class: "github-pulls-merge" }, [
-            separator(),
-            mb.mergeRefs({ name: row.head, label: row.headLabel }, { name: row.base }, { kind: "remote", copy: "sibling" }),
-          ]),
         ]),
       ]),
     ]);
@@ -464,9 +460,6 @@ const PULLS = [
     title: "perf: decide every region's box at first paint",
     author: "jlevy",
     avatar: true,
-    head: "claude/perf-layout",
-    headLabel: "claude/perf-layout",
-    base: "main",
     stack: "2/3",
   },
   {
@@ -474,9 +467,6 @@ const PULLS = [
     title: "A five-digit pull request",
     author: "a-thirty-nine-character-github-login-x",
     avatar: true,
-    head: "feature/some-long-branch",
-    headLabel: "fork:feature/some-long-branch",
-    base: "release/2026-11",
     stack: "3/3 · #900 1/2",
   },
   {
@@ -484,9 +474,6 @@ const PULLS = [
     title: "Short",
     author: "octo",
     avatar: false,
-    head: "wip",
-    headLabel: "wip",
-    base: "topic",
     stack: "1/2",
   },
   // Wider than half of what the title and the position share in a 180 px pane: cut short.
@@ -495,9 +482,6 @@ const PULLS = [
     title: "Two stacks, two digits each",
     author: "octo",
     avatar: true,
-    head: "stack/part",
-    headLabel: "stack/part",
-    base: "main",
     stack: "12/23 · #901 10/14",
   },
   {
@@ -505,9 +489,6 @@ const PULLS = [
     title: "Three stacks",
     author: "octo",
     avatar: false,
-    head: "x",
-    headLabel: "x",
-    base: "main",
     stack: "3/3 · #900 1/2 · #902 4/7",
   },
 ];
