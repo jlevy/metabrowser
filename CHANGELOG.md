@@ -19,6 +19,12 @@ All notable changes to Metabrowser are documented here.
   counted, as they do once it finishes, instead of switching from blue figures to plain
   text, and the Pulls count is no longer bold.
 
+- A size of a gigabyte or more now reads in gigabytes.
+  The Files tree, the totals line under the Files toolbar, and the binary preview wrote
+  10.1 billion bytes as “9632.1 MB”, and now write “9.4 GB”, as plugins already did.
+  The shell had its own copy of the size formatter, which stopped at megabytes; it now
+  uses the shared one, and smaller sizes read exactly as before.
+
 - Command-R always reloads.
   In the macOS app, View > Reload Page was disabled while the window showed its status
   view, and did nothing in a tab still loading or reloading its page.
