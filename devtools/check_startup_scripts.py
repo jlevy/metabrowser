@@ -34,7 +34,11 @@ reports for a response's headers.
 shell: 20 requests and 176,984 bytes from the probe, 20 and 176,984 from this check,
 script for script. ``tests/test_check_startup_scripts.py`` holds the two halves of that:
 the compressed size computed here is the body the running application sends, and the
-probe's own selection and rounding give this check's count and kilobytes.
+probe's own selection and rounding give this check's count and kilobytes. A server
+started for local use sends a loopback browser its scripts uncompressed (H115,
+``metabrowser.delivery``), so there the browser's own figure is their decoded size;
+``run.py record`` then reads the gate's number as this check does, from the scripts the
+page requested, and a test holds the two equal.
 
 **The shells it does not gate.** The budget is calibrated on a folder's page. Two other
 shells carry one startup script more, and the summary reports each beside the budget
