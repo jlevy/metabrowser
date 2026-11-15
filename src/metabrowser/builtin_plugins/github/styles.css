@@ -335,8 +335,13 @@
 .github-pull-reply {
   margin-left: var(--content-padding-x);
 }
+/* The space around a text. Its block inset is the content inset, not a header row's 8px:
+   the first and last block give up their own margins to it (below), so a heading that opens
+   a text has only this above it, and it needs at least the space it keeps below itself,
+   KPress's 1rem under an h1 or h2, or it reads as the card head's line and not its
+   section's. GitHub's own comment body is padded the same. */
 .github-pull-text {
-  padding: var(--pane-header-padding-y) var(--github-pull-text-inset);
+  padding: var(--content-padding-y) var(--github-pull-text-inset);
 }
 /* A text before its Markdown arrives, in the type it is about to have. Its face is the
    text's `.chrome-prose` (static/styles.css). */
