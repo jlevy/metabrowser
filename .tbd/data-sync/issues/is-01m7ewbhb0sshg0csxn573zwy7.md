@@ -3,14 +3,18 @@ type: is
 id: is-01m7ewbhb0sshg0csxn573zwy7
 title: "Files tab: a Group by menu as the main control; filters move into the drawer"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T05:54:48.275Z
-updated_at: 2026-11-15T05:54:48.275Z
+updated_at: 2026-11-15T06:11:57.902Z
+started_at: 2026-11-15T06:11:57.901Z
 ---
 The user's request (2026-11-15), verbatim:
 
