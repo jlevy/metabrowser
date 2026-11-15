@@ -3,13 +3,17 @@ type: is
 id: is-01m7et4ereqng8q5eb6qmsyje1
 title: Sizes of a gigabyte or more show in MB in the shell
 kind: bug
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-11-15T05:15:59.117Z
-updated_at: 2026-11-15T05:15:59.117Z
+updated_at: 2026-11-15T05:19:38.320Z
+started_at: 2026-11-15T05:19:38.318Z
 ---
 `formatSize` in `src/metabrowser/static/app.js` stops at MB, so a size of a gigabyte or more renders in megabytes: 10.1 GB of ignored files shows as "(9632.1 MB)" in the Files tab's metadata line, not "(10.1 GB)".
 
