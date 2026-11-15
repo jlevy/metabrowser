@@ -1,7 +1,7 @@
 # External Resources, Artifact Contracts, and Views
 
 **Retired (2026-09-30):** this design is not on the v0.12 path.
-[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
+[Thin Mirror for Git and GitHub Browsing](../specs/done/plan-2026-09-23-v012-thin-mirror.md)
 stores pull-request data as plain validated JSON records and adds no resource-profile,
 resource-kind, provider-store, or hosted-address layer.
 The code that implemented this design’s first phases, the Hosted Review Format, the

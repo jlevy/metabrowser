@@ -2,7 +2,7 @@
 
 **Superseded in part (2026-09-23):** planned fetch jobs, credential handling, and
 provider mirrors below are replaced by
-[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md).
+[Thin Mirror for Git and GitHub Browsing](../specs/done/plan-2026-09-23-v012-thin-mirror.md).
 Revision leases, subject refs, convergence, and store reclamation are removed from the
 code and from this document.
 
@@ -21,7 +21,7 @@ pin to another branch, tag, or commit of the same store.
 Pull-request records are implemented: a pull-request URL pins the pull request’s head,
 and its record is served beside the mirror and refreshed with it.
 The pull-request page is implemented in the GitHub plugin at `/pull/<n>`, and
-[Thin Mirror for Git and GitHub Browsing](../specs/active/plan-2026-09-23-v012-thin-mirror.md)
+[Thin Mirror for Git and GitHub Browsing](../specs/done/plan-2026-09-23-v012-thin-mirror.md)
 replaces the planned parts of this document wherever they disagree.
 It retired blobless clones and convergence, private subject refs, revision leases,
 maintenance locks, fetch jobs, and credential leases; this document no longer describes
@@ -1663,7 +1663,7 @@ The architecture is satisfied only when tests prove:
   exact goldens, and an architecture-map entry when it becomes registered.
 
 The thin-mirror plan’s
-[Testing](../specs/active/plan-2026-09-23-v012-thin-mirror.md#testing) section owns
+[Testing](../specs/done/plan-2026-09-23-v012-thin-mirror.md#testing) section owns
 acceptance for HTTPS, refresh, GitHub authentication, and pull-request data.
 
 ## Measured Decisions

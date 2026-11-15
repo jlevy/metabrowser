@@ -733,13 +733,18 @@ def test_the_drawer_always_opens_closed() -> None:
 
 def test_the_tally_and_its_filtered_count_read_as_one_block() -> None:
     """The totals are what the filtered figure reads against, so the
-    rule goes under the pair rather than between them."""
+    rule goes under the pair rather than between them. Both are lines of
+    the navigation metadata band, which joins consecutive lines."""
 
+    js = _read("app.js")
+    assert 'line.className = "tree-summary-filtered nav-metadata nav-metadata-note";' in js
     css = _read("styles.css")
-    start = css.index(".tree-summary:has(+ .tree-summary-filtered)")
+    start = css.index(".nav-metadata:has(+ .nav-metadata) {")
     block = css[start : css.index("}", start)]
     assert "border-bottom: none;" in block
     assert "padding-bottom: 0;" in block
+    start = css.index(".nav-metadata + .nav-metadata {")
+    assert "padding-top: 0;" in css[start : css.index("}", start)]
 
 
 def test_a_closed_bar_is_vertically_symmetric() -> None:
@@ -774,10 +779,10 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
     tally's border while every band above kept 6px."""
 
     css = _read("styles.css")
-    start = css.index(".tree-summary + .tree-root > .tree-item:first-child,")
+    start = css.index(".nav-metadata + .tree-root > .tree-item:first-child,")
     block = css[start : css.index("}", start)]
-    # Both leading cases: the tally, and rows alone under a recency window.
-    assert ".tree-summary-filtered + .tree-root > .tree-item:first-child" in block
+    # Both leading cases: the metadata band, whichever of its lines is last, and
+    # rows alone under a recency window.
     assert ".tree-content > * > .tree-root:first-child > .tree-item:first-child" in block
     # Margin, so the hover fill and selected border stay row-height.
     assert "margin-top" in block
@@ -1193,8 +1198,10 @@ def test_a_filter_that_excludes_where_you_are_standing_says_so() -> None:
     assert "renderSelectionOutsideFilterNote(null);" in select_block
     assert js.count("renderSelectionOutsideFilterNote();") >= 3
 
+    # A muted remark of the metadata band under the totals, as the filtered count is.
+    assert 'note.className = "tree-selection-note nav-metadata nav-metadata-note";' in block
     css = _read("styles.css")
-    note_start = css.index(".tree-selection-note {")
+    note_start = css.index(".nav-metadata-note {")
     assert "var(--muted)" in css[note_start : css.index("}", note_start)]
 
 
@@ -1439,18 +1446,25 @@ def test_the_drawer_animates_open_and_stays_out_of_reach_when_closed() -> None:
 
 
 def test_the_nav_column_shares_one_vertical_rhythm() -> None:
-    """The tally row and the filter bar are both one-line bordered
-    bands of chrome, so they get the same padding; .tree-content adds
-    nothing on top of it."""
+    """The filter bar and the metadata line under it are both bordered
+    bands of chrome, and one line of the metadata band is the toolbar
+    slot's height, so the column reads as evenly spaced bands, and the
+    Commits tally, which stands in the slot, sits exactly as the Files
+    totals do under the filters; .tree-content adds nothing on top."""
 
     css = _read("styles.css")
     bar_start = css.index(".nav-filter-bar {")
     assert "padding: 6px var(--pane-header-padding-x);" in css[bar_start : bar_start + 900]
 
-    sum_start = css.index(".tree-summary {")
+    sum_start = css.index(".nav-metadata {")
     sum_block = css[sum_start : css.index("}", sum_start)]
-    assert "padding: 6px 12px;" in sum_block
+    assert "padding: var(--nav-metadata-padding-y) var(--pane-header-padding-x);" in sum_block
     assert "margin-bottom" not in sum_block
+    token = css[css.index("--nav-metadata-padding-y:") :]
+    token = token[: token.index(";")]
+    assert "var(--nav-toolbar-height)" in token
+    assert "var(--nav-metadata-line-height) * var(--nav-font-size)" in " ".join(token.split())
+    assert "line-height: var(--nav-metadata-line-height);" in sum_block
 
     content_start = css.index(".tree-content {")
     assert "padding: 0 0 8px;" in css[content_start : content_start + 300]

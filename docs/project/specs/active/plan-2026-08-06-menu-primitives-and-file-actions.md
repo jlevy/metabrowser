@@ -1,15 +1,20 @@
 # Feature: Menu Primitives and Gated File Actions
 
-**Date:** 2026-08-06 (last updated 2026-08-12)
+**Date:** 2026-08-06 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Shared modal foundation implemented; action menus and file mutations remain
-planned.
+**Status:** Shared modal foundation and the startup edit gate implemented; action menus
+and file mutations remain planned.
 
 `overlay-layer.js` owns modal focus, inert background, and disposal for Quick File and
-keyboard help. That delivered subset does not include the general anchored action menu,
-action registry, inline editor, or rename/trash consumers described below.
+keyboard help (#35). `--allow-edits` and `METAB_ALLOW_EDITS` publish the mutations
+capability through `/api/capabilities` and the client settings’ `CAPABILITIES` block
+(#209), and no route consumes it yet.
+That delivered subset does not include anchored placement, the action menu, action
+registry, inline editor, edit-mode badge, `POST /api/mutate`, or the rename/trash
+consumers described below.
+Phase 1 is `mb-ojvf`; Phase 2 is `mb-0d6a`.
 
 ## Overview
 
@@ -106,10 +111,12 @@ valid-or-omitted `aria-keyshortcuts` decisions inside a menu row.
 
 The intent is documented; the mechanism is not built.
 
-**The `.menu` primitive has one consumer, and `.menu-item` has zero.** The settings gear
-in the index template uses `.menu` with two `.menu-chooser` rows and a `.menu-select`.
-The vertical-list row — the primitive an action menu is made of — is styled but has
-never been rendered by anything.
+**The `.menu` primitive has two kinds of consumer and no shared behavior.** The settings
+gear in the index template uses `.menu` with two `.menu-chooser` rows and a
+`.menu-select`. The filter-chip dropdowns in `filter-controls.js` render `.menu-item`
+rows as `menuitemcheckbox` and `menuitemradio` choices, with their own document-level
+`pointerdown` and Escape listeners.
+No action menu renders `.menu-item` rows from an action list.
 
 **Positioning is CSS, not code.** `.settings-toggle .settings-menu` is
 `position: absolute; top: calc(100% + 4px); right: 0`, which works only because the
@@ -126,23 +133,20 @@ the same way would open on top of the first with no arbitration.
 Nothing in the app implements arrow-key roving focus, Home and End, or
 `Escape`-returns-focus-to-trigger over a vertical list.
 
-**Tree rows cannot take keyboard focus.** `renderTreeNodes` emits rows with no
-`tabindex`, so no row is reachable by keyboard at all — selection is mouse-only today,
-and a menu “opened on the focused row” has nothing to anchor to.
-The
+**Tree rows take keyboard focus through the shared navigator.** The
 [contextual keyboard help and tree navigation](../done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
-plan now owns the complete focus, role, and arrow-key contract.
-A row-targeted menu depends on that shared navigator instead of landing a temporary
+plan delivered the focus, role, and arrow-key contract (`tree-keyboard-navigation.js`
+keeps one roving `tabindex="0"` row).
+A row-targeted menu anchors to that focused row instead of landing a temporary
 focus-order subset.
 
-**The two behaviors we do have are trapped inside their features.** The custom tooltip
-(`app.js`) has the app’s only viewport-clamping logic, and it is private to
-`positionTooltip`. The Quick File palette (`static/search-palette.js`) has the app’s
-only correct overlay lifecycle — body-portaled surface, scrim, `role="dialog"` with
-`aria-modal`, focus captured on open and restored on close, Escape and
-outside-pointerdown dismissal, a real `dispose()`, injected `document` for testing, and
-a frozen public API. That is exactly the contract a menu needs, and none of it is
-reusable.
+**Placement is still trapped inside one feature.** The custom tooltip (`app.js`) has the
+app’s only viewport-clamping logic, and it is private to `positionTooltip`. The modal
+half of the overlay lifecycle is shared: `overlay-layer.js`
+(`window.MetabrowserOverlay.createModal`) gives Quick File and keyboard help one
+body-portaled scrim, `role="dialog"` with `aria-modal`, inert background, focus capture
+and restore, and a real `dispose()`. Nothing yet anchors a surface to a point or an
+element.
 
 **There is no command model.** Menu contents are literal markup in `server.py`’s index
 template. A context menu needs the opposite: a list of actions resolved at open time
@@ -152,9 +156,11 @@ against what was clicked and what the server permits.
 app swaps a label for an input, and nothing owns commit, cancel, validation, or
 rollback.
 
-**There is no mutation plane.** Every route is read-only except
-`POST /api/kpress/export`. There is no `--allow-edits` gate, no mutation service, and
-`client_settings_dict()` publishes no capability flags.
+**There is no mutation plane.** Only `POST /api/kpress/export` writes into the served
+tree, to a destination under the root, gated by the source’s `mutation` capability.
+No route renames, moves, or deletes, and nothing reads `CAPABILITIES.mutations` yet.
+The `--allow-edits` gate and the `CAPABILITIES` block exist (`capabilities.py`, #209),
+but there is no mutation service.
 The [trusted-local file editing plan](plan-2026-07-16-trusted-local-file-editing.md)
 defines the umbrella policy; this plan lands its rename-and-trash slice together with
 the menu vocabulary that policy assumed but never specified.
@@ -168,8 +174,8 @@ independently testable and reusable:
 
 | Layer | Owns | Today |
 | --- | --- | --- |
-| Surface | Tokens, `.menu`, `.menu-item`, `.icon-btn`, `.kbd`, scrim, z-scale | In place; no plain text button yet (Phase 2 adds one for dialogs) |
-| Placement | Anchoring, flip and clamp, dismissal, focus, disposal | Absent; partially duplicated in tooltip and palette |
+| Surface | Tokens, `.menu`, `.menu-item`, `.icon-btn`, `.kbd`, scrim, z-scale | In place, including the `.btn` text button; Phase 2 adds `.btn.destructive` for dialogs |
+| Placement | Anchoring, flip and clamp, dismissal, focus, disposal | Modal half shared in `overlay-layer.js`; anchoring absent; clamping private to the tooltip |
 | Content | Rendering a list into a surface, keyboard model, ARIA roles | Absent |
 | Command | What actions exist, when they are enabled, what they do | Absent |
 
@@ -254,7 +260,7 @@ rather than a second copy.
 Modals do not dismiss on scroll, resize, or blur; only Escape, an explicit control, or
 scrim `pointerdown` closes them, matching the palette today.
 
-#### Browser: `static/action_menu.js` → `window.MetabrowserMenu`
+#### Browser: `static/action-menu.js` → `window.MetabrowserMenu`
 
 The content primitive.
 Renders a resolved action list into `.menu` markup — `.menu-item` rows with
@@ -290,7 +296,7 @@ using `--status-error` for the label and icon, and a `.menu-item-hint` slot on t
 trailing edge for a keyboard shortcut rendered through the shared formatter and `.kbd`
 component.
 
-#### Browser: `static/action_registry.js` → `window.MetabrowserActions`
+#### Browser: `static/action-registry.js` → `window.MetabrowserActions`
 
 The contextual action primitive.
 It decides which operations apply and whether they are enabled; the
@@ -334,7 +340,7 @@ trash actions for the focused tree row.
 The action registry still owns applicability and capability checks; the shortcut
 registry owns matching, context, and presentation.
 
-#### Browser: `static/inline_edit.js` → `window.MetabrowserInlineEdit`
+#### Browser: `static/inline-edit.js` → `window.MetabrowserInlineEdit`
 
 The in-place edit primitive.
 Given a target element, it replaces the element’s text with an input styled to sit
@@ -472,29 +478,31 @@ drive-by-write path.
 
 ### Phase 1: Overlay, Menu, and Command Primitives
 
-- [ ] Add `overlay-layer.js` with point and element anchoring, flip-and-clamp
-  containment, the anchored dismissal contract, focus save and restore with the
-  detached-element fallback, registry-scoped Escape integration, single-open
-  arbitration, inert-background restoration for modals, and disposal
-- [ ] Add the modal variant and port `search-palette.js` onto it, deleting the palette’s
-  private overlay, scrim, focus, and dismissal code (sequence this after the in-flight
-  quick-file palette branch lands, so the port rebases once, not continuously)
+- [ ] Extend `overlay-layer.js` with point and element anchoring, flip-and-clamp
+  containment, and the anchored dismissal contract.
+  Focus save and restore with the detached-element fallback, registry-scoped Escape
+  integration, single-open arbitration, inert-background restoration, and disposal
+  already exist for modals; this item extends the first three to anchored surfaces
+- [x] Add the modal variant and port `search-palette.js` onto it, deleting the palette’s
+  private overlay, scrim, focus, and dismissal code (#35: `createModal` in
+  `overlay-layer.js`, used by `search-palette.js` and `keyboard-help.js`)
 - [ ] Move `positionTooltip`’s clamping onto the shared placement helper
-- [ ] Add `action_menu.js` with the roving-focus keyboard model, focusable disabled
+- [ ] Add `action-menu.js` with the roving-focus keyboard model, focusable disabled
   rows, ARIA roles, text-node labels, and grouping
 - [ ] Add the menu and edit CSS from existing tokens: `.menu-item.destructive`,
   `.menu-item-hint`, the inline-edit input class, and the row menu-open target state
 - [ ] Render every `.menu-item-hint` through the shared binding formatter so menu hints
   use the same key abbreviations, grammar, spoken names, and ARIA serialization policy
   as Help and navigation hints
-- [ ] Add `action_registry.js` with context resolution and capability-aware enablement
-- [ ] Add `inline_edit.js` with selection, commit, cancel, validation, pending, error,
+- [ ] Add `action-registry.js` with context resolution and capability-aware enablement
+- [ ] Add `inline-edit.js` with selection, commit, cancel, validation, pending, error,
   re-mount across re-renders, and restore
 - [ ] Integrate the context-menu target with the focused-row contract from the
   contextual keyboard plan, without registering a second tree-navigation handler
 - [ ] Wire the one nav-tree `contextmenu` handler for pointer and keyboard, registering
-  the real rename and trash descriptors; with no `CAPABILITIES` published yet they
-  render disabled with their reasons, which is the Phase 1 deliverable
+  the real rename and trash descriptors; with no mutation route behind
+  `CAPABILITIES.mutations` yet they render disabled with their reasons, which is the
+  Phase 1 deliverable
 - [ ] Port the settings gear onto the shared overlay, moving `aria-expanded` onto the
   trigger button and deleting the scoped `display` CSS and the gear’s private document
   listeners
@@ -505,8 +513,9 @@ drive-by-write path.
 
 ### Phase 2: Gated Rename and Trash
 
-- [ ] Add the `--allow-edits` and `METAB_ALLOW_EDITS` gate, the `CAPABILITIES` block in
-  `client_settings_dict()`, and the persistent edit-mode badge
+- [x] Add the `--allow-edits` and `METAB_ALLOW_EDITS` gate and the `CAPABILITIES` block
+  in `client_settings_dict()` (#209: `capabilities.py`, `settings.py`)
+- [ ] Add the persistent edit-mode badge
 - [ ] Add `mutations.py` with name validation, containment re-resolution, optional
   revision guards, quarantine trash, conflict detection, and structured outcomes
 - [ ] Add `POST /api/mutate` with the rename and trash operations and the content-type
@@ -514,10 +523,9 @@ drive-by-write path.
 - [ ] Publish successful mutations through the inventory event path; re-target the
   preview when the open file is renamed and show an explicit removed state when it is
   trashed
-- [ ] Add the first text-button pair (`.btn`, `.btn.destructive`) to `styles.css` for
-  the confirmation dialog — the app has icon, tab, and filter buttons but no plain text
-  button today
-- [ ] Wire rename to `inline_edit.js` and trash to a confirmation on the shared modal
+- [ ] Add `.btn.destructive` beside the existing `.btn` text button in `styles.css` for
+  the confirmation dialog
+- [ ] Wire rename to `inline-edit.js` and trash to a confirmation on the shared modal
   shell, and register `F2` and `Delete` through the shared shortcut registry against the
   same focused-row action descriptors; menu hints still render through `.menu-item-hint`
   and the shared binding formatter

@@ -173,6 +173,17 @@ and second line ^block-id
   check("heading section selected", heading.status === "selected");
   check("heading includes descendants", heading.source.includes("### Details"));
   check("heading stops at sibling", !heading.source.includes("## Next"));
+  // A list item above a thematic break is no setext heading, so it ends no section.
+  const ruled = module.selectTransclusionSource(
+    "## Install\n- one\n- two\n---\nAfter the rule.\n\n## Next\n",
+    "obsidian-heading-Install",
+  );
+  check(
+    "a list above a thematic break stays in its section",
+    ruled.status === "selected" &&
+      ruled.source === "## Install\n- one\n- two\n---\nAfter the rule.\n\n",
+    JSON.stringify(ruled),
+  );
   const block = module.selectTransclusionSource(note, "obsidian-block-block-id");
   check("named block selected", block.status === "selected");
   check(
@@ -345,7 +356,13 @@ and second line ^block-id
   let tocDisposed = 0;
   const mb = {
     fetchKpressRender: async (_ctx, _view, options) => {
-      check("selected source sent through KPress", options.sourceText.includes("## Install"));
+      check(
+        "selected source sent through KPress",
+        /^## (?:<span class="metabrowser-wiki-heading" id="[^"]+"><\/span>)+Install$/m.test(
+          options.sourceText,
+        ),
+        options.sourceText,
+      );
       return { html: '<article class="kpress">Rendered</article>' };
     },
     fetchText: async () => note,

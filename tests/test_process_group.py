@@ -2,6 +2,7 @@
 
 The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``,
 ``test_github_pull_header_chrome.py``, ``test_github_pull_text_chrome.py``,
+``test_nav_metadata_chrome.py``, ``test_prose_faces_chrome.py``,
 ``test_raw_profile_cache_chrome.py``, ``test_staged_fonts_chrome.py``) run a Node script
 that starts Chrome and its helpers.
 Stopping that script's process group is what stops them, so this holds:
@@ -91,6 +92,8 @@ CHROME_TESTS = (
     "tests.test_files_tab_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
+    "tests.test_nav_metadata_chrome",
+    "tests.test_prose_faces_chrome",
     "tests.test_raw_profile_cache_chrome",
     "tests.test_staged_fonts_chrome",
     "tests.test_transitions_instrument",

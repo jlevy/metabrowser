@@ -269,7 +269,7 @@ page and how the inert layer writes a link’s scheme,
 
 The landing gate’s three checks last ran on `c2d493e9`, so none of them has seen these
 rows. They are owed again on the head that is tagged, as the
-[alpha test plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md) says.
+[alpha test plan](../specs/done/plan-2026-09-22-v012-alpha-testing.md) says.
 
 ## Dependencies and Minimum Tools
 
