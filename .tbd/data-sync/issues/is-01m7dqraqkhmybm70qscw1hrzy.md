@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqraqkhmybm70qscw1hrzy
 title: "Docs: working-with-agents guide and skill update"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:10.194Z
-updated_at: 2026-11-14T19:15:10.194Z
+updated_at: 2026-11-15T05:56:37.819Z
 ---
 Phase 1, PR 6.
 

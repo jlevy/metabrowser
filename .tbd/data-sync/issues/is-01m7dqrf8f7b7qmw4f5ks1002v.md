@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqrf8f7b7qmw4f5ks1002v
 title: "Docs records: retire, move, index, and check 4"
 kind: task
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:14.830Z
-updated_at: 2026-11-14T19:15:14.830Z
+updated_at: 2026-11-15T05:56:41.732Z
 ---
 Phase 2, PR 8: project records and check 4.
 

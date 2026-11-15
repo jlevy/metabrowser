@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqrdwsgt9p47d19rs6349h
 title: "Architecture: macOS app; cut the app README to build, test, release"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:13.432Z
-updated_at: 2026-11-14T19:15:13.432Z
+updated_at: 2026-11-15T05:56:40.554Z
 ---
 Phase 2, PR 5: the macOS app.
 

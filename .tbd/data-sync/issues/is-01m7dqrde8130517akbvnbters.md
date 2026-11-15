@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqrde8130517akbvnbters
 title: "Architecture: plugin system and browser shell"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:12.968Z
-updated_at: 2026-11-14T19:15:12.968Z
+updated_at: 2026-11-15T05:56:40.151Z
 ---
 Phase 2, PR 4: plugins and the browser.
 

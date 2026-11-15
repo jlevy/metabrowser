@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqrczwe5g7q2c8ja0vbz94
 title: "Architecture: repository cache, mirrors, GitHub pull requests"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:12.507Z
-updated_at: 2026-11-14T19:15:12.507Z
+updated_at: 2026-11-15T05:56:39.765Z
 ---
 Phase 2, PR 3: repository cache, mirrors, and GitHub.
 

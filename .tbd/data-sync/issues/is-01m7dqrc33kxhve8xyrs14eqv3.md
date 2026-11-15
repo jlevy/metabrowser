@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqrc33kxhve8xyrs14eqv3
 title: "Architecture: CLI, server, inventory provider, Python engine, live delivery"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:11.586Z
-updated_at: 2026-11-14T19:15:11.586Z
+updated_at: 2026-11-15T05:56:38.985Z
 ---
 Phase 2, PR 1: CLI, server, inventory, and delivery (spec: Architecture Documents).
 

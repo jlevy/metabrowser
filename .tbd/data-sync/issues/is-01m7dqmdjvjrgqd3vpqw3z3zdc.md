@@ -3,9 +3,9 @@ type: is
 id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 title: "Docs phase 2: the builder's path"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
@@ -20,6 +20,6 @@ child_order_hints:
   - is-01m7dqret6mea79taytx6m775k
   - is-01m7dqrf8f7b7qmw4f5ks1002v
 created_at: 2026-11-14T19:13:02.042Z
-updated_at: 2026-11-14T19:15:14.830Z
+updated_at: 2026-11-15T05:56:35.388Z
 ---
 Phase 2 of the documentation plan: one stack of eight pull requests, stacked on phase 1. Architecture documents for every layer (CLI, server, inventory provider and Python engine, live delivery, Git, sources, diff, repository cache, mirrors, GitHub, plugins, browser shell, macOS app), the design and contributor documents, the map and entry point, and the project records. Copy-then-delete rule: the pull request that creates a destination copies material in; the owner of the source deletes it later in the stack. The fdu swap must touch only the engine document, the benchmark, the provider status line, and development.md's provider section.

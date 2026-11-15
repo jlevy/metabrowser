@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqrchg7p9rh98mpsqyxezs
 title: "Architecture: Git, source sessions and pins, diff pipeline"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmdjvjrgqd3vpqw3z3zdc
 created_at: 2026-11-14T19:15:12.048Z
-updated_at: 2026-11-14T19:15:12.048Z
+updated_at: 2026-11-15T05:56:39.367Z
 ---
 Phase 2, PR 2: Git and diffs.
 

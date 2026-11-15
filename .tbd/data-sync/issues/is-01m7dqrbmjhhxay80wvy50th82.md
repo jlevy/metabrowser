@@ -3,9 +3,9 @@ type: is
 id: is-01m7dqrbmjhhxay80wvy50th82
 title: "Baseline scale benchmark: make benchmark and docs/scale-benchmark.md"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies:
@@ -13,7 +13,7 @@ dependencies:
     target: is-01m7dqrfppjawy0g7hhnenkebc
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:11.122Z
-updated_at: 2026-11-14T19:15:20.204Z
+updated_at: 2026-11-15T05:56:38.591Z
 ---
 Phase 1, PR 8 (spec: The Baseline Benchmark).
 

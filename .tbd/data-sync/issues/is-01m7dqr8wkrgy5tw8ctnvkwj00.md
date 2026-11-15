@@ -3,15 +3,15 @@ type: is
 id: is-01m7dqr8wkrgy5tw8ctnvkwj00
 title: "README: app icon, thesis, and first-principles outline"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md
 labels: []
 dependencies: []
 parent_id: is-01m7dqmd3wafkq2x9r1y2gt57v
 created_at: 2026-11-14T19:15:08.306Z
-updated_at: 2026-11-14T19:15:08.306Z
+updated_at: 2026-11-15T05:56:36.146Z
 ---
 Phase 1, PR 2 (spec: The README).
 
