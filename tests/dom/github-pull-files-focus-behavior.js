@@ -581,6 +581,16 @@ async function refreshingPaint(mountFileTree) {
     };
   };
   const asked = painted();
+  // A folder row ends with the line counts of its files, rolled up, in the shell's number
+  // format, and says them to a screen reader (mb-epw2).
+  const folder = list.children.find((row) => row.dataset.id === "src/");
+  const stats = folder?.children.find((part) => part.classes.has("github-pull-file-stats"));
+  assert.deepEqual(
+    stats?.children.map((part) => part.children.map((text) => text.textContent).join("")),
+    ["+2", "\u22120"],
+    "a folder row shows its files' line counts rolled up",
+  );
+  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 added, 0 deleted");
   answerAsk({ status: 202, etag: null, body: { files: listing("stale", true, false) } });
   await settle();
   const running = painted();

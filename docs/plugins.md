@@ -637,6 +637,12 @@ path.
   navigation target and forwards an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
+- `loadChangedFilesTree()` loads the shell’s tree of a change set’s files once, on
+  demand, and resolves with it: folders built from paths with their line counts rolled
+  up, the visible rows with a chain of single folders as one row, which folders are
+  open, and a change set’s header text.
+  A diff’s Diff summary and the Pulls tab’s changed files both draw with it;
+  `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target.

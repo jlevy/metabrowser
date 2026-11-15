@@ -74,7 +74,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   focusedIn: () => void,
  *   lastInput?: () => number | null,
  *   held?: (hold: "opening" | "lateRows", heldMs: number, outcome: string) => void,
- *   tree: MetabrowserChangedFilesTree | PromiseLike<MetabrowserChangedFilesTree>,
+ *   tree: MetabrowserChangedFilesTree | (() => PromiseLike<MetabrowserChangedFilesTree>),
  *   formatCount: (count: number) => string,
  * }} host
  */

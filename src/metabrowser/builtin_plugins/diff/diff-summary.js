@@ -25,12 +25,24 @@
 //
 // A path is text whoever made the change wrote: it is painted with textContent and reaches
 // no class, style, or markup; the only markup parsed is the shell's own chevron.
+//
+// Measured 2026-11-15 in headless Chrome 152 at 1280×900, medians of 7 loads, on this
+// repository's pull request #260 as a patch (596 files, 649 rows) and on a synthetic patch of
+// 2,000 files four folders deep (3,221 rows), at a load average of 12 to 39: the header
+// paints in the frame the first file bar does, no later than the count line it replaced;
+// a press after a hover drew 61 rows in 4.9 and 12.2 ms of script and showed them 16.4 and
+// 46.8 ms after the press (at most 19 and 65.7), with no long task; a press with no hover,
+// which imports this module itself, took 15.7 to 16.9 and 39.4 to 43.1 ms; a folder three
+// and four levels deep closed and opened in 9.4 to 26.3 ms. No spinner is drawn: nothing
+// waits long enough to need one. diff.summary-paint in
+// docs/project/architecture/arch-views-models-routes.md records the run.
 
 /**
  * Folders start open up to this many files, as the Pulls tab's do (`AUTO_EXPAND_FILES` in
- * builtin_plugins/github/pulls-panel.js), measured there with the same windowed paint. A
- * comparison lists at most 2,000 files (`MAX_MANIFEST_FILES` in diff/adapters/git.py), so every
- * folder of a comparison starts open.
+ * builtin_plugins/github/pulls-panel.js), measured there with the same windowed paint and
+ * again here: every folder of 2,000 files open opened in the times above. A comparison lists
+ * at most 2,000 files (`MAX_MANIFEST_FILES` in diff/adapters/git.py), so every folder of a
+ * comparison starts open.
  */
 export const SUMMARY_AUTO_EXPAND_FILES = 3000;
 

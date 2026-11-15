@@ -74,6 +74,24 @@ All notable changes to Metabrowser are documented here.
   The label now starts on the text’s left edge.
   A document’s own `<details>` sections look as before.
 
+- A diff of more than one file now opens with a Diff summary, collapsed, in place of the
+  “41 changed files +6526 −555” line at its top: a header such as “35 changed files (2
+  added, 3 removed, 30 modified) +1,234 −3,423” that opens to the changed files as a
+  tree by folder. The header lists only the statuses some file has, in one order (added,
+  removed, modified, renamed, then the rest), writes its numbers in the shell’s format,
+  and still says “(estimated)” when the totals are not exact.
+  The tree is the one the Pulls tab shows under a pull request: folders toggle, a chain
+  of single folders is one row, and each file has its change letter and line counts.
+  Every folder now shows the line counts of the files under it, rolled up, in the Diff
+  summary and in the Pulls tab alike.
+  Pressing a file, or Enter or Space on it, takes the diff to that file; the arrow keys
+  move along the rows without moving the diff.
+  It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
+  commit summary’s totals, as before.
+
+- Plugins can draw a tree of changed files with the shell’s own model,
+  `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
+
 - The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
   and the pull request count with how fresh it is — now looks the same on every tab.
   It was three styles: on Pulls it was smaller, gray, and hard against the filters with

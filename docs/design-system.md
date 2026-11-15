@@ -774,9 +774,9 @@ first paint, its folders travelling, as before: that still moves the tree with n
 
 A **disclosure toggle** is any control that shows or hides content: a tree row that owns
 a child group (a folder, a container file, a tally node, a pull request in the Pulls
-list, a folder of its changed files), a section-disclosure trigger, a fold expander, a
-diff file bar, an expandable log event or data row, a `summary`, and a menu trigger that
-carries the registry chevron.
+list, a folder of its changed files, a folder of a Diff summary), a section-disclosure
+trigger, a fold expander, a diff file bar, a Diff summary’s header, an expandable log
+event or data row, a `summary`, and a menu trigger that carries the registry chevron.
 A control with the chevron or a `summary`’s marker is a toggle, and so is one that sets
 `aria-expanded` for content it shows in place.
 
@@ -1030,8 +1030,9 @@ tooltip before navigation.
 The component owns commit identity and message only.
 The comparison, files outside the served root, and truncation notice are siblings under
 `.git-commit-view`, because they describe the rendered change rather than the commit
-summary. A revision-hosted comparison suppresses its aggregate summary so the mounted
-view has one set of totals; direct diff documents retain their own summary.
+summary. A revision-hosted comparison has no [Diff summary](#diff-summary), so the
+mounted view has one set of totals; a pull request’s Changes and a patch file open with
+theirs.
 
 Do not assemble commit-summary fragments in `renderCommitDetail` or add a second root.
 `tests/test_design_vocabulary.py::test_git_commit_summary_is_one_component` maintains
@@ -1248,9 +1249,41 @@ always in that order, using the true minus sign, at the local small-text size, a
 always `--weight-bold` — the pair is data, and it must read at a glance.
 The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and weight
 rule but use the commit summary’s standard body size.
-The same pair is the summary line’s vocabulary, so a change set and its files read
-identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
-is `--status-error` — and no diff surface introduces a local green or red.
+The same pair is the [Diff summary](#diff-summary)’s vocabulary, so a change set, its
+folders, and its files read identically.
+Kind letters reuse the same mapping — added is `--status-success`, deleted is
+`--status-error` — and no diff surface introduces a local green or red.
+
+### Diff Summary
+
+A diff of more than one file opens with its Diff summary, in the toolbar beside the
+layout control, and it starts collapsed.
+Its header is one row-like disclosure toggle that leads with the registry’s chevron in
+the tree’s 16px box: “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423”.
+The breakdown lists only the statuses some file has, in one order (added, removed,
+modified, renamed, then copied, type changed, unmerged, and any other), in `--muted`;
+numbers use the shell’s number format; the totals are the
+[inline change stats](#inline-change-stats); and “(estimated)” follows totals that are
+not exact. Its accessible name says the same in words.
+A change set of no files has nothing to open, so its header is a line.
+A commit’s view has no Diff summary: its [commit summary](#git-commit-summary) carries
+the totals.
+
+Opened, it shows the change set’s files as a tree by folder, the
+[Pulls tab’s tree](#the-pulls-tab) adapted to the page and drawn on the same model
+(`static/changed-files-tree.js`): the nav panel’s row height, indent, chevrons, change
+letters, and inline change stats at the row’s end, a chain of single folders as one row,
+and every folder with the line counts of the files under it rolled up, open or closed,
+as a Files folder keeps its size whichever way it is turned.
+The tree sits in a box under the toolbar, at most `60vh` tall, which scrolls inside
+itself so the files stay a scroll away, and it is drawn a window at a time.
+Nothing of it is mounted until the header first opens it.
+The keys are a tree’s: the arrows move one tab stop, Right and Left open, close, and
+step into or out of a folder, and Home and End go to the ends.
+Only Enter, Space, or a press on a file jumps the diff to that file, because the tree
+sits above the files and a jump on every step would scroll it away.
+`tests/dom/diff-summary-session.js` holds the words, the rows, and the keys, and the
+paint’s measurement is in the views, models, and routes map (`diff.summary-paint`).
 
 ### Diff File Bar
 
@@ -1540,7 +1573,9 @@ stack requests, and enrichment updates retain the row and any focused changed-fi
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
-A folder chain is one row.
+A folder chain is one row, and every folder row ends with the line counts of the files
+under it, rolled up, open or closed, as in a diff’s [Diff summary](#diff-summary), which
+draws its tree on the same model.
 Up, Down, J, and K move through the visible rows, with one Tab anchor per file tree.
 A file step calls the diff’s public jump API; a held key replaces the address once it
 stops, while Enter and a click push it.

@@ -3021,11 +3021,19 @@ export function mountPullsPanel(container, ctx, mb) {
   const expansion = createRowExpansion();
   // The changed-files tree every row's files are drawn with, which a diff's Diff summary
   // shares (static/changed-files-tree.js). It is asked for now, as the list mounts, so it is
-  // in hand before a reader opens a row; a tree opened first waits for it in its read.
-  const changedFilesTree = mb.loadChangedFilesTree();
-  void changedFilesTree.catch((error) => {
-    console.error("metabrowser github: the changed-files tree did not load", error);
-  });
+  // in hand before a reader opens a row; a tree opened first waits for it in its read. A load
+  // that failed is asked for again by the next read, so a tree's Retry can still draw.
+  /** @type {Promise<MetabrowserChangedFilesTree> | null} */
+  let changedFiles = null;
+  const loadChangedFiles = () => {
+    changedFiles ??= mb.loadChangedFilesTree().catch((error) => {
+      changedFiles = null;
+      console.error("metabrowser github: the changed-files tree did not load", error);
+      throw error;
+    });
+    return changedFiles;
+  };
+  void loadChangedFiles().catch(() => {});
   /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
   const trees = new Map();
   /** The tree a file row with focus is in, whose keys the host's file keys are. */
@@ -3130,7 +3138,7 @@ export function mountPullsPanel(container, ctx, mb) {
         lastInput: () => lastInputAt,
         held: (hold, heldMs, outcome) =>
           mb.perf.measure(`githubPulls:${hold}Hold`, () => {}, { number, heldMs, outcome }),
-        tree: changedFilesTree,
+        tree: loadChangedFiles,
         formatCount: (count) => mb.formatInteger(count),
       });
       trees.set(number, tree);

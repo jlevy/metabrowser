@@ -609,7 +609,7 @@ function isFilesEnvelope(value) {
  *   leave(): void,
  *   lastInput?(): number | null,
  *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "failed" | "bound" | "reader" | "closed" | "withdrawn"): void,
- *   tree: MetabrowserChangedFilesTree | PromiseLike<MetabrowserChangedFilesTree>,
+ *   tree: MetabrowserChangedFilesTree | (() => PromiseLike<MetabrowserChangedFilesTree>),
  * }} FileTreeDependencies
  */
 
@@ -617,9 +617,10 @@ function isFilesEnvelope(value) {
  * One pull request's changed files in its row: the list as it arrives, which folders are
  * open, which row takes Tab and which file the page shows, the keys, and the jump.
  *
- * The tree is the shell's changed-files tree, `deps.tree`, which the panel asks the SDK for
- * as it mounts; a read waits for it before its rows are taken, so a tree opened before it
- * arrives draws its first rows when both are in hand.
+ * The tree is the shell's changed-files tree, `deps.tree`: the model itself, or a function
+ * that loads it, as the panel's asks the SDK for it. A read waits for it before its rows are
+ * taken, so a tree opened before it arrives draws its first rows when both are in hand, and a
+ * load that failed is asked for again by the next read, which Retry starts.
  *
  * Expansion reads the local cache before asking for a missing, partial, or stale list.
  * The server and the controller hold automatic provider requests to one per window.
@@ -982,7 +983,7 @@ export function createFileTreeController(deps, options) {
       // One in hand is taken at once, so the read is asked for in the same task as ever.
       if (shared === null) {
         const given = deps.tree;
-        shared = "then" in given ? await given : given;
+        shared = typeof given === "function" ? await given() : given;
         if (inflight !== controller || controller.signal.aborted || !live()) {
           return;
         }
