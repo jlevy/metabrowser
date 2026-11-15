@@ -557,6 +557,9 @@ async function run() {
   bound[1].callback();
   await settle();
   assert.equal(late.plain()?.textContent, "slow text", "past the bound the text paints plain");
+  // A text is chrome prose, plain or rendered: sans under either reading font
+  // (docs/design-system.md, "Serif Is for Documents"; tests/test_prose_faces_chrome.py).
+  assert.ok(late.description().classes.has("chrome-prose"), "a plain text is chrome prose");
   assert.equal(late.holding(), false);
   assert.equal(late.ready(), true);
   session.holdMarkdown(false);
@@ -596,6 +599,11 @@ async function run() {
   await settle();
   assert.equal(discussed.ready(), true);
   assert.equal(plainAtReady, 0, "no text the first screen shows is plain at ready");
+  assert.deepEqual(
+    discussed.texts().filter((node) => !node.classes.has("chrome-prose")),
+    [],
+    "the description, every comment, and every review is chrome prose",
+  );
   assert.equal(discussed.holding(), false);
   facts.comments = { texts: atHold, asked: session.markdown.length - askedBefore, plainAtReady };
   discussed.handle.dispose();

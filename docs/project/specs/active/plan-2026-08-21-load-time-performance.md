@@ -96,6 +96,17 @@ work: H57, H42, and H11 respectively.
 Targets to validate and adjust in Phase 1, not settled numbers.
 They exist so a later change has something to fail against.
 
+The budgets the loop enforces are in
+`explorations/performance-loop/performance-budgets.toml`, and its comments name the
+experiment behind each ceiling.
+First row is a 350 ms gate, calibrated on the repository-shaped project-10 corpus in
+exp-035. Startup scripts are gated at 25 requests, from exp-014 on a 111,590-file
+corpus, and at 220 KB, from exp-084 on a 468-file folder page.
+First contentful paint is a 200 ms target.
+`performance-budgets-flat-stress.toml` holds the flat shape.
+The table below is the August proposal; no 10k, 100k, or 1M baseline has replaced it row
+by row.
+
 | Measure | Budget | Today, 100k | Today, 1M |
 | --- | --- | --- | --- |
 | First contentful paint | ≤ 200 ms | 92 ms | 176 ms |
@@ -126,6 +137,9 @@ and
 - Persisting an index across runs.
   Worth its own investigation once the progressive path exists; a cache that hides a
   slow path is not a fix for it.
+  H21 (`mb-omhf`) reopens it now that the progressive path exists, and the
+  [native macOS app plan](plan-2026-11-10-native-macos-app.md) carries it as a measured
+  follow-up.
 
 ## Background
 
@@ -275,6 +289,8 @@ against the same corpus it already builds, reporting first contentful paint,
 DOMContentLoaded, time to first tree row, rendered row count, DOM node count, and
 transferred bytes into the same result JSON, so one `--baseline` comparison covers
 serving and page load together.
+Superseded: this phase was not added, and `explorations/performance-loop/run.py`
+measures page load instead (`mb-pwnw`, Phase 1).
 
 **`static/asset-loader.js` (new).** One loader with `ensureAsset(name)` and
 `prefetchAssets()`, generalizing the loaded-set and in-flight-promise semantics that
@@ -436,13 +452,23 @@ Each keeps its number in the registry, so no id means two things:
 - [ ] Add a page-load phase to `devtools/bench_serving.py`: headless Chromium against
   the corpus it already builds, reporting FCP, DOMContentLoaded, time to first tree row,
   rendered rows, DOM nodes, and transferred bytes into the existing result JSON and
-  `--baseline` diff
+  `--baseline` diff. Superseded by `explorations/performance-loop/run.py`, whose
+  `capture` and `capture-browser.js` measure first row and paint in a real browser
+  against `performance-budgets.toml` (`mb-pwnw`)
 - [ ] Record a baseline at 10,000, 100,000, and 1,000,000 files and check the numbers
-  into this document, replacing the proposed budgets with validated ones
-- [ ] Add `static/asset-loader.js` with eager, prefetched, and on-demand tiers, under
-  the strict `tsconfig.json` gate
-- [ ] Publish a tiered asset descriptor from `server.py` in place of the inline chain,
-  keeping the `metabrowser:optional-asset*` re-enhance events firing
+  into this document, replacing the proposed budgets with validated ones.
+  Not done as written: after H16 the loop gates project-10 through
+  `performance-budgets.toml`, plus `build_corpus` shape 2 at 300,000 files through
+  `performance-budgets-flat-stress.toml`, rather than these three sizes; see
+  [Proposed Budgets](#proposed-budgets) (`mb-o2hk`)
+- [x] Add `static/asset-loader.js` for the on-demand tier, under the strict
+  `tsconfig.json` gate.
+  Planned with eager, prefetched, and on-demand tiers, it owns only the on-demand tier,
+  through `ensureAsset`; the prefetched tier is the idle chain below (`mb-sn1i`)
+- [x] Publish a tiered asset descriptor from `server.py` in place of the inline chain,
+  keeping the `metabrowser:optional-asset*` re-enhance events firing.
+  `server.py` publishes the on-demand bundles as `window.METABROWSER_ASSET_BUNDLES`
+  beside the prefetched `optional_script_assets` chain (`mb-nytk`)
 - [x] Move the Chart.js stack to on demand.
   `static/asset-loader.js` owns the loading, `plugin-sdk.js` publishes it as
   `ensureAsset`, and the agent-log charts view awaits it.
@@ -459,20 +485,27 @@ Each keeps its number in the registry, so no id means two things:
   Time to first tree row did not measurably change — 854 ms against 999 ms, on ranges of
   678-1,591 ms and 690-1,106 ms that overlap almost completely.
   Accepted on the tier policy and the `load` result, not on a first-row win
-- [ ] Re-measure and record the comparison
+- [x] Re-measure and record the comparison: H55 in exp-010, and H51 and H9 in exp-014
+  (`mb-3jt8`)
 
 ### Phase 2: Time to First Row
 
 - [ ] Render nav rows from partial index state as it arrives, instead of gating on scan
-  completion; the first `/api/tree` already answers in under 10 ms at every corpus size
+  completion; the first `/api/tree` already answers in under 10 ms at every corpus size.
+  Not needed as stated: H6 did not reproduce, because `renderFilesFromTree` runs as soon
+  as `/api/tree` resolves, and H20 inlines the first rows (`mb-op70`)
 - [x] Inline the root’s depth-1 rows into the shell so the first paint does not wait for
   a fetch: 1,604 ms to 242 ms at 300,000 files —
   [exp-004](../../../../explorations/performance-loop/experiments/exp-004-the-shell-carries-the-first-rows.md)
-- [ ] Show scan progress in place rather than as an empty tree, so an incomplete tree
-  reads as incomplete — [degrade visibly](../../../large-content-rendering.md)
+- [x] Show scan progress in place rather than as an empty tree, so an incomplete tree
+  reads as incomplete — [degrade visibly](../../../large-content-rendering.md).
+  `#index-progress` and `renderIndexProgress` show a scan count in place of an empty
+  tree (`mb-s8yx`)
 - [ ] Window the rendered rows so the count follows the viewport, keeping find-in-page
-  and selection working or recording what is traded
+  and selection working or recording what is traded (`mb-z7zb`)
 - [ ] Move `/api/catalog` to the on-demand tier, fetched when the finder first opens
+  (`mb-296z`). `catalog-feed.js` already holds the fetch on a pull-request page until
+  its palette or a file releases it
 - [x] Collapse the per-folder `/api/tree?path=…&depth=2` burst into what the viewport
   needs. Candidates are now the lazy stubs whose folder row is on screen plus one screen
   of lookahead, and the sweep re-arms on scroll and on folder expansion.
@@ -485,12 +518,13 @@ Each keeps its number in the registry, so no id means two things:
 
 - [ ] Attribute start-to-serving: find what scales with the tree before binding, and
   what the fixed cost is beyond the 113 ms module import and 56 ms interpreter start
+  (`mb-kp6c`)
 - [ ] Reduce the whole-tree `/api/tree` cost, which is 4,990 ms and 3.68 MB at a million
-  files on the route that answers in 9 ms while scanning
-- [ ] Measure walk throughput per file and find where the roughly 50 µs goes
+  files on the route that answers in 9 ms while scanning (`mb-r4bm`)
+- [ ] Measure walk throughput per file and find where the roughly 50 µs goes (`mb-migx`)
 - [ ] Decide what replaces `INVENTORY_MAX_FILES = 500_000`: a higher measured cap, or a
   progressive index with no cap and a visible frontier.
-  Silent truncation is not an option either way.
+  Silent truncation is not an option either way (`mb-s5p6`).
 - [ ] Re-measure and record the comparison
 
 ### Phase 4: v0.7.0 Release Stabilization
@@ -690,7 +724,7 @@ review found.
 | H1 | The prefetched libraries start on `DOMContentLoaded`, which is the same window as the first `/api/tree` fetch and the tree render, so they compete with the tree and hold the `load` event open behind them. Starting them on the first idle callback removes both. | `load_ms` down; `first_row_ms` down | **Half confirmed** (exp-001). `load_ms` 3,883 ms to 750 ms on ranges that do not overlap. `first_row_ms` did not move: 854 ms against 999 ms on ranges that overlap almost completely. Accepted on the tier policy and `load`, not on the row |
 | H2 | The idle sweep that warms collapsed folders is not viewport-bounded and re-arms on every index refresh, so on a wide tree it requests folders the reader cannot see, for as long as the scan runs. Bounding it to the viewport ends the tail. | `last_resource_ms` and `subtree_requests` down sharply; `first_row_ms` unchanged or down | **Confirmed** (exp-002). 32 requests and 1,566 KB to 0 and 517 KB per cold load at 300,000 files, on ranges that do not overlap. Expanding a folder still warms exactly its newly visible children, and the click after that costs no fetch and paints in 93 ms. Time to first row did not measurably change and is not claimed |
 | H3 | That sweep issues one request per ~800 ms, which does not follow from `SUBTREE_PREFETCH_MAX_CONCURRENT = 3` over a 32-path sweep. Something serializes it, and the policy should not be changed before that is known. | A counted sweep: paths per sweep and sweeps per second | **Unresolved** (exp-002), and the bound landed without it because H2 does not depend on it. Instrumented, the sweep does what it says: one sweep, 32 paths, all issued inside 545-690 ms — against a settled index, against a scan with 12.9 s left, and on both sides of the prefetch-tier change. The trickle was recorded when the corpus had not been served for a while and its walk took ~29 s against 2.7 s warm, so reproducing it needs a cold page cache, which needs root on macOS |
-| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Untestable as stated** on this corpus. `/api/catalog` is 62 bytes at 300,000 `build_corpus` files, not 4.5 MB — the catalog fills from recognized file kinds, and a synthetic tree of stub `.py`/`.ts`/`.png` files produces almost none. A real repository corpus has to reproduce the size before the tier change can be measured at all. The known trap stands: `pendingChanges` in `catalog-feed.js` is unbounded, so a deferred first fetch needs a buffering policy (`mb-296z`) |
+| H4 | `/api/catalog` is 4.5 MB at 100,000 files and nothing reads it until the finder opens, so it competes for connections and main thread during the first seconds. Moving it to the on-demand tier frees that window. | `first_row_ms` down; `transferred_kb` down | **Untestable as stated** on this corpus. `/api/catalog` is 62 bytes at 300,000 `build_corpus` files, not 4.5 MB — the catalog fills from recognized file kinds, and a synthetic tree of stub `.py`/`.ts`/`.png` files produces almost none. A real repository corpus has to reproduce the size before the tier change can be measured at all; exp-034 later measured a 15.9 MB body at 300,000 rows on the flat shape-2 corpus (`mb-qtgj`), which can. The buffering policy a deferred first fetch needs exists: `hold()` in `catalog-feed.js` journals nothing while held and `release()` starts an authoritative fetch. It is applied on a pull-request page; applying it to the finder is `mb-296z` |
 | H5 | The root `/api/tree` costs more server time while the walk runs than when it is idle, and the cost is contention with the walker, not response size. Registered at 620-721 ms during a walk, before H23 and H27 took the tally pass off the row request; restated on 2026-11-14 onto `mb-3s45`’s measurement: on project-10, exp-034 recorded 1 (1-3) ms on v0.9.1 against 39 (9-44) ms on the v0.10.0 candidate, `main` at `03fd7997`, every pair past 1.3x. | `tree_fetch_srv_ms` on the root `/api/tree` during a walk, sampled across the scan by `run.py probe-server`, down, with server-side attribution | **Open** (`mb-3s45`). H2, which it once waited behind, was confirmed in exp-002. The mechanism `mb-3s45` names is the provider read: eight loop iterations and a worker hop through the coordinator, each a wait on the walker’s GIL slices. First blocker: re-measure on current `main` with `run.py probe-server`, since exp-034 measured the v0.10.0 candidate |
 | H6 | Nav rows are gated on scan completion, so the first row waits seconds for data the browser already has. | `first_row_ms` down several-fold | **Not reproduced** as stated. On `build_corpus` at 100,000 files the first row lands at a median of 854 ms, not the 4,525 ms this plan’s Background reports from a different corpus. `renderFilesFromTree` runs as soon as `/api/tree` resolves, so the gate is that request rather than scan completion. `mb-op70` closed on 2026-11-01 on this result and H20’s inline; the root route’s cost under a walk is H5’s (`mb-3s45`) |
 | H7 | The tree renders every row it knows about, so DOM node count follows the corpus rather than the viewport. | `dom_nodes` bounded as corpus grows | **Open** (`mb-z7zb`). **The fix is a windowed renderer** over a flattened visible-rows array, capping the DOM at about three screens permanently; `TREE_PAGE_SIZE` caps only the *initial* mount, so a reader who expands and pages still accumulates unbounded nodes. `content-visibility: auto` on subtree containers is the cheap intermediate. Pairing either with a Web Worker that owns JSON parsing and the tree merge moves the remaining main-thread blocking off the interaction path. 3,735 nodes at 100,000 files on `build_corpus`, well under the ceiling — the shape that produced 276,789 nodes needs a wider corpus to reproduce, and that corpus is the first blocker |
@@ -812,12 +846,12 @@ Its work order is the phase order of
 
 It follows the [November 4 iteration](#pr-and-git-navigation) and the provider prefetch
 lane that landed with #355
-([PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md)), and five of
-its rows revisit their results: H88 generalizes H78; H92 measures H75’s join clause for
-the Pulls selection; H94 covers file navigation, which H74 to H76 did not; H104 revises
-H84’s walk; and H106 revisits the description readiness of H77, H81, and H84. Each of
-these rows carries the metrics its predecessors were accepted on as guards, because the
-accept rule’s third clause sees only the metrics in a round’s own table.
+([PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md)), and
+five of its rows revisit their results: H88 generalizes H78; H92 measures H75’s join
+clause for the Pulls selection; H94 covers file navigation, which H74 to H76 did not;
+H104 revises H84’s walk; and H106 revisits the description readiness of H77, H81, and
+H84. Each of these rows carries the metrics its predecessors were accepted on as guards,
+because the accept rule’s third clause sees only the metrics in a round’s own table.
 A row that bundles mechanisms keeps one identifier and records a lettered verdict for
 each mechanism, each decided by its own named metric.
 
@@ -982,8 +1016,9 @@ tracked under `mb-kicj`.
 
 ## Reproducing the Measurements
 
-Every number in this document was taken by hand, outside the repository, because the
-page-load phase this plan asks for does not exist yet.
+Every number in [Background](#background) was taken by hand, outside the repository,
+before the [performance loop](../../../../explorations/performance-loop/README.md)
+existed; the loop’s own rounds are reproduced from their experiment write-ups.
 That is a limitation of the evidence, not of the conclusions: the gaps are large enough
 that corpus shape moves them by percentages, not by orders.
 Still, a reader reproducing them needs to know exactly what was done, and a reader
@@ -1039,8 +1074,10 @@ Three things cost time to discover and are worth stating once.
 Every phase reports through `devtools/bench_serving.py` with `--label` and `--baseline`,
 taken back to back on one machine, as
 [the existing guidance](../../../development.md#benchmarking-scan-and-serve) requires.
-A uniform shift across every row is machine noise; a real change moves the rows its
-mechanism touches.
+Page load is the exception: its planned `bench_serving.py` phase was superseded by
+`explorations/performance-loop/run.py` (`mb-pwnw`), which records and compares page-load
+runs itself. A uniform shift across every row is machine noise; a real change moves the
+rows its mechanism touches.
 
 Beyond the harness:
 
@@ -1074,9 +1111,10 @@ comparison says so before the change ships.
 ## Open Questions
 
 - What is the honest budget for first usable rows?
-  500 ms is proposed from the shape of the waterfall, not from a measurement of the
-  progressive path, which does not exist yet.
-  Phase 1’s baseline settles it.
+  500 ms was proposed from the shape of the waterfall, not from a measurement of the
+  progressive path. exp-035 answered it for repository-shaped trees: a 350 ms gate on
+  project-10 in `performance-budgets.toml`, with a 450 ms ratchet for the flat shape in
+  `performance-budgets-flat-stress.toml`.
 - Does row windowing cost find-in-page and select-all across the whole tree?
   [Rendering large content](../../../large-content-rendering.md) measures that trade for
   document content; the tree is a different surface and needs its own measurement.

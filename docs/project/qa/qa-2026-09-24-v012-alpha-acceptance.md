@@ -13,9 +13,8 @@ as it was at #257, which is not an acceptance rerun, and the
 [second addendum](#second-addendum-2026-10-01) what followed the same day.
 
 The procedure is the manual matrix in the
-[alpha testing plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md), adapted to
-the scope of the
-[thin-mirror plan](../specs/active/plan-2026-09-23-v012-thin-mirror.md).
+[alpha testing plan](../specs/done/plan-2026-09-22-v012-alpha-testing.md), adapted to
+the scope of the [thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md).
 The step-by-step checks come from the
 [repository library QA runbook](../../qa-v012-repository-library.md).
 
@@ -586,7 +585,7 @@ What changed after this run, without altering the results above:
   the startup and eager-load cost it found, are in `mb-l8c2`.
 
 The alpha plan’s
-[Landing status](../specs/active/plan-2026-09-22-v012-alpha-testing.md#landing-status)
+[Landing status](../specs/done/plan-2026-09-22-v012-alpha-testing.md#landing-status)
 lists what remains before the stack lands.
 
 ## Rerun on #250 (View file, landing fixes)

@@ -1,14 +1,15 @@
 # Plan: v0.12 Alpha Testing and Stack Acceptance
 
-**Status:** Active until 0.12.0 is released.
-The implemented feature layers are on `main`; the
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the current integrated candidate, installed artifact and remaining release gates.
-0.12.0 is not yet tagged or released.
+**Status:** Complete.
+0.12.0 was tagged at `main` `87b8ec81` and published on GitHub and PyPI on 2026-11-09,
+with the timed previous-release comparison and the remaining owner QA deferred to their
+open beads; [Landing status](#landing-status) names them.
+The [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md)
+holds the candidate qualifications and installation evidence.
 T0 through T2 were run on 2026-09-24 in the scope of the
 [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), and
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
-the results. [Landing status](#landing-status) lists what remains.
+the results.
 
 ## Outcome and Scope
 
@@ -20,20 +21,20 @@ Tests must prove the installed application path as well as the individual contra
 The initial implementation was one linear chain of pull requests above `main`, linked on
 GitHub as [stack 218](https://github.com/jlevy/metabrowser/stack/218). The later feature
 landings are recorded under [Landing status](#landing-status).
-The candidate for the remaining release work is the recorded `main` commit, and the QA
-runbook’s [Pins](../../../qa-v012-repository-library.md#pins) section selects a commit
-of it.
-The release coordinator is `mb-4bd2`; `mb-n2ro`, which coordinated the landing, is
-closed.
+0.12.0 was tagged from `main` at `87b8ec81`, and the QA runbook’s
+[Pins](../../../qa-v012-repository-library.md#pins) section selects the commit for any
+later run.
+`mb-4bd2`, which coordinated the release, and `mb-n2ro`, which coordinated the
+landing, are closed.
 
 The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) records the initial v0.12
-design. The [Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
-[checkout review](plan-2026-11-02-pr-review-mirror-and-checkout.md) plans extend its
-scope with discovery, local checkout comparisons, explicit recovery, and optional
-native-stack metadata.
-The [repository plan](plan-2026-08-11-open-repo-from-git-url.md) and
-[GitHub plan](plan-2026-08-27-github-provider-and-pull-requests.md) are background for
-the foundation it kept.
+design. The [Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) and
+[checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans
+extend its scope with discovery, local checkout comparisons, explicit recovery, and
+optional native-stack metadata.
+The [repository plan](../active/plan-2026-08-11-open-repo-from-git-url.md) and
+[GitHub plan](../active/plan-2026-08-27-github-provider-and-pull-requests.md) are
+background for the foundation it kept.
 This plan owns the testing milestones, the evidence requirements, and the landing
 checklist. Reviews and run results belong on PRs, beads, and QA records, not in this
 procedure. Tooling maintenance, including tbd releases or shortcut cleanup, is not a
@@ -368,11 +369,29 @@ testing plan performs neither.
 
 ### Landing status
 
-**Current integration.** The
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the reviewed sources, candidate qualifications, installation evidence and remaining
-release gates. The dated entries below preserve their original source and acceptance
-scope. Tagging and publication still require the user’s explicit approval.
+**Release, 2026-11-09.** The user approved 0.12.0 from
+[`main` at `87b8ec81`](https://github.com/jlevy/metabrowser/commit/87b8ec812774bb12a4d9f5f29901719b8b66d323)
+and its complete notes.
+The tag and the
+[GitHub release](https://github.com/jlevy/metabrowser/releases/tag/v0.12.0) are at that
+commit, and the
+[publish workflow](https://github.com/jlevy/metabrowser/actions/runs/42653937221) passed
+the tagged full verify, PyPI trusted publication and smoke checks.
+`mb-4bd2` records the published file hashes and the post-publication checks.
+It closed with five of its blockers deferred by the owner and still open:
+
+- the landing gate’s data and browser differentials against v0.11.0 (`mb-2g6f`, with
+  `mb-cz5s` under it);
+- the attribution of the folder comparison of more than 50 files to the release commit,
+  and its owner acceptance (`mb-8pyc`); the comparison itself passed on `a5390794`,
+  whose tree is the tag’s;
+- the timed previous-release comparison, step 3 of the release checklist (`mb-cf6y`);
+- the full QA runbook on an installed wheel (`mb-m20f`);
+- the checks only a person can make (`mb-etqi`).
+
+The [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md)
+holds the reviewed sources, candidate qualifications and installation evidence.
+The dated entries below preserve their original source and acceptance scope.
 
 **Integration checkpoint, 2026-11-07.** The product stack and its reviewed presentation
 and preparation follow-ups merged in
@@ -499,9 +518,8 @@ SDK gate still apply.
   The full runbook on an installed wheel from the release commit, and the checks below
   that only a person can make.
 
-- **Documentation.** The earlier refresh `mb-bdwl` is closed.
-  Current post-landing reconciliation and release preparation are `mb-5k2w` and
-  `mb-gew9`.
+- **Documentation.** The earlier refresh `mb-bdwl` is closed, as are the later
+  post-landing reconciliation and release preparation, `mb-5k2w` and `mb-gew9`.
 
 **Closed.**
 
@@ -524,7 +542,7 @@ SDK gate still apply.
 - `mb-y28u`: the fixes in #264.
 - `mb-gnr9`: the acceptance runs, T0 through T2, in the QA record.
 
-**Included in 0.12.0.** The [Pulls tab](plan-2026-10-01-github-pulls-tab.md),
+**Included in 0.12.0.** The [Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md),
 checkout-backed review, live updates, Quick Search, shared reading layout, persistent
 metadata preparation and optional native-stack navigation are implemented on `main`.
 
@@ -552,12 +570,11 @@ Its #267 row holds that pull request’s independent review, which reported on 2
   private repository the user’s account can read and one it cannot, which is row M10
   (the unreadable case may use a nonexistent name); and a third-party plugin against
   Plugin SDK 0.7, where one exists.
-- Approval to tag and release 0.12.0 (`mb-4bd2`).
+- Approval to tag and release 0.12.0 (`mb-4bd2`), given on 2026-11-09.
 
 **Release method.** Steps 6 to 10 of the
-[release checklist](../../../publishing.md#release-checklist), from `main`, only on the
-user’s explicit approval.
-Nothing is left to merge for it.
+[release checklist](../../../publishing.md#release-checklist), from `main`, on the
+user’s explicit approval; they ran on 2026-11-09, as `mb-4bd2` records.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

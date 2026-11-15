@@ -1,33 +1,34 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22; status updated
+2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Superseded in part (2026-09-23):** the remaining v0.12 phases follow
-[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
-replaces this plan wherever they disagree.
+[Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md),
+which replaces this plan wherever they disagree.
 The built foundation and its record below stay as background.
 Its Simplify step then changed part of that foundation; the
 [Phase 1B addendum](#phase-1b-generic-git-cache-and-repository-url-open) lists what it
 replaced.
 
 **Status:** Phases 0 through 1B were built on the v0.12 stack,
-[#218](https://github.com/jlevy/metabrowser/stack/218), which has landed on `main` and
-first ships in 0.12.0, not yet tagged; their acceptance closed with foundation
-stabilization in [#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror
-Simplify step then changed part of that foundation, and
+[#218](https://github.com/jlevy/metabrowser/stack/218), which landed on `main` and first
+shipped in 0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09; their
+acceptance closed with foundation stabilization in
+[#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror Simplify step
+then changed part of that foundation, and
 [#246](https://github.com/jlevy/metabrowser/pull/246) removed the cache’s reservations
 for a provider store.
 Phases 2A through 2C are superseded: the thin-mirror plan’s
-[Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
-that open, serve, refresh, and re-pin a repository URL in their place, so the unchecked
-items in those phases will not be done as written.
-SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work: the catalog
-(`mb-0ybg`), the chooser (`mb-vmzy`), and very large repositories (`mb-dqvj`). The
-release is `mb-4bd2` and requires the user’s explicit approval; the
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before it.
+[Delivery](../done/plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull
+requests that open, serve, refresh, and re-pin a repository URL in their place, so the
+unchecked items in those phases will not be done as written.
+SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work under epic
+`mb-k7zy`: the catalog (`mb-0ybg`), Windows owner-only storage (`mb-pyqf`), and very
+large repositories (`mb-dqvj`). The chooser (`mb-vmzy`) is tracked by the native macOS
+app epic, `mb-1apq`.
 
 ## Vision
 
@@ -1736,7 +1737,7 @@ for reasons that have nothing to do with this plan.
 
 `metab --api` (`mb-ian3`) and the persisted-state parity clause have landed, so this
 phase uses them directly rather than building a parallel inspection harness.
-See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
+See [CLI-first delivery](../done/plan-2026-08-28-cli-first-delivery-map.md).
 
 #### Phase 1A implementation decisions
 
@@ -1820,8 +1821,8 @@ detail.
 The foundation has acquisition, content-source and immutable-revision slices; #216
 consolidates the latter two.
 Their remaining acceptance closed in #226. The pull requests above it are named in the
-alpha test plan’s [Delivery](plan-2026-09-22-v012-alpha-testing.md#delivery) section,
-and the stabilized stack landed together.
+alpha test plan’s [Delivery](../done/plan-2026-09-22-v012-alpha-testing.md#delivery)
+section, and the stabilized stack landed together.
 
 **Addendum (2026-09-23, thin-mirror Simplify step):** the checklists below record what
 was built; the Simplify step replaced part of it.
@@ -1964,9 +1965,10 @@ Its acceptance and independent review are completed in
   invalid-UTF-8, and newline-name behavior with focused source and route tests in
   `tests/test_git_tree_source.py` and `tests/test_git_revision_content_routes.py`.
 - [x] Complete installed-CLI acceptance for immutable Git content, including the
-  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md):
-  the T0 walkthrough in [#226](https://github.com/jlevy/metabrowser/pull/226) and the
-  `admitted-git` job. URL-serving browser acceptance belongs to Phase 2A.
+  minimum-Git evidence in the
+  [alpha test plan](../done/plan-2026-09-22-v012-alpha-testing.md): the T0 walkthrough
+  in [#226](https://github.com/jlevy/metabrowser/pull/226) and the `admitted-git` job.
+  URL-serving browser acceptance belongs to Phase 2A.
 - [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
 - [x] Independently review and publish through `mb-hoae` before any URL route claims it
@@ -1976,7 +1978,7 @@ Its acceptance and independent review are completed in
 #### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 Its GitHub URL open step (#231, `mb-bgs7`) opens repository and GitHub web URLs over
 HTTPS through the built-in reducer, with no public reducer SDK; the unchecked items
 below will not be done as written.
@@ -2012,7 +2014,7 @@ below will not be done as written.
 #### Phase 2B: Provider jobs, selected refs, and convergence (`mb-jlon`, `mb-bgn8`, `mb-bf94`)
 
 **Addendum (2026-09-30):** retired by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), with no replacement.
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md), with no replacement.
 Stores are full clones and a refresh is one `git fetch`, so the unchecked items below
 will not be done.
 
@@ -2086,7 +2088,7 @@ will not be done.
 #### Phase 2C: Open any selected branch as an immutable revision (`mb-2xq7`, `mb-9aku`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 Its GitHub URL open step (#231) splits a ref and path against the mirror, and the branch
 and tag selector (#236) switches the served pin; the unchecked items below will not be
 done as written.
@@ -2110,6 +2112,12 @@ done as written.
   the exact green provider-job head.
 
 ### Later: Generic catalog, refresh, and cache management
+
+**Addendum (2026-11-14):** Phase 2B was superseded, and the thin-mirror Simplify step
+([#228](https://github.com/jlevy/metabrowser/pull/228)) removed convergence, subject
+refs, leases, and store reclamation.
+The read-only `/api/cache/` routes already report layout, sources, and stores.
+Re-plan the items below against the thin-mirror plan before starting `mb-0ybg`.
 
 Phase 2B ships the provider-facing job lifecycle and selected-ref fetching needed for
 v0.12.0. The operations below build on that service but remain outside the initial

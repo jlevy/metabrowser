@@ -399,7 +399,7 @@
     html += renderCommitChangeStats(stats);
     html += "</div>";
     if (!compact && detail.body) {
-      html += `<pre class="git-commit-body page-card">${escapeHtml(detail.body)}</pre>`;
+      html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
     }
     html += "</section>";
     return html;
@@ -1828,7 +1828,7 @@
     if (state.rowCount === 0 && (state.failed || viewHelpersFailed)) {
       // The toolbar's tally settles too: it has no count to wait for.
       const failed = document.createElement("div");
-      failed.className = "git-history-summary git-history-summary-failed";
+      failed.className = "git-history-summary nav-metadata nav-metadata-note";
       failed.textContent = "History unavailable";
       historyToolbar()?.replaceChildren(failed);
       renderRefreshState(
@@ -1849,7 +1849,7 @@
     let list = panel.querySelector(".git-graph-list");
     if (!(list instanceof HTMLElement)) {
       const summary = document.createElement("div");
-      summary.className = "git-history-summary";
+      summary.className = "git-history-summary nav-metadata";
       list = document.createElement("div");
       list.className = "git-graph-list";
       list.addEventListener("focusin", handleCommitListFocus);
@@ -1887,11 +1887,16 @@
     if (!(row instanceof HTMLElement)) {
       return;
     }
-    row.classList.remove("git-history-summary-failed");
+    row.classList.remove("nav-metadata-note");
     if (!state.summary) {
+      // In the count's own span, where the count will be, as the server ships it and as
+      // the Files totals hold theirs: a lone flex item would sit at the top of the line.
       const pending = document.createElement("span");
       pending.className = "count tally-pending";
-      row.replaceChildren(pending);
+      const countSpan = document.createElement("span");
+      countSpan.className = "git-history-summary-count";
+      countSpan.append(pending);
+      row.replaceChildren(countSpan);
       return;
     }
     const count = state.summary.commitCount;
