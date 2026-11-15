@@ -111,6 +111,18 @@ const LIST = `(() => {
   // cut at. A member's and a first-level pull request's, and the pane they are in.
   const titleBox = (number) =>
     list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-title')?.getBoundingClientRect().width ?? null;
+  // The Pulls column carries no tooltip (mb-8mpo): every pull request's and stack's row and
+  // its parts, after a pointer has crossed each title, as a reader's would.
+  for (const title of list.querySelectorAll(".github-pulls-row .github-pulls-title")) {
+    title.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+    // Leaving, so no hover is left to read a pull request ahead.
+    title.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+  }
+  const tips = [...list.querySelectorAll(".github-pulls-row")].flatMap((row) =>
+    [row, ...row.querySelectorAll("*")]
+      .filter((node) => node.hasAttribute("data-tip-text") || node.hasAttribute("title"))
+      .map((node) => (row.dataset.number ?? "stack " + row.dataset.stack) + ": " + node.className),
+  );
   const titleRoom = {
     pane: Math.round(document.querySelector(".tree-pane").getBoundingClientRect().width),
     member: titleBox(10),
@@ -120,6 +132,7 @@ const LIST = `(() => {
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
   return {
+    tips,
     titleRoom,
     stacks,
     rows: rows.length,
@@ -373,6 +386,11 @@ try {
       first?.members[0]?.line.startsWith("4/4 · 300 2/2 · #10 · ") &&
         first.members[1]?.line.startsWith("3/4 · #9 · "),
       JSON.stringify(first?.members.map((m) => m.line)),
+    );
+    check(
+      "no pull request's or stack's row, nor any part of one, carries a tooltip",
+      list.tips.length === 0,
+      JSON.stringify(list.tips),
     );
     check(
       "a member's row draws no stack icon",

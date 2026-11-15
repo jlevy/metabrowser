@@ -1669,14 +1669,17 @@ A row names no branches: the pull request’s page names them, head → base, as
 (`mb-ghff`). A stack member’s place in its stack comes first on the metadata line,
 before its number and in the number’s size and ink: “1/6 · #455 · jlevy”, its position
 bold (`mb-dzsi`). It has no stack icon of its own: the stack’s row it sits under has
-one. A second stack’s position is named by its number, the tooltip names the stack and
-every position ([Stacks](#stacks)), and a place too wide for its line is cut short with
-an ellipsis, the number whole after it.
-The title’s line holds only the title and the age, so a member’s title has the room a
-first-level row’s has, less its one indent: at the default 299 px pane, 166 px, where a
-position on the title line left it 65 to 125. Their shared repository snapshot is
-indexed once by PR number; rows make no stack requests, and enrichment updates retain
-the row and any focused changed-file tree.
+one. A second stack’s position is named by its number, the place’s accessible name names
+the stack and every position ([Stacks](#stacks)), and a place too wide for its line is
+cut short with an ellipsis, the number whole after it.
+Nothing in the Pulls column has a tooltip: a pull request’s row, a stack’s row, and
+their parts say what they say on the row, in their accessible names, and on the page
+they open ([Tooltips Add Information](#tooltips-add-information)). The title’s line
+holds only the title and the age, so a member’s title has the room a first-level row’s
+has, less its one indent: at the default 299 px pane, 166 px, where a position on the
+title line left it 65 to 125. Their shared repository snapshot is indexed once by PR
+number; rows make no stack requests, and enrichment updates retain the row and any
+focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1734,7 +1737,7 @@ Four states, each with the shape GitHub gives it and a color token in GitHub’s
 
 The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
 one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
-The shapes differ. In the list, the icon’s accessible name and tooltip give the state.
+The shapes differ. In the list, the icon’s accessible name gives the state.
 On the page, the same glyph sits beside the title and the text badge below names the
 state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
@@ -1770,11 +1773,11 @@ the rules to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
-| Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears |
+| Updated time | `metabrowser.formatAge`; the page gives the exact time | [Age](#age); the Pulls column has no tooltips |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
-| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in the tooltip ([Stacks](#stacks)); the stack’s row above it has the icon |
+| Stack place | `.github-pulls-place`: bold position/total before the number on the metadata line, in the number’s size and ink, “1/6 · #455”, with no icon; another stack’s is named by the Layers glyph and its number; on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot, naming its stacks in its accessible name ([Stacks](#stacks)); the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1854,12 +1857,13 @@ surface keeps a copy of either.
   does, and a press opens or closes it as a folder’s does.
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
-  The stack button carries it, and its accessible name is “Navigate” before it.
-  The glyph in a Pulls row’s place has no words of its own: the place’s tip and
-  accessible name name each stack, “Stack #300, position 2 of 2”. A stack group’s row
-  says its size, how many the list holds when that is fewer, and how many of those sit
-  under an earlier stack: “Stack #286, 4 pull requests, 3 in this list, 1 under Stack
-  #290”.
+  The stack button carries it, as its glyph and position do not name the stack, and its
+  accessible name is “Navigate” before it.
+  The Pulls column has no tooltips: the glyph in a Pulls row’s place has no words of its
+  own, and the place’s accessible name names each stack, “Stack #300, position 2 of 2”.
+  A stack group’s row’s accessible name says its size, how many the list holds when that
+  is fewer, and how many of those sit under an earlier stack: “Stack #286, 4 pull
+  requests, 3 in this list, 1 under Stack #290”.
 
 ### Stack Groups in the Pulls Tab
 
@@ -1878,7 +1882,7 @@ spare.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its place names the other.
   A later stack’s row still counts it among the pull requests the list holds, and its
-  tip says where it sits.
+  accessible name says where it sits.
   A stack all of whose listed pull requests sit under earlier stacks has no row; their
   places name it.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
@@ -3320,6 +3324,38 @@ KPress’s radii but not its type scale.
 
 `data-tip-text` is read by a delegated pointer listener on the document, so it works on
 markup that does not exist yet, including a plugin’s.
+
+### Tooltips Add Information
+
+**A tooltip says something the reader cannot already see, or it is not there**
+(`mb-8mpo`). A tooltip that repeats visible text is a second copy of what the reader
+just read, appearing under the pointer on its own timer, and it is removed.
+A tooltip earns its place by one of these:
+
+| Reason | Examples |
+| --- | --- |
+| The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron, the served root’s “/” |
+| What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
+| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s size and date |
+| What a control does that its words do not say | The ref selector’s “Switch branch or tag”, a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
+| The whole of something cut short | A chip’s full name, a crumb’s full path, a diff file bar’s path, the page title past its two lines |
+
+**The Pulls column has none.** A pull request’s row, a stack’s row, and their parts
+carry no tooltip: the state icon’s name, a stack place’s stacks, and a stack row’s
+counts are their accessible names, and the age’s exact time and a title cut short are on
+the page the row opens.
+A pull request’s changed files under its row keep the tooltips the tree gives a file:
+its full path when its row shows only its name, “not in this comparison”, the name it
+was renamed from, and what a folder’s sums leave out.
+
+The shell holds the repeat case.
+A `data-tip-text` that is its element’s own text, in any case and spacing, shows only
+while that text is cut short, by an ellipsis or a line clamp, so a surface may give an
+ellipsizing element its full text as a tip and the reader sees it only when the ellipsis
+hides some of it (`tipAddsInformation` in `static/app.js`). `devtools/check_tooltips.py`
+fails a literal tip that is its element’s literal text, and
+`tests/dom/github-pull-header-chrome.mjs` checks the shell’s rule in Chrome;
+`tests/dom/github-pulls-stacks-chrome.mjs` checks that the Pulls column carries no tip.
 
 ### Tooltip Input Modality
 

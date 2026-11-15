@@ -3098,10 +3098,55 @@ function tipTextAnchor(event) {
     : null;
 }
 
+/**
+ * A tip's text as compared with what its anchor shows: one space for every run of white
+ * space, no case.
+ *
+ * @param {string | null | undefined} text
+ */
+function tipComparable(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Whether *anchor* or a box in it is cut short, by an ellipsis or a line clamp. An inline
+ * box has no client box to overflow, so only boxes that have one are read.
+ *
+ * @param {HTMLElement} anchor
+ */
+function tipAnchorIsCut(anchor) {
+  var boxes = [anchor, ...anchor.querySelectorAll("*")];
+  return boxes.some(
+    (box) =>
+      box instanceof HTMLElement &&
+      ((box.clientWidth > 0 && box.scrollWidth > box.clientWidth) ||
+        (box.clientHeight > 0 && box.scrollHeight > box.clientHeight)),
+  );
+}
+
+/**
+ * Whether a tip says something its anchor does not already show (docs/design-system.md,
+ * "Tooltips Add Information"). A tip that is the anchor's own text says nothing while
+ * that text is whole, so it shows only while the text is cut short; any other tip, such
+ * as a glyph's name or an exact time, shows.
+ *
+ * @param {HTMLElement} anchor
+ */
+function tipAddsInformation(anchor) {
+  var tip = tipComparable(anchor.dataset.tipText);
+  if (tip === "") {
+    return false;
+  }
+  return tip !== tipComparable(anchor.textContent) || tipAnchorIsCut(anchor);
+}
+
 /** @param {Event} e */
 function showTipText(e) {
   var anchor = tipTextAnchor(e);
-  if (anchor) {
+  if (anchor && tipAddsInformation(anchor)) {
     showTooltip(esc(anchor.dataset.tipText || ""), anchor);
   }
 }

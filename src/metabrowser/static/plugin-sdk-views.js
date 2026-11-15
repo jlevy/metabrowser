@@ -1384,7 +1384,7 @@
     const handler = action === null ? "" : ` data-mb-load-more="${escapeHtml(named)}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${handler}${delegateOwnerAttribute()} data-tip-text="Load more of this file">` +
+      `${handler}${delegateOwnerAttribute()}>` +
       "Load more</button>"
     );
   }

@@ -241,7 +241,8 @@ it:
   (`mb-dzsi`). A tree row’s chevrons and icons share one slightly tighter slot,
   `--tree-icon-slot`, 14px where they had 16 (`mb-hmv7`). A pull request’s number is
   bold wherever it names the pull request, through one token, `--pull-number-weight`
-  (`mb-vrvs`).
+  (`mb-vrvs`). The Pulls column shows no tooltips, and elsewhere a tooltip appears only
+  when it adds information that is not already visible (`mb-8mpo`).
 
 - **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
   the pull request page’s stack button and menu (`pull-page.js`) share one design,

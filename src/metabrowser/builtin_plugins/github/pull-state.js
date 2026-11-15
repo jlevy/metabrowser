@@ -139,8 +139,9 @@ function glyph(state) {
 /**
  * The state's icon: this module's constant, not the pull request's text. Browser only.
  *
- * Named by default, for a row, where nothing else says the state. A badge passes
- * `named: false`, as its own text is the name.
+ * Named by default, for a row, where nothing else says the state: its accessible name, and
+ * no tooltip, since the Pulls column has none (docs/design-system.md, "Tooltips Add
+ * Information"). A badge passes `named: false`, as its own text is the name.
  *
  * @param {PullState} state
  * @param {{named?: boolean}} [options]
@@ -154,7 +155,6 @@ export function pullStateIcon(state, options = {}) {
   } else {
     icon.setAttribute("role", "img");
     icon.setAttribute("aria-label", PULL_STATES[state].label);
-    icon.dataset.tipText = PULL_STATES[state].label;
   }
   const shape = glyph(state);
   if (shape !== null) {

@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
+  parts no longer show one on hover.
+  Elsewhere a tooltip appears only when it adds something not already visible, and one
+  that repeats an element’s own text shows only while that text is cut short.
+  “Load more” and a changed-files folder whose sums are whole no longer repeat their own
+  words in a tooltip.
+
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
   description, comments, and reviews, and in any document when you chose the Sans
   reading font. It was italic under either reading font, an accent of the serif that read
