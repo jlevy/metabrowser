@@ -100,7 +100,7 @@ _BATCH_ARGS: Final[tuple[str, ...]] = (
     "--buffer",
 )
 # Whole-tree reads peaked at four actors and fell with eight. See
-# docs/project/architecture/arch-repository-sources-and-provider-mirrors.md.
+# "Measured Choices" in docs/project/architecture/arch-repository-cache.md.
 MAX_BATCH_READERS_PER_STORE: Final[int] = 4
 # ``info`` commands per flush. Each chunk gets the batch deadline to itself, so
 # the deadline bounds a stalled actor rather than the size of the tree. Measured

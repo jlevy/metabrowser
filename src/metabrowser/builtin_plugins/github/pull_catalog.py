@@ -85,9 +85,14 @@ _TRANSIENT_CODES: Final = frozenset(
 # each at a load average of 21 (2026-11-12). A real catalog is about 1.1 KB a pull
 # request, so 32 MiB holds about 30,000; a larger one is left as it is, unread.
 _INSPECT_MAX_BYTES: Final = 32 * 1024 * 1024
+# Rows one catalog page holds: the most a GitHub GraphQL connection returns, which the
+# catalog query asks for. A page or a publication holding more is refused.
 PAGE_SIZE = 100
+# The most rows one ``GET pulls`` window answers, its ``limit``.
 MAX_WINDOW = 1000
+# The most pull requests one ``pull-cores-prepare`` batch names.
 MAX_CATALOG_MEMBERS = 8
+# The most completions one Quick Search query answers.
 _SEARCH_RESULT_LIMIT = 12
 # Production cache reads on a Mac took 3–4 ms for a sparse title match at 1,375 rows
 # and 62–69 ms at the 50k candidate limit, including the cutoff for a 100k catalog.
