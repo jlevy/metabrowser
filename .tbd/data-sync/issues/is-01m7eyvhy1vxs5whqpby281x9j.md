@@ -3,15 +3,19 @@ type: is
 id: is-01m7eyvhy1vxs5whqpby281x9j
 title: "PR Conversation: commit rows match comments in size and spacing, joined by a timeline line"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T06:38:30.336Z
-updated_at: 2026-11-15T06:38:30.336Z
+updated_at: 2026-11-15T07:10:30.144Z
+started_at: 2026-11-15T07:10:30.142Z
 ---
 The user's request (2026-11-15), verbatim: "the lines ont he Conversation part of a PR rendering like this below are too small font, not enough space above them. see how github actually renders PRs e.g. https://github.com/jlevy/metabrowser/pull/438 and mnotice it creates a line joining the commits and the comments in a clearer way. And also, the font sizes should be more consistent. We shouldn't make the commits smaller just because they're commits on this page. They should be similar to comments in size and similarly consistently spaced, more like what GitHub does."
 
