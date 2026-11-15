@@ -5,7 +5,7 @@ title: "Pulls tab: group a native stack's pull requests under a Stack #N toggle"
 kind: feature
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:37:52.961Z
-updated_at: 2026-11-15T09:00:25.825Z
+updated_at: 2026-11-15T09:50:38.445Z
 started_at: 2026-11-15T07:41:28.229Z
 ---
 The user's request (2026-11-15), verbatim: "Feature is that within the Pulls tab, there is an option to group all PRs in a stack in a recursive toggle for the stack itself, so that if there are say 4 PRs in the stack, the stack itself (which github gives a number) woudl be somethig like Stack #1234  and then it would be pre-opened but include all PRs in that stack."
@@ -63,3 +63,5 @@ Built (2026-11-15, sub-agent, branch claude/pulls-stack-groups, local only, not 
 - Local: make -o install lint-check passed; cli-ui goldens 74 passed; focused pytest set passed incl. Chrome. Not run: full make test / make verify, macOS app, light theme screenshots.
 
 PR #450 (draft, 2026-11-15): https://github.com/jlevy/metabrowser/pull/450, base claude/diff-summary (#448). The merge 6ced50c7 was dropped: the two commits were rebased once onto the restacked claude/diff-summary (7ca39485, which holds PR 1 through #444, #445, #447), now 6bb61ee2 (feat) and c7e8573e (docs); head c7e8573eac6e66aea96e4068d0e336c760244082. Conflicts in docs/e2e-testing.md and tests/test_process_group.py (the Chrome test lists, both sides kept, with test_prose_faces_chrome) and CHANGELOG (both kept). Linked with gh stack link into native stack #446: [444, 445, 447, 448, 450]. After the rebase: lint-check, parity, 75 cli-ui goldens, the stack-groups session, and 135 focused pytest tests (incl. the stack Chrome test and header Chrome launch/pulls/header-wide) passed locally; pushed with --no-verify. CI run 43695631545: all 9 checks passed (lint, distribution, stack-integration, test 3.12/3.13/3.14/3.14t, admitted-git 2.43.7/2.50.1). Not merged, not marked ready. Stale handling confirmed by the coordinator: missing stacks or another account's keep the list flat; a kept snapshot still groups.
+
+Review A on #450 (2026-11-15, changes requested: A1 High, A2-A6 Medium, A7-A8 Low, A9-A11 suggestions): all addressed in 790ffa64 per the coordinator's decisions (A1 regroup keeps the top in view, A2 count every listed member with "N under Stack #M", A3 read-ahead in drawn order, A4 toggleHtml worded chip "Stacks" named "Group by stack", A5 mounted-panel session + nav Space story + Chrome Space/press/member files, A6 numbering records, A7 remedies, A8 docs, A9 font, A10 one SVG parse, A11 Layers glyph names another stack). Dispositions: https://github.com/jlevy/metabrowser/pull/450#issuecomment-6892524143. Toolbar fit at the default 299 px pane: 36 px overflow with "Stacks" (old glyph chip 11 px, icon-btn 7 px, 23 px spare with no chip); recorded, not asserted. Then merged origin/claude/diff-summary (92f49af5) as 9d6c6f1b (conflicts in pull-page.js stack menu naming, design-system numbering table, Chrome registries; github-pull-stack-mount-behavior.js updated for the label class). Locally after the merge: lint-check, 75 cli-ui goldens (incl. the panel golden after the fix), sessions, and 136 focused pytest tests incl. Chrome passed. CI on 9d6c6f1b was still pending at handback.
