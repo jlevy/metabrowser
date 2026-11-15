@@ -15,9 +15,10 @@ replaced.
 
 **Status:** Phases 0 through 1B were built on the v0.12 stack,
 [#218](https://github.com/jlevy/metabrowser/stack/218), which landed on `main` and first
-shipped in 0.12.0, tagged 2026-11-08; their acceptance closed with foundation
-stabilization in [#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror
-Simplify step then changed part of that foundation, and
+shipped in 0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09; their
+acceptance closed with foundation stabilization in
+[#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror Simplify step
+then changed part of that foundation, and
 [#246](https://github.com/jlevy/metabrowser/pull/246) removed the cache’s reservations
 for a provider store.
 Phases 2A through 2C are superseded: the thin-mirror plan’s

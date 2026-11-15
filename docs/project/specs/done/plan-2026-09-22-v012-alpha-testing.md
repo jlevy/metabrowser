@@ -378,10 +378,12 @@ commit, and the
 [publish workflow](https://github.com/jlevy/metabrowser/actions/runs/42653937221) passed
 the tagged full verify, PyPI trusted publication and smoke checks.
 `mb-4bd2` records the published file hashes and the post-publication checks.
-It closed with four of its blockers deferred by the owner and still open:
+It closed with five of its blockers deferred by the owner and still open:
 
 - the landing gate’s data and browser differentials against v0.11.0 (`mb-2g6f`, with
   `mb-cz5s` under it);
+- the folder comparison of more than 50 files on the tagged tree (`mb-8pyc`): it last
+  ran on `426ce7b6`, whose tree is not the tag’s;
 - the timed previous-release comparison, step 3 of the release checklist (`mb-cf6y`);
 - the full QA runbook on an installed wheel (`mb-m20f`);
 - the checks only a person can make (`mb-etqi`).

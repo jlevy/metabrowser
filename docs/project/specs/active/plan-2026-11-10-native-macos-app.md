@@ -8,8 +8,8 @@
 Epic `mb-1apq` tracks every item below as a bead.
 The app is on `main`: the spike and the v1 stack merged on 2026-11-13. The v1 milestone
 (`mb-s4y1`, below) waits on its end-to-end check (`mb-hwxu`); the WebKit gate failed,
-and what follows from that is the owner’s decision (`mb-gvtw`). Phases 3, 4, and 6 have
-not started.
+and what follows from that is the owner’s decision (`mb-gvtw`). Of Phase 3, only
+`--exit-on-eof` has shipped (jlevy/metabrowser#366); Phases 4 and 6 have not started.
 
 ## Overview
 
@@ -273,12 +273,15 @@ It draws its items from Phases 1, 2, and 5. Its work landed as a native GitHub s
 each layer a pull request whose base was the layer below: jlevy/metabrowser#341 (the
 spike, with CI and the review fixes), jlevy/metabrowser#359 (everyday use),
 jlevy/metabrowser#361 (setup), jlevy/metabrowser#362 (guidelines and robustness),
-jlevy/metabrowser#363 (the engine gate’s record), and jlevy/metabrowser#377 (the final
-review’s fixes). The stack merged to `main` on 2026-11-13. Steps 1 to 8 below have
-merged; step 9 is under way: on 2026-11-14 the check ran on `main` at c098e6a8 and every
-check a shell can drive passed, and the checks that need the owner’s clicks are scripted
-and wait for the owner (`mb-hwxu`’s notes; the stale setup-flow stand-ins it found are
-`mb-jeb5`).
+jlevy/metabrowser#363 (the engine gate’s record), jlevy/metabrowser#377 (the final
+review’s fixes), and the window layers jlevy/metabrowser#384 and jlevy/metabrowser#388.
+The stack merged to `main` on 2026-11-13. Steps 1 to 8 below have merged, though step
+5’s gate ran and failed and what follows is open (`mb-gvtw`, `mb-76nv`). Step 9 is under
+way: on 2026-11-14 the check ran on `main` at c098e6a8. Flow 1 from PyPI waits on a
+published 0.12.1, because the app refuses 0.12.0 by design.
+The checks that need the owner’s clicks are scripted locally, as `mb-hwxu`’s notes
+record, and wait for the owner.
+The stale setup-flow stand-ins it found were fixed in jlevy/metabrowser#436 (`mb-jeb5`).
 
 The steps run in this order, which the beads record as dependencies:
 
@@ -317,13 +320,15 @@ The steps run in this order, which the beads record as dependencies:
    [rendering large content](../../../large-content-rendering.md#measured-in-webkit).
    Its largest failure, the source view’s Load more at 4.5 to 5.8 times Chrome, has a
    measured cause and a core fix (`mb-551q`, merged in jlevy/metabrowser#367). After it,
-   the first Load more on the gate’s 16 MiB file still measured 2.25 to 2.46 times
-   Chrome, because the column is laid out again when the gutter gains a digit
-   (`mb-dl7d`). The gate reruns under normal conditions (`mb-76nv`). The binary view’s
-   forced layout is tracked separately (`mb-pzy2`). The gate’s checks also found that
-   the page’s Print button and a dropped file did nothing; jlevy/metabrowser#359 fixed
-   both (`mb-j3eu`, `mb-3h2m`). Steps 6 and 7 went ahead meanwhile; whether the failures
-   that remain after the rerun call for the fallback is the owner’s decision.
+   the gate’s Load more row still measured 2.25 to 2.46 times Chrome (the
+   jlevy/metabrowser#367 record), and the first-click probe 2.45 to 2.51 times
+   ([rendering large content](../../../large-content-rendering.md)), because the column
+   is laid out again when the gutter gains a digit (`mb-dl7d`). The gate reruns under
+   normal conditions (`mb-76nv`). The binary view’s forced layout is tracked separately
+   (`mb-pzy2`). The gate’s checks also found that the page’s Print button and a dropped
+   file did nothing; jlevy/metabrowser#359 fixed both (`mb-j3eu`, `mb-3h2m`). Steps 6
+   and 7 went ahead meanwhile; whether the failures that remain after the rerun call for
+   the fallback is the owner’s decision.
 
 6. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
    and the disk-image notice (`mb-3n79`), as Phase 5 describes, and both flows in the
@@ -338,8 +343,8 @@ The steps run in this order, which the beads record as dependencies:
 8. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
    security, and correctness), and every finding is addressed, with follow-up rounds
    until a round finds nothing new.
-   Done in jlevy/metabrowser#377: reviews C, D, and E covered the whole app, and the
-   follow-up rounds ended with approvals.
+   Done: reviews C, D, and E on jlevy/metabrowser#363 covered the whole app and were
+   addressed in jlevy/metabrowser#377, whose own follow-up rounds ended with approvals.
 
 9. **End to end** (`mb-hwxu`): the dev and release-rehearsal builds are rebuilt and,
    with fresh app settings on the build Mac, run through both setup flows, an old
@@ -531,9 +536,9 @@ The two standard setup flows come first; see the
   plan), jlevy/metabrowser#353 (folder identity), jlevy/metabrowser#357 (the v1
   milestone), the v1 stack above the spike: jlevy/metabrowser#359,
   jlevy/metabrowser#361, jlevy/metabrowser#362, jlevy/metabrowser#363, and
-  jlevy/metabrowser#377, the core changes it needed: jlevy/metabrowser#366
-  (`--exit-on-eof`) and jlevy/metabrowser#367 (`mb-551q`), and the title-bar follow-ups:
-  jlevy/metabrowser#384, jlevy/metabrowser#388, jlevy/metabrowser#391,
+  jlevy/metabrowser#377, jlevy/metabrowser#384, and jlevy/metabrowser#388, the core
+  changes it needed: jlevy/metabrowser#366 (`--exit-on-eof`) and jlevy/metabrowser#367
+  (`mb-551q`), and the title-bar follow-ups: jlevy/metabrowser#391,
   jlevy/metabrowser#398, and jlevy/metabrowser#403
 
 <!-- This document follows common-doc-guidelines.md.

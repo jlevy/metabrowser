@@ -19,9 +19,10 @@ and the goldens as built are in the
 **Status:** v0.11.0 released after the parity foundation, with the #209 content-trust
 foundation; the v0.12.0 implementation,
 [stack #218](https://github.com/jlevy/metabrowser/stack/218), landed on `main` and
-shipped in v0.12.0, tagged 2026-11-08. Of the rows below, only Git status (rows 3 and 4)
-remains planned, under its own plan; row 12 is deferred, and `mb-n9xg` continues under
-the [functional parity plan](../active/plan-2026-09-10-functional-ui-cli-parity.md).
+shipped in v0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09. Of the rows
+below, only Git status (rows 3 and 4) remains planned, under its own plan; row 12 is
+deferred, and `mb-n9xg` continues under the
+[functional parity plan](../active/plan-2026-09-10-functional-ui-cli-parity.md).
 
 ## Overview
 
@@ -674,7 +675,8 @@ untrusted profile; `ssh` stays closed, and `--walk` refuses a Git source by desi
 Still open:
 
 1. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
-   unresolved, and not on the critical path.
+   unresolved, and not on the critical path; tracked as `mb-tfaj` under the functional
+   parity plan.
 
 ## References
 

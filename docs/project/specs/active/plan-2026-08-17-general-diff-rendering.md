@@ -746,24 +746,27 @@ Ends with: opening a `.patch` file renders a real diff.
 No Git involvement.
 
 - [x] File Diff Format: the standalone architecture document, JSON schemas, and
-  conformance corpus described above, following git semantics; evaluate existing
-  diff-model libraries against it before writing any parser (`mb-72hs`:
-  `file-diff-format/`, `data/file-diff-format/`)
+  conformance corpus described above, following git semantics (`mb-72hs`:
+  `docs/project/architecture/file-diff-format/`,
+  `src/metabrowser/data/file-diff-format/`); no evaluation of existing diff-model
+  libraries against it is recorded
 - [x] `diff/model.py`: intent, resolved comparison, manifest, file patch, availability
   states — implementing the format, with wire validators in the style of `git/wire.py`
-  (`mb-t2ub`, as `diff/format.py` with `validate_document`)
+  (`mb-t2ub`, as `diff/format.py` with `validate_document`; an intent stays
+  adapter-specific plain data, per `diff/adapters/base.py`)
 - [x] `diff/adapters/patch_file.py`: bounded unified-patch parser covering renames,
   copies, mode changes, binary markers, and malformed input (`mb-rre2`)
-- Superseded: `diff/service.py`: adapter registry, deterministic comparison IDs, bounded
-  caches. Adapters are wired at their call sites with no registry
+- [ ] Superseded: `diff/service.py`: adapter registry, deterministic comparison IDs,
+  bounded caches (`mb-uawv`). Adapters are wired at their call sites with no registry
   ([comparison sources](../../architecture/arch-git-and-comparison-sources.md#comparison-sources)),
   and `builtin_plugins/diff/comparison_cache.py` bounds the cache (#284)
-- Superseded: `diff/routes.py`: the `/api/diff/` collection above.
-  The diff plugin’s data hooks serve the browser
+- [ ] Superseded: `diff/routes.py`: the `/api/diff/` collection above (`mb-27dr`). The
+  diff plugin’s data hooks serve the browser
 - [x] `diff` file kind wired into classification and the view registry (`mb-yv0g`)
-- [x] `static/diff-model.js` and `static/diff-view.js`: unified rendering, sticky file
-  headers, every availability state (`mb-snkb`, `mb-ao1d`, in `builtin_plugins/diff/`);
-  hunk context expansion remains with `mb-hhmb`
+- [x] `src/metabrowser/builtin_plugins/diff/diff-model.js` and
+  `src/metabrowser/builtin_plugins/diff/diff-view.js`: unified rendering, sticky file
+  headers, every availability state (`mb-snkb`, `mb-ao1d`)
+- [ ] Hunk context expansion (`mb-hhmb`)
 - [x] Golden fixtures: a corpus of patches including pathological and malformed cases
   (`tests/test_diff_patch_file.py`)
 
@@ -774,20 +777,23 @@ commit.
 
 - [x] `diff/adapters/git.py` on the existing runner: commit-versus-parent (`mb-kxvb`).
   Staged and unstaged move to the Git-status plan’s `GitWorkingTreeDiffSource`
-  (`mb-u4mf`); an all-uncommitted preset remains with `mb-8bjd`
+  (`mb-u4mf`)
+- [ ] All-uncommitted preset (`mb-8bjd`)
 - [x] Rename and copy detection with stated limits (`-M50 -C` in `diff/adapters/git.py`)
 - [x] `--diff-merges=first-parent` for merges, matching the history surface
-- Superseded: comparison context in the shell as a third Files-tree source.
-  A comparison is a [nav container](../../architecture/arch-nav-containers.md) instead:
-  a patch file expands to its file changes with their indicators (`mb-6ba6`, `mb-um0p`),
-  and a pull request’s Changes tab has its own file tree
-- Superseded in part: comparison views injected into changed files’ view descriptors.
+- [ ] Superseded: comparison context in the shell as a third Files-tree source
+  (`mb-p2mi`). A comparison is a
+  [nav container](../../architecture/arch-nav-containers.md) instead: a patch file
+  expands to its file changes with their indicators (`mb-6ba6`, `mb-um0p`), and a pull
+  request’s Changes tab has its own file tree
+- [ ] Superseded in part: comparison views injected into changed files’ view descriptors
+  (`mb-p2mi`, which took over `mb-yv0g`’s Phase 2 half).
   An inner change opens with Diff as its default view, and the file bar’s **View file**
   controls open either side’s whole file (#248, on `main` through #260) in place of an
   After tab
 - [x] Commit detail in the Git panel links into the comparison rather than re-rendering
   (`mb-3syc`)
-- Moved: watcher-driven `stale` for uncommitted comparisons is Git-status Phase 2
+- [ ] Moved: watcher-driven `stale` for uncommitted comparisons is Git-status Phase 2
   (`mb-vibn`)
 
 ### Phase 3: Enrichment and the renderer decision gate
@@ -796,15 +802,17 @@ Ends with: split view and syntax highlighting on the measured in-house renderer,
 the remaining enrichment and virtualization work explicitly scoped.
 
 - [ ] Benchmark harness over the representative fixtures, measuring first-paint, scroll,
-  and memory at stated corpus sizes
+  and memory at stated corpus sizes (`mb-k0x3`)
 - [ ] Evaluate `@pierre/diffs` and `@git-diff-view/core` against the Phase 1 in-house
   renderer extended in place, scoring: bundle size, worker behavior under the Content
   Security Policy, dependency count and update cadence, accessibility, design-token
-  integration, and the maintenance surface each leaves behind
-- [ ] Record the decision and its evidence in this document
+  integration, and the maintenance surface each leaves behind (`mb-k0x3`)
+- [ ] Record the decision and its evidence in this document (`mb-k0x3`)
 - [x] Split view and bounded syntax highlighting on the in-house renderer
 - [ ] Row virtualization on the chosen path when the measured review corpus requires it
+  (`mb-hhmb`)
 - [ ] Whitespace and wrap controls, keyboard next-file and next-hunk navigation
+  (whitespace with `mb-hhmb`, navigation with `mb-k0x3`; no bead names wrap controls)
 
 #### 2026-08-24 addendum: syntax and split layout
 
@@ -1215,8 +1223,9 @@ model have to render somewhere.
 ## Open Decisions
 
 - Whether the core file tree gains a decoration API so changed and staged files can be
-  badged in place. This moves the core boundary; the Git-status plan leaves Files-tree
-  decorations out of its baseline, and `mb-k0x3` carries the decision.
+  badged in place. This moves the core boundary.
+  The Changes surface shipped without this decision; `mb-k0x3` carries it, and the
+  Git-status plan leaves Files-tree decorations out of its baseline.
 - Whether additions and deletions are deferred when exact counts would delay the
   manifest.
 

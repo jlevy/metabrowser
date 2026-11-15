@@ -1,9 +1,9 @@
 # Plan: GitHub Pulls Tab for Mirrors and Local Checkouts
 
 **Status:** The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
-checkout-backed comparisons are implemented on `main` and shipped in 0.12.0 (tag
-`v0.12.0`, 2026-11-08); later revisions below are on `main`. [Delivery](#delivery)
-records the owning layers.
+checkout-backed comparisons are implemented on `main` and shipped in 0.12.0 (tagged
+`v0.12.0` at `87b8ec81` and published 2026-11-09); later revisions below are on `main`.
+[Delivery](#delivery) records the owning layers.
 Open follow-ups: the expected file count (`mb-egnj`), the shared manifest (`mb-w5rc`), a
 patch-free fallback file list (`mb-0cr3`), reconciling removed catalog rows (`mb-dpvu`),
 an unreachable footer branch (`mb-xl14`), and local timeline commit links (`mb-g47g`).
@@ -988,7 +988,8 @@ A row is a container in the sense of
 [Nav Containers](../../architecture/arch-nav-containers.md): item-like, because
 selecting it opens the pull request, and folder-like, because it expands to its changed
 files. That document’s Collection panels section promised this.
-It predates the thin mirror; step 4 corrected its `ChangeRequestIndex` wording.
+It predates the thin mirror; the landing docs reconciliation (#298, `3f5bd2d3`)
+corrected its `ChangeRequestIndex` wording.
 
 **What a reader sees.** Expanding a row shows the changed files as a tree, with folders
 that expand and collapse exactly as they do in the Files tab.

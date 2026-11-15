@@ -39,8 +39,8 @@ links to the document that covers each in depth.
 
 ## Release Acceptance
 
-- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md) — current
-  integration, verified installation and remaining release gates
+- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md) — how
+  0.12.0 was qualified and published; its deferred checks are open beads under `mb-425f`
 
 ## Active Feature Plans
 

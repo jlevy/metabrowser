@@ -138,7 +138,7 @@ Deduping it would be a correctness bug.
 The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) serves an
 opened repository URL from a worktree-free store as an immutable `GitRevisionSubject`.
 That store has no checkout or index, so its acquisition, serving, repair, and purge
-verify records, private refs, object reachability, and leases rather than calling this
+verify records, the fetched refs, and object reachability rather than calling this
 plan’s `is_clean` predicate; Phase 1B-a landed on that basis (`mb-h51g`). The status
 feature remains independent:
 

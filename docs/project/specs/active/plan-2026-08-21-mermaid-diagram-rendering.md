@@ -5,8 +5,10 @@
 **Author:** Metabrowser maintainers
 
 **Status:** Draft; not started.
-The on-demand loading tier it depends on is implemented: `static/asset-loader.js`
-(`ensureAsset`) and `on_demand_script_bundles` in `server.py`. Epic `mb-qz51`.
+The on-demand loading tier it uses is implemented: `static/asset-loader.js`
+(`ensureAsset`) and `on_demand_script_bundles` in `server.py`. That loader injects
+classic scripts only, so the Mermaid ESM entry needs a dynamic import or a module entry
+in `asset-loader.js` (`mb-y7zh`). Tracked by `mb-qz51`.
 
 ## Overview
 
@@ -124,8 +126,9 @@ and takes part in selection and copy, none of which GitHub’s isolation allows.
 ## Implementation Plan
 
 The on-demand asset tier from
-[end-to-end load time](plan-2026-08-21-load-time-performance.md) is on `main`, so
-nothing blocks Phase 1.
+[end-to-end load time](plan-2026-08-21-load-time-performance.md) is on `main`, but
+`asset-loader.js` injects classic scripts only, so the Mermaid ESM entry needs a dynamic
+import or a module entry in `asset-loader.js` ([Open Questions](#open-questions)).
 
 ### Phase 1: Diagrams That Render
 
@@ -134,8 +137,8 @@ nothing blocks Phase 1.
   (`mb-98mi`)
 - [ ] Vendor Mermaid at an exact pin, add the `package.json` pin and the `NOTICE.md`
   entry, and check the manifest into `static/vendor/manifest.json` (`mb-98mi`)
-- [ ] Register Mermaid as an on-demand asset and add `kpressInitDiagrams` to
-  `plugin-sdk.js` and `static/types.d.ts` (`mb-y7zh`)
+- [ ] Load Mermaid on demand (a dynamic import, or a module entry in `asset-loader.js`)
+  and add `kpressInitDiagrams` to `plugin-sdk.js` and `static/types.d.ts` (`mb-y7zh`)
 - [ ] Call it from `rendered.js`, gated on the figure being present, with disposal
   (`mb-fzm7`)
 - [ ] Confirm through the load-time harness that a document with no diagram requests

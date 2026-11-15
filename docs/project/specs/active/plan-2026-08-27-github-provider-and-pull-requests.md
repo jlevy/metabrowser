@@ -32,8 +32,8 @@ Optional native GitHub membership is implemented separately; it does not complet
 6’s stack derivation, aggregate state, or comparison projections.
 Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
 against the thin mirror before they start.
-The v0.12 stack has landed, and 0.12.0 was released on 2026-11-08 (tag `v0.12.0`,
-`mb-4bd2`).
+The v0.12 stack has landed, and 0.12.0 was tagged `v0.12.0` at `87b8ec81` and published
+2026-11-09 (`mb-4bd2`).
 
 ## Vision
 
@@ -1337,11 +1337,14 @@ stack from base branches.
 ### Later sibling: Hosted releases (`mb-7srn`)
 
 **Addendum (2026-11-14):** not implementation-ready.
-The phases below build on the contract, resource-profile, and provider-store registries
-that [#246](https://github.com/jlevy/metabrowser/pull/246) removed, which survive only
-on the `reference/v012-hosted-review` branch (draft
-[#247](https://github.com/jlevy/metabrowser/pull/247)). Re-plan release browsing against
-the thin mirror before work starts; `mb-7srn` holds the feature until then.
+The phases below build on what [#246](https://github.com/jlevy/metabrowser/pull/246)
+removed: plugin-declared contracts, resource profiles, the `frontmatter-md` profile, and
+the provider store’s cache reservations.
+They survive only on the `reference/v012-hosted-review` branch (draft
+[#247](https://github.com/jlevy/metabrowser/pull/247)). The core artifact-contract
+registry is still on `main`, in `src/metabrowser/plugin_loader/artifact_contracts.py`,
+and admits only `pure-yaml`. Whether to re-plan or drop release browsing is an open
+owner decision (`mb-7srn`); any re-plan starts from the thin mirror.
 
 Releases are the next proof that the framework is a general external-resource system,
 not a PR-only stack.

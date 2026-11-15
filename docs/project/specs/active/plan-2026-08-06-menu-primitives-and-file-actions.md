@@ -156,8 +156,9 @@ against what was clicked and what the server permits.
 app swaps a label for an input, and nothing owns commit, cancel, validation, or
 rollback.
 
-**There is no mutation plane.** No route writes the served tree; the existing `POST`
-routes export, render, refresh, or pin what is served.
+**There is no mutation plane.** Only `POST /api/kpress/export` writes into the served
+tree, to a destination under the root, gated by the source’s `mutation` capability.
+No route renames, moves, or deletes, and nothing reads `CAPABILITIES.mutations` yet.
 The `--allow-edits` gate and the `CAPABILITIES` block exist (`capabilities.py`, #209),
 but there is no mutation service.
 The [trusted-local file editing plan](plan-2026-07-16-trusted-local-file-editing.md)
@@ -478,9 +479,10 @@ drive-by-write path.
 ### Phase 1: Overlay, Menu, and Command Primitives
 
 - [ ] Extend `overlay-layer.js` with point and element anchoring, flip-and-clamp
-  containment, the anchored dismissal contract, focus save and restore with the
-  detached-element fallback, registry-scoped Escape integration, and single-open
-  arbitration; inert-background restoration for modals and disposal are already there
+  containment, and the anchored dismissal contract.
+  Focus save and restore with the detached-element fallback, registry-scoped Escape
+  integration, single-open arbitration, inert-background restoration, and disposal
+  already exist for modals; this item extends the first three to anchored surfaces
 - [x] Add the modal variant and port `search-palette.js` onto it, deleting the palette’s
   private overlay, scrim, focus, and dismissal code (#35: `createModal` in
   `overlay-layer.js`, used by `search-palette.js` and `keyboard-help.js`)

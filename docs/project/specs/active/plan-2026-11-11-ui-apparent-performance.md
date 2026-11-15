@@ -109,9 +109,10 @@ current. Each tier takes its invalidation from a source that already exists:
   file: keyed by path, envelope ETag, and active view.
   They are flagged by the same sources that flag `fileCache` today: a change event marks
   the path in `fileNeedsRevalidate`, and a snapshot replacement flags every cached path
-  (`app.js:6681-6683`). A flagged surface is revalidated with `If-None-Match` before it
-  is shown, as a flagged `fileCache` entry is (`app.js:5486-5501`): a `304` re-attaches
-  it and a `200` renders the new envelope.
+  (`app.js:6682-6684`). A flagged surface is revalidated with `If-None-Match` before it
+  is shown, as a flagged `fileCache` entry is (the cache-state check at
+  `app.js:5487-5502`, and the `304` path at `app.js:5537-5565`): a `304` re-attaches it
+  and a `200` renders the new envelope.
   Active, appending files are never retained, as `fileCache` already excludes them.
 - **The Commits surface:** a comparison named by a full commit ID cannot change, so a
   retained commit view is never stale.
@@ -203,7 +204,7 @@ items share a pull request when they touch the same files.
   prefixes, working `/raw` conditionals (`mb-3m3l`, H87, #372)
 - [x] Git: comparison cache by commit ID in the browser, route memo by a refs
   fingerprint read without running Git on the server (`mb-8a8g`, H88, #368)
-- [x] Parallel `shell-tools` and KPress asset loading (`mb-pdul`, H89): rejected in
+- [ ] Parallel `shell-tools` and KPress asset loading (`mb-pdul`, H89): rejected in
   exp-062 and reverted before #372 merged; the follow-up is `mb-mjc0`
 - [ ] Render payload cache and a long-lived Markdown worker (`mb-mbd3`, H90): unresolved
   in exp-086 and taken out of #368, so not on `main`; its code is kept at `6b876c54` for
@@ -256,7 +257,7 @@ chunked, or retained surface.
   its origin (`mb-w4kd`, blocked by `mb-qzny`). The app already serves on one host
   spelling, `127.0.0.1`, with a persistent data store.
 - [ ] Prewarm at launch, hidden load, reveal on ready, one spare web view (`mb-25nv`,
-  after `mb-touu`)
+  after `mb-touu` and `mb-w4kd`)
 
 ## Testing Strategy
 
@@ -289,7 +290,7 @@ final round.
 ## Open Questions
 
 - Whether the tree-first startup order still pays for itself once assets are cached
-  (`app.js:8646-8650`); Phase 2 re-measures it before changing it.
+  (`app.js:8647-8651`); Phase 2 re-measures it before changing it.
 - How many laid-out surfaces the memory budget allows inside one web view; the
   retained-surface rounds measure it.
 - Whether the render `GET` from the server’s cache meets the cold-landing budget, or
