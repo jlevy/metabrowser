@@ -154,7 +154,7 @@ def test_every_tree_mutation_path_synchronizes_focus() -> None:
         ("applyTreeFilters", 5000),
         ("setSelectedPath", 1000),
         # revealInTree reveals through revealWithin, in the panel or a Group by section.
-        ("revealWithin", 2200),
+        ("revealWithin", 2600),
         ("renderGroupedSections", 3000),
         ("applyCellPatch", 6500),
         ("_removeRenderedRows", 2600),

@@ -91,7 +91,12 @@ type MetabrowserPullsPanelHandle = Readonly<{
   setCurrent(
     number: number | null,
     file?: string | null,
-    options?: { preserveScroll?: boolean },
+    /**
+     * *preserveScroll* keeps the list where the reader left it; *reveal* shows the pull
+     * request again when the address names the one already current (docs/design-system.md,
+     * "Navigation Reveals the Item").
+     */
+    options?: { preserveScroll?: boolean; reveal?: boolean },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
@@ -3257,6 +3262,18 @@ declare global {
      * panel has no row yet, and the tab button keeps focus.
      */
     focusRow?: (() => boolean) | null;
+    /**
+     * Reveal what the address names in this panel: open what holds it, select it, and
+     * scroll it into view unless *scroll* is `keep` (main-tabs.js, `reveal`).
+     */
+    reveal?: ((how: MetabrowserRevealHow) => unknown) | null;
+  };
+
+  /** How the reader reached what the address names (main-tabs.js, `REVEAL_ROUTES`). */
+  type MetabrowserRevealRoute = "open" | "address" | "history" | "nav" | "tab" | "step";
+  type MetabrowserRevealHow = {
+    scroll: "nearest" | "keep";
+    isCurrent: () => boolean;
   };
 
   type MetabrowserMainTabsDeps = {
@@ -3273,6 +3290,8 @@ declare global {
     /** The reader's own open of the served root, `/view/`. */
     openRoot(): Promise<unknown>;
     restore(): Promise<unknown>;
+    /** Reveal the file the address names in the Files tree: the Files panel's `reveal`. */
+    revealFile(how: MetabrowserRevealHow): Promise<unknown>;
     scrollShadow(): void;
   };
   type MetabrowserMainTabsController = {
@@ -3281,15 +3300,17 @@ declare global {
     /** Bind the digits to a registry, or to none as the shell disposes it. */
     bindShortcuts(shortcuts: MetabrowserShortcutRegistry | null): void;
     finishGitDiscovery(): Promise<void>;
-    fileLanding(): void;
     /** Go home: the Files tab at the served root, from any tab. */
     home(): Promise<unknown>;
+    /** The route of the Files landing the navigation controller applies, read once. */
+    landingRoute(source: "startup" | "user" | "popstate"): MetabrowserRevealRoute;
     onHistory(): void;
     open(id: string): void;
     register(panel: MetabrowserNavPanel): void;
     remember(): void;
     remove(id: string): void;
-    takeFilesScroll(): boolean;
+    /** Show what the address names in its tab: switch to it and reveal the item there. */
+    reveal(route: MetabrowserRevealRoute, how?: { isCurrent?: () => boolean }): Promise<void>;
   };
 
   type MetabrowserPreviewClaim = number;
@@ -3556,6 +3577,29 @@ declare global {
     MetabrowserShell?: MetabrowserShellRuntime;
     MetabrowserMainTabs?: Readonly<{
       create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+      REVEAL_ROUTES: readonly MetabrowserRevealRoute[];
+      landingRoute(
+        source: "startup" | "user" | "popstate",
+        pending: MetabrowserRevealRoute | null,
+      ): MetabrowserRevealRoute;
+      revealPlan(
+        tab: string | null,
+        route: MetabrowserRevealRoute,
+        active: string,
+      ): Readonly<{
+        tab: string | null;
+        switches: boolean;
+        reveal: boolean;
+        scroll: "nearest" | "keep";
+      }>;
+      tabAtAddress(
+        address: { pathname: string; search: string; hash: string },
+        how: {
+          routes: MetabrowserNavigationRouteRuntime;
+          isPullAddress: (pathname: string) => boolean;
+          gitLanding: boolean;
+        },
+      ): string | null;
     }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;

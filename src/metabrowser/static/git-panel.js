@@ -185,6 +185,10 @@
    */
   /** @type {NewestLanding | null} */
   let newestLanding = null;
+  // A commit's address whose row waits for the page of history that holds it
+  // (revealWaitingCommit).
+  /** @type {string | null} */
+  let waitingReveal = null;
   // How many commit selections have begun, so work that outlives one can tell that a
   // later selection placed the list (recoverHistorySession).
   let selectionCount = 0;
@@ -3125,6 +3129,7 @@
     refusedRevision = null;
     lastSelection = null;
     newestLanding = null;
+    waitingReveal = null;
     refColors = new Map();
     started = false;
     viewHelpersReady = false;
@@ -3180,7 +3185,12 @@
         window.location.pathname === pathname &&
         !(lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim))
       ) {
-        await selectCommit(wanted, { fromRoute: true });
+        // The selection marks the row as it begins, and the row is then revealed, now or
+        // when the page of history that holds it settles.
+        const selecting = selectCommit(wanted, { fromRoute: true });
+        waitingReveal = wanted;
+        revealWaitingCommit();
+        await selecting;
       }
     } catch (error) {
       console.error(
@@ -3240,6 +3250,7 @@
    * since, a file, a pull request, or a commit's own address, ends the wait.
    */
   function selectNewestWhenReady() {
+    revealWaitingCommit();
     const waiting = newestLanding;
     const bridge = shell();
     if (!waiting || !bridge) {
@@ -3310,6 +3321,68 @@
       pendingPreviewClaim === newestLanding.claim &&
       shell()?.isPreviewClaimCurrent(newestLanding.claim) === true
     );
+  }
+
+  /**
+   * Scroll a commit's row into view, mounting the window around it, when the history read
+   * so far holds it: a commit's address reveals its row, as a file's reveals the Files
+   * tree's (docs/design-system.md, "Navigation Reveals the Item"). A commit the history has
+   * not read, or one on no branch it walks, has no row: the list reads a page at a time
+   * from the newest and is not paged through for it, and the pane names the commit.
+   *
+   * @param {string} revision
+   * @returns {boolean} Whether its row is shown.
+   */
+  function revealCommitRow(revision) {
+    const ordinal = loadedOrdinalOf(revision);
+    const scroller = historyScroller();
+    const list = panelElement()?.querySelector(".git-graph-list");
+    if (ordinal === null || !scroller || !(list instanceof HTMLElement)) {
+      return false;
+    }
+    const rowAt = () => list.querySelector(`.git-graph-row[data-ordinal="${ordinal}"]`);
+    if (!(rowAt() instanceof HTMLElement)) {
+      scroller.scrollTop =
+        historyOrigin() +
+        state.virtualWindow.rebaseToOrdinal(ordinal, viewportHeight(scroller), "center");
+      state.mountedRange = null;
+      renderVirtualRows(true);
+    }
+    const row = rowAt();
+    if (!(row instanceof HTMLElement)) {
+      return false;
+    }
+    row.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+
+  /**
+   * Reveal the row of a commit's address once the history holds it. It runs as the landing
+   * selects the commit and whenever a page of history settles (`selectNewestWhenReady`), and
+   * stops waiting once the first pages are read without it, or the selection moves on.
+   */
+  function revealWaitingCommit() {
+    const waiting = waitingReveal;
+    if (waiting === null) {
+      return;
+    }
+    if (state.selectedId !== waiting || revealCommitRow(waiting)) {
+      waitingReveal = null;
+    } else if (!state.loading && !refreshing && state.rowCount > 0) {
+      waitingReveal = null;
+    }
+  }
+
+  /** Where *revision* sits in the history read so far, or null. @param {string} revision */
+  function loadedOrdinalOf(revision) {
+    for (const pageNumber of state.pageCache.keys()) {
+      const page = state.pageCache.peek(pageNumber);
+      const index = page ? page.commits.findIndex((commit) => commit.id === revision) : -1;
+      if (page && index >= 0) {
+        return page.startOrdinal + index;
+      }
+    }
+    return null;
   }
 
   /** Scroll the newest row into view when it is not, with the history tally above it. */
