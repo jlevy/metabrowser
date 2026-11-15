@@ -13,8 +13,8 @@ stack of seven pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
-2. **Files:** a Group by menu becomes the Files tab’s main control, and the three
-   filters move into the drawer.
+2. **Files:** a Group by menu becomes the Files tab’s main control, with Show ignored
+   beside it (`mb-x1h6`), and the three filters move into the drawer.
 3. **Rendered Markdown diffs:** the unchanged-blocks fold expands in place, with no
    border.
 4. **Diff summary:** one collapsible tree of changed files with folder roll-ups,
@@ -39,10 +39,10 @@ request must prove.
   - The Files type filter menu takes its natural height, up to about 16 rows, and always
     stays inside the window.
 - **Files Group by** (`mb-sogv`):
-  - “Group by” is the only control on the Files filter row.
-    Its values are No grouping (the default), Age, and File type.
-  - The three filters (Modified within, File type, Minimum file size) and Show ignored
-    move into the chevron drawer.
+  - “Group by” leads the Files filter row, and Show ignored follows it (`mb-x1h6`). Its
+    values are No grouping (the default), Age, and File type.
+  - The three filters (Modified within, File type, Minimum file size) move into the
+    chevron drawer.
   - When grouping is on, the tree splits into headed sections.
     Each section holds a full tree of the items in its group, under the active filters.
   - File type groups list Documentation before Code, in the filter and in Group by
@@ -122,7 +122,7 @@ it:
 | # | Branch | Beads | Why it sits here |
 | --- | --- | --- | --- |
 | 1 | `claude/menu-group-pattern` | `mb-s6vu`, `mb-1wfn`, this plan | The group heading pattern that pull requests 2 and 5 reuse |
-| 2 | `claude/menu-groups-height` | `mb-sogv` | Reuses the heading pattern for the Files tree’s group headings |
+| 2 | `claude/menu-groups-height` | `mb-sogv`, `mb-x1h6` | Reuses the heading pattern for the Files tree’s group headings |
 | 3 | `claude/diff-fold-inline` | `mb-m5dd` | Stacked to serialize merges, with no code dependency on the layer below; shares `diff/styles.css` with pull request 4 |
 | 4 | `claude/diff-summary` | `mb-epw2` | Shares the Pulls tree model with pull request 5 |
 | 5 | `claude/pulls-stack-groups` | `mb-cm61` | Groups the Pulls rows that pull request 4’s model serves |
@@ -149,6 +149,11 @@ it:
 
 ### Files Group By
 
+- **Row:** Group by, then Show ignored (`mb-x1h6`, the owner’s follow-up of 2026-11-15),
+  then Clear and the chevron at the trailing edge; a Git revision has no Show ignored.
+  The chevron’s badge counts only the drawer’s three filters, since the row shows Show
+  ignored’s own state, and Clear resets all four, keeping the grouping.
+  The row fits the default 299 px pane at its widest, measured in Chrome.
 - **Age groups:** disjoint bands built from the age filter’s windows: Live; then Past
   hour, Past day, Past week and Past month, each holding only what the earlier windows
   don’t; then Older. A Git revision source has no modification times, so it doesn’t offer
@@ -204,8 +209,9 @@ it:
 
 ### Pull Stack Groups
 
-- **The option:** a control in the Pulls tab’s toolbar groups the list by stack.
-  The choice persists.
+- **Always on** (`mb-vmwh`, the owner’s decision after review A on #450): the Pulls tab
+  always groups by stack once the stacks are known, with no toolbar control.
+  A Group by stack chip fit in no form at the default 299 px pane.
 
 - **Stack rows:**
   - Each stack with at least one pull request in the current list gets a row reading
@@ -219,8 +225,8 @@ it:
 - **Shared membership:** a pull request in more than one stack appears once, under the
   first stack that lists it, and its badge names the others.
 
-- **Missing or stale stack data:** the list stays flat, the option says why, and nothing
-  waits for the stack poller.
+- **Missing or stale stack data:** the list stays flat, and nothing waits for the stack
+  poller.
 
 - **Keyboard:** a stack row is a tree row, like a folder, for the Pulls keys (J, K, and
   the expand and collapse keys).
@@ -228,12 +234,22 @@ it:
 - **Parity:** grouping, ordering and membership belong to the browserless Pulls model,
   with a session and golden.
 
+- **More of each title** (the owner’s requests after review A on #450): a Pulls row
+  names no branches (`mb-ghff`); the pull request’s page keeps them.
+  A stack member’s place sits before its number on the metadata line, “1/6 · #455”, with
+  no stack icon of its own, so the title’s line holds only the title and the age
+  (`mb-dzsi`). A tree row’s chevrons and icons share one slightly tighter slot,
+  `--tree-icon-slot`, 14px where they had 16 (`mb-hmv7`). A pull request’s number is
+  bold wherever it names the pull request, through one token, `--pull-number-weight`
+  (`mb-vrvs`).
+
 - **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
   the pull request page’s stack button and menu (`pull-page.js`) share one design,
   stated once in a “Stacks” section of `docs/design-system.md`. It covers:
   - the “Stack #N” label: gray, all caps and tracked, in the label register of the stack
     menu’s heading, at the inset `mb-s6vu` sets for menu group headings;
-  - the position badge and its icon;
+  - the position: after its icon on the stack button, and before the number, with no
+    icon, in a Pulls row (`mb-dzsi`);
   - member rows: title, position, number, and the current pull request’s mark;
   - member order;
   - links and their hover and focus states;
@@ -259,6 +275,23 @@ it:
   conversation has painted, which go after everything, get a run of their own until
   `mb-yp9p` puts them in time order.
 - **Docs:** the rule is stated once in `docs/design-system.md`, using existing tokens.
+
+### Pull Request Header
+
+The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
+
+- **Branches** (`mb-fon5`): the head and base branches leave the author’s sentence for a
+  line of their own under it, one line in every state.
+- **State** (`mb-4ydo`): the state badge (Draft, Open, Merged, Closed) leads the row of
+  ages, “[Draft] Opened 9h ago · updated …”, instead of the author’s row.
+- **Stack chip** (`mb-cf0l`): the stack chip leaves the end of the labels row for the
+  right end of the author’s row, under the end of the title, so a late chip lands in the
+  row’s empty end: no author shift and no reserved gap.
+  Where the row has no room left, the sentence is cut short at its end rather than moved
+  or wrapped.
+- **Title** (`mb-z416`): the title’s icon and text start at the header’s left edge and
+  its number ends on the right edge, over the stack chip, for every title length; a
+  short title no longer sits centred.
 
 ### Sans Headings
 
@@ -293,6 +326,8 @@ it:
 
 - [ ] `mb-sogv`: the Group by control, the drawer layout, age and type groups, the
   shared type order, sections, persistence, and the route or model with its golden.
+- [ ] `mb-x1h6`: Show ignored on the row after Group by, and a badge that counts only
+  the drawer’s filters.
 
 ### Phase 3: Diff Fold in Place (pull request 3)
 
@@ -312,6 +347,12 @@ it:
 
 - [ ] `mb-g3ao`: commit rows on the timeline’s type scale and spacing, and the timeline
   line joining every event.
+- [ ] `mb-xz1r`: a run of commits stands at least as far from a comment as one commit
+  from the next.
+- [ ] `mb-fon5`: the branches on a line of their own under the author’s sentence.
+- [ ] `mb-4ydo`: the state badge leads the row of ages.
+- [ ] `mb-cf0l`: the stack chip at the right end of the author’s row.
+- [ ] `mb-z416`: the title’s number at the header’s right edge, over the stack chip.
 
 ### Phase 7: Sans Headings (pull request 7)
 
@@ -347,9 +388,8 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 
 ## Open Questions
 
-- **Stack grouping default:** should grouping by stack be on by default?
-  This plan turns it on when the repository has native stack metadata.
-  The choice persists either way.
+- **Stack grouping default (answered, `mb-vmwh`):** grouping is always on when the
+  repository has native stack metadata, with no option to turn it off.
 - **Shared membership:** should a pull request in two stacks appear under each, rather
   than once under the first?
 - **Open folders in the Diff summary (answered):** an open folder shows its line counts
@@ -361,7 +401,7 @@ This plan moves to `docs/project/specs/done/` when pull request 7 merges.
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
-  `mb-cm61`, `mb-g3ao`, `mb-l4vm`.
+  `mb-cm61`, `mb-g3ao`, `mb-l4vm`; `mb-x1h6`, a follow-up to `mb-sogv`.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

@@ -225,6 +225,22 @@
   }
 
   /**
+   * The filters set behind the Files drawer's chevron, which its badge counts: Modified
+   * within, File type, and Minimum file size. Show ignored sits on the row beside Group
+   * by and shows its own state, so the badge leaves it out; Clear, which resets every
+   * filter, still counts it (`filterState.activeCount`).
+   *
+   * @param {FilterSnapshot | null} state
+   * @returns {number}
+   */
+  function drawerFilterCount(state) {
+    if (!state) {
+      return 0;
+    }
+    return Number(state.recency !== "all") + Number(!!state.types) + Number(state.size !== "all");
+  }
+
+  /**
    * A grouped request's filter parameters: the tree's, and the recency window, which
    * the ungrouped tree leaves to /api/recent but a group's tree narrows by itself.
    *
@@ -1719,6 +1735,7 @@
     likelySectionKey,
     revealSectionOrder,
     sectionRowBudget,
+    drawerFilterCount,
     groupBy,
     groupSections,
     groupTreeUrl,

@@ -511,7 +511,7 @@ async function run() {
     }
     const model = panel.describePulls(answer.body, {
       filter: "all",
-      rows: answer.body.rows.map((row) => panel.describeRow(row, "octo/demo")),
+      rows: answer.body.rows.map((row) => panel.describeRow(row)),
       rowsVersion: 1,
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
@@ -550,31 +550,23 @@ async function run() {
     timers: page.timerDelays(),
   });
 
-  const hostile = panel.describeRow(
-    {
-      number: 7,
-      title: '<img src=x onerror="alert(1)"> & "quotes"',
-      state: "closed",
-      draft: false,
-      merged: true,
-      author: null,
-      updated_at: "2026-09-17T12:00:00Z",
-      base_ref: "main",
-      head_ref: "<b>topic</b>",
-      head_repository: null,
-    },
-    "octo/demo",
-  );
-  const spelled = panel.describeRow(
-    { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
-    "octo/demo",
-  ).refs;
+  const hostile = panel.describeRow({
+    number: 7,
+    title: '<img src=x onerror="alert(1)"> & "quotes"',
+    state: "closed",
+    draft: false,
+    merged: true,
+    author: null,
+    updated_at: "2026-09-17T12:00:00Z",
+    base_ref: "main",
+    head_ref: "<b>topic</b>",
+    head_repository: null,
+  });
   return {
     steps,
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
-    spelled,
     reader: await readerStory(),
     paint: await paintStory(panel),
     numbers: await numberStory(panel),
@@ -764,21 +756,6 @@ async function paintStory(panel, selection = false) {
   let aged = 0;
   let keyed = 0;
   let filterOptions = [];
-  // The Group by stack chip, as filter-controls.js's toggleHtml draws it from its spec.
-  let toggleSpec = null;
-  const drawToggle = (Element, into) => {
-    if (toggleSpec === null) {
-      return;
-    }
-    const toggle = new Element("button");
-    toggle.className = `chip chip-toggle ${toggleSpec.className}`;
-    toggle.setAttribute("data-chip-key", toggleSpec.key);
-    toggle.setAttribute("aria-pressed", String(toggleSpec.pressed === true));
-    toggle.setAttribute("aria-label", toggleSpec.ariaLabel);
-    toggle.setAttribute("data-tip-text", toggleSpec.tip);
-    toggle.append(toggleSpec.label);
-    into.append(toggle);
-  };
   class PanelElement extends FakeElement {
     set innerHTML(markup) {
       super.innerHTML = markup;
@@ -789,7 +766,6 @@ async function paintStory(panel, selection = false) {
           chip.append(option.label);
           this.append(chip);
         }
-        drawToggle(FakeElement, this);
       }
     }
     querySelectorAll(selector) {
@@ -879,10 +855,6 @@ async function paintStory(panel, selection = false) {
         groupHtml({ options }) {
           filterOptions = options;
           return "<div></div>";
-        },
-        toggleHtml(spec) {
-          toggleSpec = spec;
-          return "<button></button>";
         },
         bind: () => () => {},
       },
@@ -1253,14 +1225,14 @@ async function paintStory(panel, selection = false) {
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    // The line wraps: the author and the branches each carry the separator before them, so
-    // either moves to the next line whole.
+    // The line wraps: the author carries the separator before it, so it moves to the next
+    // line whole. A row names no branches; the pull request's page does.
     const line = child(metadata, "github-pulls-line");
-    const numberLabel = child(line, "github-pulls-number");
+    const id = child(line, "github-pulls-id");
+    const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    const merge = child(line, "github-pulls-merge");
-    // The stack's position is on the title line, between the title and the age, and not on
-    // the muted line, which wraps: there its late arrival moved the merge or added a line.
+    // The title's line is the title and its age; a stack member's place is on the muted
+    // line, before the number, so the title has the room (mb-dzsi).
     // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
     const order = row(hostile)
       .childNodes.filter((node) => typeof node.className === "string")
@@ -1271,70 +1243,38 @@ async function paintStory(panel, selection = false) {
           "github-pulls-toggle",
           "github-pull-state-icon",
           "github-pulls-title",
-          "github-pulls-stack",
           "github-pulls-age",
           "github-pulls-meta",
         ]),
-      `the row is the toggle, the state icon, the title, the stack position, the age, and the muted line: ${order}`,
+      `the row is the toggle, the state icon, the title, the age, and the muted line: ${order}`,
     );
     assert(
-      !line.childNodes.some((node) => node.classList?.contains("github-pulls-stack")),
-      "the muted line holds no stack position",
+      id.childNodes[0].classList.contains("github-pulls-place") &&
+        id.childNodes[0].hidden &&
+        id.childNodes[0].textContent === "",
+      "the line starts with the stack place, with the number, empty and hidden while no stack holds it",
     );
     assert(
-      metadata.textContent ===
-        `#${first.body.rows[0].number} · ${first.body.rows[0].author} · fork:feature/←<literal> → release/←base`,
-      "the line reads number, author, then head → base",
+      metadata.textContent === `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      "the line reads number, then author, and names no branches",
     );
-    for (const part of [by, merge]) {
-      assert(
-        part.firstChild.classList.contains("github-pulls-sep") &&
-          part.firstChild.textContent === " · ",
-        "a part that may wrap carries its own separator",
-      );
-    }
+    assert(
+      !metadata.childNodes.some((node) => node.textContent.includes("→")) &&
+        line.childNodes.length === 2,
+      "the line has the place and number, and the author, and no merge",
+    );
+    assert(
+      by.firstChild.classList.contains("github-pulls-sep") && by.firstChild.textContent === " · ",
+      "a part that may wrap carries its own separator",
+    );
     const identity = child(by, "github-pull-identity");
     const authorLabel = child(identity, "github-pulls-author");
-    const branches = child(merge, "merge-refs");
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
     );
     assert(authorLabel.localName === "strong", "username is semantically bold");
     assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
-    // Merge Direction: the shared group, source → target, left to right, whatever the refs say.
-    const [source, arrow, target] = branches.childNodes;
-    assert(branches.getAttribute("dir") === "ltr", "the merge reads left to right in any page");
-    assert(
-      branches.textContent === "fork:feature/←<literal> → release/←base",
-      "the head, the shared arrow, then the base",
-    );
-    assert(
-      arrow.classList.contains("merge-refs-arrow") &&
-        arrow.getAttribute("role") === "img" &&
-        arrow.getAttribute("aria-label") === "merges into",
-      "the arrow is named, so a reader hears the head merge into the base",
-    );
-    assert(
-      arrow.dataset.tipText === "fork:feature/←<literal> merges into release/←base",
-      "the arrow's tooltip states the whole merge a narrow row may cut short",
-    );
-    const chips = [source, target];
-    assert(
-      chips.every((chip) => chip.classList.contains("git-ref")) &&
-        source.classList.contains("merge-refs-source") &&
-        target.classList.contains("merge-refs-target"),
-      "exactly two structured chips, including literal arrow refs",
-    );
-    assert(target.dataset.refCopy === "release/←base", "raw base ref remains intact");
-    assert(
-      source.dataset.refCopy === "feature/←<literal>",
-      "copy omits fork display qualification",
-    );
-    assert(
-      source.textContent === "fork:feature/←<literal>",
-      "head label is literal and owner-qualified",
-    );
 
     const status = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-status"),
@@ -1562,21 +1502,6 @@ async function paintStory(panel, selection = false) {
 async function numberStory(panel) {
   const vm = require("node:vm");
   let filterOptions = [];
-  // The Group by stack chip, as filter-controls.js's toggleHtml draws it from its spec.
-  let toggleSpec = null;
-  const drawToggle = (Element, into) => {
-    if (toggleSpec === null) {
-      return;
-    }
-    const toggle = new Element("button");
-    toggle.className = `chip chip-toggle ${toggleSpec.className}`;
-    toggle.setAttribute("data-chip-key", toggleSpec.key);
-    toggle.setAttribute("aria-pressed", String(toggleSpec.pressed === true));
-    toggle.setAttribute("aria-label", toggleSpec.ariaLabel);
-    toggle.setAttribute("data-tip-text", toggleSpec.tip);
-    toggle.append(toggleSpec.label);
-    into.append(toggle);
-  };
   class NumberedElement extends FakeElement {
     get parentElement() {
       return this.parentNode instanceof FakeElement ? this.parentNode : null;
@@ -1624,7 +1549,6 @@ async function numberStory(panel) {
           chip.append(option.label);
           this.append(chip);
         }
-        drawToggle(NumberedElement, this);
       }
     }
     querySelectorAll(selector) {
@@ -1760,10 +1684,6 @@ async function numberStory(panel) {
           filterOptions = options;
           return "<div></div>";
         },
-        toggleHtml(spec) {
-          toggleSpec = spec;
-          return "<button></button>";
-        },
         bind(_root, handlers) {
           chipChange = handlers.onChange;
           return () => {};
@@ -1802,9 +1722,6 @@ async function numberStory(panel) {
     const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
     const reload = filters.childNodes.at(-1);
     assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
-    const grouping = filters.childNodes.find(
-      (node) => node.dataset.chipKey === "github-pulls-group-by-stack",
-    );
     const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
     /** What one act asked of the server and the list, what else ran, and where it moved focus. */
     async function acted(what, act) {
@@ -1873,28 +1790,18 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Stacks,5 Reload,6 View on GitHub",
-      "the chips, Group by stack, and Reload take 1 to 5 in reading order, before the page's link",
-    );
-    // While the list and its stacks are unknown, Group by stack keeps its number and, like
-    // its click, does nothing; its description says why.
-    story["Group by stack, unavailable"] = [await press("4")];
-    assert(
-      grouping.getAttribute("aria-disabled") === "true" &&
-        grouping.getAttribute("aria-pressed") === "false" &&
-        grouping.getAttribute("aria-description")?.startsWith("Group by stack: ") &&
-        story["Group by stack, unavailable"][0].asked === undefined,
-      "an unavailable Group by stack's number changes nothing",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
+      "the chips and Reload take 1 to 4 in reading order, before the page's link",
     );
     assert(
       reload.getAttribute("aria-disabled") === "true",
       "positive control: Reload waits while the list loads",
     );
-    story["Reload waits"] = [await press("5"), await clickReload()];
+    story["Reload waits"] = [await press("4"), await clickReload()];
     await answer("/api/plugin/github/pulls", recorded.more_done);
     assert(reload.getAttribute("aria-disabled") === "false", "the settled Reload is available");
     story["the Pulls tab, settled"] = numbers();
-    const byKey = await press("5");
+    const byKey = await press("4");
     await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
     const byClick = await clickReload();
     story.Reload = [byKey, byClick];
@@ -1943,14 +1850,7 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [
-      ...chips,
-      grouping,
-      reload,
-      recency,
-      types,
-      onGitHub,
-    ]
+    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;
@@ -1966,7 +1866,7 @@ async function numberStory(panel) {
     );
     story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
     show("pulls");
-    assert(numbers().length === 6, "the Pulls tab shows its numbers again");
+    assert(numbers().length === 5, "the Pulls tab shows its numbers again");
     // Disposal ends the panel's numbers, and the page's link moves up to 1. Put back in the
     // page, the disposed panel's controls still hold none: their numbers were let go.
     mounted.dispose();
@@ -1974,7 +1874,7 @@ async function numberStory(panel) {
     pullsTab.append(filters);
     assert(
       numbers().join() === "1 View on GitHub",
-      "a disposed panel's chips, Group by stack, and Reload hold no number",
+      "a disposed panel's chips and Reload hold no number",
     );
     filters.remove();
     story["after disposal"] = [await press("1"), await press("2")];

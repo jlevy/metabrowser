@@ -1087,8 +1087,9 @@ async function checkRows(page) {
 async function headerAges(page) {
   const said = async (name, ageLabel) => {
     const { container, handle } = await mountOn(page, recorded[name].body, "", ageLabel);
+    // The ages follow the state's badge on their row (mb-4ydo).
     const line = container
-      .querySelector(".github-pull-header")
+      .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
     const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
     const link = line.children.find((node) => node.tag === "a");
@@ -1136,9 +1137,9 @@ async function headerAges(page) {
 // The header's box is decided at first paint: the same rows, in the same order, whatever
 // the pull request carries and whichever tab shows, and while its record is on its way.
 // Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
-// row is there. A stack's chip has its slot at the labels row's end, held by a strut until
-// one arrives; the state row holds a strut of its own; and Refresh has its slot at the
-// status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
+// row is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
+// strut until one arrives, which holds that row at a chip's height; and Refresh has its
+// slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
 // late chip moves nothing.
 async function headerShape(page) {
   const rows = (container) =>
@@ -1180,13 +1181,14 @@ async function headerShape(page) {
       const refresh = end.children.at(-1);
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(
-        labels.children.at(-1),
+        meta.children.at(-1),
         stacks,
-        `${name} ${tab}: the stack slot ends the labels`,
+        `${name} ${tab}: the stack slot ends the author's row`,
       );
+      assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
       assert.ok(
-        meta.children.at(-1).classes.has("github-pull-stack-strut"),
-        `${name} ${tab}: a strut holds the state row at a chip's height`,
+        stacks.children.length !== 1 || stacks.children[0].classes.has("github-pull-stack-strut"),
+        `${name} ${tab}: a strut holds the author's row at a chip's height`,
       );
       assert.ok(
         stacks.children.length > 0 && !stacks.hidden,
@@ -1207,7 +1209,7 @@ async function headerShape(page) {
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta quiet labels status"]),
+    new Set(["title meta branches opened labels status"]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.
@@ -1365,27 +1367,38 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The state row is the badge, the details, and a strut; the stack's slot is not on it,
-    // so a late chip takes no room from the sentence or the merge.
-    const [stateBadgeSlot, details, stateStrut] = meta.children;
-    const stateBadge = stateBadgeSlot.children[0];
+    // The author's row is the details, then the stack's slot at its end (mb-cf0l), which holds
+    // a strut while no stack is known: a late chip lands in the row's empty end.
+    const [details, stackSlot] = meta.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
-    assert.ok(stateStrut.classes.has("github-pull-stack-strut"));
-    assert.equal(meta.children.length, 3);
+    assert.ok(stackSlot.classes.has("github-pull-stacks"));
+    assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
+    assert.equal(meta.children.length, 2);
+    // The state's badge leads the row of ages, under the branches (mb-4ydo).
+    const opened = container.querySelector(".github-pull-opened");
     assert.equal(
-      container.querySelector(".github-pull-labels").children.at(-1),
-      container.querySelector(".github-pull-stacks"),
+      title.parentNode.children.indexOf(opened),
+      title.parentNode.children.indexOf(meta) + 2,
     );
+    const [stateBadgeSlot, ages] = opened.children;
+    assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
+    assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
+    const stateBadge = stateBadgeSlot.children[0];
+    assert.equal(meta.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
+    // The author's sentence is the row; the branches have the line below to themselves.
+    assert.ok(details.children.at(-1).classes.has("github-pull-action"));
+    assert.equal(details.textContent, "forker wants to merge 2 commits");
     // Merge Direction: the header names the branches head → base, through the shared group,
-    // after the action the row cuts short first.
-    assert.ok(details.children.at(-2).classes.has("github-pull-action"));
+    // on a line of their own under the sentence.
+    const branches = container.querySelector(".github-pull-branches");
     assert.equal(
-      details.textContent,
-      "forker wants to merge 2 commits: forker:count-to-two → octo:topic",
+      title.parentNode.children.indexOf(branches),
+      title.parentNode.children.indexOf(meta) + 1,
     );
-    const merge = details.children.find((node) => node.className === "merge-refs");
+    assert.equal(branches.textContent, "forker:count-to-two → octo:topic");
+    const merge = branches.children.find((node) => node.className === "merge-refs");
     assert.equal(merge.getAttribute("dir"), "ltr");
     const [source, arrow, target] = merge.children;
     assert.equal(source.dataset.tipText, "forker:count-to-two");

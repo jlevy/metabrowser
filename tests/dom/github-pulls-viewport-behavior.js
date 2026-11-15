@@ -300,7 +300,7 @@ async function paint() {
     },
     {
       perf,
-      filterControls: { groupHtml: () => "", toggleHtml: () => "", bind: () => () => {} },
+      filterControls: { groupHtml: () => "", bind: () => () => {} },
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: () => ({ label: "now", className: "" }),
       formatTimestamp: () => "",

@@ -360,7 +360,8 @@ async function heldTabKeys(page) {
       strip = stackKeys();
     }
   });
-  // The stack menus in the header's labels row, past the strut that holds its height.
+  // The stack menus at the end of the header's author row, past the strut that holds its
+  // height.
   const stackMenus = () =>
     container
       .querySelector(".github-pull-stacks")

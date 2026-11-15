@@ -129,11 +129,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor · work-106 → topic | /pull/106",
-          "[Open] Work item 105 | #105 · contributor · work-105 → topic | /pull/105",
+          "[Open] Work item 106 | #106 · contributor | /pull/106",
+          "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Merged] Say more in the guide | #8 · maintainer · guide-more → topic | /pull/8",
-          "[Open] Count to two in the app | #7 · forker · forker:count-to-two → topic | /pull/7"
+          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
+          "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
       }
     },
@@ -157,11 +157,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor · work-106 → topic | /pull/106",
-          "[Open] Work item 105 | #105 · contributor · work-105 → topic | /pull/105",
+          "[Open] Work item 106 | #106 · contributor | /pull/106",
+          "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor · work-6 → topic | /pull/6",
-          "[Open] Work item 5 | #5 · contributor · work-5 → topic | /pull/5"
+          "[Open] Work item 6 | #6 · contributor | /pull/6",
+          "[Open] Work item 5 | #5 · contributor | /pull/5"
         ]
       }
     },
@@ -205,11 +205,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor · work-106 → topic | /pull/106",
-          "[Open] Work item 105 | #105 · contributor · work-105 → topic | /pull/105",
+          "[Open] Work item 106 | #106 · contributor | /pull/106",
+          "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor · work-6 → topic | /pull/6",
-          "[Open] Work item 5 | #5 · contributor · work-5 → topic | /pull/5"
+          "[Open] Work item 6 | #6 · contributor | /pull/6",
+          "[Open] Work item 5 | #5 · contributor | /pull/5"
         ]
       }
     },
@@ -260,11 +260,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · work-6000 → topic | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · work-5999 → topic | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor · work-5502 → topic | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor · work-5501 → topic | /pull/5501"
+          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
         ]
       }
     },
@@ -289,11 +289,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · work-6000 → topic | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · work-5999 → topic | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor · work-5502 → topic | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor · work-5501 → topic | /pull/5501"
+          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
         ]
       }
     },
@@ -319,11 +319,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · work-6000 → topic | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · work-5999 → topic | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor · work-5502 → topic | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor · work-5501 → topic | /pull/5501"
+          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
         ]
       }
     },
@@ -351,11 +351,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · work-6000 → topic | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · work-5999 → topic | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5002 | #5002 · contributor · work-5002 → topic | /pull/5002",
-          "[Closed] Work item 5001 | #5001 · contributor · work-5001 → topic | /pull/5001"
+          "[Closed] Work item 5002 | #5002 · contributor | /pull/5002",
+          "[Closed] Work item 5001 | #5001 · contributor | /pull/5001"
         ]
       }
     },
@@ -389,11 +389,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 6,001 pull requests",
         "rowsHeld": 1000,
         "rows": [
-          "[Closed] Work item 6001 | #6001 · contributor · work-6001 → topic | /pull/6001",
-          "[Closed] Work item 6000 | #6000 · contributor · work-6000 → topic | /pull/6000",
+          "[Closed] Work item 6001 | #6001 · contributor | /pull/6001",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
           "…",
-          "[Closed] Work item 5003 | #5003 · contributor · work-5003 → topic | /pull/5003",
-          "[Closed] Work item 5002 | #5002 · contributor · work-5002 → topic | /pull/5002"
+          "[Closed] Work item 5003 | #5003 · contributor | /pull/5003",
+          "[Closed] Work item 5002 | #5002 · contributor | /pull/5002"
         ]
       }
     },
@@ -547,9 +547,8 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
 `numbers` runs the production shortcut registry and plugin facade around the panel: the
-Open, Closed, and All chips, Group by stack, and Reload take `1` to `5` in reading
-order, before the page’s numbered link, and each number asks for what its control’s
-click asks for; Group by stack, unavailable while no stacks are known, does nothing.
+Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
+page’s numbered link, and each number asks for what its control’s click asks for.
 A hidden or disposed panel’s controls give up their numbers.
 
 ```console
@@ -674,14 +673,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "title": "<img src=x onerror=\"alert(1)\"> & \"quotes\"",
     "author": "ghost",
     "avatar": null,
-    "baseRef": "main",
-    "headRef": "<b>topic</b>",
-    "headLabel": "<b>topic</b> (deleted fork)",
     "updatedAt": "2026-09-17T12:00:00Z",
-    "refs": "<b>topic</b> (deleted fork) → main",
-    "meta": "#7 · ghost · <b>topic</b> (deleted fork) → main"
+    "meta": "#7 · ghost"
   },
-  "spelled": "topic → main",
   "reader": [
     {
       "name": "a visible cold direct link fills the cache",
@@ -916,7 +910,6 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",
-      "span .github-pulls-stack role=\"img\" hidden=\"\"",
       "span .github-pulls-age.age-hour",
       "span .github-pulls-meta"
     ],
@@ -954,20 +947,12 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Stacks",
-      "5 Reload",
-      "6 View on GitHub"
-    ],
-    "Group by stack, unavailable": [
-      {
-        "what": "press 4",
-        "handled": true,
-        "focused": "Stacks"
-      }
+      "4 Reload",
+      "5 View on GitHub"
     ],
     "Reload waits": [
       {
-        "what": "press 5",
+        "what": "press 4",
         "handled": true
       },
       {
@@ -978,13 +963,12 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "1 Open",
       "2 Closed",
       "3 All",
-      "4 Stacks",
-      "5 Reload",
-      "6 View on GitHub"
+      "4 Reload",
+      "5 View on GitHub"
     ],
     "Reload": [
       {
-        "what": "press 5",
+        "what": "press 4",
         "handled": true,
         "asked": [
           "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
@@ -1054,7 +1038,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Stacks 4, Reload 5, Modified within none, File type none, View on GitHub 6",
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, View on GitHub 5",
     "the Files tab": [
       "1 Modified within",
       "2 File type",

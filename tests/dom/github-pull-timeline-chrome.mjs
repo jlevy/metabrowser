@@ -21,7 +21,9 @@
 // - a commit row is set in the type of a card head: the same size and line, its verb and
 //   age as a comment's, and its hash one step below, as a revision is beside body text;
 // - a commit row's text sits in its row as a card head's sits in its card, with as much
-//   room above it as below, and one gap between every two events;
+//   room above it as below, and one gap between two cards or two commits;
+// - a run of commits stands at least as far from the card or section above it, and the
+//   card below it, as one commit's glyphs stand from the next's;
 // - every card head's avatar, or the empty slot of one for an author without one, is on
 //   the line, and every head's name starts where the commits' subjects do;
 // - one line joins every two adjacent events, at one x, from a card's edge or a commit's
@@ -317,6 +319,12 @@ const MEASURE = `async (arrangement, width, theme) => {
       const when = [...node.children].find((child) => /^committed /.test(child.textContent || ""));
       item.text = firstLine(subject);
       item.lines = firstLine(node)?.lines ?? 0;
+      // Where the row's last line of glyphs ends, however it wraps.
+      const whole = document.createRange();
+      whole.selectNodeContents(node);
+      item.textEnd = round(
+        Math.max(...[...whole.getClientRects()].filter((r) => r.width > 0).map((r) => r.bottom)) + scrollY,
+      );
       item.type = {
         row: type(node),
         subject: type(subject),
@@ -491,10 +499,11 @@ function hold(measured, image) {
     );
   }
 
-  // Spacing: one gap between events, and a commit's text where a card head's is.
+  // Spacing: one gap between two cards and between two commits, and a commit's text where a
+  // card head's is.
   for (const [index, item] of items.entries()) {
     const next = items[index + 1];
-    if (isEvent(item) && isEvent(next)) {
+    if (isEvent(item) && isEvent(next) && item.kind === next.kind) {
       const between = next.box.top - item.box.bottom;
       check(
         `${where}: one gap after "${item.label}"`,
@@ -502,6 +511,31 @@ function hold(measured, image) {
         `${round(between)} px`,
       );
     }
+  }
+  // A run of commits stands off what is around it at least as far as one commit's text
+  // stands from the next's: from the edge of a card or section above to the first commit's
+  // glyphs, and from the last commit's glyphs to the card below.
+  const runs = [];
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (item.kind === "commit" && next?.kind === "commit") {
+      runs.push(next.text.top - item.textEnd);
+    }
+  }
+  const pitch = Math.max(...runs);
+  check(`${where}: two commits in a run`, runs.length > 0, JSON.stringify(runs));
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (next === undefined || (item.kind === "commit") === (next.kind === "commit")) {
+      continue;
+    }
+    const space =
+      item.kind === "commit" ? next.box.top - item.textEnd : next.text.top - item.box.bottom;
+    check(
+      `${where}: from "${item.label}" to "${next.label}" is at least the space between two commits`,
+      space + 0.01 >= pitch,
+      `${round(space)} against ${round(pitch)} px`,
+    );
   }
   // A card that is only its head, the review with no text: a commit row on one line is that
   // card's box, with its text as far from each edge. (Above and below differ by the face's
