@@ -264,8 +264,10 @@ it:
 
 - One scoped rule in the shell’s prose styles sets h2 upright (`font-style: normal`)
   wherever the prose face is sans.
-  It keys on the same hooks #438 uses (`.chrome-prose`, the sans reading-font
-  preference, and the `md-body` fallback), not on each surface.
+  It keys on the two places #438 points the prose hook at sans, not on each surface: its
+  selectors are `.chrome-prose .kpress-prose h2` and
+  `html[data-prose-font="sans"] .kpress-prose h2`. The `md-body` fallback needs no rule,
+  because it sets no italic.
 - An h2 keeps its size, weight and spacing; serif documents keep KPress’s italic.
 - The rule is stated once in `docs/design-system.md`, beside “Serif Is for Documents”.
 

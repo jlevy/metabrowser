@@ -2435,6 +2435,26 @@ def test_serif_is_only_for_documents() -> None:
             assert not faces, f"{where} sets a face token: {sorted(faces)}"
     assert roots == _FACE_ROOTS
     assert documents == _DOCUMENT_FACES
+    # An h2 is upright wherever the prose face is sans: the one rule that sets its style
+    # keys on each selector that points the prose hook at sans, and on nothing else, so a
+    # third such place cannot arrive without it.
+    style_rules = _rules_of(styles)
+    sans_hooks = {
+        selector
+        for selector, declarations in style_rules
+        if declarations.get("--kpress-host-font-prose") == "var(--prose-sans-font)"
+    }
+    upright = [
+        (selector, declarations)
+        for selector, declarations in style_rules
+        if selector.endswith(".kpress-prose h2") and "font-style" in declarations
+    ]
+    assert sans_hooks, "no rule points the prose hook at sans"
+    assert {selector for selector, _ in upright} == {
+        f"{hook} .kpress-prose h2" for hook in sans_hooks
+    }
+    for selector, declarations in upright:
+        assert declarations == {"font-style": "normal"}, selector
     builders = {
         path.relative_to(source).as_posix(): path.read_text(encoding="utf-8").count("chrome-prose")
         for path in sorted([*STATIC.glob("*.js"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.js")])

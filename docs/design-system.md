@@ -211,8 +211,11 @@ face. So a serif document keeps the italic, and an h2 in chrome prose or in a do
 under the Sans reading font is upright, with KPress’s size, weight, and spacing.
 The one rule in `static/styles.css` keys on the two places that point the prose hook at
 sans, `.chrome-prose` and `html[data-prose-font="sans"]`, not on each surface.
-KPress’s h4 and h6 italics are unchanged, and the `md-body` fallback sets no italic in
-either face.
+The rule leaves h4 and h6 italic, each for its own reason.
+KPress sets h4 in its sans font under either reading font, so the h4 italic is KPress’s
+own sans style, not the serif’s accent.
+An h6 follows the reading face like an h2, and keeps its italic because the request this
+rule answers named only h2s. The `md-body` fallback sets no italic in either face.
 
 `test_serif_is_only_for_documents` holds which rules may set a face and which builders
 mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, and

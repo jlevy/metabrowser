@@ -344,6 +344,19 @@ async function main() {
           const where = `${prose} reading font, ${set} fonts`;
           console.error(`${where}, ${path}: ${Date.now() - started} ms`);
           check(`${where}: <html> says so`, read.html.join(" ") === `${prose} ${set}`, read.html);
+          if (page.place) {
+            // Chrome prose is under the upright rule in both passes, so the serif-to-sans
+            // guard below cannot see a change confined to it. Its KPress h2 is the
+            // Document view's article placed in it, so the two boxes from one read match.
+            const h2Of = (name) => read.probes[page.probes.findIndex((p) => p.name === name)]?.h2;
+            const chromeH2 = h2Of("chrome prose's KPress Markdown");
+            const documentH2 = h2Of("the Document view");
+            check(
+              `${where}: chrome prose's KPress h2 has the Document view h2's size, weight and spacing`,
+              chromeH2 != null && documentH2 != null && chromeH2.box === documentH2.box,
+              `${chromeH2?.box}, not ${documentH2?.box}`,
+            );
+          }
           for (const [index, probe] of page.probes.entries()) {
             const found = read.probes[index];
             const label = `${where}: ${probe.name}`;
