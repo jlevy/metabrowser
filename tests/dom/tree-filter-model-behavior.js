@@ -129,6 +129,28 @@ assertEqual(
   false,
 );
 
+// ── The chevron's badge ─────────────────────────────────────────
+
+// The badge counts the filters behind the chevron, one each however many types are
+// chosen. Show ignored sits on the row beside Group by and shows its own state, so the
+// badge leaves it out, and Group by is no filter at all (mb-x1h6). Clear, which also
+// resets Show ignored, counts it in filterState.activeCount (files-group-by-session.js).
+assertEqual(
+  "the badge counts the drawer's filters and nothing else",
+  [
+    snapshot({}),
+    snapshot({ recency: "1h" }),
+    snapshot({ types: [".md", ".py", ".txt"] }),
+    snapshot({ size: "1m" }),
+    snapshot({ recency: "24h", types: [".md"], size: "10m" }),
+    snapshot({ showIgnored: false }),
+    snapshot({ showIgnored: false, size: "100k", group: "type" }),
+    snapshot({ group: "age" }),
+  ].map((state) => model.drawerFilterCount(state)),
+  [0, 1, 1, 1, 3, 0, 1, 0],
+);
+assertEqual("no state at all sets no filter", model.drawerFilterCount(null), 0);
+
 // ── Recent selection and request continuity ─────────────────────────────
 
 const passAll = { rowMatches: () => true };

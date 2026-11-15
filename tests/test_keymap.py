@@ -233,18 +233,16 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
         for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
     )
     # The pull request page attaches its tabs' letters and numbers its header's controls,
-    # and the Pulls panel numbers its state chips, its Group by stack chip, and its Reload:
-    # numbers, so no letter.
+    # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
     assert calls == [
         "diff/diff-view.js",
         "github/pull-page.js",
         "github/pull-page.js",
         "github/pulls-panel.js",
         "github/pulls-panel.js",
-        "github/pulls-panel.js",
     ]
     panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
-    assert panel.count("numbered: true,") == 3, "the Pulls panel's three calls take no letter"
+    assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
     assert set(letters) == {"c", "g", "e", "l"}
     served = serialize_reserved_shell_keys()

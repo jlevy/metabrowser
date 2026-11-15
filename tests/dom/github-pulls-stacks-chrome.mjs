@@ -13,10 +13,10 @@
 // browser can tell: that a stack row's header and the stack menu's heading resolve to the
 // same label tokens, gray, all caps, and tracked; that a stack row starts on the list's row
 // inset and its pull requests one tree level in; that a stack row and a pull request's row
-// hover alike and are as tall as the row contract says; that the option's chip is a chip's
-// height; that the keys move real focus onto and off a stack row; that the groups list a
-// stack's members in the order the page's stack menu does; and that the choice persists
-// across a reload. It times the first row, the grouping's arrival, and a toggle, and with
+// hover alike and are as tall as the row contract says; that the toolbar fits the default
+// pane with no Group by stack chip, since the tab always groups; that the keys move real
+// focus onto and off a stack row; and that the groups list a stack's members in the order
+// the page's stack menu does. It times the first row and the grouping's arrival, and with
 // SHOTS_DIR it saves the screenshots. `--before` takes only the screenshots and the first
 // row's time, for the shell as it was before grouping, and checks nothing of it.
 //
@@ -88,10 +88,14 @@ const LIST = `(() => {
     } else if (row.getAttribute("aria-level") === "2" && open !== null) {
       open.members.push({
         number: Number(row.dataset.number),
-        badge: row.querySelector(".github-pulls-stack")?.textContent ?? "",
+        // Its place in its stacks, on its number's line, before the number (mb-dzsi).
+        badge: row.querySelector(".github-pulls-place .github-pull-stack-position")?.textContent ?? "",
+        line: row.querySelector(".github-pulls-line")?.textContent ?? "",
         // Another stack named in it, by the Layers glyph before its number.
-        others: row.querySelectorAll(".github-pulls-stack .github-pull-stack-other svg").length,
-        tip: row.querySelector(".github-pulls-stack")?.getAttribute("aria-label") ?? "",
+        others: row.querySelectorAll(".github-pulls-place .github-pull-stack-other svg").length,
+        // A member's row draws no stack icon: the stack's row it sits under has it.
+        icons: row.querySelectorAll(".github-pull-stack-icon").length,
+        tip: row.querySelector(".github-pulls-place")?.getAttribute("aria-label") ?? "",
       });
     } else {
       open = null;
@@ -103,7 +107,20 @@ const LIST = `(() => {
     (row) => !row.classList.contains("github-pulls-stack-row"),
   );
   const box = (el) => el?.getBoundingClientRect() ?? null;
+  // The room a row's title gets: its grid cell's width, which a long title fills and is
+  // cut at. A member's and a first-level pull request's, and the pane they are in.
+  const titleBox = (number) =>
+    list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-title')?.getBoundingClientRect().width ?? null;
+  const titleRoom = {
+    pane: Math.round(document.querySelector(".tree-pane").getBoundingClientRect().width),
+    member: titleBox(10),
+    memberSingle: titleBox(9),
+    flat: titleBox(106),
+    memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
+    flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
+  };
   return {
+    titleRoom,
     stacks,
     rows: rows.length,
     stackToggle: left(stackRow?.querySelector(".github-pulls-toggle")),
@@ -116,26 +133,19 @@ const LIST = `(() => {
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     countRight: box(stackRow?.querySelector(".github-pulls-stack-count"))?.right ?? null,
     flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
-    toggle: (() => {
-      const chip = document.querySelector(".github-pulls-group-toggle");
-      const filter = document.querySelector(".github-pulls-filters .chip-group");
-      return chip === null
-        ? null
-        : {
-            pressed: chip.getAttribute("aria-pressed"),
-            disabled: chip.getAttribute("aria-disabled"),
-            tip: chip.dataset.tipText,
-            height: box(chip).height,
-            filterHeight: box(filter).height,
-            label: chip.getAttribute("aria-label"),
-            word: chip.textContent,
-            // The toolbar keeps its controls on one line, and scrolls sideways past that.
-            toolbarOverflow: (() => {
-              const bar = document.getElementById("nav-toolbar-pulls");
-              return bar === null ? null : bar.scrollWidth - bar.clientWidth;
-            })(),
-            toolbarWidth: document.getElementById("nav-toolbar-pulls")?.clientWidth ?? null,
-          };
+    // The toolbar's one line: how far past the pane it reaches, and the room left between
+    // the filters and Reload, which sits at the line's end.
+    toolbar: (() => {
+      const bar = document.getElementById("nav-toolbar-pulls");
+      const group = box(document.querySelector(".github-pulls-filters .chip-group"));
+      const reload = box(document.querySelector(".github-pulls-reload"));
+      const gap = parseFloat(getComputedStyle(document.querySelector(".github-pulls-filters")).columnGap) || 0;
+      return {
+        width: bar?.clientWidth ?? null,
+        overflow: bar === null ? null : bar.scrollWidth - bar.clientWidth,
+        spare: group === null || reload === null ? null : Math.round(reload.left - group.right - gap),
+        chip: document.querySelector(".github-pulls-group-toggle") !== null,
+      };
     })(),
   };
 })()`;
@@ -286,7 +296,7 @@ try {
 
   if (before) {
     // The stack badges arrive from the same snapshot, on rows near the list's end; the
-    // list draws no groups.
+    // list draws no groups. That shell drew a badge on the title line, `.github-pulls-stack`.
     // Scrolled to the end as it grows: the rows near it mount once the window reaches them.
     await waitFor(
       `(document.querySelector(".tree-content").scrollTop = 1e6) && document.querySelector('a.github-pulls-row[data-number="10"]') !== null`,
@@ -330,6 +340,25 @@ try {
       JSON.stringify(list.stacks),
     );
     check(
+      "a member's place is on its number's line, before the number, as 1/6 · #455 reads",
+      first?.members[0]?.line.startsWith("4/4 · 300 2/2 · #10 · ") &&
+        first.members[1]?.line.startsWith("3/4 · #9 · "),
+      JSON.stringify(first?.members.map((m) => m.line)),
+    );
+    check(
+      "a member's row draws no stack icon",
+      list.stacks.every((stack) => stack.members.every((m) => m.icons === 0)),
+      JSON.stringify(list.stacks.map((stack) => stack.members.map((m) => m.icons))),
+    );
+    // Its place on the title line once cut a member's title to 65 px at the default pane,
+    // where a first-level row's had 176 (mb-dzsi, measured before the change).
+    check(
+      "a member's title has a first-level row's room, less its one indent",
+      Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.treeIndent)) < 0.5 &&
+        Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.treeIndent)) < 0.5,
+      JSON.stringify(list.titleRoom),
+    );
+    check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
       near(list.stackToggle, list.flatToggle),
       `${list.stackToggle} ${list.flatToggle}`,
@@ -354,18 +383,18 @@ try {
       near(list.countRight, list.flatAgeRight),
       `${list.countRight} ${list.flatAgeRight}`,
     );
+    // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
+    // the default pane width its one line fits, with room to spare (mb-vmwh): the worded
+    // chip reached 36 px past it, and every other form of it past it too.
+    measured.toolbar = list.toolbar;
     check(
-      "the option's chip is on, worded, named Group by stack, and a chip's height",
-      list.toggle?.pressed === "true" &&
-        list.toggle.disabled === "false" &&
-        list.toggle.word === "Stacks" &&
-        list.toggle.label === "Group by stack" &&
-        near(list.toggle.height, list.toggle.filterHeight),
-      JSON.stringify(list.toggle),
+      "the toolbar has no Group by stack chip, and fits the default pane with room to spare",
+      list.toolbar.chip === false &&
+        list.toolbar.width === 299 &&
+        list.toolbar.overflow === 0 &&
+        list.toolbar.spare > 0,
+      JSON.stringify(list.toolbar),
     );
-    // How far past the pane the toolbar's one line reaches, which it scrolls along rather
-    // than wrapping or cutting (static/styles.css, `.nav-toolbar`): recorded, not held.
-    measured.toolbarOverflow = list.toggle?.toolbarOverflow ?? null;
     // A stack's row and a pull request's row hover alike.
     const stackHover = await hover(".github-pulls-stack-row");
     const memberHover = await hover('.github-pulls-item[data-level="2"] > .github-pulls-row');
@@ -482,43 +511,7 @@ try {
       keys[1].ring === "solid" && keys[0].ring === "solid",
       JSON.stringify(keys),
     );
-    // The Group by stack option, off and on.
-    const offAt = await now();
-    await click(".github-pulls-group-toggle");
-    await waitFor(`document.querySelector(".github-pulls-stack-row") === null`);
-    measured.toggleOffMs = Math.round((await now()) - offAt);
-    await evaluate(`document.querySelector(".tree-content").scrollTop = 0`);
-    await shot("after-pulls-flat", await paneClip());
-    await send("Page.navigate", { url: `${base}/view/` });
-    await waitFor(tabReady);
-    await openPulls();
-    await waitFor(
-      `document.querySelector(".github-pulls-group-toggle")?.getAttribute("aria-disabled") === "false"`,
-    );
-    await frames();
-    check(
-      "the choice persists across a reload",
-      (await evaluate(`document.querySelector(".github-pulls-stack-row") === null`)) &&
-        (await evaluate(
-          `document.querySelector(".github-pulls-group-toggle").getAttribute("aria-pressed")`,
-        )) === "false",
-    );
-    await click('.github-pulls-filters [data-chip-value="all"]');
-    await waitFor(
-      `document.querySelector('.github-pulls-list[data-filter="all"] a.github-pulls-row') !== null`,
-    );
-    const onAt = await now();
-    await click(".github-pulls-group-toggle");
-    await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
-    measured.toggleOnMs = Math.round((await now()) - onAt);
-    await frames();
-    measured.toggledInView = await stackInView();
-    check(
-      "turning grouping on at the top shows its first stack's row",
-      measured.toggledInView.inView,
-      JSON.stringify(measured.toggledInView),
-    );
-    phase("toggled");
+    phase("keys");
   }
 
   // The page's stack menu, from a member's row, brought into view as a reader would.
@@ -533,11 +526,11 @@ try {
   }
   await click('a.github-pulls-row[data-number="9"]');
   await waitFor(
-    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].some((t) => t.getAttribute("aria-label").includes("Stack #286"))`,
+    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].some((t) => t.getAttribute("aria-label") === "Navigate Stack #286, position 3 of 4")`,
   );
   phase("page");
   await evaluate(
-    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].find((t) => t.getAttribute("aria-label").includes("Stack #286")).click()`,
+    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].find((t) => t.getAttribute("aria-label") === "Navigate Stack #286, position 3 of 4").click()`,
   );
   await waitFor(
     `document.querySelector(".github-pull-stack-menu .github-pull-stack-member") !== null`,
@@ -551,7 +544,7 @@ try {
       classes: heading.className,
       members: [...menu.querySelectorAll(".github-pull-stack-member")].map((a) => Number(new URL(a.href).pathname.split("/")[2])),
       tip: document.querySelector(".github-pull-stack-trigger[aria-expanded='true']")?.dataset.tipText ?? null,
-      // A member's position, title and number, and a Pulls badge's position: their ink.
+      // A member's position, title and number, and a Pulls row's place: their ink.
       ink: (() => {
         const color = (selector) => {
           const el = document.querySelector(selector);
@@ -567,7 +560,7 @@ try {
           title: color(".github-pull-stack-menu .github-pull-stack-member-title"),
           number: color(".github-pull-stack-menu .github-pull-stack-member-number"),
           trigger: color(".github-pull-stack-trigger[aria-expanded='true'] .github-pull-stack-position"),
-          badge: color(".github-pulls-row .github-pulls-stack:not([hidden]) .github-pull-stack-position"),
+          badge: color(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
           text,
         };
       })(),
@@ -612,6 +605,11 @@ try {
       menu.ink.position === menu.ink.title &&
         menu.ink.title === menu.ink.number &&
         menu.ink.position === menu.ink.text,
+      JSON.stringify(menu.ink),
+    );
+    check(
+      "a Pulls row's place is in its number's ink, the row's text",
+      menu.ink.badge === menu.ink.text,
       JSON.stringify(menu.ink),
     );
   }

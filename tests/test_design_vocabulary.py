@@ -820,9 +820,9 @@ def test_branch_chips_are_blue_and_never_a_merged_pull_requests_purple() -> None
     history = (REPO_ROOT / "src/metabrowser/git/history.py").read_text(encoding="utf-8")
     assert 'const HEAD_LANE_COLOR = "var(--git-ref-remote)";' in graph
     assert '_HEAD_LANE_COLOR = "var(--git-ref-remote)"' in history
-    for page in ("pull-page.js", "pulls-panel.js"):
-        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / page).read_text(encoding="utf-8")
-        assert 'kind: "remote"' in source, f"{page}'s branches lost the remote chip"
+    # The pull request's page names its branches; a Pulls row names none.
+    source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
+    assert 'kind: "remote"' in source, "pull-page.js's branches lost the remote chip"
 
 
 def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
@@ -899,14 +899,12 @@ _CHIP_TYPE_AND_BOX = frozenset(
 _CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
 
 
-# The boxes a chip sits in, in every context: a merge's grid and the Pulls row's wrapper
-# around it, a history row's ref group, a commit summary's identity and ref groups, and
+# The boxes a chip sits in, in every context: a merge's grid, a history row's ref group, a commit summary's identity and ref groups, and
 # the ref selector's label and row name. None sets a size, so the chip scales from the
 # text beside it.
 _CHIP_CONTAINERS = frozenset(
     {
         "merge-refs",
-        "github-pulls-merge",
         "git-graph-refs",
         "git-commit-identity",
         "git-commit-refs",
@@ -991,7 +989,6 @@ def test_each_context_assigns_its_chip_kind() -> None:
         "A commit’s summary",
         "A commit’s tooltip",
         "A pull request’s header",
-        "A Pulls row",
         "The ref selector’s button and list",
     ):
         assert f"| {context} |" in section, f"the table lost {context!r}"
@@ -1011,8 +1008,9 @@ def test_each_context_assigns_its_chip_kind() -> None:
     assert panel.count("refChipHtml(") == 1, "git history draws chips only in renderRefBadges"
     assert "renderRefBadges(commit.refs || [])" in panel
     assert 'renderRefBadges(commit.refs, compact ? false : "inline")' in panel
-    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD.
-    for name in ("pull-page.js", "pulls-panel.js"):
+    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD. The
+    # pull request's page draws them; a Pulls row names no branches.
+    for name in ("pull-page.js",):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         calls = re.findall(r"mb\.mergeRefs\((.*?)\n\s*\),?\n", source, re.S)
         assert len(calls) == 1, f"{name} draws one merge"
@@ -2071,10 +2069,14 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         r"chip\(target, \"merge-refs-target\"\),?\s*\)",
         views,
     ), "the group is the source, the arrow, then the target"
-    # Both pages draw their merge with it, head first. Neither draws a ref chip of its own,
-    # so neither can compose two around a connector, nor writes the left arrow; the sessions
-    # of both pages hold the rendered order, the arrow, and the literal refs.
-    for name, side in (("pull-page.js", "pull"), ("pulls-panel.js", "row")):
+    # The page draws its merge with it, head first, and draws no ref chip of its own, so it
+    # cannot compose two around a connector, nor writes the left arrow; its session holds
+    # the rendered order, the arrow, and the literal refs. A Pulls row names no branches.
+    panel_source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(
+        encoding="utf-8"
+    )
+    assert "mergeRefs" not in panel_source, "a Pulls row names no branches"
+    for name, side in (("pull-page.js", "pull"),):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         assert re.search(
             rf"mb\.mergeRefs\(\s*\{{\s*name:\s*{side}\.headRef\b[^}}]*\}},\s*"
@@ -2100,10 +2102,9 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
-    # loses the arrow in Chrome when it overflows. The author and the branches each carry
-    # their separator, breaks fall at their floors, and a separator that starts a line lies
-    # in the one-separator offset the row clips.
+    # The Pulls tab's muted line names no branches (the pull request's page does) and wraps
+    # rather than clips: the author carries its separator, a break falls at its floor, and
+    # a separator that starts a line lies in the one-separator offset the row clips.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
     assert (meta["min-width"], meta["overflow"]) == ("0", "hidden")
@@ -2111,11 +2112,11 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
     assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-number"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
     assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
-    for part in (".github-pulls-by", ".github-pulls-merge"):
-        rule = github[part]
-        assert (rule["flex"], rule["max-width"]) == ("1 1 0", "max-content"), part
+    by_rule = github[".github-pulls-by"]
+    assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")
+    assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
     assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
     avatar = github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"]
@@ -2124,7 +2125,6 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         "18px",
         "4px",
     ), "the floor counts the avatar and its gap"
-    assert "min-width" not in github[".github-pulls-merge"], "its floor is the merge's own"
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
