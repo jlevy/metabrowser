@@ -642,10 +642,17 @@
       /** @type {HTMLButtonElement[]} */ ([...parts.list.querySelectorAll("button")]);
     // While the list is open, Escape closes it from anywhere on the page and Tab stays
     // inside it, wrapping at either end, as in a dialog.
+    // A key held with Command or Control is the browser's, as is one held with Option
+    // other than Tab, which Safari moves focus with, so the trap keeps Option-Tab.
     document.addEventListener(
       "keydown",
       (event) => {
-        if (parts.panel.hidden) {
+        if (
+          parts.panel.hidden ||
+          event.ctrlKey ||
+          event.metaKey ||
+          (event.altKey && event.key !== "Tab")
+        ) {
           return;
         }
         if (event.key === "Escape") {
@@ -680,6 +687,10 @@
     parts.panel.addEventListener(
       "keydown",
       (event) => {
+        // Command-Up in the filter moves its caret, and Command-Left goes back.
+        if (event.altKey || event.ctrlKey || event.metaKey) {
+          return;
+        }
         const list = rows();
         const index = list.indexOf(/** @type {HTMLButtonElement} */ (event.target));
         if (index < 0 && event.target !== parts.filter) {

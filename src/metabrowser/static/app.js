@@ -770,7 +770,8 @@ function initSettingsControl() {
       }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && isOpen()) {
+      // A key held with Command, Control, or Option is the browser's.
+      if (e.key === "Escape" && !(e.altKey || e.ctrlKey || e.metaKey) && isOpen()) {
         setOpen(false);
       }
     });

@@ -329,7 +329,9 @@
 
     /** @param {KeyboardEvent} event */
     function handleDialogKeydown(event) {
-      if (event.key !== "Tab") {
+      // Tab with Command or Control is the browser's and the platform's, as every key
+      // held with one is. Option-Tab moves focus in Safari, so the trap keeps it.
+      if (event.key !== "Tab" || event.ctrlKey || event.metaKey) {
         return;
       }
       const values = focusableElements(shell.dialog);

@@ -353,9 +353,57 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       preventDefault() {},
       stopPropagation() {},
     });
+  // A key held with Command, Control, or Option is the browser's: Command-R reloads,
+  // Command-Left goes back, and Command-Down scrolls to the end. The menu opens and moves
+  // only on unmodified keys.
+  const swallowed = [];
+  for (const name of ["r", "ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape"]) {
+    for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+      let prevented = false;
+      standalone.element.events.get("keydown")({
+        key: name,
+        [modifier]: true,
+        target: standalone.element.children[0],
+        preventDefault() {
+          prevented = true;
+        },
+        stopPropagation() {
+          prevented = true;
+        },
+      });
+      if (prevented || standalone.element.open) {
+        swallowed.push(`${modifier} ${name}`);
+      }
+    }
+  }
+  assert.deepEqual(swallowed, [], "the stack menu takes no key held with a modifier");
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");
   assert.equal(document.activeElement, menuLinks[0], "Down opens at the top stack member");
+  // With the menu open, Escape held with a modifier reaches the document's listeners, the
+  // one that closes the open menu among them, and none takes it or closes the menu.
+  const documentKeydowns = [...(documentEvents.get("keydown") ?? [])];
+  assert(documentKeydowns.length > 0, "the open menu listens for Escape on the document");
+  const escapes = [];
+  for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+    for (const listener of documentKeydowns) {
+      let prevented = false;
+      listener({
+        key: "Escape",
+        [modifier]: true,
+        target: menuLinks[0],
+        preventDefault() {
+          prevented = true;
+        },
+        stopPropagation() {},
+      });
+      if (prevented || !standalone.element.open) {
+        escapes.push(modifier);
+      }
+    }
+  }
+  assert.deepEqual(escapes, [], "a modified Escape leaves the open stack menu open");
+  assert.equal(document.activeElement, menuLinks[0], "a modified Escape moves no focus");
   key("End");
   assert.equal(document.activeElement, menuLinks[2]);
   key("Home");
