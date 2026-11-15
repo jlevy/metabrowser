@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import socket
 import subprocess
 import sys
@@ -42,7 +41,7 @@ import pytest
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from tests.github_pull_fixture import Origin, clone_checkout, files_scenario, install_fake_gh
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
-from tests.required_tools import require_chrome, require_node
+from tests.required_tools import require_chrome, require_git, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "nav-metadata-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
@@ -149,9 +148,7 @@ def test_every_tabs_metadata_line_is_one_component_in_chrome(
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     env.update(fake)
     tools = _private(tmp_path / "tools")
-    git = shutil.which("git")
-    assert git is not None
-    (tools / "git").symlink_to(git)
+    (tools / "git").symlink_to(require_git())
     env["PATH"] = f"{held}{os.pathsep}{tools}"
     env["GH_HOLD"] = str(hold)
     env["METABROWSER_CACHE_DIR"] = str(_private(tmp_path / "cache"))
