@@ -467,7 +467,7 @@ constants. VS Code’s 10,000-entry default is prior art, not local evidence.
 - [Diff sources, context, and anchoring](../architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [Git graph and API plan](../specs/done/plan-2026-08-06-git-graph-view.md)
 - [General diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md)
-- [Earlier web diff architecture research](research-2026-07-17-web-diff-viewer-architecture.md)
+- [Earlier web diff architecture research](archive/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Repository library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 
 <!-- This document follows common-doc-guidelines.md.

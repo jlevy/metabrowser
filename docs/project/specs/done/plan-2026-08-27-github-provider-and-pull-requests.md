@@ -17,7 +17,9 @@ group, the cache’s provider-store reservations, and the GitHub coverage oracle
 It is kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged
 `reference/v012-hosted-review-2026-09-30`.
 
-**Status:** None of this plan’s hosted-review design is in the v0.12 tree.
+**Status:** Superseded by the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md)
+and the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), both shipped in 0.12.0.
+None of this plan’s hosted-review design is in the tree.
 The Phase 0 through 0D foundation was built on stack
 [#218](https://github.com/jlevy/metabrowser/stack/218) and then removed, as the addendum
 above records. Phases 2 through 4A are superseded: the thin-mirror plan’s
@@ -30,12 +32,8 @@ provider-neutral model.
 Anchored review threads (Phase 4C) remain deferred.
 Optional native GitHub membership is implemented separately; it does not complete Phase
 6’s stack derivation, aggregate state, or comparison projections.
-Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
+Phases 5 and 6, hosted releases, and GitLab remain later work and need a new plan
 against the thin mirror before they start.
-The v0.12 stack has landed; the release is `mb-4bd2` and requires the user’s explicit
-approval, and the
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before it.
 
 ## Vision
 
@@ -68,7 +66,7 @@ release adds only GitHub behavior and only fields proven by that implementation.
 ## Why this is a separate plan
 
 This work was Phases 4 through 7 of the
-[repository-library plan](plan-2026-08-11-open-repo-from-git-url.md).
+[repository-library plan](../active/plan-2026-08-11-open-repo-from-git-url.md).
 It moved here because the two have diverged in every dimension that matters for
 planning:
 
@@ -115,13 +113,13 @@ the larger content-model design.
 
 The long-lived layer boundaries, format profiles, plugin ownership, activity projection,
 and virtual navigation containers are specified in
-[Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md).
+[Hosted Review Model and Provider Boundary](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md).
 Shared Git stores, attached local checkouts, repository-scoped provider mirrors, and
 multi-client behavior are specified in
 [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md).
 The general entity/artifact/resource vocabulary, trusted registries, transparent
 Markdown/YAML formats, and external-system mapping workflow are specified in
-[External Resources, Artifact Contracts, and Views](../../architecture/arch-external-resources-and-views.md).
+[External Resources, Artifact Contracts, and Views](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-external-resources-and-views.md).
 
 The v0.10.0 release gate is closed: the release tag points at the accepted release
 commit, and the fetched `main` branch contains it.
@@ -464,7 +462,7 @@ The UI never invents a current line when an anchor cannot be mapped.
 
 Phase 0B.2 freezes the exact fields, enums, path-byte convention, bundle relationships,
 and repository-activity semantics in
-[Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md#review-signal-and-activity-contracts).
+[Hosted Review Model and Provider Boundary](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md#review-signal-and-activity-contracts).
 Its implementation surface is fixed before provider mapping begins:
 
 | File | Phase 0B.2 responsibility |
@@ -751,7 +749,7 @@ collection limits established from fixtures and browser measurements, so a hosti
 merely enormous response cannot become an unbounded document or an unbounded render.
 Everything kept under the application home is owner-only, and remote acquisition or
 provider publication fails closed when that cannot be verified.
-[Owner-only storage](plan-2026-08-11-open-repo-from-git-url.md#owner-only-storage)
+[Owner-only storage](../active/plan-2026-08-11-open-repo-from-git-url.md#owner-only-storage)
 states the enforced rules, including the macOS ACL checks, the Windows refusal, and why
 provider state is published by atomic replacement rather than written in place.
 Ordinary read-only browsing of a local path outside the application home remains
@@ -1038,8 +1036,8 @@ shared-mirror design head, with no compatibility layer:
 ### Phase 1: Robust generic repository cache (`mb-ire2` through `mb-dg00`)
 
 This phase is owned by the
-[repository-library plan](plan-2026-08-11-open-repo-from-git-url.md), but it is the
-first implementation prerequisite here.
+[repository-library plan](../active/plan-2026-08-11-open-repo-from-git-url.md), but it
+is the first implementation prerequisite here.
 Phase 1A is on nondraft [#140](https://github.com/jlevy/metabrowser/pull/140) with green
 CI; final stack review remains open.
 file:// acquire is ready for review on
@@ -1168,7 +1166,7 @@ below will not be done as written.
   GitHub remotes, and reuse the same provider repository across local clones and URL
   sources.
 - [ ] Implement
-  [explicit rebind](../../architecture/arch-hosted-review-model.md#explicit-rebind)
+  [explicit rebind](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md#explicit-rebind)
   before the store persists any binding (`mb-s0gv`, `mb-i3xc`), so a repository that is
   deleted and recreated, or a name registered again after a transfer, cannot leave its
   source failing closed forever:
@@ -1520,7 +1518,7 @@ or deleted; the last validated reachable observation is never automatically remo
 
 ## References
 
-- [Repository library and open from a Git URL](plan-2026-08-11-open-repo-from-git-url.md)
+- [Repository library and open from a Git URL](../active/plan-2026-08-11-open-repo-from-git-url.md)
   — the generic cache this plan builds on
 - [Repository-library phasing and GitHub content model](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
   — the design review that produced this model
@@ -1528,7 +1526,7 @@ or deleted; the last validated reachable observation is never automatically remo
   — the review that separated this plan from the cache
 - [Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md) —
   the provider boundary this plan must not cross
-- [Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md)
+- [Hosted Review Model and Provider Boundary](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md)
   — the durable format, adapter, activity, view, and cache boundaries
 - [File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md)
 

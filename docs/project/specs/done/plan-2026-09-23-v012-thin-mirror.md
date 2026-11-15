@@ -1,24 +1,20 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Implemented on `main`. The
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the current integrated candidate, installed artifact and remaining release gates.
-The design was decided on 2026-09-23 and revised the same day after an independent
-design review. [Delivery](#delivery) maps each step and follow-up to its pull request,
-all of them merged. The
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before the release, which waits for the user’s approval (`mb-4bd2`).
+**Status:** Done; shipped in 0.12.0, tagged 2026-11-08. The design was decided on
+2026-09-23 and revised the same day after an independent design review.
+[Delivery](#delivery) maps each step and follow-up to its pull request, all of them
+merged.
 
 This plan supersedes the remaining v0.12 phases in
-[Open Repositories from Git URLs](plan-2026-08-11-open-repo-from-git-url.md) (2A onward)
-and
+[Open Repositories from Git URLs](../active/plan-2026-08-11-open-repo-from-git-url.md)
+(2A onward) and
 [GitHub Provider and Pull Requests](plan-2026-08-27-github-provider-and-pull-requests.md)
 wherever they disagree.
 Those documents stay as background.
 The later [Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
-[checkout review](plan-2026-11-02-pr-review-mirror-and-checkout.md) plans extend this
-initial design with a resumable PR catalog, checkout borrowing, explicit repair, and
-optional native-stack metadata.
+[checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans
+extend this initial design with a resumable PR catalog, checkout borrowing, explicit
+repair, and optional native-stack metadata.
 Their current contracts take precedence over the full-store-only and deferred-discovery
 assumptions retained in this delivery record.
 The repository foundation they record (Phases 0–1B) stays as built, as changed by the
@@ -54,8 +50,8 @@ fresh without making anyone wait, and renders it.
   force-push upstream.
   Staging directories left by a crash are still swept.
   This applies to Metabrowser’s own store;
-  [the checkout plan](plan-2026-11-02-pr-review-mirror-and-checkout.md) says what an
-  overlay borrows, which a checkout’s own `gc` can remove.
+  [the checkout plan](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) says
+  what an overlay borrows, which a checkout’s own `gc` can remove.
 - **Seamless caching, never blocking a request.** A cached page opens from the mirror.
   Network work runs only in background jobs: a server request starts or joins one and
   returns at once. Only a first visit, which has nothing to show yet, waits for its

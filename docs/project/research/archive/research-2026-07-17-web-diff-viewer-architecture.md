@@ -4,14 +4,15 @@
 
 **Author:** Joshua Levy with OpenAI Codex research assistance
 
-**Status:** Complete; the comparison model and layered IR are adopted, the delivery
-sequence is superseded
+**Status:** Archived.
+Complete; the comparison model and layered IR are adopted, and the delivery sequence is
+superseded.
 
 The layered architecture, comparison semantics, and completeness rules below became
-[File Diff Format v1](../architecture/file-diff-format/file-diff-format.md) and the
+[File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md) and the
 production Git source and diff renderer.
-[General diff rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md) is
-the implementation contract and the place where remaining work is tracked.
+[General diff rendering](../../specs/active/plan-2026-08-17-general-diff-rendering.md)
+is the implementation contract and the place where remaining work is tracked.
 Read the sections below as the rationale that plan adopted, except where a section notes
 that production settled the question differently.
 
@@ -779,7 +780,7 @@ cutoff or worker. Any timeout or measured bound falls back to the current select
 syntax-colored, whole-line diff.
 
 The file- and function-level implementation contract is Phase 4 of the
-[general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md).
+[general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md).
 
 #### Implementation outcome
 
@@ -796,7 +797,7 @@ one-million-work-unit fallback.
 The result keeps the existing patch size policy for similar text and bounds
 edit-distance work rather than adding a smaller file-size cutoff.
 The reproducible table, including retained-heap evidence and its measurement limits, is
-in the [diff intraline benchmark](../../../explorations/diff-intraline/).
+in the [diff intraline benchmark](../../../../explorations/diff-intraline).
 
 The final visual hierarchy uses shared success/error tokens: a 3% whole-line mix, a 9%
 inner overlay for an effective 11.7% changed-range mix, and a solid three-pixel gutter
@@ -850,7 +851,7 @@ printing.
 A July prototype compared the default nonvirtualized `@pierre/diffs` path,
 `@git-diff-view/core` with a custom DOM layer, server-rendered HTML, and a small owned
 table renderer.
-[Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
+[Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
 preserves the measurements and their limits.
 The prototype established that fully mounting a pathological diff was the dominant cost
 and that client-side diff computation was unsuitable for that input.
@@ -882,7 +883,7 @@ It must score bundled size, worker operation from plugin-static under the target
 Security Policy, dependency count and update cadence, accessibility, design-token fit,
 and maintenance cost alongside render performance.
 The
-[browser contributor toolchain research](research-2026-07-18-browser-contributor-toolchain.md)
+[browser contributor toolchain research](../research-2026-07-18-browser-contributor-toolchain.md)
 owns the wider build-system decision.
 
 `react-diff-viewer` and similar two-string components are attractive demos but poor
@@ -1099,7 +1100,7 @@ Use:
 third-party renderer.
 It shipped instead as core: a comparison model in `src/metabrowser/diff/`, Git routes in
 `src/metabrowser/git/`, and an owned renderer in the built-in diff plugin, phased by
-[general diff rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md).
+[general diff rendering](../../specs/active/plan-2026-08-17-general-diff-rendering.md).
 Phases 0 through 2 are delivered in that different shape, Phase 3 review state and Phase
 5 mutations remain unscheduled, and Phase 4 native and Jujutsu work is still gated on
 measurement. The phases are kept because they record what the research expected to be
@@ -1234,8 +1235,8 @@ Metabrowser’s benchmarks.
 
 ### Frontend Libraries
 
-- [Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
-- [Browser Contributor Toolchain and Distribution](research-2026-07-18-browser-contributor-toolchain.md)
+- [Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
+- [Browser Contributor Toolchain and Distribution](../research-2026-07-18-browser-contributor-toolchain.md)
 - [`@pierre/diffs` documentation](https://diffs.com/docs)
 - [Pierre: On Rendering Diffs](https://pierre.computer/writing/on-rendering-diffs)
 - [`@pierre/diffs` package](https://www.npmjs.com/package/%40pierre/diffs)

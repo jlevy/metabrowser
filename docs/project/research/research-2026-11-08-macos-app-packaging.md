@@ -11,7 +11,7 @@ WebKit measurement gate was run, and failed, in the
 [2026-11-11 addendum](#2026-11-11-addendum-the-webkit-measurement-gate)
 
 Supersedes, for macOS,
-[Desktop App Packaging for Metabrowser](research-2026-08-16-desktop-app-packaging.md)
+[Desktop App Packaging for Metabrowser](archive/research-2026-08-16-desktop-app-packaging.md)
 (2026-08-16), which covered three platforms and recommended Electron.
 
 ## Overview
@@ -140,8 +140,8 @@ of non-vendored JavaScript, still with no Node build step.
   carries neither `Origin` nor `Sec-Fetch-Site`, so any local process can call every
   route. [SECURITY.md](../../../SECURITY.md) defines Metabrowser as a
   trusted-local-client tool, and the
-  [VS Code host draft](../architecture/arch-vscode-extension-host.md) keeps standalone
-  behavior unchanged unless a host enables session authentication.
+  [VS Code host draft](archive/research-2026-07-17-vscode-extension-host.md) keeps
+  standalone behavior unchanged unless a host enables session authentication.
 - **`/raw` is a separate surface.** Every `/raw` response is sandboxed with an opaque
   origin, and `/raw` sits outside the origin check (`server.py`), so any authentication
   must work for requests made by sandboxed documents.
@@ -436,7 +436,7 @@ the command line.
 | **Shells** | platform behavior only | unit tests with injected process factories; a QA playbook for the exemptions | VS Code host drafted |
 
 Every shell speaks one contract: the macOS app, the drafted
-[VS Code host](../architecture/arch-vscode-extension-host.md) (bead `mb-x4y5`), a
+[VS Code host](archive/research-2026-07-17-vscode-extension-host.md) (bead `mb-x4y5`), a
 browser app window, and any later Windows or Linux shell.
 The layering costs nothing at run time, because the page talks to the server directly
 over HTTP and SSE and the shell never sits on the request path.
@@ -1339,7 +1339,7 @@ the app’s open path
 ## References
 
 - Metabrowser: [Views, Models, and Routes](../architecture/arch-views-models-routes.md),
-  [VS Code Extension Host](../architecture/arch-vscode-extension-host.md),
+  [VS Code Extension Host](archive/research-2026-07-17-vscode-extension-host.md),
   [Plugin Authoring](../../plugins.md), [command line](../../command-line.md),
   [rendering large content](../../large-content-rendering.md),
   [Installation](../../installation.md), [Publishing](../../publishing.md),
@@ -1347,7 +1347,7 @@ the app’s open path
   [SECURITY.md](../../../SECURITY.md), and
   [supply-chain policy](../../../SUPPLY-CHAIN-SECURITY.md)
 - Prior research:
-  [Desktop App Packaging for Metabrowser](research-2026-08-16-desktop-app-packaging.md)
+  [Desktop App Packaging for Metabrowser](archive/research-2026-08-16-desktop-app-packaging.md)
 - tbd guidelines: `electron-app-development-patterns`, `tauri-app-development-patterns`,
   `electrobun-app-development-patterns`, `supply-chain-hardening`
 - Apple:

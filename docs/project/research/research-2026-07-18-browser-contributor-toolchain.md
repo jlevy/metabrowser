@@ -262,7 +262,7 @@ baseline.
 The July version of this research surveyed diff products, renderer packages, build
 tools, and Python-backed web applications.
 The diff-product material is already covered by
-[Web Diff Viewer Architecture and Intermediate Representations](research-2026-07-17-web-diff-viewer-architecture.md);
+[Web Diff Viewer Architecture and Intermediate Representations](archive/research-2026-07-17-web-diff-viewer-architecture.md);
 this document retains only the contributor-toolchain question.
 
 The 2026-08-27 update inspected current Metabrowser source, configuration, test, vendor,

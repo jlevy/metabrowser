@@ -1,10 +1,12 @@
 # Plan: v0.12 Alpha Testing and Stack Acceptance
 
-**Status:** Active until 0.12.0 is released.
-The implemented feature layers are on `main`; the
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the current integrated candidate, installed artifact and remaining release gates.
-0.12.0 is not yet tagged or released.
+**Status:** Done. 0.12.0 was tagged at `87b8ec81` on 2026-11-08, and the release
+coordinator `mb-4bd2` is closed.
+Three release-gate beads it named stayed open after the tag: the landing differential
+(`mb-2g6f`), the quiet-machine rehearsal (`mb-cf6y`), and the human sign-off matrix
+(`mb-etqi`). The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) holds
+the last candidate evidence.
 T0 through T2 were run on 2026-09-24 in the scope of the
 [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), and
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
@@ -21,17 +23,16 @@ The initial implementation was one linear chain of pull requests above `main`, l
 GitHub as [stack 218](https://github.com/jlevy/metabrowser/stack/218). The later feature
 landings are recorded under [Landing status](#landing-status).
 The candidate for the remaining release work is the recorded `main` commit, and the QA
-runbook’s [Pins](../../../qa-v012-repository-library.md#pins) section selects a commit
-of it.
-The release coordinator is `mb-4bd2`; `mb-n2ro`, which coordinated the landing, is
-closed.
+runbook’s [Pins](../../qa/qa-2026-09-19-v012-repository-library.md#pins) section selects
+a commit of it. The release coordinator is `mb-4bd2`; `mb-n2ro`, which coordinated the
+landing, is closed.
 
 The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) records the initial v0.12
 design. The [Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
-[checkout review](plan-2026-11-02-pr-review-mirror-and-checkout.md) plans extend its
-scope with discovery, local checkout comparisons, explicit recovery, and optional
-native-stack metadata.
-The [repository plan](plan-2026-08-11-open-repo-from-git-url.md) and
+[checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans
+extend its scope with discovery, local checkout comparisons, explicit recovery, and
+optional native-stack metadata.
+The [repository plan](../active/plan-2026-08-11-open-repo-from-git-url.md) and
 [GitHub plan](plan-2026-08-27-github-provider-and-pull-requests.md) are background for
 the foundation it kept.
 This plan owns the testing milestones, the evidence requirements, and the landing
@@ -108,7 +109,7 @@ capability; rows for a deferred capability say so.
 
 | Milestone | Entry condition | User-visible acceptance | Current availability |
 | --- | --- | --- | --- |
-| T0: local Git foundation | Selected commit, supported Git, isolated cache directory | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Passed: foundation acceptance in #226 and M01 in the acceptance run. Rerun it with the quick start below and the [foundation QA runbook](../../../qa-v012-repository-library.md) |
+| T0: local Git foundation | Selected commit, supported Git, isolated cache directory | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Passed: foundation acceptance in #226 and M01 in the acceptance run. Rerun it with the quick start below and the [foundation QA runbook](../../qa/qa-2026-09-19-v012-repository-library.md) |
 | T1: repository URL alpha | URL open and serving, ref and path selection, and trust integration (thin-mirror steps 3 to 5) | Open repository/tree/blob/commit/raw URLs; view content, history, and diffs; preserve slash-containing refs and path/line intent; reopen cached content offline | Passed in the acceptance run and its reruns; M03’s base and head files pass in the rerun on View file |
 | T2: direct PR alpha | T1 plus `gh` pull-request records and the pull-request page (steps 6 and 7) | Paste a PR URL; read its description, review/check state, changed files, and pinned comparison; reload and reopen offline | Passed in the acceptance run and its reruns, M08’s base and head files included, except M10’s private and revoked cases, which are blocked for lack of a private fixture |
 | T3: discovery and navigation | Pulls catalog and numbered PR routes | Exact provider totals, resumable metadata backfill, bounded displayed windows, direct selection outside the window, and no implicit checkout acquisition | Implemented; validate M12 on the selected artifact. Inline review anchoring remains separate |
@@ -146,7 +147,7 @@ support.
    This completes T2, the release milestone.
 
 Run M12 for the implemented discovery/navigation path and use the
-[current PR QA session](../../../qa-v012-repository-library.md#410-pull-request-data)
+[current PR QA session](../../qa/qa-2026-09-19-v012-repository-library.md#410-pull-request-data)
 for managed and checkout-backed comparisons.
 M10b and M13 still describe deferred provider-rebind and inline-anchoring work.
 
@@ -157,7 +158,7 @@ Repeat the relevant regressions when a later layer changes a shared path.
 ## Choose and Record the Integration Build
 
 Pin `origin/main`, or for a proposed fix its reviewed head, as
-[Pins](../../../qa-v012-repository-library.md#pins) in the QA runbook shows.
+[Pins](../../qa/qa-2026-09-19-v012-repository-library.md#pins) in the QA runbook shows.
 Do not reset an existing development branch or test a stale local tracking ref.
 
 ```shell
@@ -237,7 +238,7 @@ The store is a full clone, so every read works with the origin gone; this proves
 local-origin reuse, not GitHub transport.
 
 For refusal, read-only-home, recovery, and HTML regression procedures, continue with the
-[foundation QA runbook](../../../qa-v012-repository-library.md).
+[foundation QA runbook](../../qa/qa-2026-09-19-v012-repository-library.md).
 An `ssh` source and `--walk` on a Git source must still refuse; a `file://` or
 `https://` source serves and answers `--show`, `--api`, and `--check-api`. Change those
 expectations only in the implementation PR that adds the capability and its acceptance
@@ -547,7 +548,7 @@ Its #267 row holds that pull request’s independent review, which reported on 2
 - Whether to add a line-coverage tool; the cost is set out in
   [#255](https://github.com/jlevy/metabrowser/pull/255)’s description.
 - The checks only a person can make (`mb-etqi`), which are Part 4 of the runbook’s
-  [walk-through](../../../qa-v012-repository-library.md#walk-through-this-yourself):
+  [walk-through](../../qa/qa-2026-09-19-v012-repository-library.md#walk-through-this-yourself):
   Safari and Firefox as well as Chrome, including repeated page loads in one tab; a
   private repository the user’s account can read and one it cannot, which is row M10
   (the unreadable case may use a nonexistent name); and a third-party plugin against

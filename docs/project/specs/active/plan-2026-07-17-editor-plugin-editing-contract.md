@@ -1,8 +1,12 @@
-# Architecture: Editor Plugin Editing Contract
+# Plan: Editor Plugin Editing Contract
+
+**Date:** 2026-07-17
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Draft. Nothing is implemented: plugins declare views only, and the
+[trusted-local editing plan](plan-2026-07-16-trusted-local-file-editing.md) owns the
+mutation workflow this contract builds on.
 
 ## Overview
 
@@ -236,8 +240,7 @@ implementation.
   tested before the manifest accepts them
 - Published plugin assets must operate without runtime network access
 
-The
-[trusted-local file editing plan](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)
+The [trusted-local file editing plan](plan-2026-07-16-trusted-local-file-editing.md)
 applies to every mutation.
 
 ## Operational Concerns
@@ -285,9 +288,9 @@ Size and encoding limits protect browser memory and synchronous server work.
 
 ## References
 
-- [Core architecture](../../architecture.md)
-- [Plugin authoring](../../plugins.md)
-- [Trusted-local file editing](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)
+- [Core architecture](../../../architecture.md)
+- [Plugin authoring](../../../plugins.md)
+- [Trusted-local file editing](plan-2026-07-16-trusted-local-file-editing.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
