@@ -208,3 +208,63 @@ def test_a_response_with_no_phases_is_srv_alone() -> None:
 
     header = TestClient(_timed_app(plain)).get("/x").headers["server-timing"]
     assert re.fullmatch(r"srv;dur=[0-9.]+", header)
+
+
+# ── Git processes, counted beside the git time (H116) ──────────────────
+
+PROCESSES = re.compile(r'(?:^|, )git(?:;dur=[0-9.]+)?;desc="(\d+) process(?:es)?"(?:,|$)')
+
+
+def test_the_git_entry_says_how_many_processes_the_request_started() -> None:
+    record, token = server_timing.begin()
+    try:
+        assert server_timing.header_value(record, 5.0) == "srv;dur=5.0"
+        record.add("git", 3.25)
+        server_timing.git_process_started()
+        assert server_timing.header_value(record, 5.0) == (
+            'srv;dur=5.0, git;dur=3.2;desc="1 process"'
+        )
+        record.add("encode", 0.5)
+        server_timing.git_process_started()
+        assert server_timing.header_value(record, 5.0) == (
+            'srv;dur=5.0, git;dur=3.2;desc="2 processes", encode;dur=0.5'
+        )
+    finally:
+        server_timing.end(record, token)
+    server_timing.git_process_started()  # after its request, nothing
+    assert record.git_processes() == 2
+
+
+def test_processes_whose_time_another_phase_took_are_still_counted() -> None:
+    record, token = server_timing.begin()
+    try:
+        record.add("read", 1.0)
+        server_timing.git_process_started()
+        assert server_timing.header_value(record, 2.0) == (
+            'srv;dur=2.0, read;dur=1.0, git;desc="1 process"'
+        )
+    finally:
+        server_timing.end(record, token)
+
+
+def test_a_git_route_counts_the_processes_it_started(tmp_path: Path) -> None:
+    require_git()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.invalid",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.invalid",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+    }
+    (tmp_path / "a.txt").write_text("a\n")
+    for args in (["init", "-q"], ["add", "a.txt"], ["commit", "-qm", "one"]):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, env=env)
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    answer = client.get("/api/git/log")
+    assert answer.status_code == 200
+    counted = PROCESSES.search(answer.headers["server-timing"])
+    assert counted is not None, answer.headers["server-timing"]
+    assert int(counted.group(1)) >= 1

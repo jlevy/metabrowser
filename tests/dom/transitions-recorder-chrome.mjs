@@ -251,6 +251,9 @@ const actions = {
   // The origin's prompt, kept on screen beside the pending modifier until content shows.
   pendingPrompt: () => { pane.classList.add("preview-navigation-pending"); setTimeout(() => { pane.classList.remove("preview-navigation-pending"); show("pendingPrompt"); }, 150); },
 };
+// The "u" key shows text in the stage, for a transition armed on a blank screen past a
+// long list, where the content search stops at its budget before the input.
+addEventListener("keydown", (e) => { const st = document.getElementById("stage"); if (e.key === "u" && st) { st.innerHTML = "<p>shown after the key</p>"; st.scrollTop = 0; } });
 const buttons = document.getElementById("buttons");
 for (const [name, fn] of Object.entries(actions)) {
   const b = document.createElement("button"); b.id = "go-" + name; b.textContent = name; b.addEventListener("click", () => { window.clickFrameMark = window.__tr.frames.length; fn(); }); buttons.appendChild(b);
@@ -345,6 +348,45 @@ const FILES_TREE = {
 };
 const FILES_PAGE = filesPage(FILES_TREE);
 
+// The tree in the product's clipping layout (body, `.container`, and `.tree-pane` clip
+// without scrolling; `#tree-content` scrolls), where an expansion pushes the `tests` row
+// down 660 px: within view, out of view, or out of view throughout (review of #442).
+const TREE_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
+body { margin: 0; font: 14px sans-serif; height: 100vh; overflow: hidden; }
+.container { display: flex; height: 100%; overflow: hidden; min-height: 0; }
+.tree-pane { width: 300px; display: flex; flex-direction: column; overflow: hidden; }
+.tree-content { flex: 1; overflow-y: auto; }
+.tree-item { display: block; height: 22px; }
+#preview-pane { flex: 1; overflow-y: auto; position: relative; }
+.kids-collapsed { display: none; }
+button { position: fixed; right: 20px; top: 20px; width: 200px; height: 40px; }
+</style></head><body><div class="container"><div class="tree-pane"><div id="tree-content" class="tree-content"><div id="tab-files" data-tab-content="files"></div></div></div>
+<div id="preview-pane"><div data-active-view="true">preview text</div></div></div>
+<button id="go">expand</button>
+<script>
+const files = document.getElementById("tab-files");
+window.build = (before) => {
+  files.replaceChildren();
+  const row = (p, folder) => { const r = document.createElement("div"); r.className = "tree-item" + (folder ? " tree-folder" : ""); r.dataset.path = p; r.textContent = p; return r; };
+  for (let i = 0; i < before; i++) { files.appendChild(row("a" + String(i).padStart(3, "0"), false)); }
+  files.appendChild(row("src", true));
+  const kids = document.createElement("div"); kids.className = "kids-collapsed"; kids.id = "kids";
+  for (let i = 0; i < 30; i++) { kids.appendChild(row("src/f" + i, false)); }
+  files.appendChild(kids);
+  files.appendChild(row("tests", true));
+  files.querySelector('[data-path="a000"]').classList.add("selected");
+  for (let i = 0; i < 80; i++) { files.appendChild(row("z" + i, false)); }
+};
+document.getElementById("go").addEventListener("pointerdown", () => { document.getElementById("kids").classList.remove("kids-collapsed"); });
+</script></body></html>`;
+
+// A pane that scrolls, for retained pull request hosts hidden or parked ahead of the one on
+// screen (review of #442).
+const REGIONS_PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
+body { margin: 0; font: 14px sans-serif; height: 100vh; overflow: hidden; }
+#preview-pane { position: relative; overflow-y: auto; height: 860px; }
+</style></head><body><div id="tree-content"></div><div id="preview-pane"></div></body></html>`;
+
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
@@ -368,6 +410,9 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === "/view/landing") {
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
     res.end(LANDING_PAGE);
+  } else if (u.pathname === "/view/tree" || u.pathname === "/view/regions") {
+    res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    res.end(u.pathname === "/view/tree" ? TREE_PAGE : REGIONS_PAGE);
   } else if (u.pathname === "/view/search") {
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
     res.end(SEARCH_PAGE);
@@ -473,10 +518,12 @@ const readsAroundClick = async (r) => {
   const reads = r.raw.frames.map((f, i) => ({ f, i })).filter(({ f }) => f[1] !== null);
   return { before: reads.filter(({ i }) => i < mark), after: reads.filter(({ i }) => i >= mark) };
 };
-// The frames read after the press and before the click handler started.
+// The frames read after the press reached the page and before the click handler started:
+// since revision 6 the window holds a frame by whether its read saw the input, not by its
+// begin time.
 async function framesBeforeClick(r) {
   const { before } = await readsAroundClick(r);
-  return before.filter(({ f }) => f[0] >= pressAt(r)).length;
+  return before.filter(({ f }) => f[4] === 1).length;
 }
 // The ready frame is the first frame read after the click handler started. This is
 // checked on the frames themselves rather than through `framesToReady`, which counts
@@ -955,16 +1002,37 @@ try {
           fixedInSection: () => { st.innerHTML = '<section style="height:300px"><div data-target style="position:fixed;top:200px;left:0;width:600px;height:120px">fixed text<br>more fixed text<br>and more</div></section><div style="height:3000px"></div>'; st.scrollTop = 1000; },
           translated: () => { st.innerHTML = '<div style="height:200px"><div data-target style="transform:translateY(600px)">translated text</div></div><div style="height:3000px"></div>'; st.scrollTop = 400; },
           longEnd: () => { st.innerHTML = lines(10000); st.scrollTop = st.scrollHeight; },
+          // Past the walk's bound, sparse content the hit test must still find, and content
+          // an overlay outside the root covers (review of #442).
+          sparseBottomAfterBound: () => { st.innerHTML = lines(3000) + '<div style="height:900px;position:relative"><div data-target style="position:absolute;bottom:20px;left:40px">the only line on screen</div></div>'; st.scrollTop = st.scrollHeight; },
+          sparseTopAfterBound: () => { st.innerHTML = lines(3000) + '<div style="height:900px"><h1 data-target style="margin:8px 40px;font-size:20px">A heading at the top</h1></div>'; st.scrollTop = st.scrollHeight; },
+          pointerNoneAfterBound: () => { st.innerHTML = lines(3000) + '<div style="pointer-events:none">' + lines(60) + '</div>'; st.scrollTop = st.scrollHeight; },
+          blankAfterBound: () => { st.innerHTML = lines(40000) + '<div style="height:3000px"></div>'; st.scrollTop = st.scrollHeight; },
+          // Text, then blank lines, with only the blank lines on screen: one long node, and
+          // one short enough to be measured whole (review of #442).
+          longBlankTail: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 3000 }, (_, i) => "line " + i).join("\\n") + "\\n" + Array.from({ length: 3000 }, () => "      ").join("\\n") + "</pre>"; st.scrollTop = 60000; },
+          shortBlankTail: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 40 }, (_, i) => "line " + i).join("\\n") + "\\n" + Array.from({ length: 200 }, () => "   ").join("\\n") + "</pre>"; st.scrollTop = 2000; },
+          longText: () => { st.innerHTML = '<pre style="margin:0">' + Array.from({ length: 200000 }, (_, i) => String(i)).join("\\n") + '</pre>'; st.scrollTop = window.__longTextScroll ?? 0; },
+          overlayAfterBound: () => { st.innerHTML = lines(3000) + '<div data-target style="position:fixed;top:200px;left:40px;width:900px;height:300px;font-size:40px">fixed text under overlay</div>'; st.scrollTop = st.scrollHeight; const o = document.createElement("div"); o.className = "probe-overlay"; o.style.cssText = "position:fixed;inset:0;background:#fff;z-index:9"; document.body.appendChild(o); },
+          // A root hidden by its own content-visibility, a zero-size box under paint
+          // containment, and the shell's visually hidden label: none of them shows.
+          cvHiddenRoot: () => { view.style.contentVisibility = "hidden"; view.style.containIntrinsicSize = "auto 600px"; st.innerHTML = lines(3000); },
+          containPaintZero: () => { st.innerHTML = '<div style="height:0;contain:paint"><div data-target style="padding-top:20px">paint-contained text</div></div>'; },
+          visuallyHidden: () => { st.innerHTML = '<span data-target class="visually-hidden">Line 1 selected.</span>'; },
         };
         SHAPES[${JSON.stringify(shape)}]();
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         const t = st.querySelector("[data-target]") || st.lastElementChild;
         const r = t.getBoundingClientRect();
         const onScreen = r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth;
+        const t0 = performance.now();
         const found = window.__tr.hasUseful(view);
+        const ms = performance.now() - t0;
         const search = window.__tr.lastSearch ?? null;
         view.replaceChildren();
-        return { onScreen, found, search };
+        view.removeAttribute("style");
+        for (const o of document.querySelectorAll(".probe-overlay")) { o.remove(); }
+        return { onScreen, found, search, ms };
       })()`);
     await check("content laid out outside an ancestor's box is found", async () => {
       const missed = [];
@@ -988,8 +1056,93 @@ try {
     await check("a long document scrolled to its end is found within the bounds", async () => {
       const r = await shapeFound("longEnd");
       assert.ok(r.found, JSON.stringify(r.search));
-      assert.ok(r.search.visits <= 1500 && r.search.points <= 8, JSON.stringify(r.search));
+      assert.ok(r.search.visits <= 1500 && r.search.points <= 60, JSON.stringify(r.search));
     });
+    await check(
+      "past the walk's bound, sparse content is found and covered content is not",
+      async () => {
+        const wrong = [];
+        for (const [shape, truth] of [
+          ["sparseBottomAfterBound", true],
+          ["sparseTopAfterBound", true],
+          ["pointerNoneAfterBound", true],
+          ["overlayAfterBound", false],
+        ]) {
+          const r = await shapeFound(shape);
+          if (r.found !== truth || !r.search.bounded) {
+            wrong.push(`${shape} ${r.found} ${JSON.stringify(r.search)}`);
+          }
+        }
+        assert.deepEqual(wrong, []);
+      },
+    );
+    await check("a blank screen past a long list stops at the hit test's budget", async () => {
+      const r = await shapeFound("blankAfterBound");
+      assert.equal(r.found, false);
+      // Revision 6 tried 60 points there, 68 to 123 ms a call over 40,000 lines.
+      assert.ok(r.search.truncated && r.search.points < 60, JSON.stringify(r.search));
+    });
+    await check("blank lines on screen after text that is not are not content", async () => {
+      for (const shape of ["longBlankTail", "shortBlankTail"]) {
+        const r = await shapeFound(shape);
+        assert.equal(r.found, false, `${shape} ${JSON.stringify(r.search)}`);
+      }
+    });
+    await check(
+      "a search cut short at arm and before the input marks the guard uncertain",
+      async () => {
+        await d.evaluate(`(() => {
+        const view = document.getElementById("view");
+        const st = document.createElement("div"); st.id = "stage";
+        st.innerHTML = Array.from({ length: 40000 }, (_, i) => '<div style="height:20px">line ' + i + '</div>').join("") + '<div style="height:3000px"></div>';
+        view.replaceChildren(st); st.scrollTop = st.scrollHeight;
+        return true;
+      })()`);
+        await sleep(300);
+        try {
+          const r = await take({
+            id: "armCut",
+            subject: "armCut",
+            input: { kind: "key", key: "u" },
+            ready: `() => window.__tr.hasUseful(document.getElementById("view"))`,
+            converged: `() => ""`,
+            settleMs: 300,
+            timeoutMs: 5000,
+          });
+          assert.equal(r.ok, true, JSON.stringify(r.refusals));
+          assert.ok(
+            r.searchTruncatedBeforeInput >= 1,
+            `truncated before input ${r.searchTruncatedBeforeInput}`,
+          );
+          assert.equal(r.readyBeforeInputUncertain, true);
+          assert.equal(r.convergedUncertain, false);
+        } finally {
+          await d.evaluate(`document.getElementById("view").replaceChildren(); true`);
+        }
+      },
+    );
+    await check("a long text node is measured near the viewport, not whole", async () => {
+      // One text node of 200,000 lines, at its top and scrolled to its middle: found both
+      // times, without measuring every line's box (about 60 ms a call before the bound).
+      for (const scroll of [0, 2000000]) {
+        await d.evaluate(`window.__longTextScroll = ${scroll}`);
+        const r = await shapeFound("longText");
+        assert.ok(r.found, `scrolled ${scroll}: ${JSON.stringify(r.search)}`);
+        assert.ok(r.ms < 10, `scrolled ${scroll}: a call took ${r.ms} ms`);
+      }
+    });
+    await check(
+      "hidden roots, paint-contained boxes, and visually hidden labels show nothing",
+      async () => {
+        const cv = await shapeFound("cvHiddenRoot");
+        // Not walked at all, where revision 6 first walked its 3,000 lines every frame.
+        assert.deepEqual([cv.found, cv.search.visits], [false, 0], JSON.stringify(cv.search));
+        for (const shape of ["containPaintZero", "visuallyHidden"]) {
+          const r = await shapeFound(shape);
+          assert.equal(r.found, false, `${shape} ${JSON.stringify(r.search)}`);
+        }
+      },
+    );
     await check("a windowed list mounted scrolled is ready at once, its reads costed", async () => {
       const r = await measure("windowedScrolled", { timeoutMs: 3000 });
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
@@ -1066,6 +1219,71 @@ try {
         await sleep(300);
       });
     }
+    await check("a tree row pushed below the fold is still the region that moved", async () => {
+      await d.navigate(`${base}/view/tree`);
+      assert.ok(await d.waitFor("!!window.__tr && !!document.getElementById('go')", 20000));
+      // `tests` after 2 rows is pushed within view, after 10 out of it, after 60 it is out
+      // of view throughout; revision 6 before its fix read the last two as no movement.
+      for (const before of [2, 10, 60]) {
+        await d.evaluate(`window.build(${before}); true`);
+        await sleep(300);
+        const r = await take({
+          id: `tree.${before}`,
+          subject: "tests",
+          input: { kind: "click", selector: "#go" },
+          ready: `() => !document.getElementById("kids").classList.contains("kids-collapsed")`,
+          converged: `() => ""`,
+          settleMs: 300,
+          timeoutMs: 5000,
+        });
+        assert.equal(r.ok, true, JSON.stringify(r.refusals));
+        const t = r.regions.treeRowTests;
+        assert.deepEqual(
+          [t?.present, t?.net, r.movementByGroup.tree.net],
+          [[true, true], [0, 660, 0, 0], 660],
+          `after ${before} rows: ${JSON.stringify(t)}`,
+        );
+      }
+    });
+    await check("a retained page hidden or parked any way is not the region", async () => {
+      await d.navigate(`${base}/view/regions`);
+      assert.ok(
+        await d.waitFor("!!window.__tr && !!document.getElementById('preview-pane')", 20000),
+      );
+      const wrong = [];
+      for (const [name, css, shown] of [
+        ["displayNone", "display:none", false],
+        ["collapsed", "height:0;overflow:hidden", false],
+        ["parkedLeft", "position:absolute;left:-10000px;top:0;width:100%", false],
+        ["parkedRight", "position:absolute;left:10000px;top:0;width:100%", false],
+        ["parkedAtRightEdge", "position:absolute;left:100%;top:0;width:100%", false],
+        [
+          "translatedRight",
+          "position:absolute;top:0;left:0;width:100%;transform:translateX(100%)",
+          false,
+        ],
+        ["parkedBelowInPane", "position:absolute;left:0;top:5000px;width:100%", false],
+        ["cvHidden", "content-visibility:hidden", false],
+        ["visibilityHidden", "visibility:hidden", false],
+        ["opacityZero", "opacity:0", false],
+        ["shownAhead", "", true],
+      ]) {
+        const header = await d.evaluate(`(async () => {
+          const pane = document.getElementById("preview-pane");
+          const host = (n, h, style) => { const e = document.createElement("div"); e.className = "pull-request-host"; e.style.cssText = style; e.innerHTML = '<div class="github-pull-header" style="height:' + h + 'px">#' + n + '</div><div class="tab-bar">Conversation</div><div class="github-pull-body">body ' + n + '</div>'; return e; };
+          pane.replaceChildren(host(353, 137, ${JSON.stringify(css)}), host(351, 203, ""));
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const header = window.__tr.snapshotRegions().prHeader;
+          pane.replaceChildren();
+          return header;
+        })()`);
+        // The retained host's header is 137 px tall, the one on screen 203 px.
+        if ((header?.[3] === 137) !== shown) {
+          wrong.push(`${name}: ${JSON.stringify(header)}`);
+        }
+      }
+      assert.deepEqual(wrong, []);
+    });
   } else if (group === "window") {
     // Revision 6, mb-s0e4: Chrome can stamp the frame that draws an input before the
     // input's own time stamp (0.2 ms early in 1 of 8 probe runs). That is made to happen
@@ -1077,8 +1295,8 @@ try {
         window.__raf ??= window.requestAnimationFrame.bind(window);
         window.requestAnimationFrame = ${ms} ? (cb) => window.__raf((t) => cb(t - ${ms})) : window.__raf;
       })()`);
-    const pressed = async (name) => {
-      await skew(34);
+    const pressed = async (name, ms = 34) => {
+      await skew(ms);
       await sleep(200);
       try {
         return await measure(name, { timeoutMs: 3000 });
@@ -1093,6 +1311,20 @@ try {
       assert.equal(r.framesToReady, 1, JSON.stringify(r.frameStates));
       assert.ok(r.readyMs > 0, `ready ${r.readyMs}`);
     });
+    await check(
+      "a frame read before the input is out of its window though stamped after it",
+      async () => {
+        // Stamped 34 ms late, the frames read just before the press begin, by their stamps,
+        // after it; revision 6 before its fix counted them, from the shown origin, as blank.
+        const r = await pressed("downShow", -34);
+        assert.equal(r.ok, true, JSON.stringify(r.refusals));
+        const down = await d.evaluate("window.downFrameMark");
+        const late = r.raw.frames.slice(0, down).filter((f) => f[1] !== null && f[0] >= pressAt(r));
+        assert.ok(late.length >= 1, `no frame read before the press was stamped after it`);
+        assert.equal(r.framesToReady, 1, JSON.stringify(r.frameStates));
+        assert.equal(r.blankFramesBeforeReady, 0, JSON.stringify(r.frameStates));
+      },
+    );
     await check("a blank frame stamped before the input is counted", async () => {
       const r = await pressed("downBlank");
       assert.equal(r.ok, true, JSON.stringify(r.refusals));
@@ -1207,6 +1439,11 @@ try {
       for (const [i, ms] of D.ms.entries()) {
         const rested = seen[D.files[i]];
         assert.ok(rested >= ms - 2 && rested < ms + 300, `${ms} ms dwell rested ${rested} ms`);
+        // The row records the realized dwell, the pointer's arrival to the press.
+        assert.ok(
+          Math.abs(rows[i].hoverDwellMs - rested) <= 1,
+          `${ms} ms dwell: the row says ${rows[i].hoverDwellMs} ms, the page saw ${rested} ms`,
+        );
       }
     });
   } else {

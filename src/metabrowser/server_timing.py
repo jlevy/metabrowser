@@ -21,6 +21,13 @@ A phase opened inside another one adds nothing, so a ``git`` call inside a ``rea
 not counted twice. Phases that run side by side, as ``asyncio.gather`` runs them, are
 each counted in full, so their sum can exceed the request's own time.
 
+**Git processes.** Beside the times, a record counts the Git processes the request
+started: :func:`git_process_started` is called by ``git/process.py`` each time a spawn
+succeeds, inside a phase or not, so the count is every process and not only those the
+``git`` time covers. The header says it in the ``git`` entry's description,
+``git;dur=41.2;desc="2 processes"``, and a request whose Git ran inside another phase
+gets a ``git`` entry with the description alone (H116).
+
 **What the header can say.** A response's headers are sent before its body, so
 ``Server-Timing`` holds ``srv``, the time to the start of the response, and the phases
 finished by then. For a JSON answer that is nearly everything: its body is serialized,
@@ -59,18 +66,29 @@ class Record:
     context, record included, so a record stops taking additions when its request ends.
     """
 
-    __slots__ = ("_lock", "_open", "_totals")
+    __slots__ = ("_git_processes", "_lock", "_open", "_totals")
 
     def __init__(self) -> None:
         # Threads the request awaits add to it too.
         self._lock = threading.Lock()
         self._totals: dict[str, float] = {}
+        self._git_processes = 0
         self._open = True
 
     def add(self, name: str, ms: float) -> None:
         with self._lock:
             if self._open:
                 self._totals[name] = self._totals.get(name, 0.0) + ms
+
+    def add_git_process(self) -> None:
+        with self._lock:
+            if self._open:
+                self._git_processes += 1
+
+    def git_processes(self) -> int:
+        """How many Git processes the request started."""
+        with self._lock:
+            return self._git_processes
 
     def close(self) -> None:
         with self._lock:
@@ -119,10 +137,28 @@ def phase(name: str) -> Generator[None]:
         _OPEN.reset(opened)
 
 
+def git_process_started() -> None:
+    """Count one Git process for the request this context serves; outside one, nothing."""
+    record = _RECORD.get()
+    if record is not None:
+        record.add_git_process()
+
+
 def header_value(record: Record, srv_ms: float) -> str:
-    """The ``Server-Timing`` value: ``srv``, then each phase finished so far."""
-    metrics = [("srv", srv_ms), *record.totals()]
-    return ", ".join(f"{name};dur={ms:.1f}" for name, ms in metrics)
+    """The ``Server-Timing`` value: ``srv``, then each phase finished so far.
+
+    The ``git`` entry carries the count of Git processes started so far as its description.
+    """
+    metrics = [f"{name};dur={ms:.1f}" for name, ms in [("srv", srv_ms), *record.totals()]]
+    processes = record.git_processes()
+    if processes:
+        described = f'desc="{processes} process{"" if processes == 1 else "es"}"'
+        timed = next((i for i, text in enumerate(metrics) if text.startswith("git;")), None)
+        if timed is None:
+            metrics.append(f"git;{described}")
+        else:
+            metrics[timed] = f"{metrics[timed]};{described}"
+    return ", ".join(metrics)
 
 
 def log_value(record: Record) -> str:
@@ -168,6 +204,7 @@ __all__ = [
     "TimedGZipMiddleware",
     "begin",
     "end",
+    "git_process_started",
     "header_value",
     "log_value",
     "phase",

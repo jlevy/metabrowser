@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // The cost of one call of the transition recorder's content search (`hasUseful`), on
-// synthetic documents in headless Chrome: four shapes of 2,000 to 40,000 lines, read at
-// the top, scrolled to the end, and scrolled past every line onto blank space. It measures
-// no product and takes no lock; it is how the search's bounds were set (README,
-// "Transition Navigation Scenario", **How content is found**).
+// synthetic documents in headless Chrome: four shapes of 10,000 and 40,000 lines, scrolled
+// to their end, where the screen holds dense lines; or past them onto a tail that is
+// sparse (a heading at the top of the screen, one line at its bottom, lines under
+// `pointer-events: none`) or blank. It measures no product and takes no lock; it is how
+// the search's bounds and its hit-test budget were set (README, "Transition Navigation
+// Scenario", **How content is found**).
 //
 //   node explorations/performance-loop/transitions-search-cost.mjs [--recorder FILE]
 //     [--calls 20] [--profile DIR]
@@ -11,6 +13,8 @@
 // `--recorder` loads another copy of transitions-recorder.mjs, such as an older
 // revision's from `git show`, so two searches can be read side by side. Each figure is the
 // median of `--calls` calls, in ms; the machine's load moves the values, not the ratios.
+// A cell says `miss` when the search did not find what is on screen, and `cut` when it
+// stopped at its hit-test budget.
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -42,6 +46,23 @@ const SHAPES = {
   table: "table rows of 3 cells",
   sections: "sections of 50 lines",
 };
+// What follows the lines, scrolled to the end, and whether the screen then shows content.
+const TAILS = {
+  dense: ["", true],
+  sparseTop: [
+    '<div style="height:900px"><h1 style="margin:8px 40px;font-size:20px">A heading at the top</h1></div>',
+    true,
+  ],
+  sparseBottom: [
+    '<div style="height:900px;position:relative"><div style="position:absolute;bottom:20px;left:40px">the only line on screen</div></div>',
+    true,
+  ],
+  pointerNone: [
+    `<div style="pointer-events:none">${Array.from({ length: 60 }, (_, i) => `<div>tail ${i}</div>`).join("")}</div>`,
+    true,
+  ],
+  blank: ['<div style="height:3000px"></div>', false],
+};
 const build = `(shape, n, tail) => {
   const view = document.getElementById("view");
   const f = document.createDocumentFragment();
@@ -63,7 +84,7 @@ const build = `(shape, n, tail) => {
   } else {
     for (let i = 0; i < n; i++) { f.appendChild(line(i)); }
   }
-  if (tail) { const blank = document.createElement("div"); blank.style.height = "3000px"; f.appendChild(blank); }
+  const t = document.createElement("div"); t.innerHTML = tail; f.appendChild(t);
   view.replaceChildren(f);
 }`;
 
@@ -86,39 +107,32 @@ try {
   console.log(
     `recorder ${path.relative(process.cwd(), recorderPath)}; median of ${calls} calls, ms`,
   );
+  console.log(`| Document | Lines | ${Object.keys(TAILS).join(" | ")} |`);
   console.log(
-    "| Document | Lines | Top | End | Past the end | Found at the end | Search at the end |",
+    `| --- | ---: | ${Object.keys(TAILS)
+      .map(() => "---:")
+      .join(" | ")} |`,
   );
-  console.log("| --- | ---: | ---: | ---: | ---: | --- | --- |");
   for (const [shape, label] of Object.entries(SHAPES)) {
-    for (const n of [2000, 10000, 40000]) {
+    for (const n of [10000, 40000]) {
       const cells = [];
-      let found = null;
-      let search = null;
-      for (const where of ["top", "end", "past"]) {
+      for (const [tail, shown] of Object.values(TAILS)) {
         const r = await d.evaluate(`(async () => {
-          (${build})(${JSON.stringify(shape)}, ${n}, ${where === "past"});
+          (${build})(${JSON.stringify(shape)}, ${n}, ${JSON.stringify(tail)});
           await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           const doc = document.scrollingElement;
-          doc.scrollTop = ${where === "top" ? 0 : where === "end" ? "doc.scrollHeight - innerHeight" : "doc.scrollHeight"};
+          doc.scrollTop = doc.scrollHeight;
           await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
           const view = document.getElementById("view");
           const times = [];
           let found = null;
           for (let i = 0; i < ${calls}; i++) { const t = performance.now(); found = window.__tr.hasUseful(view); times.push(performance.now() - t); }
           times.sort((a, b) => a - b);
-          return { ms: times[Math.floor(times.length / 2)], found, search: window.__tr.lastSearch ?? null };
+          return { ms: times[Math.floor(times.length / 2)], found, cut: window.__tr.lastSearch?.truncated === true };
         })()`);
-        cells.push(r.ms.toFixed(2));
-        if (where === "end") {
-          found = r.found;
-          search = r.search;
-        }
+        cells.push(`${r.ms.toFixed(1)}${r.found === shown ? "" : " miss"}${r.cut ? " cut" : ""}`);
       }
-      const s = search
-        ? `${search.visits} visits, ${search.texts} texts${search.bounded ? ", bounded" : ""}${search.points ? `, ${search.points} points` : ""}`
-        : "n/a";
-      console.log(`| ${label} | ${n} | ${cells.join(" | ")} | ${found} | ${s} |`);
+      console.log(`| ${label} | ${n} | ${cells.join(" | ")} |`);
     }
   }
 } finally {

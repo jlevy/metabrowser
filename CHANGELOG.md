@@ -4,19 +4,24 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- A browser on the same machine is no longer sent gzipped answers, and the application’s
-  own scripts, stylesheets, and fonts are compressed once rather than on every request.
+- A browser on the same machine that `metab` opened, or the macOS app, is no longer sent
+  gzipped answers, and the application’s own scripts, stylesheets, and fonts are
+  compressed once rather than on every request.
   Compressing cost the server time on every answer, on the thread every request waits
   for, to save bytes that never left the machine.
-  A server on a loopback address now answers a loopback client uncompressed, unless the
-  request carries a proxy’s `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`,
-  `X-Real-IP`, or `Via` header; every other client is sent gzip as before.
-  The new `--compress` flag gzips for every client, for a server reached through an SSH
-  tunnel or a proxy you set up yourself, which arrives from loopback too.
-  `--remote` passes it to the server it starts, so the remote host needs this version.
+  Only a server started for a client on this machine stops: `metab` opening the browser
+  itself, or the app’s `--exit-on-eof` start, on a loopback address.
+  It then answers a loopback client uncompressed, unless the request carries a proxy’s
+  `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, or `Via` header.
+  Every other server compresses as before, `--no-open` and the server `--remote` starts
+  included, so a remote host of any release still sends gzip through the tunnel, and
+  nothing new is passed to it.
   An asset at the address the page names is kept in memory, up to 16 MiB, read and
   compressed once, and sent with a `Content-Length`; its bytes and other headers are
   unchanged.
+
+- `Server-Timing` counts the Git processes a request started, in its `git` entry’s
+  description: `git;dur=41.2;desc="2 processes"`.
 
 - A size of a gigabyte or more now reads in gigabytes.
   The Files tree, the totals line under the Files toolbar, and the binary preview wrote

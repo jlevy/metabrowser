@@ -8,6 +8,12 @@ parser. Reusing that parser is the point of having one format: git's
 own output must round-trip through the neutral model or the model is
 wrong.
 
+A comparison asked for by the diff plugin's route lists its files and prints its patch in
+one run when the two fit in :data:`MAX_LISTED_PATCH_BYTES`, and its revisions resolve in
+one ``rev-parse``, so a commit costs two Git processes where it cost four (H116). Every
+answer is the one the separate runs give; ``tests/test_diff_one_run.py`` holds the two
+equal.
+
 Merges are compared against their first parent
 (``--diff-merges=first-parent``), matching the history surface.
 """
@@ -17,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from base64 import b64decode
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
@@ -53,6 +60,7 @@ from metabrowser.git.process import (
     GitCommandError,
     GitError,
     GitLocation,
+    GitOutputCutError,
     GitOutputTooLargeError,
     RepositoryStoreTarget,
     as_location,
@@ -84,6 +92,16 @@ kernel's limit with the environment: `getconf ARG_MAX` is 1 MiB on macOS, measur
 2026-11-02, and Linux's is usually 2 MiB. The comparison route asks for at most 50 paths or
 one, and the CLI asks for every file, where a pathspec buys nothing anyway."""
 
+MAX_LISTED_PATCH_BYTES = 256 * 1024
+"""What the run that lists a comparison may print, its patch included, before it is killed
+and the patch left to a run of its own (H116). A Git process start cost about 17 ms on the
+machine the hypothesis was measured on. Measured 2026-11-14 at load 12, untimed and as an
+order of magnitude: the listing of a 1,635-file comparison took 0.79 s, the same run with
+its 40 MB patch 1.11 s, so Git printed the patch at about 130 MB/s and a run killed at this
+bound spends about 2 ms past its listing; 329 of this repository's newest 400 commits list
+and patch within it (median 41 KB, 90th percentile 817 KB). Whatever is printed of files a
+page does not ask for is work thrown away, at most this much."""
+
 _NULL_OID = "0" * 40
 _STATUS_KINDS = {
     "A": ChangeKind.added,
@@ -103,7 +121,24 @@ _MODE_TYPES = {
 _PAIRED_KINDS = frozenset({ChangeKind.renamed, ChangeKind.copied})
 _PAIR_FILTER = "RC"
 
+# A commit ID in full, SHA-1 or SHA-256, as rev-parse prints one a line.
+_COMMIT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+# What makes rev-parse read a name in a list otherwise than alone: a range (`..`), a
+# negation (`^` first), the parent shorthands (`^@`, `^!`, `^-`), an option (`-` first),
+# and a colon, which names a path, an index entry, or a message search that a suffix
+# appended to the name would become part of. Whitespace is never part of one revision.
+_NOT_LISTED = re.compile(r"\.\.|\^[@!-]|:|\s|^[-^]|^$")
+
 type _SideKey = tuple[str | None, str | None]
+
+
+@dataclass(frozen=True, slots=True)
+class _Listed:
+    """The patch the run that listed a comparison printed, with the manifest it listed."""
+
+    comparison_id: str
+    manifest: ChangeSetManifest
+    patch: bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,6 +329,55 @@ def _within_file_bounds(out: bytes, changes: Sequence[FileChange]) -> _Budgeted:
     return _Budgeted(kept, tuple(too_large), tuple(deferred))
 
 
+def _asked_sections(out: bytes, changes: Sequence[FileChange]) -> bytes:
+    """The sections of *out* that are *changes*, in their order, and no other section."""
+    sections = _git_sections(out)
+    owners = _section_owners(sections, changes)
+    return b"".join(
+        section for section, owner in zip(sections, owners, strict=True) if owner is not None
+    )
+
+
+def _commit_ids(out: bytes, count: int) -> list[str] | None:
+    """*count* commit IDs, one a line and of one length, or None for any other answer."""
+    lines = out.split(b"\n")
+    if lines and lines[-1] == b"":
+        lines.pop()
+    if len(lines) != count or not all(_COMMIT_ID.fullmatch(line) for line in lines):
+        return None
+    if len({len(line) for line in lines}) != 1:
+        return None
+    return [line.decode("ascii") for line in lines]
+
+
+def _listing_and_patch(out: bytes, *, cut: bool) -> tuple[bytes, bytes] | None:
+    """The listing and the patch one ``diff --raw --numstat -p -z`` run prints, or None.
+
+    Git prints the two listings the manifest reads, then one NUL, then the patch. A listing
+    holds no empty field while every name in it has a byte, so the first empty field after
+    the raw records is that NUL; a name with none, which a source that runs no fsck can hold,
+    leaves the listing to its own run. A *cut* run's patch is cut too, and only its listing
+    is any use: None unless the patch has begun after it.
+    """
+    if not out:
+        return None if cut else (b"", b"")
+    tokens = out.split(b"\0")
+    records, rest = GitDiffSource._parse_raw(tokens)
+    if not records or any(
+        path == b"" for record in records for path in record[6:] if path is not None
+    ):
+        return None
+    try:
+        separator = tokens.index(b"", len(tokens) - len(rest))
+    except ValueError:
+        return None
+    offset = sum(len(token) + 1 for token in tokens[:separator])
+    patch = out[offset + 1 :]
+    if not patch.startswith(b"diff --git "):
+        return None
+    return out[:offset], patch
+
+
 def _pathspec(changes: Sequence[FileChange]) -> list[str] | None:
     """Every path of *changes*, or None when it is too long to be an argument list."""
     paths: dict[str, None] = {}
@@ -315,18 +399,29 @@ class GitDiffSource:
     location is a worktree-free store pin. ``HEAD`` on a pin is that
     object id, not the store's ambient HEAD. Neither form checks out.
     Store ``content`` reads go through the shared cat-file pool.
+
+    With *patch_with_listing*, :meth:`manifest` lists a comparison in a run that prints its
+    patch too, within :data:`MAX_LISTED_PATCH_BYTES`, and :meth:`hydrate` answers from that
+    patch when it is given that manifest. One instance holds one such patch, so a source made
+    with it serves one comparison, as a route's request does.
     """
 
     name = "git"
 
-    def __init__(self, repo: Path | GitLocation) -> None:
+    def __init__(self, repo: Path | GitLocation, *, patch_with_listing: bool = False) -> None:
         self._location = as_location(repo)
         self._empty_tree_oid: str | None = None
+        self._patch_with_listing = patch_with_listing
+        self._listed: _Listed | None = None
+
+    def _pinned(self, revision: str) -> str | None:
+        pin = self._location.pinned_revision
+        return pin if pin is not None and revision in {"HEAD", pin} else None
 
     async def _rev_parse(self, revision: str) -> str:
-        pin = self._location.pinned_revision
-        if pin is not None and revision in {"HEAD", pin}:
-            return pin
+        pinned = self._pinned(revision)
+        if pinned is not None:
+            return pinned
         try:
             out = await run_git_at(
                 ["rev-parse", "--verify", "--end-of-options", f"{revision}^{{commit}}"],
@@ -336,28 +431,68 @@ class GitDiffSource:
             raise DiffSourceError(f"unknown revision {revision!r}") from exc
         return out.decode("ascii").strip()
 
+    def _listable(self, revision: str) -> bool:
+        return self._pinned(revision) is None and _NOT_LISTED.search(revision) is None
+
+    async def _rev_parse_together(self, revisions: Sequence[str]) -> list[str] | None:
+        """Each of *revisions* as a commit ID from one ``rev-parse``, or None.
+
+        ``--verify`` takes one name; without it ``rev-parse`` takes several and prints an ID
+        a line, reading each name as ``--verify`` does unless the name has what
+        ``_NOT_LISTED`` names, which no name reaching here has. A name that does not resolve
+        ends the run, and so does any answer that is not one ID a name: None leaves every
+        name to :meth:`_rev_parse`, whose refusal names the revision that failed.
+        """
+        try:
+            out = await run_git_at(
+                ["rev-parse", *(f"{revision}^{{commit}}" for revision in revisions)],
+                self._location,
+            )
+        except GitError as exc:
+            log.debug("rev-parse of %d names failed: %s", len(revisions), failure_detail(exc))
+            return None
+        return _commit_ids(out, len(revisions))
+
     async def resolve(self, intent: dict[str, Any]) -> ResolvedComparison:
         base_policy = BasePolicy(intent.get("base_policy", "direct"))
         if "revision" in intent:
             # One revision: compare against its first parent (root commits
             # against the empty tree).
-            right = await self._rev_parse(str(intent["revision"]))
+            revision = str(intent["revision"])
             base_policy = BasePolicy.first_parent
-            try:
-                left = await self._rev_parse(f"{right}^")
-            except DiffSourceError:
-                # No parent resolves: a root commit, or a commit at a shallow boundary,
-                # whose parent Git grafts away. The object tells them apart. A boundary
-                # commit's diff against the empty tree would show the whole tree as
-                # added, a wrong answer with no warning, on a store and a served
-                # shallow checkout alike.
-                if await recorded_parents(self._location, right):
-                    raise DiffSourceError(PARENT_UNAVAILABLE) from None
-                left = ""  # root commit; git's empty-tree side
-                await self._ensure_empty_tree_oid()
+            # `<rev>^{commit}^`, peeled, is the first parent of what `<rev>^{commit}` names,
+            # as `<that ID>^` is: Git resolves the suffix on the name it ends.
+            together = (
+                await self._rev_parse_together([revision, f"{revision}^{{commit}}^"])
+                if self._listable(revision)
+                else None
+            )
+            if together is not None:
+                right, left = together
+            else:
+                right = await self._rev_parse(revision)
+                try:
+                    left = await self._rev_parse(f"{right}^")
+                except DiffSourceError:
+                    # No parent resolves: a root commit, or a commit at a shallow boundary,
+                    # whose parent Git grafts away. The object tells them apart. A boundary
+                    # commit's diff against the empty tree would show the whole tree as
+                    # added, a wrong answer with no warning, on a store and a served
+                    # shallow checkout alike.
+                    if await recorded_parents(self._location, right):
+                        raise DiffSourceError(PARENT_UNAVAILABLE) from None
+                    left = ""  # root commit; git's empty-tree side
+                    await self._ensure_empty_tree_oid()
         else:
-            left = await self._rev_parse(str(intent["left"]))
-            right = await self._rev_parse(str(intent["right"]))
+            names = [str(intent["left"]), str(intent["right"])]
+            together = (
+                await self._rev_parse_together(names)
+                if all(self._listable(name) for name in names)
+                else None
+            )
+            if together is None:
+                together = [await self._rev_parse(name) for name in names]
+            left, right = together
             if base_policy is BasePolicy.merge_base:
                 left = await self._merge_base(left, right)
         comparison_id = "git:" + sha256(f"{left}..{right}".encode()).hexdigest()[:16]
@@ -424,6 +559,10 @@ class GitDiffSource:
         return [left, right]
 
     async def manifest(self, resolved: ResolvedComparison) -> ChangeSetManifest:
+        if self._patch_with_listing:
+            with_patch = await self._list_with_patch(resolved)
+            if with_patch is not None:
+                return with_patch
         endpoints = self._endpoints(resolved)
         # One run for both listings, so renames and copies are detected once. Its output is
         # the two listings' bytes end to end. Measured 2026-11-02 on a comparison of 1,183
@@ -442,6 +581,37 @@ class GitDiffSource:
             ],
             self._location,
         )
+        return self._manifest_from(listed)
+
+    async def _list_with_patch(self, resolved: ResolvedComparison) -> ChangeSetManifest | None:
+        """The manifest from one run that prints the patch after the listings, kept for
+        :meth:`hydrate`; or None, which leaves the listing to the run above.
+
+        That run's options are the listing's and the patch's together, and its output is
+        the listing run's bytes, one NUL, then the unrestricted patch run's bytes
+        (``test_one_run_prints_what_the_two_runs_print``). A run that fails is None, so the
+        runs that answer are the ones that always did, in their own words. A run past
+        :data:`MAX_LISTED_PATCH_BYTES` is killed there; its listing, if it was printed
+        whole by then, is the manifest, and the patch is left to :meth:`hydrate`'s run.
+        """
+        try:
+            out = await self._patch(resolved, None, listing=True)
+        except GitOutputCutError as exc:
+            parts = _listing_and_patch(exc.prefix, cut=True)
+            return None if parts is None else self._manifest_from(parts[0])
+        except GitError as exc:
+            log.info("the listing with its patch failed, listing alone: %s", failure_detail(exc))
+            return None
+        parts = _listing_and_patch(out, cut=False)
+        if parts is None:
+            return None
+        listing, patch = parts
+        manifest = self._manifest_from(listing)
+        self._listed = _Listed(resolved.comparison_id, manifest, patch)
+        return manifest
+
+    def _manifest_from(self, listed: bytes) -> ChangeSetManifest:
+        """The manifest of the listing run's output."""
         records, numstat = self._parse_raw(listed.split(b"\0"))
         counts = self._parse_numstat(numstat)
         files: list[FileChange] = []
@@ -678,6 +848,17 @@ class GitDiffSource:
                 )
             )
             await verify_store_blobs(target, oids, max_bytes=MAX_FILE_PATCH_BYTES)
+        kept = self._listed
+        if (
+            kept is not None
+            and kept.manifest is listed
+            and kept.comparison_id == resolved.comparison_id
+        ):
+            answered = await self._hydrate_from(
+                kept.patch, changes, whole=len(file_ids) == len(listed.files)
+            )
+            if answered is not None:
+                return answered
         pathspec = None if len(file_ids) == len(listed.files) else _pathspec(changes)
         diff_filter = (
             _PAIR_FILTER
@@ -732,6 +913,33 @@ class GitDiffSource:
             deferred=budgeted.deferred,
         )
 
+    async def _hydrate_from(
+        self, patch: bytes, changes: Sequence[FileChange], *, whole: bool
+    ) -> PatchHydration | None:
+        """What :meth:`hydrate` answers for *changes*, from the listing run's whole *patch*.
+
+        Asked for every file, the run below is unrestricted and prints *patch* itself. Asked
+        for some, it is limited to their paths, and its sections for them are the
+        unrestricted run's byte for byte (``test_each_file_alone_is_what_the_whole_diff_says``):
+        those sections are taken from *patch* and spend the same bound in the same order.
+        The limited run's sections of files not asked for, a copy's source among them, never
+        spend it. None when a file has no section of its own, which the runs below answer
+        for, their retry without rename detection included.
+        """
+
+        def bounded() -> _Budgeted:
+            return _within_file_bounds(patch if whole else _asked_sections(patch, changes), changes)
+
+        budgeted = await asyncio.to_thread(bounded)
+        document = await asyncio.to_thread(parse_unified_patch, budgeted.kept)
+        patches, left_out = self._patches_from(document, changes)
+        over = {*budgeted.too_large, *budgeted.deferred}
+        if any(change.id not in over for change in left_out):
+            return None
+        return PatchHydration(
+            patches=patches, too_large=budgeted.too_large, deferred=budgeted.deferred
+        )
+
     async def hydrate_each(
         self,
         resolved: ResolvedComparison,
@@ -769,12 +977,17 @@ class GitDiffSource:
         *,
         renames: bool = True,
         diff_filter: str | None = None,
+        listing: bool = False,
     ) -> bytes:
+        """The patch; with *listing*, the manifest's listings before it, the run killed past
+        :data:`MAX_LISTED_PATCH_BYTES` (:meth:`_list_with_patch`)."""
         return await run_git_at(
             [
                 # Paths here are names, never patterns: `*` and `:(top)` mean themselves.
                 "--literal-pathspecs",
                 "diff",
+                # The listing run's own options, and `-p` so the patch follows them.
+                *(["--raw", "--numstat", "-p", "-z", "--no-abbrev"] if listing else []),
                 *(["-M50", "-C"] if renames else ["--no-renames"]),
                 *([] if diff_filter is None else [f"--diff-filter={diff_filter}"]),
                 # The shape the parser reads, whatever a folder's configuration says: Git's
@@ -787,6 +1000,8 @@ class GitDiffSource:
                 *([] if pathspec is None else ["--", *pathspec]),
             ],
             self._location,
+            max_bytes=MAX_LISTED_PATCH_BYTES if listing else None,
+            stop_at_cap=listing,
         )
 
     def _patches_from(

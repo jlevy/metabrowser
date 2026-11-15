@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.git import process as git_process
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     BATCH_OBJECT_POLICY,
@@ -16,6 +17,8 @@ from metabrowser.git.process import (
     STORE_READ_POLICY,
     GitCommandError,
     GitLocation,
+    GitOutputCutError,
+    GitOutputTooLargeError,
     GitProcessPolicy,
     UnsupportedGitVersionError,
     acquisition_allowed,
@@ -345,3 +348,55 @@ def test_run_git_at_reads_a_filesystem_location(tmp_path: Path) -> None:
     )
     oid = asyncio.run(run_git_at(["rev-parse", "HEAD"], GitLocation.filesystem(repo)))
     assert len(oid.strip()) == 40
+
+
+# ── A run that stops at its cap (H116) ──────────────────────────────────
+
+
+def _blob_repo(tmp_path: Path, size: int) -> tuple[Path, str, bytes]:
+    repo = tmp_path / "blob"
+    repo.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=repo))
+    body = b"".join(b"%08d of a long blob\n" % line for line in range(size // 20))
+    (repo / "big.txt").write_bytes(body)
+    oid = asyncio.run(run_git(["hash-object", "-w", "big.txt"], cwd=repo)).decode().strip()
+    return repo, oid, body
+
+
+def test_a_run_asked_to_stop_at_its_cap_is_killed_there_with_what_it_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, oid, body = _blob_repo(tmp_path, 4 * 1024 * 1024)
+    killed: list[int] = []
+    real_kill = git_process._kill
+
+    def spy(proc: asyncio.subprocess.Process) -> None:
+        killed.append(proc.pid)
+        real_kill(proc)
+
+    monkeypatch.setattr(git_process, "_kill", spy)
+    cap = 64 * 1024
+    with pytest.raises(GitOutputCutError) as cut:
+        asyncio.run(run_git(["cat-file", "blob", oid], cwd=repo, max_bytes=cap, stop_at_cap=True))
+    assert len(killed) == 1, "the producer is killed when the cap is passed, not drained"
+    assert 0 < len(cut.value.prefix) <= cap
+    assert body.startswith(cut.value.prefix)
+
+
+def test_a_run_not_asked_to_stop_drains_and_keeps_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, oid, _body = _blob_repo(tmp_path, 1024 * 1024)
+    monkeypatch.setattr(git_process, "_kill", lambda _proc: pytest.fail("killed"))
+    with pytest.raises(GitOutputTooLargeError) as over:
+        asyncio.run(run_git(["cat-file", "blob", oid], cwd=repo, max_bytes=64 * 1024))
+    assert not isinstance(over.value, GitOutputCutError)
+
+
+def test_a_run_within_its_cap_answers_whether_or_not_it_would_stop(tmp_path: Path) -> None:
+    repo, oid, body = _blob_repo(tmp_path, 64 * 1024)
+    for stop in (False, True):
+        out = asyncio.run(
+            run_git(["cat-file", "blob", oid], cwd=repo, max_bytes=len(body), stop_at_cap=stop)
+        )
+        assert out == body
