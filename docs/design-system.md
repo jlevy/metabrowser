@@ -739,6 +739,15 @@ its container. It is one primitive, `.fold-expander` in `static/styles.css`, on 
 or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives` holds
 it.
 
+One fold is not a row: a rendered Markdown diff’s fold of unchanged blocks (“6 unchanged
+blocks”) is a line in the document, because the user asked that it have no borders and
+expand in place in the rendered document.
+It has no box, fill, or rules, closed or open; its chevron starts on the blocks’ text
+edge; its label brightens from muted to `--text` under the pointer, as a document’s own
+disclosures in the shell do; and opening it sets the blocks it holds exactly as the
+unchanged blocks around them.
+`tests/test_diff_markdown_fold_chrome.py` measures it in Chrome.
+
 ### Disclosure Motion
 
 Every toggle travels the same way: the body animates `height` between `auto` and `0` on

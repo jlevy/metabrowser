@@ -71,7 +71,8 @@ All notable changes to Metabrowser are documented here.
   blocks it held in place, set exactly like the unchanged blocks around them.
   It drew a box with space above and below it, and when open a rule under its label that
   pushed the rest of the document 1px further than the blocks it showed.
-  The label now starts on the text’s left edge.
+  The fold’s chevron now lines up with the text’s left edge, and its label brightens to
+  the text colour under the pointer.
   A document’s own `<details>` sections look as before.
 
 - The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
