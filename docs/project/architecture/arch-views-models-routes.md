@@ -20,7 +20,7 @@ what is      what the thing      the validated        how it
 selected     can do              data                 is drawn
 ```
 
-- **Address:** a route names the address space and the path the resource within it.
+- **Address:** a route names the address space, and the path names the resource in it.
   The shell owns the core routes; a plugin adds data routes as `[[data_hook]]` entries
   under `/api/plugin/<plugin>/`.
 - **Resource kind:** the classification a plugin claims.
@@ -183,8 +183,8 @@ visible diagnostic. The first entries are mapped in the
 
 ## Data Routes
 
-Every route below and its parity row are checked by `tests/test_views_models_routes.py`
-and `devtools/check_parity.py`.
+`tests/test_views_models_routes.py` fails when a route that `devtools/check_parity.py`
+counts is missing here; the asset routes are not counted.
 
 | Route | Serves | Contract |
 | --- | --- | --- |
