@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Group by choice in the Files tab shows that it was taken, however long the server
+  takes. The trigger reads the choice at once, and if the groups take longer than the
+  quiet period the tree dims while the progress row under it reads “Grouping by file
+  type…” or “Grouping by age…”. Choosing again, or No grouping, cancels the wait at
+  once. On a folder whose files keep changing, a choice no longer starts over each time a
+  file changes: the answer its press asked for is kept, and the refresh the change asks
+  for waits until the sections have painted.
+
 - Group by in the Files tab answers quickly on a large folder: the server now reads
   every group from one pass over the index, where it made one pass per group.
   On a 100,000-file folder By file type takes about 0.1 s instead of 0.7 s, and on a

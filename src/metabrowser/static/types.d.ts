@@ -1614,11 +1614,16 @@ type MetabrowserTreeFilterModel = {
     start(url: string): { abort(): void; answer: Promise<unknown> };
     ttlMs: number;
   }): {
-    clear(): void;
+    markChanged(): void;
     size(): number;
-    take(url: string): Promise<unknown> | null;
+    take(url: string): { abort(): void; answer: Promise<unknown>; stale: boolean } | null;
     want(url: string): void;
   };
+  groupedLoadDecision(
+    inFlight: { first: boolean; key: string } | null,
+    asked: { first: boolean; key: string },
+  ): "after" | "start";
+  regroupingStatusText(by: string): string;
   groupPrefetchUrl(
     value: string,
     state: MetabrowserFilterSnapshot | null,

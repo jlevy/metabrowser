@@ -315,6 +315,57 @@ check(
   transcript.reopen,
 );
 
+// Waiting (mb-75l5). A choice shows on the trigger at once: the bar renders from the filter
+// state the choice set, before any request. A refresh asked for while a grouping's first
+// sections are on their way waits for them, rather than discarding them and starting over;
+// anything else starts, cancelling the load it supersedes.
+{
+  const typeKey = model.groupedRequestKey({ ...filter.get(), group: "type" }, floors);
+  const ageKey = model.groupedRequestKey({ ...filter.get(), group: "age" }, floors);
+  const choice = { key: typeKey, first: true };
+  const refresh = { key: typeKey, first: false };
+  transcript.loads = {
+    "a refresh, while the first sections are on their way": model.groupedLoadDecision(
+      choice,
+      refresh,
+    ),
+    "a refresh, while a refresh is on its way": model.groupedLoadDecision(refresh, refresh),
+    "another grouping, while the first sections are on their way": model.groupedLoadDecision(
+      choice,
+      { key: ageKey, first: true },
+    ),
+    "a refresh of another grouping": model.groupedLoadDecision(choice, {
+      key: ageKey,
+      first: false,
+    }),
+    "a choice, with nothing on its way": model.groupedLoadDecision(null, choice),
+    "a refresh, with nothing on its way": model.groupedLoadDecision(null, refresh),
+  };
+  check(
+    "only a refresh of the sections on their way waits for them",
+    Object.values(transcript.loads).join() === "after,start,start,start,start,start",
+    transcript.loads,
+  );
+  // Past the quiet period, the scan row says what is on its way, in the row's own words.
+  transcript.regroupingStatus = {
+    age: model.regroupingStatusText("age"),
+    type: model.regroupingStatusText("type"),
+  };
+  check(
+    "the wait names the choice as its row does",
+    transcript.regroupingStatus.age === "Grouping by age…" &&
+      transcript.regroupingStatus.type === "Grouping by file type…",
+    transcript.regroupingStatus,
+  );
+  filter.set({ group: "type" });
+  transcript.triggerAfterChoice = model.groupBy(filter.get());
+  check(
+    "the trigger reads the choice from the state it set",
+    transcript.triggerAfterChoice === "type",
+  );
+  filter.set({ group: "none" });
+}
+
 // The prefetch asks only for what the reader is about to choose: the grouping whose row the
 // pointer presses or the keyboard moves to, never No grouping or the grouping shown, and
 // nothing when the menu opens (mb-navs).
@@ -342,7 +393,9 @@ check(
   transcript.prefetchFor,
 );
 // An answer asked for again within the TTL is not asked for twice, a choice takes it once,
-// an older one is asked for again, and a change to the files clears them.
+// and an older one is asked for again. A change to the files makes every answer stale and
+// drops none: a choice still takes a stale one, and is told so, and a press asks again
+// (mb-75l5).
 {
   let clock = 0;
   const started = [];
@@ -364,7 +417,9 @@ check(
       started: started.slice(before),
       aborted: aborted.splice(0),
       kept: prefetch.size(),
-      ...(result === undefined ? {} : { took: result !== null }),
+      ...(result === undefined
+        ? {}
+        : { took: result !== null, ...(result ? { stale: result.stale } : {}) }),
     });
   };
   step("press By age", () => prefetch.want("age"));
@@ -375,7 +430,12 @@ check(
   step("choose By age again", () => prefetch.take("age"));
   clock = 20_000;
   step("press By file type after the TTL", () => prefetch.want("type"));
-  step("a file changes", () => prefetch.clear());
+  step("a file changes", () => prefetch.markChanged());
+  step("choose By file type", () => prefetch.take("type"));
+  step("press By age", () => prefetch.want("age"));
+  step("a file changes again", () => prefetch.markChanged());
+  step("press By age again", () => prefetch.want("age"));
+  step("choose By age", () => prefetch.take("age"));
   transcript.prefetch = steps;
   check(
     "a press within the TTL asks for nothing new",
@@ -393,10 +453,21 @@ check(
     steps[5].started.join() === "type" && steps[5].aborted.join() === "type",
     steps[5],
   );
+  check("a change drops no answer", steps[6].kept === 1 && steps[6].aborted.length === 0, steps[6]);
   check(
-    "a change clears every answer",
-    steps[6].kept === 0 && steps[6].aborted.length === 1,
-    steps[6],
+    "a choice takes an answer a change made stale, and is told so",
+    steps[7].took === true && steps[7].stale === true,
+    steps[7],
+  );
+  check(
+    "a press after a change asks again",
+    steps[10].started.join() === "age" && steps[10].aborted.join() === "age",
+    steps[10],
+  );
+  check(
+    "an answer asked for after the change is fresh",
+    steps[11].took === true && steps[11].stale === false,
+    steps[11],
   );
 }
 

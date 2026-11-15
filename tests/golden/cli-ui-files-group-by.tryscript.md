@@ -15,7 +15,9 @@ keeps the grouping, which band a file’s age falls in, and that a malformed ans
 refused. It also pins the shell’s Group by decisions, held as pure functions: each
 section’s share of the first paint’s rows, the order a revealed row is looked for in,
 the reopen plan after a refresh, which grouping a pressed row, or one the arrow keys
-reach, asks for ahead, and the prefetch’s keep, abort, take, and clear.
+reach, asks for ahead, the prefetch’s keep, abort, and take, how a file change makes its
+answers stale without dropping them, which loads wait for first sections on their way,
+and what the wait says.
 The answer it paints is read from `tests/golden/cli-api-tree-groups.tryscript.md`, its
 first one.
 
@@ -184,6 +186,19 @@ $ node tests/dom/files-group-by-session.js
       "src/lib"
     ]
   },
+  "loads": {
+    "a refresh, while the first sections are on their way": "after",
+    "a refresh, while a refresh is on its way": "start",
+    "another grouping, while the first sections are on their way": "start",
+    "a refresh of another grouping": "start",
+    "a choice, with nothing on its way": "start",
+    "a refresh, with nothing on its way": "start"
+  },
+  "regroupingStatus": {
+    "age": "Grouping by age…",
+    "type": "Grouping by file type…"
+  },
+  "triggerAfterChoice": "type",
   "prefetchFor": {
     "No grouping, ungrouped": null,
     "By age, ungrouped": "/api/tree?group_by=age&depth=2",
@@ -218,7 +233,8 @@ $ node tests/dom/files-group-by-session.js
       "started": [],
       "aborted": [],
       "kept": 1,
-      "took": true
+      "took": true,
+      "stale": false
     },
     {
       "step": "choose By age again",
@@ -240,10 +256,48 @@ $ node tests/dom/files-group-by-session.js
     {
       "step": "a file changes",
       "started": [],
-      "aborted": [
-        "type"
+      "aborted": [],
+      "kept": 1
+    },
+    {
+      "step": "choose By file type",
+      "started": [],
+      "aborted": [],
+      "kept": 0,
+      "took": true,
+      "stale": true
+    },
+    {
+      "step": "press By age",
+      "started": [
+        "age"
       ],
-      "kept": 0
+      "aborted": [],
+      "kept": 1
+    },
+    {
+      "step": "a file changes again",
+      "started": [],
+      "aborted": [],
+      "kept": 1
+    },
+    {
+      "step": "press By age again",
+      "started": [
+        "age"
+      ],
+      "aborted": [
+        "age"
+      ],
+      "kept": 1
+    },
+    {
+      "step": "choose By age",
+      "started": [],
+      "aborted": [],
+      "kept": 0,
+      "took": true,
+      "stale": false
     }
   ],
   "uncounted": {

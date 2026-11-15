@@ -39,7 +39,8 @@ They land as one native GitHub stack of thirteen pull requests on `main`:
 12. **Conversation rhythm and headings:** every two consecutive events are one token
     apart (`mb-w7rt`), and every event’s heading reads “author verb age”, with a chip
     only for a review state the verb does not say (`mb-novh`).
-13. **Group by speed:** every group is read from one pass over the index (`mb-navs`).
+13. **Group by speed:** every group is read from one pass over the index (`mb-navs`),
+    and a choice shows at once and while it waits (`mb-75l5`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -157,7 +158,7 @@ it:
 | 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
 | 10 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | On pull request 9; changes the Group by menu that pull request 2 adds, on the Files filter row as pull requests 4 and 9 left it |
 | 12 | `claude/conversation-rhythm` | `mb-w7rt`, `mb-novh` | On pull request 11; respaces and reheads the Conversation that pull requests 6 and 7 leave, on the page as pull request 11 leaves its tips |
-| 13 | `claude/group-by-speed` | `mb-navs` | On pull request 12; changes Group by’s server read and its prefetch, which pull requests 2 and 10 made |
+| 13 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 12; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -390,7 +391,7 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   rules in `styles.css`, for the Pulls toolbar without the Stacks chip that pull request
   5 removed.
 
-### Group By Speed
+### Group By Speed and Feedback
 
 The owner’s report of 2026-11-15 on pull request 12: choosing a grouping “does nothing”.
 On a folder of 270,000 files, `/api/tree?group_by=type&depth=2` took 4.5 to 5.6 s warm,
@@ -403,6 +404,15 @@ against 5 ms for the ungrouped tree.
 - **Prefetch** (`mb-navs`): opening the menu asks for nothing; pressing a row, or moving
   to it with the arrow keys, asks for that grouping alone.
   Two passes at once each took twice as long as one.
+- **Feedback** (`mb-75l5`): the trigger reads a choice in the frame it is made; past the
+  quiet period the tree dims and the scan row reads “Grouping by file type…”; a newer
+  choice or No grouping cancels the load on its way; a file change keeps a prefetched
+  answer, which the choice takes and then refreshes; and a refresh asked for during a
+  choice’s first load waits for it.
+  In headless Chrome the trigger always read the choice at once; what the first-click
+  case reproduced was the wait: a file change between the menu opening and the choice
+  dropped the prefetch, each refresh during the load discarded it and began again, and
+  the two prefetches the open menu ran at once each took twice as long as one.
 
 ### API Changes
 
@@ -498,12 +508,15 @@ against 5 ms for the ungrouped tree.
 - [ ] `mb-w7rt`: one rhythm between every two consecutive events.
 - [ ] `mb-novh`: every event’s heading reads alike.
 
-### Phase 13: Group By Speed (pull request 13)
+### Phase 13: Group By Speed and Feedback (pull request 13)
 
 - [ ] `mb-navs`: the provider’s one-pass grouped read, its conformance test against each
   group’s filtered tree, a route test that a grouping costs one read, and the prefetch
   on a pressed row or one the arrow keys reach; the measurements in the design system’s
   “Grouping the Files Tree”.
+- [ ] `mb-75l5`: the trigger in the choice’s frame, the dimmed tree under the scan row’s
+  words, cancelling, kept prefetches, and refreshes that wait; in the Group by session
+  and its golden, and in the Files Chrome test with the grouped requests held.
 
 ## Testing Strategy
 
@@ -549,7 +562,8 @@ This plan moves to `docs/project/specs/done/` when pull request 12 merges.
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
   `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
-  follow-ups on the Group by menu; `mb-navs`, Group by’s speed on a large folder.
+  follow-ups on the Group by menu; `mb-navs` and `mb-75l5`, Group by’s speed and
+  feedback on a large folder.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

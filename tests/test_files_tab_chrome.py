@@ -26,6 +26,11 @@ opens the Modified within menu in both. This judges what it measured against
   files only;
 - a file written into a folder open in a section refreshes the sections in place, keeping
   that folder open, the scroll position, and the focused row;
+- with the grouped requests held, a choice reads on the trigger in its click and takes
+  the request its press asked for ahead; past the quiet period the tree dims and the
+  scan row says "Grouping by file type…"; a refresh waits for the sections on their way;
+  and a newer choice, or No grouping, ends the wait at once ("Grouping the Files Tree",
+  Waiting);
 - a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
   row's content edge, each glyph centred in it, so the names after them start on one
   column ("One Glyph Size", mb-hmv7).
@@ -385,3 +390,33 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert refresh["after"] == {**refresh["before"], "written": True}, refresh
     # No grouping is the one Files tree again.
     assert measured["ungrouped"] == {"sections": 0, "trees": ["Files"]}
+
+    # Waiting, with every grouped request held at the page (docs/design-system.md,
+    # "Grouping the Files Tree"). The trigger reads the choice in the click that made it,
+    # while the request its press asked for ahead is still on its way and a file has
+    # changed since; the choice takes that request rather than asking again.
+    waiting = measured["waiting"]
+    assert waiting["chosenInFrame"] == "By file type", waiting
+    assert waiting["requestsForChoice"] == {"prefetched": 1, "afterChoice": 1}, waiting
+    # Past the quiet period the tree dims and the scan row says what is happening.
+    slow = waiting["slow"]
+    assert slow["trigger"] == "By file type" and slow["breathing"], slow
+    assert slow["progress"] == "Grouping by file type…" and slow["progressShown"], slow
+    assert slow["treeOpacity"] == slow["dimmedToken"] < 1, slow
+    assert slow["busy"] == "true" and slow["sections"] == 0, slow
+    # The refresh the changed file asks for waits for the sections on their way, and
+    # follows them once they paint.
+    assert waiting["refreshWaits"] == {"requests": 1, "held": 1}, waiting
+    painted = waiting["painted"]
+    assert painted["sections"] > 1 and painted["progress"] is None, painted
+    assert painted["treeOpacity"] == 1 and painted["busy"] == "false", painted
+    assert waiting["refreshedAfter"], waiting
+    # A newer choice cancels the load on its way, and No grouping ends the wait at once;
+    # the answers left behind arrive and paint nothing.
+    assert waiting["chosen"] == {"type": "By file type", "age": "By age", "none": "No grouping"}
+    assert waiting["typeLoading"]["progress"] == "Grouping by file type…", waiting
+    assert waiting["ageLoading"]["progress"] == "Grouping by age…", waiting
+    for state in (waiting["cancelled"], waiting["stale"]):
+        assert state["trigger"] == "No grouping" and state["sections"] == 0, state
+        assert state["progress"] is None and state["treeOpacity"] == 1, state
+        assert state["busy"] == "false" and not state["breathing"], state

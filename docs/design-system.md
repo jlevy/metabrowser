@@ -2718,16 +2718,34 @@ it resets them all, Show ignored back on, and keeps the grouping.
   ([Keys in a Menu](#keys-in-a-menu)).
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
-- **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
-  breathes as refreshing text does once the wait passes `--loading-state-delay`.
+- **Waiting.** A choice shows at once: the trigger reads it in the frame it is made,
+  whatever the groups then take, because the bar renders from the choice before any
+  request starts. The tree on screen stays while the groups load, and the Group by
+  trigger breathes as refreshing text does once the wait passes `--loading-state-delay`.
+  For a choice’s first sections, the tree on screen is the arrangement the reader left,
+  so past the same quiet period it dims to `--dimmed-content-opacity`, and the
+  navigation’s scan row says what is coming, “Grouping by file type…” or “Grouping by
+  age…”, in its spinner and words.
+  The metadata band and notices above the tree keep their ink, and an answer inside the
+  quiet period shows none of it.
+  The scan row rather than a metadata line holds the words because a metadata line takes
+  its line box the moment it is drawn: a choice answered inside the quiet period would
+  push the tree down a line and back.
+  A newer choice, a filter change, or No grouping cancels the load on its way at once,
+  and its answer is never painted.
   Pressing a grouping’s row, or moving to it with the arrow keys, asks for that grouping
   ahead of the choice; opening the menu asks for nothing, since a reader chooses at most
   one grouping and often none.
+  A file change keeps an answer asked for ahead rather than dropping it: the choice
+  takes it, since it comes sooner than a new one, and then refreshes.
 - **Refresh.** When files change, the sections refresh in place, in one frame: each
   keeps its heading and updates its count, a group that fills or empties appears or
   goes, the folders open in a section stay open, and the scroll position and the focused
   row are kept. A folder whose cached children a write dropped is fetched before the
   paint. A refresh that fails keeps what is shown and retries with a backoff.
+  A refresh asked for while a choice’s first sections are on their way waits for them
+  and runs once they paint; started at once, it would discard them and begin again, and
+  on a folder whose files keep changing each refresh would restart the wait.
 - **Width.** The row fits the default 299 px pane at its widest, “No grouping” with
   Clear and the badge showing, in the default font set.
   The badge sits against the chevron to make that room; the measurements are beside
@@ -2740,8 +2758,9 @@ The server decides membership, order, and counts (`/api/tree?group_by=` and `?gr
 `tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
 browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
 `tests/dom/group-by-refresh-behavior.js`; and `tests/test_files_tab_chrome.py` measures
-the row, the drawer, the numbers, the sections’ headings, and a refresh after a write in
-Chrome.
+the row, the drawer, the numbers, the sections’ headings, a refresh after a write, and,
+with the grouped requests held, the wait: the trigger in the choice’s frame, the dimmed
+tree and the scan row’s words, a refresh that waits, and cancelling, in Chrome.
 
 The server reads every group from one pass over the index, at one index version
 (`GroupedTreeQuery` in `inventory_engine/contract.py`). Measured in process, warm, on

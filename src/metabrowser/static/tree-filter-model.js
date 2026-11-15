@@ -457,12 +457,19 @@
    * The Group by prefetch: a grouping the reader is about to choose is asked for ahead
    * (`groupPrefetchUrl`), and the choice takes its answer. An answer younger than `ttlMs` is
    * kept for the same request rather than asked for again, an older one is asked for again,
-   * an answer is taken once, and a change to the files clears them all.
+   * and an answer is taken once.
+   *
+   * A change to the files makes every answer kept stale rather than dropping it. A choice
+   * still takes a stale answer, since it comes sooner than a new one, and says it is stale,
+   * so the shell paints it and then refreshes the sections; a press asks again. Dropping
+   * them was half of why a choice looked like it did nothing on a folder whose files kept
+   * changing: a change between the press and the choice threw the answer away, and the
+   * choice started its pass over the index from nothing (mb-75l5).
    *
    * @param {GroupsPrefetchDeps} deps
    */
   function createGroupsPrefetch(deps) {
-    /** @type {Map<string, {at: number, answer: Promise<unknown>, abort: () => void}>} */
+    /** @type {Map<string, {at: number, stale: boolean, answer: Promise<unknown>, abort: () => void}>} */
     const entries = new Map();
     /** @param {{at: number}} entry */
     const fresh = (entry) => deps.now() - entry.at < deps.ttlMs;
@@ -470,14 +477,22 @@
       /** @param {string} url */
       want(url) {
         const kept = entries.get(url);
-        if (kept && fresh(kept)) {
+        if (kept && fresh(kept) && !kept.stale) {
           return;
         }
         kept?.abort();
         const started = deps.start(url);
-        entries.set(url, { at: deps.now(), answer: started.answer, abort: started.abort });
+        entries.set(url, {
+          at: deps.now(),
+          stale: false,
+          answer: started.answer,
+          abort: started.abort,
+        });
       },
-      /** @param {string} url @returns {Promise<unknown> | null} */
+      /**
+       * @param {string} url
+       * @returns {{answer: Promise<unknown>, stale: boolean, abort: () => void} | null}
+       */
       take(url) {
         const entry = entries.get(url);
         entries.delete(url);
@@ -488,16 +503,45 @@
           entry.abort();
           return null;
         }
-        return entry.answer;
+        return { answer: entry.answer, stale: entry.stale, abort: entry.abort };
       },
-      clear() {
+      markChanged() {
         for (const entry of entries.values()) {
-          entry.abort();
+          entry.stale = true;
         }
-        entries.clear();
       },
       size: () => entries.size,
     });
+  }
+
+  /**
+   * What a Group by load asked for now does beside the one on its way: start, superseding
+   * it, or wait until it paints.
+   *
+   * A refresh of a grouping whose first sections are still on their way waits for them, and
+   * runs once they paint. Started at once, it would discard them and begin again from
+   * nothing, with no sections on screen to keep: on a folder whose files kept changing and
+   * whose groups took seconds to come, each refresh restarted the wait, which was the other
+   * half of a choice looking like it did nothing (mb-75l5). Anything else starts: a newer
+   * grouping or filter cancels the load it supersedes.
+   *
+   * @param {{key: string, first: boolean} | null} inFlight the load on its way, if any
+   * @param {{key: string, first: boolean}} asked `first` for a load that paints new sections
+   * @returns {"start" | "after"}
+   */
+  function groupedLoadDecision(inFlight, asked) {
+    return inFlight?.first && !asked.first && inFlight.key === asked.key ? "after" : "start";
+  }
+
+  /**
+   * What the scan row says while a grouping's first sections are on their way: the choice,
+   * in the words of its Group by row ("By file type" is "Grouping by file type…").
+   *
+   * @param {string} by "age" or "type"
+   * @returns {string}
+   */
+  function regroupingStatusText(by) {
+    return by === "age" ? "Grouping by age…" : "Grouping by file type…";
   }
 
   /**
@@ -1751,6 +1795,8 @@
     createGroupsPrefetch,
     graftOpenedFolders,
     groupPrefetchUrl,
+    groupedLoadDecision,
+    regroupingStatusText,
     likelySectionKey,
     revealSectionOrder,
     sectionRowBudget,

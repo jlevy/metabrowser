@@ -1280,37 +1280,119 @@ function currentGroupedKey() {
 async function loadGroupedTree(options = {}) {
   var state = currentFilterSnapshot();
   var key = currentGroupedKey();
+  var asked = { key, first: options.preserve !== true };
+  var inFlight = _groupedLoad;
+  if (inFlight && treeFilterModel.groupedLoadDecision(inFlight, asked) === "after") {
+    // The sections this refresh would refresh are on their way: it runs once they paint.
+    inFlight.refreshAfter = true;
+    return true;
+  }
+  cancelGroupedLoad();
   var serial = ++_groupedRequestSerial;
+  // A first load paints new sections; so does a refresh with none on screen to keep
+  // (loadGroupedTreeInner).
+  var first = asked.first || queryHtml("#tab-files > .tree-section") === null;
+  var load = { serial, key, first, controller: new AbortController(), refreshAfter: false };
+  _groupedLoad = load;
   setGroupingPending(true);
   try {
-    return await loadGroupedTreeInner(state, key, serial, options);
+    return await loadGroupedTreeInner(state, key, serial, {
+      ...options,
+      signal: load.controller.signal,
+    });
   } finally {
-    if (serial === _groupedRequestSerial) {
+    if (_groupedLoad === load) {
+      _groupedLoad = null;
       setGroupingPending(false);
+      if (load.refreshAfter) {
+        requestGroupedRefresh();
+      }
     }
   }
 }
 
+/**
+ * The Group by load on its way: a choice's first sections, or a refresh of the ones on
+ * screen (tree-filter-model.js, groupedLoadDecision).
+ *
+ * @type {{serial: number, key: string, first: boolean, controller: AbortController, refreshAfter: boolean} | null}
+ */
+var _groupedLoad = null;
+
+// Cancel the load on its way, when a newer grouping or filter supersedes it or the reader
+// leaves grouping: its request is aborted, its answer is never painted, and the wait it
+// showed ends at once. The server's pass, once begun, runs to its end regardless.
+function cancelGroupedLoad() {
+  var load = _groupedLoad;
+  if (!load) {
+    return;
+  }
+  _groupedLoad = null;
+  _groupedRequestSerial += 1;
+  load.controller.abort();
+  setGroupingPending(false);
+}
+
 // While the groups are on their way the tree on screen stays, and the Group by trigger
-// breathes as refreshing text does (docs/design-system.md, "Refreshing Content"): an
-// answer inside --loading-state-delay shows nothing, and a large folder's second or so
-// says the choice was taken.
+// breathes as refreshing text does (docs/design-system.md, "Refreshing Content"). For a
+// choice's first sections, the tree on screen is the arrangement the reader left, so past
+// the quiet period it dims and the scan row says what is on its way (renderRegrouping);
+// an answer inside --loading-state-delay shows none of it.
 var _groupingPending = false;
 
 function setGroupingPending(pending) {
   _groupingPending = pending;
+  var grouped = filesPanelUsesGroupedSource();
   queryHtml('[data-chip-menu-toggle="group"]')?.classList.toggle(
     "mb-refreshing",
-    pending && filesPanelUsesGroupedSource(),
+    pending && grouped,
   );
   document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
+  renderRegrouping(
+    pending && grouped && _groupedLoad?.first === true
+      ? treeFilterModel.groupBy(currentFilterSnapshot())
+      : null,
+  );
+}
+
+// The grouping whose first sections are on their way, or null.
+/** @type {string | null} */
+var _regroupingBy = null;
+
+/**
+ * Show, or end, the wait for a grouping's first sections (docs/design-system.md, "Grouping
+ * the Files Tree", Waiting): the tree dims (`.tree-regrouping` in styles.css) and the scan
+ * row says "Grouping by file type…" in its spinner and words, both after the quiet period.
+ * A scan the row was already showing keeps its place on screen, without a second quiet
+ * period, and comes back when the wait ends.
+ *
+ * @param {string | null} by
+ */
+function renderRegrouping(by) {
+  _regroupingBy = by;
+  document.getElementById("tab-files")?.classList.toggle("tree-regrouping", by !== null);
+  var row = document.getElementById("index-progress");
+  if (!row) {
+    return;
+  }
+  if (by === null) {
+    row.classList.remove("mb-delayed-loading");
+    renderIndexProgress(indexProgressLastRendered);
+    return;
+  }
+  var text = row.querySelector(".index-progress-text");
+  if (text) {
+    text.textContent = treeFilterModel.regroupingStatusText(by);
+  }
+  row.classList.toggle("mb-delayed-loading", row.hidden === true);
+  row.hidden = false;
 }
 
 /**
  * @param {ReturnType<typeof currentFilterSnapshot>} state
  * @param {string} key
  * @param {number} serial
- * @param {{ preserve?: boolean }} options
+ * @param {{ preserve?: boolean, signal?: AbortSignal }} options
  * @returns {Promise<boolean>}
  */
 async function loadGroupedTreeInner(state, key, serial, options) {
@@ -1372,9 +1454,9 @@ async function loadGroupedTreeInner(state, key, serial, options) {
 // a few milliseconds (docs/design-system.md, "Grouping the Files Tree"). So the grouping a
 // reader is about to choose is asked for ahead, when the pointer presses its row or the
 // keyboard moves to it, and the choice takes the answer already on its way
-// (tree-filter-model.js, groupPrefetchUrl and createGroupsPrefetch). An answer is kept only
-// until a file changes or GROUPS_PREFETCH_TTL_MS passes, and a refresh after a change always
-// asks again.
+// (tree-filter-model.js, groupPrefetchUrl and createGroupsPrefetch). An answer is kept
+// until GROUPS_PREFETCH_TTL_MS passes; one a file change made stale still serves the
+// choice, which then refreshes, and a refresh always asks again.
 var GROUPS_PREFETCH_TTL_MS = 10000;
 
 /**
@@ -1403,12 +1485,25 @@ var groupsPrefetch = treeFilterModel.createGroupsPrefetch({
 });
 
 /**
+ * The answer a load paints: the one its press asked for ahead, if one is on its way, or a
+ * request of its own. A cancel of the load reaches either.
+ *
  * @param {string} url
- * @param {{ preserve?: boolean }} options
+ * @param {{ preserve?: boolean, signal?: AbortSignal }} options
  */
 function fetchGroups(url, options) {
   var kept = options.preserve ? null : groupsPrefetch.take(url);
-  return kept ?? groupsRequest(url);
+  if (!kept) {
+    return groupsRequest(url, options.signal);
+  }
+  options.signal?.addEventListener("abort", kept.abort, { once: true });
+  if (kept.stale) {
+    // Asked for before a file changed: it paints, as it comes sooner than a new answer
+    // would, and the sections then refresh (groupedLoadDecision holds the refresh until
+    // they have painted).
+    requestGroupedRefresh();
+  }
+  return kept.answer;
 }
 
 // The keys that move focus between a menu's rows (filter-controls.js, onKeyDown).
@@ -4047,8 +4142,12 @@ function renderIndexProgress(meta) {
     return;
   }
   if (!indexProgressIsActive(meta)) {
-    el.hidden = true;
     indexProgressLastRendered = meta || null;
+    // While a grouping's sections are on their way the row says so (renderRegrouping),
+    // and shows the scan again when they come.
+    if (_regroupingBy === null) {
+      el.hidden = true;
+    }
     return;
   }
   // `meta.indexed_files` can be missing (server hasn't reported yet),
@@ -4058,6 +4157,10 @@ function renderIndexProgress(meta) {
   // right UX — a literal "~0 files scanned" reads as "scan stuck".
   var rawFiles = meta.indexed_files;
   var files = typeof rawFiles === "number" && rawFiles > 0 ? rawFiles : null;
+  if (_regroupingBy !== null) {
+    indexProgressLastRendered = { status: meta.status, indexed_files: files };
+    return;
+  }
   var text = el.querySelector(".index-progress-text");
   if (text) {
     text.textContent = files == null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
@@ -5621,9 +5724,11 @@ function initFilterBar() {
         return;
       }
       if (key === "group") {
-        filterState.set({ group: value === null ? "none" : value });
+        // Closed first, so the bar the change renders, before any of the work the choice
+        // starts, is the closed trigger reading the choice: it shows in the frame the
+        // choice is made, whatever the groups then take (mb-75l5).
         filterOpenMenu = null;
-        renderNavFilterBar();
+        filterState.set({ group: value === null ? "none" : value });
         return;
       }
       if (key === "recency" || key === "size") {
@@ -5677,6 +5782,8 @@ function onFilterStateChange(state) {
   );
   _filterCursor = transition.current;
   if (transition.action === "load-recent") {
+    // Grouping left for the Recent list: the groups on their way are not wanted.
+    cancelGroupedLoad();
     loadRecent(transition.current);
     return;
   }
@@ -5718,6 +5825,8 @@ function onFilterStateChange(state) {
     // Abandon any recency fetch still in flight and drop the window it
     // was for. Otherwise a late response repaints the panel with the
     // old window's list under a trigger that now reads "Any age".
+    // The same for groups on their way: No grouping ends their wait at once.
+    cancelGroupedLoad();
     recentRecompute.cancel();
     if (recentInflight) {
       recentInflight.abort();
@@ -7369,7 +7478,7 @@ function fileStoreApplySnapshotInner(scope, entries) {
   // in-flight Recent request began. Even an empty snapshot can represent
   // removals, so it invalidates that response like a nonempty fs.change batch.
   recentContinuity.dirtyActiveRequest();
-  groupsPrefetch.clear();
+  groupsPrefetch.markChanged();
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
@@ -7416,8 +7525,9 @@ function fileStoreApplyChange(ops) {
 function fileStoreApplyChangeInner(ops) {
   if (ops.length > 0) {
     recentContinuity.dirtyActiveRequest();
-    // A grouping fetched ahead of a change no longer answers for the files.
-    groupsPrefetch.clear();
+    // A grouping asked for ahead of a change answers for the files as they were: a choice
+    // still takes it, and refreshes after (createGroupsPrefetch).
+    groupsPrefetch.markChanged();
   }
   invalidateSubtreeCaches(ops);
   invalidateFilePreviews(ops);

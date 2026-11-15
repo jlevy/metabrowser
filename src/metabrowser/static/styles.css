@@ -3905,6 +3905,20 @@ a.tab-btn {
   text-transform: none;
   font-variant-numeric: tabular-nums;
 }
+/* Regrouping (docs/design-system.md, "Grouping the Files Tree", Waiting): while a
+   grouping's first sections are on their way, the tree on screen is the arrangement
+   the reader left, so once the wait passes the quiet period it dims to the dimmed
+   content token, and the scan row below says what is coming. The metadata band and
+   notices above it keep their ink. Opacity only, set in one step, so nothing moves and
+   reduced motion has nothing to stop. */
+#tab-files.tree-regrouping > :not(.nav-metadata, .notice) {
+  animation: tree-regrouping-dim 0s linear var(--loading-state-delay) forwards;
+}
+@keyframes tree-regrouping-dim {
+  to {
+    opacity: var(--dimmed-content-opacity);
+  }
+}
 .recent-truncated-note {
   padding: 8px 12px;
   margin: 4px 0;

@@ -13,7 +13,8 @@
 // the window, which controls the bar's row and closed drawer hold, whether the row fits
 // its pane, how it wraps in a narrower one, and which take keyboard numbers, where a
 // Group by section's heading starts against its tree, whether a refresh after a write
-// keeps the scroll position and the focused row, and a tree row's leading slot, a
+// keeps the scroll position and the focused row, what a Group by choice shows while its
+// request is held, and a tree row's leading slot, a
 // folder's chevron and a file's icon, against the name after it (docs/design-system.md,
 // "Groups in a Menu", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
 // "Navigation Toolbars Wrap"). The wrap is held to its rule by
@@ -716,6 +717,139 @@ try {
   result.slots = await browser.evaluate(SLOTS);
   result.treeTips = await browser.evaluate(TREE_TIPS);
   phase("grouped");
+
+  // Waiting (docs/design-system.md, "Grouping the Files Tree"): every grouped request is
+  // held at the page until it is released, so each load is as slow as the session says.
+  /** @type {string[]} */
+  const held = [];
+  let releaseAll = false;
+  browser.on("Fetch.requestPaused", (params) => {
+    if (releaseAll) {
+      browser.send("Fetch.continueRequest", { requestId: params.requestId }).catch(() => {});
+    } else {
+      held.push(params.requestId);
+    }
+  });
+  const release = async () => {
+    for (const requestId of held.splice(0)) {
+      // A request the page aborted while it was held is gone already.
+      await browser.send("Fetch.continueRequest", { requestId }).catch(() => {});
+    }
+  };
+  let requested = 0;
+  browser.on("Fetch.requestPaused", () => {
+    requested += 1;
+  });
+  await browser.send("Fetch.enable", { patterns: [{ urlPattern: "*group_by=*" }] });
+  const WAITING = `(() => {
+    const panel = document.getElementById("tab-files");
+    const progress = document.getElementById("index-progress");
+    const tree = panel.querySelector(":scope > :not(.nav-metadata, .notice)");
+    const trigger = document.querySelector('[data-chip-menu-toggle="group"]');
+    return {
+      trigger: trigger.textContent.trim(),
+      breathing: trigger.classList.contains("mb-refreshing"),
+      progress: progress.hidden ? null : progress.querySelector(".index-progress-text").textContent,
+      progressShown: !progress.hidden && getComputedStyle(progress).visibility === "visible",
+      treeOpacity: tree ? Math.round(Number(getComputedStyle(tree).opacity) * 100) / 100 : null,
+      busy: panel.getAttribute("aria-busy"),
+      sections: panel.querySelectorAll(".tree-section").length,
+      dimmedToken: Number(getComputedStyle(document.documentElement).getPropertyValue("--dimmed-content-opacity")),
+    };
+  })()`;
+  // The trigger as the click that chose leaves it, read before the frame it paints in.
+  const ARM_CHOICE = `(() => {
+    window.__groupChoice = null;
+    document.addEventListener("click", () => {
+      window.__groupChoice = document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim();
+    }, { once: true });
+    return true;
+  })()`;
+  const rowCenter = (value) =>
+    browser.evaluate(
+      `(() => { const row = document.querySelector('#filter-group-menu ${value === "none" ? "[data-chip-any]" : `[data-chip-value="${value}"]`}'); const box = row.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`,
+    );
+  const pointer = (type, at) =>
+    browser.send("Input.dispatchMouseEvent", {
+      type,
+      x: at.x,
+      y: at.y,
+      button: "left",
+      clickCount: 1,
+    });
+  /** Choose *value* in Group by with a click, and read the trigger as the click left it. */
+  const choose = async (value) => {
+    await toggle("group", true);
+    const at = await rowCenter(value);
+    await browser.evaluate(ARM_CHOICE);
+    await pointer("mousePressed", at);
+    await pointer("mouseReleased", at);
+    return browser.evaluate("window.__groupChoice");
+  };
+  result.waiting = {};
+  // Pressing By file type asks for it ahead, and a file written before the press lets
+  // go is a change that answer predates: the answer is kept rather than dropped.
+  await toggle("group", true);
+  const typeRow = await rowCenter("type");
+  await browser.evaluate(ARM_CHOICE);
+  const beforePress = requested;
+  await pointer("mousePressed", typeRow);
+  const pressDeadline = Date.now() + 10000;
+  while (requested === beforePress && Date.now() < pressDeadline) {
+    await sleep(20);
+  }
+  const prefetched = requested - beforePress;
+  fs.writeFileSync(path.join(root, "docs", "waiting.md"), "# Waiting\n");
+  await sleep(1200);
+  await pointer("mouseReleased", typeRow);
+  result.waiting.chosenInFrame = await browser.evaluate("window.__groupChoice");
+  result.waiting.requestsForChoice = { prefetched, afterChoice: requested - beforePress };
+  // Past the quiet period the tree dims under the scan row's words.
+  await sleep(300);
+  result.waiting.slow = await browser.evaluate(WAITING);
+  // The write asks the sections to refresh; that waits for the sections on their way
+  // instead of starting them over.
+  await sleep(1500);
+  result.waiting.refreshWaits = { requests: requested - beforePress, held: held.length };
+  // Released, the answer paints, and the refresh it waited for follows.
+  const beforeRelease = requested;
+  await release();
+  await browser.waitFor("document.querySelectorAll('.tree-section').length > 1", 30000);
+  await browser.evaluate(frames);
+  result.waiting.painted = await browser.evaluate(WAITING);
+  const refreshDeadline = Date.now() + 10000;
+  while (requested === beforeRelease && Date.now() < refreshDeadline) {
+    await sleep(50);
+  }
+  result.waiting.refreshedAfter = requested > beforeRelease;
+  await release();
+  await browser.waitFor(
+    `!document.querySelector('[data-chip-menu-toggle="group"]').classList.contains("mb-refreshing")`,
+    30000,
+  );
+  releaseAll = true;
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
+  releaseAll = false;
+  // A newer choice cancels a load on its way, and No grouping ends the wait at once.
+  result.waiting.chosen = {};
+  result.waiting.chosen.type = await choose("type");
+  await sleep(300);
+  result.waiting.typeLoading = await browser.evaluate(WAITING);
+  result.waiting.chosen.age = await choose("age");
+  await sleep(300);
+  result.waiting.ageLoading = await browser.evaluate(WAITING);
+  result.waiting.chosen.none = await choose("none");
+  await browser.evaluate(frames);
+  result.waiting.cancelled = await browser.evaluate(WAITING);
+  // The answers the reader left arrive and paint nothing.
+  await release();
+  await sleep(800);
+  result.waiting.stale = await browser.evaluate(WAITING);
+  releaseAll = true;
+  await release();
+  await browser.send("Fetch.disable");
+  phase("waited");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
   await chrome?.close();
