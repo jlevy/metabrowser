@@ -23,8 +23,9 @@ one group's tree; ``docs/project/architecture/arch-views-models-routes.md`` reco
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from metabrowser.file_type_filters import FILE_TYPE_CATEGORIES, FILE_TYPE_GROUP_DISPLAY_ORDER
 from metabrowser.settings import RECENT_WINDOW_SECONDS
@@ -151,6 +152,49 @@ def age_band(group: TreeGroup, recency_seconds: int) -> AgeBand:
     return AgeBand(within_seconds=within, older_than_seconds=older_than)
 
 
+def group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
+    """One group of a grouped answer: its name, what it holds, and its tree.
+
+    The counts come from the group's filtered totals. A source that cannot count a group
+    (a Git revision whose blob index is truncated) gives them as None, and a source that
+    counts files but not bytes gives `size` as None.
+    """
+
+    filtered = payload.get("filtered") or {}
+    return {
+        "id": group.id,
+        "label": group.label,
+        "files": filtered.get("files", 0),
+        "size": filtered.get("size", 0),
+        "entries": filtered.get("entries", 0),
+        "tree": payload.get("tree", []),
+    }
+
+
+def groups_payload(
+    group_by: str, groups: list[dict[str, Any]], envelope: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """`/api/tree?group_by=`: the groups that hold anything after the filter, in display
+    order, each with its counts and its tree, under the envelope one group's tree carries.
+
+    A group the filter leaves empty is not shown; one whose entries were not counted is
+    shown when its tree holds anything.
+    """
+
+    source = envelope or {}
+    return {
+        "root": source.get("root"),
+        "group_by": group_by,
+        "groups": [
+            group
+            for group in groups
+            if (group["entries"] > 0 if group["entries"] is not None else bool(group["tree"]))
+        ],
+        "tally_cache_status": source.get("tally_cache_status"),
+        "tally_cache_max_files": source.get("tally_cache_max_files"),
+    }
+
+
 __all__ = [
     "GROUP_BY_VALUES",
     "OLDER_GROUP_ID",
@@ -158,7 +202,9 @@ __all__ = [
     "GroupBy",
     "TreeGroup",
     "age_band",
+    "group_row",
     "groups_for",
+    "groups_payload",
     "parse_group",
     "parse_group_by",
 ]

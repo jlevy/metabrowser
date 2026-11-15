@@ -1232,10 +1232,10 @@ async function loadTree(options = {}) {
         chromeHtml: truncationHtml + summaryHtml,
         tallyCacheStatus: data.tally_cache_status,
       };
-      // A recency request may have started while this tree request was in
-      // flight. Keep the authoritative cache current without painting over the
+      // A recency request, or a grouping, may have started while this tree request was
+      // in flight. Keep the authoritative cache current without painting over the
       // newer source selection.
-      if (!filesPanelUsesRecentSource()) {
+      if (!filesPanelUsesRecentSource() && !filesPanelUsesGroupedSource()) {
         if (_inlineTreeBaseline || reconcileMountedRoot) {
           reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
         } else {
@@ -1272,8 +1272,8 @@ function currentGroupedKey() {
  * Load and paint the Group by sections. One request answers every group's count and its
  * first two levels (`/api/tree?group_by=`), the depth the ungrouped tree's first answer has.
  *
- * @param {{ preserve?: boolean }} [options] `preserve` reopens the folders the reader had
- *   open, for a refresh after files changed rather than a new grouping.
+ * @param {{ preserve?: boolean }} [options] `preserve` refreshes the sections on screen in
+ *   place, after files changed, rather than painting a new grouping.
  * @returns {Promise<boolean>} whether an answer was painted
  */
 async function loadGroupedTree(options = {}) {
@@ -1313,18 +1313,22 @@ function setGroupingPending(pending) {
  * @returns {Promise<boolean>}
  */
 async function loadGroupedTreeInner(state, key, serial, options) {
-  var opened = options.preserve ? openedSectionFolders() : null;
+  var preserve = options.preserve === true && queryHtml("#tab-files > .tree-section") !== null;
   var owns = () =>
     serial === _groupedRequestSerial &&
     filesPanelUsesGroupedSource() &&
     key === currentGroupedKey();
   var data;
+  var sections;
   try {
     data = await fetchGroups(treeFilterModel.groupsUrl(state, treeFilterSizeFloors(), 2), {
-      preserve: options.preserve === true,
+      preserve,
     });
+    sections = treeFilterModel.groupSections(data);
   } catch (error) {
-    if (owns()) {
+    // A refresh that fails keeps the sections on screen; its pacing retries it with a
+    // backoff (requestGroupedRefresh). A first load has nothing to keep.
+    if (owns() && !preserve) {
       failGroupedTree(String(error));
     }
     return false;
@@ -1332,40 +1336,51 @@ async function loadGroupedTreeInner(state, key, serial, options) {
   if (!owns()) {
     return false;
   }
-  var sections;
-  try {
-    sections = treeFilterModel.groupSections(data);
-  } catch (error) {
-    failGroupedTree(String(error));
-    return false;
-  }
   if (data.tally_cache_status === "scanning") {
     startIndexProgressPolling();
+  }
+  if (preserve) {
+    await fetchReopenedFolders(sections, owns);
+    if (!owns()) {
+      return false;
+    }
   }
   // The groups partition what the filter keeps, so their counts add up to its total: the
   // line under the tally says how many files the sections hold.
   _filteredTreeTotals = {
-    files: sections.reduce((sum, section) => sum + section.files, 0),
-    size: sections.reduce((sum, section) => sum + section.size, 0),
+    files: sections.reduce((sum, section) => sum + (section.files ?? 0), 0),
+    size: sections.reduce((sum, section) => sum + (section.size ?? 0), 0),
   };
-  _perf.measure("renderTreeNodes:groups", () => renderGroupedSections(sections, opened), {
-    nodes: sections.reduce((sum, section) => sum + section.tree.length, 0),
-  });
+  var truncationHtml =
+    data.tally_cache_status === "truncated"
+      ? treeTruncationNoteHtml(data.tally_cache_max_files)
+      : "";
+  _perf.measure(
+    preserve ? "renderTreeNodes:groupsRefresh" : "renderTreeNodes:groups",
+    () =>
+      preserve
+        ? refreshGroupedSections(sections, truncationHtml)
+        : renderGroupedSections(sections, truncationHtml),
+    { nodes: sections.reduce((sum, section) => sum + section.tree.length, 0) },
+  );
   return true;
 }
 
 // Grouping asks the server for every group at once, which on a large folder takes a pass
 // over the index per group: 0.7 s for File type on 100,000 files, where the ungrouped tree
 // took 0.12 s (measured in headless Chrome, 2026-11-15). So opening the Group by menu asks
-// for both groupings ahead of the choice, and the choice takes the answer already on its
-// way. An answer is kept only until a file changes or GROUPS_PREFETCH_TTL_MS passes, and a
-// refresh after a change always asks again.
+// for the groupings it offers ahead of the choice, and the choice takes the answer already
+// on its way (tree-filter-model.js, createGroupsPrefetch). An answer is kept only until a
+// file changes or GROUPS_PREFETCH_TTL_MS passes, and a refresh after a change always asks
+// again.
 var GROUPS_PREFETCH_TTL_MS = 10000;
-/** @type {Map<string, {at: number, answer: Promise<unknown>}>} */
-var _groupsPrefetch = new Map();
 
-function groupsRequest(url) {
-  return fetch(url, { cache: "no-store" }).then((resp) => {
+/**
+ * @param {string} url
+ * @param {AbortSignal} [signal]
+ */
+function groupsRequest(url, signal) {
+  return fetch(url, { cache: "no-store", signal }).then((resp) => {
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
     }
@@ -1373,37 +1388,37 @@ function groupsRequest(url) {
   });
 }
 
+var groupsPrefetch = treeFilterModel.createGroupsPrefetch({
+  now: () => performance.now(),
+  ttlMs: GROUPS_PREFETCH_TTL_MS,
+  start(url) {
+    var controller = new AbortController();
+    var answer = groupsRequest(url, controller.signal);
+    // A prefetch nobody takes fails quietly; the choice that takes it reports its own.
+    answer.catch(() => {});
+    return { answer, abort: () => controller.abort() };
+  },
+});
+
 /**
  * @param {string} url
  * @param {{ preserve?: boolean }} options
  */
 function fetchGroups(url, options) {
-  var kept = _groupsPrefetch.get(url);
-  _groupsPrefetch.delete(url);
-  if (!options.preserve && kept && performance.now() - kept.at < GROUPS_PREFETCH_TTL_MS) {
-    return kept.answer;
-  }
-  return groupsRequest(url);
+  var kept = options.preserve ? null : groupsPrefetch.take(url);
+  return kept ?? groupsRequest(url);
 }
 
 // Ask for each grouping the menu offers that the panel is not already showing.
 function prefetchGroupings() {
-  _groupsPrefetch.clear();
   var state = currentFilterSnapshot();
-  for (const option of filterGroupOptions()) {
-    if (option.value === treeFilterModel.groupBy(state)) {
-      continue;
-    }
-    var url = treeFilterModel.groupsUrl(
-      { ...state, group: option.value },
-      treeFilterSizeFloors(),
-      2,
-    );
-    var answer = groupsRequest(url);
-    // A prefetch nobody takes fails quietly; the choice that takes it reports its own.
-    answer.catch(() => {});
-    _groupsPrefetch.set(url, { at: performance.now(), answer });
-  }
+  groupsPrefetch.prefetch(
+    filterGroupOptions()
+      .filter((option) => option.value !== treeFilterModel.groupBy(state))
+      .map((option) =>
+        treeFilterModel.groupsUrl({ ...state, group: option.value }, treeFilterSizeFloors(), 2),
+      ),
+  );
 }
 
 function failGroupedTree(reason) {
@@ -1415,44 +1430,75 @@ function failGroupedTree(reason) {
   }
 }
 
+/** @param {MetabrowserPublicTreeSection} section */
+function treeSectionCountText(section) {
+  // A group the source could not count (a truncated Git index) shows no count.
+  return section.files === null ? "" : formatCount(section.files);
+}
+
 /**
- * One section: the group's heading, in the menu group pattern (docs/design-system.md,
- * "Groups in a Menu"), and its tree, which the heading names.
+ * One section's tree, which its heading names.
  *
  * @param {MetabrowserPublicTreeSection} section
+ * @param {Array<Record<string, any>>} nodes
  * @param {Set<string>} expandedPaths
  */
-function treeSectionHtml(section, expandedPaths) {
-  var headingId = treeDomId("tree-section", section.key);
-  var count = formatCount(section.files);
-  var tree = withTreeIdScope(section.key, () =>
-    renderTreeNodes(section.tree, true, {
+function treeSectionTreeHtml(section, nodes, expandedPaths) {
+  // The heading's id is the panel's, outside the section's scope (treeSectionHtml).
+  var labelledBy = treeDomId("tree-section", section.key);
+  return withTreeIdScope(section.key, () =>
+    renderTreeNodes(nodes, true, {
       ...treeRenderOptionsForElement(null),
       section: section.key,
-      treeLabelledBy: headingId,
+      treeLabelledBy: labelledBy,
       defaultExpandedPaths: expandedPaths,
     }),
   );
+}
+
+/**
+ * One section: the group's heading, in the menu group pattern (docs/design-system.md,
+ * "Groups in a Menu"), and its tree.
+ *
+ * @param {MetabrowserPublicTreeSection} section
+ * @param {Array<Record<string, any>>} nodes
+ * @param {Set<string>} expandedPaths
+ */
+function treeSectionHtml(section, nodes, expandedPaths) {
+  var headingId = treeDomId("tree-section", section.key);
   return (
     `<section class="tree-section" data-tree-group="${esc(section.key)}"` +
     ` aria-labelledby="${esc(headingId)}">` +
     `<div class="group-heading tree-section-heading" id="${esc(headingId)}">` +
     `<span class="tree-section-label">${esc(section.label)}</span>` +
-    `<span class="tree-section-count">${esc(count)}</span></div>` +
-    `${tree}</section>`
+    `<span class="tree-section-count">${esc(treeSectionCountText(section))}</span></div>` +
+    `${treeSectionTreeHtml(section, nodes, expandedPaths)}</section>`
+  );
+}
+
+function treeViewportRowBudget() {
+  var treeContent = document.getElementById("tree-content");
+  var rowHeight = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY,
+    ),
+  );
+  return window.MetabrowserTreeExpansion.visibleRowBudget(
+    treeContent?.clientHeight || 0,
+    rowHeight,
+    TREE_AUTO_EXPAND_FALLBACK_ROWS,
   );
 }
 
 /**
- * Paint the sections into the Files panel under the tally row.
- *
- * Each section opens folders from the viewport's row budget the ungrouped tree uses, split
- * among the sections, so together they fill about one screen as the ungrouped tree does.
+ * Paint a new grouping's sections into the Files panel under the tally row. Each section
+ * opens folders from its share of the viewport's row budget
+ * (tree-filter-model.js, sectionRowBudget).
  *
  * @param {MetabrowserPublicTreeSection[]} sections
- * @param {Map<string, string[]> | null} opened folders to reopen, by section
+ * @param {string} truncationHtml
  */
-function renderGroupedSections(sections, opened) {
+function renderGroupedSections(sections, truncationHtml) {
   var panel = document.getElementById("tab-files");
   if (!panel) {
     return;
@@ -1460,71 +1506,175 @@ function renderGroupedSections(sections, opened) {
   treeKeyboard?.prepareForMutation();
   pendingTreePages.clear();
   pendingTreePageId = 0;
-  var treeContent = document.getElementById("tree-content");
-  var rowHeight = parseFloat(
-    getComputedStyle(document.documentElement).getPropertyValue(
-      TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY,
-    ),
-  );
-  var budget = window.MetabrowserTreeExpansion.visibleRowBudget(
-    treeContent?.clientHeight || 0,
-    rowHeight,
-    TREE_AUTO_EXPAND_FALLBACK_ROWS,
-  );
-  var share = Math.max(1, Math.floor(budget / Math.max(1, sections.length)));
+  var share = treeFilterModel.sectionRowBudget(treeViewportRowBudget(), sections.length);
   var body = sections
     .map((section) =>
       treeSectionHtml(
         section,
-        opened
-          ? new Set()
-          : window.MetabrowserTreeExpansion.chooseDefaultExpandedPaths(
-              /** @type {any} */ (section.tree),
-              share,
-              TREE_PAGE_SIZE,
-            ),
+        section.tree,
+        window.MetabrowserTreeExpansion.chooseDefaultExpandedPaths(
+          /** @type {any} */ (section.tree),
+          share,
+          TREE_PAGE_SIZE,
+        ),
       ),
     )
     .join("");
   panel.innerHTML =
+    truncationHtml +
     (_lastTreeSummaryHtml || "") +
     (body || '<div class="recent-empty">No files match the filters.</div>');
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
   scheduleSubtreePrefetch();
-  if (opened) {
-    void reopenSectionFolders(opened);
+}
+
+/**
+ * Before a refresh paints, fetch the children of each folder the reader has open that
+ * neither the answer nor the cache holds (a write in a folder drops its cached subtree),
+ * a level at a time, so the refresh paints every one of them open in one frame and the
+ * focused row inside them is still there to keep. A fetch that fails leaves its folder
+ * closed; each is asked for once.
+ *
+ * @param {MetabrowserPublicTreeSection[]} sections
+ * @param {() => boolean} owns
+ */
+async function fetchReopenedFolders(sections, owns) {
+  /** @type {Set<string>} */
+  var asked = new Set();
+  for (;;) {
+    var opened = openedSectionFolders();
+    /** @type {Promise<unknown>[]} */
+    var requests = [];
+    for (const section of sections) {
+      var plan = treeFilterModel.graftOpenedFolders(
+        section.tree,
+        opened.get(section.key) || [],
+        (path) => subtreeCache.get(subtreeCacheKey(path, section.key)),
+      );
+      for (const path of plan.fetch) {
+        var key = subtreeCacheKey(path, section.key);
+        if (!asked.has(key)) {
+          asked.add(key);
+          requests.push(fetchSubtree(path, section.key).catch(() => null));
+        }
+      }
+    }
+    if (requests.length === 0 || !owns()) {
+      return;
+    }
+    await Promise.all(requests);
   }
 }
 
-/** The folders open in each section now, shallowest first, to reopen after a refresh. */
+/**
+ * Refresh the sections on screen in place, after files changed: each kept section's tree
+ * is rebuilt with the folders the reader had open put back from the answer and from cached
+ * subtrees (tree-filter-model.js, graftOpenedFolders; fetchReopenedFolders filled the
+ * cache first), its count updated, new sections added in order and emptied ones removed,
+ * and the scroll position and the focused row kept, all in one frame.
+ *
+ * @param {MetabrowserPublicTreeSection[]} sections
+ * @param {string} truncationHtml
+ */
+function refreshGroupedSections(sections, truncationHtml) {
+  var panel = document.getElementById("tab-files");
+  if (!panel) {
+    return;
+  }
+  var scroller = document.getElementById("tree-content");
+  var scrollTop = scroller ? scroller.scrollTop : 0;
+  var focused = /** @type {HTMLElement | null} */ (document.activeElement);
+  var focusedId = focused?.closest?.("#tab-files .tree-section") ? focused.dataset.treeId : "";
+  var opened = openedSectionFolders();
+  treeKeyboard?.prepareForMutation();
+  var mounted = new Map(
+    Array.from(panel.querySelectorAll(":scope > .tree-section")).map((element) => [
+      /** @type {HTMLElement} */ (element).dataset.treeGroup || "",
+      /** @type {HTMLElement} */ (element),
+    ]),
+  );
+  /** @type {HTMLElement | null} */
+  var previous = null;
+  for (const section of sections) {
+    var graft = treeFilterModel.graftOpenedFolders(
+      section.tree,
+      opened.get(section.key) || [],
+      (path) => subtreeCache.get(subtreeCacheKey(path, section.key)),
+    );
+    var element = mounted.get(section.key);
+    mounted.delete(section.key);
+    if (element) {
+      var count = element.querySelector(".tree-section-count");
+      if (count) {
+        count.textContent = treeSectionCountText(section);
+      }
+      var tree = element.querySelector(':scope > [role="tree"]');
+      var template = document.createElement("template");
+      template.innerHTML = treeSectionTreeHtml(section, graft.tree, new Set(graft.expanded));
+      if (tree) {
+        tree.replaceWith(template.content);
+      } else {
+        element.append(template.content);
+      }
+    } else {
+      var added = document.createElement("template");
+      added.innerHTML = treeSectionHtml(section, graft.tree, new Set(graft.expanded));
+      element = /** @type {HTMLElement} */ (added.content.firstElementChild);
+      if (previous) {
+        previous.after(element);
+      } else {
+        var lead = panel.querySelector(":scope > .tree-section");
+        if (lead) {
+          lead.before(element);
+        } else {
+          panel.append(element);
+        }
+      }
+    }
+    previous = element;
+  }
+  for (const gone of mounted.values()) {
+    gone.remove();
+  }
+  panel.querySelector(":scope > .recent-empty")?.remove();
+  if (sections.length === 0) {
+    panel.insertAdjacentHTML(
+      "beforeend",
+      '<div class="recent-empty">No files match the filters.</div>',
+    );
+  }
+  panel.querySelector(":scope > .tree-truncation-note")?.remove();
+  if (truncationHtml) {
+    panel.insertAdjacentHTML("afterbegin", truncationHtml);
+  }
+  if (scroller) {
+    scroller.scrollTop = scrollTop;
+  }
+  if (focusedId) {
+    queryHtml(`#tab-files [data-tree-id="${escapePathForSelector(focusedId)}"]`)?.focus({
+      preventScroll: true,
+    });
+  }
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  scheduleSubtreePrefetch();
+}
+
+/** The folders open in each section now. */
 function openedSectionFolders() {
   /** @type {Map<string, string[]>} */
   var opened = new Map();
-  for (const section of queryHtmlAll(".tree-section")) {
+  for (const section of queryHtmlAll("#tab-files > .tree-section")) {
     var key = /** @type {HTMLElement} */ (section).dataset.treeGroup || "";
     var paths = Array.from(section.querySelectorAll(".tree-folder.expanded"))
       .map((row) => /** @type {HTMLElement} */ (row).dataset.path || "")
-      .filter(Boolean)
-      .sort((left, right) => left.split("/").length - right.split("/").length);
+      .filter(Boolean);
     opened.set(key, paths);
   }
   return opened;
-}
-
-/** @param {Map<string, string[]>} opened */
-async function reopenSectionFolders(opened) {
-  for (const [key, paths] of opened) {
-    var section = queryHtml(`.tree-section[data-tree-group="${escapePathForSelector(key)}"]`);
-    for (const path of paths) {
-      var row = section?.querySelector(`.tree-folder[data-path="${escapePathForSelector(path)}"]`);
-      if (row && row.getAttribute("aria-expanded") === "false") {
-        await setFolderExpanded(row, true, { instant: true, synchronize: false });
-      }
-    }
-  }
-  synchronizeTreeNow();
 }
 
 // The Files totals, a navigation metadata line: the markup and its words are
@@ -2025,6 +2175,11 @@ function renderContainerChildren(rows, options) {
 function treeItemAttributes(options) {
   var identity =
     options.kind === "page" ? `page:${options.pageId}` : `${options.kind}:${options.path || ""}`;
+  // A folder can stand in several Group by sections: its identity, which the keyboard
+  // navigator finds rows and repairs focus by, names the section, as its DOM ids do.
+  if (_treeIdScope) {
+    identity = `${_treeIdScope}|${identity}`;
+  }
   var attributes =
     ' role="treeitem" tabindex="-1"' +
     ` data-tree-kind="${esc(options.kind)}"` +
@@ -4177,6 +4332,7 @@ function attachMainTabs() {
     window.MetabrowserMainTabs?.create({
       cancelPreview: cancelMainTabPreview,
       filesShown: resumeRootSummaryRefresh,
+      filesHidden: closeFilterMenu,
       flushPull: () => pullPageHost?.page()?.flush?.(),
       // Read when called: the tree controller is created after the main tabs.
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
@@ -5022,6 +5178,24 @@ function filterTypeFamilies(groupId) {
     .filter((family) => family.count > 0);
 }
 
+// Where the drawer's filters take their keyboard numbers while the drawer is closed: its
+// triggers are inert then and cannot be numbered, so each filter is numbered on a stand-in
+// beside the chevron, which a number reaches whether or not the drawer is open
+// (shell-keymap.js, syncFilters). Activating one opens the drawer with its menu
+// (toggleFilterMenu). The stand-ins take no space and no focus; a badge on one shows
+// beside the chevron.
+function filterKeySlotsHtml() {
+  /** @type {Record<string, string>} */
+  var names = { recency: "Modified within", types: "File type" };
+  return (isGitRevisionSource() ? ["types"] : ["recency", "types"])
+    .map(
+      (key) =>
+        `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
+        ` aria-label="${names[key]}"></span>`,
+    )
+    .join("");
+}
+
 // Group by's choices beside "No grouping". A Git revision has no mtime, so it offers no
 // Age, as it offers no Modified within.
 function filterGroupOptions() {
@@ -5189,6 +5363,7 @@ function renderNavFilterBar() {
       tip: filterDrawerOpen ? "Hide filters" : "Filters",
       controls: "filter-drawer",
     }) +
+    filterKeySlotsHtml() +
     "</span></div>";
   var drawer =
     // `inert` rather than `hidden`: it keeps the closed drawer out of
@@ -5245,6 +5420,20 @@ function applyDrawerOpenState() {
     );
     toggle.dataset.tipText = filterDrawerOpen ? "Hide filters" : "Filters";
   }
+  // The drawer's filters take their numbers on their triggers while it is open, and on
+  // their stand-ins while it is closed.
+  shellKeymap?.syncFilters();
+}
+
+// The Files toolbar is hidden with its panel. A filter menu left open there is not on
+// screen to use, and with no box to measure it would be fitted to nothing and come back
+// as an empty sliver, so it closes.
+function closeFilterMenu() {
+  if (filterOpenMenu === null) {
+    return;
+  }
+  filterOpenMenu = null;
+  renderNavFilterBar();
 }
 
 /**
@@ -7085,7 +7274,7 @@ function fileStoreApplySnapshotInner(scope, entries) {
   // in-flight Recent request began. Even an empty snapshot can represent
   // removals, so it invalidates that response like a nonempty fs.change batch.
   recentContinuity.dirtyActiveRequest();
-  _groupsPrefetch.clear();
+  groupsPrefetch.clear();
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
@@ -7133,7 +7322,7 @@ function fileStoreApplyChangeInner(ops) {
   if (ops.length > 0) {
     recentContinuity.dirtyActiveRequest();
     // A grouping fetched ahead of a change no longer answers for the files.
-    _groupsPrefetch.clear();
+    groupsPrefetch.clear();
   }
   invalidateSubtreeCaches(ops);
   invalidateFilePreviews(ops);
@@ -8669,21 +8858,56 @@ async function revealInTree(path, options = {}) {
  * @returns {HTMLElement[]}
  */
 function sectionsForPath(path) {
-  var sections = /** @type {HTMLElement[]} */ (Array.from(queryHtmlAll(".tree-section")));
-  var by = treeFilterModel.groupBy(currentFilterSnapshot());
+  var sections = /** @type {HTMLElement[]} */ (
+    Array.from(queryHtmlAll("#tab-files > .tree-section"))
+  );
+  var byKey = new Map(sections.map((section) => [section.dataset.treeGroup || "", section]));
+  var order = treeFilterModel.revealSectionOrder(
+    Array.from(byKey.keys()),
+    treeFilterModel.likelySectionKey(
+      treeFilterModel.groupBy(currentFilterSnapshot()),
+      revealEntryFor(path),
+      Date.now() / 1000,
+      _RECENT_WINDOW_SECONDS,
+      (name, ext) => window.MetabrowserFileTypeTaxonomy?.groupForFile(name, ext) ?? null,
+    ),
+  );
+  return order.map((key) => /** @type {HTMLElement} */ (byKey.get(key)));
+}
+
+/**
+ * What the shell knows of *path* to guess its section by: the file store's entry, else a
+ * row already drawn for it, else nothing, which makes no guess.
+ *
+ * @param {string} path
+ */
+function revealEntryFor(path) {
   var name = path.slice(path.lastIndexOf("/") + 1);
   var entry = fileStore.get(path);
-  var id = null;
-  if (by === "type") {
-    id = window.MetabrowserFileTypeTaxonomy?.groupForFile(name, entry?.ext ?? getExt(name)) ?? null;
-  } else if (by === "age" && typeof entry?.mtime_ns === "number" && entry.mtime_ns > 0) {
-    id = treeFilterModel.ageGroupFor(
-      Date.now() / 1000 - entry.mtime_ns / 1e9,
-      _RECENT_WINDOW_SECONDS,
-    );
+  if (entry) {
+    return {
+      type: entry.type,
+      name,
+      ext: entry.ext ?? getExt(name),
+      mtime: typeof entry.mtime_ns === "number" ? entry.mtime_ns / 1e9 : undefined,
+    };
   }
-  var likely = sections.filter((section) => section.dataset.treeGroup === `${by}:${id}`);
-  return likely.length > 0 ? likely : sections;
+  var row = /** @type {HTMLElement | null} */ (
+    queryHtml(`#tab-files .tree-item[data-path="${escapePathForSelector(path)}"]`)
+  );
+  if (!row) {
+    return null;
+  }
+  return {
+    type: row.classList.contains("tree-folder")
+      ? "dir"
+      : row.classList.contains("tree-symlink")
+        ? "symlink"
+        : "file",
+    name,
+    ext: row.dataset.ext || getExt(name),
+    mtime: parseTipNumber(row.dataset.tipMtime) ?? undefined,
+  };
 }
 
 /**

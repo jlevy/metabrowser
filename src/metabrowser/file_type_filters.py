@@ -158,7 +158,7 @@ validate_file_type_taxonomy(FILE_TYPE_CATEGORIES, FILE_TYPE_FAMILIES)
 
 # The order the app lists the display groups in for a reader: the type filter's Groups and
 # its sections, Group by's File type groups, and File Overview. Documentation leads, ahead of
-# Code, as the user asked (2026-11-15); the rest keep the registry's order. This is
+# Code; the rest keep the registry's order. This is
 # presentation, kept apart from the registry on purpose: a group's `order` is part of the File
 # Rollup Format's recommended definitions, which its fingerprint covers and its rollups and
 # conformance fixtures follow ("The recommended order is Code, Documentation, ...",

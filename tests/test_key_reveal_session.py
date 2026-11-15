@@ -244,7 +244,12 @@ def test_the_session_runs_on_the_recording() -> None:
     assert ["2", "Modified within"] in files["badges"]
     assert ["3", "File type"] in files["badges"]
     assert files["numbers"] == ["Group by", "Modified within", "File type"]
-    opened = by_name["3 opens the file type filter and focuses its checked row"]
+    opened = by_name[
+        "3 opens the closed drawer and the file type filter, and focuses its checked row"
+    ]
+    # The drawer's filters keep their numbers while it is closed; a number opens it.
+    assert opened["drawerBefore"] is False
+    assert opened["drawerAfter"] is True
     assert opened["focus"] == {
         "menu": "filter-type-menu",
         "row": "Any type",

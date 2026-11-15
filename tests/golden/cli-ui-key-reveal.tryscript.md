@@ -78,7 +78,7 @@ $ node tests/dom/key-reveal-session.js
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"]
     },
     {
-      "step": "3 opens the file type filter and focuses its checked row",
+      "step": "3 opens the closed drawer and the file type filter, and focuses its checked row",
       "reveal": "idle",
       "rootMarked": false,
       "keys": [
@@ -96,10 +96,12 @@ $ node tests/dom/key-reveal-session.js
         "items": ["? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","quick-file","help"],
+      "drawerBefore": false,
       "pressed": {
         "key": "3",
         "handled": true
       },
+      "drawerAfter": true,
       "focus": {
         "menu": "filter-type-menu",
         "row": "Any type",

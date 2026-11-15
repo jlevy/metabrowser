@@ -66,6 +66,7 @@ const LIFTED = [
   "treeNodeDisplayName",
   "filesPanelUsesRecentSource",
   "filterGroupOptions",
+  "filterKeySlotsHtml",
   "startIndexProgressPolling",
   "startInventoryEventStream",
   "renderNavFilterBar",

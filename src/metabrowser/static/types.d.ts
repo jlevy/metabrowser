@@ -894,11 +894,11 @@ type MetabrowserFilterSnapshot = {
 };
 
 type MetabrowserTreeSection = {
-  files: number;
+  files: number | null;
   id: string;
   key: string;
   label: string;
-  size: number;
+  size: number | null;
   tree: Array<Record<string, unknown>>;
 };
 
@@ -1588,6 +1588,30 @@ type MetabrowserRecentContinuity = {
 type MetabrowserTreeFilterModel = {
   GROUP_BY_VALUES: ReadonlyArray<string>;
   ageGroupFor(ageSeconds: number, windows: Record<string, number | null>): string;
+  createGroupsPrefetch(deps: {
+    now(): number;
+    start(url: string): { abort(): void; answer: Promise<unknown> };
+    ttlMs: number;
+  }): {
+    clear(): void;
+    prefetch(urls: Array<string>): void;
+    size(): number;
+    take(url: string): Promise<unknown> | null;
+  };
+  graftOpenedFolders(
+    nodes: Array<Record<string, unknown>>,
+    opened: Array<string>,
+    cached: (path: string) => Array<Record<string, unknown>> | null | undefined,
+  ): { expanded: Array<string>; fetch: Array<string>; tree: Array<Record<string, unknown>> };
+  likelySectionKey(
+    by: string,
+    entry: { ext?: string; mtime?: number; name: string; type: string } | null,
+    nowSec: number,
+    windows: Record<string, number | null>,
+    groupForFile: (name: string, ext: string) => string | null | undefined,
+  ): string | null;
+  revealSectionOrder(sectionKeys: Array<string>, likelyKey: string | null): Array<string>;
+  sectionRowBudget(budget: number, sectionCount: number): number;
   groupBy(state: MetabrowserFilterSnapshot | null): string;
   groupSections(payload: unknown): Array<MetabrowserTreeSection>;
   groupTreeUrl(
@@ -3225,6 +3249,8 @@ declare global {
     flushPull(): void;
     /** The Files panel came to the front: what waited while it was hidden may run. */
     filesShown(): void;
+    /** The Files panel left the front, its toolbar with it. */
+    filesHidden(): void;
     /** Focus the Files tree's roving row: the Files panel's `focusRow`. */
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;

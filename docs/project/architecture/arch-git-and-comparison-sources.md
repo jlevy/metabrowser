@@ -395,6 +395,13 @@ rows, `tally_cache_status`, and `summary` come from the recursive blob index; ig
 counts are 0 because ignore is absent.
 `include_ignored=0` is a no-op rather than `unsupported_for_subject`. The SPA hides
 Modified within because recency still has no honest mtime.
+Group by works on a pin by file type: `group_by=type` answers each display group’s tree
+from the same blob index, a symlink blob grouped by its name as a file is, and
+`group=type:<id>` lists one group’s tree.
+A group’s `size` is null when its blob sizes are incomplete, and its `files` too when
+the index is truncated.
+`group_by=age` and `group=age:…` answer `unsupported_for_subject` (HTTP 409), as recency
+does, and the SPA offers no Age.
 Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
 keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
 dirs are omitted. A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind`
