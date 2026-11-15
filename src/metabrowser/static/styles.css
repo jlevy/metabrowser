@@ -258,11 +258,12 @@
      bridged onto --kpress-measure at the .kpress scope further down. */
   --kpress-print-page-margin: 0.65in;
   --kpress-print-font-size: 11pt;
-  /* Sans face for the "sans" reading mode. Points at the interface sans
-     palette (--app-sans-clean, repointed to system under [data-app-font=
-     "system"]) rather than var(--font-sans): KPress redeclares --font-sans
-     inside its own `.kpress` scope, so a reference would resolve to KPress's
-     scoped Source Sans at the document, not the host token. --app-sans-* are
+  /* Sans face for chrome prose (.chrome-prose below) and the "sans" reading
+     mode. Points at the interface sans palette (--app-sans-clean, repointed
+     to system under [data-app-font="system"]) rather than var(--font-sans):
+     KPress redeclares --font-sans inside its own `.kpress` scope, so a
+     reference would resolve to KPress's scoped Source Sans at the document,
+     not the host token. --app-sans-* are
      host-only and never redeclared by KPress, so they resolve correctly when
      bridged into the embedded scope. */
   --prose-sans-font: var(--app-sans-clean);
@@ -2638,6 +2639,17 @@ html[data-prose-font="sans"] {
      105" honest across both reading modes instead of only the default one. */
   --doc-char-advance: var(--sans-char-advance);
 }
+/* Chrome prose (docs/design-system.md, "Serif Is for Documents"). The element that
+   holds such a text carries this class, and nothing else sets a face for one: its plain
+   text reads `font-family` here, and KPress Markdown inside it reads the prose hook,
+   which KPress resolves on its own `.kpress` element. It goes on the text, never on a
+   page or pane, so a document shown inside a page (a Markdown file in a pull request's
+   Changes) keeps the reading font. The reading width does not change with it: a message
+   shares a document's resolved width under either face. */
+.chrome-prose {
+  font-family: var(--prose-sans-font);
+  --kpress-host-font-prose: var(--prose-sans-font);
+}
 /* The frame: KPress's `.kpress-frame`, a non-scrolling wrapper of the scroll
    pane (server.py). Its transform makes it the containing block for KPress's
    `position: fixed` floating UI (TOC drawer, toggle, and backdrop, tooltips,
@@ -4697,7 +4709,15 @@ pre.code-block.metabrowser-source-lines > code {
    `md-body` without KPress (the convention plugin_loader/manifest.py
    documents). It reads --doc-measure like every other prose surface, so the
    "Max text width" setting governs a plugin's markdown view too rather than
-   only the built-in one. */
+   only the built-in one.
+
+   The same elements are a document's text, so they, and not the view, take the
+   reading font (docs/design-system.md, "Serif Is for Documents"): the view keeps the
+   chrome face for what the host or the plugin draws in it, such as the host's
+   "Could not display this view", as KPress keeps .kpress sans and .kpress-prose in
+   the reading font. The face reads the prose hook first, so it follows .chrome-prose
+   around Markdown set this way, and then KPress's --kpress-font-prose, which KPress's
+   style tokens declare on :root from the hook set there. */
 .md-body:not(.metabrowser-kpress-host) h1,
 .md-body:not(.metabrowser-kpress-host) h2,
 .md-body:not(.metabrowser-kpress-host) h3,
@@ -4709,6 +4729,7 @@ pre.code-block.metabrowser-source-lines > code {
 .md-body:not(.metabrowser-kpress-host) ol,
 .md-body:not(.metabrowser-kpress-host) blockquote {
   max-width: var(--doc-measure);
+  font-family: var(--kpress-host-font-prose, var(--kpress-font-prose));
 }
 /* The markdown plugin's container carries md-body (for prose-styling
    compatibility) alongside metabrowser-kpress-host, so these legacy chrome
@@ -6334,7 +6355,6 @@ pre.code-block.metabrowser-source-lines > code {
   white-space: pre-wrap;
   overflow-wrap: break-word;
   overflow-x: auto;
-  font-family: var(--prose-sans-font);
   font-size: var(--document-body-font-size);
   font-weight: var(--weight-normal);
   line-height: var(--kpress-line-height-normal);

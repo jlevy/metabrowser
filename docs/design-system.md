@@ -163,26 +163,51 @@ classified.
 
 ### Serif Is for Documents
 
-Serif is reserved for a committed document rendered as one, such as a Markdown file or a
-README on Overview, and only when the reader’s reading font is serif.
-Everything else is sans in either reading font: chrome, and the messages written about
-the content, such as a pull request’s description, comments, and reviews, a commit
-message, and a notice.
-The dividing line is again what the text is.
-A document is what the repository holds, and the reading font exists for reading it at
-length. A message is conversation about the content, and setting it in the document’s
-face makes the two read as one thing.
+Rendered text is one of two things, and the dividing line is again what the text is:
+
+- **A document** is what the repository holds, rendered as one: a Markdown file in its
+  Document view, a README on Overview, a note it transcludes, a Markdown file among a
+  pull request’s Changes or opened from a pull request or a commit, a pull request’s
+  revision page, and a plugin’s Markdown view.
+  It reads in the reader’s reading font: serif by default, and sans when the reader
+  chooses Sans.
+
+- **Chrome prose** is text the app shows about the content: a pull request’s
+  description, comments, and reviews, a commit message, and any other message or
+  Markdown in the app’s own interface.
+  It is sans in either reading font, as the rest of the chrome is.
+
+The reading font exists for reading a document at length.
+A message is conversation about the content, and setting it in the document’s face makes
+the two read as one thing.
+Inside a document, the faces of KPress’s own roles, such as footnotes, tables, small
+headings, and code, are KPress’s typography and do not change with either rule.
 
 A message reads at the document’s size in `--prose-sans-font`. PR descriptions,
 comments, and reviews share the rendered README’s resolved reading width, including when
 the reading font is serif.
 See [Reading Width](#reading-width).
 
-The serif face reaches a page only through KPress’s `--kpress-host-font-prose` hook,
-which `static/styles.css` points at the reading font.
-The pull request page points that hook at `--prose-sans-font` on `.github-pull`. Its
-KPress prose and reading column both inherit `--doc-measure`.
-`test_serif_is_only_for_documents` holds this.
+Each context has one mechanism, and no other rule sets a face by context:
+
+- **A document takes the reading font from `<html>`.** The pre-paint script and the
+  settings menu set `data-prose-font` there, and `static/styles.css` points KPress’s
+  `--kpress-host-font-prose` hook at the reading face.
+  A plugin’s `md-body` view sets the same face on its text, its headings, paragraphs,
+  lists, and quotes, and not on the view, so what the host or the plugin draws in the
+  view keeps the chrome face, as KPress keeps `.kpress` sans around `.kpress-prose`.
+  Nothing between `<html>` and a document sets a face, so a document keeps the reading
+  font inside any page that shows it.
+
+- **Chrome prose carries `.chrome-prose`** on the element that holds the text, never on
+  a page or a pane. The class sets the text’s own face and points KPress’s prose hook at
+  `--prose-sans-font`, so a KPress article inside it is sans too, and so is `md-body`
+  Markdown, whose text reads the hook before KPress’s token.
+  A plugin that shows a message puts the class on the message’s element.
+
+`test_serif_is_only_for_documents` holds which rules may set a face and which builders
+mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, in
+Chrome, under both reading fonts and both font sets.
 
 ### Keyboard Keys
 
@@ -981,9 +1006,9 @@ Among the row’s text the revision is the one deliberate exception: it is monos
 mono at body size renders optically larger than the sans text beside it, so it uses
 `--nav-font-size` — one step down the ramp — to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
-smaller type. The optional full-summary description uses the same sans prose as a PR
-description: `--prose-sans-font`, `--document-body-font-size`, and
-`--kpress-line-height-normal`. It preserves authored newlines and wraps long text.
+smaller type. The optional full-summary description is chrome prose, as a PR description
+is (`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`.
+It preserves authored newlines and wraps long text.
 Commit descriptions and PR discussion cards share `.page-card`: the normal page
 background, text ink, border, and chrome radius.
 Each content type owns its inner padding; code blocks and diffs keep their source

@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Markdown file in a pull request’s Changes now reads in your reading font, serif
+  unless you chose Sans, as the same file does in its Document view.
+  It was always sans, because the rule that keeps the pull request’s description,
+  comments, and reviews sans covered the whole page.
+  Those messages stay sans under either reading font, as a commit message does.
+  The Markdown text of a plugin’s view that renders into `md-body` without KPress also
+  reads in the reading font now; it was always sans, and the rest of such a view stays
+  sans. Plugin authors: put the new `chrome-prose` class on the element that holds a
+  message, plain or Markdown, and never on a page.
+  See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
+
 - A Markdown document’s title sits at the top of its card again, and an Obsidian link to
   a heading scrolls that heading to the top of the view.
   The anchors an Obsidian link such as `[[Note#Heading]]` or `[[Note#A#B]]` lands on

@@ -8,7 +8,6 @@
   --github-pull-gap: 12px;
   /* The column includes the pane gutter on each side. */
   --page-reading-gutter: var(--content-padding-x);
-  --kpress-host-font-prose: var(--prose-sans-font);
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -344,9 +343,9 @@
 .github-pull-text {
   padding: var(--content-padding-y) var(--github-pull-text-inset);
 }
-/* A text before its Markdown arrives, in the type it is about to have. */
+/* A text before its Markdown arrives, in the type it is about to have. Its face is the
+   text's `.chrome-prose` (static/styles.css). */
 .github-pull-plain {
-  font-family: var(--prose-sans-font);
   font-size: var(--document-body-font-size);
   line-height: var(--kpress-line-height-normal);
   white-space: pre-wrap;

@@ -399,7 +399,7 @@
     html += renderCommitChangeStats(stats);
     html += "</div>";
     if (!compact && detail.body) {
-      html += `<pre class="git-commit-body page-card">${escapeHtml(detail.body)}</pre>`;
+      html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
     }
     html += "</section>";
     return html;
