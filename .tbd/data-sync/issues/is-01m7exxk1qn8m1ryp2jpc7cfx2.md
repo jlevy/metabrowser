@@ -5,7 +5,7 @@ title: "Rendered Markdown diff: the unchanged-blocks fold has a border; expand i
 kind: bug
 status: in_progress
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:22:08.437Z
-updated_at: 2026-11-15T08:54:49.763Z
+updated_at: 2026-11-15T09:51:50.225Z
 started_at: 2026-11-15T06:23:09.404Z
 ---
 The user's request (2026-11-15), verbatim: "in the rendered document diff view, the "2 unchanged blocks" toggle should not have borders around it. it should just expand in place in the rendered doc"
@@ -33,6 +33,8 @@ Done when:
 Ships in the combined PR with mb-s6vu, mb-1wfn and mb-sogv.
 
 ## Notes
+
+Carried PR 2 up (2026-11-15): 4327fa6fc merges origin/claude/menu-groups-height at c706a029f (with #444's fixes, bd987447) into claude/diff-fold-inline, no-ff, with no conflicts. 9fc7391f8 registers tests/test_diff_markdown_fold_chrome.py in tests/test_process_group.py (CHROME_TESTS and the docstring) and in docs/e2e-testing.md's list of Chrome checks. Locally, check_parity, format, lint-check, and 78 focused tests (the fold Chrome test, diff markdown session, diff browser JS, design vocabulary, and the Chrome lifecycle check) passed. Pushed with --no-verify; CI run 43699503711 on head 9fc7391f8 passed all nine checks.
 
 Review A (https://github.com/jlevy/metabrowser/pull/447#pullrequestreview-5909858397, approve with changes: A1 Medium, A2-A6 Low) addressed in 2a230fea5, pushed with --no-verify. Dispositions: https://github.com/jlevy/metabrowser/pull/447#issuecomment-6891775378. A1: the summary's label hovers to --text (it had no hover state); the Chrome session hovers with a real mouseMoved and the check fails without the rule (muted oklch(0.561 0.016 244.4) against text oklch(0.216 0 89.9)). A2: load-order wording fixed in the CSS comment, the parity row and the harness. A3: unrounded rects, 1/64 px tolerance. A4: Fold Expanders in docs/design-system.md records this fold as the exception. A5: the fold inherits color, font-family and font-feature-settings; face() reads feature settings, variant and letter spacing. A6: CHANGELOG reworded. The upstream KPress idea is filed as mb-gc3c (P3, epic mb-eevh). Locally, format, lint-check and the focused tests (68) passed; CI run 43695240628 on 2a230fea5 passed all 9 jobs.
 
