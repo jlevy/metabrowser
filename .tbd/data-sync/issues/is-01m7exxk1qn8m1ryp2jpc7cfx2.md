@@ -5,7 +5,7 @@ title: "Rendered Markdown diff: the unchanged-blocks fold has a border; expand i
 kind: bug
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:22:08.437Z
-updated_at: 2026-11-15T06:42:05.193Z
+updated_at: 2026-11-15T08:16:07.739Z
 started_at: 2026-11-15T06:23:09.404Z
 ---
 The user's request (2026-11-15), verbatim: "in the rendered document diff view, the "2 unchanged blocks" toggle should not have borders around it. it should just expand in place in the rendered doc"
@@ -34,7 +34,7 @@ Ships in the combined PR with mb-s6vu, mb-1wfn and mb-sogv.
 
 ## Notes
 
-Done on branch claude/diff-fold-inline, commit f5536bea1 (local; not pushed; PR 3 of the stack). Bead left open for the coordinator.
+PR #447 (draft), branch claude/diff-fold-inline, head f90db64f8: PR 3 of native stack #446 (#444, #445, #447), based on claude/menu-groups-height (#445). Rebased from local commit f5536bea1 onto origin/claude/menu-groups-height; the one conflict, in CHANGELOG, was resolved keeping both sides. After the rebase, format, lint-check, and the focused tests passed (68). Pushed with --no-verify; CI run 43692047716 passed all 9 jobs (lint, distribution, stack-integration, admitted-git 2.43.7 and 2.50.1, test 3.12, 3.13, 3.14, 3.14t), and test (3.14) ran test_diff_markdown_fold_chrome. Not merged, not marked ready. Bead left open for the coordinator.
 
 Cause (measured in headless Chrome): the fold is a <details> inside article.kpress, so KPress's document.css styles it as a disclosure box: `.kpress details` gives a 1px border and 12px (0.75rem) block margins; `.kpress details[open] summary` adds a 1px border-bottom when open. The shell's `.metabrowser-kpress-host .kpress details > summary` rules do not apply (the diff host has no such ancestor). Block rows also carry `.diff-markdown-context`, so the fix selects `details.diff-markdown-context`.
 
