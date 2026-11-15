@@ -1,16 +1,14 @@
 # Using the Metabrowser Command Line
 
-Metabrowser is a local file browser, and `metab` is the same program without the
-browser. Every mode below runs the same server code the browser talks to, so what a mode
-reports is what the browser would have drawn.
-
-**`metab --help` is the reference.** It ships with the program, so it is authoritative
-for the flags and arguments of the build you actually have, and it is what an agent or a
-script should consult.
-This page is the other half: what each mode is *for*, worked examples, and why the data
-modes exist. Where the two disagree, believe `--help`.
-
+`metab` serves a folder, a file, or a repository to your browser, and its data modes
+answer the same questions without one.
+`--api`, `--show`, and `--check-api` run the server the browser talks to in process, and
+`--walk` and `--diff` print the data the browser draws, so what a mode reports is what
+the browser would show.
 `metab` and `metabrowser` are the same command.
+
+`metab --help` lists every option of the build you have, with its defaults.
+This guide says what each mode and option is for.
 
 ## The Shape of a Command
 
@@ -18,356 +16,127 @@ modes exist. Where the two disagree, believe `--help`.
 metab ROOT [MODE] [OPTIONS]
 ```
 
-`ROOT` is the directory to serve, or a single file to open directly.
+`ROOT` is a directory to serve, a file to open, or a Git source.
+With no mode flag, `metab ROOT` serves `ROOT` and opens your browser, the way `open`
+opens a folder on macOS. `metab` with no arguments prints its help.
+
+Exactly one mode runs per invocation: two mode flags are an error, and so is an option
+the chosen mode does not use, so no flag is accepted and then ignored.
+The option tables of `metab --help` name the modes each option applies to.
+
+### What ROOT Names
+
 A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) or a GitHub web URL
 is a Git source, not a local path.
-`https://` and `file://` sources are acquired with `--no-serve`, and also as a side
-effect of serving them, `--show`, `--api`, or `--check-api`; ssh stays closed.
-`metab <source>` serves the commit its URL selects, or its default branch’s, pinned;
-`--show`, `--api`, and `--check-api` inspect that pin in-process without binding a port.
-Acquired content always runs under the untrusted profile.
-A bare filesystem path is never treated as a clone origin.
-
-Two rules decide between the readings, in this order:
+`https://` and `file://` sources are cloned into the cache and served or inspected at
+the commit their URL selects; `ssh` sources are refused.
+Two rules decide between a path and a source, in this order:
 
 1. An argument that starts with `scheme://` is always a source, whatever exists on disk.
-   No path needs that spelling — the system reads `https://host/x` as the path
-   `https:/host/x` — so a pasted URL opens the same thing in every working directory,
-   and a local folder cannot stand in, under the local trust profile, for the repository
-   a URL names. Write the path with one slash, or as `./https://host/x`, to serve such a
-   folder.
+   No path is written that way, so a pasted URL opens the same thing in every working
+   directory. To serve a folder with such a name, write `./https://host/x`.
 2. Any other argument that names an existing path is that path.
-   A folder called `file:notes`, `a::b`, `me@host:dir`, or `https:x` is served, a file
-   is opened, and a symbolic link is followed, as for any other name.
-   Only an argument that names nothing on disk is read as an scp-like address or refused
-   as a malformed URL or remote-helper syntax.
-   This covers an scp-like address: `git@github.com:o/r` names the folder `r` inside
-   `git@github.com:o` when the working directory has one, and the GitHub repository only
-   when it does not. Write `https://github.com/o/r` to open the repository whatever the
-   directory holds.
+   A folder called `file:notes` or `me@host:dir` is served, and a symbolic link is
+   followed. Only an argument that names nothing on disk is read as an scp-like address,
+   such as `git@github.com:owner/repo`, or refused as malformed.
 
-A path that exists but that the process may not read is a usage error
-(`Path 'x' is not readable.`, exit status 2), not a tree that serves as empty.
-An empty argument is refused as `invalid ROOT (empty)`; write `.` for the current
-directory.
+A path that exists but cannot be read is a usage error.
+An empty argument is refused; write `.` for the current directory.
 
-With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
-opens a folder on macOS.
+### Exit Status
 
-Mode flags are mutually exclusive: exactly one operation runs per invocation, and
-passing two is an error rather than a silent preference.
-Options that do not apply to the chosen mode are rejected the same way, so a flag never
-looks accepted while being ignored.
+| Status | Meaning |
+| --- | --- |
+| 0 | Success |
+| 1 | A refusal or failure, printed as one `Error:` line on stderr; `--api` when the route answers outside 2xx |
+| 2 | A usage error, such as two modes or an option the mode does not use; a `--diff` that cannot be computed |
+| 129, 130 | Stopped by a terminal hangup or Ctrl-C |
+| 143 | Stopped by `SIGTERM` while cloning |
 
 ## Modes
 
 | Mode | What it does |
 | --- | --- |
 | *(none)* | Serve `ROOT` and open a browser |
-| `--api ROUTE` | Issue one `/api/` route and print the envelope |
-| `--show PATH` | Report route, kind, views, and model for one selection |
-| `--walk` | Dump the inventory walker’s result |
-| `--diff SPEC` | Show a change set between two snapshots |
-| `--check-api` | Run the navigation scenario as a pass/fail check |
-| `--no-serve` | Acquire a `file://` or `https://` Git source into the cache without starting a server |
-| `--remote HOST` | Serve a remote directory over an SSH tunnel |
-| `--plugins`, `--plugin NAME`, `--doctor` | Inspect installed plugins |
+| `--api ROUTE` | Issue one `/api/` route and print the answer |
+| `--show PATH` | Report the route, kind, views, and model for one selection |
+| `--walk` | Print the file inventory of `ROOT` |
+| `--diff SPEC` | Print a change set between two revisions, or a patch file |
+| `--check-api` | Run the navigation scenario as a pass or fail check |
+| `--no-serve` | Clone or reuse a Git source in the cache, and serve nothing |
+| `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
+| `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
 
-Most modes are read-only.
-`--no-serve` writes a cache entry for a Git source.
-`--api` writes only when the route it names writes, which today means
-`/api/kpress/export` and, in the cache, the refresh routes.
+The modes read, with two exceptions: a Git source is cloned into the cache by whichever
+mode opens it first, and `--api` writes when the route it names does, as a refresh
+writes to the cache and `/api/kpress/export` writes a file under `ROOT`.
 
 ## Serving
 
 ```shell
-# Browse a directory, or open one file directly.
-metab ./notes
-metab ./notes/report.md
-
-# Select a file relative to the served root.
-metab ./notes --path documents/report.pdf
-
-# Start without opening a browser window.
-metab ./notes --no-open
+metab ./notes                              # browse a directory
+metab ./notes/report.md                    # open one file
+metab ./notes --path documents/report.pdf  # open at a path under ROOT
+metab ./notes --no-open                    # serve, and leave the browser closed
 ```
 
-The server binds `127.0.0.1:8411` by default and walks a bounded port range if that port
-is taken.
-Do not change `--host` to expose a served root to an untrusted network; see the
-[security policy](../SECURITY.md).
-`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it turns
-active content off and keeps mutations off.
-`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for active
-content. With it off, Markdown renders as an allowlist of inert markup, the page carries
-a strict Content-Security-Policy, and `/raw` omits `allow-scripts` from its sandbox; the
-[security policy](../SECURITY.md) has the details.
-`--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes the mutations capability; no write
-route consumes it yet.
-A flag beats the environment, so `--untrusted` stays conservative whatever the `METAB_*`
-variables say and only `--untrusted --allow-edits` lifts it.
-Those variables are read from the process environment only: a `.env` or `.env.local`
-file contributes only `METABROWSER_LOG_LEVEL` and `METABROWSER_REQUEST_LOG`, and every
-other name — the rendering budgets, `METABROWSER_PLUGINS_DIRS`,
-`METABROWSER_GCP_PROJECT`, `HOME` — must be exported.
-Metabrowser warns when it ignores one of its own.
-See [SECURITY.md](../SECURITY.md) for why the list runs that way.
-These flags also apply to `--api`, `--show`, and `--check-api`.
+The server prints `Serving <ROOT> at <address>` and the loaded plugins, then serves
+until Ctrl-C.
 
-### Stopping when the parent exits
+- **`--port`:** the first port to try.
+  When it is taken, the server tries the next ones, up to `DEFAULT_PORT_SEARCH_COUNT` in
+  `src/metabrowser/server_utils.py`, and prints the one it took.
+- **`--host`:** the address to bind, the loopback address by default.
+  Do not bind a served folder to an untrusted network; see the
+  [security policy](../SECURITY.md).
+  The bound name is allowed by the server’s Host-header check, and
+  `METABROWSER_ALLOWED_HOSTS` adds others.
+- **Content trust:** `--untrusted`, `--no-active-content`, and `--allow-edits` set how
+  far served content is trusted; see [Content Trust](#content-trust).
+- **`--plugins-dir DIR`:** load the plugins in `DIR` too; see [plugins](plugins.md).
+- **`--log-level LEVEL`:** log verbosity; `DEBUG` also traces the inventory walker.
+
+### Stopping When the Parent Exits
 
 ```shell
-# Serve until stdin closes: in a terminal, until Ctrl-D.
-metab ./notes --no-open --exit-on-eof
+metab ./notes --no-open --exit-on-eof   # serve until stdin closes: Ctrl-D in a terminal
 ```
 
-`--exit-on-eof` stops the server when its stdin closes.
-It is for a program that starts `metab` and holds its stdin open, as the macOS app does:
-however that program ends, by quitting or by crashing, the kernel closes the pipe, and
-the server stops by itself.
-Whatever arrives on stdin before it closes is read and dropped.
-Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
-it, a stdin that is not open at all is refused before serving.
+`--exit-on-eof` stops the server when its stdin closes, and anything written to stdin is
+discarded. It is for a program that starts `metab` and holds its stdin open, as the
+[macOS app](macos-app.md) does: however that program ends, even by crashing, the pipe
+closes and the server stops itself.
+The server prints `Stopping Metabrowser: stdin closed.` and exits with status 0, and it
+stops the Git and `gh` processes it started.
+Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual.
+[The CLI architecture](project/architecture/arch-cli.md) describes how the stop works
+and what it covers.
 
-The watch begins as soon as the command line is read, before the server reads ROOT,
-dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
-startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
-A stdin that is closed from the start therefore stops the server, possibly before it
-prints its address: the watch and startup run side by side, so either can come first.
-Python’s start, the import of `metab` itself, and the reading of its command line come
-before the watch: a stdin that closes during them is seen as soon as they end, and a
-hang there, such as a disk that stops answering while `metab` loads, is not covered.
-A stdin that closes while startup is failing ends the process either way, with the
-failure’s status or with 0.
-
-The stop is the same as one Ctrl-C’s: stderr says `Stopping Metabrowser: stdin closed.`,
-the Git that acquires or refreshes a source (a clone, a fetch, and the commands around
-them) and any `gh` are killed, and the process exits at once, with status 0. Those run
-in process groups of their own, which would outlive the server, and a fetch holds its
-store’s lock, so each group is killed with every helper in it, and no new one is
-started. The stop finds them in the system’s list of the server’s child processes, so it
-kills one whose start has not finished too, and it does not wait on the server’s event
-loop, even when that loop is stuck.
-It waits only for a start under way on another thread, at most `SPAWN_WAIT_S` (in
-`metabrowser/git/process.py`), and then looks at the server’s children once more.
-Each look takes a few system calls per child; on a Linux kernel without per-thread child
-lists, it reads every process’s `/proc` entry.
-Three things escape it: a child that has not yet begun running Git when that wait ends;
-with Ctrl-C or a hangup, a child the interrupted thread had forked and that had not yet
-begun running Git, since that thread gets no wait at all; and the helpers of a Git whose
-start failed, which Python’s asyncio kills alone.
-On systems other than macOS and Linux, which cannot list a process’s children this way,
-a start under way is not covered.
-Each child is confirmed to be the server’s own, not yet reaped, just before it is
-signalled; in the microsecond or so between the two, another thread could reap it, and
-the signal would reach someone else only if the system had meanwhile given its ID to a
-new process that already leads a group of its own, which takes far longer to happen.
-`_unreaped_child` in `metabrowser/git/process.py` records the measurements.
-Other Git, which only reads, runs in the server’s own process group and is not
-signalled; it holds no lock, and it ends when it next writes to, or reads from, the
-server that is gone.
-A stderr too full to take the notice at once, because nothing is reading it, gets no
-notice, and the stop goes on without it; so does one Ctrl-C’s.
-
-### Serving a Git source
+### Serving a Git Source
 
 ```shell
 metab file:///path/to/origin.git
-metab file:///path/to/origin.git --path docs/guide.md --no-open
+metab https://github.com/owner/repo --path docs/guide.md --no-open
 ```
 
-Serving a `file://` source acquires it, or reuses the cached store, and serves the
-commit its default branch names in the store: the commit it named at the last fetch.
-The banner prints the source and a `Revision:` line with the full commit and the branch;
-the navigation heading shows the repository’s name, then the branch and short commit,
-and hovering it shows the full commit and where the mirror is kept; see
-[What a mirror’s page is called](#what-a-mirrors-page-is-called).
-`--path` takes a path within that commit, spelled as `--show` accepts it (`docs`,
-`docs/`, `./docs`, or a `GitPath` wire), and the banner prints a directory’s address
-with a trailing slash.
-If the pin cannot be opened again when the server starts, the command prints the same
-error as `--show` and exits 1. Every page reads from the store, so the origin can be
-gone and the pinned revision still serves.
-Before the banner, stderr says whether the source was cloned just now or found in the
-cache; see [What a clone prints](#what-a-clone-prints).
+A Git source is cloned once into the cache as a **mirror**, a bare repository with no
+working tree, and later runs reuse it.
+The server pins one commit, the default branch’s unless the URL selects another, and its
+banner prints a `Revision:` line with the commit and the branch.
+`--path` names a file or folder within that commit.
+Every page reads from the mirror, so the pinned commit stays readable when the origin is
+gone or offline.
 
-The store is a mirror that refreshes in the background.
-When the server starts on a mirror last fetched more than a minute ago it runs one
-`git fetch` from the origin, and a page asks for one when it opens or becomes visible on
-a stale mirror; nothing a page shows waits for either.
-The foot of the navigation pane says when the mirror was last fetched; click it to
-refresh now. A refresh never moves the page under a reader: when it moves the pinned
-branch, the row offers the commit the branch now names, and **Switch** serves that
-commit and reloads the view.
-To serve another branch or tag, open the button under the navigation header that names
-the served ref. It lists the mirror’s branches, the default first, or its tags, newest
-first, and the filter box narrows either list by name; the list reads the mirror alone,
-so it shows what the last fetch brought.
-Choosing one serves it and reloads the view on the same file or folder when the new
-revision has it, or at the root when it does not.
-A switch lasts until the server stops; the next `metab file://…` serves the default
-branch again, as its banner says.
-A branch or tag deleted upstream leaves the mirror, but no commit does, so an older pin
-stays readable after a force-push.
-If the origin is gone the row says the refresh failed and the pin keeps serving.
-A `/commit/<id>` address for a commit the mirror does not have is fetched for only when
-the mirror is older than the one-minute freshness window: the page says it is fetching,
-then opens the commit, says the commit was not found when the fetch ran without bringing
-it, or says it was not fetched, with the reason, when the fetch could not run.
-On a mirror fetched inside the window nothing is fetched, because a link in a served
-page can lead to any such address; the page says the commit is not in the mirror as
-fetched. Either way **Retry** fetches.
+A pinned source always runs under the untrusted profile: `--untrusted` is implied, the
+`METAB_*` enables are ignored, `--allow-edits` is an error, and HTML files show only
+their source.
 
-A served pin always runs under the untrusted profile: `--untrusted` is implied, the
-`METAB_*` enables are ignored, and `--allow-edits` is an error.
-HTML files offer only their source.
-`/api/cache/…` answers `unsupported_for_subject` on a served pin, so nothing about other
-cached sources is served beside it; inspect the cache with
-`metab <url> --api /api/cache/…` instead.
-
-`/api/source/status` reports the pinned commit and ref and the mirror’s freshness.
-`POST /api/source/refresh` starts a refresh, or joins the running one, and answers at
-once.
-With the body `{"for": "commit"}` it is the fetch a missing commit waits for, which
-starts a fetch of the mirror only outside the freshness window and otherwise answers
-`fresh`; adding `"retry": true` always fetches.
-Its answer’s `pull_refresh` says how the attended pull request’s refresh was answered,
-`too_many` when the queue had no room for it, or null when none was asked for.
-`POST /api/source/pin` switches the served commit to a branch, a tag, or a commit ID in
-the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`. In a
-server, one the mirror lacks answers `202` with `selection_pending` and fetches once;
-asked again after that fetch, it switches or answers `404`. `--api` never fetches for it
-and answers `404` at once.
-A pin request may also name the page’s address, as in
-`{"ref": "feature", "view": "/view/…"}`; the answer’s `view_href` is then that address
-when the new revision has the entry, or `/view/` when it does not.
-The address is checked before anything switches: it must be percent-encoded ASCII, as a
-page’s own pathname is, and a query or fragment is dropped.
-`/api/source/refs?kind=branch` (or `kind=tag`) lists what the selector offers, with `q`
-for a case-insensitive name fragment and `limit` for the page size (default 100, at most
-1000); `total` and `truncated` say how many matched.
-Each is a POST with a JSON body behind the same-origin guard, so a link inside a served
-page cannot start one.
-The same routes work in-process:
-
-```shell
-echo '{}' > refresh.json
-echo '{"ref": "feature"}' > pin.json
-metab file:///path/to/origin.git --api /api/source/status
-metab file:///path/to/origin.git --api "/api/source/refs?kind=tag"
-metab file:///path/to/origin.git --api /api/source/refresh --data refresh.json
-metab file:///path/to/origin.git --api /api/source/pin --data pin.json
-```
-
-The refresh command waits for the fetch it asked for, prints the status after it under
-`after:`, and exits 1 when the refresh failed, or when it had not finished within one
-Git deadline, in which case leaving stops it; it exits 0 when the fetch ran, or when
-another process was already refreshing the mirror.
-After URL selection resolves, ordinary reads and cache-only GETs do not fetch or
-implicitly repair Git objects.
-CLI startup can acquire a source and obtain missing PR metadata or required Git head/ref
-data, even when the source store already exists.
-Explicit source and GitHub refresh actions can also fetch in a one-shot command.
-A pin switch through `--api` lasts for that one command, because each command is its own
-server; the next one serves the default branch again.
-
-## Acquiring a Git source: `--no-serve`
-
-`--no-serve` acquires or reuses an `https://` or `file://` source in the repository
-cache under `METABROWSER_CACHE_DIR` (default `~/.cache/metabrowser`) and prints the
-source slug, store identity, and revision without binding a port or opening a browser.
-A healthy published store is reused, including an overlay with its remembered lender.
-On a cache miss, `--checkout` can name a lender; acquisition without a selected lender
-creates a full store.
-Borrowing follows the same checkout admission and missing-object rules as serving.
-SSH transport is not supported.
-
-```shell
-metab file:///path/to/origin.git --no-serve
-metab file:///path/to/origin.git --api /api/cache/layout
-metab file:///path/to/origin.git --show README
-metab file:///path/to/origin.git --api /api/tree
-```
-
-### What a clone prints
-
-A first clone of a large repository runs for minutes, so every mode that clones says on
-stderr where the clone goes, how far it has got, and when it is done:
-
-```text
-cloning https://github.com/owner/repo into ~/.cache/metabrowser
-cloning https://github.com/owner/repo: receiving objects: 45%, 334.0 MiB at 9.5 MiB/s (40 s)
-cloned https://github.com/owner/repo in 104 s (742.0 MiB); starting the server
-```
-
-- The first line names the cache directory of `METABROWSER_CACHE_DIR`, with your home
-  directory as `~`. It is the directory that holds every clone, and the one to measure
-  or move aside.
-- On a terminal the middle line is one status line, redrawn in place: the phase, then
-  Git’s own progress as it arrives, with the elapsed time counting once a second.
-  Anywhere else it is a whole line at most every ten seconds, so a log stays short, and
-  a clone that finishes sooner prints only the first and last lines.
-- The last line gives the time the clone took, the size received unless the repository
-  is too small for Git to report one, and, in serve mode, that the server starts next.
-
-The numbers are read from `git fetch --progress` and printed in Metabrowser’s own words.
-No text Git or the origin wrote reaches the terminal: a line of Git’s output that is not
-exactly a progress record is dropped.
-`--log-level debug` still shows Git’s own message when a clone fails, with every
-character that is not printable written as its escape, such as `\x1b`, and on a line of
-its own after the status line.
-A line that cannot be written at once, to a stopped terminal or a pipe nobody reads, is
-dropped rather than waited for, and a stderr that has been closed does not change the
-exit status.
-
-When the source is already cloned, serve mode and `--no-serve` say so in one line,
-`using the clone of <url> cached in ~/.cache/metabrowser, fetched 3 hours ago`, and
-start no clone. `--show`, `--api`, and `--check-api` print nothing for a cache hit: a
-script runs them many times against one clone, and `/api/source/status` reports the last
-fetch as data.
-
-All of this is stderr, and stdout carries what it carried before.
-
-### What a mirror’s page is called
-
-A page served from a mirror is headed by the repository’s name, as a checkout of it
-would be called: the last segment of the origin’s address without `.git`, so `squares`
-for `https://github.com/jlevy/squares` and for `file:///srv/squares.git`. The ref and
-the short commit follow it, with a control that copies the full commit, and the main
-heading reads `squares / README.md`.
-
-The page also says where the mirror is kept.
-When the pane has room, the main heading ends with a note,
-`mirror in ~/.cache/metabrowser/repository-stores/…`; the tooltip on the name, on the
-note, and on the navigation heading gives the origin, the full commit, and the whole
-path. That directory is a bare Git repository: nothing is checked out, and each page is
-read from a Git object at the pinned commit, so no folder holds these files.
-`git -C <location> log --all` works there.
-
-The same three facts are data in `/api/source/status`, and `--api` prints them as the
-route answered them:
-
-```shell
-metab https://github.com/owner/repo --api /api/source/status
-```
-
-- `name` is the repository’s name.
-  A GitHub repository’s is lowercase, as its canonical address is.
-- `origin` is the address the mirror was cloned from, as you gave it.
-  A `file://` address under your home directory is shown with `~`:
-  `file://~/git/squares.git`.
-- `location` is the mirror’s bare repository, with your home directory as `~` when
-  `METABROWSER_CACHE_DIR` is under it, and absolute when it is not.
-- `borrows` is the checkout the mirror borrows objects from, as
-  [Beside a checkout](#beside-a-checkout) describes, and `null` for a mirror that holds
-  its own.
-- `shallow` is `true` when the mirror’s history stops at a shallow boundary, and `false`
-  otherwise.
-
-`location` is the only place a route’s answer names a path in the cache, and `borrows`,
-beside it, the only one that names a checkout.
-File content, listings, errors, and every other envelope name neither.
-`name`, `origin`, `location`, and `borrows` are `null` for a folder.
+The mirror refreshes from its origin in the background, and a refresh never moves the
+page you are reading; the
+[history guide](browsing-history.md#branches-and-tags-of-a-repository-url) shows how to
+switch branches and take a newer commit.
+[Mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
+covers the refresh cadence, the `/api/source/…` routes, and what a clone prints.
 
 ### GitHub URLs
 
@@ -376,490 +145,179 @@ points:
 
 ```shell
 metab https://github.com/owner/repo
-metab https://github.com/owner/repo --no-serve
-metab 'https://github.com/owner/repo/blob/release/v1/docs/guide.md#L10-L20' --no-serve
+metab 'https://github.com/owner/repo/blob/release/v1/docs/guide.md#L10-L20'
 metab https://github.com/owner/repo/tree/v1.0 --api /api/tree
 metab https://github.com/owner/repo/commit/1a2b3c4 --show README.md
+metab https://github.com/owner/repo/pull/123
 ```
 
-Every spelling of one repository — `.git`, a trailing slash, `www.`, any letter case,
-`git@github.com:owner/repo.git`, and `raw.githubusercontent.com` file URLs — is one
-source, `https://github.com/owner/repo`, and one store.
-A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror decides
-where the ref ends, preferring a branch, then a tag, then a commit ID. Ref names match
-exactly, including letter case, and `HEAD` names the default branch.
-`--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
-`path`, `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor, and `tab` for a pull
-request’s `/files`), and `--show` and `--api` print the same lines on stderr and pin
-that commit. A `/pull/<n>` URL pins the pull request’s head; see
-[Pull requests](#pull-requests).
-Query parameters other than `?plain=1` are dropped.
-Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
-a message that names the shape and offers the repository URL.
+- **One source per repository:** `.git`, a trailing slash, `www.`, any letter case, and
+  `git@github.com:owner/repo.git` all name one source and one mirror.
+- **Refs:** a `/tree/` or `/blob/` URL may name a branch containing `/`; the mirror
+  decides where the ref ends, preferring a branch, then a tag, then a commit ID.
+- **Lines:** a server opens a `#L10-L20` anchor with those lines highlighted.
+- **Selection lines:** `--no-serve` prints what the URL selected (`selection`, `pin`,
+  `path`, `lines`, and `tab`), and `--show` and `--api` print the same lines on stderr.
+- **Ignored:** query parameters other than `?plain=1`.
+- **Refused:** `http://` URLs and other github.com pages, with a message that offers the
+  repository URL.
 
-With no mode flag the source is served, and the browser opens at the file or folder the
-URL names, with a `#L10-L20` anchor kept in the address and those lines highlighted.
-`--no-serve`, `--show`, and `--api` read the mirror as it is: a ref or commit that is
-not in it is reported as `ref_not_found` or `commit_not_found` rather than fetched, and
-a path that is not at the pinned commit is `path_not_found`. Each exits with status 1,
-but the acquisition before it succeeded, so the source stays published.
-A server instead serves the default branch, fetches once in the background, and switches
-to the selection if that fetch brings it, and a page opened meanwhile goes there;
-`/api/source/status` reports `selection_state` as `pending`, then `found` or
-`not_found`, or `fetch_failed` when the fetch could not run, and `superseded` after a
-pin switch. A mirror the same command just cloned is not fetched again, so there the
-selection is `ref_not_found` at once.
-`--api /api/source/refresh --data <file with {}>` is the one-shot command that waits for
-its selection’s fetch.
+A one-shot mode reads the mirror as it is, so a ref, commit, or path it does not hold is
+`ref_not_found`, `commit_not_found`, or `path_not_found`, with exit status 1. A server
+instead serves the default branch, fetches once, and moves to the selection if that
+fetch brings it.
 
-Public repositories are cloned anonymously.
-When `gh` is installed, it is Git’s credential helper for `https://github.com` and for
-nothing else, so a private repository opens once `gh auth login` has signed in an
-account that can read it; Metabrowser never reads or stores a token.
-No other credential source applies: your Git credential helpers are cleared, and Git
-runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installed, a
-first clone is also refused before it starts when GitHub reports the repository over a
-size limit, which the refusal states, set so a slow network still finishes within the
-900-second acquisition deadline.
-On a faster network, export `METABROWSER_MAX_FIRST_CLONE_KB` with a larger number of
-kilobytes to go past it; the deadline still applies.
-[Large repositories](reviewing-pull-requests.md#large-repositories) gives a measured
-cost and what a mirror stores.
-A first clone reports where it goes and how far it has got; see
-[What a clone prints](#what-a-clone-prints).
+Public repositories are cloned anonymously, and a private one opens once `gh` is signed
+in to an account that can read it.
+GitHub-specific failures, private repositories, and large repositories are in
+[reviewing pull requests](reviewing-pull-requests.md#offline-and-cached-reading).
 
-### Pull requests
+### Pull Requests
 
 This is the reference for the commands; for the workflow in a browser, see
-[Reviewing pull requests](reviewing-pull-requests.md).
-
-`metab https://github.com/owner/repo` and `metab ~/src/repo` both offer Pulls.
-A local checkout is identified by its github.com `origin` and readable `HEAD`; linked
-worktrees and served subdirectories work too.
-The local path keeps serving the working folder.
-Opening **Changes** prepares a missing comparison automatically.
-The server reuses a healthy cached store or borrows objects from the checkout.
-If borrowing is refused, it reports the reason and offers a retry; it never falls back
-to a full clone. The checkout stays untouched.
-The URL-based [`--checkout` option](#beside-a-checkout) instead serves a managed pin and
-retains the fallback cases documented below.
-
-The request that opening **Changes** sends is also a one-shot command, where
-`comparison.json` contains `{"number": 123, "retry": true, "comparison": true}`. It
-waits for the preparation and prints the record, with its `comparison_route`, under
-`after:`:
-
-```shell
-metab ~/src/repo --api /api/plugin/github/pull-refresh --data comparison.json
-```
-
-With the optional [gh-stack extension](installation.md#git-and-github-setup), native
-stack membership is shared by the Pulls list and opened PRs.
-Stack metadata is separate from PR details and refreshed as one shared repository
-snapshot, not once per row.
-These routes read the cached snapshot or explicitly refresh it (`stack-refresh.json`
-contains `{}` or `{"retry": true}`):
-
-```shell
-metab https://github.com/owner/repo --api /api/plugin/github/stacks
-metab https://github.com/owner/repo --api /api/plugin/github/stacks-refresh --data stack-refresh.json
-```
-
-The refresh body accepts only an optional boolean `retry`. A known provider rate reset
-still holds a retry.
-Failed optional work retains cached membership and leaves the PR catalog and details
-usable.
-
-A pull-request URL pins the pull request’s head commit and reads its data:
-
-```shell
-metab https://github.com/owner/repo/pull/123 --no-serve
-metab https://github.com/owner/repo/pull/123 --show /pull/123
-metab https://github.com/owner/repo/pull/123 --show /pull/123/files
-metab https://github.com/owner/repo/pull/123 --show README.md
-metab https://github.com/owner/repo/pull/123 --api '/api/plugin/github/pull?number=123'
-metab https://github.com/owner/repo/pull/123 --api '/api/plugin/github/pull-markdown?number=123&part=body'
-```
-
-The first `--show` or `--api` of a pull request reads it with `gh api` (the description,
-conversation, reviews, review comments, check runs, and statuses), fetches its commits
-through GitHub’s `refs/pull/<n>/head`, a fork’s included, and caches the record.
-Later ones answer from that cache without running `gh` or reaching the network, so they
-work offline. `--no-serve` refreshes the record, sending the ETags it holds so an
-unchanged part costs GitHub nothing against the rate limit.
-A one-shot `--api /api/plugin/github/pull-refresh` with
-`--data <file with {"number": 123, "retry": true}>` also refreshes it, waits, prints the
-record under `after:`, and exits 1 when the refresh failed.
-The `pull` and `pull-markdown` routes and the `pull-refresh` body all require the
-number. `"retry": true` is a reader’s own request: without it, a number with no record
-answers `not_cached`, one refreshed inside its window answers `not_due`, and neither
-starts anything.
-
-A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s, and a server
-opens at the top of the repository.
-A `/pull/<n>/files` URL selects the same pull request as `/pull/<n>` and adds
-`tab: files` to the selection lines, and a server opens at `/pull/<n>/files`, as its
-`Serving` line prints.
-A `/pull/<n>/checks` URL selects **Checks** at `/pull/<n>/checks` in the same way.
-The tab says only where a server opens: `--show` and `--api` answer the path or route
-they are given, so `--show /pull/<n>/files` is the way to inspect **Changes** without a
-browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
-Commits tab. Other unsupported pull-request pages and a repository’s `/pulls` list are
-refused. A URL selects one pull request, and `--show` and `--api` answer for any number:
-`--show /pull/<other>` reports what the cache holds of it and fetches nothing, `absent`
-with the reason `not_cached` when that is nothing, and a folder with no GitHub
-repository answers the reason `not_github`.
-
-`--show /pull/<n>` reports the page’s kind and a summary of its record, after the
-selection lines that `--show` and `--api` print on stderr:
-
-```console
-$ metab https://github.com/pallets/click/pull/3866 --show /pull/3866
-selection: pull_request
-pin: b90faad1788bc030bb3320938f07c9189f42d7d0 (pull request 3866 head)
-pull_request: 3866 (merged; fetched 2026-11-02T21:49:31Z by gh:your-login)
-show: /pull/3866
-route: /pull/3866
-kind: pull-request
-views: pull-request (default)
-model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:49:31Z reader=gh:your-login issue_comments=6 reviews=1 review_comments=0 check_runs=11 statuses=1 tab=conversation
-```
-
-`/api/plugin/github/pull?number=<n>` reports the record with a state: `current` within a
-minute of its fetch, `stale` after, or `absent` with a reason.
-Its `comparison_route` serves the **Changes** diff, from the merge base to the head.
-Issue it with `--api` to get the diff.
-Its `snapshot_route` opens one file at either end: append `&side=base` or `&side=head`
-and `&path=` with the path’s wire form, and `&mode=download` for its bytes alone.
-`--diff` does not open an `https://` source, so this route is the way to read one.
-`--format json` prints the envelope alone, for a tool such as `jq`:
+[reviewing pull requests](reviewing-pull-requests.md).
+A repository URL and a checkout whose `origin` is on github.com both offer the Pulls
+tab. A pull-request URL pins the pull request’s head commit:
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
+metab "$URL" --no-serve                                  # clone or reuse, and refresh the record
+metab "$URL" --show /pull/123                            # kind, views, and counts
+metab "$URL" --show /pull/123/files                      # the Changes tab
+metab "$URL" --show README.md                            # one file at the head
+metab "$URL" --api '/api/plugin/github/pull?number=123'  # the whole record
+```
+
+The first `--show` or `--api` of a pull request reads it through `gh`, fetches its
+commits, a fork’s included, and caches the record.
+Later ones answer from the cache without `gh` or the network, so they work offline.
+`--no-serve` refreshes the record, sending the ETags it holds, so an unchanged part
+costs nothing against GitHub’s rate limit.
+
+The `pull` route reports the record with a `state`: `current` within the freshness
+window (`FRESHNESS_WINDOW_S` in `src/metabrowser/mirror_refresh.py`), `stale` after it,
+or `absent` with a reason.
+Its `comparison_route` serves the Changes diff, from the merge base to the head, as a
+[File Diff Format](project/architecture/file-diff-format/file-diff-format.md) document.
+Its `snapshot_route` opens one file at either end: append `&side=base` or `&side=head`,
+`&path=` with the path’s wire form, and `&mode=download` for its bytes alone.
+`--format json` prints the answer alone, for a tool such as `jq`:
+
+```shell
 ROUTE=$(metab "$URL" --api '/api/plugin/github/pull?number=123' --format json |
   jq -r .comparison_route)
 metab "$URL" --api "$ROUTE" --format json |
   jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
 ```
 
-The answer is a
-[File Diff Format](project/architecture/file-diff-format/file-diff-format.md) document:
-`manifest.files` lists the changed files, and `patches`, keyed by each file’s `id`,
-holds its hunks.
-
-`--show <path>` reports a file at the head without printing it.
-To read the file, run Git in the mirror, using `pin` and `location` from
-`/api/source/status`, and expand a leading `~` in `location` yourself:
+To read a file at the head, run Git in the mirror with `pin` and `location` from
+`metab "$URL" --api /api/source/status`, expanding a leading `~` in `location`:
 
 ```shell
 git -C <location> show <pin>:README.md
 ```
 
-`metab <pull-request URL>` without `--no-serve` serves the head and keeps the record
-fresh beside the mirror: a stale one is refreshed when serving starts and when a stale
-page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body
-naming `number`) refreshes it on request and returns at once, with `pending` while no
-record exists yet. A selected missing record may request `"wait_core": true` alongside
-`"retry": true`, without `comparison` or `recovery`. Its HTTP response waits up to two
-seconds for an account-verified `core_preview` containing the header and description.
-Discussion, checks, and comparison remain unfinished; `record`, `record_revision`, and
-`fetched_at` remain null until the full record is published.
-A later cache-only GET exposes the preview too.
-The wait does not limit or cancel the refresh job, and an existing full record always
-takes precedence. A newer head is offered as the source’s `latest` rather than switched
-to. The server pins that pull request’s head on the port its `Serving` line reports, and
-opens any other of the repository’s at `/pull/<n>` without moving the pin; several run
-side by side from one cache, one process for each.
-
-A repository’s pull-request catalog is available from any URL of it:
+A refresh is a POST with a JSON body, which `--data` sends; the command waits for it,
+prints its outcome under `after:`, and exits 1 when it failed.
+Without `"retry": true` it starts nothing for a number with no record or one refreshed
+inside its window, and `"comparison": true` also prepares Changes, which a checkout
+needs before its first Changes:
 
 ```shell
-echo '{"state": "open", "target": 500}' > refresh.json
-metab https://github.com/owner/repo --api /api/plugin/github/pulls-refresh --data refresh.json
+echo '{"number": 123, "retry": true}' > refresh.json
+metab "$URL" --api /api/plugin/github/pull-refresh --data refresh.json
+```
+
+A `/pull/<n>/files` or `/pull/<n>/checks` URL selects the same pull request, and a
+server opens at that tab; `/pull/<n>/commits/<id>` pins that commit, a fork’s included.
+Other pull-request pages and the `/pulls` list are refused.
+
+The repository’s catalog of pull requests is available from any URL of it, and the first
+command below starts or joins a resumable job that fills it:
+
+```shell
+echo '{"state": "open", "target": 500}' > catalog.json
+metab https://github.com/owner/repo --api /api/plugin/github/pulls-refresh --data catalog.json
 metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=open&limit=100'
 ```
 
-The first command starts or joins a resumable metadata job and waits for its outcome; it
-exits 1 if the job fails.
-The job prioritizes the newest `target` matching pull requests, then continues through
-all repository metadata while GitHub’s GraphQL budget admits background work; below that
-floor the job ends after the prefix, and a later refresh resumes it.
-The second command reads a cached window, offline too, with no `gh` and no Git.
-`state` is `open` by default, `closed` (including merged), or `all`. `limit` is 0 to
-1,000, and `after` is the last PR number from the preceding window.
-`next_after` names another cached window, not a remote page.
+`state` is `open`, `closed` (merged included), or `all`, and `limit` and `after` page
+through the cached catalog, offline too.
+With the optional [gh-stack extension](installation.md#git-and-github-setup),
+`/api/plugin/github/stacks` reads native stack membership and
+`/api/plugin/github/stacks-refresh` refreshes it.
 
-`total` is GitHub’s exact count for the selected filter, `repository_total` its count
-for all pull requests, and `filter_totals` holds all three filter counts when the
-catalog knows them. `count_at` says when those counts were read.
-`fetched` counts cached matching rows; `catalog_fetched` counts all cached rows.
-`complete` becomes true when the background catalog reaches the end.
-Reading further windows does not cap or restart that catalog.
-A refresh reads metadata changed since its last checkpoint;
-`{"state": "open", "retry": true}` requests that check even while the cache is fresh,
-subject to a reported rate-limit reset.
-Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
-reads.
+A pull request that cannot be read does not fail the command, so a script reads the
+`pull_request` line or the route’s `state`, not the exit status.
+[When something does not open](reviewing-pull-requests.md#when-something-does-not-open)
+lists every reason and what to do.
 
-Everything Metabrowser caches of a repository’s pull requests, the list, records,
-changed files, and refresh outcomes, is discarded by one command and fetched again when
-next wanted; the repository’s Git store stays:
-
-```shell
-echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -
-```
-
-In a checkout, run it as `metab .` instead, since the address would clone a repository
-that has no store yet.
-It prints how many files it `cleared`. A refresh that cannot write the cache ends
-`cache_unwritable`. One that finds a list a newer Metabrowser wrote ends `newer_cache`,
-and one that finds a list whose versions it cannot read, such as a write-ahead-log
-database, ends `unknown_cache`; both leave the list as it is and ask GitHub for nothing.
-Each message names the repository, why, and this command.
-A list the running Metabrowser has read the versions of and cannot use otherwise,
-damaged or from another schema, is replaced at the next refresh and needs no command.
-
-Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
-Use a current maintained release and verify the active account with
-`gh auth status --active --hostname github.com`; see
-[Git and GitHub setup](installation.md#git-and-github-setup).
-Cached PR metadata remains readable without `gh`. A pull request that cannot be read
-does not fail the command, so a script reads the `pull_request` line or the route’s
-`state` rather than the exit status.
-With a record cached, the pin stays at the record’s head and the `pull_request` line
-adds why the refresh failed.
-Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
-commit if the mirror has it, and the `pull_request` line says why:
-
-| Name | Meaning |
-| --- | --- |
-| `gh_missing` | `gh` is not on `PATH` |
-| `gh_too_old` | This `gh` cannot report its active account; update GitHub CLI |
-| `not_logged_in` | `gh` is not signed in to github.com |
-| `rate_limited` | GitHub’s rate limit, with the time it resets when GitHub gives one |
-| `not_found_or_private` | The pull request does not exist, or the account cannot read it |
-| `network_error` | `gh` could not reach GitHub |
-| `account_changed` | The active `gh` account changed during the read |
-| `head_mismatch` | The pull request kept moving during the read |
-| `gh_failed` | An answer from `gh` could not be read |
-| `fetch_failed`, `git_failed` | Git failed |
-| `record_too_large` | The record is over the size a record may have |
-| `cache_unwritable` | The cache refused the write; the message says why and names the command that clears the repository’s GitHub cache |
-| `newer_cache` | A newer Metabrowser wrote the repository’s list of pull requests; the message says to upgrade or names that command |
-| `unknown_cache` | The versions of the repository’s list of pull requests cannot be read, so it is left as it is; the message says to upgrade or names that command |
-
-Check runs or statuses GitHub refuses, and a comparison whose base cannot be fetched,
-are listed in the record’s `unavailable`, and the rest of the record stands.
-
-`--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
-against an empty throwaway directory so cache inspection cannot expose origin objects
-through `/api/tree`. `--show` and other `--api` routes on that URL acquire or reuse the
-store, pin the default revision, and inspect the pin in-process.
-Nothing binds a port.
-`--show` accepts a display path (`README`) or a `GitPath` wire.
-`--check-api` runs the navigation scenario on the pin, where Recent’s
-`unsupported_for_subject` is the expected answer.
-`--walk` refuses a Git source: the walker reads a filesystem, and
-`--api '/api/tree?depth=N'` lists a pinned tree.
-ssh URLs stay closed.
-A second `--no-serve` of the same `file://` source reuses the published store and says
-so on stderr. That cache hit reads only the application home: it runs no Git, does not
-need the origin, and works against a home the current user cannot write.
-Spellings that normalize to the same address, such as `FILE://localhost/path/` and
-`file:///path`, are one source.
-
-Inspect cache state from any local root after an acquire: the cache routes resolve
-`METABROWSER_CACHE_DIR` independently of the served directory.
-
-```shell
-metab ./notes --api /api/cache/sources
-```
-
-### Beside a checkout
+### Beside a Checkout
 
 If you already have the repository checked out, name that checkout once and the mirror
-borrows its objects instead of copying them:
+borrows its objects instead of cloning them:
 
 ```shell
 metab https://github.com/owner/repo/pull/123 --checkout ~/src/repo
 metab https://github.com/owner/repo/pull/124    # remembered from then on, from anywhere
 ```
 
-`--checkout` works with serving, `--api`, `--show`, `--check-api`, and `--no-serve`, on
-a Git source. The path is a checkout’s root, a linked worktree of it, or a bare clone.
-The mirror’s Git objects come from that checkout through `objects/info/alternates`, and
-what it lacks, such as a pull request whose branch it never fetched, is fetched into the
-mirror. That is usually kilobytes, and more when the checkout is behind: on a shallow
-checkout of a 1.2 GB repository, one branch pushed since the checkout’s last fetch cost
-43 MB and 15 s, and the same command minutes later cost 1 MB and 5 s, the checkout
-having fetched it (measured 2026-11-02).
+`--checkout` applies to a Git source when serving and with `--api`, `--show`,
+`--check-api`, and `--no-serve`. The path is a checkout, a linked worktree of it, or a
+bare clone of the repository, and only what it lacks is fetched, into the mirror.
+Nothing is written to the checkout and no Git runs in it.
+`metab` prints `borrowing objects from <path>`.
 
-Everything else is the mirror you would otherwise have: the same pages, the same
-pull-request records, and a page served under the same untrusted profile.
-`metab` says so on stderr, `borrowing objects from ~/src/repo`, and `borrows` in
-`/api/source/status` and the heading’s tooltip name it.
+Only a checkout you name lends.
+Run `metab <url>` inside a checkout with no mirror yet, and it clones a full mirror and
+prints the `--checkout` command that would have borrowed instead.
+If the checkout later moves or is deleted, `metab` refuses with `lender_missing` until
+you name its new place with `--checkout`.
+[Mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
+lists every case: a partial or shallow checkout, a full mirror already in the cache, and
+a remote that names another repository.
 
-**Nothing writes to the checkout, and no Git runs in it.** Its refs, remotes, and
-configuration are files read with a bound on each, and its hooks, `core.fsmonitor`,
-`core.sshCommand`, and diff drivers are not consulted.
-The mirror’s refs are still only what the origin sent: a branch or tag that exists only
-in your checkout is not served.
+This is a pinned view of the URL. `metab ~/src/repo` instead serves your working folder,
+which can review pull requests too.
 
-**Only a checkout you name lends.** Run `metab <url>` inside a checkout of that
-repository with no mirror yet and it clones a full mirror, as it does anywhere else, and
-prints once what would have borrowed instead:
+## Acquiring a Git Source: `--no-serve`
 
-```text
-this directory is a checkout of https://github.com/owner/repo; to borrow its objects instead of cloning: metab https://github.com/owner/repo --checkout ~/src/repo
+```shell
+metab file:///path/to/origin.git --no-serve
+metab https://github.com/owner/repo/pull/123 --no-serve
 ```
 
-A directory you merely stand in can be made to look like a checkout of anything, and Git
-does not verify what it reads from one, so that decision is yours.
+`--no-serve` clones an `https://` or `file://` source into the cache, or reuses the
+mirror already there, and prints the source, its slug, its store, and the revision its
+URL selects, without serving.
+It is the way to pay for a long first clone ahead of time, and for a pull-request URL it
+also refreshes the record.
+While a clone runs, stderr says where it goes and how far it has got.
 
-What can happen when you name one:
-
-| Situation | What `metab` does |
-| --- | --- |
-| No remote of the checkout is the URL’s repository | Refuses, and names the repositories its remotes point at, with any credentials in their URLs left out. Any remote counts, compared without regard to case, so a fork with the repository as `upstream` lends; a remote spelled as a path, as `git clone /x/origin.git` records it, is the `file://` source of that path |
-| The path is no checkout at all | Refuses, whether or not a mirror of the repository is already in the cache |
-| The checkout is a partial clone, or has its own `objects/info/alternates` | Says why and clones a full mirror: the first would find objects missing when they are read, and the second would follow a chain nothing recorded |
-| Its object format differs from the origin’s, its objects cannot be read, or another user owns them | Says why and clones a full mirror |
-| A full mirror of the repository is already in the cache | Keeps it, says so, and borrows nothing. This release has no command that converts one; to borrow instead, delete the mirror from the cache and run the command again |
-| The mirror already borrows from another checkout that can still lend | Keeps borrowing from that one, and says so |
-| `--api /api/cache/...` | Says that the flag is not applied to a cache route, which reads records and no object, and answers the route |
-
-**A shallow checkout** lends too, and `shallow` is `true`: history views stop where the
-checkout’s do, and `metab` says `history is shallow, as the checkout’s is`. On a shallow
-history `git merge-base` can name a commit that is not the real merge base, with no
-error, which would show the base branch’s own changes as the pull request’s. So a merge
-base there is used only when it is provably right.
-When it is not, the pull request’s refresh fetches more history into the mirror, never
-the checkout, in up to five growing rounds; a depth-limited CI checkout is where this
-most often happens. Meanwhile, and offline, the record’s `unavailable.comparison` is
-`base_uncertain`, `comparison_route` is `null`, and the page omits the comparison rather
-than a guess.
-
-A commit the comparison needs that the checkout no longer holds, an ancestor it has
-collected, is `commits_unavailable` in the record’s `unavailable.comparison`, never
-`no_merge_base`, which is Git’s own answer that two commits share no history.
-A commit at the shallow boundary is shown with its message and author, and its diff is
-refused as `parent_unavailable`, since Git would otherwise diff it against nothing.
-
-**If the checkout moves or is deleted,** nothing borrowed can be read, and `metab`
-refuses rather than serve a failing page:
-
-```text
-Error: the checkout this mirror borrows objects from is gone: ~/src/repo (lender_missing), and this mirror of https://github.com/owner/repo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/owner/repo --checkout <new path>
-```
-
-The same refusal, with its own reason, answers a checkout that can no longer lend: one
-that has grown an `objects/info/alternates` of its own, whose objects can no longer be
-read, or whose directory now holds another repository.
-The checks that admitted it run again on every open that uses it, and before every fetch
-into the mirror.
-Naming the new place, or another checkout of the repository, repairs it,
-after the same checks, with no network; a repair that stopped before its record was
-written is finished by the same command.
-`--api /api/cache/stores` still answers, with `mode` (`full` or `overlay`) and `lender`
-(`present` or `lender_missing`) for each store, and no path.
-A refresh in a server that is already running reports `lender_missing` as its outcome.
-A store whose alternates file disagrees with its record is refused as `damaged`.
-
-### Refusals, failures, and interruptions
-
-Every refusal prints one `Error:` line and exits with status 1. None of them publishes a
-source, and none changes another source already in the cache.
-
-- **A ROOT the grammar rejects** prints `invalid ROOT (<reason>)`. The reason names the
-  rule, such as `credentials_in_url` or `option_like`, and the argument itself is not
-  repeated, so a token in a URL does not reach the terminal.
-- **A Git below the acquisition security floor** refuses a new acquisition with the
-  version it found and the versions it accepts.
-  The application home is not created.
-  Upgrade Git; a source already in the cache is still reused.
-- **A source that cannot be fetched** — a missing path, a directory that is not a
-  repository, a repository with no commits, or one whose `HEAD` is not a branch —
-  publishes nothing. A source that is itself a partial clone missing objects says so;
-  clone it fully first.
-  An https origin names why, in parentheses: `not_found_or_private`,
-  `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
-  `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`.
-  `not_found_or_private` means the origin did not show the repository: it does not
-  exist, or it is private and the request, anonymous or with the account `gh` answered
-  with, could not read it.
-  The origin does not say which, so neither does the message.
-  `timed_out` means the origin gave no answer to its first request within 30 seconds, or
-  a transfer moved less than 1000 bytes per second for 30 seconds; a clone that keeps
-  making progress is never stopped for taking long, only at the 900-second acquisition
-  deadline.
-- **A repository whose branch or tag names differ only in letter case** (`Feature` and
-  `feature`) is refused as `ref_case_collision` on a case-insensitive filesystem, such
-  as macOS’s default, which cannot hold both.
-  A served mirror whose origin gains such a twin later reports the same outcome for its
-  refresh and keeps every ref where it was.
-- **An acquisition that is interrupted**, by Ctrl-C, by the terminal hanging up, or by
-  `SIGTERM`, stops Git and every helper it started, and leaves nothing visible, because
-  the source is published last, after its store.
-  A hangup exits with status 129 and `SIGTERM` with 143; under `nohup`, a hangup is
-  ignored as it asks. While the source is served, a hangup stops the server as Ctrl-C
-  does, killing a running refresh’s Git first, and exits 129. The next acquisition
-  removes the abandoned staging entry, fetches again, and reuses a store that was
-  already published. Nothing deletes a published store.
-
-Refusals that concern the application home say how to repair it:
-
-| Message begins | Repair |
-| --- | --- |
-| `METABROWSER_CACHE_DIR is set but empty`, `METABROWSER_CACHE_DIR must be an absolute path` | Unset it, or set it to an absolute path |
-| `The Metabrowser application home is accessible to other users` | Run `chmod 700` on it, or use another `METABROWSER_CACHE_DIR` |
-| `An entry in the Metabrowser application home cannot be verified` | Restore the current user’s write permission, or use another `METABROWSER_CACHE_DIR` |
-| `This Metabrowser application home uses format` | Upgrade Metabrowser, or use another `METABROWSER_CACHE_DIR` |
-
-A home other users can read refuses cache hits as well as new acquisitions.
-A home the current user cannot write still reuses cached sources and refuses only new
-ones.
+A refusal prints one `Error:` line and exits 1, and publishes nothing; an interrupted
+clone leaves nothing behind.
+The reasons a clone can fail are in
+[reviewing pull requests](reviewing-pull-requests.md#when-something-does-not-open).
 
 ## Inspecting Data: `--api`
 
-`--api` issues one route through the real application — same middleware, same routing,
-same serialization the browser receives — without binding a port or opening a browser.
-
-Start with the route index, which lists every route this build serves:
+`--api` issues one route through the real application, with the same middleware,
+routing, and serialization the browser gets, without binding a port.
+Start with the route index:
 
 ```shell
 metab ./notes --api /api/routes
 ```
 
 ```shell
-# Any registered route, with its query string exactly as the browser would send it.
-metab ./notes --api '/api/file?path=README.md'
-metab ./notes --api '/api/tree?depth=2&types=.md'
-metab ./notes --api '/api/git/log?limit=5'
-
-# What a window is called: the tab's title, a short and a full name, and whether the
-# server serves a local folder or a cached mirror.
-metab ./notes --api /api/identity
-
-# Repository cache state in METABROWSER_CACHE_DIR (default ~/.cache/metabrowser), which is
-# reported as absent rather than created when it does not exist.
-metab ./notes --api /api/cache/layout
-metab ./notes --api '/api/cache/sources?limit=20'
-
-# Only the envelope, as JSON or YAML, for a tool to parse.
-metab ./notes --api /api/git/refs --format json
-metab ./notes --api /api/git/refs --format yaml
-
-# A route that takes a POST body, from a file or, with -, from standard input.
-metab ./notes --api /api/kpress/render --data request.json
-metab ./notes --api /api/kpress/render --data - < request.json
+metab ./notes --api '/api/tree?depth=2&types=.md'   # a query string as the browser sends it
+metab ./notes --api /api/identity                    # what the window is called
+metab ./notes --api /api/cache/sources               # repositories in the cache
+metab ./notes --api /api/git/refs --format json      # the answer alone, as JSON
+metab ./notes --api /api/kpress/render --data request.json   # a POST body
 ```
 
-`--data` reads at most the largest body a route accepts, KPress render’s, which is six
-times `METABROWSER_TEXT_PREVIEW_MAX_BYTES` plus 64 KiB: 96 MiB and 64 KiB by default.
-A longer body, from a file or from standard input, is refused before anything is sent,
-and no more of it than that is read.
-
-Output is the route, the HTTP status, and the normalized envelope:
+Output is the route, the HTTP status, and the answer:
 
 ```console
 $ metab ./notes --api '/api/file?path=README.md'
@@ -872,34 +330,24 @@ status: 200
 }
 ```
 
-With `--format json` or `--format yaml`, stdout is the envelope alone, so it parses.
-A body that is not JSON is one string, and a refresh that waits prints only the status
-it ended with, the answer the output above would print under `after:`.
+- **`--format json` or `yaml`:** stdout is the answer alone, so it parses.
+- **`--data FILE`:** sends `FILE`, or stdin for `-`, as a POST body.
+  A body larger than any route accepts (`MAX_REQUEST_BODY_BYTES` in
+  `src/metabrowser/server.py`) is refused before anything is sent.
+- **Following work:** a POST that starts background work, such as a refresh, waits for
+  it and prints how it ended under `after:`.
+- **Exit status:** non-zero when the route answers outside 2xx.
+- **Paths:** paths under the served root print as `<ROOT>`.
+- **Streams:** `/api/events` and `/api/stream` never end, so `--api` reports that
+  instead of waiting.
 
-The exit status is non-zero when the route answers outside 2xx, so a script can act on
-failure without parsing the body.
-Paths under the served root are rewritten to `<ROOT>` so output does not carry the
-directory it happened to run in.
-
-Two routes have no meaningful `--api` result: `/api/events` and `/api/stream` are
-server-sent-event streams whose responses never terminate.
-`--api` bounds the request and reports that rather than hanging.
-
-### There is no server to start
-
-Every data mode runs the server in-process for the life of the command.
-Nothing binds a port, nothing is left running, and a `metab` already serving that
-directory is neither required nor consulted — the two do not share state.
-
-Most commands cost about half a second, which is mostly Python starting up.
-The exceptions are the routes that read the file inventory — `/api/tree`, `/api/rollup`,
-`/api/recent`, `/api/catalog`, `/api/capabilities`, `/api/index/meta`,
-`/api/diagnostics/pending-tallies` — which wait for the directory scan to finish so
-their answer is complete rather than partial.
-That wait grows with the tree; everything else skips it.
-
-If you are scripting several routes over a large tree, prefer one `--walk` for the
-inventory over repeated `/api/tree` calls: each invocation scans again.
+Each command runs its own server in process for the life of the command, so nothing is
+left running and a `metab` already serving the folder is neither needed nor consulted.
+Routes whose answer depends on the whole file inventory, `_INDEX_DEPENDENT` in
+`src/metabrowser/cli/api_cli.py`, wait for the scan to finish, at most `--index-timeout`
+seconds; the rest answer at once.
+To script several such routes over a large tree, one `--walk` is cheaper than repeated
+`/api/tree` calls, because each command scans again.
 
 ## Understanding a Selection: `--show`
 
@@ -910,115 +358,203 @@ $ metab ./notes --show README.md
 show: README.md
 route: /view/README.md
 kind: markdown
-views: rendered (default, key D), source (key S)
+views: rendered (default, key V), source (key S)
 model: text envelope; size=13386 content_bytes=13386 content_truncated=False
 ```
 
-Those four lines are the four layers a selection travels — the address it resolves to,
-what it is classified as, the tabs a reader would see, and a summary of the data behind
-them. Each view’s key is printed uppercase, as the keyboard shows it.
-A kind with one view, or a selection left with one, prints no key: its one tab has no
-other view to switch to.
+The four lines are the layers a selection passes through: its address, its kind, the
+view tabs a reader sees with their keys, and a summary of the data behind them.
+`--format json` prints them as an object.
 
-It accepts browser addresses as well as paths, which is the quickest way to check that a
-URL resolves the way you expect:
+`--show` accepts browser addresses as well as paths, which checks that a URL resolves as
+you expect:
 
 ```shell
-metab ./notes --show README.md                     # a path
-metab ./notes --show /view/README.md               # the same, as a route
-metab ./notes --show change.patch/src/main.py      # one entry inside a container file
-metab ./repo --show /commit/<revision>             # a commit's change set
-metab ./repo --show /commit/<revision>/README.md   # one file inside that change set
+metab ./notes --show /view/README.md                # a route
+metab ./notes --show change.patch/src/main.py       # one entry inside a patch file
+metab ./repo --show /commit/<revision>              # a commit's change set
+metab ./repo --show /commit/<revision>/README.md    # one file in it
 ```
-
-The route is lossless for platform filenames: literal percent characters stay distinct
-from the `%XX` identity of a POSIX byte that is not UTF-8, and `--show` prints that
-escaped identity instead of sending an unencodable native surrogate to the terminal.
-
-`--format json` prints the same four layers as an object.
 
 ## Reading a Tree: `--walk`
 
 ```shell
-metab ./notes --walk                       # human-readable report
-metab ./notes --walk --format json         # the data the nav panel consumes
-metab ./notes --walk --format json --stream  # one record per line
-metab ./notes --walk --type .md --age 7d   # the same filters the nav panel offers
+metab ./notes --walk                          # a text report
+metab ./notes --walk --format json            # the data the navigation pane uses
+metab ./notes --walk --format json --stream   # one record per line, in walk order
+metab ./notes --walk --type .md --age 7d      # the navigation pane's filters
 ```
+
+- **`--format`:** `text`, `json`, or `yaml`. `--detail summary|dirs|all` sets how much
+  the text report shows.
+- **`--stream`:** one walker record per line, as the live feed sends them; the default,
+  `--all-at-once`, prints the whole `/api/tree` answer.
+  `--path` narrows that answer to a subtree.
+- **Bounds:** `--max-depth` and `--max-files`.
+- **Filters:** `--type` (an extension such as `.md`, or a whole name such as `README`,
+  repeatable or comma-separated), `--age` (a window such as `7d`; `metab --help` lists
+  them), `--min-size` (bytes, or a `k`, `m`, or `g` suffix), and `--no-ignored` to leave
+  out gitignored files.
+
+`--walk` reads a filesystem and refuses a Git source; for a pinned tree, use
+`--api '/api/tree?depth=N'`.
 
 ## Reading a Change Set: `--diff`
 
 ```shell
-metab ./repo --diff main..feature      # between two revisions
-metab ./repo --diff <revision>         # one revision against its first parent
-metab ./repo --diff changes.patch      # a patch file under ROOT
+metab ./repo --diff main..feature               # between two revisions
+metab ./repo --diff main...feature              # from their merge base
+metab ./repo --diff <revision>                  # one commit against its first parent
+metab ./repo --diff changes.patch               # a patch file under ROOT
 metab ./repo --diff <revision> --diff-patch src/main.py   # one file's hunks
-metab ./repo --diff <revision> --diff-check               # replay and verify
+metab ./repo --diff <revision> --diff-check               # rebuild and verify
 ```
 
-## Diagnostics
+`--format` is `text` or `json`.
+[Browsing history](browsing-history.md#diffs-from-a-terminal) explains the output,
+`--diff-check`, and the route that compares revisions of a Git source.
+
+## Diagnostics and Plugins
 
 ```shell
-# Pass/fail check of the navigation request sequence.
-metab ./notes --check-api
-
-# Plugin inventory and validation.
-metab --plugins
-metab --plugin markdown
-metab --doctor
+metab ./notes --check-api    # pass or fail for the navigation requests
+metab --plugins              # every discovered plugin
+metab --plugin markdown      # one plugin's resolved manifest
+metab --doctor               # validate every plugin; non-zero exit on a problem
 ```
 
-`--check-api` answers “is navigation healthy” in one line.
-For the underlying data, `--api` is the more direct tool.
+`--check-api` runs the browser’s navigation sequence against `ROOT`, prints each step,
+and ends with `result: pass` or a failure.
+For the underlying data, `--api` is more direct.
+The plugin modes take `--plugins-dir` and `--json`; [plugins](plugins.md) says where
+plugins are discovered.
 
 ## Remote Directories
 
 ```shell
 metab --remote example-host --path /srv/shared-files
+metab --remote example-host --path /srv/data --ssh-options '-i ~/.ssh/mykey'
+metab --remote my-vm --gcp --zone europe-west1-b --project my-project --path /data
 ```
 
-`metab` starts itself on the remote host over SSH and tunnels the port back, so the
-browser stays local.
-`ROOT` is not used in this mode; the remote directory is `--path`.
+`metab` connects to the host over SSH, starts `metab` there on the remote directory, and
+tunnels its port back, so the browser stays local and opens at a `localhost` address.
+`ROOT` is not used; `--path` names the remote directory and is required.
+Ctrl-C closes the tunnel and stops the remote server, and the remote server also stops
+when the SSH connection drops.
+
+The remote host needs:
+
+- **`metab` installed,** the same Metabrowser version as here, on the remote `PATH` or
+  in `~/.local/bin`, where `uv tool install` puts it.
+  Without it, the command says that `metab` is not available there.
+- **`python3`** on its `PATH`, which picks the remote port.
+- **SSH access** from here, as plain `ssh` or `gcloud compute ssh` reaches it.
+
+Options:
+
+- **`--base-port`:** the first port tried, both locally and on the remote host; each
+  side takes its first free port from there up, so several sessions can share a host.
+- **`--ssh-options`:** extra flags for plain `ssh`, split as shell words.
+  They are not passed to `gcloud`.
+- **`--gcp`:** connect with `gcloud compute ssh` instead of `ssh`.
+- **`--zone` and `--project`:** the Compute Engine zone and project for `--gcp`.
+  `--project` defaults to `METABROWSER_GCP_PROJECT`.
+- **`--no-open`:** leave the local browser closed.
+
+The trust flags do not apply to `--remote`: the remote server runs with its host’s own
+defaults and environment.
+
+## Configuration and Environment Variables
+
+### Storage Locations
+
+| What | Default on macOS and Linux | Flag | Variable |
+| --- | --- | --- | --- |
+| Cache: mirrors and pull-request records | `~/.cache/metabrowser` | `--cache-dir DIR` | `METABROWSER_CACHE_DIR` |
+| Configuration: `config.yml` | `~/.config/metabrowser` | `--config-dir DIR` | `METABROWSER_CONFIG_DIR` |
+
+A flag takes precedence over its variable.
+Without either, `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` choose the base directories, with
+`/metabrowser` appended.
+A variable must be a nonempty absolute path with no `..`; a flag may be relative to the
+current directory. The two directories may not overlap.
+
+Browsing a folder creates neither directory.
+The first repository cloned creates the cache, owner-only, and writes `config.yml` if it
+is missing. `config.yml` records the cache format it was written for.
+Metabrowser keeps the keys and comments you add, and refuses keys that look like
+credentials. If the file cannot be parsed, Metabrowser names it and exits without
+replacing it: move it aside and start again.
+A newer format asks you to upgrade Metabrowser.
+Deleting the cache directory, with no server running, removes every mirror and record;
+the next run clones again.
+[The repository cache](project/architecture/arch-repository-cache.md) describes the
+layout, and the repair for each refusal that concerns it.
+
+### Content Trust
+
+Three switches set how far served content is trusted:
+
+| Flag | Variable | Effect |
+| --- | --- | --- |
+| `--untrusted` | `METAB_UNTRUSTED=1` | The conservative profile: active content and mutations off |
+| `--no-active-content` | `METAB_ACTIVE_CONTENT=0` | Markdown renders as inert markup, the page carries a strict Content-Security-Policy, and `/raw` runs no scripts |
+| `--allow-edits` | `METAB_ALLOW_EDITS=1` | Publishes the mutations capability; no route writes yet |
+
+By default active content is on and mutations are off.
+A variable accepts `1`, `true`, `yes`, or `on`, and `0`, `false`, `no`, or `off`. A flag
+beats the environment: `--untrusted` stays conservative whatever the variables say, and
+only `--untrusted --allow-edits` lifts part of it.
+Within the environment alone, `METAB_ACTIVE_CONTENT=1` and `METAB_ALLOW_EDITS=1`
+override `METAB_UNTRUSTED=1`. The switches apply when serving and to `--api`, `--show`,
+and `--check-api`, and a Git source is always untrusted.
+The [content-trust model](project/architecture/arch-server-and-content.md) explains what
+each protects against.
+
+### Environment Variables
+
+Every variable is read from the process environment, so export it in the shell that runs
+`metab`. The [`.env` files](#env-files) below supply only two of them.
+
+| Variable | What it sets |
+| --- | --- |
+| `METAB_UNTRUSTED`, `METAB_ACTIVE_CONTENT`, `METAB_ALLOW_EDITS` | [Content trust](#content-trust) |
+| `METABROWSER_CACHE_DIR`, `METABROWSER_CONFIG_DIR` | [Storage locations](#storage-locations) |
+| `METABROWSER_ALLOWED_HOSTS` | Comma-separated host names the server accepts besides the one it binds, for reaching it by another trusted name; see the [security policy](../SECURITY.md) |
+| `METABROWSER_PLUGINS_DIRS` | Plugin directories, separated by `:`, loaded before any `--plugins-dir` |
+| `METABROWSER_LOG_LEVEL` | Log verbosity, as `--log-level`, which overrides it |
+| `METABROWSER_REQUEST_LOG` | `verbose` logs every request with its arrival and completion times |
+| `METABROWSER_SLOW_SERVER_MS` | The time past which a request is logged as slow; the default is `SLOW_OPERATION_LOG_SECONDS` in `src/metabrowser/settings.py` |
+| `METABROWSER_DEBUG` | `1` enables the `/_debug/tasks` and `/_debug/inventory` diagnostics |
+| `METABROWSER_MAX_FIRST_CLONE_KB` | The size limit, in kilobytes, on a first clone from GitHub, instead of `MAX_FIRST_CLONE_KB` in `src/metabrowser/builtin_plugins/github/provider.py` |
+| `METABROWSER_GCP_PROJECT` | The default `--project` for `--remote --gcp` |
+| `METABROWSER_INVENTORY_PROVIDER` | The inventory engine, one of `InventoryProvider` in `src/metabrowser/inventory_engine/factory.py` |
+| `METABROWSER_TEXT_PREVIEW_BYTES`, `METABROWSER_TEXT_PREVIEW_MAX_BYTES`, `METABROWSER_HIGHLIGHT_MAX_BYTES` | Text loading and highlighting budgets, `TEXT_PREVIEW_CHUNK_BYTES`, `TEXT_PREVIEW_REQUEST_MAX_BYTES`, and `SYNTAX_HIGHLIGHT_MAX_BYTES` in `src/metabrowser/settings.py` |
+| `METABROWSER_BINARY_PREVIEW_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES` | Byte-view budgets, defined in `src/metabrowser/builtin_plugins/binary/sidekick.py` |
+| `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE` | JSON and YAML tree-view budgets, defined in `src/metabrowser/builtin_plugins/structured/parser.py` |
+| `METABROWSER_METAB` | Read by the [macOS app](macos-app.md), not by `metab`: the `metab` the app runs |
+
+[Rendering large content](large-content-rendering.md) explains the rendering budgets.
+Git and `gh` read their own environment, as
+[installation](installation.md#git-and-github-setup) describes.
+
+### `.env` Files
+
+`metab` looks for `.env` and `.env.local` in the current directory and each directory
+above it, and takes only `METABROWSER_LOG_LEVEL` and `METABROWSER_REQUEST_LOG` from them
+(`ALLOWED_KEYS` in `src/metabrowser/dotenv.py`); an exported value wins.
+A repository you browse can hold its own `.env`, so a file cannot change trust, plugins,
+hosts, budgets, or what runs; Metabrowser warns when it ignores one of its own names
+there.
 
 ## Why the Data Modes Exist
 
-Every route the browser consumes is reachable from `metab` and pinned by a golden
-transcript, so a change to a route’s envelope shows up as a readable diff rather than as
-a browser that quietly renders the wrong thing.
-Deterministic browser-owned behavior has the same command-line evidence through golden
-sessions that load the production JavaScript.
-The rule and its enforcement are in
-[CLI and functional UI parity](../AGENTS.md#cli-and-functional-ui-parity); the table of
-what is covered is in
-[Views, Models, and Routes](project/architecture/arch-views-models-routes.md).
-
-For agents and scripts, that means the answer to “what does Metabrowser think this file
-is” is one command with structured output, and does not require a browser.
-
-## Storage locations
-
-On macOS and Linux, cached repositories live in `~/.cache/metabrowser` and user
-configuration in `~/.config/metabrowser/config.yml`. Use `--cache-dir DIR` or
-`METABROWSER_CACHE_DIR` for an exact cache location, and `--config-dir DIR` or
-`METABROWSER_CONFIG_DIR` for an exact configuration location.
-Flags take precedence over environment variables.
-Otherwise `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` select the corresponding base
-directories, with `/metabrowser` appended.
-
-Environment overrides must be nonempty absolute paths without `..` components.
-CLI paths may be relative to the current directory.
-Ordinary folder browsing does not create these directories.
-Cache creation preserves existing configuration.
-New configuration declares `metabrowser.config:ApplicationConfig/v1`; repository-cache
-records use the `metabrowser.cache` namespace.
-These names do not depend on a hosting provider or account.
-If configuration cannot be parsed or validated, Metabrowser names the file and exits
-without replacing it.
-Move it aside or remove it, then restart to create a fresh config; cached repositories
-remain in the separate cache directory.
-A newer configuration format instead asks you to upgrade Metabrowser.
-Version 0.12 does not read `METABROWSER_HOME` or migrate `~/.metabrowser`.
+Every route the browser uses is reachable from `metab` and pinned by a golden
+transcript, so a change to a route’s answer shows up as a readable diff, and an agent or
+a script gets the browser’s answer as structured output.
+[CLI and functional UI parity](../AGENTS.md#cli-and-functional-ui-parity) states the
+rule, and [working with agents](working-with-agents.md) shows the modes in use.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
