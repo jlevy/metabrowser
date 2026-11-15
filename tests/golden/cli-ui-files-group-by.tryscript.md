@@ -11,7 +11,11 @@ It pins which request each Group by and filter choice makes, how the server’s 
 answer becomes sections in its order, how a folder inside a section opens under that
 section’s group, that Clear keeps the grouping, which band a file’s age falls in, and
 that a malformed answer is refused.
-The answer it paints is `tests/golden/cli-api-tree-groups.tryscript.md`’s first one.
+It also pins the shell’s Group by decisions, held as pure functions: each section’s
+share of the first paint’s rows, the order a revealed row is looked for in, the reopen
+plan after a refresh, and the prefetch’s keep, abort, take, and clear.
+The answer it paints is read from `tests/golden/cli-api-tree-groups.tryscript.md`, its
+first one.
 
 ```console
 $ node tests/dom/files-group-by-session.js
@@ -117,6 +121,128 @@ $ node tests/dom/files-group-by-session.js
     "3601": "24h",
     "259200": "7d",
     "3456000": "older"
+  },
+  "rowShares": {
+    "30 rows, 4 sections": 7,
+    "5 rows, 10 sections": 1,
+    "0 sections": 30
+  },
+  "reveal": {
+    "a Markdown file": [
+      "type:docs",
+      "type:code",
+      "type:other"
+    ],
+    "a folder": [
+      "type:docs",
+      "type:code",
+      "type:other"
+    ],
+    "a symlink": [
+      "type:other",
+      "type:docs",
+      "type:code"
+    ],
+    "a file past Live's edge": [
+      "age:1h",
+      "age:live",
+      "age:older"
+    ],
+    "a file with no mtime": [
+      "age:live",
+      "age:1h",
+      "age:older"
+    ]
+  },
+  "reopen": {
+    "paintedOpen": [
+      "src",
+      "docs"
+    ],
+    "fetchFirst": [
+      "src/app"
+    ],
+    "srcChildren": [
+      "src/app",
+      "src/lib"
+    ]
+  },
+  "prefetch": [
+    {
+      "step": "open the menu",
+      "started": [
+        "age",
+        "type"
+      ],
+      "aborted": [],
+      "kept": 2
+    },
+    {
+      "step": "open it again",
+      "started": [],
+      "aborted": [],
+      "kept": 2
+    },
+    {
+      "step": "open it while grouped by type",
+      "started": [],
+      "aborted": [
+        "type"
+      ],
+      "kept": 1
+    },
+    {
+      "step": "choose Age",
+      "started": [],
+      "aborted": [],
+      "kept": 0,
+      "took": true
+    },
+    {
+      "step": "choose Age again",
+      "started": [],
+      "aborted": [],
+      "kept": 0,
+      "took": false
+    },
+    {
+      "step": "open the menu",
+      "started": [
+        "age",
+        "type"
+      ],
+      "aborted": [],
+      "kept": 2
+    },
+    {
+      "step": "open it after the TTL",
+      "started": [
+        "age",
+        "type"
+      ],
+      "aborted": [
+        "age",
+        "type"
+      ],
+      "kept": 2
+    },
+    {
+      "step": "a file changes",
+      "started": [],
+      "aborted": [
+        "age",
+        "type"
+      ],
+      "kept": 0
+    }
+  ],
+  "uncounted": {
+    "key": "type:docs",
+    "id": "docs",
+    "label": "Documentation",
+    "files": null,
+    "size": null,
+    "tree": []
   },
   "refused": [
     "no grouping: a grouped tree answer names no grouping",

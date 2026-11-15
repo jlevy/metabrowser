@@ -14,7 +14,9 @@ opens the Modified within menu in both. This judges what it measured against
   keyboard numbers follow what is on screen ("Grouping the Files Tree");
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
-  files only.
+  files only;
+- a file written into a folder open in a section refreshes the sections in place, keeping
+  that folder open, the scroll position, and the focused row.
 
 Where text starts and how tall a box is drawn are layout, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
@@ -62,6 +64,7 @@ _CODE = ("py", "js", "ts", "css", "html", "rs", "go", "java", "rb", "sh", "sql",
 _DOCS = ("md", "txt", "rst", "adoc")
 _DATA = ("json", "yaml", "toml", "ini", "csv", "xml")
 _MEDIA = ("png", "jpg", "mp3")
+_LIB_FILES = 12
 
 
 def _served_folder(root: Path) -> None:
@@ -81,6 +84,10 @@ def _served_folder(root: Path) -> None:
     (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
     # A note beside the code, so src stands in Documentation and in Code.
     (root / "src" / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    # A folder two levels down, which the session opens and then writes a file into.
+    (root / "src" / "lib").mkdir()
+    for n in range(1, _LIB_FILES + 1):
+        (root / "src" / "lib" / f"k{n:02d}.py").write_text(f"k{n}\n", encoding="utf-8")
 
 
 def _free_port() -> int:
@@ -205,7 +212,7 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     ]
     assert [section["count"] for section in sections] == [
         "10 files",
-        "36 files",
+        f"{len(_CODE) * 3 + _LIB_FILES} files",
         "6 files",
         "1 file",
         "3 files",
@@ -215,7 +222,7 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert _close(section["fromRowInset"], 0), section
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
-    # A folder opened inside Code lists Code's files only.
+    # A folder opened inside Code lists Code's files only (src/lib, inside it, stays closed).
     code = measured["codeFiles"]
     assert len(code) == len(_CODE) * 3, code
     assert {path.rsplit(".", 1)[1] for path in code} == set(_CODE), code
@@ -227,5 +234,13 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "expanded": "false",
     }
     assert measured["focusAfterOpen"] == {"section": "type:code", "path": "src", "expanded": "true"}
+    # A file written into src/lib, open inside Code's src, refreshes the sections in place:
+    # src/lib stays open with the new file in it, and the scroll position and the focused
+    # row inside it are kept.
+    refresh = measured["refresh"]
+    focused = "type:code|file:src/lib/k06.py"
+    assert refresh["before"]["focused"] == focused and refresh["before"]["scrollTop"] > 0, refresh
+    assert not refresh["before"]["written"], refresh
+    assert refresh["after"] == {**refresh["before"], "written": True}, refresh
     # No grouping is the one Files tree again.
     assert measured["ungrouped"] == {"sections": 0, "trees": ["Files"]}
