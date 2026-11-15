@@ -47,6 +47,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
     MAX_DIFF_HUNK_BYTES,
     MAX_PULL_COMMITS,
+    PULL_RECORD_PROJECTION,
     PullRecord,
     PullRefreshStamp,
     PullRequest,
@@ -2373,16 +2374,56 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     stand.calls()
     stand.answer(answers)
     upgraded = stand.refresh(7)
-    assert upgraded.projection_version == 1 and upgraded.pull.author_avatar_url == wanted
+    assert upgraded.projection_version == PULL_RECORD_PROJECTION
+    assert upgraded.pull.author_avatar_url == wanted
     assert all(item.author_avatar_url == wanted for item in upgraded.issue_comments)
     sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
     assert not any("users/" in str(args) for args in sent)
     warm = stand.refresh(7)
-    assert warm.pull.author_avatar_url == wanted and warm.projection_version == 1
+    assert warm.pull.author_avatar_url == wanted
+    assert warm.projection_version == PULL_RECORD_PROJECTION
     reused = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
     assert len(reused) == len(sent) == 6
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
+
+
+def test_a_record_of_bare_label_names_is_shown_neutral_until_its_refresh_colors_it(
+    stand: _Stand,
+) -> None:
+    """A record of projection 1, as 0.12.0 and the builds since wrote it, names its labels.
+
+    It is read as it is, each label without a color or a description, so its chips are
+    neutral and nothing is asked of GitHub. Its next refresh asks for every part without an
+    ETag, since a 304 would keep the names alone, and colors them.
+    """
+
+    stand.answer(scenario(stand.origin))
+    record = stand.refresh(7)
+    assert [label.model_dump() for label in record.pull.labels] == [
+        {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip",
+        }
+    ]
+    stand.calls()
+    path = stand.published.home / source_pull_record(stand.published.slug, 7)
+    old = json.loads(path.read_bytes())
+    old["projection_version"] = 1
+    old["pull"]["labels"] = ["enhancement"]
+    path.write_text(json.dumps(old))
+    cached = stand.record(7)
+    assert isinstance(cached, PullRecord) and cached.projection_version == 1
+    assert [label.model_dump() for label in cached.pull.labels] == [
+        {"name": "enhancement", "color": None, "description": None}
+    ]
+    assert stand.calls() == []
+    upgraded = stand.refresh(7)
+    assert upgraded.projection_version == PULL_RECORD_PROJECTION
+    assert upgraded.pull.labels == record.pull.labels
+    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
 
 
 def test_markdown_revision_tracks_content_not_refresh_metadata(

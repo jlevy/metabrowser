@@ -379,7 +379,13 @@ def test_pull_request_text_is_inert_under_both_profiles(
             record = client.get("/api/plugin/github/pull?number=10").json()["record"]
             # What the page paints as text comes as it was written, as JSON strings.
             assert record["pull"]["title"].startswith("<img src=x")
-            assert record["pull"]["labels"] == ["<b onmouseover=alert(4)>label</b>"]
+            assert record["pull"]["labels"] == [
+                {
+                    "name": "<b onmouseover=alert(4)>label</b>",
+                    "color": "ff0000",
+                    "description": None,
+                }
+            ]
             assert record["pull"]["head"]["ref"] == '"><svg onload=alert(3)>'
             rendered = by_profile[profile] = _rendered(client)
             with monkeypatch.context() as broken:

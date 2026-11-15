@@ -54,15 +54,23 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_ROW_LABEL_BYTES,
+    MAX_ROW_LABEL_DESCRIPTION_BYTES,
     MAX_ROW_REF_BYTES,
     MAX_ROW_TITLE_BYTES,
     ListedRepository,
+    PullListLabel,
     PullListRow,
     rate_limit_holds,
     read_list_refresh,
     write_list_refresh,
 )
-from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp, cut_escaped
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_LABELS,
+    PullRefreshStamp,
+    cut_escaped,
+    label_color,
+    label_description,
+)
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import PullListName
 from metabrowser.home import PrivateStorageError
@@ -74,10 +82,13 @@ _COMMIT_ID: Final = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 
 # Two public repositories, two 100-row pages each (2026-11-03): 46–49 KB instead
 # of REST's 1.9–2.2 MB, with every existing row field. GitHub reported cost=1/query.
-# A page remains 100 rows and at most 100 bounded label names on each row.
+# A page remains 100 rows and at most 100 bounded labels on each row.
 # ``headRefOid`` lets a cached record or file list be checked against its row; on
 # cli/cli's 100 newest rows it took a page from 58,811 to 64,410 bytes (9.5%), at the
-# same cost of 1 (2026-11-11).
+# same cost of 1 (2026-11-11). Each label's ``color`` and ``description``, which its chip
+# is painted and titled by, took cli/cli's newest page (105 labels) from 63,097 to 69,951
+# bytes (10.9%) and kubernetes/kubernetes's (981 labels) from 84,666 to 174,997 (107%),
+# both still at a cost of 1 (2026-11-15).
 _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
   viewer { login }
   repository(owner:$owner,name:$name) {
@@ -91,7 +102,7 @@ _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
       nodes {
         number title state isDraft mergedAt createdAt updatedAt closedAt
         author { login avatar_url:avatarUrl(size:40) } baseRefName headRefName headRefOid headRepository { nameWithOwner }
-        labels(first:100) { nodes { name } pageInfo { hasNextPage } }
+        labels(first:100) { nodes { name color description } pageInfo { hasNextPage } }
       }
     }
   }
@@ -126,8 +137,8 @@ def _row(value: object) -> tuple[PullListRow, bool]:
     head_oid = sha if isinstance(sha, str) and _COMMIT_ID.fullmatch(sha) else None
     labels = item.get("labels")
     listed: list[object] = labels if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
-    names = [as_dict(label).get("name") for label in listed[:MAX_LABELS]]
-    cut_names = [cut_escaped(name, MAX_ROW_LABEL_BYTES) for name in names if isinstance(name, str)]
+    read = [_label(label) for label in listed[:MAX_LABELS]]
+    kept = [label for label in read if label is not None]
     row = PullListRow(
         number=item["number"],
         title=title,
@@ -142,7 +153,7 @@ def _row(value: object) -> tuple[PullListRow, bool]:
         base_ref=base_ref,
         head_ref=head_ref,
         head_repository=head_repository,
-        labels=tuple(name for name, _cut in cut_names),
+        labels=tuple(label for label, _cut in kept),
         head_oid=head_oid,
     )
     cut = (
@@ -151,10 +162,32 @@ def _row(value: object) -> tuple[PullListRow, bool]:
         or head_cut
         or repository_cut
         or len(listed) > MAX_LABELS
-        or len(cut_names) < len(names)
-        or any(name_cut for _name, name_cut in cut_names)
+        or len(kept) < len(read)
+        or any(label_cut for _label, label_cut in kept)
     )
     return row, cut
+
+
+def _label(value: object) -> tuple[PullListLabel, bool] | None:
+    """A row's label and whether a bound cut it, or ``None`` for one without a name.
+
+    A color that is not six hex digits is left out, and the label is drawn neutral.
+    """
+
+    label = as_dict(value)
+    name = label.get("name")
+    if not isinstance(name, str):
+        return None
+    name, name_cut = cut_escaped(name, MAX_ROW_LABEL_BYTES)
+    description = label_description(label.get("description"))
+    description, description_cut = (
+        cut_escaped(description, MAX_ROW_LABEL_DESCRIPTION_BYTES)
+        if description is not None
+        else (None, False)
+    )
+    return PullListLabel(
+        name=name, color=label_color(label.get("color")), description=description
+    ), name_cut or description_cut
 
 
 def _rows(values: Sequence[object]) -> tuple[tuple[PullListRow, ...], bool]:

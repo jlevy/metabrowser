@@ -373,7 +373,7 @@ const TRUNCATED = Object.freeze({
  *     avatar: string | null, actorAvatar: string | null, baseRef: string, headRef: string,
  *     actor: string | null, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
- *     closed: string | null, closedLabel: string | null, labels: string[],
+ *     closed: string | null, closedLabel: string | null, labels: PullLabel[],
  *     merge: {state: string, label: string} | null, text: string, truncated: boolean,
  *   },
  *   timeline: TimelineItem[],
@@ -427,6 +427,92 @@ function list(value) {
 /** @param {unknown} login */
 function who(login) {
   return typeof login === "string" && login ? login : "ghost";
+}
+
+/**
+ * A label as the header draws it. `color` is GitHub's six hex digits, or null for a label
+ * drawn neutral; `style` is the custom properties github/styles.css paints a colored chip
+ * from; `tip` is the label's description, its chip's tooltip, or null for none.
+ * @typedef {{name: string, color: string | null, style: string | null, tip: string | null}} PullLabel
+ */
+
+/**
+ * The custom properties github.com sets on a label for its stylesheet's formula: the
+ * color's red, green, and blue, 0 to 255, and its hue in degrees and saturation and
+ * lightness in percent, each rounded to a whole number as github.com rounds them: these are
+ * the values github.com set on each of 112 colors of six public repositories' labels
+ * (tests/fixtures/github-label-colors.json, read 2026-11-15). Null for anything but six hex
+ * digits.
+ *
+ * @param {unknown} color
+ * @returns {string | null}
+ */
+export function labelColorProperties(color) {
+  if (typeof color !== "string" || !/^[0-9a-fA-F]{6}$/.test(color)) {
+    return null;
+  }
+  const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(color.slice(at, at + 2), 16));
+  const [red, green, blue] = [r, g, b].map((channel) => channel / 255);
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const chroma = max - min;
+  const lightness = (max + min) / 2;
+  let hue = 0;
+  let saturation = 0;
+  if (chroma > 0) {
+    saturation = chroma / (1 - Math.abs(2 * lightness - 1));
+    const sector =
+      max === red
+        ? ((green - blue) / chroma) % 6
+        : max === green
+          ? (blue - red) / chroma + 2
+          : (red - green) / chroma + 4;
+    hue = sector * 60;
+    if (hue < 0) {
+      hue += 360;
+    }
+  }
+  const [h, s, l] = [hue, saturation * 100, lightness * 100].map(Math.round);
+  return `--label-r:${r};--label-g:${g};--label-b:${b};--label-h:${h};--label-s:${s};--label-l:${l}`;
+}
+
+/**
+ * A label's chip, our chip's size: a label with GitHub's color carries it, and the custom
+ * properties github/styles.css paints it from, and one with a description has it as its
+ * tooltip, which says what the name does not (docs/design-system.md, "Label Colors").
+ *
+ * @param {PullLabel} label
+ */
+export function labelChip(label) {
+  /** @type {Record<string, string>} */
+  const attributes = { class: "github-pull-label" };
+  if (label.color !== null && label.style !== null) {
+    attributes["data-color"] = label.color;
+    attributes.style = label.style;
+  }
+  if (label.tip !== null) {
+    attributes["data-tip-text"] = label.tip;
+  }
+  return h("span", attributes, [label.name]);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {PullLabel}
+ */
+function describeLabel(value) {
+  const label =
+    value !== null && typeof value === "object"
+      ? /** @type {Record<string, unknown>} */ (value)
+      : {};
+  const style = labelColorProperties(label.color);
+  const description = text(label.description);
+  return {
+    name: text(label.name),
+    color: style === null ? null : text(label.color).toLowerCase(),
+    style,
+    tip: description.trim() ? description : null,
+  };
 }
 
 // The tone a completed check run's conclusion is painted with and counted under. As
@@ -1007,7 +1093,7 @@ function describeCore(pull) {
     updated: text(pull.updated_at),
     closed: state === "merged" ? pull.merged_at : state === "closed" ? pull.closed_at : null,
     closedLabel: state === "merged" ? "merged" : state === "closed" ? "closed" : null,
-    labels: list(pull.labels).map(text),
+    labels: list(pull.labels).map(describeLabel),
     merge: merge === null ? null : { state: merge, label: MERGEABLE[merge] ?? MERGEABLE.unknown },
     text: text(pull.body),
     truncated: pull.body_truncated === true,
@@ -4494,9 +4580,7 @@ export function mountPullPage(container, ctx, mb) {
       // A row that is always there, so a pull request with labels is as tall as one without.
       placeChildren(
         labelList,
-        headerPart("labels", pull.labels, () =>
-          pull.labels.map((label) => h("span", { class: "github-pull-label" }, [label])),
-        ),
+        headerPart("labels", pull.labels, () => pull.labels.map(labelChip)),
       );
       children.push(labelsRow);
     } else {

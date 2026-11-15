@@ -10,7 +10,7 @@
 
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
 menu, a rule for tooltips, and the Conversation’s rhythm and headings, from the same
-day. They land as one native GitHub stack of twelve pull requests on `main`:
+day. They land as one native GitHub stack of thirteen pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -38,6 +38,8 @@ day. They land as one native GitHub stack of twelve pull requests on `main`:
 12. **Conversation rhythm and headings:** every two consecutive events are one token
     apart (`mb-w7rt`), and every event’s heading reads “author verb age”, with a chip
     only for a review state the verb does not say (`mb-novh`).
+13. **Label colors:** a pull request’s labels are colored as github.com colors them, at
+    our chip’s size, with a label’s description as its tooltip (`mb-9qob`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -364,6 +366,29 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
+### Label Colors
+
+- GitHub gives each label a `color`, six hex digits, and a `description`, in REST and
+  GraphQL alike. Every query that reads labels asks for both: the catalog’s page, the
+  selected pull request’s core, and the pull request’s REST read, which already had
+  them. A color that is not six hex digits is kept as none, and its chip is neutral.
+- The page sets github.com’s `--label-*` properties on the chip and `github/styles.css`
+  states github.com’s formula once, in both themes; the rule and why it is written in
+  `rgb()` and `hsl()` are in “Label Colors” in `docs/design-system.md`. The constants
+  and the rounding were read from github.com’s stylesheets and rendered labels on
+  2026-11-15.
+- A record and a catalog row keep each label as its name, color, and description.
+  A record raises `PULL_RECORD_PROJECTION` to 2 and the catalog `CATALOG_PROJECTION` to
+  3, so what an earlier build cached is still shown, its labels neutral, until its next
+  refresh asks for it in full (a record) or the one ALL rescan rewrites it (a row).
+  Both read a label an earlier projection named alone as one without a color.
+- On a label-heavy repository the descriptions are most of the cost: the catalog’s page
+  of kubernetes/kubernetes’s 100 newest pull requests (981 labels) went from 84,666 to
+  174,997 bytes, and cli/cli’s (105 labels) from 63,097 to 69,951, both at a GraphQL
+  cost of 1. A row as the catalog keeps it went from 646 to 1,637 bytes on average on
+  that kubernetes page and from 518 to 597 on cli/cli’s; with colors alone it would be
+  901 and 545.
+
 ### Narrow Toolbars
 
 - **The decision** (the owner, 2026-11-15, `mb-nm4z`): “on narrow screens wrap when
@@ -395,6 +420,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - **The Diff summary and the pull stack groups** read data the routes already answer:
   `pull-files`, a commit’s diff totals, and the stack envelope.
   Any new field arrives with its route’s golden.
+- **Labels** in `/api/plugin/github/pull`, `/api/plugin/github/pull-cores-prepare`, and
+  `/api/plugin/github/pulls` become objects of name, color, and description, which those
+  routes’ goldens print.
 
 ## Implementation Plan
 
@@ -481,6 +509,15 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - [ ] `mb-w7rt`: one rhythm between every two consecutive events.
 - [ ] `mb-novh`: every event’s heading reads alike.
 
+### Phase 13: Label Colors (pull request 13)
+
+- [ ] `mb-9qob`: every query that reads labels asks for their color and description; the
+  record and the catalog’s rows keep them under a raised projection; the chips are
+  painted by github.com’s formula in both themes at our chip’s size, with a label’s
+  description as its tooltip; the routes’ goldens print them; and a Chrome check holds a
+  light, a dark, a very pale, and a colorless label to the formula and to github.com’s
+  own computed colors.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -506,7 +543,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 12 merges.
+This plan moves to `docs/project/specs/done/` when pull request 13 merges.
 
 ## Open Questions
 
@@ -525,7 +562,7 @@ This plan moves to `docs/project/specs/done/` when pull request 12 merges.
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
   `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
-  follow-ups on the Group by menu.
+  follow-ups on the Group by menu; `mb-9qob`, the label colors.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

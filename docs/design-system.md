@@ -78,6 +78,10 @@ Consequences worth knowing:
   stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
   from one another, and that property belongs to the set rather than to any member, so
   they are identical in both themes and are never returned individually.
+- A GitHub label’s colors are the other exception ([Label Colors](#label-colors)): the
+  color is GitHub’s data, not a token, and the formula that paints it is github.com’s,
+  written in `rgb()` and `hsl()` of the label’s own custom properties, so it paints what
+  github.com paints.
 
 `tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
 every chromatic token defined in both themes carries the same hue in each.
@@ -1624,7 +1628,7 @@ of events is 20 px apart, as in Chrome.
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
-| Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
+| Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
@@ -1660,6 +1664,48 @@ again before assigning the browser image source.
 Anonymous CORS and a no-referrer policy omit credentials and the local page URL. The
 browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
 Document image sanitization remains independent; see [Content Trust](../SECURITY.md).
+
+### Label Colors
+
+**A label is colored exactly as github.com colors it, in our chip’s box** (`mb-9qob`).
+GitHub gives each label a color, six hex digits, and a description, and a reader who
+knows a repository’s labels by their colors on github.com should find the same colors
+here. The chip keeps the size every label chip has: `--ui-small-font-size`, the `0 5px`
+padding, the hairline border, `--radius-tag`, and its height, so a colored label is as
+tall as a neutral one and the header’s rows keep their heights.
+
+The colors are github.com’s own formula, read from its stylesheets (Primer’s
+`.IssueLabel`, on 2026-11-15). The page sets the label’s red, green, and blue, 0 to 255,
+and its hue, saturation, and lightness, each rounded to a whole number, as `--label-r`,
+`--label-g`, `--label-b`, `--label-h`, `--label-s`, and `--label-l` on the chip, as
+github.com does; `github/styles.css` states the formula once.
+Its perceived lightness is (0.2126 R + 0.7152 G + 0.0722 B) / 255.
+
+| Part | Light theme | Dark theme |
+| --- | --- | --- |
+| Ground | The color | The color at 0.18 alpha |
+| Text | Black when the perceived lightness is above 0.453, white otherwise | The label’s hue and saturation, its lightness raised by (0.6 − perceived lightness) × 100 points when the perceived lightness is under 0.6 |
+| Border | The label’s hue and saturation 25 points darker, at alpha (perceived lightness − 0.96) × 100, clamped to 0 to 1, so it shows only on a very pale label | The text’s color at 0.3 alpha |
+
+A color that is not six hex digits, or none, is kept as none, and its chip is the
+neutral one: `--muted` text on no ground in a `--border` box.
+A label’s description is its chip’s tooltip, since it says what the name does not
+([Tooltips Add Information](#tooltips-add-information)); a label with no description has
+none. The name is the label’s meaning and is always there, so color is never the only
+signal.
+
+These are the one place the stylesheet writes `rgb()` and `hsl()`
+([Color and Theming](#color-and-theming)): the color is GitHub’s sRGB data and the
+formula is github.com’s, so stating it in `oklch` would paint other colors than
+github.com does. `test_colors_are_declared_in_oklch` takes out the formula’s two rules
+alone and holds that every color they write is computed from a `--label-` property.
+`tests/test_github_label_colors.py` holds the properties to the ones github.com set on
+112 colors of six public repositories’ labels.
+`tests/dom/github-pull-header-chrome.mjs` (its `labels` part) holds each chip’s computed
+ground, text, and border in both themes to the formula and to what github.com’s own
+stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a gray
+label, a colorless or malformed one to the neutral chip, and every chip to the neutral
+chip’s box.
 
 ## The Pulls Tab
 

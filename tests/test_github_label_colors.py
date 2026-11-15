@@ -1,0 +1,170 @@
+"""A GitHub label's color and description, from GitHub's answer to the chip's properties.
+
+The record and a list's rows keep each label's color as six lower-case hex digits, or
+``None`` for anything else, and its description, or ``None`` for none
+(``pull_record.label_color``, ``pull_record.label_description``). The page turns a color
+into the custom properties github.com sets on a label (``labelColorProperties`` in
+``builtin_plugins/github/pull-page.js``), and ``tests/fixtures/github-label-colors.json``
+holds the properties github.com set on 112 colors of six public repositories' labels, so
+the hue, saturation, and lightness are held to github.com's own, rounding and all. What
+the stylesheet paints from them is checked in Chrome, in
+``tests/dom/github-pull-header-chrome.mjs`` (its ``labels`` part).
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from metabrowser.builtin_plugins.github import pull_list_refresh, pulls
+from metabrowser.builtin_plugins.github.pull_list import (
+    MAX_ROW_LABEL_DESCRIPTION_BYTES,
+    PullListRow,
+)
+from metabrowser.builtin_plugins.github.pull_record import (
+    PullRequest,
+    escaped_size,
+    label_color,
+    label_description,
+)
+from tests.github_pull_fixture import generated_item, recorded_responses
+from tests.required_tools import needs_node
+
+ROOT = Path(__file__).resolve().parent.parent
+PULL_PAGE_JS = ROOT / "src/metabrowser/builtin_plugins/github/pull-page.js"
+GITHUB = json.loads((ROOT / "tests/fixtures/github-label-colors.json").read_text(encoding="utf-8"))
+
+_RUN = r"""
+const [pageUrl, input] = process.argv.slice(1);
+import(pageUrl).then(({ labelColorProperties }) => {
+  process.stdout.write(JSON.stringify(JSON.parse(input).map((color) => labelColorProperties(color))));
+});
+"""
+
+
+def _properties(colors: list[Any]) -> list[str | None]:
+    completed = subprocess.run(
+        ["node", "-e", _RUN, PULL_PAGE_JS.as_uri(), json.dumps(colors)],
+        capture_output=True,
+        text=True,
+        timeout=50,
+        check=True,
+    )
+    return json.loads(completed.stdout)
+
+
+@needs_node
+def test_each_color_gets_the_properties_github_com_gave_it() -> None:
+    observed: dict[str, list[int]] = GITHUB["properties"]
+    assert len(observed) == 112
+    # Hues that fall on a half degree, as 9ce9f4's 187.5 does, round up, as github.com's do.
+    assert observed["9ce9f4"] == [188, 80, 78]
+    colors = sorted(observed)
+    for color, properties in zip(colors, _properties(colors), strict=True):
+        r, g, b = (int(color[at : at + 2], 16) for at in (0, 2, 4))
+        hue, saturation, lightness = observed[color]
+        assert properties == (
+            f"--label-r:{r};--label-g:{g};--label-b:{b};"
+            f"--label-h:{hue};--label-s:{saturation};--label-l:{lightness}"
+        ), color
+
+
+@needs_node
+def test_the_page_paints_only_six_hex_digits() -> None:
+    upper, lower, *refused = _properties(
+        ["D73A4A", "d73a4a", "#d73a4a", "d73a4", "d73a4a0", "d73a4g", "", None, 123, ["d73a4a"]]
+    )
+    assert (
+        upper
+        == lower
+        == ("--label-r:215;--label-g:58;--label-b:74;--label-h:354;--label-s:66;--label-l:54")
+    )
+    assert refused == [None] * 8
+
+
+@pytest.mark.parametrize(
+    ("given", "kept"),
+    [
+        ("d73a4a", "d73a4a"),
+        ("D73A4A", "d73a4a"),
+        ("#d73a4a", None),
+        ("d73a4", None),
+        ("d73a4ag", None),
+        ("", None),
+        (None, None),
+        (0xD73A4A, None),
+    ],
+)
+def test_a_color_is_six_hex_digits_kept_lower_case_or_none(given: object, kept: str | None) -> None:
+    assert label_color(given) == kept
+
+
+@pytest.mark.parametrize(
+    ("given", "kept"),
+    [
+        ("Something isn't working", "Something isn't working"),
+        ("", None),
+        ("  ", None),
+        (None, None),
+    ],
+)
+def test_a_description_is_its_text_or_none(given: object, kept: str | None) -> None:
+    assert label_description(given) == kept
+
+
+_LABELS: list[dict[str, Any]] = [
+    {"name": "bug", "color": "D73A4A", "description": "Something isn't working"},
+    {"name": "invalid", "color": "e4e669", "description": ""},
+    {"name": "odd", "color": "#123456"},
+    {"color": "ffffff", "description": "no name"},
+]
+_KEPT = [
+    {"name": "bug", "color": "d73a4a", "description": "Something isn't working"},
+    {"name": "invalid", "color": "e4e669", "description": None},
+    {"name": "odd", "color": None, "description": None},
+]
+
+
+def test_a_record_keeps_each_labels_color_and_description() -> None:
+    answer = recorded_responses()["pull"] | {"labels": _LABELS}
+    answer["base"] = answer["base"] | {"sha": "1" * 40}
+    answer["head"] = answer["head"] | {"sha": "2" * 40}
+    pull = pulls._pull(answer, 7)  # pyright: ignore[reportPrivateUsage]
+    assert [label.model_dump() for label in pull.labels] == _KEPT
+
+
+def test_a_row_keeps_each_labels_color_and_description_within_its_bounds() -> None:
+    row, cut = pull_list_refresh._row(generated_item(1) | {"labels": _LABELS})  # pyright: ignore[reportPrivateUsage]
+    assert [label.model_dump() for label in row.labels] == _KEPT
+    # A label without a name is left out, which the row says.
+    assert cut
+    long = {"name": "long", "color": "ffffff", "description": "\x00" * 100}
+    row, cut = pull_list_refresh._row(generated_item(1) | {"labels": [long]})  # pyright: ignore[reportPrivateUsage]
+    description = row.labels[0].description
+    assert cut and description is not None
+    assert escaped_size(description) <= MAX_ROW_LABEL_DESCRIPTION_BYTES < escaped_size("\x00" * 100)
+
+
+def test_a_label_an_earlier_projection_named_alone_reads_without_color_or_description() -> None:
+    row = PullListRow.model_validate(
+        pull_list_refresh._row(generated_item(1))[0].model_dump() | {"labels": ["bug"]}  # pyright: ignore[reportPrivateUsage]
+    )
+    assert [label.model_dump() for label in row.labels] == [
+        {"name": "bug", "color": None, "description": None}
+    ]
+    answer = recorded_responses()["pull"] | {"labels": []}
+    answer["base"] = answer["base"] | {"sha": "1" * 40}
+    answer["head"] = answer["head"] | {"sha": "2" * 40}
+    pull = pulls._pull(answer, 7)  # pyright: ignore[reportPrivateUsage]
+    read = PullRequest.model_validate(pull.model_dump() | {"labels": ["bug"]})
+    assert [label.model_dump() for label in read.labels] == [
+        {"name": "bug", "color": None, "description": None}
+    ]
+    # What is written is the label itself, never the bare name.
+    assert json.loads(read.model_dump_json())["labels"] == [
+        {"name": "bug", "color": None, "description": None}
+    ]

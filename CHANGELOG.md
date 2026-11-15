@@ -4,6 +4,18 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s labels are colored as github.com colors them, in both themes: the
+  label’s own color as the chip’s ground in the light theme, and a tint of it in the
+  dark one, with GitHub’s text and border colors, at the chip’s same size.
+  A label’s description, where it has one, is its chip’s tooltip.
+  A label GitHub gave no usable color keeps the plain chip.
+  A pull request cached before this release shows its labels plain until its next
+  refresh, which fetches it in full once, and a repository’s cached list of pull
+  requests reads its rows again once, keeping the rows it holds meanwhile.
+  `metab --api` answers each label as its name, color, and description rather than its
+  name alone, in `/api/plugin/github/pull`, `/api/plugin/github/pull-cores-prepare`, and
+  `/api/plugin/github/pulls`. See [Label Colors](docs/design-system.md#label-colors).
+
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one

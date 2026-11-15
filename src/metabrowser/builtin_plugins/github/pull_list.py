@@ -16,6 +16,7 @@ from typing import Annotated, ClassVar, Final, Literal, Self
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -28,6 +29,7 @@ from metabrowser.builtin_plugins.github.avatars import AvatarUrl
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_LABELS,
+    LabelColor,
     Login,
     PullRefreshStamp,
     Reader,
@@ -36,6 +38,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Sha,
     Timestamp,
     Url,
+    bare_labels,
     ensure_pulls_directory,
     read_refresh_stamp,
     write_refresh_stamp,
@@ -66,6 +69,13 @@ log = logging.getLogger(__name__)
 MAX_ROW_TITLE_BYTES: Final = 1024
 MAX_ROW_REF_BYTES: Final = 256
 MAX_ROW_LABEL_BYTES: Final = 64
+# A label's description: GitHub refuses one past 100 characters, and the longest of the
+# 2,082 descriptions among the 2,846 labels of six public repositories (pull_record.py,
+# LabelColor) was 101 bytes (2026-11-15). 160 bytes keeps every one measured, and a row
+# with every text at its bound, 100 labels among them, is 28,379 bytes, inside the 32 KiB
+# the catalog lets SQLite store in one row (pull_catalog._database's SQLITE_LIMIT_LENGTH);
+# at 400 bytes such a row was refused, and its page with it.
+MAX_ROW_LABEL_DESCRIPTION_BYTES: Final = 160
 
 # What ``gh_api`` will send as ``If-None-Match``, the same as ``gh.py``'s, which this module
 # does not load. It raises on anything else, which is no failure a job names, so a file
@@ -75,6 +85,9 @@ ETAG_PATTERN: Final = r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$'
 type PullNumber = Annotated[int, Field(ge=1, le=MAX_PULL_REQUEST_NUMBER)]
 type _RowText = Annotated[str, StringConstraints(max_length=MAX_ROW_REF_BYTES)]
 type _LabelName = Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTES)]
+type _LabelDescription = Annotated[
+    str, StringConstraints(max_length=MAX_ROW_LABEL_DESCRIPTION_BYTES)
+]
 
 
 _UNWRITTEN_STAMPS: dict[str, PullRefreshStamp] = {}
@@ -96,12 +109,22 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class PullListLabel(_Model):
+    """A label as a row carries it: the record's :class:`.pull_record.PullLabel`, bounded."""
+
+    name: _LabelName
+    color: LabelColor | None
+    description: _LabelDescription | None
+
+
 class PullListRow(_Model):
     """One pull request as a list shows it.
 
     ``head_repository`` is ``owner/name``, or ``None`` when a fork was deleted.
     ``head_oid`` is the head commit GitHub reported with the row, or ``None`` for a row
-    written before the catalog read it, which the next projection upgrade rewrites.
+    written before the catalog read it, which the next projection upgrade rewrites. A row
+    written before projection 3 names its labels alone, which read as labels without a
+    color or a description (:func:`.pull_record.bare_labels`) until that upgrade too.
     """
 
     number: PullNumber
@@ -117,7 +140,9 @@ class PullListRow(_Model):
     base_ref: _RowText
     head_ref: _RowText
     head_repository: _RowText | None
-    labels: tuple[_LabelName, ...] = Field(max_length=MAX_LABELS)
+    labels: Annotated[tuple[PullListLabel, ...], BeforeValidator(bare_labels)] = Field(
+        max_length=MAX_LABELS
+    )
     head_oid: Sha | None = None
 
     @property
@@ -511,6 +536,7 @@ __all__ = [
     "MAX_PULL_FILES",
     "MAX_PULL_FILES_BYTES",
     "MAX_ROW_LABEL_BYTES",
+    "MAX_ROW_LABEL_DESCRIPTION_BYTES",
     "MAX_ROW_REF_BYTES",
     "MAX_ROW_TITLE_BYTES",
     "PULL_FILES_SCHEMA",
@@ -522,6 +548,7 @@ __all__ = [
     "LocalComparison",
     "PullFileList",
     "PullFileRow",
+    "PullListLabel",
     "PullListRow",
     "parse_stamp",
     "rate_limit_holds",

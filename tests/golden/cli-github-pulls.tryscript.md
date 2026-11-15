@@ -277,7 +277,11 @@ status: 200
       "head_ref": "count-to-two",
       "head_repository": "forker/demo",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
@@ -434,7 +438,11 @@ status: 200
       "head_ref": "count-to-two",
       "head_repository": "forker/demo",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
@@ -496,7 +504,11 @@ status: 200
       "head_ref": "spam",
       "head_repository": null,
       "labels": [
-        "invalid"
+        {
+          "name": "invalid",
+          "color": "e4e669",
+          "description": null
+        }
       ],
       "head_oid": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
       "merged": false

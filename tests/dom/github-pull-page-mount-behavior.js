@@ -1162,7 +1162,11 @@ async function headerShape(page) {
     })(),
     "three labels": (() => {
       const body = structuredClone(recorded.current.body);
-      body.record.pull.labels = ["bug", "enhancement", "needs review"];
+      body.record.pull.labels = [
+        { name: "bug", color: "d73a4a", description: "Something isn't working" },
+        { name: "enhancement", color: "a2eeef", description: null },
+        { name: "needs review", color: null, description: null },
+      ];
       return body;
     })(),
     merged: recorded.merged.body,
@@ -1186,6 +1190,37 @@ async function headerShape(page) {
         `${name} ${tab}: the stack slot ends the author's row`,
       );
       assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
+      if (name === "three labels") {
+        // A label with GitHub's color carries it and the properties github/styles.css
+        // paints it from; one with a description has it as its tooltip; one without a
+        // color is the neutral chip, and one without a description has no tooltip.
+        assert.deepEqual(
+          container
+            .querySelectorAll(".github-pull-label")
+            .map((chip) => [
+              chip.textContent,
+              chip.getAttribute("data-color"),
+              chip.getAttribute("style"),
+              chip.getAttribute("data-tip-text"),
+            ]),
+          [
+            [
+              "bug",
+              "d73a4a",
+              "--label-r:215;--label-g:58;--label-b:74;--label-h:354;--label-s:66;--label-l:54",
+              "Something isn't working",
+            ],
+            [
+              "enhancement",
+              "a2eeef",
+              "--label-r:162;--label-g:238;--label-b:239;--label-h:181;--label-s:71;--label-l:79",
+              null,
+            ],
+            ["needs review", null, null, null],
+          ],
+          `${tab}: each chip's color, properties, and tooltip`,
+        );
+      }
       assert.ok(
         stacks.children.length !== 1 || stacks.children[0].classes.has("github-pull-stack-strut"),
         `${name} ${tab}: a strut holds the author's row at a chip's height`,

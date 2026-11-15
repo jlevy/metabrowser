@@ -1227,7 +1227,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "newer_cache",
-    "message": "the pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one",
+    "message": "the pull-request list in the cache was written by a newer Metabrowser (row projection 4, where this release reads up to 3), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one",
     "reset_at": null,
     "at": "2026-09-17T12:03:02Z"
   },

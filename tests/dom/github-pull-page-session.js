@@ -113,7 +113,15 @@ function summarize(model) {
       pull === null
         ? null
         : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action}: ${pull.head} → ${pull.base}`,
-    labels: pull === null ? [] : pull.labels,
+    // Each label's name, GitHub's color and the properties its chip is painted from, or
+    // "neutral", and its description, the chip's tooltip, or "no tip".
+    labels:
+      pull === null
+        ? []
+        : pull.labels.map(
+            (label) =>
+              `${label.name} ${label.color === null ? "neutral" : `#${label.color} ${label.style}`} ${label.tip === null ? "no tip" : `tip: ${label.tip}`}`,
+          ),
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
       (item) =>

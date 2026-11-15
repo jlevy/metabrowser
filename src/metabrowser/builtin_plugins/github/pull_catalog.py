@@ -61,8 +61,9 @@ log = logging.getLogger(__name__)
 CATALOG_SCHEMA = 1
 # The checkpoint's own fields, as the ``schema_version`` CatalogState writes.
 CHECKPOINT_SCHEMA = 1
-# 2 added each row's head commit, which a cached record and file list are checked against.
-CATALOG_PROJECTION = 2
+# 2 added each row's head commit, which a cached record and file list are checked against;
+# 3 each label's color and description (pull_list.PullListLabel).
+CATALOG_PROJECTION = 3
 _SIDECARS: Final = ("-journal", "-wal", "-shm")
 # SQLite's primary result codes for a file that is not a database or is damaged.
 _DAMAGED_CODES: Final = frozenset({sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB})
