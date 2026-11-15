@@ -3,15 +3,19 @@ type: is
 id: is-01m7g4zbj0381v3skydz772yk1
 title: "Pulls toolbar: drop the Stacks toggle; group by stack always"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T17:44:40.767Z
-updated_at: 2026-11-15T17:49:21.409Z
+updated_at: 2026-11-15T17:50:35.849Z
+started_at: 2026-11-15T17:50:35.848Z
 ---
 Found in #450's review A (finding A4) and measured by its fix (2026-11-15).
 
