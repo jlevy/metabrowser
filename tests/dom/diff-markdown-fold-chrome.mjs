@@ -16,7 +16,8 @@
 // document disclosure styling reached it. A fold is a place in the document, not a box in
 // it: closed, it is one quiet line between the blocks around it; open, the blocks it held
 // stand where they stood, laid out as the blocks around them are, and nothing else moves.
-// A document's own `<details>` keeps KPress's box.
+// Its label brightens to the text colour under the pointer, as the shell's document
+// disclosures do. A document's own `<details>` keeps KPress's box.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -28,8 +29,9 @@ const DIFF = path.join(root, "src/metabrowser/builtin_plugins/diff");
 const KPRESS = path.resolve(/** @type {string} */ (process.env.KPRESS_STATIC));
 const INPUT = JSON.parse(fs.readFileSync(/** @type {string} */ (process.env.FOLD_INPUT), "utf8"));
 const SHOTS = process.env.FOLD_SHOTS;
-// Box edges are fractional; under a hundredth of a pixel is the same place.
-const TOLERANCE_PX = 0.01;
+// Layout puts box edges on 1/64 px, and the arithmetic below takes the unrounded rects, so
+// anything nearer than that is the same place, however many heights are summed.
+const TOLERANCE_PX = 1 / 64;
 const failures = [];
 let checks = 0;
 const check = (label, ok, detail = "") => {
@@ -40,8 +42,9 @@ const check = (label, ok, detail = "") => {
 };
 const near = (a, b) => Math.abs(a - b) <= TOLERANCE_PX;
 
-// The order the page loads them in: KPress's tokens and the shell's sheet with the shell,
-// the diff plugin's with the plugin, and KPress's document sheets with the first render.
+// KPress's tokens and the shell's sheet load with the shell, then the diff plugin's.
+// KPress's document stylesheets load last, the order in which the diff's rules must
+// still win; in the app they may also load before the diff plugin's.
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>diff fold</title>
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
@@ -112,15 +115,15 @@ const MOUNT = `(blocks) => {
   return document.querySelectorAll("details.diff-markdown-context").length;
 }`;
 
-// In the page: the fold, its summary, every block row, and the document's own details.
+// In the page: the fold, its summary, every block row, and the document's own details,
+// with box edges unrounded.
 const READ = `() => {
-  const round = (value) => Math.round(value * 100) / 100;
   const box = (node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node);
     return {
-      top: round(rect.top), bottom: round(rect.bottom), left: round(rect.left),
-      width: round(rect.width), height: round(rect.height),
+      top: rect.top, bottom: rect.bottom, left: rect.left,
+      width: rect.width, height: rect.height,
       border: ["top", "right", "bottom", "left"]
         .map((side) => style.getPropertyValue("border-" + side + "-width")).join(" "),
       background: style.backgroundColor + " " + style.backgroundImage,
@@ -130,7 +133,7 @@ const READ = `() => {
   const face = (row) => {
     const style = getComputedStyle(row.querySelector(".kpress-prose > *"));
     return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.color,
-      style.margin].join(" | ");
+      style.fontFeatureSettings, style.fontVariant, style.letterSpacing, style.margin].join(" | ");
   };
   const fold = document.querySelector("details.diff-markdown-context");
   const summary = fold.querySelector(":scope > summary");
@@ -143,7 +146,7 @@ const READ = `() => {
       first: !!(row.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING),
       box: box(row),
       face: face(row),
-      textLeft: round(row.querySelector(".kpress-prose > *").getBoundingClientRect().left),
+      textLeft: row.querySelector(".kpress-prose > *").getBoundingClientRect().left,
     }));
   return {
     open: fold.open,
@@ -151,8 +154,8 @@ const READ = `() => {
     fold: box(fold),
     summary: { ...box(summary), userSelect: getComputedStyle(summary).userSelect,
       text: summary.textContent,
-      contentLeft: round(summary.getBoundingClientRect().left
-        + parseFloat(getComputedStyle(summary).paddingLeft)) },
+      contentLeft: summary.getBoundingClientRect().left
+        + parseFloat(getComputedStyle(summary).paddingLeft) },
     rows,
     own: box(document.querySelector(".kpress-doc details")),
   };
@@ -172,6 +175,34 @@ const SETTLE = `new Promise((resolve) => {
   requestAnimationFrame(frame);
 })`;
 const CLICK = `document.querySelector("details.diff-markdown-context > summary").click()`;
+
+// The summary's colour once its colour transition is over (it keeps one value for five
+// frames), with the text token resolved where the summary is and the summary's centre.
+const COLOR = `new Promise((resolve) => {
+  const summary = document.querySelector("details.diff-markdown-context > summary");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--text)";
+  summary.parentElement.append(probe);
+  const text = getComputedStyle(probe).color;
+  probe.remove();
+  const rect = summary.getBoundingClientRect();
+  let last = "";
+  let still = 0;
+  const frame = () => {
+    const color = getComputedStyle(summary).color;
+    still = color === last ? still + 1 : 0;
+    last = color;
+    if (still >= 5) {
+      resolve({ color, text, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    } else {
+      requestAnimationFrame(frame);
+    }
+  };
+  requestAnimationFrame(frame);
+})`;
+// Rounded to hundredths for the record; the checks take the unrounded values.
+const rounded = (/** @type {string} */ _key, /** @type {unknown} */ value) =>
+  typeof value === "number" ? Math.round(value * 100) / 100 : value;
 
 const server = await serve();
 const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
@@ -214,7 +245,17 @@ try {
   await chrome.evaluate(CLICK);
   await chrome.evaluate(SETTLE);
   const reclosed = await chrome.evaluate(`(${READ})()`);
-  process.stderr.write(`${JSON.stringify({ closed, opened, reclosed })}\n`);
+  // The pointer has not entered the page yet; then it rests on the summary.
+  const resting = await chrome.evaluate(COLOR);
+  await chrome.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: resting.x,
+    y: resting.y,
+  });
+  const hovered = await chrome.evaluate(COLOR);
+  process.stderr.write(
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered }, rounded)}\n`,
+  );
 
   // Closed: one quiet line, the summary, between the blocks around it.
   check("closed, the fold holds only its summary", closed.children === 1, `${closed.children}`);
@@ -340,7 +381,7 @@ try {
     const expected = index < after ? 0 : added;
     check(
       `open, "${row.text}" moves by the inserted blocks alone`,
-      Math.abs(moved - expected) <= 2 * TOLERANCE_PX,
+      near(moved, expected),
       `moved ${moved}, inserted ${expected}`,
     );
   });
@@ -350,6 +391,19 @@ try {
     JSON.stringify({ fold: read.fold, summary: read.summary, rows: read.rows, own: read.own });
   check("closed again, the fold is closed", reclosed.open === false);
   check("closed again, every box is where it was", layout(reclosed) === layout(closed));
+
+  // Under the pointer the label brightens from muted to the text colour, as the shell's
+  // document disclosures do; KPress's own hover colour does not reach it.
+  check(
+    "the summary's label is muted at rest",
+    resting.color !== resting.text,
+    `${resting.color} against text ${resting.text}`,
+  );
+  check(
+    "under the pointer, the summary's label takes the text colour",
+    hovered.color === hovered.text,
+    `${hovered.color} against text ${hovered.text}`,
+  );
 
   // A document's own details keeps KPress's box: the fold's rule is the diff's alone.
   check(

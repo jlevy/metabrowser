@@ -11,12 +11,14 @@
 // What it measures is layout, which no browserless DOM computes: where a menu's group
 // heading starts against its rows, how tall an open menu is drawn against its rows and
 // the window, which controls the bar's row and closed drawer hold and which take keyboard
-// numbers, and where a Group by section's heading starts against its tree
+// numbers, where a Group by section's heading starts against its tree, and whether a
+// refresh after a write keeps the scroll position and the focused row
 // (docs/design-system.md, "Groups in a Menu", "Menu Height", and "Grouping the Files
 // Tree"). The requests and sections themselves run browserlessly in
 // tests/dom/files-group-by-session.js. The pure rule,
 // `menuMaxHeight`, is checked without a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
@@ -129,6 +131,10 @@ const MEASURE = `(key) => {
     rowHeights: [...new Set(rows.map((row) => round(row.getBoundingClientRect().height)))],
     rows: rows.length,
     labelFromRowInset: round(textLeft(first.querySelector(".menu-item-label")) - rowInset),
+    // The rule between the groups and the raw rows, whose 1px a scrolling menu keeps.
+    separators: [...panel.querySelectorAll(":scope > .menu-separator")].map((rule) =>
+      round(rule.getBoundingClientRect().height),
+    ),
     headings,
   };
 }`;
@@ -172,6 +178,27 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
   };
 })`;
 
+// The gear menu: where its title, its labelled row, and its foot start, against the menu.
+const GEAR = `(() => {
+  const menu = document.querySelector("#settings-control .settings-menu");
+  const left = (element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.textContent.trim()) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return Math.round((range.getBoundingClientRect().left - menu.getBoundingClientRect().left) * 100) / 100;
+      }
+    }
+    return null;
+  };
+  return {
+    title: left(menu.querySelector(".menu-title")),
+    labelledRow: left(menu.querySelector(".menu-row")),
+    foot: left(menu.querySelector(".menu-version")),
+  };
+})()`;
+
 const frames =
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
 
@@ -205,15 +232,18 @@ try {
   };
   const measure = (key) => browser.evaluate(`(${MEASURE})(${JSON.stringify(key)})`);
   /** Press one key, as the reader does, at the page. */
+  /** @type {Record<string, number>} */
+  const NAMED_KEYS = { Escape: 27, ArrowLeft: 37, ArrowRight: 39 };
   const press = async (key) => {
-    const code = key === "Escape" ? "Escape" : `Digit${key}`;
-    const windowsVirtualKeyCode = key === "Escape" ? 27 : key.charCodeAt(0);
+    const named = key in NAMED_KEYS;
+    const code = named ? key : `Digit${key}`;
+    const windowsVirtualKeyCode = named ? NAMED_KEYS[key] : key.charCodeAt(0);
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key,
       code,
       windowsVirtualKeyCode,
-      ...(key === "Escape" ? {} : { text: key }),
+      ...(named ? {} : { text: key }),
     });
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyUp",
@@ -234,22 +264,31 @@ try {
   );
   await browser.evaluate("document.fonts.ready.then(() => true)");
   phase("loaded");
+  // The gear menu's lines start on one inset.
+  await browser.evaluate(`document.getElementById("settings-btn").click(), true`);
+  await browser.waitFor(
+    `document.getElementById("settings-control").getAttribute("aria-expanded") === "true"`,
+  );
+  await browser.evaluate(frames);
+  const gear = await browser.evaluate(GEAR);
+  await browser.evaluate(`document.getElementById("settings-btn").click(), true`);
+  await browser.waitFor(
+    `document.getElementById("settings-control").getAttribute("aria-expanded") === "false"`,
+  );
 
-  const result = {};
+  const result = { gear };
   // Group by is the row's one control; the three filters wait in the closed drawer.
   result.row = await browser.evaluate(ROW);
-  // A number reaches what is on screen. With the drawer closed it is inert, so 1 is
-  // Group by and nothing else is numbered.
+  // The numbers: 1 is Group by, and the drawer's filters keep theirs while it is closed,
+  // on stand-ins beside the chevron.
   await press("1");
   result.keyOneOpens = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
-  // Open the drawer, as its chevron does; its filters then take the numbers after Group
-  // by, so 3 is File type.
-  await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
+  // 3 is File type: it opens the closed drawer with its menu.
+  await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
   await sleep(400);
-  await press("3");
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
@@ -301,6 +340,54 @@ try {
   result.codeFiles = await browser.evaluate(
     `[...document.querySelectorAll('.tree-section[data-tree-group="type:code"] .tree-file')].map((row) => row.dataset.path)`,
   );
+  // src also stands in Documentation. With focus on Code's copy, the keys that close and
+  // open it are mutations the tree repairs focus after: focus stays on Code's copy.
+  const FOCUSED = `(() => { const row = document.activeElement; return { section: row?.closest(".tree-section")?.dataset.treeGroup ?? null, path: row?.dataset?.path ?? null, expanded: row?.getAttribute("aria-expanded") ?? null }; })()`;
+  await browser.evaluate(
+    `document.querySelector('.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src"]').focus(), true`,
+  );
+  await press("ArrowLeft");
+  await browser.evaluate(frames);
+  result.focusAfterClose = await browser.evaluate(FOCUSED);
+  await press("ArrowRight");
+  await browser.waitFor(
+    `document.querySelector('.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src"]').getAttribute("aria-expanded") === "true"`,
+  );
+  await browser.evaluate(frames);
+  result.focusAfterOpen = await browser.evaluate(FOCUSED);
+  // A file written into a folder open two levels down refreshes the sections in place: the
+  // folder stays open with the new file in it, and the scroll position and the focused row
+  // inside it are kept. A headless page has no window focus, so its rows hear no focus
+  // events, which a reader's window does; the emulation gives it that.
+  await browser.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  const LIB = `.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src/lib"]`;
+  await browser.evaluate(`document.querySelector('${LIB}').click(), true`);
+  await browser.waitFor(
+    `document.querySelector('${LIB}')?.getAttribute("aria-expanded") === "true"`,
+  );
+  const FOCUS_ROW = `.tree-section[data-tree-group="type:code"] .tree-file[data-path="src/lib/k06.py"]`;
+  // The row takes focus once its folder's opening has made it visible; scrolled to the top
+  // of the tree, it leaves the tree scrolled.
+  await browser.waitFor(
+    `(() => { const row = document.querySelector('${FOCUS_ROW}'); if (!row) return false; row.focus({ preventScroll: true }); return document.activeElement === row; })()`,
+    30000,
+  );
+  await browser.evaluate(
+    `document.querySelector('${FOCUS_ROW}').scrollIntoView({ block: "start" }), true`,
+  );
+  await browser.evaluate(frames);
+  const REFRESH_STATE = `({ scrollTop: document.getElementById("tree-content").scrollTop, focused: document.activeElement?.dataset?.treeId ?? null, libOpen: document.querySelector('${LIB}')?.getAttribute("aria-expanded") ?? null, written: Boolean(document.querySelector('.tree-section[data-tree-group="type:code"] .tree-file[data-path="src/lib/k99.py"]')) })`;
+  const beforeWrite = await browser.evaluate(REFRESH_STATE);
+  fs.writeFileSync(path.join(root, "src", "lib", "k99.py"), "x99\n");
+  const written = Date.now();
+  let afterWrite = await browser.evaluate(REFRESH_STATE);
+  while (!afterWrite.written && Date.now() - written < 15000) {
+    await sleep(100);
+    afterWrite = await browser.evaluate(REFRESH_STATE);
+  }
+  await browser.evaluate(frames);
+  result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
+  phase("refreshed");
   // No grouping is the one tree again.
   await toggle("group", true);
   await browser.evaluate(

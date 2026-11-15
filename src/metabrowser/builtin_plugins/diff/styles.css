@@ -641,16 +641,24 @@
 /* A fold of unchanged blocks is a place in the document, not a box in it: one quiet line
    that opens to the blocks it holds, set as the blocks around them are. It is a
    `<details>` inside the comparison's `article.kpress`, so KPress's document disclosure box
-   (a border, a block margin, and a rule under an open summary) is undone here; KPress's
-   stylesheets load after this one, so these selectors outrank its own. Context rows also
-   carry `.diff-markdown-context`, hence `details`. The label's chevron starts on the
-   blocks' text edge, past their change gutter. tests/test_diff_markdown_fold_chrome.py
-   measures it closed and open. */
+   (a border, a block margin, and a rule under an open summary) is undone here, and the
+   face it sets is given back to the article, so the blocks the fold holds inherit what
+   their neighbours do. KPress's stylesheets may load before or after this one (a pull
+   request's description or an earlier Markdown document loads them first; a direct
+   visit to Changes loads them after), so these selectors outrank KPress's in either
+   order, its hover colour included. Context rows also carry `.diff-markdown-context`,
+   hence `details`. The label's chevron starts on the blocks' text edge, past their
+   change gutter, and the label brightens to the text colour under the pointer, as the
+   shell's document disclosures do (docs/design-system.md, "Fold Expanders").
+   tests/test_diff_markdown_fold_chrome.py measures it closed, open, and hovered. */
 .metabrowser-diff-host .diff-markdown details.diff-markdown-context {
   border: 0;
   margin: 0;
   padding: 0;
   background: none;
+  color: inherit;
+  font-family: inherit;
+  font-feature-settings: inherit;
 }
 
 .metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary {
@@ -661,4 +669,8 @@
   font-size: var(--ui-small-font-size);
   padding: 4px var(--content-padding-x);
   padding-inline-start: calc(var(--content-padding-x) + var(--diff-change-gutter-width));
+}
+
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {
+  color: var(--text);
 }

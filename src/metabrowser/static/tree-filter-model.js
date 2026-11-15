@@ -307,12 +307,172 @@
   }
 
   /**
+   * How many rows each section may open by itself on first paint: the viewport's budget,
+   * which the ungrouped tree spends alone, split among the sections, at least one each,
+   * so together they fill about one screen.
+   *
+   * @param {number} budget
+   * @param {number} sectionCount
+   */
+  function sectionRowBudget(budget, sectionCount) {
+    return Math.max(1, Math.floor(budget / Math.max(1, sectionCount)));
+  }
+
+  /**
+   * @typedef {object} RevealEntry
+   * @property {string} type "dir", "file", or "symlink"
+   * @property {string} name
+   * @property {string} [ext]
+   * @property {number} [mtime] seconds
+   */
+
+  /**
+   * The section a row most likely stands in, for revealing it without asking the server:
+   * a file's type group, or the band its known mtime falls in. A folder stands in every
+   * section that holds its files, and an entry with nothing to place it by has no guess,
+   * so both give null.
+   *
+   * @param {string} by "age" or "type"
+   * @param {RevealEntry | null} entry
+   * @param {number} nowSec
+   * @param {Record<string, number | null>} windows
+   * @param {(name: string, ext: string) => string | null | undefined} groupForFile
+   * @returns {string | null}
+   */
+  function likelySectionKey(by, entry, nowSec, windows, groupForFile) {
+    if (!entry || entry.type === "dir") {
+      return null;
+    }
+    if (by === "type") {
+      if (entry.type === "symlink") {
+        return "type:other";
+      }
+      const id = groupForFile(entry.name, entry.ext || "");
+      return id ? `type:${id}` : null;
+    }
+    if (by === "age" && typeof entry.mtime === "number" && entry.mtime > 0) {
+      return `age:${ageGroupFor(nowSec - entry.mtime, windows)}`;
+    }
+    return null;
+  }
+
+  /**
+   * The order to look for a row in: the likely section first, then every other one, so a
+   * guess that misses (a file that crossed a band's edge since the answer) still finds it.
+   *
+   * @param {string[]} sectionKeys in display order
+   * @param {string | null} likelyKey
+   * @returns {string[]}
+   */
+  function revealSectionOrder(sectionKeys, likelyKey) {
+    if (!likelyKey || !sectionKeys.includes(likelyKey)) {
+      return sectionKeys.slice();
+    }
+    return [likelyKey, ...sectionKeys.filter((key) => key !== likelyKey)];
+  }
+
+  /**
+   * The reopen plan for a refreshed section: the reader's open folders put back into the
+   * new answer, from the answer itself or from cached subtrees, so they paint open in the
+   * same frame. `expanded` is what paints open, and `fetch` the open folders the answer
+   * reaches whose children neither it nor the cache holds: the shell fetches those before it
+   * paints and plans again, a level at a time. An open folder the answer no longer reaches,
+   * gone from the group or under one of these, is in neither list.
+   *
+   * @param {Array<Record<string, any>>} nodes the section's answer
+   * @param {string[]} opened paths open before the refresh
+   * @param {(path: string) => Array<Record<string, any>> | null | undefined} cached
+   * @returns {{tree: Array<Record<string, any>>, expanded: string[], fetch: string[]}}
+   */
+  function graftOpenedFolders(nodes, opened, cached) {
+    const wanted = new Set(opened);
+    /** @type {string[]} */
+    const expanded = [];
+    /** @type {string[]} */
+    const fetch = [];
+    /** @param {Array<Record<string, any>>} list @returns {Array<Record<string, any>>} */
+    const visit = (list) =>
+      list.map((node) => {
+        if (node.type !== "dir" || !wanted.has(node.path)) {
+          return node;
+        }
+        const children = Array.isArray(node.children) ? node.children : cached(node.path);
+        if (!Array.isArray(children)) {
+          fetch.push(node.path);
+          return node;
+        }
+        expanded.push(node.path);
+        return { ...node, children: visit(children) };
+      });
+    return { tree: visit(nodes), expanded, fetch };
+  }
+
+  /**
+   * @typedef {object} GroupsPrefetchDeps
+   * @property {() => number} now
+   * @property {number} ttlMs how long a fetched-ahead answer stays good
+   * @property {(url: string) => {answer: Promise<unknown>, abort: () => void}} start
+   */
+
+  /**
+   * The Group by prefetch: the groupings the menu offers are asked for when it opens, and a
+   * choice takes its answer. An answer younger than `ttlMs` is kept for the same request
+   * rather than asked for again, a request no longer offered is aborted, an answer is taken
+   * once, and a change to the files clears them all.
+   *
+   * @param {GroupsPrefetchDeps} deps
+   */
+  function createGroupsPrefetch(deps) {
+    /** @type {Map<string, {at: number, answer: Promise<unknown>, abort: () => void}>} */
+    const entries = new Map();
+    /** @param {{at: number}} entry */
+    const fresh = (entry) => deps.now() - entry.at < deps.ttlMs;
+    return Object.freeze({
+      /** @param {string[]} urls */
+      prefetch(urls) {
+        for (const [url, entry] of entries) {
+          if (!urls.includes(url) || !fresh(entry)) {
+            entry.abort();
+            entries.delete(url);
+          }
+        }
+        for (const url of urls) {
+          if (!entries.has(url)) {
+            const started = deps.start(url);
+            entries.set(url, { at: deps.now(), answer: started.answer, abort: started.abort });
+          }
+        }
+      },
+      /** @param {string} url @returns {Promise<unknown> | null} */
+      take(url) {
+        const entry = entries.get(url);
+        entries.delete(url);
+        if (!entry) {
+          return null;
+        }
+        if (!fresh(entry)) {
+          entry.abort();
+          return null;
+        }
+        return entry.answer;
+      },
+      clear() {
+        for (const entry of entries.values()) {
+          entry.abort();
+        }
+        entries.clear();
+      },
+      size: () => entries.size,
+    });
+  }
+
+  /**
    * @typedef {object} TreeSection
    * @property {string} key `<by>:<id>`, the group a folder inside it opens under
    * @property {string} id
    * @property {string} label
-   * @property {number} files
-   * @property {number} size
+   * @property {number | null} files
+   * @property {number | null} size
    * @property {Array<Record<string, unknown>>} tree
    */
 
@@ -341,8 +501,9 @@
         key: `${by}:${group.id}`,
         id: group.id,
         label: group.label,
-        files: typeof group.files === "number" ? group.files : 0,
-        size: typeof group.size === "number" ? group.size : 0,
+        // A source that could not count a group says so with null (a truncated Git index).
+        files: typeof group.files === "number" ? group.files : null,
+        size: typeof group.size === "number" ? group.size : null,
         tree: Array.isArray(group.tree) ? group.tree : [],
       };
     });
@@ -1553,6 +1714,11 @@
   window.MetabrowserTreeFilterModel = Object.freeze({
     GROUP_BY_VALUES,
     ageGroupFor,
+    createGroupsPrefetch,
+    graftOpenedFolders,
+    likelySectionKey,
+    revealSectionOrder,
+    sectionRowBudget,
     groupBy,
     groupSections,
     groupTreeUrl,

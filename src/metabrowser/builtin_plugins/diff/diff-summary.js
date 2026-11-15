@@ -207,6 +207,30 @@ export function createSummaryTree(tree, files, options = {}) {
 }
 
 /**
+ * Which rows of a windowed tree are in the document, in their order: those *range* holds,
+ * the rows in the box's view and its overscan (`windowRange` of the shared tree), and the
+ * row that takes Tab wherever it is, so focus never leaves with a scroll. Pure.
+ *
+ * @param {{start: number, end: number}} range
+ * @param {number | undefined} anchorAt The row that takes Tab, by index.
+ * @returns {number[]}
+ */
+export function rowsToDraw(range, anchorAt) {
+  /** @type {number[]} */
+  const wanted = [];
+  if (anchorAt !== undefined && anchorAt < range.start) {
+    wanted.push(anchorAt);
+  }
+  for (let at = range.start; at < range.end; at += 1) {
+    wanted.push(at);
+  }
+  if (anchorAt !== undefined && anchorAt >= range.end) {
+    wanted.push(anchorAt);
+  }
+  return wanted;
+}
+
+/**
  * @param {string} tag
  * @param {Record<string, string>} attributes
  * @param {Array<Node | string>} [children]
@@ -282,22 +306,6 @@ export function mountSummaryTree(host) {
         ];
   }
 
-  /** @param {number | null} count */
-  const said = (count) => (count === null ? "unknown" : host.formatCount(count));
-
-  /** What a row is called, for a screen reader. @param {SummaryRow} row */
-  function labelOf(row) {
-    const lines =
-      row.additions === null && row.deletions === null
-        ? ""
-        : `, ${said(row.additions)} added, ${said(row.deletions)} deleted`;
-    if (row.kind === "folder") {
-      return `${row.name}, ${host.formatCount(row.files)} ${row.files === 1 ? "file" : "files"}${lines}`;
-    }
-    const from = row.previousName === null ? "" : `, from ${row.previousName}`;
-    return `${row.name}, ${row.statusLabel.toLowerCase()}${from}${lines}`;
-  }
-
   /** @param {SummaryRow} row @returns {Node[]} */
   function partsOf(row) {
     const name = h("span", { class: "diff-summary-row-name" }, [row.name]);
@@ -337,11 +345,14 @@ export function mountSummaryTree(host) {
     element.setAttribute("aria-level", String(row.depth + 1));
     element.setAttribute("aria-posinset", String(row.position));
     element.setAttribute("aria-setsize", String(row.setSize));
-    element.setAttribute("aria-label", labelOf(row));
+    element.setAttribute("aria-label", host.tree.rowLabel(row, host.formatCount));
     if (row.kind === "folder") {
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
+      // The tooltip says what the folder's sums leave out, as its accessible name does.
+      const missing = host.tree.missingCounts(row, host.formatCount);
+      element.dataset.tipText = missing === "" ? row.name : `${row.name}, ${missing}`;
     } else {
       element.dataset.tipText =
         row.previousName === null ? row.display : `${row.display}, from ${row.previousName}`;
@@ -362,9 +373,6 @@ export function mountSummaryTree(host) {
       partsOf(row),
     );
     element.dataset.id = row.id;
-    if (row.kind === "folder") {
-      element.dataset.tipText = row.name;
-    }
     place(element, row, at);
     return { element, content: contentOf(row) };
   }
@@ -389,21 +397,8 @@ export function mountSummaryTree(host) {
       listTop: list.getBoundingClientRect().top,
       overscan: SUMMARY_ROWS_OVERSCAN,
     });
-    const anchorAt = (() => {
-      const anchor = model.anchor();
-      return anchor === null ? undefined : model.indexOf(anchor);
-    })();
-    /** @type {number[]} */
-    const wanted = [];
-    if (anchorAt !== undefined && anchorAt < start) {
-      wanted.push(anchorAt);
-    }
-    for (let at = start; at < end; at += 1) {
-      wanted.push(at);
-    }
-    if (anchorAt !== undefined && anchorAt >= end) {
-      wanted.push(anchorAt);
-    }
+    const anchor = model.anchor();
+    const wanted = rowsToDraw({ start, end }, anchor === null ? undefined : model.indexOf(anchor));
     const keep = new Set(wanted.map((at) => rows[at].id));
     for (const [id, entry] of drawn) {
       if (!keep.has(id)) {

@@ -250,9 +250,10 @@ from metabrowser.tree_filter import (
     parse_types,
 )
 from metabrowser.tree_groups import (
-    TreeGroup,
     age_band,
+    group_row,
     groups_for,
+    groups_payload,
     parse_group,
     parse_group_by,
 )
@@ -2300,38 +2301,6 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
     )
 
 
-def _tree_group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """One group of a grouped tree: its name, what it holds, and its tree."""
-
-    filtered = payload.get("filtered") or {}
-    return {
-        "id": group.id,
-        "label": group.label,
-        "files": filtered.get("files", 0),
-        "size": filtered.get("size", 0),
-        "entries": filtered.get("entries", 0),
-        "tree": payload.get("tree", []),
-    }
-
-
-def _tree_groups_payload(
-    group_by: str, groups: list[dict[str, Any]], envelope: Mapping[str, Any] | None
-) -> dict[str, Any]:
-    """`/api/tree?group_by=`: the groups that hold anything after the filter, in display
-    order, each with its counts and its tree, under the envelope one group's tree carries.
-    """
-
-    source = envelope or {}
-    return {
-        "root": source.get("root"),
-        "group_by": group_by,
-        # A group the filter leaves empty is not shown (metabrowser/tree_groups.py).
-        "groups": [group for group in groups if group["entries"] > 0],
-        "tally_cache_status": source.get("tally_cache_status"),
-        "tally_cache_max_files": source.get("tally_cache_max_files"),
-    }
-
-
 def _inventory_filter(tree_filter: TreeFilter, *, as_of_ns: int) -> InventoryFilter:
     """Translate the shared navigation vocabulary into the provider contract."""
 
@@ -2341,22 +2310,25 @@ def _inventory_filter(tree_filter: TreeFilter, *, as_of_ns: int) -> InventoryFil
     recency: float | None = (
         float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
     )
+    band_within: float | None = None
     older_than: float | None = None
     if group is not None and group.by == "age":
-        # An age group is a band, intersected with the recency window
-        # (metabrowser/tree_groups.py, `age_band`).
-        band = age_band(group, tree_filter.recency_seconds)
-        recency = band.within_seconds
+        # An age group is a band of its own; the recency window, a filter, cuts it as the
+        # provider applies both (metabrowser/tree_groups.py, `age_band`).
+        band = age_band(group, 0)
+        band_within = band.within_seconds
         older_than = band.older_than_seconds
+    timed = recency is not None or band_within is not None or older_than is not None
     return InventoryFilter(
         extensions=extensions,
         filenames=filenames,
         recency_seconds=recency,
+        band_within_seconds=band_within,
         older_than_seconds=older_than,
         type_group=group.id if group is not None and group.by == "type" else None,
         minimum_size=tree_filter.min_size or None,
         include_ignored=tree_filter.include_ignored,
-        as_of_ns=as_of_ns if recency is not None or older_than is not None else None,
+        as_of_ns=as_of_ns if timed else None,
     )
 
 
@@ -2389,7 +2361,11 @@ async def _read_tree_from_provider(
     tree_filter: TreeFilter,
 ) -> JSONResponse:
     payload = await _tree_payload_from_provider(
-        request, subpath=subpath, remaining_depth=remaining_depth, tree_filter=tree_filter
+        request,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        tree_filter=tree_filter,
+        as_of_ns=time.time_ns(),
     )
     if payload is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
@@ -2402,11 +2378,17 @@ async def _tree_payload_from_provider(
     subpath: str,
     remaining_depth: int,
     tree_filter: TreeFilter,
+    as_of_ns: int,
+    with_navigation: bool = True,
 ) -> dict[str, Any] | None:
-    """One /api/tree answer from the inventory, or None when *subpath* is no folder."""
+    """One /api/tree answer from the inventory, or None when *subpath* is no folder.
+
+    *as_of_ns* is the instant every time filter is cut at; a grouped answer passes one
+    instant to every group, so the age bands partition mtimes. *with_navigation* asks for the
+    root's chrome tallies at `depth=0`, which a group's answer has no use for.
+    """
 
     runtime = _inventory_runtime_for(request)
-    as_of_ns = time.time_ns()
     companion_queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
     projection_id = "tree-filtered" if tree_filter.active else "tree-directory"
     page_query: TreePageQuery | None = None
@@ -2427,7 +2409,7 @@ async def _tree_payload_from_provider(
         )
 
     navigation_id: str | None = None
-    if not subpath and remaining_depth == 0:
+    if with_navigation and not subpath and remaining_depth == 0:
         navigation_id = "tree-navigation"
         companion_queries.append(
             NavigationQuery(
@@ -2549,7 +2531,7 @@ async def api_tree(request: Request) -> Response:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
     tree_filter = tree_filter_from_request(request)
-    # `group_by` without `group` asks for the groups themselves (`_tree_groups_payload`).
+    # `group_by` without `group` asks for the groups themselves (`tree_groups.groups_payload`).
     group_by = (
         parse_group_by(request.query_params.get("group_by", ""))
         if tree_filter.group is None
@@ -2582,6 +2564,8 @@ async def api_tree(request: Request) -> Response:
     if group_by is not None:
         groups = []
         envelope: dict[str, Any] | None = None
+        # One instant for every group, so each age band is cut where the next one starts.
+        as_of_ns = time.time_ns()
         for group in groups_for(group_by):
             if group.by == "age" and age_band(group, tree_filter.recency_seconds).empty:
                 continue
@@ -2590,12 +2574,14 @@ async def api_tree(request: Request) -> Response:
                 subpath=subpath,
                 remaining_depth=remaining_depth,
                 tree_filter=replace(tree_filter, group=group),
+                as_of_ns=as_of_ns,
+                with_navigation=False,
             )
             if payload is None:
                 return JSONResponse({"error": "Not found"}, status_code=404)
             envelope = envelope or payload
-            groups.append(_tree_group_row(group, payload))
-        return JSONResponse(_tree_groups_payload(group_by, groups, envelope))
+            groups.append(group_row(group, payload))
+        return JSONResponse(groups_payload(group_by, groups, envelope))
 
     return await _read_tree_from_provider(
         request,

@@ -351,16 +351,18 @@ def _rule(css: str, selector: str) -> str:
 
 
 def test_every_line_of_a_menu_starts_on_one_inset() -> None:
-    """A group heading starts where a row's first column does, and a menu's title and
-    foot where its rows do, because all of them read one token. A heading indented to the
-    check column read as a row (docs/design-system.md, "Groups in a Menu"); where the text
-    actually lands is measured in Chrome by tests/test_files_tab_chrome.py."""
+    """A group heading starts where a row's first column does, and a menu's title, a
+    labelled row, and its foot where its rows do, because all of them read one token. A
+    heading on the rows' label column reads as a row (docs/design-system.md, "Groups in a
+    Menu"); where the text actually lands is measured in Chrome by
+    tests/test_files_tab_chrome.py."""
 
     css = _read("styles.css")
     assert "--menu-row-inset: 8px;" in css
     for selector, padding in (
         (".menu-item", "6px var(--menu-row-inset)"),
         (".menu-title", "2px var(--menu-row-inset) 3px"),
+        (".menu-row", "2px 0 2px var(--menu-row-inset)"),
         (".group-heading", "3px var(--menu-row-inset) 2px"),
         (".menu-version", "2px var(--menu-row-inset)"),
     ):
@@ -368,40 +370,49 @@ def test_every_line_of_a_menu_starts_on_one_inset() -> None:
 
 
 def test_a_menu_group_draws_the_separator_s_divider_itself() -> None:
-    """A named group's divider is its own top edge, in the separator's geometry, so no
-    menu can leave a heading without one or give it two; the menu's first child needs
-    none."""
+    """A named group's divider is its own top edge, in the separator's geometry, so a
+    heading never lacks one; after a separator it draws none, so it never gets two; the
+    menu's first child needs none. The separator does not shrink, or a scrolling menu
+    gives up its 1px rule."""
 
     css = _read("styles.css")
     separator = _rule(css, ".menu-separator")
+    assert "flex-shrink: 0;" in separator
     assert "height: 1px;" in separator
     assert "margin: 4px 0;" in separator
     group = _rule(css, ".menu-group:not(:first-child)")
     assert "margin-top: 4px;" in group
     assert "padding-top: 4px;" in group
     assert "border-top: 1px solid var(--border);" in group
-    js = _read("filter-controls.js")
-    assert '`<div class="menu-group" role="group" aria-labelledby="${esc(labelId)}"`' in js
-    assert '`<div class="group-heading" id="${esc(labelId)}">' in js
+    after_separator = _rule(css, ".menu-separator + .menu-group")
+    for declaration in ("margin-top: 0;", "padding-top: 0;", "border-top: 0;"):
+        assert declaration in after_separator
+    # Later in the sheet than the group rule it overrides, at the same specificity.
+    assert css.index("\n.menu-separator + .menu-group {") > css.index(
+        "\n.menu-group:not(:first-child) {"
+    )
 
 
 def test_dropdown_height_is_fitted_to_rows_and_window() -> None:
-    """The panel has no fixed height: filter-controls.js sets one from the rendered row
-    and the window when a menu opens and when the window resizes (mb-1wfn)."""
+    """filter-controls.js sets a dropdown's height from the rendered row and the window
+    (mb-1wfn); the CSS keeps only a floor inside the window for a panel not yet fitted.
+    The shell fits after it renders the bar, which the keyboard path opens menus
+    through, and the window margin is the tooltip's."""
 
     css = _read("styles.css")
     panel = _rule(css, ".chip-menu-panel")
-    assert "max-height:" not in panel
+    assert "max-height: calc(100vh - 16px);" in panel
     assert "overflow-y: auto;" in panel
-    js = _read("filter-controls.js")
-    assert "const MENU_MAX_ROWS = 16;" in js
-    assert "const MENU_WINDOW_MARGIN = 8;" in js
     app = _read("app.js")
     fn_start = app.index("function renderNavFilterBar()")
     fn_block = app[fn_start : app.index("\n}\n", fn_start)]
     assert fn_block.index("bar.innerHTML = main + drawer;") < fn_block.index(
         "fc.fitOpenMenus(bar);"
     )
+    menu_margin = re.search(r"const MENU_WINDOW_MARGIN = (\d+);", _read("filter-controls.js"))
+    tooltip_margin = re.search(r"var TOOLTIP_VIEWPORT_MARGIN = (\d+);", app)
+    assert menu_margin is not None and tooltip_margin is not None
+    assert menu_margin.group(1) == tooltip_margin.group(1)
 
 
 def test_dropdown_rows_are_arrow_key_traversable() -> None:

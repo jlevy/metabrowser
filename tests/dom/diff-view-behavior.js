@@ -6,7 +6,20 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { registerHooks } = require("node:module");
 const { pathToFileURL } = require("node:url");
+
+// The Diff summary's tree module fails to load while this is set, as a dropped connection
+// would make it (A3 of review A on #448).
+let summaryModuleFails = false;
+registerHooks({
+  load(url, context, nextLoad) {
+    if (summaryModuleFails && /\/diff-summary\.js(?:\?|$)/.test(url)) {
+      throw new Error("the module did not load");
+    }
+    return nextLoad(url, context);
+  },
+});
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
@@ -99,6 +112,10 @@ class FakeElement {
       type,
       (this.listeners.get(type) ?? []).filter((candidate) => candidate !== handler),
     );
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
   }
 
   dispatch(type) {
@@ -371,8 +388,32 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       "nothing of the tree is mounted until it is opened",
       host.find("diff-summary-body").length === 0 && header.getAttribute("aria-controls") === null,
     );
+    // A press whose module does not load leaves the header marked, saying a press tries
+    // again; the next press loads it, and the mark goes.
+    summaryModuleFails = true;
+    const errors = [];
+    const logged = console.error;
+    console.error = (...args) => errors.push(args[0]);
+    try {
+      header.click();
+      await settled();
+    } finally {
+      console.error = logged;
+      summaryModuleFails = false;
+    }
+    check(
+      "a header whose tree did not load says a press tries again",
+      header.getAttribute("aria-disabled") === "true" &&
+        header.dataset.tipText === "The list of files did not load. Press to try again." &&
+        host.find("diff-summary-body").length === 0 &&
+        errors[0] === "metabrowser diff: the Diff summary's tree did not load",
+    );
     header.click();
     await settled();
+    check(
+      "a press that loads the tree clears the mark",
+      header.getAttribute("aria-disabled") === null && header.dataset.tipText === undefined,
+    );
     const body = host.find("diff-summary-body")[0];
     check("opening mounts the tree after the toolbar", body !== undefined);
     if (body === undefined) {
@@ -427,6 +468,21 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
         evil.dataset.tipText === "src/deep/ad\uFFFDded.py",
       JSON.stringify(evil?.text() ?? ""),
     );
+    const bar = host
+      .find("diff-file-bar")
+      .find(
+        (each) =>
+          each.find("diff-file-copy")[0]?.getAttribute("data-mb-copy-text") ===
+          "src/deep/ad\u202Eded.py",
+      );
+    const barPath = bar?.find("diff-file-path")[0];
+    check(
+      "a file bar shows the path as its row does, and copies it as it is",
+      barPath?.textContent === "src/deep/ad\uFFFDded.py" &&
+        barPath.dataset.tipText === "src/deep/ad\uFFFDded.py" &&
+        bar.find("diff-file-stats")[0]?.text().includes("+1,200"),
+      JSON.stringify(barPath?.textContent ?? null),
+    );
     check("Enter on a file is the tree's", press(list, "Enter"));
     check(
       "a file the summary opens goes to the host's address for it",
@@ -444,6 +500,64 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     );
     handle.dispose();
     check("disposing the diff removes its tree", body.parentNode === null);
+  } finally {
+    global.document.createElement = createElement;
+    global.getComputedStyle = computed;
+    global.window = view;
+    global.Element = element;
+  }
+}
+
+/**
+ * A path a manifest lists twice, as a patch of a file that became a symlink does, is one row
+ * whose counts are both changes', and a press on it goes to the first of its sections (A1 of
+ * review A on #448). `twoFiles` lists `a.py` twice.
+ */
+async function repeatedPathChecks(mountDiffView, twoFiles) {
+  const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
+  const createElement = global.document.createElement;
+  const computed = global.getComputedStyle;
+  const view = global.window;
+  const element = global.Element;
+  global.document.createElement = (tag) => new LaidOutElement(tag);
+  global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
+  global.window = { requestAnimationFrame: () => 1, cancelAnimationFrame() {} };
+  global.Element = FakeElement;
+  try {
+    const host = new LaidOutElement("div");
+    const handle = mountDiffView(
+      host,
+      twoFiles,
+      { formatInteger: (count) => count.toLocaleString("en-US") },
+      { changedFiles: sharedTree },
+    );
+    const bars = host.find("diff-file-bar");
+    const bodies = host.find("diff-file-body");
+    for (const bar of bars) {
+      bar.click();
+    }
+    check(
+      "both sections of a repeated path start this check collapsed",
+      bodies.length === 2 &&
+        bodies.every((body) => body.classList.contains("diff-file-body-collapsed")),
+    );
+    host.find("diff-summary-toggle")[0].click();
+    await settled();
+    const rows = host.find("diff-summary-row");
+    check(
+      "a path listed twice is one row, with both changes' counts",
+      rows.length === 1 &&
+        rows[0].dataset.id === "a.py" &&
+        rows[0].getAttribute("aria-label") === "a.py, modified, 2 added, 2 deleted",
+      rows.map((row) => row.getAttribute("aria-label")).join(" | "),
+    );
+    rows[0].click();
+    check(
+      "a press on it goes to its first section",
+      !bodies[0].classList.contains("diff-file-body-collapsed") &&
+        bodies[1].classList.contains("diff-file-body-collapsed"),
+    );
+    handle.dispose();
   } finally {
     global.document.createElement = createElement;
     global.getComputedStyle = computed;
@@ -475,8 +589,7 @@ async function windowedSummaryChecks(repoRoot) {
   };
   try {
     const { mountSummaryTree, SUMMARY_ROWS_OVERSCAN } = await import(
-      pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-summary.js"))
-        .href
+      `${pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-summary.js")).href}?windowed`
     );
     const files = Array.from({ length: 1200 }, (_, at) => ({
       path: `pkg/file-${String(at).padStart(4, "0")}.py`,
@@ -1169,11 +1282,18 @@ async function main() {
     },
   };
   mountDiffView(many, twoFiles);
-  // The count line ("N changed files +A −D") is gone: a change set's totals are its Diff
-  // summary's header, drawn on the shared changed-files tree, and none is drawn without it.
+  // A change set's totals are its Diff summary's header, drawn on the shared changed-files
+  // tree. Without the tree, the totals stand as the line main drew, in the shell's number
+  // format, with no toggle: only the tree of files is lost (A3 of review A on #448).
+  const plain = many.find("diff-summary")[0];
   check(
-    "a change set without the shared tree draws no count line",
-    many.find("diff-summary").length === 0 && !many.text().includes("changed files"),
+    "a change set without the shared tree keeps its totals line",
+    plain?.text().includes("2 changed files") &&
+      plain.text().includes("+1") &&
+      plain.text().includes("\u22121") &&
+      plain.find("diff-summary-toggle").length === 0 &&
+      !plain.classList.contains("diff-summary-toggle"),
+    plain?.text() ?? "",
   );
   const hosted = new FakeElement("div");
   mountDiffView(hosted, twoFiles, undefined, { showSummary: false, changedFiles: sharedTree });
@@ -1191,6 +1311,7 @@ async function main() {
     singleSummarized.find("diff-summary").length === 0,
   );
   await diffSummaryChecks(mountDiffView, twoFiles);
+  await repeatedPathChecks(mountDiffView, twoFiles);
   await windowedSummaryChecks(repoRoot);
 
   // A long contiguous run folds behind an expander; ordinary runs do not.

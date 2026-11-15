@@ -14,7 +14,9 @@ opens the Modified within menu in both. This judges what it measured against
   keyboard numbers follow what is on screen ("Grouping the Files Tree");
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
-  files only.
+  files only;
+- a file written into a folder open in a section refreshes the sections in place, keeping
+  that folder open, the scroll position, and the focused row.
 
 Where text starts and how tall a box is drawn are layout, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
@@ -29,6 +31,7 @@ import os
 import socket
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -61,6 +64,7 @@ _CODE = ("py", "js", "ts", "css", "html", "rs", "go", "java", "rb", "sh", "sql",
 _DOCS = ("md", "txt", "rst", "adoc")
 _DATA = ("json", "yaml", "toml", "ini", "csv", "xml")
 _MEDIA = ("png", "jpg", "mp3")
+_LIB_FILES = 12
 
 
 def _served_folder(root: Path) -> None:
@@ -78,6 +82,12 @@ def _served_folder(root: Path) -> None:
         (root / "media" / f"m.{ext}").write_bytes(b"x")
     (root / "archives" / "a.zip").write_bytes(b"x")
     (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+    # A note beside the code, so src stands in Documentation and in Code.
+    (root / "src" / "notes.md").write_text("# Notes\n", encoding="utf-8")
+    # A folder two levels down, which the session opens and then writes a file into.
+    (root / "src" / "lib").mkdir()
+    for n in range(1, _LIB_FILES + 1):
+        (root / "src" / "lib" / f"k{n:02d}.py").write_text(f"k{n}\n", encoding="utf-8")
 
 
 def _free_port() -> int:
@@ -90,7 +100,7 @@ def _close(actual: float, expected: float) -> bool:
     return abs(actual - expected) <= TOLERANCE
 
 
-def _row(menu: dict[str, object]) -> float:
+def _row(menu: dict[str, Any]) -> float:
     heights = menu["rowHeights"]
     assert isinstance(heights, list) and len(heights) == 1, (
         f"every row of a menu is one height: {heights}"
@@ -98,16 +108,16 @@ def _row(menu: dict[str, object]) -> float:
     return float(heights[0])
 
 
-def _cap(menu: dict[str, object]) -> float:
+def _cap(menu: dict[str, Any]) -> float:
     """The row cap: 16 rendered rows and the panel's padding and border."""
 
-    return MAX_ROWS * _row(menu) + float(menu["frame"])  # type: ignore[arg-type]
+    return MAX_ROWS * _row(menu) + float(menu["frame"])
 
 
-def _room(menu: dict[str, object]) -> float:
+def _room(menu: dict[str, Any]) -> float:
     """The room between the menu's top and the window's bottom edge, less the margin."""
 
-    return float(menu["windowHeight"]) - WINDOW_MARGIN - float(menu["top"])  # type: ignore[arg-type]
+    return float(menu["windowHeight"]) - WINDOW_MARGIN - float(menu["top"])
 
 
 def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) -> None:
@@ -129,7 +139,11 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert result.returncode == 0, result.stderr or result.stdout
     # Shown with the failure: every measurement, and each phase's time.
     print(result.stdout, result.stderr)
-    measured = json.loads(result.stdout.strip().splitlines()[-1])
+    measured: dict[str, Any] = json.loads(result.stdout.strip().splitlines()[-1])
+
+    # The gear menu's title, labelled row, and foot start on one inset.
+    gear = measured["gear"]
+    assert gear["title"] is not None and gear["title"] == gear["labelledRow"] == gear["foot"], gear
 
     tall = measured["typesTall"]
     # The headings: "Groups", then one per taxonomy group with families in this folder.
@@ -152,6 +166,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert _cap(tall) < _room(tall), tall
     assert _close(tall["height"], _cap(tall)), tall
     assert tall["scrollHeight"] > tall["clientHeight"], tall
+    # Scrolling, the menu keeps its separator's 1px rule.
+    assert tall["separators"] == [1], tall
 
     # Short, whether the window shrank under the open menu or it opened there: the room
     # sets the height, and the menu stops the margin short of the window's edge.
@@ -178,8 +194,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert row["row"] == ["menu:group", "nav-filter-bar-end"], row
     assert row["drawer"] == ["recency", "types", "size", "showIgnored"], row
     assert row["drawerOpen"] == "false" and row["drawerInert"] is True, row
-    # The numbers follow what is on screen: 1 is Group by while the drawer is closed, and
-    # once it is open its filters follow, so 3 is File type.
+    # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
+    # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
@@ -195,8 +211,8 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "Media",
     ]
     assert [section["count"] for section in sections] == [
-        "9 files",
-        "36 files",
+        "10 files",
+        f"{len(_CODE) * 3 + _LIB_FILES} files",
         "6 files",
         "1 file",
         "3 files",
@@ -206,9 +222,25 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert _close(section["fromRowInset"], 0), section
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
-    # A folder opened inside Code lists Code's files only.
+    # A folder opened inside Code lists Code's files only (src/lib, inside it, stays closed).
     code = measured["codeFiles"]
     assert len(code) == len(_CODE) * 3, code
     assert {path.rsplit(".", 1)[1] for path in code} == set(_CODE), code
+    # Keys that close and open Code's copy of src, which Documentation also holds, keep
+    # focus on Code's copy.
+    assert measured["focusAfterClose"] == {
+        "section": "type:code",
+        "path": "src",
+        "expanded": "false",
+    }
+    assert measured["focusAfterOpen"] == {"section": "type:code", "path": "src", "expanded": "true"}
+    # A file written into src/lib, open inside Code's src, refreshes the sections in place:
+    # src/lib stays open with the new file in it, and the scroll position and the focused
+    # row inside it are kept.
+    refresh = measured["refresh"]
+    focused = "type:code|file:src/lib/k06.py"
+    assert refresh["before"]["focused"] == focused and refresh["before"]["scrollTop"] > 0, refresh
+    assert not refresh["before"]["written"], refresh
+    assert refresh["after"] == {**refresh["before"], "written": True}, refresh
     # No grouping is the one Files tree again.
     assert measured["ungrouped"] == {"sections": 0, "trees": ["Files"]}

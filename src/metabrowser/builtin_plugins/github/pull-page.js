@@ -3158,11 +3158,14 @@ export function createStackMenu(initial, number, deps) {
       count,
     ],
   );
+  // The menu's rows are all one group, so its heading names the menu itself
+  // (docs/design-system.md, "Groups in a Menu"): one name, read once.
+  const labelId = `${menuId}-heading`;
   const menu = h("div", {
     class: "menu github-pull-stack-menu",
     id: menuId,
     role: "menu",
-    "aria-label": stackLabel(stack.number),
+    "aria-labelledby": labelId,
   });
   root.append(trigger);
   const listening = new AbortController();
@@ -3171,14 +3174,14 @@ export function createStackMenu(initial, number, deps) {
   const links = [];
   /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
   const rows = new Map();
-  // The members are one named group, in the host's menu group pattern
-  // (docs/design-system.md, "Groups in a Menu"), headed by the stack's label, which a
-  // Pulls stack group's row is headed by too ("Stacks").
-  const labelId = `${menuId}-heading`;
+  // The members under the heading that names them and the menu: the host's group
+  // look, with no group role, since a menu of one group is named by its heading. The
+  // heading is the stack's label, which a Pulls stack group's row is headed by too
+  // (docs/design-system.md, "Stacks").
   const label = h("div", { class: "group-heading github-pull-stack-label", id: labelId }, [
     stackLabel(stack.number),
   ]);
-  const group = h("div", { class: "menu-group", role: "group", "aria-labelledby": labelId });
+  const group = h("div", { class: "menu-group" });
   let populated = false;
 
   function updateTitles() {
@@ -5095,6 +5098,9 @@ export function mountPullPage(container, ctx, mb) {
     },
     warm() {
       void mb.ensureKindAssets("diff").catch(() => {});
+      // The shared changed-files tree every diff draws its paths and summary with, so Changes
+      // never waits for it after its comparison (docs/development.md, Asset Loading Tiers).
+      void mb.loadChangedFilesTree().catch(() => {});
     },
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),
@@ -5168,8 +5174,17 @@ export function mountPullPage(container, ctx, mb) {
               // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
               // the route a press on it in the Pulls tab's tree takes, so the address names it
               // and Back returns to where the reader was.
+              // A path the route cannot spell, as one with a backslash, which Git allows in a
+              // name, has no address: the diff goes to it in place instead.
               openFile: (path) => {
-                void open({ number, tab: "files", file: path, replace: false, jumped: false });
+                const opened = /** @type {{then?: unknown} | null | undefined} */ (
+                  open({ number, tab: "files", file: path, replace: false, jumped: false })
+                );
+                if (opened && typeof opened.then === "function") {
+                  void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+                } else {
+                  jumpTo(path);
+                }
               },
             }),
           { number },

@@ -25,7 +25,8 @@ before: >-
   mkdir -p agesroot &&
   printf 'old\n' > agesroot/old.md &&
   touch -t 202311142213.20 agesroot/old.md &&
-  printf 'new\n' > agesroot/new.md
+  printf 'new\n' > agesroot/new.md &&
+  touch -t 210001010000 agesroot/new.md
 ---
 # Golden tests: Group by through `/api/tree`
 
@@ -36,9 +37,9 @@ groups hold anything, in display order, with their counts and their trees;
 folder inside a group.
 
 `groupsroot` holds files of four display groups, all with pinned mtimes, so its trees
-are deterministic. `agesroot` holds one old file and one written as the fixture is made,
-which is Live when the request runs; its answers are asked at depth 0, so no mtime is
-printed.
+are deterministic. `agesroot` holds one old file and one dated in 2100, which is Live
+whenever the request runs, since a band admits any mtime newer than its near edge; its
+answers are asked at depth 0, so no mtime is printed.
 
 ## Test: File type groups, Documentation first, empty groups left out
 

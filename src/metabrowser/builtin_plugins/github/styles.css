@@ -900,7 +900,7 @@
 }
 .github-pull-file-row
   > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
-.github-pull-folder-row > .github-pull-file-name {
+.github-pull-folder-row > :is(.github-pull-file-name, .github-pull-file-stats) {
   align-self: baseline;
 }
 /* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while

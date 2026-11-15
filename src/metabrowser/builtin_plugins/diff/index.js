@@ -320,18 +320,16 @@ function snapshotHost(comparison) {
 }
 
 /**
- * The changed-files tree a multi-file diff's Diff summary is drawn on, the shell's
- * `changed-files-tree` bundle, which the Pulls tab draws a pull request's files with too. It
- * is asked for beside the diff's own request, so it is in hand when the diff mounts: a cold
- * load is one small local request. A diff whose tree does not load shows no summary, and says
- * why in the console; its files are still there.
+ * The shared changed-files tree, the shell's `changed-files-tree` bundle, which the Pulls tab
+ * draws a pull request's files with too. A multi-file diff draws its Diff summary on it, and
+ * every diff shows its files' paths by its display rule. It is asked for beside the diff's
+ * own request, so it is in hand when the diff mounts: a cold load is one small local request.
+ * A diff whose tree does not load keeps its totals line and raw paths, and says why in the
+ * console.
  *
  * @returns {Promise<MetabrowserChangedFilesTree | null>}
  */
 function changedFilesTree() {
-  if (typeof mb.loadChangedFilesTree !== "function") {
-    return Promise.resolve(null);
-  }
   return mb.loadChangedFilesTree().catch((error) => {
     console.error("metabrowser diff: the Diff summary is unavailable", error);
     return null;
@@ -367,9 +365,9 @@ mb.registerView("diff", "diff", {
     const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
     const markdown = markdownLayer(ctx.comparison);
-    // A commit's view gives the commit's own totals (`showSummary` below), so it has no summary
-    // to draw and asks for no tree.
-    const summaryTree = ctx.revision ? Promise.resolve(null) : changedFilesTree();
+    // A commit's view gives the commit's own totals (`showSummary` below) and draws no summary,
+    // but its file bars show paths by the tree's display rule too.
+    const summaryTree = changedFilesTree();
     let payload;
     try {
       payload = revision
@@ -447,7 +445,7 @@ mb.registerView("diff", "diff", {
     }
     const files = /** @type {{files: Record<string, unknown>[]}} */ (result.document.manifest)
       .files;
-    const changedFiles = files.length !== 1 ? await summaryTree : null;
+    const changedFiles = await summaryTree;
     if (signal?.aborted) {
       return null;
     }
