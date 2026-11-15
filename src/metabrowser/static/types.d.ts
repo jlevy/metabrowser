@@ -943,6 +943,7 @@ type MetabrowserFilterControls = {
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
+  fitJoinedGroups(root: Element): void;
   fitOpenMenus(root: Element): void;
   groupHtml(spec: {
     className?: string;
@@ -954,6 +955,7 @@ type MetabrowserFilterControls = {
     value: MetabrowserFilterSelection;
   }): string;
   isSelected(current: MetabrowserFilterSelection, value: string): boolean;
+  joinedGroupFits(widths: { joined: number; room: number }): boolean;
   menuGroupHtml(spec: {
     anyLabel: string;
     anyValue?: string;

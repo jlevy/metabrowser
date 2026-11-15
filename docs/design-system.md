@@ -2476,8 +2476,14 @@ on a surface where scanning all values matters.
 Short sets use the joined layout.
 Sets that can exceed one line, such as agent-log event types, use the wrapping
 chip-cluster layout; segmented controls never wrap.
-A `.chip-menu` costs a click to see the options but stays one trigger wide however many
-there are, so use it when the set is unbounded or the pane cannot afford the full group.
+The one exception is a joined group in a navigation toolbar, whose pane can be dragged
+narrower than a short set: while its whole line cannot hold it joined, it takes the
+cluster layout, and it takes the joined layout back once its line can.
+`filterControls.bind` keeps every such group fitted, and `data-fit="wrap"` on the group
+is how it asks for the cluster; the Pulls tab’s Show group is one
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). A `.chip-menu` costs a click to
+see the options but stays one trigger wide however many there are, so use it when the
+set is unbounded or the pane cannot afford the full group.
 
 The nav filter bar uses dropdowns throughout: six age windows and six size steps as
 segmented ramps left no room for anything else in a 300px pane.
@@ -2610,7 +2616,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
 - **Width.** The row fits the default 299 px pane at its widest, “No grouping” with
   Clear and the badge showing, in the default font set.
   The badge sits against the chevron to make that room; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`.
+  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane, or in the
+  system font set, the row wraps: Show ignored moves down, then Clear and the chevron
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
@@ -3051,7 +3059,83 @@ its tooltip does for a pointer.
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
 A use site does not pad, recolor, or re-letter it.
+In the navigation, a pane too narrow for its tabs wraps the bar between them
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Navigation Toolbars Wrap
+
+**A navigation toolbar that its pane is too narrow for wraps between its controls.
+Nothing in it is cut, scrolled out of reach, or cut short.** The pane drags down to 180
+px, which leaves its toolbars 179 px, and the system font set’s face is wider than the
+default one’s, so no toolbar can promise one line.
+
+The rule covers every toolbar in the navigation: the Files filter row, the Pulls
+filters, the Commits tally, which stands in the toolbar slot, and the tab bar over them.
+The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
+`static/styles.css`, which a plugin whose toolbar stands in the slot gives its row.
+
+- **One line while it fits.** A toolbar whose controls fit one line is that line, and
+  the toolbar slot’s height, `--nav-toolbar-height`, as it was before the rule.
+  A toolbar wraps only when its controls do not fit, and never adds space when they do.
+- **Where it breaks.** Between controls, in their order, each line as full as it can be,
+  so a control moves down only when it must.
+  The leading controls stay first.
+  The trailing group, which takes the line’s end with an auto margin, moves down whole
+  and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
+  The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
+  and the tab bar between its tabs.
+- **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
+  and `--nav-toolbar-gap` apart.
+  That is also the gap between controls along a line and above the first line and below
+  the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
+  it grows by a line and a gap for each line it adds.
+  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centred in
+  a line’s height, and a taller one, a `.btn` such as Reload, is held to it, so no line
+  is cramped and none stands taller than the rest.
+  An open drawer’s menus wrap on the same gap, and a closed drawer adds nothing under
+  the lines. The Commits tally is text, so its lines are its line height apart,
+  `--nav-metadata-line-height`, as any metadata line’s are; a tab is its own line, so
+  the tab bar’s lines are a tab’s height apart.
+- **A segmented group.** One that its whole line cannot hold joined takes the cluster
+  layout until it can ([Groups Or Dropdowns](#groups-or-dropdowns)). Whether it fits is
+  measured on a copy in the joined layout, so the answer at one width is the same
+  whichever layout the group shows, and the two cannot alternate near the break.
+  A change to its text is fitted before it paints, and a change of size in the next
+  frame, which a drag across the break shows for one frame.
+- **Keys.** Wrapping keeps the controls’ order, so reading the lines top to bottom meets
+  them in their Tab order, and their keyboard numbers stay theirs.
+
+Measured in headless Chrome on 2026-11-15, the widths each toolbar is one line from,
+default font set / system font set:
+
+| Toolbar | One line from |
+| --- | --- |
+| Tab bar: Files, Pulls, Commits | 196 / 216 px |
+| Files, no filter set | 246 / 262 px |
+| Files, a filter set, “No grouping”, its widest | 298 / 317 px |
+| Pulls: Show, Stacks, Reload; Open 100, Closed 2, All 102 | 335 / 372 px |
+| Pulls: Show and Reload; Open 100, Closed 2, All 102 | 276 / 308 px |
+| Pulls: Show, Stacks, Reload; four-digit tallies | 362 / 406 px |
+| Pulls: Show and Reload; four-digit tallies | 303 / 341 px |
+| Commits: “5 commits begun 3mo ago” | 179 / 186 px |
+| Commits: “123,456 commits begun 12mo ago” | 211 / 238 px |
+
+Once the Stacks chip leaves the Pulls toolbar, the Show and Reload rows apply.
+The Pulls Show group is joined from 218 / 245 px with three-digit tallies (Open 100,
+Closed 200, All 300) and from 244 / 278 px with four (1,234, 5,678, 6,912), and the
+cluster below. At the narrowest pane, 179 px, with a filter set, the Files row is three
+lines: Group by, then Show ignored, then Clear and the chevron.
+The measurements are beside the rules in `styles.css`. `tests/dom/nav-toolbar-wrap.mjs`
+holds a toolbar to this rule at every width from 179 to 420 px, in both font sets:
+`tests/test_files_tab_chrome.py` the Files row in every Group by and filter state, with
+its numbers, Tab order, and drawer at the narrowest;
+`tests/test_github_pulls_stacks_chrome.py` the Pulls filters with three- and four-digit
+tallies, with and without the Stacks chip, and the Show group’s two layouts, its
+observers, and their disposal; and `tests/test_nav_metadata_chrome.py` the Commits tally
+and the tab bar.
+`tests/dom/filter-controls-behavior.js` holds the fit and its observers’
+lifecycle without a browser.
 
 ### Navigation Metadata Line
 
@@ -3088,10 +3172,12 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   While a line’s text fits the pane, a pending tally, a count still being taken, and a
   settled one are one height, and the Pulls lines are one height from loading through a
   failure. Text wraps only when it is longer than the pane, and then the band grows by
-  the lines it needs: the Files split totals in a narrow pane (tracked as H54), and a
-  Pulls remedy, which keeps its whole command, as the pull request header’s does; at the
-  default pane width the remedies for an unreachable GitHub, a gh that is not signed in,
-  and a missing gh each take a second line.
+  the lines it needs: the Files split totals in a narrow pane (tracked as H54), a Pulls
+  remedy, which keeps its whole command, as the pull request header’s does, and the
+  Commits tally in the toolbar slot, between its phrases, the slot growing with it
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)); at the default pane width the
+  remedies for an unreachable GitHub, a gh that is not signed in, and a missing gh each
+  take a second line.
 
 The built-in Pulls tab uses the class; its stylesheet lays out only the lines’ spans.
 No stylesheet but the component’s sets anything on a line element beyond how a long word

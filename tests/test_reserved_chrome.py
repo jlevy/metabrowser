@@ -51,32 +51,54 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
     """The top of the navigation is one toolbar slot, filled by the tab in front.
 
     The Files filters, the Commits tally, and the Pulls filters stand in one another's
-    place at one height, in line units, so what is under the slot starts at one y on every
-    tab. The filter bar alone hid on Commits and Pulls and moved the panel 37 px.
+    place at one height while each is one line, in line units, so what is under the slot
+    starts at one y on every tab. The filter bar alone hid on Commits and Pulls and moved
+    the panel 37 px. In a pane too narrow for a toolbar's line, it wraps rather than being
+    cut or scrolled, and the slot grows by the lines it adds (`.nav-toolbar-row`); Chrome
+    measures that at every pane width (tests/dom/nav-toolbar-wrap.mjs).
     """
 
     css = _css()
-    assert "--nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);" in css
+    assert "--nav-toolbar-line-height: var(--chip-height);" in css
+    assert "--nav-toolbar-gap: 6px;" in css
+    assert (
+        "--nav-toolbar-height: calc(var(--nav-toolbar-line-height) + 2 * "
+        "var(--nav-toolbar-gap) + 1px);"
+    ) in css
     assert "1.5 *" in css[css.index("--chip-height: calc(") :][:120], "chips are in line units"
     toolbar = _rule(css, ".nav-toolbar")
-    assert "height: var(--nav-toolbar-height);" in toolbar
-    assert "white-space: nowrap;" in toolbar
-    # A toolbar wider than a narrowed pane scrolls along its line; it is never cut.
-    assert "overflow-x: auto;" in toolbar and "overflow-y: hidden;" in toolbar
-    assert "min-width: 0;" not in _rule(
-        _github_css(), ".github-pulls-filters:where(.nav-toolbar > *)"
-    )
+    # One line's height at least, its lines' when it wraps; never a line it scrolls along.
+    assert "min-height: var(--nav-toolbar-height);" in toolbar
+    assert "white-space" not in toolbar and "overflow" not in toolbar
+    assert ".nav-toolbar::-webkit-scrollbar" not in css
     assert "min-height: var(--nav-toolbar-height);" in _rule(css, ".nav-filter-bar")
     assert "display: none;" in _rule(css, ".nav-filter-bar[hidden],\n.nav-toolbar[hidden]")
     assert ".nav-filter-bar[inert]" not in css
+    # The rows of controls wrap between them, a line and a gap at a time, every control one
+    # line tall; in the slot a row keeps the gap above and below its lines.
+    row = _rule(css, ".nav-toolbar-row")
+    assert "flex-wrap: wrap;" in row and "gap: var(--nav-toolbar-gap);" in row
+    assert "min-width: 0;" in row
+    assert "min-block-size: var(--nav-toolbar-line-height);" in _rule(css, ".nav-toolbar-row > *")
+    assert "max-block-size: var(--nav-toolbar-line-height);" in _rule(
+        css, ".nav-toolbar-row > :not(.chip-group)"
+    )
+    in_slot = _rule(css, ".nav-toolbar > .nav-toolbar-row")
+    assert "padding-block: var(--nav-toolbar-gap);" in in_slot and "flex: 1 1 auto;" in in_slot
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert '<div class="nav-filter-bar-main nav-toolbar-row">' in app
+    panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    assert 'filters.classList.add("nav-toolbar-row");' in panel
     # The Commits tally is a metadata line, and one line of that is the slot's height, so in
-    # the slot it keeps its own padding above and below and gives up only its inset and rule.
+    # the slot it keeps its own padding above and below and gives up only its inset and rule;
+    # it wraps as the line does.
     tally = _rule(css, ".nav-toolbar > .nav-metadata")
     assert "padding-inline: 0;" in tally and "border-bottom: none;" in tally
     assert "padding-block" not in tally and "min-height" not in tally
-    assert "flex-wrap: nowrap;" in tally
+    assert "flex-wrap" not in tally
     pulls = _rule(_github_css(), ".github-pulls-filters:where(.nav-toolbar > *)")
-    assert "position: static;" in pulls and "padding: 0;" in pulls
+    assert "position: static;" in pulls and "padding-inline: 0;" in pulls
+    assert "flex:" not in pulls and "padding-block" not in pulls
     tabs = (STATIC / "main-tabs.js").read_text(encoding="utf-8")
     activate = _function(tabs, "activateNavPanel")
     assert 'document.querySelectorAll("[data-nav-toolbar]")' in activate

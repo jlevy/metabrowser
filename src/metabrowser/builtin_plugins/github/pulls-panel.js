@@ -3309,9 +3309,12 @@ export function mountPullsPanel(container, ctx, mb) {
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
-  // at the slot's height, so the list starts where the Files tree does.
+  // at the slot's height, so the list starts where the Files tree does. There they are a
+  // toolbar row, which wraps between its controls in a narrow pane, Reload last and at the
+  // line's end (`.nav-toolbar-row` in the shell's styles.css).
   const toolbar = nav.toolbar ?? null;
   if (toolbar) {
+    filters.classList.add("nav-toolbar-row");
     toolbar.replaceChildren(filters);
     container.replaceChildren(status, connection, list, empty, foot, live);
   } else {

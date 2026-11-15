@@ -1407,7 +1407,7 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     # Later than the rest fill it ties with, or a joined chip answers the pointer with
     # nothing, and earlier than the selected fill, which outranks it either way.
     chip_rest = styles.index(".chip-group > .chip {")
-    wrapped_rest = styles.index('.chip-group[data-layout="wrap"] > .chip {')
+    wrapped_rest = styles.index('.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {')
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
     ring = "outline: 2px solid var(--link)"

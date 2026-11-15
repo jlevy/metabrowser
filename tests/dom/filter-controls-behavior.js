@@ -690,6 +690,141 @@ assertMissing("group labels are escaped", hostile, '"><img>');
   }
 }
 
+// ── A segmented group wider than its line ──────────────────────
+// In a navigation toolbar a joined group that its line cannot hold takes the cluster
+// layout. Whether it fits is pure; the widths it is asked about are layout, measured in
+// Chrome (tests/test_github_pulls_stacks_chrome.py).
+
+assertEqual(
+  "a joined group fits a line exactly its width",
+  fc.joinedGroupFits({ joined: 193, room: 193 }),
+  true,
+);
+assertEqual(
+  "a joined group a 64th of a pixel wider than its line does not fit",
+  fc.joinedGroupFits({ joined: 193.015625, room: 193 }),
+  false,
+);
+
+// Bound in a navigation toolbar, the groups are fitted at once, on a change to the row's
+// text before the browser paints it, and on a change of size in the next frame, never in
+// the ResizeObserver's own callback. The disposer takes the observers and any waiting
+// frame down, and nothing fires after it.
+{
+  const log = [];
+  /** @type {{resize: any, mutation: any}} */
+  const observers = { resize: null, mutation: null };
+  const frames = new Map();
+  let nextFrame = 1;
+  class FakeResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = new Set();
+      observers.resize = this;
+    }
+    observe(target) {
+      this.targets.add(target);
+    }
+    unobserve(target) {
+      this.targets.delete(target);
+    }
+    disconnect() {
+      this.targets.clear();
+      log.push("resize observer disconnected");
+    }
+  }
+  class FakeMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.watching = false;
+      observers.mutation = this;
+    }
+    observe() {
+      this.watching = true;
+    }
+    takeRecords() {
+      return [];
+    }
+    disconnect() {
+      this.watching = false;
+      log.push("mutation observer disconnected");
+    }
+  }
+  const view = {
+    ResizeObserver: FakeResizeObserver,
+    MutationObserver: FakeMutationObserver,
+    requestAnimationFrame(callback) {
+      const id = nextFrame;
+      nextFrame += 1;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      if (frames.delete(id)) {
+        log.push("frame cancelled");
+      }
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const doc = { defaultView: view, addEventListener() {}, removeEventListener() {} };
+  let fitted = 0;
+  const rootIn = (toolbar) => ({
+    ownerDocument: doc,
+    addEventListener() {},
+    removeEventListener() {},
+    closest: (selector) => (selector === "[data-nav-toolbar]" ? toolbar : null),
+    querySelectorAll(selector) {
+      if (selector === '.chip-group[data-layout="joined"]') {
+        fitted += 1;
+      }
+      return [];
+    },
+  });
+  const runFrames = () => {
+    const waiting = [...frames.values()];
+    frames.clear();
+    for (const callback of waiting) {
+      callback();
+    }
+  };
+
+  fc.bind(rootIn(null), {})();
+  assertEqual(
+    "outside a navigation toolbar, nothing is observed or fitted",
+    [observers, fitted],
+    [{ resize: null, mutation: null }, 0],
+  );
+
+  const root = rootIn({});
+  const dispose = fc.bind(root, {});
+  assertEqual("bound in a toolbar, the groups are fitted at once", fitted, 1);
+  assertEqual("the row is watched for its size", observers.resize.targets.has(root), true);
+  assertEqual("and for changes to its text", observers.mutation.watching, true);
+  observers.resize.callback([]);
+  observers.resize.callback([]);
+  assertEqual(
+    "a change of size waits for one next frame, not the observer's own callback",
+    [fitted, frames.size],
+    [1, 1],
+  );
+  runFrames();
+  assertEqual("the frame fits the groups", fitted, 2);
+  observers.mutation.callback([]);
+  assertEqual("a change to the row's text is fitted before the browser paints it", fitted, 3);
+  observers.resize.callback([]);
+  dispose();
+  assertEqual("the disposer takes the observers and the waiting frame down", log, [
+    "resize observer disconnected",
+    "mutation observer disconnected",
+    "frame cancelled",
+  ]);
+  observers.resize.callback([]);
+  observers.mutation.callback([]);
+  runFrames();
+  assertEqual("after the disposer nothing fires", [fitted, frames.size], [3, 0]);
+}
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

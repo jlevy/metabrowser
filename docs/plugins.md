@@ -567,6 +567,15 @@ open another way calls `filterControls.fitOpenMenus(root)` after rendering.
 See [Groups in a Menu](design-system.md#groups-in-a-menu) and
 [Menu Height](design-system.md#menu-height).
 
+A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
+gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row
+between its controls when the pane is too narrow for one line and spaces its lines by
+the toolbar’s tokens; a control that ends the row takes the line’s end with
+`margin-inline-start: auto`. Bound there, `filterControls.bind` keeps each joined group
+fitted to its line: one the line cannot hold takes the cluster layout until it can, and
+`filterControls.fitJoinedGroups(root)` fits them at once.
+See [Navigation Toolbars Wrap](design-system.md#navigation-toolbars-wrap).
+
 A view that shows a message about the content, such as a description or a comment, plain
 or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
 never on its page, and sets no face of its own: chrome prose is sans under either

@@ -4,6 +4,26 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
+  lines instead of cutting off what does not fit.
+  The Files filter row moves Show ignored down, then Clear and the chevron, which stay
+  together at the line’s end; the Pulls toolbar moves Reload down to the line’s end; the
+  Commits tally breaks between “12,345 commits” and “begun 1y ago”; and the Files,
+  Pulls, and Commits tabs wrap too.
+  The Files row overflowed the pane below about 297 px with a filter set, and its
+  chevron was out of sight at the narrowest pane, 180 px.
+  The Pulls toolbar, which scrolled sideways, ran 36 px past the default pane, so Reload
+  was cut off. A toolbar that fits stays one line, as before, and a wrapped one keeps one
+  spacing between its lines and its controls.
+  The Pulls tab’s Show choice, when even its own line is too narrow for it, shows its
+  three choices as separate pills that wrap, and joins them again when there is room.
+  Reload in the Pulls toolbar is now a chip’s height, 2 px shorter.
+  See [Navigation Toolbars Wrap](docs/design-system.md#navigation-toolbars-wrap).
+  For plugin authors, a row of controls in the navigation’s toolbar slot takes the
+  `nav-toolbar-row` class, and `filterControls.bind` keeps a joined group in a
+  navigation toolbar fitted to its line; `filterControls.fitJoinedGroups(root)` fits one
+  at once, and `filterControls.joinedGroupFits` is the pure rule.
+
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
   description, comments, and reviews, and in any document when you chose the Sans
   reading font. It was italic under either reading font, an accent of the serif that read

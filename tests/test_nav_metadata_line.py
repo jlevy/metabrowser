@@ -256,14 +256,16 @@ def test_the_component_is_built_from_tokens() -> None:
     )
     assert "--nav-metadata-line-height: 1.5;" in css
     assert "--nav-metadata-rule-width: 1px;" in css
+    # In the slot it gives up only its inset and rule, and wraps as the line does, between
+    # its phrases, in a pane too narrow for it (tests/test_nav_metadata_chrome.py).
     slot = _declarations(_rule(css, ".nav-toolbar > .nav-metadata"))
     assert slot == {
         "flex": "1 1 auto",
-        "flex-wrap": "nowrap",
         "min-width": "0",
         "padding-inline": "0",
         "border-bottom": "none",
     }
+    assert line["flex-wrap"] == "wrap"
     # Consecutive lines are one band under one rule.
     joined = _declarations(_rule(css, ".nav-metadata:has(+ .nav-metadata)"))
     assert joined == {"padding-bottom": "0", "border-bottom": "none"}
