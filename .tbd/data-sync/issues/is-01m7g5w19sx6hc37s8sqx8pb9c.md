@@ -3,15 +3,19 @@ type: is
 id: is-01m7g5w19sx6hc37s8sqx8pb9c
 title: "PR page: the state badge leads the Opened row"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T18:00:20.536Z
-updated_at: 2026-11-15T18:00:20.536Z
+updated_at: 2026-11-15T18:00:53.287Z
+started_at: 2026-11-15T18:00:53.286Z
 ---
 The user's request (2026-11-15), verbatim:
 
