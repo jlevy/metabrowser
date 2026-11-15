@@ -3,23 +3,23 @@ type: is
 id: is-01m6f3nm5xr0xc912vqyky74hz
 title: Re-run the folder comparison after this branch merges
 kind: task
-status: closed
+status: open
 priority: 1
-version: 13
+version: 15
 delegate: codex@spud10
 labels:
   - release:v0.12.0
 dependencies:
   - type: blocks
     target: is-01m5wdbsy6z6d95sgg03kwmm76
-parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-14T18:43:27.068Z
+updated_at: 2026-11-15T05:57:20.905Z
 started_at: 2026-11-03T09:32:28.834Z
-closed_at: 2026-11-14T18:43:27.067Z
-close_reason: The more-than-50-file plain-folder comparison against v0.11.0 passed on the tree that was tagged 0.12.0, and the sign-off record names the change.
+closed_at: null
+close_reason: null
 resolution: null
 duplicate_of: null
 ---
@@ -56,3 +56,5 @@ The normal R3 full gate and atomic two-ref push passed in 1,444.45 seconds, with
 The qualified 55-file fixture matched the published v0.11.0 control byte-for-byte for all 55 CLI patches and the apply oracle. Both Unified and Split reached the actual final-file addition with no warning or error. The literal-SHA attempt differed only in the symbolic input label, so the byte match uses equivalent HEAD commands. Final release commit attribution and owner acceptance remain open.
 
 Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
+
+Reopened: Reopened by PR #434 review A (A1): the comparison last ran on 426ce7b6, whose tree differs from the v0.12.0 tag 87b8ec81 (84 files, including c83c3178's folder-recovery fix), and the bead's own notes keep it open for the tag head. It is one of the release-head checks the owner deferred at mb-4bd2.
