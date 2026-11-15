@@ -16,18 +16,19 @@ PR-first slice”. The modules as built are in
 and the goldens as built are in the
 [parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
 
-**Status:** v0.11.0 released after the parity foundation; the v0.12.0 implementation,
-[stack #218](https://github.com/jlevy/metabrowser/stack/218), has landed on `main` and
-is not yet tagged. The #209 content-trust foundation is on `main` too.
-The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before the release.
+**Status:** Done. The parity foundation shipped in v0.10.0, and the v0.12.0
+implementation, [stack #218](https://github.com/jlevy/metabrowser/stack/218), shipped in
+0.12.0. The Git-status rows of the [ordering table](#ordering) are planned work owned by
+the [Git status plan](../active/plan-2026-08-26-git-status-and-working-tree-diffs.md),
+and the legacy functional inventory (`mb-n9xg`) by the
+[functional UI parity plan](../active/plan-2026-09-10-functional-ui-cli-parity.md).
 
 ## Overview
 
 The CLI parity mechanism and its route, kind, model, persisted-state, and functional
 aspect checks shipped in v0.10.0. The remaining workstreams are
-[Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), the
-[repository library](plan-2026-08-11-open-repo-from-git-url.md), and the
+[Git status](../active/plan-2026-08-26-git-status-and-working-tree-diffs.md), the
+[repository library](../active/plan-2026-08-11-open-repo-from-git-url.md), and the
 [hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
 This document records the delivered foundation, sequences the v0.12.0 PR-first slice,
 and states how backend work is proved end to end without a browser.
@@ -379,7 +380,7 @@ The session/content seams live outside the cache package:
 | `src/metabrowser/plugin_api.py` | Opaque provider credential capability and provider-to-job conversion | `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryObjectJobPort.request_selected_refs` |
 
 The exact types, invariants, and phase ownership live in the
-[repository plan](plan-2026-08-11-open-repo-from-git-url.md) and
+[repository plan](../active/plan-2026-08-11-open-repo-from-git-url.md) and
 [repository-source architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md).
 This map deliberately links to those authorities instead of duplicating signatures that
 can drift.
@@ -651,7 +652,7 @@ were refused with `Server does not allow request for unadvertised object` unless
 origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
 ([measurements](../../../../explorations/repository-cache/README.md#gitlinks-and-rejected-object-requests)).
 See
-[Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
+[Safety at the boundary](../active/plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 
 Portable acquire goldens (`mb-3639`) use an origin that does *not* allow the filter, so
 `strategy` is `full` on every Git that can fetch at all.
@@ -678,8 +679,8 @@ Still open:
 ## References
 
 - [CLI parity and golden coverage](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
-- [Git status and working-tree diffs](plan-2026-08-26-git-status-and-working-tree-diffs.md)
-- [Repository library and open from a Git URL](plan-2026-08-11-open-repo-from-git-url.md)
+- [Git status and working-tree diffs](../active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
+- [Repository library and open from a Git URL](../active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Hosted review model and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Delivery order review](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)

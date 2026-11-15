@@ -4,16 +4,18 @@
 
 **Author:** Claude (research agent), directed by Joshua Levy
 
-**Status:** Complete
+**Status:** Archived.
+Complete; [File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md)
+cites it for format compatibility.
 
 ## Overview
 
 Metabrowser has shipped
-[File Diff Format v1](../architecture/file-diff-format/file-diff-format.md), a JSON
+[File Diff Format v1](../../architecture/file-diff-format/file-diff-format.md), a JSON
 change-set document that wraps parsed unified diffs in resolved snapshot identity, a
 manifest of file changes, and per-file hunk patches, validated by
-[a schema](../../../src/metabrowser/data/file-diff-format/file-diff.schema.json) and an
-[apply oracle](../../../src/metabrowser/diff/apply.py).
+[a schema](../../../../src/metabrowser/data/file-diff-format/file-diff.schema.json) and
+an [apply oracle](../../../../src/metabrowser/diff/apply.py).
 The stated goal is maximal backward compatibility with existing patch formats plus full
 support for our own features, GitHub pull requests, and agent workflows.
 
@@ -40,7 +42,7 @@ GitHub REST bare hunks, `index`-line anchors).
 2. What does each format family capture, and what does it structurally miss?
 3. What does File Diff Format v1 add over each, and what does it still lack?
 4. Which git-patch features does our unified-patch parser
-   ([`patch_file.py`](../../../src/metabrowser/diff/adapters/patch_file.py)) not yet
+   ([`patch_file.py`](../../../../src/metabrowser/diff/adapters/patch_file.py)) not yet
    ingest?
 5. What do agent workflows need that classic patches lack?
 6. Does any existing format make part of our model redundant?
@@ -346,7 +348,7 @@ detection (marked `availability: binary`), hunk-count validation, and byte-exact
 non-UTF-8 line content.
 Bounds are explicit and documented beside the constants (`MAX_PATCH_BYTES`,
 `MAX_FILE_SECTIONS` in
-[`patch_file.py`](../../../src/metabrowser/diff/adapters/patch_file.py)).
+[`patch_file.py`](../../../../src/metabrowser/diff/adapters/patch_file.py)).
 
 Still-open ingest gaps, confirmed by probe or by reading the parser against the survey:
 
@@ -354,7 +356,7 @@ Still-open ingest gaps, confirmed by probe or by reading the parser against the 
   discarded; the file is honestly `binary`, but a `--binary` patch that fully contains
   the new content cannot hydrate an apply.
 - **`index` lines are ignored entirely.** Both consequences matter: blob oids that
-  [diff-sources-and-anchoring](../architecture/file-diff-format/diff-sources-and-anchoring.md)
+  [diff-sources-and-anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
   plans to use for the path-6 oid precheck are discarded, and the mode carried on the
   `index` line when modes don’t change is lost, so unchanged-mode executables parse as
   `100644`. Note the schema’s `contentRef.oid` pattern requires 40–64 hex chars, so
@@ -378,7 +380,7 @@ Still-open ingest gaps, confirmed by probe or by reading the parser against the 
 1. **Git’s extended unified format is the convergence point.** GitHub serves it,
    Mercurial documents plain unified as lossy and adopts it, jj emits it, and every
    pipeline in
-   [diff-sources-and-anchoring](../architecture/file-diff-format/diff-sources-and-anchoring.md)
+   [diff-sources-and-anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
    already flows through it.
    Compatibility means fidelity to this one dialect, in both directions.
 2. **Classic patch text has no identity; git smuggles it in `index` lines.** Blob oids
@@ -508,7 +510,7 @@ schema.
    highlighting as the unanchored default, whole-file highlight-then-diff when content
    refs resolve, full highlighting for added files now.
 5. Fold the agent-edit adapter into the general diff rendering plan
-   ([plan spec](../specs/active/plan-2026-08-17-general-diff-rendering.md)) once the
+   ([plan spec](../../specs/active/plan-2026-08-17-general-diff-rendering.md)) once the
    anchored-apply engine exists.
 
 ## Appendix: Syntax Highlighting in Diff Viewers
@@ -550,7 +552,7 @@ timeout, or size-policy change.
 The VS Code-derived algorithm and ownership decision are recorded in the
 [web diff viewer research](research-2026-07-17-web-diff-viewer-architecture.md#2026-08-25-addendum-intraline-refinement)
 and Phase 4 of the
-[general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md#phase-4-vs-code-derived-intraline-refinement).
+[general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md#phase-4-vs-code-derived-intraline-refinement).
 
 Implications for the Metabrowser viewer:
 
@@ -576,15 +578,15 @@ Implications for the Metabrowser viewer:
 
 Project sources:
 
-- [File Diff Format v1 contract](../architecture/file-diff-format/file-diff-format.md)
+- [File Diff Format v1 contract](../../architecture/file-diff-format/file-diff-format.md)
   (repo doc)
-- [Diff sources, context, and anchoring](../architecture/file-diff-format/diff-sources-and-anchoring.md)
+- [Diff sources, context, and anchoring](../../architecture/file-diff-format/diff-sources-and-anchoring.md)
   (repo doc)
-- [file-diff.schema.json](../../../src/metabrowser/data/file-diff-format/file-diff.schema.json)
+- [file-diff.schema.json](../../../../src/metabrowser/data/file-diff-format/file-diff.schema.json)
   (schema)
-- [patch_file.py parser](../../../src/metabrowser/diff/adapters/patch_file.py),
-  [apply.py oracle](../../../src/metabrowser/diff/apply.py) (source)
-- [General diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md)
+- [patch_file.py parser](../../../../src/metabrowser/diff/adapters/patch_file.py),
+  [apply.py oracle](../../../../src/metabrowser/diff/apply.py) (source)
+- [General diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md)
   (spec)
 
 POSIX and GNU (spec/manual):

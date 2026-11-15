@@ -756,12 +756,12 @@ Its work order is the phase order of
 
 It follows the [November 4 iteration](#pr-and-git-navigation) and the provider prefetch
 lane that landed with #355
-([PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md)), and five of
-its rows revisit their results: H88 generalizes H78; H92 measures H75’s join clause for
-the Pulls selection; H94 covers file navigation, which H74 to H76 did not; H104 revises
-H84’s walk; and H106 revisits the description readiness of H77, H81, and H84. Each of
-these rows carries the metrics its predecessors were accepted on as guards, because the
-accept rule’s third clause sees only the metrics in a round’s own table.
+([PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md)), and
+five of its rows revisit their results: H88 generalizes H78; H92 measures H75’s join
+clause for the Pulls selection; H94 covers file navigation, which H74 to H76 did not;
+H104 revises H84’s walk; and H106 revisits the description readiness of H77, H81, and
+H84. Each of these rows carries the metrics its predecessors were accepted on as guards,
+because the accept rule’s third clause sees only the metrics in a round’s own table.
 A row that bundles mechanisms keeps one identifier and records a lettered verdict for
 each mechanism, each decided by its own named metric.
 

@@ -17,289 +17,58 @@ Include the affected version, impact, reproduction steps, and a minimal sanitize
 fixture. Do not send credentials, private logs, customer data, or an archive of a served
 filesystem.
 
-## Security Boundaries
+## The Served-Root Boundary
 
 Metabrowser is a trusted-local-client tool, not a public-facing web server.
-It does not provide a public-service authentication or tenant-isolation boundary.
-Serving on another interface can expose file contents beneath the selected root and
-should be done only within a trusted network boundary; never expose Metabrowser directly
-to the internet.
+It has no authentication or tenant isolation: anyone who can reach the server can read
+every file beneath the served root.
+It binds to `127.0.0.1` by default.
+Serve on another interface only inside a trusted network, and never expose Metabrowser
+directly to the internet.
 
-Plugins execute JavaScript in the Metabrowser page and installed entry-point plugins may
-execute Python data hooks.
-Install plugins only from trusted sources.
-The served data root is never an automatic plugin source.
+Within that boundary, Metabrowser keeps file access beneath the served root, keeps
+browsed content from running with the application’s privilege, and serves any Git source
+it acquired under the untrusted profile.
+Browsed content gets the privilege a browser would give the same file opened directly,
+never Metabrowser’s server-side API.
+[Server and content](docs/project/architecture/arch-server-and-content.md) describes the
+content-trust model that enforces this.
 
-Every request’s `Host` header is checked against an allowlist to defeat DNS rebinding,
-where a malicious website points its own domain at 127.0.0.1 and reads files with what
-the browser treats as same-origin requests.
-Loopback names and a concrete `--host` value are permitted automatically.
-Additional trusted names for reaching a wildcard bind can be listed in the
-`METABROWSER_ALLOWED_HOSTS` environment variable (comma-separated); every name added
-there extends the set of domains whose pages the browser will let read responses, so
-list only names you control.
-That variable is read from the process environment only; a `.env` or `.env.local` file
-contributes only the two names named under Content Trust Model below.
+Plugins run JavaScript in the application page, and installed entry-point plugins may
+run data hooks on the server, so install plugins only from sources you trust.
+The served root is never an automatic plugin source; [the plugin guide](docs/plugins.md)
+lists where plugins are found.
 
-Path handling is designed to keep file access beneath the selected root.
-Reports of a path traversal, symlink escape, unsafe archive handling, cross-origin
-exposure, or plugin trust bypass are security issues.
+Report as security issues: path traversal or symlink escape, unsafe archive handling,
+browsed content reaching `/api` or the application page, cross-origin exposure, and
+plugin trust bypass.
 
-## Content Trust Model
+## Trust Settings
 
-Metabrowser serves two classes of responses with different privilege.
-Application surfaces — the shell at `/`, static assets, every `/api` route, and plugin
-assets under `/plugin-static` — are first-party code from the installed wheel and
-operator-installed plugins, and they use the full server API. Content surfaces serve the
-browsed files themselves: file previews through `/api/file` and raw bytes through
-`/raw`.
+**Host names.** Every request’s `Host` header is checked against an allowlist, which
+stops DNS rebinding: a hostile site pointing its own domain at `127.0.0.1` to read your
+files as if same-origin.
+Loopback names and a concrete `--host` value are allowed automatically.
+`METABROWSER_ALLOWED_HOSTS` adds comma-separated names for reaching a wildcard bind.
+Each name it adds is a domain whose pages may read Metabrowser’s responses, so list only
+names you control.
 
-Browsed content never executes inside the application page.
-Source views are entity-escaped before insertion, and markdown is rendered through
-KPress in its sanitized mode, which strips scripts, event-handler attributes, and
-`javascript:` URLs.
-Plugin discovery never treats the served root as a plugin source (see
-[plugin trust](docs/plugins.md)).
+**Content trust.** `--untrusted` turns off active content and keeps mutations off;
+`--no-active-content` and `--allow-edits` set those switches one at a time.
+A flag outranks its environment variable, so `--untrusted` stays conservative whatever
+the environment says.
+[The command-line guide](docs/command-line.md) owns every flag and environment variable.
 
-KPress’s sanitized mode is a document renderer’s policy, and it keeps what a document of
-its own may use: stylesheets, images, SVG and its `url()` paint servers, classes the
-application styles, `data-*` attributes KPress’s own scripts act on, and `id` and
-`name`. Inside the application page each of those is an attack from a document a reader
-did not write. A trusted folder keeps them, so the application’s document-wide handlers
-do not read them as its own: the copy, Load more, address-crumb, and print handlers act
-only on an element carrying `data-mb-owner` with a value drawn when the page loads,
-which a document written earlier cannot spell, and the tooltip ignores a rendered
-document’s markup. Two limits remain.
-The tooltip exclusion covers only a rendered Markdown document
-(`.metabrowser-kpress-host`); another view that inserts a document’s own markup into the
-page would need the same exclusion.
-And a trusted document keeps its stylesheets, whose attribute selectors can match the
-page’s `data-mb-owner` value character by character and report it to a server through
-`url()` loads; a document fetched after that, such as a later edit to a watched file,
-could then carry the value.
-Serving a folder with `--untrusted` removes both, since such a document keeps no
-stylesheet, class, or `data-*`. So when active content is off — every served mirror,
-where a fork’s author controls the head’s Markdown, and a folder served with
-`--untrusted` — and for every pull-request comment, Markdown reaches the page only as an
-allowlist of plain markup, applied twice: on the server by
-`src/metabrowser/inert_html.py`, and in the page by `static/inert-html.js`, which parses
-the HTML into an inert `<template>` and inserts only nodes rebuilt from the allowlist.
-The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables, and
-details, links, and images inside the served tree; no class, `id`, `name`, `data-*`,
-style, or event attribute; and no SVG, MathML, media, stylesheet, frame, form, or
-script. An outside image becomes a link to it, a link keeps only an `http`, `https`, or
-in-document address and opens outside the page in a new tab with no opener or referrer,
-and no KPress script is loaded for such a document: the render’s asset list keeps only
-its stylesheets. A trusted folder keeps KPress’s rich rendering.
-
-With active content off the application page also carries a Content-Security-Policy, a
-second line behind the allowlist.
-Scripts run only from the application’s own static paths, `/static/` and
-`/plugin-static/`, and the shell’s inline scripts only by a nonce fresh on every
-response; no inline event handler runs, and the application writes none.
-The browsed tree’s own files, served under `/raw`, are never among them.
-Stylesheets come from those paths and `/kpress-static/`, the Markdown worker from
-`/plugin-static/`, and images (with the `data:` images the stylesheet draws, and the
-repository’s own images through `/raw`), fonts, and requests from this origin.
-Application-owned GitHub avatars additionally permit HTTPS images from exactly
-`avatars.githubusercontent.com`. Provider and browser code validate these avatar URLs;
-anonymous CORS omits credentials, and the no-referrer policy omits the document URL.
-Both Markdown sanitizers still turn remote document images into links, including images
-on the avatar host. The raw HTML sandbox policy is unchanged.
-The page frames nothing, since the untrusted profile removes the HTML preview, its only
-frame, and nothing may frame it (`frame-ancestors 'none'` and `X-Frame-Options: DENY`);
-plugins, `<base>`, and form submission are off.
-`style-src-attr 'unsafe-inline'` keeps inline `style` attributes, because the
-application writes them for layout.
-Image URLs remain subject to the image-origin policy, and untrusted Markdown carries no
-`style` attribute at all.
-`capabilities.untrusted_shell_csp` is the policy, and `tests/test_untrusted_markdown.py`
-pins it and fails when the application writes an inline handler.
-
-In the same profile `/raw` never serves a browsed file as code: a request whose
-`Sec-Fetch-Dest` is a script, stylesheet, worker, or worklet is refused with 403, and a
-JavaScript or CSS file is sent as `text/plain` with `nosniff`, which no browser runs or
-applies, for a browser that sends no fetch metadata.
-
-In an inert render, references to the application rather than the tree — a query alone,
-or a root-relative `/api`, `/_debug`, or `/raw` address however spelled — lose their
-address, and so does any link or image past the link enhancer’s limit.
-The enhancer resolves the rest in a detached document before the page adopts it, so an
-image loads only the address it gave.
-Wiki links and embeds, which travel as `data-*` attributes, become plain text.
-
-Content responses through `/raw` and `/raw/{path}` are sandboxed on the wire.
-Every raw response — including gzip passthrough, SVG, HTML, and error bodies — carries
-`Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
-and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque origin, so script
-in a browsed file cannot read the application document, cookies, storage, or `/api`
-responses. `frame-ancestors` is omitted so nested iframes and framesets in a sandboxed
-page still load: the opaque ancestor origin would never match `'self'`. `/raw` is not
-behind the API origin check, because stylesheets and images must remain loadable as
-subresources; a previewed page can still probe file existence through load and error
-events, but cannot read those bytes.
-When active content is off, the sandbox omits `allow-scripts` so a direct `/raw` link
-still renders markup and loads subresources, but executes nothing.
-A raster image — PNG, JPEG, GIF, WebP, or AVIF, by the type `/raw` sends — runs nothing,
-as an image or opened as a document, so its sandbox omits `allow-scripts` under either
-profile, in every answer `/raw` gives it: the route decides by the type it chose, so a
-`304`, which carries no type, and a multipart range answer, whose type is
-`multipart/byteranges`, have that policy too.
-
-Those headers belong to the profile that sent them, and an answer a browser keeps
-without asking is replayed without reaching the server, under whichever profile serves
-the origin by then: no address can revoke it.
-So the only answer kept as fresh is one whose execution headers — its type, its sandbox,
-and `nosniff` — are the same under both profiles, a raster image’s, and only at the
-query form’s `v` while it is the version the file has now.
-That answer is `Cache-Control: private, max-age=31536000, immutable`. `v` is a version
-the render route gives each served file a Markdown document embeds (`raw_versions`): a
-digest of the file’s resolved path, size, modification and change times, inode, and
-device, of the trust profile and its sandbox policy, and of the build, so a replaced
-file is a new address.
-Every other response, whichever branch answered, is `Cache-Control: no-cache`, and a
-browser asks again before it loads one anew: an SVG, HTML, or any other document at its
-current version, an unversioned address, a version the file no longer has, the path form
-`/raw/{path}`, which a sandboxed preview loads as a document and which is never
-versioned, and every error.
-An untrusted document can link to an address the trusted profile gave, with an absolute
-link to this origin; following it after the switch asks the untrusted profile, unless
-the address is a raster image’s, whose kept answer is the one that profile would send.
-`tests/test_raw_profile_cache_chrome.py` follows such a link to an SVG in Chrome.
-A file’s `ETag` names the file (its name, size, modification and change times, and
-inode), the representation, the trust profile, the sandbox policy, and the build, and
-only a matching tag in `If-None-Match` is answered `304`; `*` and `If-Modified-Since`
-alone get the whole response, because neither can say which profile made the copy a
-browser holds. So a response stored while one profile served the folder is never reused
-by a new load, unasked or by a 304, after another profile serves it on the same host and
-port, except a raster image’s, whose execution headers both profiles share.
-Going back or forward in a tab is not a new load: a browser may show again, from its
-history, a `/raw` document it already showed, with the headers it was sent then, until
-it is reloaded. Only `no-store` would rule that out, at the cost of every image’s 304.
-
-`/api` routes require same-origin proof.
-The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the
-application origin, and refuses `Origin: null` and foreign origins.
-`Sec-Fetch-Site: none` is accepted as well: that is a user-initiated navigation — a
-typed URL, a bookmark, a restored tab — with no initiator document, so it carries no
-attacker-controlled origin, and a hostile page cannot make a browser send it.
-Requests with neither header — `curl` and `metab --api` — still work.
-State-changing methods additionally require `Content-Type: application/json`, so a
-cross-site form or `text/plain` POST cannot reach a write path such as
-`POST /api/kpress/export`. The Host allowlist still stops DNS rebinding; the origin
-check stops fire-and-forget invocation.
-
-`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
-disables active content and keeps mutations off.
-`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch that drops
-`allow-scripts` from the raw sandbox, renders Markdown inert, and sends the page’s
-Content-Security-Policy.
-`--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route
-consumes that flag yet.
-Individual flags override the profile.
-A flag on the command line outranks the environment in both directions, so `--untrusted`
-stays conservative whatever the `METAB_*` variables say, and only another flag —
-`--untrusted --allow-edits` — lifts it.
-The `METAB_*` variables themselves are read from the process environment only, never
-from a `.env` or `.env.local` file, so browsing a cloned repository from inside it
-cannot let that repository choose how far it is trusted.
-`METABROWSER_PLUGINS_DIRS` is kept from those files for the same reason and a sharper
-one: a directory plugin is JavaScript that runs in the application page, so a file in
-the browsed tree naming its own plugin directory would execute code there.
-Name it in the environment, or pass `--plugins-dir`. The resolved block is on
-`window.METABROWSER_SETTINGS.CAPABILITIES` and `GET /api/capabilities`; the server is
-authoritative.
-
-Those names are examples of a general rule rather than a list of exceptions.
-A `.env` or `.env.local` file may contribute only `METABROWSER_LOG_LEVEL` and
-`METABROWSER_REQUEST_LOG`. Every other name is read from the process environment or not
-at all, and Metabrowser logs a warning naming any of its own variables it ignored.
-A file that is not a regular file or is larger than 64 KB is skipped with a warning, and
-a value’s `${VAR}` is left as written, so a browsed repository’s file cannot hold the
-command by blocking its read or taking minutes to parse.
-
-The rule is an allowlist because the loader cannot tell a file the operator wrote from
-one in the repository being browsed, and a denylist secures only the names somebody
-thought of. The environment decides which program runs: `BROWSER`, which the standard
-library’s browser launcher honors, `GIT_EXTERNAL_DIFF`, which the `git diff` behind the
-diff views executes, and `PATH`.
-
-Membership has one test: the name must be read by a parser no value can break, so that a
-hostile file cannot make the program do anything but what the knob means.
-One of the two is checked against the known level names and the other is an equality
-test. The rendering budgets are deliberately outside it — each is parsed with `int()` at
-import and bounds a read on a request path, so a file value could stop the process from
-starting or lift a cap that keeps a large document from exhausting memory.
-
-`.html` and `.htm` files open as the `html` kind, with Preview and Source tabs.
-Preview loads the file in an iframe whose `src` is the path-shaped `/raw/{path}`
-document URL, so relative stylesheets, images, scripts, and sibling links resolve.
-The iframe sandbox is `allow-scripts allow-popups allow-forms allow-downloads` with
-`referrerpolicy="no-referrer"`. It never includes `allow-same-origin` or
-`allow-top-navigation`. When active content is off, Preview is omitted and Source is the
-only view. Preview also offers **Open as full page**, an ordinary `target="_blank"` link
-to that same raw URL with `rel="noopener noreferrer"`: containment is identical there,
-because the sandbox is a header on the response rather than an attribute on the frame.
-
-Fidelity matches opening the same file in a browser: classic scripts, styles, images,
-and nested frames work.
-`localStorage`, same-document `fetch`, ES modules, and CORS webfonts do not, and `/raw`
-never sends `Access-Control-Allow-Origin` to compensate.
-
-By default, sandboxed scripts can still run, phone home, and use `/raw` as an existence
-oracle. `--untrusted` omits the preview and stops script execution on raw responses.
-
-A Git source acquired from a `file://` URL is third-party content, and every mode that
-opens it, serving included, runs it under the untrusted profile: `--untrusted` is
-implied, the `METAB_*` enables are ignored, and `--allow-edits` is refused.
-A server serving such a pin reads only that pin’s store.
-It answers `/api/cache/…` with `unsupported_for_subject`, so the records that name every
-other cached source are never served beside acquired content, and it answers the
-path-shaped `/raw/{path}` the same way, because the preview that is that form’s only
-consumer is never offered there.
-
-A store can borrow objects from a checkout the reader names with `--checkout`, through
-Git’s `objects/info/alternates`. That checkout is a read-only source of object bytes,
-and borrowing does not change what is served or how: a store that borrows is opened,
-read under the same isolated Git policy, and served under the same untrusted profile as
-one that does not, and nothing about it can lift the profile.
-
-- **Its configuration is never consulted.** No Git process runs in the checkout.
-  Its remotes, refs, and object format are files read with a bound on each, and only
-  when they are regular files, so a FIFO cannot block a command.
-  Git reads the borrowed objects under the store’s own configuration, so the checkout’s
-  hooks, `core.fsmonitor`, `core.sshCommand`, and diff drivers do not run.
-  Nothing is written to it: a store takes over its own copy of the shallow boundary
-  before it deepens, because Git writes that file through a symbolic link.
-- **Its bytes are trusted as a served folder’s are.** Git does not verify an object’s
-  hash when it reads one: a forged loose object, pack entry, or commit is served by
-  every read and noticed only by `fsck`. So whoever can write the checkout can decide
-  what a pull request’s files look like.
-  That is already true of `metab <checkout>`, and it is why only a checkout the reader
-  names lends: one found by walking up from the working directory is offered as a
-  printed suggestion and never borrowed from, because any directory a reader stands in
-  can be made to pass for a checkout of any repository.
-- **Its refs and boundary are not believed.** The store’s refs are only what the origin
-  sent, so a branch or tag planted in the checkout is never served; its remote-tracking
-  tips are only hints that tell the origin what need not be sent, and they name commits
-  of the origin. Its local branches never leave the machine.
-  Its shallow boundary is used only as a cut of the commit graph, which can make a merge
-  base uncertain but never certain and wrong: an uncertain one is refused rather than
-  shown.
-- **The alternates file is checked.** A store whose alternates file names anything but
-  the directory its record names is refused as damaged, so a tampered cache cannot point
-  reads at another directory.
-  The checkout is checked again on every open that uses the record and before every
-  fetch: one that has grown an `objects/info/alternates` of its own, whose objects are
-  no longer the reader’s own to read, or whose directory holds another repository is
-  refused as `lender_missing`, so Git never follows a chain of alternates to a directory
-  nothing recorded.
-- **The checkout’s path** appears where a mirror’s location does, in
-  `/api/source/status` and the heading’s tooltip, as display text no route takes back as
-  an input.
-
-Content viewed through Metabrowser gets exactly the privilege a browser would give the
-same file opened directly, and never Metabrowser’s server-side API.
+**`.env` files.** Metabrowser reads `.env` and `.env.local` from the working directory
+and its parents, so running `metab` inside a cloned repository reads that repository’s
+files too. A file there may set only the logging settings named in `ALLOWED_KEYS` in
+`src/metabrowser/dotenv.py`, and Metabrowser warns when it ignores one of its own
+variables in a file.
+Everything else, `METABROWSER_ALLOWED_HOSTS`, the `METAB_*` trust switches, and
+`METABROWSER_PLUGINS_DIRS` among them, is read only from the process environment: export
+it in your shell or pass the flag.
+The rule is an allowlist because the loader cannot tell a file you wrote from one in the
+repository you are browsing.
 
 See [supply-chain security](SUPPLY-CHAIN-SECURITY.md) for dependency and build policy.
 

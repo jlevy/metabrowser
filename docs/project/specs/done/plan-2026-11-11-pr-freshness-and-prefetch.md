@@ -1,10 +1,10 @@
 # Plan for Event-Based Pull-Request Freshness and Budgeted Prefetch
 
-**Status.** Implemented in draft pull request #355, revised for its first reviews (A and
-B); not merged. This is the second pull request of the spinner-free refresh stack (epic
-`mb-c93s`, bead `mb-wlx0`), based on the presentation pull request (`mb-wl9x`, branch
-`claude/pr-refresh-without-spinners`). One GraphQL query per record refresh is a later,
-separate change (`mb-xhtc`) and is out of scope.
+**Status:** Done. Merged to `main` in pull request
+[#355](https://github.com/jlevy/metabrowser/pull/355) after 0.12.0, so it first ships in
+the next release. It was the second pull request of the spinner-free refresh stack (epic
+`mb-c93s`, closed). One GraphQL query per record refresh was a separate change
+(`mb-xhtc`, closed).
 
 ## Reader Behavior
 
@@ -377,7 +377,7 @@ Filled in as each budget lands, beside its constant.
 
 - [Watching pull requests](plan-2026-11-06-pr-watch-and-reconnect.md)
 - [The Pulls tab](plan-2026-10-01-github-pulls-tab.md)
-- [Review mirror and checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md)
+- [Review mirror and checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
 - [Repository sources and provider mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
 - [Reviewing pull requests](../../../reviewing-pull-requests.md)
 - [GitHub REST rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)

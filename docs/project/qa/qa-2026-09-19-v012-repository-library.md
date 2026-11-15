@@ -1,15 +1,15 @@
 # QA: v0.12 Repository Library and HTML Trust
 
-**Status:** Active procedure for the v0.12 Repository Library, which has landed on
-`main` and is not yet released; it first ships in 0.12.0 (`mb-4bd2`). HTML trust is
-included, as it was in v0.11.0. Git acquired from a `file://` or `https://` origin,
-including a GitHub URL, is inspectable through data modes and served in the browser as
-an immutable pin under the forced untrusted profile.
+**Status:** Record. This is the acceptance procedure for the v0.12 Repository Library,
+which shipped in 0.12.0 (tagged 2026-11-08). HTML trust is included, as it was in
+v0.11.0. Git acquired from a `file://` or `https://` origin, including a GitHub URL, is
+inspectable through data modes and served in the browser as an immutable pin under the
+forced untrusted profile.
 The served mirror refreshes from its origin in the background, and the pin can switch to
 another branch, tag, or commit of the same mirror; ssh stays closed.
 
-The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-defines the milestones, the manual browser matrix, and what remains before the release.
+The [v0.12 alpha test plan](../specs/done/plan-2026-09-22-v012-alpha-testing.md) defines
+the milestones, the manual browser matrix, and what remains before the release.
 This runbook holds the step-by-step checks those milestones run.
 
 This runbook tests the Git mirror, GitHub browsing, and inherited HTML behavior:
@@ -17,14 +17,14 @@ automated coverage first, then numbered manual checks against **this** repositor
 an explicit pass/fail for each step and a list of what this procedure cannot prove.
 
 `metab --help` is the flag reference for the build you are running.
-The [command-line guide](command-line.md) is the other half: what each mode is for.
-Where the two disagree, believe `--help`. Test layering lives in
-[end-to-end testing](e2e-testing.md).
+The [command-line guide](../../command-line.md) is the other half: what each mode is
+for. Where the two disagree, believe `--help`. Test layering lives in
+[end-to-end testing](../../e2e-testing.md).
 Acquisition, GitPath wires, and the one-subject rule live in
-[repository sources and provider mirrors](project/architecture/arch-repository-sources-and-provider-mirrors.md).
+[repository sources and provider mirrors](../architecture/arch-repository-sources-and-provider-mirrors.md).
 The HTML-trust invariant lives in
-[full-page HTML rendering and an explicit trust model](project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
-and [SECURITY.md](../SECURITY.md).
+[full-page HTML rendering and an explicit trust model](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
+and [SECURITY.md](../../../SECURITY.md).
 
 Validate post-landing stability fixes on top of current `main`. Archive containers
 (`mb-380k`) are not part of this release or of this procedure.
@@ -37,9 +37,9 @@ conditions; the lines here are the summary to tick off.
 Parts 1 and 2 need no network.
 Part 3 reads GitHub, and nothing in it writes there.
 Part 4 adds browser-specific rendering, private access and external-plugin checks.
-The historical [acceptance record](project/qa/qa-2026-09-24-v012-alpha-acceptance.md)
-and the current release-preparation record name the build and browser each run covered;
-a pass on an older build is not relabeled as a new run.
+The historical [acceptance record](qa-2026-09-24-v012-alpha-acceptance.md) and the
+current release-preparation record name the build and browser each run covered; a pass
+on an older build is not relabeled as a new run.
 
 ### Part 1: Set Up and Pick the Tip (About 5 Minutes)
 
@@ -182,8 +182,8 @@ gh pr checks "$QA_PR" --repo jlevy/metabrowser
 
 Do not silently move the checkout during a QA run.
 
-The [review ledger](project/reviews/review-2026-10-01-v012-stack-review-ledger.md)
-records the original stack and its review limits.
+The [review ledger](../reviews/review-2026-10-01-v012-stack-review-ledger.md) records
+the original stack and its review limits.
 Its GitHub stack is [#218](https://github.com/jlevy/metabrowser/stack/218). The
 reference branch `reference/v012-hosted-review` is not a release candidate.
 The separate page-connection fix [#262](https://github.com/jlevy/metabrowser/pull/262)
@@ -242,12 +242,12 @@ before going on. Run all checks on this same selected commit.
 
 ## Related Documentation
 
-- [Using the command line](command-line.md)
-- [End-to-end testing](e2e-testing.md)
-- [Development](development.md)
-- [Repository library and open from a Git URL](project/specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [CLI-first delivery map](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md)
-- [Views, models, and routes](project/architecture/arch-views-models-routes.md)
+- [Using the command line](../../command-line.md)
+- [End-to-end testing](../../e2e-testing.md)
+- [Development](../../development.md)
+- [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+- [CLI-first delivery map](../specs/done/plan-2026-08-28-cli-first-delivery-map.md)
+- [Views, models, and routes](../architecture/arch-views-models-routes.md)
 
 ## Phase 0: Setup
 
@@ -449,8 +449,8 @@ uv --config-file uv.toml run --frozen pytest -rs \
 ```
 
 **Pass:** Every selected test passed, or was skipped for a reason that `-rs` prints and
-[End-to-End Testing](e2e-testing.md#skips) lists for a developer machine: on a Mac,
-`the macOS filesystem rejects undecodable byte names`; below the floor,
+[End-to-End Testing](../../e2e-testing.md#skips) lists for a developer machine: on a
+Mac, `the macOS filesystem rejects undecodable byte names`; below the floor,
 `needs a Git the acquisition floor admits`. `tests/test_cli_git_pin_golden.py` pins the
 `cli-git-pin-*.txt` transcripts, one per scenario, against a multi-entry `file://`
 origin with nested directories, Markdown, JSON, JSONL, an image, a binary, an oversized
@@ -495,8 +495,9 @@ failures as failures.
 ### 1.2 The test tiers
 
 `make test` is the default tier, and three outer tiers hold what it cannot run on every
-machine. [End-to-End Testing](e2e-testing.md#test-tiers) defines them; this is what each
-needs from the machine you are on.
+machine.
+[End-to-End Testing](../../e2e-testing.md#test-tiers) defines them; this is what
+each needs from the machine you are on.
 
 | Command | Needs | Touches the network |
 | --- | --- | --- |
@@ -527,7 +528,7 @@ In CI, `make test` runs with strict skips: a skip that belongs to no tier fails 
 
 `make golden-update` rewrites every recording and transcript in dependency order and
 fails if a test it needed was skipped; see
-[End-to-End Testing](e2e-testing.md#one-harness-and-one-update-command).
+[End-to-End Testing](../../e2e-testing.md#one-harness-and-one-update-command).
 On a tree with no intended change it must be a no-op:
 
 ```shell
@@ -580,9 +581,8 @@ make test-report REFS="origin/main ."
 **Pass:** The first prints test files, lines, and test functions by area, then totals
 for `tests/dom`, the goldens, the fixtures, and the tryscript commands.
 The second prints the same for `main` and the working tree side by side, with the
-change.
-[Measuring the Suite](e2e-testing.md#measuring-the-suite) says how each number is
-taken and how to add run times from a CI job log.
+change. [Measuring the Suite](../../e2e-testing.md#measuring-the-suite) says how each
+number is taken and how to add run times from a CI job log.
 
 **Fail:** A non-zero exit, or a tryscript command count that differs from the `passed`
 count tryscript prints at the end of `make test`.
@@ -1399,7 +1399,7 @@ traceback.
 
 Skip this phase when Phase 2.4 refused below-floor Git, and record the skip.
 It covers the rows of the
-[alpha manual matrix](project/specs/active/plan-2026-09-22-v012-alpha-testing.md) that a
+[alpha manual matrix](../specs/done/plan-2026-09-22-v012-alpha-testing.md) that a
 `file://` pin can run without GitHub: M03 (links, reload, and history within one
 revision, and in 5.11 a changed file at either side of a diff), M05 (reopen with the
 origin gone), and M06 (hostile content with a populated cache), plus refresh and pin
@@ -1807,14 +1807,14 @@ bytes separately from local API requests and browser transfer bytes.
 Record runtime errors and the profiler’s observer support, visibility, overflow, Long
 Tasks and trusted-input coverage.
 A single session is a diagnostic, not a speed claim or a performance-budget pass; use
-the [performance framework](web-performance-framework.md) for comparisons.
+the [performance framework](../../web-performance-framework.md) for comparisons.
 
 The existing [focused tests](#11-the-focused-selection),
 [PR-data checks](#410-pull-request-data) and
 [checkout checks](#411-a-pull-request-beside-a-checkout) cover account changes, rate
 holds, missing GitHub CLI, cancellation and cache ownership.
-The browser steps above and the [UI test guidance](e2e-testing.md) cover held keys,
-expanded trees, resize and remounts.
+The browser steps above and the [UI test guidance](../../e2e-testing.md) cover held
+keys, expanded trees, resize and remounts.
 The generic capture’s filesystem inventory completion does not establish catalog
 completion; verify the catalog envelope before exporting the profile.
 
@@ -2198,7 +2198,7 @@ still classified as catch-all `text`.
 
 `--untrusted` is also `METAB_UNTRUSTED=1`. `--no-active-content` /
 `METAB_ACTIVE_CONTENT=0` is the individual script switch.
-See the [command-line guide](command-line.md).
+See the [command-line guide](../../command-line.md).
 
 ### 6.3 Optional: local filesystem serve for `/raw` headers
 

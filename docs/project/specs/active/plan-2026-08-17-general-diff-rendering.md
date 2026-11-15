@@ -30,7 +30,7 @@ history. A renderer that lives inside `git/` would have to be extracted before a
 those could use it, and extraction after the fact is where coupling gets discovered.
 
 The design work is largely done.
-[Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+[Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 surveyed comparison semantics, intermediate representations, backends, renderers, and
 competing products, and its conclusions are adopted here rather than restated.
 This plan is the implementation shape those conclusions imply once diff is core rather
@@ -252,8 +252,8 @@ emitted shape and `validate_manifest`, `validate_file_patch`,
 The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) owns durable
 Git objects, publication, and worktree materialization; its `mb-jlon` extraction owns
 provider jobs and selected-ref fetching.
-The [GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) owns PR
-metadata, the bounded PR index, and selected-PR bundles.
+The [GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md)
+owns PR metadata, the bounded PR index, and selected-PR bundles.
 The diff service consumes resolved object IDs and remains independent of how those
 objects arrived.
 
@@ -1208,12 +1208,12 @@ model have to render somewhere.
 
 ## References
 
-- [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
 - [Browser Contributor Toolchain and Distribution](../../research/research-2026-07-18-browser-contributor-toolchain.md)
 - [Git graph nav panel and read-only Git API](../done/plan-2026-08-06-git-graph-view.md)
 - [Rendering large content](../../../large-content-rendering.md)
-- [File Patch Formats](../../research/research-2026-08-19-file-patch-formats.md)
+- [File Patch Formats](../../research/archive/research-2026-08-19-file-patch-formats.md)
 - [Git `diff-highlight`](https://github.com/git/git/tree/master/contrib/diff-highlight)
 - [VS Code default diff computer at the reviewed revision](https://github.com/microsoft/vscode/tree/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/common/diff/defaultLinesDiffComputer)
 - [CodeMirror merge diff algorithm](https://github.com/codemirror/merge/blob/main/src/diff.ts)

@@ -2,11 +2,10 @@
 
 **Status:** Overlay acquisition, bounded explicit recovery, and checkout-backed PR
 comparisons are implemented in [#283](https://github.com/jlevy/metabrowser/pull/283) and
-[#288](https://github.com/jlevy/metabrowser/pull/288) and are present on `main`.
-[Delivery](#delivery) maps the implemented scope; the
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the current integrated candidate, installed artifact and remaining release gates.
-Conversions and broader deepening remain future work.
+[#288](https://github.com/jlevy/metabrowser/pull/288) and shipped in 0.12.0.
+[Delivery](#delivery) maps the implemented scope.
+Two steps remain planned: [Conversions](#conversions) between a full store and an
+overlay, which no bead tracks yet, and broader deepening (`mb-dqvj`).
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -16,12 +15,12 @@ proofs from inferences.
 [Open Decisions for the User](#open-decisions-for-the-user) records the original
 decisions.
 
-This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) and the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+This plan extends the [Pulls tab plan](../done/plan-2026-10-01-github-pulls-tab.md) and
+the [thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 It revised the original
-[alternates decision](plan-2026-10-01-github-pulls-tab.md#local-checkouts), a Files
-changed case, and the store invariant; [The Rule This Changes](#the-rule-this-changes)
-records that design change.
+[alternates decision](../done/plan-2026-10-01-github-pulls-tab.md#local-checkouts), a
+Files changed case, and the store invariant;
+[The Rule This Changes](#the-rule-this-changes) records that design change.
 Current runtime contracts are in
 [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
 and [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
@@ -408,7 +407,7 @@ side-effect free, and validated preparation requests submit work to the loader.
 | Store and Git objects | Admitted repository and store identity, object format, and full object ID. Use the checkout as a lender, with validation and explicit repair when its identity or availability changes. |
 | Snapshot and comparison | Store binding, resolved immutable revisions, comparison policy, and exact path bytes where applicable. Bind the displayed comparison until the reader selects a newer one. |
 | Rendered projection | Snapshot or comparison identity, file side and path, renderer version, options, and trust profile. A bounded, recomputable projection can expire independently of Git objects. |
-| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
+| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](../done/plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
 
 Reuse the refresh coordinator for in-process ownership and the existing source, store,
 and fetch locks for durable writes.
@@ -556,7 +555,7 @@ That relaxation is item 1 of the decisions, which the owner accepted.
 Three written rules say an overlay is not allowed or read the checkout instead:
 
 - The Pulls tab plan,
-  [Local Checkouts](plan-2026-10-01-github-pulls-tab.md#local-checkouts): “The
+  [Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md#local-checkouts): “The
   alternates option … is left out at first: a `gc`, a repack, or a move of the user’s
   repository can remove objects the borrowing store depends on, which breaks the rule
   that no object Metabrowser showed is ever lost.”
@@ -940,8 +939,8 @@ weighed.
 
 ## References
 
-- [GitHub Pulls Tab for Mirrors and Local Checkouts](plan-2026-10-01-github-pulls-tab.md)
-- [v0.12 Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md)
+- [GitHub Pulls Tab for Mirrors and Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md)
+- [v0.12 Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md)
 - [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - Git: `gitrepository-layout` (`objects/info/alternates`, `shallow`), `git-fetch`

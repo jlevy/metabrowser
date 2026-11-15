@@ -4,7 +4,8 @@
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Phase 1 implemented; Phase 2A measured; Phase 2B in progress
+**Status:** Phase 1 implemented; Checkpoints 2A and 2B complete; Checkpoints 2C and 2D,
+which add and adopt the fdu provider, are planned.
 
 ## Overview
 

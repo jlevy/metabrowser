@@ -1032,7 +1032,7 @@ discarded when parity lands.
 Fixture repositories are built with pinned identity and dates, which makes commit
 revisions identical across runs and machines, so the goldens assert real revisions
 instead of placeholders.
-See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
+See [CLI-first delivery](../done/plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Extract the shared raw Git path codec from the immutable diff adapter.
 - [ ] Add cached Git-version parsing and the Git 2.36 status-safety gate; keep
   repository discovery and History usable below it.

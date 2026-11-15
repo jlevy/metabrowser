@@ -134,7 +134,7 @@ Two lanes govern background work, and they govern different things:
   holds one of the six connections and server time.
   Foreground requests never wait for the cap.
 - **The provider prefetch lane**
-  ([PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md#the-prefetch-lane))
+  ([PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md#the-prefetch-lane))
   governs work that spends GitHub budget: one job at a time per repository, caps per
   catalog publication and per hour, the rate-limit governor, and preemption and
   promotion by a reader.
@@ -275,7 +275,7 @@ final round.
 
 - [Apparent UI performance for the native app](../../research/research-2026-11-11-ui-apparent-performance.md)
 - [Load-time performance plan](plan-2026-08-21-load-time-performance.md)
-- [PR freshness and prefetch](plan-2026-11-11-pr-freshness-and-prefetch.md)
+- [PR freshness and prefetch](../done/plan-2026-11-11-pr-freshness-and-prefetch.md)
 - [Performance-loop runbook](../../../../explorations/performance-loop/README.md)
 - [Native macOS app plan](plan-2026-11-10-native-macos-app.md)
 - [Design system](../../../design-system.md)
