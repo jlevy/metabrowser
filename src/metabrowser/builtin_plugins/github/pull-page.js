@@ -5151,6 +5151,12 @@ export function mountPullPage(container, ctx, mb) {
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
+              // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
+              // the route a press on it in the Pulls tab's tree takes, so the address names it
+              // and Back returns to where the reader was.
+              openFile: (path) => {
+                void open({ number, tab: "files", file: path, replace: false, jumped: false });
+              },
             }),
           { number },
         )

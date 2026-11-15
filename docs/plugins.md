@@ -640,7 +640,8 @@ path.
 - `loadChangedFilesTree()` loads the shell’s tree of a change set’s files once, on
   demand, and resolves with it: folders built from paths with their line counts rolled
   up, the visible rows with a chain of single folders as one row, which folders are
-  open, and a change set’s header text.
+  open, a change set’s header text, and `displayPath`, the server’s display rule for a
+  path whose list carries no display of its own.
   A diff’s Diff summary and the Pulls tab’s changed files both draw with it;
   `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.

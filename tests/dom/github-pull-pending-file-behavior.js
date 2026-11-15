@@ -40,6 +40,9 @@ async function run() {
   const { FAST_POLL_MS, mountPullPage } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
+  // What each diff the page mounts is given, and the routes the page asks the shell to open.
+  const rendered = [];
+  const opened = [];
   const mount = (
     initial,
     assets,
@@ -50,14 +53,15 @@ async function run() {
   ) =>
     mountPullPage(
       container,
-      { number: 7, tab, reader: { initial, fetchAfterMs: 0 } },
+      { number: 7, tab, reader: { initial, fetchAfterMs: 0 }, open: (route) => opened.push(route) },
       {
         perf,
         ensureAsset: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: () => assets,
         getRegisteredView: () => ({
-          async render() {
+          async render(_host, context) {
+            rendered.push(context);
             await renderReady;
             return {
               scrollToFile(file) {
@@ -100,6 +104,18 @@ async function run() {
   rendering.resolve();
   await page.whenFilesReady();
   assert.equal(pending(), null, "the diff owns progress after its initial render");
+  // A file the diff's Diff summary opens takes the route a press on it in the Pulls tab's tree
+  // takes (`tab.open` in pulls-panel.js), so the address names it, `/pull/7/files/<path>`.
+  const changesView = rendered.at(-1);
+  assert.equal(typeof changesView?.openFile, "function", "Changes gives the diff a file's address");
+  changesView.openFile("src/app.txt");
+  assert.deepEqual(opened.at(-1), {
+    number: 7,
+    tab: "files",
+    file: "src/app.txt",
+    replace: false,
+    jumped: false,
+  });
   assert.deepEqual(abandoned, [], "a fileless visit must not consume the abandoned file");
   page.dispose();
 

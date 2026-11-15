@@ -23,6 +23,9 @@ A screen reader is told the same in words.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
 A chain of single folders is one row.
+A path is its author’s text, so a control, format, or invisible character in it, such as
+a right-to-left override or a zero-width space, shows as U+FFFD by the server’s display
+rule (`displayPath`), while the path itself stays the row’s identity.
 The arrow keys move along the rows, Right and Left open, close, and step into or out of
 a folder, and only Enter, Space, or a press on a file jumps the diff to it, since the
 tree sits above the files a jump scrolls to.
@@ -213,6 +216,20 @@ $ node tests/dom/diff-summary-session.js
         "kind": "jump",
         "path": "README.md"
       }
+    },
+    "a path's control and invisible characters show as U+FFFD": {
+      "rows": [
+        "v docs/ (2) +2 -1",
+        "  R new<U+FFFD>name.md (from docs/old<U+FFFD>name.md) +1 -0",
+        "  M zero<U+FFFD>width.md +1 -1",
+        "v src/ (1) +3 -0",
+        "  A evil<U+FFFD>gnp.js +3 -0"
+      ],
+      "identities": [
+        "docs/new<U+200B>name.md",
+        "docs/zero<U+200B>width.md",
+        "src/evil<U+202E>gnp.js"
+      ]
     }
   },
   "invariants": {

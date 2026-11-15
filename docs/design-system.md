@@ -1282,6 +1282,13 @@ The keys are a tree’s: the arrows move one tab stop, Right and Left open, clos
 step into or out of a folder, and Home and End go to the ends.
 Only Enter, Space, or a press on a file jumps the diff to that file, because the tree
 sits above the files and a jump on every step would scroll it away.
+On a pull request’s Changes the jump goes through the file’s address,
+`/pull/<n>/files/<path>`, the route a press on it in the Pulls tab takes, so the address
+names it and Back returns; a patch file has no address for a place in its diff, so there
+the diff moves in place and the address stays the file’s. A path is its author’s text: a
+row shows it by the server’s display rule, with a control, format, or invisible
+character, such as a right-to-left override or a zero-width space, as U+FFFD, as the
+Pulls tab shows the same path.
 `tests/dom/diff-summary-session.js` holds the words, the rows, and the keys, and the
 paint’s measurement is in the views, models, and routes map (`diff.summary-paint`).
 

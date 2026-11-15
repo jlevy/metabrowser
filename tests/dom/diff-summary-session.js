@@ -73,9 +73,14 @@ function line(row) {
   return `${indent}${row.badge} ${row.name}${from}${counts}`;
 }
 
+/** The row of a change, as `renderDiffSummary` makes it, with the server's display rule. */
+let rowOf = () => {
+  throw new Error("the modules have not loaded");
+};
+
 /** The header of a manifest, as `renderDiffSummary` in diff-view.js asks for it. */
-function header(model, manifest) {
-  const rows = manifest.files.map(model.changeSummaryRow);
+function header(_model, manifest) {
+  const rows = manifest.files.map(rowOf);
   const totals = manifest.totals;
   const said = shared.describeChanges(
     {
@@ -112,6 +117,7 @@ async function main() {
   const summary = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-summary.js")).href
   );
+  rowOf = (change) => model.changeSummaryRow(change, shared.displayPath);
   const stories = {};
 
   // The reader's own example: 35 files, 2 added, 3 removed, and 30 modified.
@@ -150,7 +156,7 @@ async function main() {
   const kindsManifest = manifestOf(kinds);
   stories["every kind, in the header's order"] = header(model, kindsManifest);
   stories["each change as a row"] = kinds.map((entry) => {
-    const row = model.changeSummaryRow(entry);
+    const row = rowOf(entry);
     return `${entry.kind} -> ${row.status} ${row.path}${row.previous_path === null ? "" : ` (from ${row.previous_path})`}`;
   });
   stories["a change set whose totals are not exact"] = header(model, manifestOf(kinds, false));
@@ -162,7 +168,7 @@ async function main() {
 
   // The tree as it opens: every folder open, a chain of single folders as one row, and each
   // folder with the counts of its files rolled up, the binary ones left out and counted.
-  const kindRows = kinds.map(model.changeSummaryRow);
+  const kindRows = kinds.map(rowOf);
   const tree = summary.createSummaryTree(shared, kindRows);
   stories["the tree as it opens"] = tree.rows().map(line);
 
@@ -218,8 +224,33 @@ async function main() {
     file: pressed.press("README.md"),
   };
 
+  // A path is its author's text. A right-to-left override and a zero-width space show as
+  // U+FFFD, as the server shows them in the Pulls tab, and the path stays the row's identity,
+  // the one a jump is given.
+  const untrusted = [
+    change("added", "src/evil\u202Egnp.js", 3, 0),
+    change("modified", "docs/zero\u200Bwidth.md", 1, 1),
+    change("renamed", "docs/new\u200Bname.md", 1, 0, "docs/old\u202Ename.md"),
+  ].map(rowOf);
+  const escaped = (text) =>
+    [...text]
+      .map((ch) =>
+        /^[\x20-\x7e]$/.test(ch)
+          ? ch
+          : `<U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}>`,
+      )
+      .join("");
+  const shown = summary.createSummaryTree(shared, untrusted).rows();
+  stories["a path's control and invisible characters show as U+FFFD"] = {
+    rows: shown.map((row) => escaped(line(row))),
+    identities: shown.filter((row) => row.kind === "file").map((row) => escaped(row.path)),
+  };
+  if (shown.some((row) => /[\u200B\u202E]/.test(row.name))) {
+    throw new Error("a row shows a character a reader cannot see");
+  }
+
   // Relations a reviewer can break the model against.
-  const exampleRows = example.map(model.changeSummaryRow);
+  const exampleRows = example.map(rowOf);
   const built = shared.buildFileTree(kindRows);
   const nodes = [];
   const collect = (folder) => {
@@ -257,7 +288,7 @@ async function main() {
       );
     })(),
     "every file row jumps to a path the diff finds it by": kinds.every((entry) => {
-      const row = model.changeSummaryRow(entry);
+      const row = rowOf(entry);
       return row.path === (entry.new ?? entry.old).path;
     }),
     "a closed tree's rows are the top level": compact.rows().every((row) => row.depth === 0),

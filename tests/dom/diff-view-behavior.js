@@ -322,7 +322,7 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
             id: "f2",
             kind: "added",
             old: null,
-            new: { ...twoFiles.manifest.files[0].new, path: "src/deep/added.py" },
+            new: { ...twoFiles.manifest.files[0].new, path: "src/deep/ad\u202Eded.py" },
             additions: 1200,
             deletions: 0,
           },
@@ -330,7 +330,14 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
         totals: { files: 2, additions: 1201, deletions: 1, exact: true },
       },
     };
-    const handle = mountDiffView(host, kinds, { formatInteger }, { changedFiles: sharedTree });
+    // A pull request's Changes hands the diff its way to a file's own address.
+    const opened = [];
+    const handle = mountDiffView(
+      host,
+      kinds,
+      { formatInteger },
+      { changedFiles: sharedTree, openFile: (path) => opened.push(path) },
+    );
     const header = host.find("diff-summary-toggle")[0];
     check("a change set's header is the Diff summary's toggle", header !== undefined);
     if (header === undefined) {
@@ -386,7 +393,7 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     const names = rows().map((row) => row.dataset.id);
     check(
       "the tree draws its folders first, open, then its files",
-      JSON.stringify(names) === JSON.stringify(["src/deep/", "src/deep/added.py", "a.py"]),
+      JSON.stringify(names) === JSON.stringify(["src/deep/", "src/deep/ad\u202Eded.py", "a.py"]),
       JSON.stringify(names),
     );
     const folder = rows().find((row) => row.dataset.id === "src/deep/");
@@ -404,13 +411,28 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     check("an arrow is the tree's", press(list, "ArrowDown"));
     check(
       "the arrow moved the row that takes Tab, and focus with it",
-      global.document.activeElement?.dataset.id === "src/deep/added.py",
+      global.document.activeElement?.dataset.id === "src/deep/ad\u202Eded.py",
     );
     check(
       "a file the tree names is one the diff holds",
-      handle.scrollToFile("src/deep/added.py").kind === "jumped",
+      handle.scrollToFile("src/deep/ad\u202Eded.py").kind === "jumped",
+    );
+    // A path is its author's text: a right-to-left override shows as U+FFFD, in the row and
+    // its tooltip, and the path itself is what the row's identity and its address carry.
+    const evil = rows().find((row) => row.dataset.id === "src/deep/ad\u202Eded.py");
+    check(
+      "a path's bidi control shows as U+FFFD",
+      evil?.text().includes("ad\uFFFDded.py") &&
+        !evil.text().includes("\u202E") &&
+        evil.dataset.tipText === "src/deep/ad\uFFFDded.py",
+      JSON.stringify(evil?.text() ?? ""),
     );
     check("Enter on a file is the tree's", press(list, "Enter"));
+    check(
+      "a file the summary opens goes to the host's address for it",
+      JSON.stringify(opened) === JSON.stringify(["src/deep/ad\u202Eded.py"]),
+      JSON.stringify(opened),
+    );
     check("a key the tree does not take is left alone", !press(list, "Escape"));
     header.click();
     await settled();

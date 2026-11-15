@@ -16,6 +16,9 @@ type MetabrowserRenderContext = {
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
+  /** How the host opens one of a comparison's changed files at its own address, as a pull
+   *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
+  openFile?: (path: string) => void;
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;
@@ -3390,6 +3393,8 @@ declare global {
       statuses: Iterable<string>,
       formatCount: (count: number) => string,
     ): MetabrowserChangedFilesSummary;
+    /** A path as the server displays it: control, format, and invisible characters as U+FFFD. */
+    displayPath(path: string): string;
     expansionFor(files: number, autoExpandFiles: number): MetabrowserChangedFilesExpansion;
     isOpen(expansion: MetabrowserChangedFilesExpansion, id: string): boolean;
     parentIndex(rows: ReadonlyArray<{ depth: number }>, at: number): number | null;

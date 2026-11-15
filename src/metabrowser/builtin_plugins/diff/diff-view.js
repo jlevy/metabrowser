@@ -89,6 +89,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  * @property {MetabrowserChangedFilesTree | null} changedFiles The shared tree the Diff
  *   summary is drawn on, or null where it could not be loaded.
+ * @property {((path: string) => void) | null} openFile How the host opens one changed file
+ *   at its own address, or null where a file has none in this diff.
  */
 
 /**
@@ -1388,7 +1390,7 @@ let summaryIds = 0;
  * @returns {{element: HTMLElement, dispose: () => void}}
  */
 function renderDiffSummary(totals, files, view, model) {
-  const rows = files.map(changeSummaryRow);
+  const rows = files.map((change) => changeSummaryRow(change, model.displayPath));
   const formatCount = countFormatter(view.api);
   /** @param {unknown} value */
   const lines = (value) => (typeof value === "number" ? value : null);
@@ -1484,8 +1486,15 @@ function renderDiffSummary(totals, files, view, model) {
                 box.innerHTML = chevronSvg;
                 return box.firstElementChild;
               },
+              // A file opens at its own address where the host has one, as a pull request's
+              // Changes does (`/pull/<n>/files/<path>`), and the address shows it; elsewhere
+              // the diff goes to it in place.
               jump: (path) => {
-                jumpToFile(view, path);
+                if (view.openFile !== null) {
+                  view.openFile(path);
+                } else {
+                  jumpToFile(view, path);
+                }
               },
             }),
           { file_count: rows.length },
@@ -2765,7 +2774,8 @@ function measureInContainer(root, container) {
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
  *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
- *   changedFiles?: MetabrowserChangedFilesTree | null
+ *   changedFiles?: MetabrowserChangedFilesTree | null,
+ *   openFile?: (path: string) => void
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
@@ -2773,7 +2783,8 @@ function measureInContainer(root, container) {
  *   *markdownHoldMs* is how long the first screen's Markdown files wait for Rendered
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
  *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
- *   it a multi-file diff has no summary.
+ *   it a multi-file diff has no summary. *openFile* is the host's way to a changed file's own
+ *   address, which the summary's file rows take where the host has one.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -2824,6 +2835,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     viewFileBusy: null,
     yielders: new Set(),
     changedFiles: options.changedFiles ?? null,
+    openFile: options.openFile ?? null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (

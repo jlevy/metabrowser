@@ -21,7 +21,13 @@
 // A path is text whoever made the change wrote. It is a row's identity and the path a jump
 // is given, a rename's new path; what is painted is the row's `display`, and a name never
 // reaches markup. A folder's identity ends in "/", so a file and a folder of one name, as a
-// file replaced by a directory lists them, are two rows.
+// file replaced by a directory lists them, are two rows. A list the server displays, as the
+// `pull-files` route does, carries each path's display; one that carries only paths, as a
+// File Diff Format manifest does, takes it from `displayPath`, the server's display rule
+// (`display_path` in builtin_plugins/github/pull_files_route.py, over `display_segment` in
+// invisible_chars.py), so a control, format, or invisible character shows as U+FFFD
+// wherever a changed file's name is shown. tests/test_changed_files_display.py holds the two
+// to one answer, code point for code point.
 //
 // Measured 2026-11-03 with Node 24.19 on real lists as the route answered them, the median
 // of 25 runs twice at a load average of 4.5: building the tree and flattening it with every
@@ -76,8 +82,183 @@
   });
   const STATUS_ORDER = Object.freeze(Object.keys(STATUS_WORDS));
 
+  // ── How a path is shown ─────────────────────────────────────────────
+  //
+  // The tables of invisible_chars.py, literal, as code point ranges: what is replaced does
+  // not depend on the browser's Unicode data, with the one exception the server has too,
+  // whether a variation selector's base is printable.
+
+  /** Unicode's default-ignorable code points (Unicode 17.0, as ICU 78.3 reports them). */
+  const DEFAULT_IGNORABLE = [
+    [0x00ad, 0x00ad],
+    [0x034f, 0x034f],
+    [0x061c, 0x061c],
+    [0x115f, 0x1160],
+    [0x17b4, 0x17b5],
+    [0x180b, 0x180f],
+    [0x200b, 0x200f],
+    [0x202a, 0x202e],
+    [0x2060, 0x206f],
+    [0x3164, 0x3164],
+    [0xfe00, 0xfe0f],
+    [0xfeff, 0xfeff],
+    [0xffa0, 0xffa0],
+    [0xfff0, 0xfff8],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0000, 0xe0fff],
+  ];
+  /** The variation selectors: replaced only where they have no base. */
+  const VARIATION_SELECTORS = [
+    [0xfe00, 0xfe0f],
+    [0xe0100, 0xe01ef],
+  ];
+  /** U+2800 BRAILLE PATTERN BLANK, drawn as a space. */
+  const BLANK_BRAILLE = 0x2800;
+  /** Every space separator but U+0020, with U+2028 and U+2029. */
+  const SPACE_SEPARATORS = [
+    [0x00a0, 0x00a0],
+    [0x1680, 0x1680],
+    [0x2000, 0x200a],
+    [0x2028, 0x2029],
+    [0x202f, 0x202f],
+    [0x205f, 0x205f],
+    [0x3000, 0x3000],
+  ];
+  /** The format characters (category Cf), which reorder or hide what is around them. */
+  const FORMAT = [
+    [0x00ad, 0x00ad],
+    [0x0600, 0x0605],
+    [0x061c, 0x061c],
+    [0x06dd, 0x06dd],
+    [0x070f, 0x070f],
+    [0x0890, 0x0891],
+    [0x08e2, 0x08e2],
+    [0x180e, 0x180e],
+    [0x200b, 0x200f],
+    [0x202a, 0x202e],
+    [0x2060, 0x2064],
+    [0x2066, 0x206f],
+    [0xfeff, 0xfeff],
+    [0xfff9, 0xfffb],
+    [0x110bd, 0x110bd],
+    [0x110cd, 0x110cd],
+    [0x13430, 0x1343f],
+    [0x1bca0, 0x1bca3],
+    [0x1d173, 0x1d17a],
+    [0xe0001, 0xe0001],
+    [0xe0020, 0xe007f],
+  ];
+  /** The bases an emoji keycap keeps its selector after: 1, U+FE0F, U+20E3. */
+  const KEYCAP_BASES = "#*0123456789";
+  const KEYCAP = 0x20e3;
+
+  /**
+   * @param {number} point
+   * @param {ReadonlyArray<ReadonlyArray<number>>} table
+   */
+  function inTable(point, table) {
+    return table.some(([low, high]) => point >= low && point <= high);
+  }
+
+  /** @param {number} point */
+  const isSelector = (point) => inTable(point, VARIATION_SELECTORS);
+
+  /**
+   * Drawn as nothing or as a space wherever it stands; a variation selector is not.
+   *
+   * @param {number} point
+   */
+  function isInvisible(point) {
+    return (
+      !isSelector(point) &&
+      (point === BLANK_BRAILLE ||
+        inTable(point, DEFAULT_IGNORABLE) ||
+        inTable(point, SPACE_SEPARATORS))
+    );
+  }
+
+  /**
+   * Replaced wherever it stands: C0, DEL, C1, a format character, or an invisible one.
+   *
+   * @param {number} point
+   */
+  function isReplaced(point) {
+    return (
+      point < 0x20 ||
+      (point >= 0x7f && point < 0xa0) ||
+      inTable(point, FORMAT) ||
+      isInvisible(point)
+    );
+  }
+
+  /** Python's `str.isprintable` is false for one character: Other or Separator. */
+  const UNPRINTABLE = /^[\p{C}\p{Z}]$/u;
+  /** Python's `str.isspace` for one character. */
+  const SPACE = /^\s$/u;
+
+  /**
+   * Whether the character at *index* is drawn as nothing or as a space where it stands:
+   * `hidden_at` in invisible_chars.py, over code points.
+   *
+   * @param {number[]} points
+   * @param {number} index
+   */
+  function hiddenAt(points, index) {
+    const point = points[index];
+    if (!isSelector(point)) {
+      return isInvisible(point);
+    }
+    if (index === 0) {
+      return true;
+    }
+    const base = points[index - 1];
+    if (base < 0x80) {
+      return !(KEYCAP_BASES.includes(String.fromCodePoint(base)) && points[index + 1] === KEYCAP);
+    }
+    const character = String.fromCodePoint(base);
+    return (
+      UNPRINTABLE.test(character) || SPACE.test(character) || isSelector(base) || isInvisible(base)
+    );
+  }
+
+  /**
+   * One segment of a path as the server's display shows it: C0, DEL, C1, format, and
+   * invisible characters become U+FFFD, and so does a variation selector with no base. A
+   * lone surrogate, which no UTF-8 holds, becomes three, as the server's decode of its
+   * three bytes makes it. No "/" is replaced, so a display's segments are the path's.
+   *
+   * @param {string} segment
+   */
+  function displaySegment(segment) {
+    if (/^[\x20-\x7e]*$/.test(segment)) {
+      return segment;
+    }
+    const points = Array.from(segment, (character) => character.codePointAt(0) ?? 0xfffd);
+    return points
+      .map((point, index) => {
+        if (point >= 0xd800 && point <= 0xdfff) {
+          return "\uFFFD\uFFFD\uFFFD";
+        }
+        return isReplaced(point) || (isSelector(point) && hiddenAt(points, index))
+          ? "\uFFFD"
+          : String.fromCodePoint(point);
+      })
+      .join("");
+  }
+
+  /**
+   * A path as the server displays a name, each segment through `displaySegment`: what a
+   * list that carries only paths shows for them.
+   *
+   * @param {string} path
+   */
+  function displayPath(path) {
+    return path.split("/").map(displaySegment).join("/");
+  }
+
   /** U+2212, the minus sign every change stat is written with. */
-  const MINUS = "−";
+  const MINUS = "\u2212";
 
   /**
    * The same order wherever it runs: folders first, then by name without case, then by the
@@ -166,7 +347,7 @@
           folder = {
             kind: "folder",
             id: prefix,
-            name: names[index] ?? "�",
+            name: names[index] ?? "\uFFFD",
             files: 0,
             additions: null,
             deletions: null,
@@ -182,7 +363,7 @@
       parent.children.push({
         kind: "file",
         id: row.path,
-        name: names[segments.length - 1] ?? "�",
+        name: names[segments.length - 1] ?? "\uFFFD",
         row,
       });
     }
@@ -452,6 +633,7 @@
     buildFileTree,
     changeStats,
     describeChanges,
+    displayPath,
     expansionFor,
     isOpen,
     parentIndex,

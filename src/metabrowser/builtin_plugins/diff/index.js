@@ -461,6 +461,7 @@ mb.registerView("diff", "diff", {
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
       changedFiles,
+      ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       viewFile,
       ...(!rendered
         ? {}

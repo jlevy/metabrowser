@@ -84,8 +84,11 @@ All notable changes to Metabrowser are documented here.
   of single folders is one row, and each file has its change letter and line counts.
   Every folder now shows the line counts of the files under it, rolled up, in the Diff
   summary and in the Pulls tab alike.
-  Pressing a file, or Enter or Space on it, takes the diff to that file; the arrow keys
+  Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
+  request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
   move along the rows without moving the diff.
+  A name shows a control or invisible character, such as a right-to-left override, as
+  U+FFFD, as the Pulls tab does.
   It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
   commit summary’s totals, as before.
 

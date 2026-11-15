@@ -21,10 +21,14 @@
 //
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
-// or a press on a file jumps; on a folder they toggle it.
+// or a press on a file jumps; on a folder they toggle it. A host with an address for a file
+// takes the jump (diff-view.js `openFile`): a pull request's Changes opens
+// `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and the diff follows its address.
 //
 // A path is text whoever made the change wrote: it is painted with textContent and reaches
-// no class, style, or markup; the only markup parsed is the shell's own chevron.
+// no class, style, or markup, and what is painted is its display, the server's rule
+// (`displayPath`), with control, format, and invisible characters as U+FFFD. The only
+// markup parsed is the shell's own chevron.
 //
 // Measured 2026-11-15 in headless Chrome 152 at 1280×900, medians of 7 loads, on this
 // repository's pull request #260 as a patch (596 files, 649 rows) and on a synthetic patch of

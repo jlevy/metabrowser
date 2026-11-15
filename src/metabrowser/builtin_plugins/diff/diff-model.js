@@ -355,12 +355,15 @@ const SUMMARY_STATUSES = /** @type {Record<string, string>} */ ({
  * One change as a row of its change set's tree: the path it has now, or had, for a file the
  * change deleted, which is the path the diff's jump finds it by; the path it came from, for a
  * rename or a copy; its status in the tree's words; and its line counts, null where the
- * change has none, as a binary file's. A path is shown as the file's bar shows it.
+ * change has none, as a binary file's. A path is whoever made the change's text, so what is
+ * shown of it is *display*'s: the server's rule, `displayPath` of the shared changed-files
+ * tree, which shows a control, format, or invisible character as U+FFFD.
  *
  * @param {Record<string, unknown>} change A validated change.
+ * @param {(path: string) => string} display
  * @returns {MetabrowserChangedFileRow}
  */
-export function changeSummaryRow(change) {
+export function changeSummaryRow(change, display) {
   const kind = String(change.kind);
   const oldSide = /** @type {{path?: unknown} | null | undefined} */ (change.old);
   const newSide = /** @type {{path?: unknown} | null | undefined} */ (change.new);
@@ -375,8 +378,8 @@ export function changeSummaryRow(change) {
     status: SUMMARY_STATUSES[kind] ?? kind,
     additions: lines(change.additions),
     deletions: lines(change.deletions),
-    display: path,
-    previous_display: previous,
+    display: display(path),
+    previous_display: previous === null ? null : display(previous),
   };
 }
 
