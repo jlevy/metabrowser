@@ -5,7 +5,7 @@ title: "Diff summary: one collapsible changed-files tree with folder roll-ups, r
 kind: feature
 status: in_progress
 priority: 2
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T09:01:53.423Z
+updated_at: 2026-11-15T09:23:10.938Z
 started_at: 2026-11-15T06:32:50.037Z
 ---
 The user's request (2026-11-15), verbatim:
@@ -101,4 +101,4 @@ Review A round (2026-11-15): review https://github.com/jlevy/metabrowser/pull/44
 - A13: at load 5-7.5, the 2,000-file open is 39.4/41.2 ms median, max 46 (one 104.1).
 - Design alternative filed as mb-0qpr (P3, under mb-eevh).
 - Local: lint-check passes; 261 focused tests and 59 goldens pass.
-- API for PR 5: added missingCounts, rowLabel, additionsUnknown/deletionsUnknown; buildFileTree folds repeats; nothing renamed or removed.
+- API for PR 5: added missingCounts, rowLabel, additionsUnknown/deletionsUnknown; buildFileTree folds repeats; nothing renamed or removed.- CI on 25eb9d424: run 43697144574 passed all nine checks (lint, distribution, test 3.12/3.13/3.14/3.14t, admitted-git 2.43.7/2.50.1, stack-integration). Not merged, not marked ready; lower layers not merged in yet.
