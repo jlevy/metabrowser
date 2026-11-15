@@ -4,8 +4,9 @@ import AppKit
 /// the key window's web view answers Cut, Copy, Paste, Select All, and Undo itself,
 /// its window controller answers the page and server items, and the app delegate
 /// answers the rest. Without an Edit menu, Command-C and Command-V do nothing in a web
-/// view. A web view hands a key to its page before the menu, and the page binds only
-/// plain keys and takes no key held with Command, Control, or Option, so every shortcut
+/// view. A web view hands a key to its page before the menu, and the page binds plain
+/// keys and, on a pull request in a stack, Control-N and Control-P, which no item here
+/// uses; it takes no other key held with Command, Control, or Option, so every shortcut
 /// here reaches the app (`tests/test_modified_keys.py` holds the page to that).
 enum MainMenu {
     /// `appName` is the bundle's name, which the app menu's items carry.

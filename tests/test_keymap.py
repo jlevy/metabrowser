@@ -98,12 +98,32 @@ def test_a_lone_view_is_served_without_a_key() -> None:
     assert live_view_keys([]) == []
 
 
-def test_next_and_previous_are_reserved_in_every_kind() -> None:
-    """``N`` and ``P`` mean next and previous wherever they apply, so no view takes them."""
+def test_next_and_previous_are_chords_that_reserve_no_letter() -> None:
+    """Control-N and Control-P mean next and previous, so the letters alone are free.
+
+    A view's key is one letter alone, and no view can declare a chord, so moving the stack's
+    walk to Control-N and Control-P (mb-lnqj) freed ``N`` for a view in every kind.
+    """
+    assert "n" not in RESERVED_SHELL_KEYS
     for kind in ("html", "pull-request", "markdown"):
-        check = check_view_keys(kind, [{"id": "page", "key": "p"}, {"id": "next", "key": "N"}])
-        assert check.views == [{"id": "page"}, {"id": "next"}], kind
-        assert all("reserved" in str(problem) for problem in check.problems), kind
+        check = check_view_keys(kind, [{"id": "page", "key": "a"}, {"id": "next", "key": "N"}])
+        assert check.views == [{"id": "page", "key": "a"}, {"id": "next", "key": "n"}], kind
+        assert check.problems == [], kind
+
+
+def test_p_is_the_pulls_tab_in_every_kind_and_r_is_free() -> None:
+    """``P`` opens the Pulls tab wherever it is pressed (mb-6rfu), so no view takes it.
+
+    The Pulls tab's letter was ``R``, for pull Requests, while ``P`` walked a stack; with the
+    walk on Control-P, the tab takes the first letter of its label, as Files takes ``F``
+    (Commits keeps ``H``, for commit History), and ``R`` is free for a view.
+    """
+    assert RESERVED_SHELL_KEYS["p"].purpose == "Pulls tab"
+    assert "r" not in RESERVED_SHELL_KEYS
+    for kind in ("html", "pull-request", "markdown"):
+        check = check_view_keys(kind, [{"id": "page", "key": "P"}, {"id": "rendered", "key": "R"}])
+        assert check.views == [{"id": "page"}, {"id": "rendered", "key": "r"}], kind
+        assert ["Pulls tab" in str(problem) for problem in check.problems] == [True], kind
 
 
 def test_a_contextual_shell_key_is_reserved_only_for_its_kinds(
@@ -138,21 +158,38 @@ def _golden_shell_keys() -> set[str]:
     return {key for keys in printed for key in json.loads(keys)}
 
 
+_REGISTRY = Path(server.__file__).parent / "static" / "keyboard-shortcuts.js"
+
+
+def _control_chords() -> set[str]:
+    """The Control chords the registry allows, as ``control-n``: ``CONTROL_CHORD_KEYS``."""
+    found = re.search(
+        r"const CONTROL_CHORD_KEYS = Object\.freeze\(\[([^\]]*)\]\);",
+        _REGISTRY.read_text(encoding="utf-8"),
+    )
+    assert found, "static/keyboard-shortcuts.js declares CONTROL_CHORD_KEYS"
+    return {f"control-{letter}" for letter in re.findall(r'"([a-z])"', found[1])}
+
+
 def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
     """The table the manifest loader and this check reserve is what the shell really binds.
 
     ``tests/dom/key-reveal-session.js`` runs the production shell keymap, main tabs, Pulls
-    keys, tree keys, and Quick Search, and its golden prints every letter and digit they
-    registered outside the view tabs and the modal scopes. Its letters are exactly the
-    table's, so a shell key added or dropped on one side fails here; its digits are the
-    situational numbers, ``1`` to ``9`` and no more, which the registry hands out by place.
+    keys, tree keys, and Quick Search, and its golden prints every letter, digit, and
+    Control chord they registered outside the view tabs and the modal scopes. Its letters
+    are exactly the table's, so a shell key added or dropped on one side fails here; its
+    digits are the situational numbers, ``1`` to ``9`` and no more, which the registry
+    hands out by place; and its chords are the registry's Control chords, which reserve no
+    letter, since a view's key is one letter alone.
     """
     shell_keys = _golden_shell_keys()
     letters = set(string.ascii_lowercase)
     reserved = set(RESERVED_SHELL_KEYS)
+    chords = {key for key in shell_keys if key.startswith("control-")}
     assert shell_keys & letters == reserved & letters
-    assert shell_keys - letters == set("123456789")
-    assert shell_keys - letters == reserved - letters
+    assert chords == _control_chords() == {"control-n", "control-p"}
+    assert shell_keys - letters - chords == set("123456789")
+    assert shell_keys - letters - chords == reserved - letters
 
 
 def test_the_shell_serves_the_reserved_table_to_the_browser() -> None:
@@ -165,7 +202,7 @@ def test_the_shell_serves_the_reserved_table_to_the_browser() -> None:
     served = client_settings_dict()["RESERVED_SHELL_KEYS"]
     assert served == serialize_reserved_shell_keys()
     assert set(served) == set(RESERVED_SHELL_KEYS)
-    assert served["n"] is served["p"] is served["t"] is None
+    assert served["j"] is served["k"] is served["t"] is None
 
 
 def _plugin_session_list(name: str) -> list[str]:
@@ -183,7 +220,7 @@ def test_the_plugin_facade_refuses_exactly_the_reserved_letters() -> None:
     prints it, then attaches every letter through the production facade and prints the
     ones it refused. The copy must be the table the server serves, and the refused
     letters must be all of its letters: a plugin view can appear in any kind, so the
-    facade cannot leave ``n`` and ``p`` to a pull request page alone.
+    facade cannot leave ``j`` and ``k`` to a page without rows alone.
     """
     printed = _plugin_session_list("reservedKeys")
     served = serialize_reserved_shell_keys()
@@ -233,18 +270,16 @@ def test_the_built_in_plugins_keys_are_not_reserved() -> None:
         for _ in re.finditer(r"\bshortcuts\.attach\(", path.read_text(encoding="utf-8"))
     )
     # The pull request page attaches its tabs' letters and numbers its header's controls,
-    # and the Pulls panel numbers its state chips, its Group by stack chip, and its Reload:
-    # numbers, so no letter.
+    # and the Pulls panel numbers its state chips and its Reload: numbers, so no letter.
     assert calls == [
         "diff/diff-view.js",
         "github/pull-page.js",
         "github/pull-page.js",
         "github/pulls-panel.js",
         "github/pulls-panel.js",
-        "github/pulls-panel.js",
     ]
     panel = (_BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(encoding="utf-8")
-    assert panel.count("numbered: true,") == 3, "the Pulls panel's three calls take no letter"
+    assert panel.count("numbered: true,") == 2, "the Pulls panel's two calls take no letter"
     letters = _builtin_plugin_letters()
     assert set(letters) == {"c", "g", "e", "l"}
     served = serialize_reserved_shell_keys()
@@ -306,12 +341,14 @@ def test_the_design_system_keymap_is_the_keys_the_app_binds() -> None:
     """The documented table and the bound keys are one set, and each row names its targets.
 
     Every reserved shell letter, every manifest view key, and every letter a built-in plugin
-    attaches has a row; every row's letter is one of those, ``?``, or ``/``; a view's or a
-    plugin control's row names its label; and the numbers are one row, ``1`` to ``9``,
-    never a fixed digit.
+    attaches has a row; every row's letter is one of those, ``?``, or ``/``; each Control
+    chord the registry allows has a row; a view's or a plugin control's row names its label;
+    and the numbers are one row, ``1`` to ``9``, never a fixed digit.
     """
     rows = _documented_keymap()
     documented = {key for keys, _meaning in rows for key in keys if len(key) == 1}
+    chords = {key for keys, _meaning in rows for key in keys if key.startswith("control-")}
+    assert chords == _control_chords(), "each Control chord the registry allows has its row"
     shell = {key for key in RESERVED_SHELL_KEYS if key.isalpha()}
     views = _manifest_views()
     plugins = _builtin_plugin_letters()
@@ -353,9 +390,9 @@ def _shell_meaning_problems(
 
     A row with one letter names what its command opens: the command's Help action less a
     leading "Open", so ``F``, bound to ``main-tabs.files`` ("Open Files"), must say
-    "Files". A row of two letters is a reusable pair, written "Down or up" or "Next or
-    previous": its first letter's commands go to the next item and its second's to the
-    previous one, as their actions say.
+    "Files". A row of two letters, or of two Control chords, is a reusable pair, written
+    "Down or up" or "Next or previous": its first key's commands go to the next item and
+    its second's to the previous one, as their actions say.
     """
     problems = []
     for key, command, action in commands:
@@ -364,9 +401,9 @@ def _shell_meaning_problems(
             problems.append(f"{key.upper()} ({command}) is in {len(held)} rows, not one")
             continue
         keys, meaning = held[0]
-        letters = [letter for letter in keys if letter.isalpha() and len(letter) == 1]
-        if len(letters) == 2:
-            expected = "Next" if letters.index(key) == 0 else "Previous"
+        pair = [k for k in keys if (len(k) == 1 and k.isalpha()) or k.startswith("control-")]
+        if len(pair) == 2:
+            expected = "Next" if pair.index(key) == 0 else "Previous"
             if not action.startswith(expected):
                 problems.append(
                     f"{key.upper()} is {command} ({action}), but its row lists it as the "
@@ -391,28 +428,28 @@ def test_the_documented_shell_letters_mean_their_commands() -> None:
     commands = _golden_shell_commands()
     assert {key for key, _command, _action in commands} == {
         key for key in RESERVED_SHELL_KEYS if key.isalpha()
-    }
+    } | _control_chords()
     assert _shell_meaning_problems(_documented_keymap(), commands) == []
 
 
 def test_swapping_two_documented_shell_letters_fails_the_meaning_check() -> None:
-    """The check is red for a table that swaps Files and Pulls, or J and K, or N and P."""
+    """The check is red for a table that swaps Files and Pulls, J and K, or the chords."""
     text = _DESIGN_SYSTEM.read_text(encoding="utf-8")
     commands = _golden_shell_commands()
     files_row = "| `F` | The Files tab |"
-    pulls_row = "| `R` | The Pulls tab: pull Requests |"
+    pulls_row = "| `P` | The Pulls tab |"
     assert files_row in text and pulls_row in text
     swapped = (
         text.replace(files_row, "\0")
-        .replace(pulls_row, "| `F` | The Pulls tab: pull Requests |")
-        .replace("\0", "| `R` | The Files tab |")
+        .replace(pulls_row, "| `F` | The Pulls tab |")
+        .replace("\0", "| `P` | The Files tab |")
     )
     problems = _shell_meaning_problems(_documented_keymap(swapped), commands)
     assert any(problem.startswith("F is main-tabs.files") for problem in problems), problems
-    assert any(problem.startswith("R is main-tabs.pulls") for problem in problems), problems
+    assert any(problem.startswith("P is main-tabs.pulls") for problem in problems), problems
     for pair, reversed_pair in (
         ("| `J` or `K` |", "| `K` or `J` |"),
-        ("| `N` or `P` |", "| `P` or `N` |"),
+        ("| `Control-N` or `Control-P` |", "| `Control-P` or `Control-N` |"),
     ):
         assert pair in text
         reversed_rows = _documented_keymap(text.replace(pair, reversed_pair))

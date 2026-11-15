@@ -18,11 +18,17 @@ opens the Modified within menu in both. This judges what it measured against
   Escape and a choice that closes it give focus back to its trigger, and a pick in File
   type keeps focus on its row through the bar's rebuilds ("Keys in a Menu"); and the
   keyboard numbers follow what is on screen ("Grouping the Files Tree");
+- in a narrower pane the row wraps by the toolbar rule, at every width from the narrowest
+  in both font sets, read in Tab order, its numbers working, and the closed drawer adding
+  nothing to it ("Navigation Toolbars Wrap");
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
 - a file written into a folder open in a section refreshes the sections in place, keeping
-  that folder open, the scroll position, and the focused row.
+  that folder open, the scroll position, and the focused row;
+- a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
+  row's content edge, each glyph centred in it, so the names after them start on one
+  column ("One Glyph Size", mb-hmv7).
 
 Where text starts and how tall a box is drawn are layout, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
@@ -219,6 +225,53 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     # not count it, since the row shows it.
     off = measured["ignoredOff"]
     assert off["clear"] and off["badge"] is None, off
+    # In a narrower pane the row wraps by the toolbar rule (tests/dom/nav-toolbar-wrap.mjs
+    # says what it holds): at every width from the narrowest, 179 px, to 420, in both font
+    # sets, with no filter set and with one set under each Group by value, nothing is cut,
+    # it is one line exactly while its controls fit, it breaks in order and as late as it
+    # can with Clear and the chevron last and at the line's end, and its lines are the
+    # toolbar's line height and gap apart, the closed drawer adding nothing.
+    wrap = measured["wrap"]
+    assert set(wrap) == {
+        f"{state}, {fonts}"
+        for state in ("no filter", "No grouping", "By age", "By file type")
+        for fonts in ("clean", "system")
+    }, sorted(wrap)
+    for case, verdict in wrap.items():
+        assert verdict["failures"] == [], (case, verdict["failures"][:10])
+        assert verdict["tokens"] == {"gap": 6, "line": 24}, (case, verdict["tokens"])
+        # Group by leads at every width, and the narrowest pane wraps the row.
+        assert verdict["narrowest"][0] == ["group"], (case, verdict["narrowest"])
+        assert len(verdict["narrowest"]) >= 2, (case, verdict["narrowest"])
+    # The default pane holds the row on one line in the default font set, at its widest.
+    for state in ("no filter", "No grouping", "By age", "By file type"):
+        assert wrap[f"{state}, clean"]["oneLineFrom"] <= 299, (state, wrap)
+    assert measured["themesAlike"], "the themes lay the row out alike"
+    # At the narrowest, a filter set, the row is three lines, read in Tab order; the numbers
+    # still open Group by and, with the drawer, File type; and the drawer closes back to the
+    # lines with no gap left standing.
+    narrow = measured["narrow"]
+    assert narrow["stops"] == ["group", "showIgnored", "clear", "drawer"], narrow
+    assert narrow["lines"] == 3 and narrow["readInTabOrder"], narrow
+    assert narrow["height"] == 3 * 24 + 2 * 6 + 2 * 6 + 1, narrow
+    assert measured["narrowKeyOne"] == {"menu": "group", "drawerOpen": "false"}
+    assert measured["narrowKeyThree"] == {"menu": "types", "drawerOpen": "true"}
+    assert measured["narrowOpen"]["height"] > narrow["height"], measured["narrowOpen"]
+    assert measured["narrowClosed"]["height"] == narrow["height"], measured["narrowClosed"]
+    # A folder's chevron and a file's icon are one slot wide, from the row's content edge,
+    # each glyph centred in it, and the names after them start on one column (mb-hmv7). At
+    # 16 px the names started at 22 px; the slot is 14 px since, so they start at 20.
+    slots = measured["slots"]
+    assert slots["token"] == "14px", slots
+    for kind, glyph in (("folder", 12), ("file", 14)):
+        slot = slots[kind]
+        assert slot["slot"] == 14 and slot["fromInset"] == 0, (kind, slot)
+        assert slot["glyph"] == glyph and _close(slot["glyphFromSlot"], (14 - glyph) / 2), (
+            kind,
+            slot,
+        )
+        assert slot["name"] == 14 + slot["gap"] == 20, (kind, slot)
+
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}

@@ -246,7 +246,7 @@ rendered view, `s` for a source view, and otherwise a letter of the label, as
 Write it in either case: it is stored and served lowercase, as `views[].key` in the
 `/api/file` envelope, and compared without case.
 The manifest loader refuses a key that is not one ASCII letter, or that the shell
-reserves: `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`, in every kind.
+reserves: `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`, in every kind.
 A key belongs to one view of a kind.
 When two views of one kind declare the same key, as two plugins that add views to one
 kind can, the first view in tab order keeps it, the later view is served without a key,
@@ -567,6 +567,15 @@ open another way calls `filterControls.fitOpenMenus(root)` after rendering.
 See [Groups in a Menu](design-system.md#groups-in-a-menu) and
 [Menu Height](design-system.md#menu-height).
 
+A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
+gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row
+between its controls when the pane is too narrow for one line and spaces its lines by
+the toolbar’s tokens; a control that ends the row takes the line’s end with
+`margin-inline-start: auto`. Bound there, `filterControls.bind` keeps each joined group
+fitted to its line: one the line cannot hold takes the cluster layout until it can, and
+`filterControls.fitJoinedGroups(root)` fits them at once.
+See [Navigation Toolbars Wrap](design-system.md#navigation-toolbars-wrap).
+
 A view that shows a message about the content, such as a description or a comment, plain
 or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
 never on its page, and sets no face of its own: chrome prose is sans under either
@@ -797,8 +806,8 @@ The handle, lifetime, and liveness rules below apply to it as to a letter.
 - A letter the shell reserves is refused without an error, so a view keeps working if
   the shell reserves another letter later.
   The reserved letters are the ones manifest view keys may not take (see
-  [Views](#views)): `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. The digits `1`
-  to `9` are reserved too, and only `numbered: true` reaches them.
+  [Views](#views)): `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`. The digits `1` to `9`
+  are reserved too, and only `numbered: true` reaches them.
   A refused control has no key, and the browser console shows one warning for its id.
 - A letter that two shown controls hold is settled when it is pressed: a shell key wins
   over a plugin key, and between plugins the one attached earlier wins.

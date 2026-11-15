@@ -3,14 +3,16 @@
 Command-R reloads, in a browser and in the macOS app. A browser lets a page's ``keydown``
 handler cancel most chords, and the app's web view hands each key to the page before
 its menu, so a handler that calls ``preventDefault()`` on a chord keeps that chord from
-the browser and from View > Reload Page alike. The shortcut registry never matches a
-chord (``DISQUALIFYING_MODIFIERS`` in ``static/keyboard-shortcuts.js``), and every other
-listener leaves chords alone: the tree map, the filter bar's groups and menus, the branch
-switcher, and the pull request page's stack menu each moved on Command-Up or
-Command-Left as on the plain arrow, and the overlay's focus trap took Command-Tab and
-Control-Tab.
+the browser and from View > Reload Page alike. The shortcut registry matches no chord
+but the two a binding declares, Control-N and Control-P, which walk a pull request's
+stack and which no browser on macOS and no menu of the app uses (mb-lnqj;
+``CONTROL_CHORD_KEYS`` and ``DISQUALIFYING_MODIFIERS`` in
+``static/keyboard-shortcuts.js``). Every other listener leaves chords alone: the tree
+map, the filter bar's groups and menus, the branch switcher, and the pull request page's
+stack menu each moved on Command-Up or Command-Left as on the plain arrow, and the
+overlay's focus trap took Command-Tab and Control-Tab.
 
-The one exception is Option-Tab in a modal's or a menu's focus trap: Safari moves focus
+The other exception is Option-Tab in a modal's or a menu's focus trap: Safari moves focus
 with it, so a trap that let it pass would let focus leave the dialog.
 
 Every ``keydown`` listener in the browser code is listed below, by file and in source
@@ -19,7 +21,9 @@ the functions it hands the event to, and the browserless checks that press chord
 it. A listener with no guard must never cancel a key: no ``preventDefault`` in its source
 or theirs. ``tests/dom/key-reveal-session.js modified`` presses every key with each chord
 wherever the shell puts focus, through the production registry, Quick Search, Help, the
-tree, and the filter bar. A listener added without a row fails here, naming its file.
+tree, and the filter bar, and on a pull request in a stack, where Control-N and
+Control-P are the only chords taken and Quick Search's field keeps them. A listener added
+without a row fails here, naming its file.
 """
 
 from __future__ import annotations
@@ -62,7 +66,7 @@ class Listener:
 _LISTENERS: dict[str, tuple[Listener, ...]] = {
     "static/keyboard-shortcuts.js": (
         Listener(
-            "the registry's one document listener",
+            "the registry's one document listener, which takes Control-N and Control-P alone",
             "if (DISQUALIFYING_MODIFIERS.some((field) => event[field])) { return false; }",
             via=("handleKeydown", "dispatch", "eventMatchesBinding"),
             checks=("tests/dom/keyboard-shortcuts-behavior.js", _SESSION),
@@ -322,6 +326,40 @@ def test_every_listener_has_a_check_or_says_why_its_source_is_enough() -> None:
     assert [check for check in sorted(checks) if not (_REPO / check).is_file()] == []
     # The session part that presses every chord wherever the shell puts focus.
     assert "async modified() {" in (_REPO / _SESSION).read_text(encoding="utf-8")
+
+
+def test_the_registry_takes_control_only_with_n_or_p_and_never_from_a_text_field() -> None:
+    """The registry's one chord is Control with N or P, and Control alone (mb-lnqj).
+
+    AltGr reports Control and Alt, so a chord that let Alt through would take a character
+    from the keyboards that type it with AltGr; Control-Command is another chord; and a
+    text field keeps Control-N and Control-P, which move its caret on macOS. The behavior
+    is pressed in ``tests/dom/keyboard-shortcuts-behavior.js`` and the sessions; this
+    holds the guard to the matcher the registry's listener hands each key to.
+    """
+    text = _browser_sources()["static/keyboard-shortcuts.js"]
+    assert 'const CONTROL_CHORD_KEYS = Object.freeze(["n", "p"]);' in text
+    matcher = _squeezed(_definition(text, "eventMatchesBinding"))
+    for guard in (
+        "event.ctrlKey && !event.altKey && !event.metaKey",
+        "!matchOptions.physical",
+        "!isEditableTarget(event.target)",
+    ):
+        assert _squeezed(guard) in matcher, guard
+
+
+def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
+    """No macOS app menu item is Control with N or P, so the page's two chords are free.
+
+    The design system says the app's menus give those chords no command; a menu item that
+    took one would never fire, since the web view hands the page each key first.
+    """
+    menu = (_REPO / "apps" / "macos" / "Sources" / "Metabrowser" / "MainMenu.swift").read_text(
+        encoding="utf-8"
+    )
+    with_control = [line for line in menu.splitlines() if ".control" in line]
+    assert with_control, "the menu still names Control somewhere, so this reads it"
+    assert [line for line in with_control if re.search(r'"[np]"', line)] == []
 
 
 def test_the_keyboard_shortcuts_reference_documents_command_r() -> None:

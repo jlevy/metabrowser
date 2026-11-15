@@ -496,12 +496,14 @@ check(
 
 // While Shift reveals the keys, a second layer lists the live `reveal` surface,
 // reminders only, every binding of a coalesced item; the resting strip stays as it is.
+// The stack keys are Control chords, written as a platform without the ⌃ glyph writes
+// them, since this sandbox has no navigator.
 const stackKeys = [
   ["n", "test.stack.top", 10],
   ["p", "test.stack.base", 20],
 ].map(([key, id, order]) =>
   shortcuts.register({
-    bindings: [{ key }],
+    bindings: [{ control: true, key }],
     copy: { action: id, description: "Walk the stack.", hint: "Stack" },
     group: "pull-stack",
     handler: () => true,
@@ -543,7 +545,7 @@ check(
   ) ===
     JSON.stringify([
       ["SPAN", ["?"], "Help"],
-      ["SPAN", ["N", "P"], "Stack"],
+      ["SPAN", ["Ctrl+N", "Ctrl+P"], "Stack"],
     ]),
   JSON.stringify(
     revealLayer?.children.map((item) => [
@@ -618,6 +620,47 @@ check(
 );
 treeNavigator.dispose();
 treeShortcuts.dispose();
+
+// A Control chord in Help is one keycap, written as the platform writes it: ⌃N on macOS
+// (mb-lnqj). Its row names the key in the keycap's text, as a single key's does.
+sandbox.navigator = { platform: "MacIntel" };
+const chordShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+chordShortcuts.register({
+  bindings: [{ control: true, key: "n" }],
+  copy: {
+    action: "Next in stack",
+    description: "Open the next pull request toward the top of the stack.",
+    hint: "Stack",
+  },
+  group: "pull-stack",
+  handler: () => true,
+  id: "test.chord.next",
+  order: 10,
+  scope: "global",
+  surfaces: { help: "always" },
+});
+delete sandbox.navigator;
+const chordHelp = document.createElement("div");
+sandbox.MetabrowserKeyboardHelp.renderHelpGroups(
+  chordHelp,
+  chordShortcuts.snapshot("help", { includeInactive: true }),
+  chordShortcuts.appendBinding,
+);
+const chordBinding = chordHelp
+  .querySelectorAll(".help-command-row")
+  .find((row) => row.querySelector(".help-command-label").textContent === "Next in stack")
+  ?.querySelector(".help-command-binding");
+const chordRendered = {
+  keys: chordBinding?.querySelectorAll("kbd").map((element) => element.textContent),
+  separators: chordBinding?.querySelectorAll(".shortcut-binding-separator").length,
+  spoken: chordBinding?.querySelector(".visually-hidden")?.textContent ?? null,
+};
+check(
+  "Help lists a Control chord as one keycap, ⌃N on macOS",
+  JSON.stringify(chordRendered) === JSON.stringify({ keys: ["⌃N"], separators: 0, spoken: null }),
+  JSON.stringify(chordRendered),
+);
+chordShortcuts.dispose();
 (async () => {
   await Promise.resolve();
   await Promise.resolve();

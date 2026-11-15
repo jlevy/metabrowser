@@ -51,32 +51,54 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
     """The top of the navigation is one toolbar slot, filled by the tab in front.
 
     The Files filters, the Commits tally, and the Pulls filters stand in one another's
-    place at one height, in line units, so what is under the slot starts at one y on every
-    tab. The filter bar alone hid on Commits and Pulls and moved the panel 37 px.
+    place at one height while each is one line, in line units, so what is under the slot
+    starts at one y on every tab. The filter bar alone hid on Commits and Pulls and moved
+    the panel 37 px. In a pane too narrow for a toolbar's line, it wraps rather than being
+    cut or scrolled, and the slot grows by the lines it adds (`.nav-toolbar-row`); Chrome
+    measures that at every pane width (tests/dom/nav-toolbar-wrap.mjs).
     """
 
     css = _css()
-    assert "--nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);" in css
+    assert "--nav-toolbar-line-height: var(--chip-height);" in css
+    assert "--nav-toolbar-gap: 6px;" in css
+    assert (
+        "--nav-toolbar-height: calc(var(--nav-toolbar-line-height) + 2 * "
+        "var(--nav-toolbar-gap) + 1px);"
+    ) in css
     assert "1.5 *" in css[css.index("--chip-height: calc(") :][:120], "chips are in line units"
     toolbar = _rule(css, ".nav-toolbar")
-    assert "height: var(--nav-toolbar-height);" in toolbar
-    assert "white-space: nowrap;" in toolbar
-    # A toolbar wider than a narrowed pane scrolls along its line; it is never cut.
-    assert "overflow-x: auto;" in toolbar and "overflow-y: hidden;" in toolbar
-    assert "min-width: 0;" not in _rule(
-        _github_css(), ".github-pulls-filters:where(.nav-toolbar > *)"
-    )
+    # One line's height at least, its lines' when it wraps; never a line it scrolls along.
+    assert "min-height: var(--nav-toolbar-height);" in toolbar
+    assert "white-space" not in toolbar and "overflow" not in toolbar
+    assert ".nav-toolbar::-webkit-scrollbar" not in css
     assert "min-height: var(--nav-toolbar-height);" in _rule(css, ".nav-filter-bar")
     assert "display: none;" in _rule(css, ".nav-filter-bar[hidden],\n.nav-toolbar[hidden]")
     assert ".nav-filter-bar[inert]" not in css
+    # The rows of controls wrap between them, a line and a gap at a time, every control one
+    # line tall; in the slot a row keeps the gap above and below its lines.
+    row = _rule(css, ".nav-toolbar-row")
+    assert "flex-wrap: wrap;" in row and "gap: var(--nav-toolbar-gap);" in row
+    assert "min-width: 0;" in row
+    assert "min-block-size: var(--nav-toolbar-line-height);" in _rule(css, ".nav-toolbar-row > *")
+    assert "max-block-size: var(--nav-toolbar-line-height);" in _rule(
+        css, ".nav-toolbar-row > :not(.chip-group)"
+    )
+    in_slot = _rule(css, ".nav-toolbar > .nav-toolbar-row")
+    assert "padding-block: var(--nav-toolbar-gap);" in in_slot and "flex: 1 1 auto;" in in_slot
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert '<div class="nav-filter-bar-main nav-toolbar-row">' in app
+    panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    assert 'filters.classList.add("nav-toolbar-row");' in panel
     # The Commits tally is a metadata line, and one line of that is the slot's height, so in
-    # the slot it keeps its own padding above and below and gives up only its inset and rule.
+    # the slot it keeps its own padding above and below and gives up only its inset and rule;
+    # it wraps as the line does.
     tally = _rule(css, ".nav-toolbar > .nav-metadata")
     assert "padding-inline: 0;" in tally and "border-bottom: none;" in tally
     assert "padding-block" not in tally and "min-height" not in tally
-    assert "flex-wrap: nowrap;" in tally
+    assert "flex-wrap" not in tally
     pulls = _rule(_github_css(), ".github-pulls-filters:where(.nav-toolbar > *)")
-    assert "position: static;" in pulls and "padding: 0;" in pulls
+    assert "position: static;" in pulls and "padding-inline: 0;" in pulls
+    assert "flex:" not in pulls and "padding-block" not in pulls
     tabs = (STATIC / "main-tabs.js").read_text(encoding="utf-8")
     activate = _function(tabs, "activateNavPanel")
     assert 'document.querySelectorAll("[data-nav-toolbar]")' in activate
@@ -220,23 +242,30 @@ def test_a_title_holds_two_lines_and_never_more() -> None:
 
 
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:
-    """The sentence, the author, and the merge share one line, at a chip's height."""
+    """The author and the sentence share one line at a chip's height; the branches, the next."""
 
     css = _github_css()
     meta = _rule(css, ".github-pull-meta")
     assert "flex-wrap: nowrap;" in meta and "white-space: nowrap;" in meta
     details = _rule(css, ".github-pull-meta-details")
     assert "min-width: 0;" in details and "overflow: hidden;" in details
+    # The branches are on a line of their own under the sentence (mb-fon5), a line tall
+    # while no record is shown too.
+    branches = _rule(css, ".github-pull-branches")
+    assert "flex-wrap: nowrap;" in branches and "white-space: nowrap;" in branches
+    assert "min-width: 0;" in branches and "overflow: hidden;" in branches
+    assert "min-height: 1lh;" in branches
     # A chip is a grid item of the merge group, whose floor keeps the names legible; a
     # width of the chip's own would overflow the group's track rather than hold it. The
     # header sets nothing on its chips at all: `.git-ref` alone sizes a chip
     # (test_branch_chips_have_one_size in test_design_vocabulary.py).
     assert ".github-pull-meta .git-ref" not in css
-    # The sentence gives way before the branches do.
+    assert ".github-pull-branches .git-ref" not in css
+    # The sentence gives way first.
     action = _rule(css, ".github-pull-meta-details > .github-pull-action")
     assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action
-    # The author gives way next, down to its avatar and a little of the name, and only
-    # then the merge, down to the merge group's floor (review E2 on #370).
+    # The author gives way next, down to its avatar and a little of the name (review E2 on
+    # #370).
     author = _rule(css, ".github-pull-meta-details > .github-pull-identity")
     assert "flex: 0 100 auto;" in author and "min-width: 1.75em;" in author
     assert "overflow: hidden;" in author
@@ -249,9 +278,18 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "width: 0;" in strut and "visibility: hidden;" in strut
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "btn github-pull-stack-trigger github-pull-stack-strut" in page
-    # The state row ends in a strut, not in the stack's slot: a late chip there took its
-    # width from the sentence and the merge (review E3 on #370).
-    assert "[stateBadge, stateDetails, strut()]" in page
+    # The author's row ends in the stack's slot, which holds a strut until a chip arrives
+    # (mb-cf0l): the sentence keeps its start, and is only cut short at its end. On the row
+    # that also held the merge, a late chip took its width from the sentence and the merge
+    # (review E3 on #370).
+    assert "[stateDetails, stackColumn]" in page
+    # The state badge leads the row of ages (mb-4ydo), one line in every state.
+    opened = _rule(css, ".github-pull-opened")
+    assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
+    ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
+    assert "height: 1lh;" in ages and "text-overflow: ellipsis;" in ages
+    assert "placeChildren(openedRow, [stateBadge, opened.row]);" in page
+    assert 'h("div", { class: "github-pull-branches" })' in page
 
 
 def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
@@ -278,22 +316,33 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
 
 
 def test_labels_have_a_row_that_always_exists() -> None:
-    """It ends in the stack's slot, so a late chip moves nothing and cuts the labels shorter."""
+    """A label's height whether there are labels or none; the stack's chip is on the author's row."""
 
     css = _github_css()
     rule = _rule(css, ".github-pull-labels")
     assert "min-height: calc(1lh + 2px);" in rule
     assert "flex-wrap: nowrap;" in rule
-    # It positions the stack's menu, so it clips nothing; its list of labels does.
-    assert "position: relative;" in rule and "overflow" not in rule
+    assert "overflow" not in rule
     labels = _rule(css, ".github-pull-label-list")
     assert "min-width: 0;" in labels and "overflow: hidden;" in labels
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert "if (pull.labels.length > 0)" not in page
+    assert 'h("div", { class: "github-pull-labels" }, [labelList])' in page
+
+
+def test_the_stack_chip_ends_the_authors_row() -> None:
+    """A late chip lands in the row's empty end, at the header's content edge (mb-cf0l)."""
+
+    css = _github_css()
     stacks = _rule(css, ".github-pull-stacks")
     assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
     assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
+    # The author's row positions the stack's menu, which hangs from the chip's end.
+    assert "position: relative;" in _rule(css, ".github-pull-meta")
+    menu = _rule(css, ".github-pull-stack-menu")
+    assert "inset-inline-end: 0;" in menu and "inset-inline-start" not in menu
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert "if (pull.labels.length > 0)" not in page
-    assert 'h("div", { class: "github-pull-labels" }, [labelList, stackColumn])' in page
+    assert 'h("div", { class: "github-pull-meta" }, [stateDetails, stackColumn])' in page
 
 
 def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
@@ -350,9 +399,11 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # The stack position's column takes what the title and it share, but 4ch of title.
-    assert " ".join(columns.group(1).split()) == (
-        "16px 16px minmax(0, 1fr) fit-content(calc(100% - 2 * 16px - 5ch - 4 * 6px - 4ch)) 5ch"
+    # The title takes its line but the age: a stack member's place is on the muted line.
+    # The chevron and the icon are each the tree's one icon slot (mb-hmv7).
+    assert (
+        " ".join(columns.group(1).split())
+        == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch"
     )
     assert "column-gap: 6px;" in _rule(css, ".github-pulls-row")
     count = _rule(css, ".github-pulls-filters .count")
@@ -362,25 +413,28 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert "width: 3ch;" in _rule(css, ".github-pulls-filters .count.tally-pending")
 
 
-def test_a_pulls_rows_stack_position_has_a_column_on_the_title_line() -> None:
-    """It arrives from its own answer. On the muted line, which wraps, it moved the merge
-    or added a line to its row (review E1 on #370); in a column of its own before the age,
-    it cuts the title shorter and moves nothing. github-pull-header-chrome.mjs measures it,
-    and github-pulls-panel-session.js pins the built row's order."""
+def test_a_stack_members_place_is_on_its_numbers_line() -> None:
+    """A stack member's place in its stack is on the muted line, before its number: "1/6 ·
+    #455 · author" (mb-dzsi). Its column on the title line, between the title and the age
+    (review E1 on #370), took the title's room; the place now arrives with the row's move
+    under its stack's row, so it moves nothing that had not moved. The title's line is the
+    title and its age. github-pulls-stacks-chrome.mjs measures the title's room, and
+    github-pulls-panel-session.js pins the built row's order."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    assert "[toggle, icon, title, updated, meta]," in panel
     meta = panel[panel.index("function rowMeta(") :]
     meta = meta[: meta.index("\n  }\n")]
-    assert "stack" not in meta
-    assert "[toggle, icon, title, stack, updated, meta]," in panel
+    assert meta.index("place,") < meta.index('"github-pulls-number"'), "the place leads the line"
     css = _github_css()
-    stack = _rule(css, ".github-pulls-row > .github-pulls-stack")
-    assert "grid-row: 1;" in stack and "grid-column: 4;" in stack
-    # It shrinks below its position and cuts it short (review F1 on #370). It is centred
-    # with the row's boxes: on the title's baseline its taller box grew the row 3 px.
-    assert "min-width: 0;" in stack and "overflow: hidden;" in stack
-    assert "align-self" not in stack
-    assert "align-items: center;" in _rule(css, ".github-pulls-row")
-    position = _rule(css, ".github-pulls-row > .github-pulls-stack > .github-pull-stack-position")
-    assert "min-width: 0;" in position and "text-overflow: ellipsis;" in position
-    assert "grid-column: 5;" in _rule(css, ".github-pulls-row > .github-pulls-age")
+    # The place and the number are one part of the wrapping line, which never breaks;
+    # alone on a line too short for it, the place ends in an ellipsis and the number shows
+    # whole (github-pull-header-chrome.mjs measures it at 180 to 420 px).
+    part = _rule(css, ".github-pulls-id")
+    assert "white-space: nowrap;" in part and "min-width: 0;" in part
+    assert "flex: none;" in _rule(css, ".github-pulls-number")
+    assert "text-overflow: ellipsis;" in _rule(
+        css, ".github-pulls-place > .github-pull-stack-position"
+    )
+    assert ".github-pulls-row > .github-pulls-stack" not in css
+    assert "grid-column: 4;" in _rule(css, ".github-pulls-row > .github-pulls-age")

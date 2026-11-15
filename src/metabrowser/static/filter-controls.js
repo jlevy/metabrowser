@@ -419,6 +419,166 @@
     }
   }
 
+  // ── A segmented group wider than its line ───────────────────────
+  // Segmented controls never wrap (docs/design-system.md, "Groups Or Dropdowns"). A
+  // navigation toolbar's pane can be dragged narrower than a short set, the Pulls tab's
+  // Show group among them, so there a joined group wider than its whole line takes the
+  // wrapping cluster layout instead, and takes the joined layout back once its line holds
+  // it. `data-fit="wrap"` on the group asks for that, and styles.css draws it as
+  // `data-layout="wrap"`.
+
+  const JOINED_GROUPS = '.chip-group[data-layout="joined"]';
+
+  /**
+   * Whether a joined group fits its line: `joined` is its width in the joined layout and
+   * `room` its line's content width. Neither depends on which layout the group shows (the
+   * joined width is measured off-layout, on a copy, and a toolbar row is as wide as its
+   * toolbar), so the answer at one pane width is the same however often it is asked: the
+   * two layouts cannot alternate near the break, and no hysteresis is needed. Pure.
+   *
+   * @param {{joined: number, room: number}} widths
+   */
+  function joinedGroupFits(widths) {
+    return widths.joined <= widths.room;
+  }
+
+  /**
+   * A joined group's width in the joined layout, whichever layout it shows: an invisible
+   * copy beside it, out of flow, so the same rules match it and the group itself is never
+   * laid out joined where that does not fit. The copy is gone before the browser can paint.
+   * @param {HTMLElement} group
+   */
+  function joinedWidth(group) {
+    const probe = /** @type {HTMLElement} */ (group.cloneNode(true));
+    probe.removeAttribute("data-fit");
+    for (const element of [probe, ...probe.querySelectorAll("[id]")]) {
+      element.removeAttribute("id");
+    }
+    probe.setAttribute("aria-hidden", "true");
+    probe.style.cssText =
+      "position: absolute; inset-block-start: 0; inset-inline-start: 0; visibility: hidden;" +
+      " pointer-events: none; flex: none; width: max-content; max-width: none; min-width: 0;";
+    group.after(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return width;
+  }
+
+  /**
+   * Give each joined group under `root` the layout its line holds: joined where it fits,
+   * the cluster where it does not. A group with no box (its toolbar hidden) keeps the one
+   * it has, since there is no line to measure.
+   * @param {Element} root
+   */
+  function fitJoinedGroups(root) {
+    for (const element of root.querySelectorAll(JOINED_GROUPS)) {
+      const group = /** @type {HTMLElement} */ (element);
+      const line = group.parentElement;
+      const view = group.ownerDocument?.defaultView;
+      if (!line || !view || group.getClientRects().length === 0) {
+        continue;
+      }
+      const style = view.getComputedStyle(line);
+      const room =
+        line.getBoundingClientRect().width -
+        parseFloat(style.paddingLeft) -
+        parseFloat(style.paddingRight) -
+        parseFloat(style.borderLeftWidth) -
+        parseFloat(style.borderRightWidth);
+      const fits = joinedGroupFits({ joined: joinedWidth(group), room });
+      if (fits && group.hasAttribute("data-fit")) {
+        group.removeAttribute("data-fit");
+      } else if (!fits && group.getAttribute("data-fit") !== "wrap") {
+        group.setAttribute("data-fit", "wrap");
+      }
+    }
+  }
+
+  /**
+   * Keep the joined groups under a navigation toolbar's `root` fitted to their lines, and
+   * return what stops it. A group is fitted at once, again when its text changes (a
+   * mutation, before the browser paints it), and again when the row or a chip changes
+   * size: a pane dragged narrower, a font set or face arriving. A size change is fitted in
+   * the next frame, not in the ResizeObserver's own callback: a layout changed there
+   * resizes the panel under the toolbar, which other observers watch, and the browser
+   * reports that as a ResizeObserver loop error. So a drag across the break draws the
+   * outgoing layout for one frame, and never both in turn.
+   * @param {Element} root
+   * @returns {() => void}
+   */
+  function keepJoinedGroupsFitted(root) {
+    const view = root.ownerDocument?.defaultView;
+    if (
+      !view ||
+      typeof root.closest !== "function" ||
+      root.closest("[data-nav-toolbar]") === null ||
+      typeof view.ResizeObserver !== "function" ||
+      typeof view.MutationObserver !== "function"
+    ) {
+      return () => {};
+    }
+    let disposed = false;
+    /** @type {number | null} */
+    let frame = null;
+    /** @type {MutationObserver | null} */
+    let mutations = null;
+    const fit = () => {
+      if (disposed) {
+        return;
+      }
+      fitJoinedGroups(root);
+      // The probes were mutations of `root` too; they are not the reader's.
+      mutations?.takeRecords();
+    };
+    const sizes = new view.ResizeObserver(() => {
+      if (disposed || frame !== null) {
+        return;
+      }
+      frame = view.requestAnimationFrame(() => {
+        frame = null;
+        fit();
+      });
+    });
+    // The row, and the chips of its joined groups, which the consumer may replace.
+    /** @type {Set<Element>} */
+    const watched = new Set();
+    const watchSizes = () => {
+      const chips = new Set(root.querySelectorAll(`${JOINED_GROUPS} > .chip`));
+      for (const chip of watched) {
+        if (!chips.has(chip)) {
+          sizes.unobserve(chip);
+          watched.delete(chip);
+        }
+      }
+      for (const chip of chips) {
+        if (!watched.has(chip)) {
+          sizes.observe(chip);
+          watched.add(chip);
+        }
+      }
+    };
+    sizes.observe(root);
+    mutations = new view.MutationObserver(() => {
+      if (disposed) {
+        return;
+      }
+      watchSizes();
+      fit();
+    });
+    mutations.observe(root, { childList: true, characterData: true, subtree: true });
+    watchSizes();
+    fit();
+    return () => {
+      disposed = true;
+      sizes.disconnect();
+      mutations?.disconnect();
+      if (frame !== null) {
+        view.cancelAnimationFrame(frame);
+        frame = null;
+      }
+    };
+  }
+
   /**
    * A labelled checkbox, for a boolean whose *polarity* has to be
    * legible.
@@ -892,6 +1052,8 @@
     doc?.addEventListener("keydown", onDocumentEscape);
     view?.addEventListener("resize", onWindowResize);
     boundRows.set(root, pickRow);
+    // In a navigation toolbar, a segmented group wider than its line takes the cluster.
+    const stopFitting = keepJoinedGroupsFitted(root);
     return () => {
       if (boundRows.get(root) === pickRow) {
         boundRows.delete(root);
@@ -902,6 +1064,7 @@
       doc?.removeEventListener("pointerdown", onDocumentPointerDown);
       doc?.removeEventListener("keydown", onDocumentEscape);
       view?.removeEventListener("resize", onWindowResize);
+      stopFitting();
     };
   }
 
@@ -916,6 +1079,8 @@
     fitOpenMenus,
     focusMenu,
     keepFocus,
+    joinedGroupFits,
+    fitJoinedGroups,
     toggleHtml,
     checkHtml,
     clearHtml,

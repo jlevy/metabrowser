@@ -2,7 +2,7 @@
 // the panel and page; core PR data never waits for it and no row starts a request.
 //
 // Every surface that names a stack names it here, so the page's stack button and menu, a
-// Pulls row's position badge, and the Pulls tab's stack groups say one thing one way
+// Pulls row's place, and the Pulls tab's stack groups say one thing one way
 // (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
 // and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row;
 // `stackPositionHint` is the tip that names both; and `stackMenuOrder` is the one member

@@ -11,16 +11,21 @@
 // What it measures is layout, which no browserless DOM computes: where a menu's group
 // heading starts against its rows, how tall an open menu is drawn against its rows and
 // the window, which controls the bar's row and closed drawer hold, whether the row fits
-// its pane, and which take keyboard numbers, where a Group by section's heading starts
-// against its tree, and whether a refresh after a write keeps the scroll position and the
-// focused row (docs/design-system.md, "Groups in a Menu", "Menu Height", and "Grouping the
-// Files Tree"). The requests and sections themselves run browserlessly in
+// its pane, how it wraps in a narrower one, and which take keyboard numbers, where a
+// Group by section's heading starts against its tree, whether a refresh after a write
+// keeps the scroll position and the focused row, and a tree row's leading slot, a
+// folder's chevron and a file's icon, against the name after it (docs/design-system.md,
+// "Groups in a Menu", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
+// "Navigation Toolbars Wrap"). The wrap is held to its rule by
+// tests/dom/nav-toolbar-wrap.mjs. The requests and sections themselves run browserlessly
+// in
 // tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
 // a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { judge, linesOf, NARROWEST, SWEEP, WIDTHS } from "./nav-toolbar-wrap.mjs";
 
 const [metab, root, port, state] = process.argv.slice(2);
 const base = `http://127.0.0.1:${port}`;
@@ -139,6 +144,39 @@ const MEASURE = `(key) => {
   };
 }`;
 
+// A tree row's leading slot: a folder's chevron and a file's type icon, at one depth, each
+// in its box from the row's content edge, and where the name after it starts. The box is
+// `--tree-icon-slot` wide (styles.css, mb-hmv7); a folder's chevron is its toggle's margin
+// box, as a container row's is.
+const SLOTS = `(() => {
+  const round = (value) => Math.round(value * 100) / 100;
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const measure = (row, slot) => {
+    const box = row.getBoundingClientRect();
+    const style = getComputedStyle(row);
+    const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const r = slot.getBoundingClientRect();
+    const s = getComputedStyle(slot);
+    const glyph = slot.querySelector("svg").getBoundingClientRect();
+    const left = r.left - parseFloat(s.marginLeft);
+    return {
+      slot: round(r.width + parseFloat(s.marginLeft) + parseFloat(s.marginRight)),
+      fromInset: round(left - inset),
+      glyph: round(glyph.width),
+      glyphFromSlot: round(glyph.left - left),
+      name: round(row.querySelector(".tree-item-name").getBoundingClientRect().left - inset),
+      gap: parseFloat(style.columnGap),
+    };
+  };
+  const folder = tree.querySelector('.tree-folder[data-path="src"]');
+  const file = tree.querySelector('.tree-file[data-path="README.md"]');
+  return {
+    token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
+    folder: measure(folder, folder.querySelector(":scope > .tree-toggle")),
+    file: measure(file, file.querySelector(":scope > .tree-item-icon")),
+  };
+})()`;
+
 // The bar's row and drawer: which controls each holds.
 const ROW = `(() => ({
   row: [...document.querySelector(".nav-filter-bar-main").children].map((child) =>
@@ -175,6 +213,34 @@ const ROW_FIT = `(() => {
     checkClipped: check.scrollWidth > check.clientWidth,
     clear: Boolean(end.querySelector("[data-chip-clear]")),
     badge: end.querySelector(".chip-badge")?.textContent.trim() || null,
+  };
+})()`;
+
+// The filter row's wrap: the bar, its row, and the toolbar's spacing tokens.
+const ROW_WRAP = {
+  bar: "#nav-filter-bar",
+  row: "#nav-filter-bar .nav-filter-bar-main",
+  tokens: { gap: "var(--nav-toolbar-gap)", line: "var(--nav-toolbar-line-height)" },
+};
+
+// In a narrow pane, wrapped: whether reading the row's lines meets its controls in their
+// Tab order, and the bar's height with the drawer as it is.
+const NARROW = `(() => {
+  const bar = document.getElementById("nav-filter-bar");
+  const row = bar.querySelector(".nav-filter-bar-main");
+  const stops = [...row.querySelectorAll("button, input")].filter(
+    (el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && !el.closest("[inert]"),
+  );
+  const at = stops.map((el, index) => {
+    const box = el.getBoundingClientRect();
+    return { index, middle: Math.round(box.top + box.height / 2), left: box.left };
+  });
+  const read = [...at].sort((a, b) => a.middle - b.middle || a.left - b.left);
+  return {
+    stops: stops.map((el) => el.dataset.chipMenuToggle || el.dataset.chipCheck || el.dataset.chipKey || (el.matches("[data-chip-clear]") ? "clear" : el.tagName)),
+    lines: new Set(at.map((stop) => stop.middle)).size,
+    readInTabOrder: read.every((stop, index) => stop.index === index),
+    height: Math.round(bar.getBoundingClientRect().height * 100) / 100,
   };
 })()`;
 
@@ -321,6 +387,86 @@ try {
     await setFilters({ group });
     result.rowFit[group] = await browser.evaluate(ROW_FIT);
   }
+  // The row wraps in a pane too narrow for it: every width from the narrowest to well past
+  // the default, in both font sets, with no filter set and with one set under each Group by
+  // value. The drawer is closed, so the bar is the row's lines and nothing more.
+  const font = async (name) => {
+    await browser.evaluate(
+      `document.documentElement.setAttribute("data-app-font", ${JSON.stringify(name)}), true`,
+    );
+    await browser.evaluate("document.fonts.ready.then(() => true)");
+    await browser.evaluate(frames);
+  };
+  const sweep = () =>
+    browser.evaluate(`(${SWEEP})(${JSON.stringify({ widths: WIDTHS, ...ROW_WRAP })})`);
+  result.wrap = {};
+  for (const set of ["clean", "system"]) {
+    await font(set);
+    for (const [state, patch] of [
+      ["no filter", { size: "all", group: "none" }],
+      ["No grouping", { size: "1m", group: "none" }],
+      ["By age", { size: "1m", group: "age" }],
+      ["By file type", { size: "1m", group: "type" }],
+    ]) {
+      await setFilters(patch);
+      const measured = await sweep();
+      const { gap, line } = measured.tokens;
+      const verdict = judge(`${state}, ${set} fonts`, measured, {
+        pad: gap,
+        line,
+        gap,
+        column: gap,
+        trailing: "nav-filter-bar-end",
+      });
+      const narrowest = measured.rows.find((row) => row.width === NARROWEST);
+      result.wrap[`${state}, ${set}`] = {
+        ...verdict,
+        tokens: measured.tokens,
+        narrowest: linesOf(narrowest).map((wrapped) => wrapped.units.map((unit) => unit.name)),
+      };
+    }
+  }
+  await font("clean");
+  // The themes lay the row out alike.
+  await setFilters({ size: "1m", group: "none" });
+  const light = await sweep();
+  await browser.evaluate(`document.documentElement.setAttribute("data-theme", "dark"), true`);
+  await browser.evaluate(frames);
+  const dark = await sweep();
+  await browser.evaluate(`document.documentElement.setAttribute("data-theme", "light"), true`);
+  await browser.evaluate(frames);
+  result.themesAlike = JSON.stringify(light) === JSON.stringify(dark);
+  phase("wrapped");
+  // At the narrowest pane, with a filter set, the row is three lines. Reading them meets
+  // the controls in their Tab order, the keyboard numbers still open Group by and the
+  // drawer's filters, and the drawer opens under the lines and closes back to them with no
+  // gap left standing.
+  const paneWidth = (width) =>
+    browser.evaluate(
+      `(() => { const pane = document.querySelector(".tree-pane"); pane.style.width = ${JSON.stringify(width ? `${width + 1}px` : "")}; return true; })()`,
+    );
+  await paneWidth(NARROWEST);
+  await browser.evaluate(frames);
+  result.narrow = await browser.evaluate(NARROW);
+  await press("1");
+  result.narrowKeyOne = await browser.evaluate(OPEN_MENU);
+  await press("Escape");
+  await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  await press("3");
+  await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
+  await sleep(400);
+  result.narrowKeyThree = await browser.evaluate(OPEN_MENU);
+  await press("Escape");
+  await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  result.narrowOpen = await browser.evaluate(NARROW);
+  await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
+  await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "false"`);
+  await sleep(400);
+  result.narrowClosed = await browser.evaluate(NARROW);
+  await paneWidth(null);
+  await browser.evaluate(frames);
+  phase("narrow");
+
   await setFilters({ size: "all", group: "none", showIgnored: false });
   result.ignoredOff = await browser.evaluate(ROW_FIT);
   await setFilters({ showIgnored: true });
@@ -538,6 +684,7 @@ try {
   result.ungrouped = await browser.evaluate(
     `({ sections: document.querySelectorAll('.tree-section').length, trees: [...document.querySelectorAll('#tab-files [role="tree"]')].map((tree) => tree.getAttribute("aria-label")) })`,
   );
+  result.slots = await browser.evaluate(SLOTS);
   phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

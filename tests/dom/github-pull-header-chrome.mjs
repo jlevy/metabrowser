@@ -30,7 +30,7 @@
 // past it in a 360 px pane, and the pane scrolled sideways. The row structure itself is
 // pinned browserless in github-pull-page-mount-behavior.js.
 //
-// The session also lays out Pulls rows as their stack positions arrive, and the file
+// The session also lays out Pulls rows as their stack places arrive, and the file
 // header as a run's status badge changes its label in place (RUN_BADGE below).
 import fs from "node:fs";
 import http from "node:http";
@@ -132,6 +132,10 @@ const MEASURE = `async (name, change, tab, width) => {
     body.pin = null;
     body.pin_ref = null;
   }
+  // A title of two lines and more, cut short at two.
+  if (change.longTitle) {
+    body.record.pull.title = "Decide every region's box at first paint, so nothing that arrives later moves the tab bar, a stack, a label, or a Refresh";
+  }
   if (change.lastRefresh) {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
@@ -205,7 +209,7 @@ const MEASURE = `async (name, change, tab, width) => {
     }
     return own.width > 0 ? Math.max(0, right - left) / own.width : 0;
   };
-  const group = header.querySelector(".github-pull-meta .merge-refs");
+  const group = header.querySelector(".github-pull-branches .merge-refs");
   const mergeShown = group
     ? Math.min(
         ...[".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target"].map((part) =>
@@ -221,21 +225,65 @@ const MEASURE = `async (name, change, tab, width) => {
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
     tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
   });
-  // A stack's chip arrives late, from its own answer, through the page's own builder.
+  // A stack's chip arrives late, from its own answer, through the page's own builder, at
+  // the right end of the author's row (mb-cf0l): one stack, "2/3", or two, "4/4" and "2/2".
+  // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
+  // The strut that holds the author's row at a chip's height, read before a chip replaces it.
+  const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
+  const strutHeight = heldBy ? Math.round(box(heldBy).height * 100) / 100 : null;
   let chipMoves = null;
   if (change.stackChip && group) {
     const before = places();
-    const menu = page.createStackMenu(
-      { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
-      body.number,
-      { link: () => document.createElement("a"), icon: null, currentTitle: "", onOpen() {} },
+    const layers = () => document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const stacks =
+      change.stackChip === 2
+        ? [
+            { number: 286, pulls: [body.number - 3, body.number - 2, body.number - 1, body.number] },
+            { number: 300, pulls: [body.number - 1, body.number] },
+          ]
+        : [{ number: 286, pulls: [body.number - 1, body.number, body.number + 1] }];
+    const menus = stacks.map((stack) =>
+      page.createStackMenu(stack, body.number, {
+        link: () => document.createElement("a"),
+        icon: layers(),
+        currentTitle: "",
+        onOpen() {},
+      }),
     );
-    header.querySelector(".github-pull-stacks").replaceChildren(menu.element);
+    const column = header.querySelector(".github-pull-stacks");
+    column.replaceChildren(...menus.map((menu) => menu.element));
     await frames();
     const after = places();
+    // Nothing moves: every part keeps its start, every row its height, the tab bar its place.
+    // The sentence alone, the author then the action, may give up width at its end where the
+    // row has none left: the action is cut first, to nothing, and then the author, so the
+    // sentence keeps its start and only the action's start, past a shorter name, moves.
+    const sentence = new Set([".github-pull-action", ".github-pull-identity"]);
+    const kept = (shape) => ({
+      parts: shape.parts.map(([selector, left, width]) => [
+        selector,
+        selector === ".github-pull-action" ? null : left,
+        sentence.has(selector) ? null : width,
+      ]),
+      rows: shape.rows,
+      tabBar: shape.tabBar,
+    });
+    const details = header.querySelector(".github-pull-meta-details");
+    const contentRight = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
     chipMoves = {
-      moved: JSON.stringify(before) === JSON.stringify(after) ? null : { before, after },
-      chipShown: shown(menu.element),
+      chips: stacks.length,
+      moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
+      cut:
+        Math.round(
+          before.parts
+            .filter(([selector]) => sentence.has(selector))
+            .reduce((sum, [, , width], at) => sum + width - after.parts.filter(([s]) => sentence.has(s))[at][2], 0) *
+            100,
+        ) / 100,
+      chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
+      overlap: Math.round((box(details).right - box(column).left) * 100) / 100,
+      rightEdge: Math.round((box(column).right - contentRight) * 100) / 100,
+      chipWidth: Math.round(box(column).width * 100) / 100,
     };
     // Its member menu heads its rows with the host's menu group, whose heading starts
     // on the rows' inset (docs/design-system.md, "Groups in a Menu"). A second menu of
@@ -283,16 +331,43 @@ const MEASURE = `async (name, change, tab, width) => {
     height: Math.round(box(row).height * 100) / 100,
   }));
   const meta = header.querySelector(".github-pull-meta");
-  const badge = meta?.querySelector(".github-pull-badge");
-  const strut = meta?.querySelector(".github-pull-stack-strut");
+  // The state badge leads the row of ages (mb-4ydo).
+  const opened = header.querySelector(".github-pull-opened");
+  const badge = opened?.querySelector(".github-pull-badge");
   const centre = (r) => r.top + r.height / 2;
+  // The title's icon and text start at the header's left edge and its number ends on the
+  // right one, over the stack's slot that ends the author's row (mb-z416).
+  const heading = header.querySelector(".github-pull-title-with-state");
+  const edges = (() => {
+    if (!heading) return null;
+    const left = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+    const right = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const icon = box(heading.querySelector(".github-pull-state-icon"));
+    const range = document.createRange();
+    range.selectNodeContents(heading.querySelector(".github-pull-title-text"));
+    const text = range.getBoundingClientRect();
+    const numberRange = document.createRange();
+    numberRange.selectNodeContents(heading.querySelector(".github-pull-number"));
+    const number = numberRange.getBoundingClientRect();
+    const slot = header.querySelector(".github-pull-meta .github-pull-stacks");
+    const r = (v) => Math.round(v * 100) / 100;
+    return {
+      iconLeft: r(icon.left - left),
+      textAfterIcon: r(text.left - icon.right),
+      gap: r(parseFloat(getComputedStyle(heading).columnGap)),
+      numberRight: r(number.right - right),
+      numberOverSlot: slot ? r(number.right - box(slot).right) : null,
+      numberBelowText: r(number.bottom - text.bottom),
+    };
+  })();
   const result = {
+    edges,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
-    strut: strut ? Math.round(box(strut).height * 100) / 100 : null,
-    badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(meta))) * 100) / 100 : null,
+    strut: strutHeight,
+    badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
     offers: header.querySelectorAll(".github-pull-offer").length,
     mergeShown,
     chipMoves,
@@ -344,18 +419,23 @@ const RECORDS = [
   ["current", { pinBehind: true }],
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
+  ["current", { avatar: true }],
+  ["current", { longTitle: true }],
   ["current", { longNames: true }],
   ["current", { longNames: true, avatar: true }],
   ["merged", { longNames: true, avatar: true }],
 ];
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
-// github-pulls-panel-session.js pins: the toggle, the state icon, the title, the stack
-// position, the age, and the muted line. Every row's parts are read before and after each
-// row's stack position arrives, and only the title's width may change, where it is cut.
+// github-pulls-panel-session.js pins: the toggle, the state icon, the title, and the age
+// on the title line, and the muted line under it, where a stack member's place comes
+// before its number (mb-dzsi). Each row is a member, a level in under its stack's row.
+// Every part of the title line is read, from its row's top, before and after each row's
+// place arrives, the title's width with it: the place is not on that line, so the title
+// keeps all its room. A place that sends the author to a line of its own makes its row a
+// line taller, and so moves the rows below it: that is read as `grew`.
 const PULLS_ROWS = `async (rows, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const state = window.__state ??= await import("/github/pull-state.js");
-  const mb = window.metabrowser;
   const h = (tag, attributes = {}, children = []) => {
     const node = document.createElement(tag);
     for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
@@ -374,50 +454,45 @@ const PULLS_ROWS = `async (rows, width) => {
       identity.prepend(h("img", { class: "github-pull-avatar", alt: "", width: "18", height: "18" }));
     }
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
-    const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
+    const place = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
+    const number = h("span", { class: "github-pulls-number" }, ["#" + row.number]);
     const title = h("span", { class: "github-pulls-title" }, [row.title]);
+    const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
     const anchor = h("a", { class: "github-pulls-row collapsed", href: "#", role: "treeitem" }, [
       h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }),
       state.pullStateIcon("open"),
       title,
-      stack,
-      h("span", { class: "github-pulls-age" }, ["12mo"]),
+      age,
       h("span", { class: "github-pulls-meta" }, [
         h("span", { class: "github-pulls-line" }, [
-          h("span", { class: "github-pulls-number" }, ["#" + row.number]),
+          h("span", { class: "github-pulls-id" }, [place, number]),
           h("span", { class: "github-pulls-by" }, [separator(), identity]),
-          h("span", { class: "github-pulls-merge" }, [
-            separator(),
-            mb.mergeRefs({ name: row.head, label: row.headLabel }, { name: row.base }, { kind: "remote", copy: "sibling" }),
-          ]),
         ]),
       ]),
     ]);
-    list.append(h("li", { class: "github-pulls-item", role: "none" }, [anchor]));
-    return { anchor, stack, title, row };
+    list.append(h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [anchor]));
+    return { anchor, place, number, title, age, row };
   });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
-  // Each row's own boxes and all it holds but the position itself, read as they were drawn.
-  const watched = built.map(({ anchor, stack }) =>
-    [anchor, ...anchor.querySelectorAll("*")].filter((node) => node !== stack),
-  );
+  // Each row's title line, its width with it, read from its row's top as it was drawn.
+  const titleLine = built.map(({ anchor, title, age }) => [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon"), title, age]);
   const read = () =>
-    built.map(({ title }, at) =>
-      watched[at].map((node) => {
+    titleLine.map((nodes, at) => {
+      const top = built[at].anchor.getBoundingClientRect().top;
+      return nodes.map((node) => {
         const r = node.getBoundingClientRect();
-        // The title's width is where it is cut, which the position's arrival may change.
-        return [r.left, r.top, node === title ? 0 : r.width, r.height].map((value) => Math.round(value * 100) / 100);
-      }),
-    );
+        return [r.left, r.top - top, r.width, r.height].map((value) => Math.round(value * 100) / 100);
+      });
+    });
   const before = read();
-  for (const { stack, row } of built) {
-    stack.hidden = false;
-    stack.append(
-      h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }),
-      // As pulls-panel.js#paintStackBadge draws it: another stack is the Layers glyph
-      // before its number, written here as "#N".
+  const heights = built.map(({ anchor }) => anchor.getBoundingClientRect().height);
+  for (const { place, row } of built) {
+    place.hidden = false;
+    // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
+    // number, written here as "#N", and a separator ends the place.
+    place.append(
       h(
         "span",
         { class: "github-pull-stack-position" },
@@ -434,39 +509,73 @@ const PULLS_ROWS = `async (rows, width) => {
           ];
         }),
       ),
+      h("span", { class: "github-pulls-sep" }, [" · "]),
     );
   }
   await frames();
   const after = read();
-  return built.map(({ anchor, stack, title, row }, at) => {
-    const moved = watched[at].flatMap((node, index) =>
+  return built.map(({ anchor, place, number, title, age, row }, at) => {
+    const moved = titleLine[at].flatMap((node, index) =>
       JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
         ? []
-        : [[node.className || node.tagName, before[at][index], after[at][index]]],
+        : [[node.className.baseVal ?? node.className, before[at][index], after[at][index]]],
     );
-    const s = stack.getBoundingClientRect();
+    const position = place.querySelector(".github-pull-stack-position");
+    const p = position.getBoundingClientRect();
+    const n = number.getBoundingClientRect();
+    const box = anchor.getBoundingClientRect();
+    const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
+    const meta = anchor.querySelector(".github-pulls-meta").getBoundingClientRect();
     return {
       number: row.number,
       moved,
-      between: s.width > 0 && s.left >= title.getBoundingClientRect().right - 0.5 && s.right <= anchor.querySelector(".github-pulls-age").getBoundingClientRect().left + 0.5,
+      // Before the number, on its line, in its type: the same top in the same size.
+      before: p.width > 0 && place.getBoundingClientRect().right <= n.left + 0.5 && Math.abs(p.top - n.top) < 0.5,
+      // The number shows whole, inside the muted line's clip.
+      whole: n.left >= meta.left - 0.5 && n.right <= meta.right + 0.5 && number.scrollWidth <= Math.ceil(n.width),
       // Nothing of the row ends past its padding box, and the pane does not scroll sideways.
-      inside:
-        [...anchor.querySelectorAll(".github-pulls-age, .github-pulls-stack")].every(
-          (node) => node.getBoundingClientRect().right <= anchor.getBoundingClientRect().right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5,
-        ) && nav.scrollWidth <= nav.clientWidth,
+      inside: [age, number, place].every((node) => node.getBoundingClientRect().right <= end) && nav.scrollWidth <= nav.clientWidth,
+      cut: position.scrollWidth > position.clientWidth,
+      grew: Math.round((box.height - heights[at]) * 100) / 100,
       title: Math.round(title.getBoundingClientRect().width * 10) / 10,
     };
   });
 }`;
+// A pull request's number in the shell's two surfaces that show one, Quick Search's result
+// and the ref selector on a pull request's head, built as search-palette.js#appendPullResult
+// and source-ref-selector.js#paint build them, over the shell's own stylesheet: their
+// computed weights, and a stack's position's (mb-vrvs). The GitHub plugin's three surfaces
+// are read where they are drawn, in github-pulls-stacks-chrome.mjs.
+const NUMBERS = `(() => {
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  const palette = h("span", { class: "search-palette-pull-number" }, ["#455"]);
+  const selector = h("span", { class: "source-ref-selector-pull-number" }, ["#455"]);
+  const position = h("span", { class: "github-pull-stack-position" }, ["1/6"]);
+  document.getElementById("preview-pane").replaceChildren(
+    h("div", { class: "search-palette-option search-palette-option-pull" }, [
+      h("span", { class: "search-palette-option-text" }, [
+        h("span", { class: "search-palette-description" }, [palette, " · Open"]),
+      ]),
+    ]),
+    h("button", { class: "chip-menu-trigger source-ref-selector-toggle" }, [
+      h("span", { class: "source-ref-selector-label" }, ["Pull request: ", selector]),
+    ]),
+    position,
+  );
+  const weight = (node) => getComputedStyle(node).fontWeight;
+  return { palette: weight(palette), selector: weight(selector), position: weight(position) };
+})()`;
 const PULLS = [
   {
     number: 370,
     title: "perf: decide every region's box at first paint",
     author: "jlevy",
     avatar: true,
-    head: "claude/perf-layout",
-    headLabel: "claude/perf-layout",
-    base: "main",
     stack: "2/3",
   },
   {
@@ -474,9 +583,6 @@ const PULLS = [
     title: "A five-digit pull request",
     author: "a-thirty-nine-character-github-login-x",
     avatar: true,
-    head: "feature/some-long-branch",
-    headLabel: "fork:feature/some-long-branch",
-    base: "release/2026-11",
     stack: "3/3 · #900 1/2",
   },
   {
@@ -484,20 +590,14 @@ const PULLS = [
     title: "Short",
     author: "octo",
     avatar: false,
-    head: "wip",
-    headLabel: "wip",
-    base: "topic",
     stack: "1/2",
   },
-  // Wider than half of what the title and the position share in a 180 px pane: cut short.
+  // Two stacks and three: wider than a narrow pane's muted line, the place is cut short.
   {
     number: 4242,
     title: "Two stacks, two digits each",
     author: "octo",
     avatar: true,
-    head: "stack/part",
-    headLabel: "stack/part",
-    base: "main",
     stack: "12/23 · #901 10/14",
   },
   {
@@ -505,9 +605,6 @@ const PULLS = [
     title: "Three stacks",
     author: "octo",
     avatar: false,
-    head: "x",
-    headLabel: "x",
-    base: "main",
     stack: "3/3 · #900 1/2 · #902 4/7",
   },
 ];
@@ -655,15 +752,16 @@ async function main() {
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
-            // The state row is the same on every tab, so its stack chip arrives on one.
-            const measured = tab === "" ? { ...change, stackChip: true } : change;
+            // The author's row is the same on every tab, so its stack chip arrives on one: one
+            // stack, and two for the records with an avatar, the longest rows.
+            const measured = tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change;
             const shape = await browser.evaluate(
               `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(measured)}, ${JSON.stringify(tab)}, ${width})`,
             );
             const where = `${width} px, ${label} ${tab || "conversation"}`;
             if (shape.mergeShown !== null) {
               check(
-                `${where}: the merge's chips and arrow show whole in the state row`,
+                `${where}: the merge's chips and arrow show whole on their line`,
                 shape.mergeShown >= 0.99,
                 String(shape.mergeShown),
               );
@@ -678,6 +776,16 @@ async function main() {
                 `${where}: a late stack chip shows whole`,
                 shape.chipMoves.chipShown >= 0.99,
                 String(shape.chipMoves.chipShown),
+              );
+              check(
+                `${where}: the stack chip ends on the header's content edge`,
+                Math.abs(shape.chipMoves.rightEdge) <= 0.5,
+                String(shape.chipMoves.rightEdge),
+              );
+              check(
+                `${where}: the stack chip and the sentence do not overlap`,
+                shape.chipMoves.overlap <= 0.5,
+                String(shape.chipMoves.overlap),
               );
               check(
                 `${where}: the stack menu's heading starts on its rows' inset`,
@@ -700,6 +808,21 @@ async function main() {
                 `${where}: the state badge is centred on its row`,
                 Math.abs(shape.badgeOffset) <= 1,
                 String(shape.badgeOffset),
+              );
+            }
+            if (shape.edges !== null) {
+              const { iconLeft, textAfterIcon, gap, numberRight, numberOverSlot } = shape.edges;
+              check(
+                `${where}: the title's icon starts on the header's left edge, its text just after it`,
+                Math.abs(iconLeft) <= 0.5 && Math.abs(textAfterIcon - gap) <= 1,
+                JSON.stringify(shape.edges),
+              );
+              check(
+                `${where}: the title's number ends on the header's right edge, over the stack slot's end`,
+                Math.abs(numberRight) <= 0.5 &&
+                  numberOverSlot !== null &&
+                  Math.abs(numberOverSlot) <= 0.5,
+                JSON.stringify(shape.edges),
               );
             }
             check(
@@ -743,23 +866,45 @@ async function main() {
       if (runs("badges")) {
         lap("the run badge");
       }
+      if (runs("pulls")) {
+        const numbers = await browser.evaluate(NUMBERS);
+        check(
+          "a pull request's number is bold in Quick Search and the ref selector, as a stack's position is",
+          numbers.palette === "700" && numbers.selector === "700" && numbers.position === "700",
+          JSON.stringify(numbers),
+        );
+      }
       for (const width of runs("pulls") ? PULLS_WIDTHS : []) {
         const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
           check(
-            `${where}: a late stack position moves nothing, here or below`,
+            `${where}: a late stack place moves nothing on its row's title line, nor cuts the title`,
             row.moved.length === 0,
             JSON.stringify(row.moved),
           );
           check(
-            `${where}: the stack position sits between the title and the age`,
-            row.between,
+            `${where}: the stack place sits before the number, on its line`,
+            row.before,
             JSON.stringify(row),
           );
+          check(`${where}: the number shows whole`, row.whole, JSON.stringify(row));
           check(
-            `${where}: the position and the age end inside the row, and nothing scrolls sideways`,
+            `${where}: the place, the number, and the age end inside the row, and nothing scrolls sideways`,
             row.inside,
+            JSON.stringify(row),
+          );
+          const oneStack = !PULLS.find((pull) => pull.number === row.number).stack.includes(" · ");
+          check(
+            `${where}: one stack's place shows whole`,
+            !row.cut || !oneStack,
+            JSON.stringify(row),
+          );
+          // At the default pane's width and wider, measured: two stacks with a 39-character
+          // login keep two lines at 300 px, and three stacks take a third at 300 px.
+          check(
+            `${where}: one stack's place keeps its row two lines`,
+            width < 300 || !oneStack || row.grew === 0,
             JSON.stringify(row),
           );
           check(
@@ -767,6 +912,9 @@ async function main() {
             row.title >= 20,
             JSON.stringify(row),
           );
+        }
+        if (process.env.METABROWSER_PULLS_HEADER_MEASURE) {
+          console.error(JSON.stringify({ width, rows }));
         }
         lap(`the Pulls rows at ${width} px`);
       }

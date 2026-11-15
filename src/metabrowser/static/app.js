@@ -5331,7 +5331,9 @@ function renderNavFilterBar() {
     menuId: "filter-size-menu",
   });
   var main =
-    '<div class="nav-filter-bar-main">' +
+    // A toolbar row, which wraps between its controls in a narrow pane (styles.css,
+    // `.nav-toolbar-row`).
+    '<div class="nav-filter-bar-main nav-toolbar-row">' +
     // Group by leads the row: splitting the tree by age or by type is the simplest way to
     // see a folder, and it removes nothing, so it needs no drawer. Show ignored follows it,
     // a checkbox whose tick states its own direction, so it needs no drawer either. The

@@ -11,7 +11,11 @@ pane width and at a wide one: Files settled, pending, counting, filtered, and wi
 other remarks; Commits settled, as the server ships it pending, and failed; and Pulls
 while its list loads, once it has rows, and when a refresh can reach neither GitHub nor a
 signed-in gh, nor any gh. ``tests/test_nav_metadata_line.py`` holds the markup and the
-stylesheets to the component without a browser.
+stylesheets to the component without a browser. In a pane too narrow for it, the
+Commits tally wraps between its phrases and the tab bar between its tabs: at every pane
+width from the narrowest, in both font sets, each is held to the navigation toolbars'
+wrap rule (``tests/dom/nav-toolbar-wrap.mjs``; docs/design-system.md, "Navigation
+Toolbars Wrap").
 
 The fake ``gh`` waits while a hold file exists, so the Pulls list is still loading when
 it is measured; the measurement removes the file, rewrites the scenario the fake answers

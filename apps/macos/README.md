@@ -992,9 +992,10 @@ Terminal launch.
   `prompt`, a file input’s open panel, or the print panel (`PageSheets`). The app’s own
   sheets stay, and the reload runs behind them: the runtime-upgrade offer, a download’s
   save panel, and a failed download’s alert.
-  The page sees each key before the menu and takes none held with Command or Control,
-  nor any held with Option except Tab, which a dialog’s or menu’s focus trap keeps
-  because Safari moves focus with it (`tests/test_modified_keys.py`), so Command-R
+  The page sees each key before the menu and takes none held with Command, none held
+  with Control but Control-N and Control-P on a pull request in a stack, which no menu
+  item uses, and none held with Option except Tab, which a dialog’s or menu’s focus trap
+  keeps because Safari moves focus with it (`tests/test_modified_keys.py`), so Command-R
   reaches the menu with focus in a field, Quick Search, Help, or a menu of the page.
   The app’s own windows, Settings and About, have no page and no Reload.
 

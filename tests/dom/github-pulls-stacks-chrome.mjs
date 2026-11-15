@@ -13,10 +13,10 @@
 // browser can tell: that a stack row's header and the stack menu's heading resolve to the
 // same label tokens, gray, all caps, and tracked; that a stack row starts on the list's row
 // inset and its pull requests one tree level in; that a stack row and a pull request's row
-// hover alike and are as tall as the row contract says; that the option's chip is a chip's
-// height; that the keys move real focus onto and off a stack row; that the groups list a
-// stack's members in the order the page's stack menu does; and that the choice persists
-// across a reload. It times the first row, the grouping's arrival, and a toggle, and with
+// hover alike and are as tall as the row contract says; that the toolbar fits the default
+// pane with no Group by stack chip, since the tab always groups; that the keys move real
+// focus onto and off a stack row; and that the groups list a stack's members in the order
+// the page's stack menu does. It times the first row and the grouping's arrival, and with
 // SHOTS_DIR it saves the screenshots. `--before` takes only the screenshots and the first
 // row's time, for the shell as it was before grouping, and checks nothing of it.
 //
@@ -24,6 +24,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { judge, NARROWEST, SWEEP, WIDEST, WIDTHS } from "./nav-toolbar-wrap.mjs";
 
 const [base, mode] = process.argv.slice(2);
 const before = mode === "--before";
@@ -88,10 +89,14 @@ const LIST = `(() => {
     } else if (row.getAttribute("aria-level") === "2" && open !== null) {
       open.members.push({
         number: Number(row.dataset.number),
-        badge: row.querySelector(".github-pulls-stack")?.textContent ?? "",
+        // Its place in its stacks, on its number's line, before the number (mb-dzsi).
+        badge: row.querySelector(".github-pulls-place .github-pull-stack-position")?.textContent ?? "",
+        line: row.querySelector(".github-pulls-line")?.textContent ?? "",
         // Another stack named in it, by the Layers glyph before its number.
-        others: row.querySelectorAll(".github-pulls-stack .github-pull-stack-other svg").length,
-        tip: row.querySelector(".github-pulls-stack")?.getAttribute("aria-label") ?? "",
+        others: row.querySelectorAll(".github-pulls-place .github-pull-stack-other svg").length,
+        // A member's row draws no stack icon: the stack's row it sits under has it.
+        icons: row.querySelectorAll(".github-pull-stack-icon").length,
+        tip: row.querySelector(".github-pulls-place")?.getAttribute("aria-label") ?? "",
       });
     } else {
       open = null;
@@ -103,7 +108,20 @@ const LIST = `(() => {
     (row) => !row.classList.contains("github-pulls-stack-row"),
   );
   const box = (el) => el?.getBoundingClientRect() ?? null;
+  // The room a row's title gets: its grid cell's width, which a long title fills and is
+  // cut at. A member's and a first-level pull request's, and the pane they are in.
+  const titleBox = (number) =>
+    list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-title')?.getBoundingClientRect().width ?? null;
+  const titleRoom = {
+    pane: Math.round(document.querySelector(".tree-pane").getBoundingClientRect().width),
+    member: titleBox(10),
+    memberSingle: titleBox(9),
+    flat: titleBox(106),
+    memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
+    flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
+  };
   return {
+    titleRoom,
     stacks,
     rows: rows.length,
     stackToggle: left(stackRow?.querySelector(".github-pulls-toggle")),
@@ -116,26 +134,48 @@ const LIST = `(() => {
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     countRight: box(stackRow?.querySelector(".github-pulls-stack-count"))?.right ?? null,
     flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
-    toggle: (() => {
-      const chip = document.querySelector(".github-pulls-group-toggle");
-      const filter = document.querySelector(".github-pulls-filters .chip-group");
-      return chip === null
-        ? null
-        : {
-            pressed: chip.getAttribute("aria-pressed"),
-            disabled: chip.getAttribute("aria-disabled"),
-            tip: chip.dataset.tipText,
-            height: box(chip).height,
-            filterHeight: box(filter).height,
-            label: chip.getAttribute("aria-label"),
-            word: chip.textContent,
-            // The toolbar keeps its controls on one line, and scrolls sideways past that.
-            toolbarOverflow: (() => {
-              const bar = document.getElementById("nav-toolbar-pulls");
-              return bar === null ? null : bar.scrollWidth - bar.clientWidth;
-            })(),
-            toolbarWidth: document.getElementById("nav-toolbar-pulls")?.clientWidth ?? null,
-          };
+    // The toolbar's one line: how far past the pane it reaches, and the room left between
+    // the filters and Reload, which sits at the line's end.
+    toolbar: (() => {
+      const bar = document.getElementById("nav-toolbar-pulls");
+      const group = box(document.querySelector(".github-pulls-filters .chip-group"));
+      const reload = box(document.querySelector(".github-pulls-reload"));
+      const gap = parseFloat(getComputedStyle(document.querySelector(".github-pulls-filters")).columnGap) || 0;
+      return {
+        width: bar?.clientWidth ?? null,
+        overflow: bar === null ? null : bar.scrollWidth - bar.clientWidth,
+        spare: group === null || reload === null ? null : Math.round(reload.left - group.right - gap),
+        chip: document.querySelector(".github-pulls-group-toggle") !== null,
+      };
+    })(),
+    // A row's leading slots, the chevron's and the icon's, from the row's content edge: a
+    // pull request's (#106, first level) and a stack's (mb-hmv7, --tree-icon-slot).
+    slots: (() => {
+      const round = (value) => Math.round(value * 100) / 100;
+      const of = (row, toggle, icon, text) => {
+        if (!row) return null;
+        const r = row.getBoundingClientRect();
+        const style = getComputedStyle(row);
+        const inset = r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+        const t = row.querySelector(toggle).getBoundingClientRect();
+        const i = row.querySelector(icon).getBoundingClientRect();
+        const g = row.querySelector(icon + " svg").getBoundingClientRect();
+        return {
+          toggle: round(t.width),
+          toggleFromInset: round(t.left - inset),
+          chevron: round(row.querySelector(toggle + " svg").getBoundingClientRect().width),
+          icon: round(i.width),
+          iconFromInset: round(i.left - inset),
+          glyph: round(g.width),
+          text: round(row.querySelector(text).getBoundingClientRect().left - inset),
+          gap: parseFloat(style.columnGap),
+        };
+      };
+      return {
+        token: getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot").trim(),
+        pull: of(flat, ".github-pulls-toggle", ".github-pull-state-icon", ".github-pulls-title"),
+        stack: of(stackRow, ".github-pulls-toggle", ".github-pull-stack-icon", ".github-pull-stack-label"),
+      };
     })(),
   };
 })()`;
@@ -286,7 +326,7 @@ try {
 
   if (before) {
     // The stack badges arrive from the same snapshot, on rows near the list's end; the
-    // list draws no groups.
+    // list draws no groups. That shell drew a badge on the title line, `.github-pulls-stack`.
     // Scrolled to the end as it grows: the rows near it mount once the window reaches them.
     await waitFor(
       `(document.querySelector(".tree-content").scrollTop = 1e6) && document.querySelector('a.github-pulls-row[data-number="10"]') !== null`,
@@ -330,6 +370,45 @@ try {
       JSON.stringify(list.stacks),
     );
     check(
+      "a member's place is on its number's line, before the number, as 1/6 · #455 reads",
+      first?.members[0]?.line.startsWith("4/4 · 300 2/2 · #10 · ") &&
+        first.members[1]?.line.startsWith("3/4 · #9 · "),
+      JSON.stringify(first?.members.map((m) => m.line)),
+    );
+    check(
+      "a member's row draws no stack icon",
+      list.stacks.every((stack) => stack.members.every((m) => m.icons === 0)),
+      JSON.stringify(list.stacks.map((stack) => stack.members.map((m) => m.icons))),
+    );
+    // Its place on the title line once cut a member's title to 65 px at the default pane,
+    // where a first-level row's had 176 (mb-dzsi, measured before the change).
+    check(
+      "a member's title has a first-level row's room, less its one indent",
+      Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.treeIndent)) < 0.5 &&
+        Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.treeIndent)) < 0.5,
+      JSON.stringify(list.titleRoom),
+    );
+    // The leading slots are the tree's one icon slot, 14 px, the Files tree's too: at 16 px
+    // a title and a stack's label started 44 px from the row's content edge, and at 14,
+    // 40 (mb-hmv7).
+    const slots = list.slots;
+    check(
+      "a row's chevron and icon, and a stack row's, are each the tree's 14 px icon slot",
+      slots.token === "14px" &&
+        [slots.pull, slots.stack].every(
+          (row) =>
+            row !== null &&
+            row.toggle === 14 &&
+            row.toggleFromInset === 0 &&
+            row.chevron === 12 &&
+            row.glyph === 14 &&
+            near(row.iconFromInset, 14 + row.gap) &&
+            near(row.text, 2 * 14 + 2 * row.gap),
+        ) &&
+        slots.pull.icon === 14,
+      JSON.stringify(slots),
+    );
+    check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
       near(list.stackToggle, list.flatToggle),
       `${list.stackToggle} ${list.flatToggle}`,
@@ -354,18 +433,18 @@ try {
       near(list.countRight, list.flatAgeRight),
       `${list.countRight} ${list.flatAgeRight}`,
     );
+    // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
+    // the default pane width its one line fits, with room to spare (mb-vmwh): the worded
+    // chip reached 36 px past it, and every other form of it past it too.
+    measured.toolbar = list.toolbar;
     check(
-      "the option's chip is on, worded, named Group by stack, and a chip's height",
-      list.toggle?.pressed === "true" &&
-        list.toggle.disabled === "false" &&
-        list.toggle.word === "Stacks" &&
-        list.toggle.label === "Group by stack" &&
-        near(list.toggle.height, list.toggle.filterHeight),
-      JSON.stringify(list.toggle),
+      "the toolbar has no Group by stack chip, and fits the default pane with room to spare",
+      list.toolbar.chip === false &&
+        list.toolbar.width === 299 &&
+        list.toolbar.overflow === 0 &&
+        list.toolbar.spare > 0,
+      JSON.stringify(list.toolbar),
     );
-    // How far past the pane the toolbar's one line reaches, which it scrolls along rather
-    // than wrapping or cutting (static/styles.css, `.nav-toolbar`): recorded, not held.
-    measured.toolbarOverflow = list.toggle?.toolbarOverflow ?? null;
     // A stack's row and a pull request's row hover alike.
     const stackHover = await hover(".github-pulls-stack-row");
     const memberHover = await hover('.github-pulls-item[data-level="2"] > .github-pulls-row');
@@ -482,43 +561,251 @@ try {
       keys[1].ring === "solid" && keys[0].ring === "solid",
       JSON.stringify(keys),
     );
-    // The Group by stack option, off and on.
-    const offAt = await now();
-    await click(".github-pulls-group-toggle");
-    await waitFor(`document.querySelector(".github-pulls-stack-row") === null`);
-    measured.toggleOffMs = Math.round((await now()) - offAt);
-    await evaluate(`document.querySelector(".tree-content").scrollTop = 0`);
-    await shot("after-pulls-flat", await paneClip());
-    await send("Page.navigate", { url: `${base}/view/` });
-    await waitFor(tabReady);
-    await openPulls();
-    await waitFor(
-      `document.querySelector(".github-pulls-group-toggle")?.getAttribute("aria-disabled") === "false"`,
+    phase("keys");
+  }
+
+  if (!before) {
+    // The toolbar wraps in a narrow pane (docs/design-system.md, "Navigation Toolbars Wrap"),
+    // and its Show group, a segmented control, takes the cluster layout where its line cannot
+    // hold it joined (filter-controls.js, `fitJoinedGroups`). Every pane width from the
+    // narrowest to well past the default, in both font sets, with three- and four-digit
+    // tallies: the sweep fits the group at each width as the row's observer does a frame
+    // later.
+    await evaluate(
+      `window.wrapErrors = []; window.addEventListener("error", (event) => window.wrapErrors.push(String(event.message))), true`,
     );
-    await frames();
+    const ROW = "#nav-toolbar-pulls .nav-toolbar-row";
+    const SPEC = {
+      bar: "#nav-toolbar-pulls",
+      row: ROW,
+      fit: true,
+      tokens: {
+        gap: "var(--nav-toolbar-gap)",
+        line: "var(--nav-toolbar-line-height)",
+        cluster: "var(--chip-cluster-gap)",
+      },
+    };
+    // The tallies, pinned: the panel writes them on every render, so a write that would
+    // take a pinned one back is answered with the pinned text, before the browser paints.
+    // `null` lets the panel's own text stand again.
+    const TALLIES = `(texts) => {
+      window.pinnedTallies?.disconnect();
+      window.pinnedTallies = null;
+      if (texts === null) return;
+      const row = document.querySelector("${ROW}");
+      const pin = () => {
+        for (const [value, text] of Object.entries(texts)) {
+          const tally = row.querySelector('[data-chip-value="' + value + '"] .count');
+          if (tally.textContent !== text) tally.textContent = text;
+        }
+      };
+      pin();
+      window.pinnedTallies = new MutationObserver(pin);
+      window.pinnedTallies.observe(row, { childList: true, characterData: true, subtree: true });
+    }`;
+    const shown = await evaluate(
+      `Object.fromEntries([...document.querySelectorAll('${ROW} .chip-group .chip')].map((chip) => [chip.dataset.chipValue, chip.querySelector(".count").textContent]))`,
+    );
+    const font = async (name) => {
+      await evaluate(
+        `document.documentElement.setAttribute("data-app-font", ${JSON.stringify(name)}), true`,
+      );
+      await evaluate("document.fonts.ready.then(() => true)");
+      await frames();
+    };
+    const paneWidth = (width) =>
+      evaluate(
+        `(() => { const pane = document.querySelector(".tree-pane"); pane.style.width = ${JSON.stringify(width === null ? "" : `${width + 1}px`)}; return true; })()`,
+      );
+    // Long enough for a resize to reach the row's observer, and its fit the next frame.
+    const settle = () =>
+      evaluate(
+        "new Promise((r) => { let k = 4; const step = () => (--k ? requestAnimationFrame(step) : r(true)); requestAnimationFrame(step); })",
+      );
+    // The group's layout as drawn: its fit, and whose border frames the chips.
+    const LOOK = `(() => {
+      const group = document.querySelector("${ROW} .chip-group");
+      const chip = group.querySelector(".chip");
+      return {
+        fit: group.getAttribute("data-fit"),
+        groupBorder: getComputedStyle(group).borderTopWidth,
+        chipBorder: getComputedStyle(chip).borderTopWidth,
+      };
+    })()`;
+    // Every frame of a few: the group's fit while the pane holds one width.
+    const HOLD = `new Promise((resolve) => {
+      const group = document.querySelector("${ROW} .chip-group");
+      const seen = [];
+      const step = () => {
+        seen.push(group.getAttribute("data-fit"));
+        if (seen.length < 8) requestAnimationFrame(step); else resolve(seen);
+      };
+      requestAnimationFrame(step);
+    })`;
+    // A drag across the break, a pixel a frame: the fit each frame shows.
+    const DRAG = `(from, to) => new Promise((resolve) => {
+      const pane = document.querySelector(".tree-pane");
+      const group = document.querySelector("${ROW} .chip-group");
+      const seen = [];
+      let width = from;
+      const step = () => {
+        seen.push(group.getAttribute("data-fit"));
+        if (width < to) { resolve(seen); return; }
+        pane.style.width = width + 1 + "px";
+        width -= 1;
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    })`;
+    measured.wrap = {};
+    for (const set of ["clean", "system"]) {
+      await font(set);
+      for (const [digits, texts] of [
+        ["3-digit", { open: "100", closed: "200", all: "300" }],
+        ["4-digit", { open: "1,234", closed: "5,678", all: "6,912" }],
+      ]) {
+        const label = `${set} fonts, ${digits} tallies`;
+        const swept = await evaluate(
+          `((${TALLIES})(${JSON.stringify(texts)}), (${SWEEP})(${JSON.stringify({ widths: WIDTHS, ...SPEC })}))`,
+        );
+        const { gap, line, cluster } = swept.tokens;
+        const verdict = judge(label, swept, {
+          pad: gap,
+          line,
+          gap,
+          column: gap,
+          cluster,
+          trailing: "github-pulls-reload",
+        });
+        check(
+          `${label}: the toolbar keeps the wrap rule`,
+          verdict.failures.length === 0,
+          verdict.failures.slice(0, 6).join("\n"),
+        );
+        // Joined from one width up, the cluster below it, never one then the other again.
+        const fits = swept.rows.map((row) => row.fit);
+        const joinedFrom =
+          swept.rows.find((_row, index) => fits.slice(index).every((fit) => fit === null))?.width ??
+          null;
+        check(
+          `${label}: the group is the cluster below one width and joined from it`,
+          joinedFrom !== null &&
+            swept.rows.every((row) =>
+              row.width < joinedFrom ? row.fit === "wrap" : row.fit === null,
+            ),
+          JSON.stringify(fits),
+        );
+        measured.wrap[label] = { oneLineFrom: verdict.oneLineFrom, joinedFrom };
+        // The row's own observers, with no sweep fitting for them: joined at a pane that
+        // holds the group, the cluster at the narrowest, each a frame or two after the resize.
+        await evaluate(`(${TALLIES})(${JSON.stringify(texts)}), true`);
+        await paneWidth(WIDEST);
+        await settle();
+        const wide = await evaluate(LOOK);
+        check(
+          `${set} fonts, ${digits} tallies: at ${WIDEST} px the group is joined, one frame round its chips`,
+          wide.fit === null && wide.groupBorder === "1px" && wide.chipBorder === "0px",
+          JSON.stringify(wide),
+        );
+        await paneWidth(NARROWEST);
+        await settle();
+        const narrow = await evaluate(LOOK);
+        check(
+          `${set} fonts, ${digits} tallies: at ${NARROWEST} px the group is the cluster, a frame round each chip`,
+          narrow.fit === "wrap" && narrow.groupBorder === "0px" && narrow.chipBorder === "1px",
+          JSON.stringify(narrow),
+        );
+        await shot(`after-pulls-wrap-${set}-${digits}`, await paneClip());
+        // At the break and a pixel under it the group holds one layout, frame after frame,
+        // and a drag across the break switches it once.
+        const breakAt = measured.wrap[`${set} fonts, ${digits} tallies`].joinedFrom;
+        if (breakAt !== null && breakAt > NARROWEST) {
+          for (const [width, fit] of [
+            [breakAt - 1, "wrap"],
+            [breakAt, null],
+          ]) {
+            await paneWidth(width);
+            await settle();
+            const held = await evaluate(HOLD);
+            check(
+              `${set} fonts, ${digits} tallies: at ${width} px the group holds its layout`,
+              held.every((seen) => seen === fit),
+              JSON.stringify(held),
+            );
+          }
+          await paneWidth(breakAt + 8);
+          await settle();
+          const dragged = await evaluate(`(${DRAG})(${breakAt + 8}, ${breakAt - 8})`);
+          await settle();
+          const switches = dragged.slice(1).filter((fit, index) => fit !== dragged[index]).length;
+          check(
+            `${set} fonts, ${digits} tallies: a drag across the break switches the layout once`,
+            switches === 1 && dragged[0] === null && dragged.at(-1) === "wrap",
+            JSON.stringify(dragged),
+          );
+        }
+        await paneWidth(null);
+        await settle();
+      }
+    }
+    await evaluate(`(${TALLIES})(null), true`);
+    await evaluate(
+      `(() => { for (const [value, text] of Object.entries(${JSON.stringify(shown)})) document.querySelector('${ROW} [data-chip-value="' + value + '"] .count').textContent = text; return true; })()`,
+    );
+    await font("clean");
+    // Bound, the observers fit a group; disposed, nothing of them fires.
+    const disposal = await evaluate(`(async () => {
+      const fc = window.metabrowser.filterControls;
+      const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      const frames = async () => { for (let k = 0; k < 4; k += 1) await frame(); };
+      const host = document.createElement("div");
+      host.className = "nav-toolbar";
+      host.dataset.navToolbar = "probe";
+      host.style.cssText = "position: fixed; inset-block-start: 0; inset-inline-start: 0; width: 120px; visibility: hidden;";
+      host.innerHTML = '<div class="nav-toolbar-row">' + fc.groupHtml({
+        key: "probe", select: "one", layout: "joined", label: "Probe", value: "a",
+        options: [{ value: "a", label: "Alpha 1,234" }, { value: "b", label: "Beta 5,678" }, { value: "c", label: "Gamma 6,912" }],
+      }) + "</div>";
+      document.body.append(host);
+      const group = host.querySelector(".chip-group");
+      const dispose = fc.bind(host.firstElementChild, {});
+      const bound = group.getAttribute("data-fit");
+      host.style.width = "1000px";
+      await frames();
+      const widened = group.getAttribute("data-fit");
+      host.style.width = "120px";
+      await frames();
+      const narrowed = group.getAttribute("data-fit");
+      dispose();
+      host.style.width = "1000px";
+      await frames();
+      const resizedAfter = group.getAttribute("data-fit");
+      group.querySelector(".chip").textContent = "A";
+      await frames();
+      const mutatedAfter = group.getAttribute("data-fit");
+      host.remove();
+      return { bound, widened, narrowed, resizedAfter, mutatedAfter };
+    })()`);
+    measured.wrapDisposal = disposal;
     check(
-      "the choice persists across a reload",
-      (await evaluate(`document.querySelector(".github-pulls-stack-row") === null`)) &&
-        (await evaluate(
-          `document.querySelector(".github-pulls-group-toggle").getAttribute("aria-pressed")`,
-        )) === "false",
+      "bound, a joined group is fitted at once and on each resize; disposed, nothing fires",
+      JSON.stringify(disposal) ===
+        JSON.stringify({
+          bound: "wrap",
+          widened: null,
+          narrowed: "wrap",
+          resizedAfter: "wrap",
+          mutatedAfter: "wrap",
+        }),
+      JSON.stringify(disposal),
     );
-    await click('.github-pulls-filters [data-chip-value="all"]');
-    await waitFor(
-      `document.querySelector('.github-pulls-list[data-filter="all"] a.github-pulls-row') !== null`,
-    );
-    const onAt = await now();
-    await click(".github-pulls-group-toggle");
-    await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
-    measured.toggleOnMs = Math.round((await now()) - onAt);
-    await frames();
-    measured.toggledInView = await stackInView();
+    const errors = await evaluate("window.wrapErrors");
     check(
-      "turning grouping on at the top shows its first stack's row",
-      measured.toggledInView.inView,
-      JSON.stringify(measured.toggledInView),
+      "no ResizeObserver loop error, nor any other, while the toolbar wraps",
+      errors.length === 0,
+      errors.join("\n"),
     );
-    phase("toggled");
+    phase("wrapped");
   }
 
   // The page's stack menu, from a member's row, brought into view as a reader would.
@@ -533,11 +820,11 @@ try {
   }
   await click('a.github-pulls-row[data-number="9"]');
   await waitFor(
-    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].some((t) => t.getAttribute("aria-label").includes("Stack #286"))`,
+    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].some((t) => t.getAttribute("aria-label") === "Navigate Stack #286, position 3 of 4")`,
   );
   phase("page");
   await evaluate(
-    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].find((t) => t.getAttribute("aria-label").includes("Stack #286")).click()`,
+    `[...document.querySelectorAll(".github-pull-stack-trigger:not(.github-pull-stack-strut)")].find((t) => t.getAttribute("aria-label") === "Navigate Stack #286, position 3 of 4").click()`,
   );
   await waitFor(
     `document.querySelector(".github-pull-stack-menu .github-pull-stack-member") !== null`,
@@ -551,7 +838,7 @@ try {
       classes: heading.className,
       members: [...menu.querySelectorAll(".github-pull-stack-member")].map((a) => Number(new URL(a.href).pathname.split("/")[2])),
       tip: document.querySelector(".github-pull-stack-trigger[aria-expanded='true']")?.dataset.tipText ?? null,
-      // A member's position, title and number, and a Pulls badge's position: their ink.
+      // A member's position, title and number, and a Pulls row's place: their ink.
       ink: (() => {
         const color = (selector) => {
           const el = document.querySelector(selector);
@@ -567,8 +854,23 @@ try {
           title: color(".github-pull-stack-menu .github-pull-stack-member-title"),
           number: color(".github-pull-stack-menu .github-pull-stack-member-number"),
           trigger: color(".github-pull-stack-trigger[aria-expanded='true'] .github-pull-stack-position"),
-          badge: color(".github-pulls-row .github-pulls-stack:not([hidden]) .github-pull-stack-position"),
+          badge: color(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
           text,
+        };
+      })(),
+      // A pull request's number where it names the pull request, and a stack's position:
+      // their computed weights (mb-vrvs).
+      weights: (() => {
+        const weight = (selector) => {
+          const el = document.querySelector(selector);
+          return el === null ? null : getComputedStyle(el).fontWeight;
+        };
+        return {
+          row: weight(".github-pulls-row .github-pulls-number"),
+          member: weight(".github-pull-stack-menu .github-pull-stack-member-number"),
+          title: weight(".github-pull-title .github-pull-number"),
+          position: weight(".github-pull-stack-menu .github-pull-stack-member-position"),
+          place: weight(".github-pulls-row .github-pulls-place:not([hidden]) .github-pull-stack-position"),
         };
       })(),
     };
@@ -612,6 +914,16 @@ try {
       menu.ink.position === menu.ink.title &&
         menu.ink.title === menu.ink.number &&
         menu.ink.position === menu.ink.text,
+      JSON.stringify(menu.ink),
+    );
+    check(
+      "a pull request's number is bold in a Pulls row, a stack member, and the page's title, as a stack's position is",
+      ["row", "member", "title", "position", "place"].every((key) => menu.weights[key] === "700"),
+      JSON.stringify(menu.weights),
+    );
+    check(
+      "a Pulls row's place is in its number's ink, the row's text",
+      menu.ink.badge === menu.ink.text,
       JSON.stringify(menu.ink),
     );
   }
