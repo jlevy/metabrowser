@@ -552,6 +552,13 @@ still push a commit that fails CI.
 - When the gate fails, first check whether the failing file is yours.
 - Lefthook cannot run from a worktree created outside the repository, so a clean
   temporary worktree elsewhere is not a way around a dirty one.
+- A new worktree has no `node_modules`, and `make lint-check`, `make test`, and
+  `make format` run `make install` first every time, which runs `npm ci` and replaces
+  `node_modules` even when it is present.
+  Copy `node_modules` from a checkout with the same `package-lock.json` (`cp -cR`, a
+  cheap clone on APFS) so hooks and `node_modules/.bin` tools work, and run those
+  targets as `make -o install lint-check`; never symlink it, because `npm ci` then
+  deletes the other checkout’s copy.
 
 Experiment and campaign files follow the
 [durable storage](../explorations/performance-loop/README.md#durable-storage) rules.
@@ -563,6 +570,14 @@ Start from current `main` on a focused branch, add the failing test before a reg
 fix where practical, keep implementation, documentation, and public-hygiene changes
 together when they describe one contract, and review the wheel contents as well as the
 diff for unintended files or private residue.
+
+**A reference pull request can read as merged.** GitHub marks a pull request merged, and
+deletes its branch, as soon as its head commit is reachable from `main`. A reference
+branch that keeps removed code, cut at a commit the landing branch also carries, is
+therefore “merged” the moment that branch lands, though its code is not on `main` (H89’s
+#389 and H90’s #430). Cut a reference branch at a commit the landing branch never
+carries, such as a revert of the removal on top of it, or keep a tag.
+Cite the preserved code by its commit, never by the pull request’s state.
 
 ## Troubleshooting
 
