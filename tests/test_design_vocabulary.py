@@ -1590,7 +1590,9 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-view.js": (
         '"fold-expander diff-fold-control disclosure-toggle"',
         '"diff-file-bar disclosure-toggle"',
+        '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
     ),
+    "diff/diff-summary.js": ('"diff-summary-row diff-summary-folder disclosure-toggle"',),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
     "github/pulls-panel.js": ('"github-pulls-row disclosure-toggle collapsed"',),
     "github/pull-files-view.js": ('"github-pull-folder-row disclosure-toggle"',),
@@ -1631,6 +1633,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "diff/diff-view.js": (
         ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
+        ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
+    ),
+    "diff/diff-summary.js": (
+        ("host.chevron()", '"diff-summary-row diff-summary-folder disclosure-toggle"'),
     ),
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
@@ -1648,7 +1654,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
 # A glyph built far from its builder: a folder row's parts are made by one function and
 # put in the row by another.
 _GLYPH_FAR_FROM_BUILDER: frozenset[tuple[str, str]] = frozenset(
-    {("github/pull-files-view.js", "host.chevron()")}
+    {("github/pull-files-view.js", "host.chevron()"), ("diff/diff-summary.js", "host.chevron()")}
 )
 # The classes the registered toggles are made of. A stylesheet that gives one of them a
 # selectable `user-select` reopens the toggle, whether or not its selector also names
@@ -1673,6 +1679,8 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "fold-expander",
         "diff-fold-control",
         "diff-file-bar",
+        "diff-summary-toggle",
+        "diff-summary-folder",
         "github-pulls-row",
         "github-pull-folder-row",
         "btn",

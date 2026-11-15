@@ -243,7 +243,9 @@ async function main() {
     localHolder.query();
   stories["a list from the local comparison"] = {
     ...describe(local),
-    rows: show(shared.visibleRows(shared.buildFileTree(local.rows), tree.initialExpansion(local, 150))),
+    rows: show(
+      shared.visibleRows(shared.buildFileTree(local.rows), tree.initialExpansion(local, 150)),
+    ),
   };
   stories["GitHub stops at 3,000 files"] = describe(recorded.capped);
   stories["a list asked for and not yet arrived"] = describe(recorded.pending);

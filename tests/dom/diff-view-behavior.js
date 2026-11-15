@@ -189,6 +189,327 @@ function tooLargeAnswer(byName) {
   return answer;
 }
 
+/**
+ * An element with the layout a windowed tree reads: a style, a box, siblings, and focus.
+ * The Diff summary's tree is drawn into these, with every row one row tall.
+ */
+class LaidOutElement extends FakeElement {
+  constructor(tag) {
+    super(tag);
+    this.style = {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+    };
+    this.offsetHeight = 0;
+  }
+
+  /** A class set as an attribute is the element's class, as in a document. */
+  setAttribute(name, value) {
+    super.setAttribute(name, value);
+    if (name === "class") {
+      this.className = String(value);
+    }
+  }
+
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
+  append(...nodes) {
+    super.append(
+      ...nodes.map((node) => {
+        if (typeof node !== "string") {
+          return node;
+        }
+        const text = new FakeElement("#text");
+        text.textContent = node;
+        return text;
+      }),
+    );
+  }
+
+  replaceChildren(...nodes) {
+    super.replaceChildren();
+    this.append(...nodes);
+  }
+
+  get firstElementChild() {
+    return this.children[0] ?? null;
+  }
+
+  get nextElementSibling() {
+    const siblings = this.parentNode?.children ?? [];
+    return siblings[siblings.indexOf(this) + 1] ?? null;
+  }
+
+  get isConnected() {
+    return this.parentNode !== null;
+  }
+
+  after(node) {
+    node.remove();
+    const siblings = this.parentNode.children;
+    siblings.splice(siblings.indexOf(this) + 1, 0, node);
+    node.parentNode = this.parentNode;
+  }
+
+  insertBefore(node, before) {
+    node.remove();
+    const at = before === null ? this.children.length : this.children.indexOf(before);
+    this.children.splice(at, 0, node);
+    node.parentNode = this;
+  }
+
+  getBoundingClientRect() {
+    return this.box ?? { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+  }
+
+  focus() {
+    global.document.activeElement = this;
+  }
+
+  scrollIntoView() {}
+}
+
+/** A key on an element's listener, with Command, Control, or Option as *chord* names. */
+function press(element, key, chord = null) {
+  let prevented = false;
+  for (const handler of element.listeners.get("keydown") ?? []) {
+    handler({
+      key,
+      altKey: chord === "altKey",
+      ctrlKey: chord === "ctrlKey",
+      metaKey: chord === "metaKey",
+      preventDefault() {
+        prevented = true;
+      },
+    });
+  }
+  return prevented;
+}
+
+/** Tasks pass, so a dynamic import and what waits on it settle. */
+async function settled() {
+  for (let at = 0; at < 20; at += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+/**
+ * The Diff summary as a multi-file diff mounts it: its header in the toolbar, collapsed, and
+ * no tree until the header is first opened (diff-summary.js); then the tree's paint, drawn a
+ * window at a time, with the keys the tree takes and the chords it leaves alone.
+ */
+async function diffSummaryChecks(mountDiffView, twoFiles) {
+  const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
+  const formatInteger = (count) => count.toLocaleString("en-US");
+  const createElement = global.document.createElement;
+  const computed = global.getComputedStyle;
+  const view = global.window;
+  global.document.createElement = (tag) => new LaidOutElement(tag);
+  global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
+  const element = global.Element;
+  global.Element = FakeElement;
+  global.window = { requestAnimationFrame: () => 1, cancelAnimationFrame() {} };
+  try {
+    const host = new LaidOutElement("div");
+    const kinds = {
+      ...twoFiles,
+      manifest: {
+        ...twoFiles.manifest,
+        files: [
+          twoFiles.manifest.files[0],
+          {
+            ...twoFiles.manifest.files[0],
+            id: "f2",
+            kind: "added",
+            old: null,
+            new: { ...twoFiles.manifest.files[0].new, path: "src/deep/added.py" },
+            additions: 1200,
+            deletions: 0,
+          },
+        ],
+        totals: { files: 2, additions: 1201, deletions: 1, exact: true },
+      },
+    };
+    const handle = mountDiffView(host, kinds, { formatInteger }, { changedFiles: sharedTree });
+    const header = host.find("diff-summary-toggle")[0];
+    check("a change set's header is the Diff summary's toggle", header !== undefined);
+    if (header === undefined) {
+      return;
+    }
+    const said = header.text();
+    check(
+      "the header says what the change set holds, in the shell's number format",
+      said.includes("2 changed files") &&
+        said.includes("(1 added, 1 modified)") &&
+        said.includes("+1,201") &&
+        said.includes("−1"),
+      said,
+    );
+    check(
+      "the header names it all for a screen reader",
+      header.getAttribute("aria-label") ===
+        "2 changed files: 1 added, 1 modified; 1,201 lines added, 1 deleted",
+      header.getAttribute("aria-label") ?? "",
+    );
+    check(
+      "the summary starts collapsed",
+      header.getAttribute("aria-expanded") === "false" && header.classList.contains("collapsed"),
+    );
+    check(
+      "the header is a disclosure toggle with the registry's chevron box",
+      header.classList.contains("disclosure-toggle") &&
+        header.find("diff-summary-chevron").length === 1,
+    );
+    check(
+      "nothing of the tree is mounted until it is opened",
+      host.find("diff-summary-body").length === 0 && header.getAttribute("aria-controls") === null,
+    );
+    header.click();
+    await settled();
+    const body = host.find("diff-summary-body")[0];
+    check("opening mounts the tree after the toolbar", body !== undefined);
+    if (body === undefined) {
+      return;
+    }
+    const root = host.children[0];
+    check(
+      "the tree follows the toolbar, above the files",
+      root.children.indexOf(body) === root.children.indexOf(host.find("diff-toolbar")[0]) + 1,
+    );
+    check(
+      "the header says it is open, and what it controls",
+      header.getAttribute("aria-expanded") === "true" &&
+        header.getAttribute("aria-controls") === body.getAttribute("id") &&
+        !body.classList.contains("diff-summary-body-collapsed"),
+    );
+    const rows = () => body.find("diff-summary-row");
+    const names = rows().map((row) => row.dataset.id);
+    check(
+      "the tree draws its folders first, open, then its files",
+      JSON.stringify(names) === JSON.stringify(["src/deep/", "src/deep/added.py", "a.py"]),
+      JSON.stringify(names),
+    );
+    const folder = rows().find((row) => row.dataset.id === "src/deep/");
+    check(
+      "a folder row carries its rolled-up counts",
+      folder?.text().includes("+1,200") && folder.text().includes("−0"),
+      folder?.text() ?? "",
+    );
+    const list = body.children[0];
+    check(
+      "one row takes Tab",
+      rows().filter((row) => row.getAttribute("tabindex") === "0").length === 1,
+    );
+    check("a chord is the browser's", !press(list, "ArrowDown", "metaKey"));
+    check("an arrow is the tree's", press(list, "ArrowDown"));
+    check(
+      "the arrow moved the row that takes Tab, and focus with it",
+      global.document.activeElement?.dataset.id === "src/deep/added.py",
+    );
+    check(
+      "a file the tree names is one the diff holds",
+      handle.scrollToFile("src/deep/added.py").kind === "jumped",
+    );
+    check("Enter on a file is the tree's", press(list, "Enter"));
+    check("a key the tree does not take is left alone", !press(list, "Escape"));
+    header.click();
+    await settled();
+    check(
+      "closing keeps what the tree drew, out of sight",
+      header.getAttribute("aria-expanded") === "false" &&
+        body.classList.contains("diff-summary-body-collapsed") &&
+        rows().length > 0,
+    );
+    handle.dispose();
+    check("disposing the diff removes its tree", body.parentNode === null);
+  } finally {
+    global.document.createElement = createElement;
+    global.getComputedStyle = computed;
+    global.window = view;
+    global.Element = element;
+  }
+}
+
+/**
+ * A long change set's tree draws the rows in its box's view and a window past it, and moves
+ * that window with the box's scroll, as the Pulls tab's tree does.
+ */
+async function windowedSummaryChecks(repoRoot) {
+  const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
+  const createElement = global.document.createElement;
+  const computed = global.getComputedStyle;
+  const view = global.window;
+  global.document.createElement = (tag) => new LaidOutElement(tag);
+  global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
+  const element = global.Element;
+  global.Element = FakeElement;
+  let frame = null;
+  global.window = {
+    requestAnimationFrame(callback) {
+      frame = callback;
+      return 1;
+    },
+    cancelAnimationFrame() {},
+  };
+  try {
+    const { mountSummaryTree, SUMMARY_ROWS_OVERSCAN } = await import(
+      pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-summary.js"))
+        .href
+    );
+    const files = Array.from({ length: 1200 }, (_, at) => ({
+      path: `pkg/file-${String(at).padStart(4, "0")}.py`,
+      previous_path: null,
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+      display: `pkg/file-${String(at).padStart(4, "0")}.py`,
+      previous_display: null,
+    }));
+    const jumps = [];
+    const tree = mountSummaryTree({
+      tree: sharedTree,
+      files,
+      id: "summary",
+      formatCount: (count) => String(count),
+      chevron: () => null,
+      jump: (path) => jumps.push(path),
+    });
+    tree.body.box = { top: 0, bottom: 480, left: 0, right: 600, width: 600, height: 480 };
+    tree.setOpen(true);
+    const drawn = () => tree.body.find("diff-summary-row").length;
+    const visible = 480 / 24;
+    check(
+      "a long tree draws its view and the overscan, not every row",
+      drawn() === visible + SUMMARY_ROWS_OVERSCAN && tree.model.rows().length === 1201,
+      String(drawn()),
+    );
+    const list = tree.body.children[0];
+    list.box = { top: -12000, bottom: -12000 + 1201 * 24 };
+    for (const handler of tree.body.listeners.get("scroll") ?? []) {
+      handler({});
+    }
+    frame?.();
+    const ids = tree.body.find("diff-summary-row").map((row) => row.dataset.id);
+    check(
+      "a scroll moves the window",
+      !ids.includes("pkg/file-0001.py") && ids.includes("pkg/file-0499.py"),
+      `${ids[0]}…${ids.at(-1)}`,
+    );
+    const target = tree.body
+      .find("diff-summary-row")
+      .find((row) => row.dataset.id === "pkg/file-0500.py");
+    target?.click();
+    check("a press on a file jumps the diff to it", jumps.at(-1) === "pkg/file-0500.py");
+    tree.dispose();
+    check("a disposed tree leaves the document", tree.body.parentNode === null);
+  } finally {
+    global.document.createElement = createElement;
+    global.getComputedStyle = computed;
+    global.window = view;
+    global.Element = element;
+  }
+}
+
 async function main() {
   const documentListeners = new Map();
   let hydrationObserver = null;
@@ -257,6 +578,7 @@ async function main() {
     ),
   );
   const byName = new Map(corpus.cases.map((entry) => [entry.name, entry.document]));
+  const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
   const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
   const nextSyntaxUnit = async () => {
     await Promise.resolve();
@@ -825,14 +1147,29 @@ async function main() {
     },
   };
   mountDiffView(many, twoFiles);
-  check("change sets keep the summary", many.find("diff-summary").length === 1);
+  // The count line ("N changed files +A −D") is gone: a change set's totals are its Diff
+  // summary's header, drawn on the shared changed-files tree, and none is drawn without it.
+  check(
+    "a change set without the shared tree draws no count line",
+    many.find("diff-summary").length === 0 && !many.text().includes("changed files"),
+  );
   const hosted = new FakeElement("div");
-  mountDiffView(hosted, twoFiles, undefined, { showSummary: false });
+  mountDiffView(hosted, twoFiles, undefined, { showSummary: false, changedFiles: sharedTree });
   check(
     "revision-hosted change sets leave the aggregate summary to their commit header",
     hosted.find("diff-summary").length === 0,
   );
   check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
+  const singleSummarized = new FakeElement("div");
+  mountDiffView(singleSummarized, byName.get("modified-with-heading"), undefined, {
+    changedFiles: sharedTree,
+  });
+  check(
+    "one-file documents have no Diff summary",
+    singleSummarized.find("diff-summary").length === 0,
+  );
+  await diffSummaryChecks(mountDiffView, twoFiles);
+  await windowedSummaryChecks(repoRoot);
 
   // A long contiguous run folds behind an expander; ordinary runs do not.
   const longDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));

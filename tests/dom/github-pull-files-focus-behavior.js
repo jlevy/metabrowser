@@ -540,8 +540,8 @@ async function refreshingPaint(mountFileTree) {
   let answerAsk = () => {};
   const view = mountFileTree({
     decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
-      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
-      formatCount: (count) => count.toLocaleString("en-US"),
+    tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     number: 7,
     autoExpandFiles: 3000,
     current: null,
@@ -618,8 +618,8 @@ async function walkClaims(mountFileTree) {
   const claims = [];
   const view = mountFileTree({
     decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
-      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
-      formatCount: (count) => count.toLocaleString("en-US"),
+    tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     number: 7,
     autoExpandFiles: 3000,
     current: null,

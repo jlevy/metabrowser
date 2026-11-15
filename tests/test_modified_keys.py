@@ -154,6 +154,13 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     "builtin_plugins/diff/diff-view.js": (
         Listener("a file jump's pin release", None, via=("release",)),
     ),
+    "builtin_plugins/diff/diff-summary.js": (
+        Listener(
+            "the Diff summary tree's arrows, Home, End, Enter, and Space",
+            _GUARD,
+            checks=("tests/dom/diff-view-behavior.js",),
+        ),
+    ),
     "builtin_plugins/github/pulls-panel.js": (Listener("the reader's last input time", None),),
     "builtin_plugins/github/pull-page.js": (
         Listener(

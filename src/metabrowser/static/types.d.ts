@@ -3361,7 +3361,9 @@ declare global {
     current: boolean;
   };
 
-  type MetabrowserChangedFilesRow = MetabrowserChangedFilesFolderRow | MetabrowserChangedFilesFileRow;
+  type MetabrowserChangedFilesRow =
+    | MetabrowserChangedFilesFolderRow
+    | MetabrowserChangedFilesFileRow;
 
   type MetabrowserChangedFilesSummary = {
     files: string;
@@ -3395,7 +3397,9 @@ declare global {
       expansion: MetabrowserChangedFilesExpansion,
       path: string,
     ): MetabrowserChangedFilesExpansion;
-    statusBreakdown(statuses: Iterable<string>): Array<{ status: string; count: number; word: string }>;
+    statusBreakdown(
+      statuses: Iterable<string>,
+    ): Array<{ status: string; count: number; word: string }>;
     toggleFolder(
       expansion: MetabrowserChangedFilesExpansion,
       row: { ids: ReadonlyArray<string>; expanded: boolean },

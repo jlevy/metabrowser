@@ -337,6 +337,50 @@ const KIND_LETTERS = /** @type {Record<string, string>} */ ({
 });
 
 /**
+ * What a change set's tree calls each change kind: the statuses of the shell's changed-files
+ * tree (static/changed-files-tree.js), which are GitHub's, so a diff's Diff summary and the
+ * Pulls tab's tree of a pull request's files read alike.
+ */
+const SUMMARY_STATUSES = /** @type {Record<string, string>} */ ({
+  added: "added",
+  deleted: "removed",
+  modified: "modified",
+  renamed: "renamed",
+  copied: "copied",
+  type_changed: "changed",
+  unmerged: "unmerged",
+});
+
+/**
+ * One change as a row of its change set's tree: the path it has now, or had, for a file the
+ * change deleted, which is the path the diff's jump finds it by; the path it came from, for a
+ * rename or a copy; its status in the tree's words; and its line counts, null where the
+ * change has none, as a binary file's. A path is shown as the file's bar shows it.
+ *
+ * @param {Record<string, unknown>} change A validated change.
+ * @returns {MetabrowserChangedFileRow}
+ */
+export function changeSummaryRow(change) {
+  const kind = String(change.kind);
+  const oldSide = /** @type {{path?: unknown} | null | undefined} */ (change.old);
+  const newSide = /** @type {{path?: unknown} | null | undefined} */ (change.new);
+  const path = String((newSide ?? oldSide)?.path ?? "");
+  const previous =
+    (kind === "renamed" || kind === "copied") && oldSide ? String(oldSide.path ?? "") : null;
+  /** @param {unknown} count */
+  const lines = (count) => (typeof count === "number" ? count : null);
+  return {
+    path,
+    previous_path: previous,
+    status: SUMMARY_STATUSES[kind] ?? kind,
+    additions: lines(change.additions),
+    deletions: lines(change.deletions),
+    display: path,
+    previous_display: previous,
+  };
+}
+
+/**
  * The tree/list indicator for one change: letter, similarity, and the
  * transition notes GitHub-style badges are built from.
  *

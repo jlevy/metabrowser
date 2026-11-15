@@ -319,6 +319,25 @@ function snapshotHost(comparison) {
   };
 }
 
+/**
+ * The changed-files tree a multi-file diff's Diff summary is drawn on, the shell's
+ * `changed-files-tree` bundle, which the Pulls tab draws a pull request's files with too. It
+ * is asked for beside the diff's own request, so it is in hand when the diff mounts: a cold
+ * load is one small local request. A diff whose tree does not load shows no summary, and says
+ * why in the console; its files are still there.
+ *
+ * @returns {Promise<MetabrowserChangedFilesTree | null>}
+ */
+function changedFilesTree() {
+  if (typeof mb.loadChangedFilesTree !== "function") {
+    return Promise.resolve(null);
+  }
+  return mb.loadChangedFilesTree().catch((error) => {
+    console.error("metabrowser diff: the Diff summary is unavailable", error);
+    return null;
+  });
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -348,6 +367,9 @@ mb.registerView("diff", "diff", {
     const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
     const markdown = markdownLayer(ctx.comparison);
+    // A commit's view gives the commit's own totals (`showSummary` below), so it has no summary
+    // to draw and asks for no tree.
+    const summaryTree = ctx.revision ? Promise.resolve(null) : changedFilesTree();
     let payload;
     try {
       payload = revision
@@ -425,6 +447,10 @@ mb.registerView("diff", "diff", {
     }
     const files = /** @type {{files: Record<string, unknown>[]}} */ (result.document.manifest)
       .files;
+    const changedFiles = files.length !== 1 ? await summaryTree : null;
+    if (signal?.aborted) {
+      return null;
+    }
     const rendered =
       markdown !== null &&
       markdownViews !== null &&
@@ -434,6 +460,7 @@ mb.registerView("diff", "diff", {
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
+      changedFiles,
       viewFile,
       ...(!rendered
         ? {}

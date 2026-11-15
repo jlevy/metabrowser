@@ -1,5 +1,8 @@
 // Unified diff renderer over File Diff Format.
 //
+// A diff of more than one file opens with its Diff summary, the toolbar's header that says
+// what the change set holds and opens to its files as a tree by folder (diff-summary.js).
+//
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
 // heading), change notes, the inline +N −N stat pair, the View file
@@ -12,7 +15,7 @@
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
-import { fileChangeLabel, validateDocument } from "./diff-model.js";
+import { changeSummaryRow, fileChangeLabel, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 
@@ -28,6 +31,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
+ * @property {MetabrowserPublicSdk["formatInteger"]} [formatInteger]
  */
 
 /**
@@ -83,6 +87,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {import("./diff-view-file.js").ViewFileOpener | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
+ * @property {MetabrowserChangedFilesTree | null} changedFiles The shared tree the Diff
+ *   summary is drawn on, or null where it could not be loaded.
  */
 
 /**
@@ -1348,48 +1354,205 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
 }
 
 /**
- * The layout control is always present in the shell. Multi-file totals
- * share its toolbar; single-file views avoid repeating their file bar.
+ * The shell's number format, which every count a reader sees is written in, or the
+ * browser's own outside the shell.
+ *
+ * @param {DiffViewApi | undefined} api
+ * @returns {(count: number) => string}
+ */
+function countFormatter(api) {
+  const format = api?.formatInteger;
+  if (typeof format === "function") {
+    return (count) => format(count);
+  }
+  const fallback = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+  return (count) => fallback.format(count);
+}
+
+/** Each Diff summary's tree has an id of its own, which its header controls. */
+let summaryIds = 0;
+
+/**
+ * A multi-file diff's Diff summary: the header that says what the change set holds, "35
+ * changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423", and is the disclosure
+ * toggle of its files as a tree by folder. It starts collapsed, and the tree is not mounted,
+ * or its module imported, until the header is first opened; hovering or focusing the header
+ * asks for the module first. Its words are the shared model's (`describeChanges`), from the
+ * manifest's totals and the kinds of the files it lists. A change set of no files has
+ * nothing to open, so its header is a line.
+ *
  * @param {Record<string, unknown>} totals
+ * @param {Record<string, unknown>[]} files
+ * @param {MountedDiffState} view
+ * @param {MetabrowserChangedFilesTree} model
+ * @returns {{element: HTMLElement, dispose: () => void}}
+ */
+function renderDiffSummary(totals, files, view, model) {
+  const rows = files.map(changeSummaryRow);
+  const formatCount = countFormatter(view.api);
+  /** @param {unknown} value */
+  const lines = (value) => (typeof value === "number" ? value : null);
+  const said = model.describeChanges(
+    {
+      files: Number(totals.files),
+      additions: lines(totals.additions),
+      deletions: lines(totals.deletions),
+      exact: totals.exact === true,
+    },
+    rows.map((row) => row.status),
+    formatCount,
+  );
+  const parts = [el("span", "diff-summary-files", said.files)];
+  if (said.breakdown !== "") {
+    parts.push(el("span", "diff-summary-breakdown", `(${said.breakdown})`));
+  }
+  const stats = el("span", "diff-summary-stats");
+  stats.append(
+    el("span", "diff-stat-add", said.additions),
+    el("span", "diff-stat-del", said.deletions),
+  );
+  parts.push(stats);
+  if (said.estimated) {
+    parts.push(el("span", "diff-summary-note", "(estimated)"));
+  }
+  if (rows.length === 0) {
+    const line = el("div", "diff-summary");
+    line.append(...parts);
+    return { element: line, dispose: () => {} };
+  }
+  const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
+  toggle.setAttribute("type", "button");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-label", said.label);
+  const chevron = el("span", "diff-summary-chevron");
+  chevron.setAttribute("aria-hidden", "true");
+  const chevronSvg = shellIcon("toggle");
+  if (chevronSvg) {
+    chevron.innerHTML = chevronSvg;
+  } else {
+    chevron.textContent = "›";
+  }
+  toggle.append(chevron, ...parts);
+
+  summaryIds += 1;
+  const id = `diff-summary-tree-${summaryIds}`;
+  /** @type {ReturnType<typeof import("./diff-summary.js").mountSummaryTree> | null} */
+  let tree = null;
+  /** @type {Promise<typeof import("./diff-summary.js")> | null} */
+  let loading = null;
+  let disposed = false;
+  const load = () => {
+    loading ??= import("./diff-summary.js").catch((error) => {
+      loading = null;
+      throw error;
+    });
+    return loading;
+  };
+  const listening = new AbortController();
+  const { signal } = listening;
+  toggle.addEventListener("pointerenter", () => void load().catch(() => {}), { signal });
+  toggle.addEventListener("focus", () => void load().catch(() => {}), { signal });
+  toggle.addEventListener(
+    "click",
+    async () => {
+      if (tree === null) {
+        let module;
+        try {
+          module = await load();
+        } catch (error) {
+          console.error("metabrowser diff: the Diff summary's tree did not load", error);
+          return;
+        }
+        if (disposed || view.disposed) {
+          return;
+        }
+        tree ??= measureProjection(
+          view.api,
+          "diffSummary:mount",
+          () =>
+            module.mountSummaryTree({
+              tree: model,
+              files: rows,
+              id,
+              formatCount,
+              // The header's own chevron, for each folder row of the tree.
+              chevron: () => {
+                if (!chevronSvg) {
+                  return null;
+                }
+                const box = el("span", "");
+                box.innerHTML = chevronSvg;
+                return box.firstElementChild;
+              },
+              jump: (path) => {
+                jumpToFile(view, path);
+              },
+            }),
+          { file_count: rows.length },
+        );
+        toggle.setAttribute("aria-controls", id);
+        toggle.closest(".diff-toolbar")?.after(tree.body);
+      }
+      const open = !tree.isOpen();
+      const shown = tree;
+      measureProjection(view.api, "diffSummary:toggle", () => shown.setOpen(open), {
+        file_count: rows.length,
+        open,
+      });
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.classList.toggle("expanded", open);
+      toggle.classList.toggle("collapsed", !open);
+    },
+    { signal },
+  );
+  return {
+    element: toggle,
+    dispose() {
+      disposed = true;
+      listening.abort();
+      tree?.dispose();
+      tree = null;
+    },
+  };
+}
+
+/**
+ * The layout control is always present in the shell. A multi-file diff's toolbar leads with
+ * its Diff summary; single-file views avoid repeating their file bar.
+ * @param {Record<string, unknown>} totals
+ * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, view, showSummary) {
+function renderDiffToolbar(totals, files, view, showSummary) {
   const toolbar = el("div", "diff-toolbar");
-  if (showSummary && Number(totals.files) !== 1) {
-    const plus = totals.additions === null ? "?" : String(totals.additions);
-    const minus = totals.deletions === null ? "?" : String(totals.deletions);
-    const summary = el("div", "diff-summary");
-    summary.append(
-      el(
-        "span",
-        "diff-summary-files",
-        `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
-      ),
-      el("span", "diff-stat-add", `+${plus}`),
-      el("span", "diff-stat-del", `−${minus}`),
-    );
-    if (!totals.exact) {
-      summary.append(el("span", "diff-summary-note", "(estimated)"));
-    }
-    toolbar.append(summary);
+  /** @type {(() => void) | null} */
+  let disposeSummary = null;
+  if (showSummary && Number(totals.files) !== 1 && view.changedFiles !== null) {
+    const summary = renderDiffSummary(totals, files, view, view.changedFiles);
+    disposeSummary = summary.dispose;
+    toolbar.append(summary.element);
   }
   const filterControls = view.api?.filterControls;
   if (!filterControls) {
-    return { toolbar, unbind: () => {} };
+    return { toolbar, unbind: () => disposeSummary?.() };
   }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
   renderLayoutControl(view);
   toolbar.append(control);
-  const unbind = filterControls.bind(control, {
+  const unbindControls = filterControls.bind(control, {
     onChange(key, value, select) {
       if (key === "diff-layout" && select === "one") {
         setLayout(view, value);
       }
     },
   });
+  const unbind = () => {
+    unbindControls();
+    disposeSummary?.();
+  };
   // Once, after the first draw; each later draw retargets it, and dispose() detaches it.
   // Every host reaches this view through the plugin's render, so a diff file, the Git
   // commit view, and a pull request's Changes all have `L`.
@@ -2601,13 +2764,16 @@ function measureInContainer(root, container) {
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
  *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
- *   markdownHoldMs?: number
+ *   markdownHoldMs?: number,
+ *   changedFiles?: MetabrowserChangedFilesTree | null
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
  *   *markdownHoldMs* is how long the first screen's Markdown files wait for Rendered
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
+ *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
+ *   it a multi-file diff has no summary.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -2657,6 +2823,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     viewFile: null,
     viewFileBusy: null,
     yielders: new Set(),
+    changedFiles: options.changedFiles ?? null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -2707,7 +2874,12 @@ export function mountDiffView(container, document_, api, options = {}) {
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
   const totals = manifest.totals;
   view.listTruncated = manifest.truncated === true;
-  const { toolbar, unbind } = renderDiffToolbar(totals, view, options.showSummary !== false);
+  const { toolbar, unbind } = renderDiffToolbar(
+    totals,
+    manifest.files,
+    view,
+    options.showSummary !== false,
+  );
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
