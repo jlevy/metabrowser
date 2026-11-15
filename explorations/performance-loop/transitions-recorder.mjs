@@ -1324,6 +1324,10 @@ export async function launchBrowser({
     const kindOf = (sid) => (sid === page.sessionId ? "page" : workers.has(sid) ? "worker" : null);
     const connection = conn;
     conn.listeners.add((method, params, sid) => {
+      if (method === "Target.detachedFromTarget") {
+        workers.delete(params.sessionId);
+        return;
+      }
       if (method === "Target.attachedToTarget") {
         const child = connection.adopt(params.sessionId, params.targetInfo.targetId);
         workers.set(params.sessionId, params.targetInfo.type);
@@ -1400,6 +1404,7 @@ export async function launchBrowser({
       net: log.net,
       exceptions,
       consoleErrors,
+      workers,
       viewport: { width, height },
     };
   } catch (error) {
@@ -1903,6 +1908,56 @@ export function driver(browser) {
     }
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...k, text: undefined });
   }
+  /**
+   * Retained memory, read over the DevTools protocol after a full garbage collection
+   * (revision 6). The page's main-thread V8 heap (`Runtime.getHeapUsage`: `usedSize`, and
+   * where Chrome reports it the embedder heap, Blink's own objects, DOM nodes among them,
+   * as `embedderHeapUsedSize`), the renderer's live DOM nodes, documents, and event
+   * listeners (`Memory.getDOMCounters`: attached and detached nodes alike, so a surface
+   * kept off the document still counts), the elements attached to the document, and the
+   * V8 heaps of the page's dedicated workers, each collected first. It does not count
+   * GPU memory, decoded images, compositor tiles, layout and style objects outside the
+   * heaps, the HTTP and memory caches, or any other process. The collection is not what
+   * a reader's page does on its own, so a reading taken between two transitions changes
+   * what the later one measures; one taken after a journey's last transition changes
+   * nothing measured.
+   */
+  async function memory() {
+    const t0 = Date.now();
+    const kb = (bytes) => (typeof bytes === "number" ? Math.round(bytes / 1024) : null);
+    await page.send("HeapProfiler.collectGarbage", {}, 60000);
+    const heap = await page.send("Runtime.getHeapUsage", {}, 10000);
+    const dom = await page.send("Memory.getDOMCounters", {}, 10000);
+    let workers = 0;
+    let workerHeap = 0;
+    for (const [sid, type] of browser.workers) {
+      const session = browser.conn.sessions.get(sid);
+      if (type !== "worker" || !session) {
+        continue;
+      }
+      try {
+        await session.send("HeapProfiler.collectGarbage", {}, 30000);
+        const h = await session.send("Runtime.getHeapUsage", {}, 10000);
+        workers += 1;
+        workerHeap += h.usedSize;
+      } catch (_error) {
+        // A worker that has exited holds no memory.
+      }
+    }
+    const elements = await evaluate("document.getElementsByTagName('*').length");
+    return {
+      jsHeapUsedKb: kb(heap.usedSize),
+      jsHeapTotalKb: kb(heap.totalSize),
+      embedderHeapUsedKb: kb(heap.embedderHeapUsedSize),
+      domNodes: dom.nodes,
+      documents: dom.documents,
+      listeners: dom.jsEventListeners,
+      elements,
+      workers,
+      workerHeapUsedKb: kb(workerHeap),
+      gcMs: Date.now() - t0,
+    };
+  }
   async function historyStep(delta) {
     const h = await page.send("Page.getNavigationHistory");
     const entry = h.entries[h.currentIndex + delta];
@@ -1932,6 +1987,8 @@ export function driver(browser) {
    *   `converged` and recorded as `landing`; null when the subject was never ready. A ready
    *   predicate with several branches may name the one that held first in `readyBranch`,
    *   cleared at arm and recorded as `landingAtReady`.
+   * spec.memory: true to read retained memory after the transition (`memory`), which
+   *   collects garbage and so changes what the journey's later transitions measure.
    */
   async function measure(spec) {
     const settleMs = spec.settleMs ?? 400;
@@ -2141,6 +2198,9 @@ export function driver(browser) {
         }
       }
     }
+    // Retained memory after this transition, when the round asked for it: read last, after
+    // every other field, since its garbage collection changes what follows (`memory`).
+    const retained = spec.memory ? await memory() : undefined;
     const frameAccount = accountFrames({
       frames: raw.frames,
       origin,
@@ -2309,6 +2369,7 @@ export function driver(browser) {
       ),
       spans: raw.spans,
       dom: { start: raw.dom0, end: raw.dom1 },
+      memory: retained,
       route: raw.path,
       exceptions,
       consoleErrors,
@@ -2330,5 +2391,6 @@ export function driver(browser) {
     park,
     navigate,
     measure,
+    memory,
   };
 }

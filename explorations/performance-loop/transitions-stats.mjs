@@ -137,6 +137,21 @@ export const METRICS = [
   C("palette_movement_path_px", (t) => t.movementByGroup?.palette?.path),
   C("list_rows_replaced_below_selection", (t) => t.list?.rowsReplacedBelowSelection),
   C("list_row_replacements", (t) => t.list?.rowReplacements),
+  // Retained memory after a garbage collection (revision 6), read at every journey's end
+  // and after a transition a round names with --memory-after. Judged on its ranges.
+  ...[
+    ["memory_js_heap_kb", (t) => t.memory?.jsHeapUsedKb, "lower"],
+    ["memory_embedder_heap_kb", (t) => t.memory?.embedderHeapUsedKb, "lower"],
+    ["memory_dom_nodes", (t) => t.memory?.domNodes, "lower"],
+    ["memory_worker_heap_kb", (t) => t.memory?.workerHeapUsedKb, "lower"],
+    ["memory_listeners", (t) => t.memory?.listeners, null],
+    ["memory_documents", (t) => t.memory?.documents, null],
+  ].map(([key, get, better]) => ({
+    ...C(key, get, better),
+    memory: true,
+    // A journey's end whose reading failed has a missing value, not none to compare.
+    declared: (t) => t.end === true && !t.memory,
+  })),
   ...["static", "plugin_static", "kpress_static", "data", "document"].flatMap((family) =>
     [
       ["network", "lower"],
@@ -211,22 +226,44 @@ export function groupConditions(rows, { allowMixed = false } = {}) {
 export const pairKey = (row) => row.pair_key ?? `${row.series}#${row.pair}`;
 
 /**
+ * The memory reading taken when a journey ended, as a row of its own, `<journey>.end`,
+ * which carries the memory metrics alone (revision 6).
+ */
+// A reading that failed is `null`, and its metrics are missing values, which compare names.
+export const journeyEnd = (journey) =>
+  journey.memory === undefined
+    ? null
+    : { id: `${journey.name}.end`, subject: "journey end", memory: journey.memory, end: true };
+
+/**
  * transition id -> { subjects, runs, values: metric key -> [{ v, pair }] } across the
  * condition's valid runs. `runs` counts the runs that measured the transition at all.
+ * A journey's end reading is collected as `<journey>.end`, with `end` set.
  */
 export function collect(condition) {
   const byId = new Map();
   for (const run of condition.valid) {
     const pair = pairKey(run);
     for (const journey of run.journeys ?? []) {
-      for (const t of journey.transitions ?? []) {
+      const end = journeyEnd(journey);
+      for (const t of [...(journey.transitions ?? []), ...(end ? [end] : [])]) {
         if (!byId.has(t.id)) {
-          byId.set(t.id, { id: t.id, subjects: new Set(), runs: 0, values: {}, declared: {} });
+          byId.set(t.id, {
+            id: t.id,
+            subjects: new Set(),
+            runs: 0,
+            values: {},
+            declared: {},
+            end: t.end === true,
+          });
         }
         const entry = byId.get(t.id);
         entry.subjects.add(t.subject);
         entry.runs += 1;
         for (const m of METRICS) {
+          if (t.end && !m.memory) {
+            continue;
+          }
           const v = m.get(t);
           if (v !== null && v !== undefined) {
             entry.values[m.key] ??= [];
@@ -513,9 +550,10 @@ export function compareRuns(
       `runs are scenario revision ${revision}, compared with each other; this reads revision ${SCENARIO_REVISION}${REVISION_NOTES[revision] ? `, and ${REVISION_NOTES[revision]}` : ""}`,
     );
   }
-  if (flags.headed || flags.no_warmup || flags.journey_subset) {
+  const memoryAfter = flags.memory_after ?? [];
+  if (flags.headed || flags.no_warmup || flags.journey_subset || memoryAfter.length) {
     notes.push(
-      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys"].filter(Boolean).join(", ")}`,
+      `NOT THE STANDARD REGIME: ${[flags.headed && "headed", flags.no_warmup && "no warm-up pass", flags.journey_subset && "a subset of the journeys", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}, whose garbage collection changes what each journey measures after it`].filter(Boolean).join(", ")}`,
     );
   }
   const harnesses = new Set(
@@ -813,6 +851,7 @@ const TABLES = [
     columns: [
       ["shell_tools_ready_ms", "Shell tools ready ms"],
       ["styled_markdown_ms", "Styled Markdown ms"],
+      ["source_highlighted_ms", "Source highlighted ms"],
       ["pr_header_ms", "PR header ms"],
       ["pr_description_shown_ms", "PR description shown ms"],
       ["pr_description_final_ms", "PR description final ms"],
@@ -847,6 +886,27 @@ const TABLES = [
     families: ["static", "plugin_static", "kpress_static", "data", "document"],
     keep: (_v, id) => id.startsWith("landing.") || id.startsWith("reveal."),
   },
+  {
+    title: "Retained memory, after a garbage collection",
+    sparse: true,
+    ends: true,
+    columns: [
+      ["memory_js_heap_kb", "JS heap KB"],
+      ["memory_embedder_heap_kb", "Embedder heap KB"],
+      ["memory_dom_nodes", "DOM nodes"],
+      ["memory_worker_heap_kb", "Worker heaps KB"],
+      ["memory_listeners", "Listeners"],
+      ["memory_documents", "Documents"],
+    ],
+  },
+  {
+    title: "The recorder's own read",
+    sparse: true,
+    columns: [
+      ["read_cost_max_ms", "Longest read ms"],
+      ["read_cost_to_ready_ms", "Reads to ready ms"],
+    ],
+  },
 ];
 
 /** Markdown tables of one condition's valid runs; times are whole milliseconds. */
@@ -868,6 +928,10 @@ export function summaryTables(condition) {
     };
     const rows = [];
     for (const entry of byId.values()) {
+      // A journey's end reading appears only in the table of what it holds.
+      if (entry.end && !table.ends) {
+        continue;
+      }
       const cells = columns.map(([key]) => cell(entry, key));
       if (table.sparse && cells.every((c) => c === "n/a")) {
         continue;
@@ -1056,6 +1120,7 @@ export function sampleRow(r) {
       chrome: j.chrome,
       refusals: scrubRefusals(j.refusals),
       facts: j.facts,
+      memory: j.memory,
       transitions: (j.transitions ?? []).map(keepTransition),
     })),
   };

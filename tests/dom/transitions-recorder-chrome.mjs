@@ -6,11 +6,12 @@
 // journeys' Commits landing (revision 5) on a page that lands on the prompt, on the newest
 // commit, or on another commit. Revision 6's groups: `search`, content laid out outside an
 // ancestor's box, hidden text ahead, a long document's bounds, a placeholder root, and
-// collapsed or parked retained pages; and `window`, frames Chrome stamps before the input
-// and the origin's prompt beside the pending modifier.
+// collapsed or parked retained pages; `window`, frames Chrome stamps before the input and
+// the origin's prompt beside the pending modifier; `readings`, retained memory, time to
+// highlighted, and the dwell journey on a stand-in Files tab.
 //
 //   node tests/dom/transitions-recorder-chrome.mjs \
-//     frames|frames2|content|network|landing|search|window <profile dir>
+//     frames|frames2|content|network|landing|search|window|readings <profile dir>
 //
 // The profile directory is the caller's: tests/test_transitions_instrument.py creates it,
 // runs this in a process group of its own, stops that whole group however the run ends,
@@ -26,7 +27,7 @@ const HERE = import.meta.dirname;
 const { launchBrowser, driver, sleep } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-recorder.mjs")
 );
-const { COMMITS_LANDING } = await import(
+const { COMMITS_LANDING, MILESTONES, SUBJECTS, runJourney } = await import(
   path.resolve(HERE, "../../explorations/performance-loop/transitions-journeys.mjs")
 );
 
@@ -265,6 +266,85 @@ for (const [name, fn] of Object.entries({
 }
 </script></body></html>`;
 
+// The Files tab as the journeys' file predicates read it: a tree of folders and files, a
+// route per file, and the preview. A click on a file row shows it on its own address; a
+// click on a folder row expands it and shows its overview. A \`.js\` file is a source
+// view whose code blocks a highlighter marks \`hljs\` some time after it shows, as the
+// shell's highlight.js pass does: \`big.js\` 300 and 450 ms later, block by block;
+// \`plain.js\` never. Each row records when the pointer entered it and when it was
+// pressed, for the dwell sweep.
+const filesPage = (
+  tree,
+) => `<!doctype html><html><head><meta charset="utf-8"><title>files probe</title>
+<style>
+  body { margin: 0; font: 14px sans-serif; }
+  .tree-item { display: block; height: 22px; width: 400px; }
+  .tree-children-collapsed { display: none; }
+  #preview-pane { min-height: 400px; }
+</style></head><body>
+<div class="nav-tab-bar"><button class="tab-btn active" data-tab="files">Files</button></div>
+<div id="tree-content"><div id="tab-files" data-tab-content="files"></div></div>
+<div id="preview-pane"></div>
+<script>
+const TREE = ${JSON.stringify(tree)};
+const pane = document.getElementById("preview-pane");
+const files = document.getElementById("tab-files");
+window.dwellSeen = {};
+const rowFor = (p, folder) => {
+  const r = document.createElement("div");
+  r.className = "tree-item" + (folder ? " tree-folder" : "");
+  r.dataset.path = p; r.textContent = p.split("/").pop();
+  if (folder) { r.setAttribute("aria-expanded", "false"); }
+  r.addEventListener("mouseenter", (e) => { r.enteredAt = e.timeStamp; });
+  r.addEventListener("pointerdown", (e) => { window.dwellSeen[p] = r.enteredAt === undefined ? null : e.timeStamp - r.enteredAt; });
+  r.addEventListener("click", () => open(p, folder));
+  return r;
+};
+for (const [folder, names] of Object.entries(TREE)) {
+  if (folder === "") { for (const n of names) { files.appendChild(rowFor(n, false)); } continue; }
+  files.appendChild(rowFor(folder, true));
+  const kids = document.createElement("div"); kids.className = "tree-children tree-children-collapsed";
+  for (const n of names) { kids.appendChild(rowFor(folder + "/" + n, false)); }
+  files.appendChild(kids);
+}
+const highlight = (code) => { code.innerHTML = '<span class="hljs-keyword">const</span> ' + code.textContent; code.classList.add("hljs"); };
+function render(p, folder) {
+  pane.dataset.renderedPath = p;
+  for (const r of files.querySelectorAll(".tree-item")) { r.classList.toggle("selected", r.dataset.path === p); }
+  const v = document.createElement("div"); v.dataset.activeView = "true";
+  if (p.endsWith(".js")) {
+    v.innerHTML = '<pre class="code-block"><code class="language-javascript">x = 1;</code><code class="language-javascript">y = 2;</code></pre>';
+    if (p === "big.js") {
+      const codes = v.querySelectorAll("code");
+      setTimeout(() => highlight(codes[0]), 300);
+      setTimeout(() => highlight(codes[1]), 450);
+    }
+  } else {
+    v.textContent = (folder ? "overview of " : "contents of ") + p;
+  }
+  pane.replaceChildren(v);
+}
+function open(p, folder) {
+  if (folder) {
+    const row = files.querySelector('.tree-folder[data-path="' + p + '"]');
+    const open = row.getAttribute("aria-expanded") !== "true";
+    row.setAttribute("aria-expanded", String(open));
+    row.nextElementSibling.classList.toggle("tree-children-collapsed", !open);
+  }
+  history.pushState(null, "", "/view/" + p + (folder ? "/" : ""));
+  render(p, folder);
+}
+const start = decodeURIComponent(location.pathname).replace(/^\\/view\\//, "");
+render(start.replace(/\\/$/, ""), start.endsWith("/"));
+</script></body></html>`;
+
+// The readings group's tree: the landing file, two source files, and the dwell subjects.
+const FILES_TREE = {
+  "": [SUBJECTS.landing, "big.js", "plain.js"],
+  docs: SUBJECTS.dwell.files.map((f) => f.replace(/^docs\//, "")),
+};
+const FILES_PAGE = filesPage(FILES_TREE);
+
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
@@ -291,6 +371,9 @@ const server = http.createServer((req, res) => {
   } else if (u.pathname === "/view/search") {
     res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
     res.end(SEARCH_PAGE);
+  } else if (u.pathname.startsWith("/view/")) {
+    res.writeHead(200, { "content-type": "text/html", "cache-control": "no-store" });
+    res.end(FILES_PAGE);
   } else if (u.pathname === "/slow.png") {
     setTimeout(() => {
       res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
@@ -464,6 +547,7 @@ try {
     landing: ["landing", "to-git"],
     search: ["search", "go-reset"],
     window: ["search", "go-reset"],
+    readings: [SUBJECTS.landing, "tab-files"],
   }[group] ?? ["probe", "go-reset"];
   await d.navigate(`${base}/view/${pagePath}`);
   assert.ok(
@@ -1045,9 +1129,89 @@ try {
       assert.ok(r.blankFramesBeforeReady >= 3, JSON.stringify(r.frameStates));
       assert.equal(r.blankFramesOriginPrompt, r.blankFramesBeforeReady);
     });
+  } else if (group === "readings") {
+    // Revision 6's new readings: retained memory, time to highlighted, and the dwell sweep.
+    const fileOpen = (p) => `() => {
+      if (decodeURIComponent(location.pathname) !== "/view/" + ${JSON.stringify(p)}) { return false; }
+      const pane = document.getElementById("preview-pane");
+      const a = pane.querySelector(':scope > [data-active-view="true"]');
+      return pane.dataset.renderedPath === ${JSON.stringify(p)} && !!a && window.__tr.hasUseful(a);
+    }`;
+    const openFile = (p, extra = {}) =>
+      take({
+        id: `open.${p}`,
+        subject: p,
+        input: { kind: "click", selector: `#tab-files .tree-item[data-path="${p}"]` },
+        ready: fileOpen(p),
+        converged: `() => ""`,
+        settleMs: 300,
+        timeoutMs: 5000,
+        ...extra,
+      });
+    await check("retained memory is read after a garbage collection", async () => {
+      const m0 = await d.memory();
+      await d.evaluate(
+        `window.retained = Array.from({ length: 20000 }, () => document.createElement("div")); true`,
+      );
+      const m1 = await d.memory();
+      await d.evaluate("window.retained = null; true");
+      const m2 = await d.memory();
+      assert.ok(m0.jsHeapUsedKb > 0 && m0.elements > 0, JSON.stringify(m0));
+      assert.ok(m1.domNodes - m0.domNodes >= 20000, `${m0.domNodes} then ${m1.domNodes}`);
+      assert.ok(m1.domNodes - m2.domNodes >= 19000, `${m1.domNodes} then ${m2.domNodes}`);
+      assert.equal(m1.elements, m0.elements, "detached nodes are not attached elements");
+      // A dedicated worker's heap is read on its own session.
+      await d.evaluate(`new Promise((resolve) => {
+        const src = "self.big = new Array(1000000).fill(1); postMessage(1);";
+        window.heldWorker = new Worker(URL.createObjectURL(new Blob([src])));
+        window.heldWorker.onmessage = () => resolve(true);
+      })`);
+      const m3 = await d.memory();
+      assert.equal(m3.workers, 1, JSON.stringify(m3));
+      assert.ok(m3.workerHeapUsedKb > 2000, JSON.stringify(m3));
+      await d.evaluate("window.heldWorker.terminate(); true");
+    });
+    await check("a transition can carry its retained memory", async () => {
+      const r = await openFile("plain.js", { memory: true });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      assert.ok(r.memory?.domNodes > 0 && r.memory.jsHeapUsedKb > 0, JSON.stringify(r.memory));
+    });
+    await check("time to highlighted is when every code block is marked", async () => {
+      const milestones = { sourceHighlighted: MILESTONES.sourceHighlighted("big.js") };
+      const r = await openFile("big.js", { milestones });
+      assert.equal(r.ok, true, JSON.stringify(r.refusals));
+      const at = r.milestones.sourceHighlighted;
+      // The second of the two blocks is marked 450 ms after the file shows.
+      assert.ok(
+        at >= r.paintedReadyMs + 400,
+        `highlighted ${at}, painted ready ${r.paintedReadyMs}`,
+      );
+      const never = await openFile("plain.js", {
+        milestones: { sourceHighlighted: MILESTONES.sourceHighlighted("plain.js") },
+        milestoneTimeoutMs: 1500,
+      });
+      assert.equal(never.ok, true, JSON.stringify(never.refusals));
+      assert.equal(never.milestones.sourceHighlighted, null);
+      assert.deepEqual(never.milestonesMissing, ["sourceHighlighted"]);
+    });
+    await check("the dwell journey rests on each row the registered time", async () => {
+      const rows = [];
+      await runJourney("dwell", d, base, rows, {});
+      const D = SUBJECTS.dwell;
+      assert.deepEqual(
+        rows.map((r) => [r.id, r.subject, r.ok]),
+        D.ms.map((ms, i) => [`dwell.hover_click.${ms}`, D.files[i], true]),
+        JSON.stringify(rows.map((r) => r.refusals)),
+      );
+      const seen = await d.evaluate("window.dwellSeen");
+      for (const [i, ms] of D.ms.entries()) {
+        const rested = seen[D.files[i]];
+        assert.ok(rested >= ms - 2 && rested < ms + 300, `${ms} ms dwell rested ${rested} ms`);
+      }
+    });
   } else {
     throw new Error(
-      `unknown group ${group}; frames, frames2, content, network, landing, search, or window`,
+      `unknown group ${group}; frames, frames2, content, network, landing, search, window, or readings`,
     );
   }
 } finally {
