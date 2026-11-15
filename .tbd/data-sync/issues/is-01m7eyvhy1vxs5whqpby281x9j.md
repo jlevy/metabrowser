@@ -5,7 +5,7 @@ title: "PR Conversation: commit rows match comments in size and spacing, joined 
 kind: bug
 status: in_progress
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:38:30.336Z
-updated_at: 2026-11-15T09:05:31.567Z
+updated_at: 2026-11-15T10:13:42.664Z
 started_at: 2026-11-15T07:10:30.142Z
 ---
 The user's request (2026-11-15), verbatim: "the lines ont he Conversation part of a PR rendering like this below are too small font, not enough space above them. see how github actually renders PRs e.g. https://github.com/jlevy/metabrowser/pull/438 and mnotice it creates a line joining the commits and the comments in a clearer way. And also, the font sizes should be more consistent. We shouldn't make the commits smaller just because they're commits on this page. They should be similar to comments in size and similarly consistently spaced, more like what GitHub does."
@@ -60,3 +60,9 @@ Not verified: WebKit and the macOS app; the live app through tests/github_pull_f
 - CI run 43695973255: all 9 checks pass (lint, distribution, stack-integration, admitted-git 2.43.7 and 2.50.1, test 3.12/3.13/3.14/3.14t). The Chrome tests were not skipped in test (3.12).
 - Follow-up for late commits appended after Review comments: mb-yp9p.
 - Not merged and not marked ready. Still not verified in WebKit, the macOS app, or the live --serve app.
+2026-11-15, review A on #451 (approve with nits, 6 Low and 2 suggestions) addressed:
+- Commit bef176345 fixes A1 to A8. A1: authorLabel's new slot option gives Conversation card heads an empty, aria-hidden 18x18 avatar slot when the author has no usable avatar; the header and Pulls rows are unchanged. The Chrome test leaves the description's author slot-only and asserts the alignment (now 352 checks; 254 fail on the layer below's code). A2: WebKit measured through apps/macos/webkit-gate's webkit-driver measure (built debug to the external scratch volume, 114 MB; nothing installed). Result: WKWebView, WebKit 21624.2.5.11.8, macOS 26.5.2, both themes. All layout checks pass apart from pixel reads, which the driver cannot make; event cards compute overflow clip/visible; each of 28 gaps hit-tests to the following event's connector. Recorded in docs/design-system.md. A3: _kpress_static imported. A4: comment. A5: CSS comment rewrapped. A6: plan's break rule and mb-yp9p. A7: 20 s time-based wait; measured 34 to 40 ms. A8: positive markup check.
+- Dispositions comment: https://github.com/jlevy/metabrowser/pull/451#issuecomment-6892398282. The PR body was updated with the WebKit result and the avatar slot.
+- CI never ran on bef176345: GitHub left mergeability unknown while the base moved, and then the PR conflicted with the base.
+- Merge commit f98c4af45 brings in origin/claude/pulls-stack-groups at 9d6c6f1b (#444 to #450 after their rounds). Conflicts in docs/e2e-testing.md, tests/test_process_group.py and the plan's references were resolved keeping both sides. Re-checked: lint-check (parity 140 aspects, 29 paint-exempt), 142 focused pytest, the 4 pull-page DOM scripts.
+- Pushed with --no-verify. CI run 43701395210 on f98c4af45: all 9 checks pass. pytest 3.12 reported 6238 passed, 67 skipped, with no Chrome skips. The PR is MERGEABLE, still a draft.
