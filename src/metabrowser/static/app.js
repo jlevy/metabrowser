@@ -1537,19 +1537,38 @@ function fetchGroups(url, options) {
 var MENU_ROW_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
 
 /**
- * Ask ahead for the grouping whose Group by row the pointer pressed or the keyboard moved
- * to. Focus alone is not intent: a rebuild of the bar puts focus back on the row that had
- * it, which is no reader's move.
+ * Ask ahead for the grouping whose Group by row the pointer pressed.
  *
  * @param {Event} event
  */
-function prefetchChosenGrouping(event) {
-  var origin =
-    event.type === "keydown"
-      ? MENU_ROW_KEYS.has(/** @type {KeyboardEvent} */ (event).key)
-        ? document.activeElement
-        : null
-      : /** @type {Element | null} */ (event.target);
+function prefetchPressedGrouping(event) {
+  prefetchGroupingRow(/** @type {Element | null} */ (event.target));
+}
+
+/**
+ * Ask ahead for the grouping whose Group by row the arrow keys moved to. It runs after the
+ * filter controls' own keydown, which moves focus between the rows and leaves a key held
+ * with Command, Control, or Option alone, as this does (tests/test_modified_keys.py).
+ * Focus alone is not intent: a rebuild of the bar puts focus back on the row that had it,
+ * which is no reader's move.
+ *
+ * @param {KeyboardEvent} event
+ */
+function prefetchGroupingByKey(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return;
+  }
+  if (MENU_ROW_KEYS.has(event.key)) {
+    prefetchGroupingRow(document.activeElement);
+  }
+}
+
+/**
+ * Ask ahead for the grouping of the Group by row *origin* is in, if it is in one.
+ *
+ * @param {Element | null} origin
+ */
+function prefetchGroupingRow(origin) {
   var row = origin?.closest?.('#filter-group-menu .chip-menu-item[data-chip-key="group"]');
   if (!row) {
     return;
@@ -5813,16 +5832,16 @@ function initFilterBar() {
       filterState.clear();
     },
   });
-  // The grouping a reader is about to choose is asked for ahead (prefetchChosenGrouping).
+  // The grouping a reader is about to choose is asked for ahead (prefetchGroupingRow).
   const intentRoot = bar;
   var unbindControls = filterBarUnbind;
-  intentRoot.addEventListener("pointerdown", prefetchChosenGrouping);
+  intentRoot.addEventListener("pointerdown", prefetchPressedGrouping);
   // After the filter controls' own keydown, which moves focus between the rows.
-  intentRoot.addEventListener("keydown", prefetchChosenGrouping);
+  intentRoot.addEventListener("keydown", prefetchGroupingByKey);
   filterBarUnbind = () => {
     unbindControls?.();
-    intentRoot.removeEventListener("pointerdown", prefetchChosenGrouping);
-    intentRoot.removeEventListener("keydown", prefetchChosenGrouping);
+    intentRoot.removeEventListener("pointerdown", prefetchPressedGrouping);
+    intentRoot.removeEventListener("keydown", prefetchGroupingByKey);
   };
   // Seed the source tracking from the persisted state so the first
   // user change is compared against reality, not against null.
