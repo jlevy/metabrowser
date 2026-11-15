@@ -5,7 +5,7 @@ title: "Sans Markdown: h2 headings upright; serif documents keep the italic"
 kind: bug
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:54:00.615Z
-updated_at: 2026-11-15T07:20:55.516Z
+updated_at: 2026-11-15T08:49:51.751Z
 started_at: 2026-11-15T07:10:23.619Z
 ---
 The user's request (2026-11-15), verbatim: "on the chrome or sans markdown docs let's not make the h2s italic. we can preserve the italic on the serif mode as that is more consistent with our standared past kpress stylings."
@@ -55,3 +55,5 @@ Without the rule, 10 of 92 checks fail (chrome prose x 2 serif passes, 4 KPress 
 Local: make -o install format and lint-check pass; pytest tests/test_prose_faces_chrome.py passes alone (11.1 s call at load average 83). One run alongside test_design_vocabulary and test_process_group timed out at the session's 30 s budget at load ~60-80 after reporting 92 checks passed; back-to-back old/new sessions took 24/6/6/5 s, so the timeout was load. Pre-commit hooks passed.
 
 Not verified: the macOS app's WebKit; the size guard cannot see a change confined to chrome prose, which is sans in both passes; make verify not run.
+
+2026-11-15 restack: rebased onto origin/claude/pull-timeline (PR 6, 48165b77e) as 5d366e2c1. Only CHANGELOG conflicted; both entries kept, this one first. The styles.css and design-system.md hunks merged clean, and the layers below do not touch the session files, so CHECKS stays 92. After the rebase: make -o install format and lint-check pass (parity 53 routes covered, 5 exempt); test_prose_faces_chrome, test_design_vocabulary and test_process_group pass, 84 tests. Not pushed, no PR yet: the push was refused by the permission system. A draft PR body is ready for the coordinator.
