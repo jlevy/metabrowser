@@ -3,15 +3,19 @@ type: is
 id: is-01m7g7k4yj24780pbdw21skwgh
 title: "PR page title: icon and title start left, the number right-aligned above the stack chip"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T18:30:26.513Z
-updated_at: 2026-11-15T18:30:26.513Z
+updated_at: 2026-11-15T18:30:45.367Z
+started_at: 2026-11-15T18:30:45.366Z
 ---
 Found while doing mb-cf0l (#451, 5efb99b7, 2026-11-15). The user described "the right aligned PR number" when placing the stack chip: "put it right aligned below the right aligned PR number, on same line as author".
 
