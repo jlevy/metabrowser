@@ -49,6 +49,8 @@ public nonisolated protocol ServerLaunch: Sendable {
 /// rejected), and prints `Serving <root> at http://127.0.0.1:<port>/view/…` to stdout
 /// before its socket listens, which is why readiness also polls for a 2xx.
 public nonisolated struct CLIServeLaunch: ServerLaunch {
+    /// Where the port walk starts: `metab`'s own default, `DEFAULT_BROWSER_PORT` in
+    /// `src/metabrowser/settings.py`.
     public static let defaultBasePort = 8411
     public static let host = "127.0.0.1"
     /// The flag that ends a server when its stdin closes. `RuntimeDiscovery.validate`
