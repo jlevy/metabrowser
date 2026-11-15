@@ -1207,7 +1207,7 @@ async function headerShape(page) {
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta quiet labels status"]),
+    new Set(["title meta branches quiet labels status"]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.
@@ -1378,14 +1378,18 @@ async function run() {
     );
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
+    // The author's sentence is the row; the branches have the line below to themselves.
+    assert.ok(details.children.at(-1).classes.has("github-pull-action"));
+    assert.equal(details.textContent, "forker wants to merge 2 commits");
     // Merge Direction: the header names the branches head → base, through the shared group,
-    // after the action the row cuts short first.
-    assert.ok(details.children.at(-2).classes.has("github-pull-action"));
+    // on a line of their own under the sentence.
+    const branches = container.querySelector(".github-pull-branches");
     assert.equal(
-      details.textContent,
-      "forker wants to merge 2 commits: forker:count-to-two → octo:topic",
+      title.parentNode.children.indexOf(branches),
+      title.parentNode.children.indexOf(meta) + 1,
     );
-    const merge = details.children.find((node) => node.className === "merge-refs");
+    assert.equal(branches.textContent, "forker:count-to-two → octo:topic");
+    const merge = branches.children.find((node) => node.className === "merge-refs");
     assert.equal(merge.getAttribute("dir"), "ltr");
     const [source, arrow, target] = merge.children;
     assert.equal(source.dataset.tipText, "forker:count-to-two");

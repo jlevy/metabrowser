@@ -4,6 +4,9 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s page header gives the head and base branches a line of their own,
+  under “jlevy wants to merge 2 commits”, instead of ending that sentence with them.
+
 - On a pull request’s Conversation, a commit now reads like the comments around it.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.

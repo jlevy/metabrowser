@@ -205,7 +205,7 @@ const MEASURE = `async (name, change, tab, width) => {
     }
     return own.width > 0 ? Math.max(0, right - left) / own.width : 0;
   };
-  const group = header.querySelector(".github-pull-meta .merge-refs");
+  const group = header.querySelector(".github-pull-branches .merge-refs");
   const mergeShown = group
     ? Math.min(
         ...[".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target"].map((part) =>
@@ -663,7 +663,7 @@ async function main() {
             const where = `${width} px, ${label} ${tab || "conversation"}`;
             if (shape.mergeShown !== null) {
               check(
-                `${where}: the merge's chips and arrow show whole in the state row`,
+                `${where}: the merge's chips and arrow show whole on their line`,
                 shape.mergeShown >= 0.99,
                 String(shape.mergeShown),
               );

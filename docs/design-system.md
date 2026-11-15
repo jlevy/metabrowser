@@ -1421,14 +1421,16 @@ carries the whole of it in its tooltip.
 The colored badge below the title gives the state in text and the title icon is
 decorative. The header’s box is decided at first paint, in every state and on every tab,
 so the tab bar under it never moves between pull requests or tabs: the state row is one
-line, its sentence, then its author, then its branch names cut short rather than
-wrapping it, and the badge as wide as the widest state; the labels row is always there,
-a line of labels or none, and ends in the stack chip’s slot, so a chip that arrives late
-moves nothing: it takes its width from the labels, which the row then cuts shorter at
-the slot, a label that showed whole among them; the status row is one line that ends in
-Refresh’s slot, held hidden on a tab with nothing to refresh, its text and then its
-offers’ sentences cut short, never their controls, and a rate limit’s hold on the line
-too; and a cold page keeps every row, empty, at its height.
+line, the badge as wide as the widest state, then the author and the sentence, the
+sentence cut short first and then the author; the branches have the line under it to
+themselves (mb-fon5), one line in every state, their names cut short rather than
+wrapping it; the labels row is always there, a line of labels or none, and ends in the
+stack chip’s slot, so a chip that arrives late moves nothing: it takes its width from
+the labels, which the row then cuts shorter at the slot, a label that showed whole among
+them; the status row is one line that ends in Refresh’s slot, held hidden on a tab with
+nothing to refresh, its text and then its offers’ sentences cut short, never their
+controls, and a rate limit’s hold on the line too; and a cold page keeps every row,
+empty, at its height.
 Only a failure, which says what to do, wraps the status row.
 A tab switch or a poll builds again only the header’s parts whose inputs changed: the
 title, the badge, the author, the branch chips, the row of ages, the labels, and each
@@ -1593,7 +1595,7 @@ Each node sits 0.5 px below its first line’s middle there, as in Chrome.
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
-| Head and base branch | `mb.mergeRefs`, head → base after the verb: “forker wants to merge 2 commits: forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
+| Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |

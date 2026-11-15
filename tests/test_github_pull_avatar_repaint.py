@@ -39,7 +39,8 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "step": "Conversation",
                 "header": "first",
                 "rebuilt": "first",
-                "built": 42,
+                # The header; the branches have a row of their own (mb-fon5).
+                "built": 43,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

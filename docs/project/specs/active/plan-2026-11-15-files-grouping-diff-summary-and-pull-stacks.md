@@ -260,6 +260,13 @@ it:
   `mb-yp9p` puts them in time order.
 - **Docs:** the rule is stated once in `docs/design-system.md`, using existing tokens.
 
+### Pull Request Header
+
+The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
+
+- **Branches** (`mb-fon5`): the head and base branches leave the author’s sentence for a
+  line of their own under it, one line in every state.
+
 ### Sans Headings
 
 - One scoped rule in the shell’s prose styles sets h2 upright (`font-style: normal`)
@@ -310,6 +317,9 @@ it:
 
 - [ ] `mb-g3ao`: commit rows on the timeline’s type scale and spacing, and the timeline
   line joining every event.
+- [ ] `mb-xz1r`: a run of commits stands at least as far from a comment as one commit
+  from the next.
+- [ ] `mb-fon5`: the branches on a line of their own under the author’s sentence.
 
 ### Phase 7: Sans Headings (pull request 7)
 

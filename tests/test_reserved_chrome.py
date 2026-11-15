@@ -220,23 +220,30 @@ def test_a_title_holds_two_lines_and_never_more() -> None:
 
 
 def test_the_state_row_is_one_line_held_by_a_strut() -> None:
-    """The sentence, the author, and the merge share one line, at a chip's height."""
+    """The author and the sentence share one line at a chip's height; the branches, the next."""
 
     css = _github_css()
     meta = _rule(css, ".github-pull-meta")
     assert "flex-wrap: nowrap;" in meta and "white-space: nowrap;" in meta
     details = _rule(css, ".github-pull-meta-details")
     assert "min-width: 0;" in details and "overflow: hidden;" in details
+    # The branches are on a line of their own under the sentence (mb-fon5), a line tall
+    # while no record is shown too.
+    branches = _rule(css, ".github-pull-branches")
+    assert "flex-wrap: nowrap;" in branches and "white-space: nowrap;" in branches
+    assert "min-width: 0;" in branches and "overflow: hidden;" in branches
+    assert "min-height: 1lh;" in branches
     # A chip is a grid item of the merge group, whose floor keeps the names legible; a
     # width of the chip's own would overflow the group's track rather than hold it. The
     # header sets nothing on its chips at all: `.git-ref` alone sizes a chip
     # (test_branch_chips_have_one_size in test_design_vocabulary.py).
     assert ".github-pull-meta .git-ref" not in css
-    # The sentence gives way before the branches do.
+    assert ".github-pull-branches .git-ref" not in css
+    # The sentence gives way first.
     action = _rule(css, ".github-pull-meta-details > .github-pull-action")
     assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action
-    # The author gives way next, down to its avatar and a little of the name, and only
-    # then the merge, down to the merge group's floor (review E2 on #370).
+    # The author gives way next, down to its avatar and a little of the name (review E2 on
+    # #370).
     author = _rule(css, ".github-pull-meta-details > .github-pull-identity")
     assert "flex: 0 100 auto;" in author and "min-width: 1.75em;" in author
     assert "overflow: hidden;" in author
@@ -252,6 +259,7 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     # The state row ends in a strut, not in the stack's slot: a late chip there took its
     # width from the sentence and the merge (review E3 on #370).
     assert "[stateBadge, stateDetails, strut()]" in page
+    assert 'h("div", { class: "github-pull-branches" })' in page
 
 
 def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
