@@ -3,15 +3,19 @@ type: is
 id: is-01m7gb9w25a7sv248x59bwdpx5
 title: "Titles: a conventional-commit prefix is regular weight and the rest bold, everywhere"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T19:35:16.804Z
-updated_at: 2026-11-15T19:35:16.804Z
+updated_at: 2026-11-15T19:36:06.775Z
+started_at: 2026-11-15T19:36:06.774Z
 ---
 The user's request (2026-11-15), verbatim:
 
