@@ -1889,9 +1889,14 @@
     }
     row.classList.remove("nav-metadata-note");
     if (!state.summary) {
+      // In the count's own span, where the count will be, as the server ships it and as
+      // the Files totals hold theirs: a lone flex item would sit at the top of the line.
       const pending = document.createElement("span");
       pending.className = "count tally-pending";
-      row.replaceChildren(pending);
+      const countSpan = document.createElement("span");
+      countSpan.className = "git-history-summary-count";
+      countSpan.append(pending);
+      row.replaceChildren(countSpan);
       return;
     }
     const count = state.summary.commitCount;

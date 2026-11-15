@@ -1401,8 +1401,9 @@ def test_the_nav_column_shares_one_vertical_rhythm() -> None:
     assert "margin-bottom" not in sum_block
     token = css[css.index("--nav-metadata-padding-y:") :]
     token = token[: token.index(";")]
-    assert "var(--nav-toolbar-height)" in token and "1.5 * var(--nav-font-size)" in token
-    assert "line-height: 1.5;" in sum_block
+    assert "var(--nav-toolbar-height)" in token
+    assert "var(--nav-metadata-line-height) * var(--nav-font-size)" in " ".join(token.split())
+    assert "line-height: var(--nav-metadata-line-height);" in sum_block
 
     content_start = css.index(".tree-content {")
     assert "padding: 0 0 8px;" in css[content_start : content_start + 300]

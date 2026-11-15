@@ -278,7 +278,9 @@
        --body-font-size      14px  primary chrome text (default, inputs,
                                    empty states, stat values)
        --nav-font-size       13px  dense navigation rows + path
-                                   breadcrumbs (tree items, header path)
+                                   breadcrumbs (tree items, header path),
+                                   and the .nav-metadata line under each
+                                   main tab's toolbar that totals them
        --ui-small-font-size  12px  secondary chrome (metadata, chips,
                                    tooltips, notes, filters, summaries)
        --label-font-size     =ui-small  small-caps section labels (tabs,
@@ -495,8 +497,15 @@
      border. So on Commits, where the line stands in the slot, its text sits exactly where
      it sits under the Files and Pulls toolbars, as far from either rule (8.25px at the
      default sizes). */
+  --nav-metadata-line-height: 1.5;
+  --nav-metadata-rule-width: 1px;
   --nav-metadata-padding-y: calc(
-    (var(--nav-toolbar-height) - 1px - 1.5 * var(--nav-font-size)) /
+    (
+      var(--nav-toolbar-height) -
+      var(--nav-metadata-rule-width) -
+      var(--nav-metadata-line-height) *
+      var(--nav-font-size)
+    ) /
     2
   );
   /* Between a metadata line's items, and between the words of an item built of spans:
@@ -3495,12 +3504,12 @@ a.tab-btn {
   min-height: 1lh;
   margin: 0;
   padding: var(--nav-metadata-padding-y) var(--pane-header-padding-x);
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--nav-metadata-rule-width) solid var(--border);
   color: var(--text);
   font-size: var(--nav-font-size);
   font-weight: var(--weight-normal);
   font-variant-numeric: var(--tabular-numerals);
-  line-height: 1.5;
+  line-height: var(--nav-metadata-line-height);
 }
 .nav-metadata[hidden] {
   display: none;

@@ -290,7 +290,8 @@ Chrome (interface) sizes:
 - `--body-font-size` (14px): primary chrome text — body default, inputs, empty states,
   stat values.
 - `--nav-font-size` (13px): dense navigation rows and path breadcrumbs — tree items,
-  header path, file-header path.
+  header path, file-header path — and the
+  [navigation metadata line](#navigation-metadata-line) that states their totals.
 - `--ui-small-font-size` (12px): secondary chrome — metadata, chips, tooltips, notes,
   filters, summaries.
 - `--label-font-size` (= ui-small): small-caps section labels — tabs, panel and table
@@ -1583,7 +1584,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
-| Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
+| Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
 | Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
 | Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
@@ -2684,30 +2685,46 @@ All of them are one component, `.nav-metadata` in `static/styles.css`. They were
 recipes, and the reader saw it: 13px text 6px under the Files filters, 13px text centred
 in the Commits slot, and 12px muted text with no space above it under the Pulls filters.
 
-- **Type.** `--nav-font-size` in regular weight and `--text` ink, line height 1.5, and
-  tabular numerals, so a count that grows while it is counted does not jitter.
+- **Type.** `--nav-font-size` in regular weight and `--text` ink, line height
+  `--nav-metadata-line-height`, and tabular numerals, so a count that grows while it is
+  counted does not jitter.
   A remark on the line above it — a filter’s count, a connection’s state or remedy —
   adds `.nav-metadata-note`, which mutes it and changes nothing else.
   Inside a line, spans carry only what they mean: the gitignored half is muted, an age
   is the [age primitive](#age), and a repository name is `.repository-name`.
 - **Box.** The navigation column’s inset, `--pane-header-padding-x`, and
-  `--nav-metadata-padding-y` above and below, with the band’s rule under it.
-  One line of it is exactly the toolbar slot’s height, so on Commits, which has no
-  toolbar of its own, the line stands in the slot and its text sits as far from either
-  rule as it does under the Files and Pulls toolbars.
+  `--nav-metadata-padding-y` above and below, with the band’s rule,
+  `--nav-metadata-rule-width`, under it.
+  The padding is derived from the slot’s height, the line height, and the rule, so one
+  line of it is exactly the toolbar slot’s height, and on Commits, which has no toolbar
+  of its own, the line stands in the slot and its text sits as far from either rule as
+  it does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
 - **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
   item built of spans, about a word space and a half.
-- **Height.** Each line reserves its own line box before anything arrives, so a pending
-  tally, a count still being taken, and a settled one are one height, and the Pulls
-  lines hold theirs from loading through every failure.
-  Text wraps only when it is longer than the pane: the Files totals in a narrow pane,
-  and a Pulls remedy, which keeps its whole command, as the pull request header’s does.
+- **Pending.** A figure still being counted is the pending tally inside the span its
+  figure will fill, so it sits across the middle of the line, where the text will.
+  On Commits the server ships it so, and the tally replaces it in place.
+- **Height.** Each line reserves its own line box before anything arrives.
+  While a line’s text fits the pane, a pending tally, a count still being taken, and a
+  settled one are one height, and the Pulls lines are one height from loading through a
+  failure. Text wraps only when it is longer than the pane, and then the band grows by
+  the lines it needs: the Files split totals in a narrow pane (tracked as H54), and a
+  Pulls remedy, which keeps its whole command, as the pull request header’s does; at the
+  default pane width the remedies for an unreachable GitHub, a gh that is not signed in,
+  and a missing gh each take a second line.
 
-A plugin whose tab states metadata under its toolbar uses the class, as the Pulls tab
-does, and restyles none of this.
-`tests/test_nav_metadata_line.py` holds the markup and stylesheets to the component, and
-`tests/test_nav_metadata_chrome.py` measures each tab, and each state, in Chrome.
+The built-in Pulls tab uses the class; its stylesheet lays out only the lines’ spans.
+No stylesheet but the component’s sets anything on a line element beyond how a long word
+in it breaks. `tests/test_nav_metadata_line.py` holds the markup and every shipped
+stylesheet to that, however a rule is scoped.
+`tests/dom/tree-summary-line-session.js` records what the Files line says in each state.
+`tests/test_nav_metadata_chrome.py` measures, in Chrome, at the default pane width and
+at one wide enough for every text: the Files totals settled, pending, counting,
+filtered, with the outside-filter note, and with the stale recent-files note; the
+Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
+loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
+in a narrow pane.
 
 ### Section Headings
 

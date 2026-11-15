@@ -1201,62 +1201,20 @@ async function loadTree(options = {}) {
   }
 }
 
-// Nav header tally. Tracked and ignored are counted separately —
-// "12,582 files, 189.8 MB" hides that almost all of it is node_modules
-// — and the ignored half is dimmed to match how those rows read in the
-// tree below. Falls back to the combined figure when the server has no
-// split to give (a subtree request, or an index still warming up).
-//
-// Both forms are a navigation metadata line (`.nav-metadata` in styles.css),
-// the component the Commits and Pulls lines share, and both say the figure in
-// the same words, "4 files (38 B)": the fallback once set it in the tree rows'
-// count and size chips, so the line changed colour and lost its parentheses
-// the moment the split arrived.
+// The Files totals, a navigation metadata line: the markup and its words are
+// navigation.js's (`treeSummaryHtml`), written with the shell's own text helpers, so
+// tests/dom/tree-summary-line-session.js runs exactly what paints.
+// A function, not a constant: the shell can paint a tally before this line has run.
+function treeSummaryFormat() {
+  return { esc, formatCount, formatSize };
+}
 function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
-  if (!summary || typeof summary.files !== "number") {
-    return (
-      '<div class="tree-summary nav-metadata">' +
-      `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles)}</span>` +
-      `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize)}</span>` +
-      "</div>"
-    );
-  }
-  // Deliberately NOT .tree-summary-count / .tree-summary-size: those
-  // are the live-update targets of updateRootAggregatePresentation,
-  // which patches in the gitignore-blind root aggregate and would
-  // overwrite the tracked half with the combined total. The split row
-  // owns its own classes and its own refresh path.
-  var tracked =
-    `<span class="tree-summary-tracked">${esc(formatCount(summary.files))}</span>` +
-    `<span class="tree-summary-bytes">(${esc(formatSize(summary.size))})</span>`;
-  var ignored = "";
-  if (summary.ignored_files > 0) {
-    ignored =
-      '<span class="tree-summary-ignored">' +
-      '<span class="tree-summary-plus">+</span>' +
-      `${esc(summary.ignored_files.toLocaleString())} ignored` +
-      `<span class="tree-summary-bytes">(${esc(formatSize(summary.ignored_size))})</span>` +
-      "</span>";
-  }
-  return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
-}
-
-// The fallback's figures, in the split row's words. A figure still being
-// counted is the pending tally; an omitted one (a Git listing has no size
-// fact) is nothing at all, as in countHtml and sizeHtml.
-function treeSummaryCountHtml(n) {
-  if (n === undefined) {
-    return "";
-  }
-  return isPendingNumber(n) ? '<span class="count tally-pending"></span>' : esc(formatCount(n));
-}
-function treeSummarySizeHtml(bytes) {
-  if (bytes === undefined) {
-    return "";
-  }
-  return isPendingNumber(bytes)
-    ? '<span class="size tally-pending"></span>'
-    : `(${esc(formatSize(bytes))})`;
+  return window.MetabrowserNavigationRoute.treeSummaryHtml(
+    summary,
+    fallbackFiles,
+    fallbackSize,
+    treeSummaryFormat(),
+  );
 }
 
 // The walker's root upsert carries gitignore-blind totals, so it
@@ -7415,10 +7373,16 @@ function updateRootAggregatePresentation(entry) {
   var countEl = queryHtml(".tree-summary-count");
   var sizeEl = queryHtml(".tree-summary-size");
   if (countEl) {
-    countEl.innerHTML = treeSummaryCountHtml(totalFiles);
+    countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
+      totalFiles,
+      treeSummaryFormat(),
+    );
   }
   if (sizeEl) {
-    sizeEl.innerHTML = treeSummarySizeHtml(totalSize);
+    sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
+      totalSize,
+      treeSummaryFormat(),
+    );
   }
   scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");

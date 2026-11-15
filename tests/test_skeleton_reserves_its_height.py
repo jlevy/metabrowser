@@ -11,7 +11,8 @@ takes the tally row from 43 px to 23, the remainder being a split row wrapping
 to a second line in a narrow pane -- H54, which wants the pending row shaped
 like the settled one rather than a taller floor. These tests assert the
 reservations exist, stay derived, and hold in the joined state too; the pixels
-are in explorations/performance-loop/experiments/exp-009.
+of that history are in explorations/performance-loop/experiments/exp-009, and
+the heights the line keeps now are measured by tests/test_nav_metadata_chrome.py.
 
 The tally row is a navigation metadata line (`.nav-metadata`), the component
 the Commits tally and the Pulls lines share, so its reservation is that

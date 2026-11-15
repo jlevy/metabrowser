@@ -4,16 +4,20 @@ The Files totals, the Commits tally, and the Pulls count and connection lines ar
 component, ``.nav-metadata`` (docs/design-system.md, "Navigation Metadata Line"). What it
 promises is layout: one type on every line, the same distance from the rule above and
 the rule below on every tab, the toolbar slot (Commits) as under a toolbar (Files,
-Pulls), and one height in every state a line passes through. So this serves a checkout
-of the GitHub stand-in with a fake ``gh``, and ``tests/dom/nav-metadata-chrome.mjs``
-measures each tab: Files as it paints pending, as it counts, settled, and filtered;
-Commits; and Pulls while its list loads, once it has rows, and when a refresh can reach
-neither GitHub nor a signed-in gh. ``tests/test_nav_metadata_line.py`` holds the markup
-and the stylesheet to the component without a browser.
+Pulls), a pending tally where its figures will be, and one height in every state a line
+passes through while its text fits. So this serves a checkout of the GitHub stand-in with
+a fake ``gh``, and ``tests/dom/nav-metadata-chrome.mjs`` measures each tab at the default
+pane width and at a wide one: Files settled, pending, counting, filtered, and with its two
+other remarks; Commits settled, as the server ships it pending, and failed; and Pulls
+while its list loads, once it has rows, and when a refresh can reach neither GitHub nor a
+signed-in gh, nor any gh. ``tests/test_nav_metadata_line.py`` holds the markup and the
+stylesheets to the component without a browser.
 
 The fake ``gh`` waits while a hold file exists, so the Pulls list is still loading when
-it is measured; the measurement removes the file and then rewrites the scenario the fake
-answers from, so the next refresh fails as each failure state needs.
+it is measured; the measurement removes the file, rewrites the scenario the fake answers
+from so the next refresh fails as each failure state needs, and last takes the fake's
+execute bit away. The server's ``PATH`` holds the fake and Git and nothing else, so no
+other ``gh`` answers for it.
 
 Where text sits is computed layout, so this needs a browser; it skips without Chrome, as
 ``docs/e2e-testing.md`` lists, and CI runs it. The test owns everything it starts: the
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -64,9 +69,10 @@ LIFECYCLE_S = (
 )
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
-# The fake gh, held while the file at $GH_HOLD exists.
+# The fake gh, held while the file at $GH_HOLD exists. The server's PATH holds it and
+# Git and nothing else, so taking its execute bit away leaves the server no gh at all.
 _HELD_GH = """#!/bin/sh
-while [ -e "$GH_HOLD" ]; do sleep 0.05; done
+while [ -e "$GH_HOLD" ]; do /bin/sleep 0.05; done
 exec "{gh}" "$@"
 """
 
@@ -142,7 +148,11 @@ def test_every_tabs_metadata_line_is_one_component_in_chrome(
     hold.touch()
     env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
     env.update(fake)
-    env["PATH"] = f"{held}{os.pathsep}{fake['PATH']}"
+    tools = _private(tmp_path / "tools")
+    git = shutil.which("git")
+    assert git is not None
+    (tools / "git").symlink_to(git)
+    env["PATH"] = f"{held}{os.pathsep}{tools}"
     env["GH_HOLD"] = str(hold)
     env["METABROWSER_CACHE_DIR"] = str(_private(tmp_path / "cache"))
     env["METABROWSER_CONFIG_DIR"] = str(_private(tmp_path / "config"))
@@ -171,6 +181,7 @@ def test_every_tabs_metadata_line_is_one_component_in_chrome(
                 "CHROME_PROFILES": str(chrome_profile),
                 "GH_HOLD": str(hold),
                 "GH_SCENARIO": fake["FAKE_GH_SCENARIO"],
+                "GH_BIN": str(gh),
             },
         )
     finally:

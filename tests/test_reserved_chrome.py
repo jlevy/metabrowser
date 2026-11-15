@@ -332,7 +332,9 @@ def test_the_pulls_status_lines_are_always_there_at_a_line_each() -> None:
     line = _rule(_css(), ".nav-metadata")
     assert "min-height: 1lh;" in line and "box-sizing: content-box;" in line
     css = _github_css()
-    assert "flex-wrap: nowrap;" in _rule(css, ".github-pulls-status")
+    # The count's one item is cut short; the line itself is the component's
+    # (tests/test_nav_metadata_line.py), and Chrome measures it one line in a narrow pane.
+    assert ".github-pulls-status {" not in css
     total = _rule(css, ".github-pulls-total-line")
     assert "white-space: nowrap;" in total and "text-overflow: ellipsis;" in total
     assert ".github-pulls-connection:not([hidden])" not in css

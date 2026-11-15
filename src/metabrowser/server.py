@@ -1624,7 +1624,10 @@ async def index(
     toolbars = (
         '\n      <div class="nav-toolbar" id="nav-toolbar-git" data-nav-toolbar="git"'
         f"{'' if commits_in_front else ' hidden'}>"
-        f'<div class="git-history-summary nav-metadata">{pending_tally}</div></div>'
+        # The pending tally sits in the count's own span, where the count will be, as the
+        # Files totals' does: a lone flex item would sit at the top of the line.
+        '<div class="git-history-summary nav-metadata">'
+        f'<span class="git-history-summary-count">{pending_tally}</span></div></div>'
         if commits_tab
         else ""
     ) + (

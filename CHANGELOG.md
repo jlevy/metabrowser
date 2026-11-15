@@ -10,13 +10,14 @@ All notable changes to Metabrowser are documented here.
   no space above it, so a notice such as “Run gh auth login --hostname github.com to
   connect” sat right under the toolbar’s rule.
   All three are now one component, `.nav-metadata`, with the same type, inset, space
-  above and below, and spacing between items, and each keeps one height from the first
-  paint through loading, counting, and refresh failures.
-  The Files totals read “N files (size)” while the index is still being counted, as they
-  do once it finishes, instead of switching from blue figures to plain text, and the
-  Pulls count is no longer bold.
-  A plugin whose tab states metadata under its toolbar can use the class (see
-  `docs/plugins.md`).
+  above and below, and spacing between items.
+  While its text fits the pane, each keeps one height from the first paint through
+  loading, counting, and refresh failures; a Pulls remedy longer than the pane, or the
+  Files totals in a narrow pane, still wrap to a second line.
+  The Commits tally’s loading placeholder now sits where the count will, as the Files
+  one does. The Files totals read “N files (size)” while the index is still being
+  counted, as they do once it finishes, instead of switching from blue figures to plain
+  text, and the Pulls count is no longer bold.
 
 - A heading that opens a pull request’s description, comment, or review no longer sits
   pressed under the card’s header.

@@ -26,6 +26,16 @@ const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
 const appSource = fs.readFileSync(path.join(staticDir, "app.js"), "utf8");
 
+/** A top-level function of app.js, verbatim, up to its closing brace. */
+function appFunction(name) {
+  const start = appSource.indexOf(`\nfunction ${name}(`);
+  const end = appSource.indexOf("\n}\n", start);
+  if (start < 0 || end < start) {
+    throw new Error(`app.js ${name} is not extractable`);
+  }
+  return appSource.slice(start + 1, end + 2);
+}
+
 /** The summary refresh, from its introducing comment to the tree cache that follows. */
 function refreshBlock() {
   const start = appSource.indexOf("// The walker's root upsert carries gitignore-blind totals");
@@ -37,9 +47,11 @@ function refreshBlock() {
 }
 
 // The shell state a summary answer is painted into. None of it decides when to ask.
+// The line itself is the shell's: app.js's `treeSummaryHtml` and the text helpers it
+// writes with, verbatim, over navigation.js, so the tree cache that the refresh
+// rewrites holds the markup that paints, and the session shows whether it was rewritten.
 const COLLABORATORS = `
 const RECENT_RECLUSTER_DEBOUNCE_MS = 100;
-var _lastTreeRender = { chromeHtml: '<div class="tree-summary">pending</div>' };
 var _lastTreeSummaryHtml = "";
 var filterOpenMenu = null;
 function updateFilterTallies() {
@@ -47,10 +59,17 @@ function updateFilterTallies() {
 }
 function renderNavFilterBar() {}
 function patchOpenRecencyTallyCounts() {}
-function treeSummaryHtml(summary) {
-  return '<div class="tree-summary tree-summary-split">' + summary.files + "</div>";
-}
+${["esc", "formatSize", "formatCount", "treeSummaryFormat", "treeSummaryHtml"].map(appFunction).join("\n")}
+var _lastTreeRender = { chromeHtml: treeSummaryHtml(null, null, null) };
 `;
+
+/** How a line of markup reads. */
+function reads(html) {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /**
  * One page: a clock, its timers, a server that answers each request after `serverMs`,
@@ -73,7 +92,7 @@ function createPage(server) {
   const files = { style: { display: "" } };
   const row = {
     set outerHTML(html) {
-      did.push(`t=${now} painted ${html.replace(/<[^>]*>/g, "")} files`);
+      did.push(`t=${now} painted "${reads(html)}"`);
     },
   };
   const document = {
@@ -113,7 +132,11 @@ function createPage(server) {
           return;
         }
         did.push(`t=${now} #${number} answered`);
-        resolve({ ok: true, status: 200, json: async () => ({ summary: { files: number } }) });
+        resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ summary: { files: number, size: 1024 * number } }),
+        });
       }, server.serverMs);
     });
   }
@@ -186,7 +209,9 @@ function createPage(server) {
       }
     },
     after() {
-      return { asks, requests, maxInFlight, inFlight };
+      // What the tree cache holds now: a source swap paints it back.
+      const cached = reads(context._lastTreeRender.chromeHtml);
+      return { asks, requests, maxInFlight, inFlight, cached };
     },
   };
 }
