@@ -37,6 +37,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private(set) var isDiscarded = false
     /// Reloads after the web content process dies, then the status view.
     private var contentRecoveries = RecoveryBudget.webContent
+    /// The sheets the page opened, which Command-R cancels before it reloads.
+    private var pageSheets = PageSheets<NSWindow>()
+    /// The print panel, while a print the window started runs.
+    private var printSheet: NSWindow?
     /// The window placed last, which the next one steps down and right from, while it
     /// is open (`NewWindowFrame`, `LastPlacedWindow`).
     private static var lastPlaced = LastPlacedWindow<NSWindow>()
@@ -323,7 +327,59 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     @objc func navigateBack(_ sender: Any?) { webView.goBack() }
     @objc func navigateForward(_ sender: Any?) { webView.goForward() }
-    @objc func reloadPage(_ sender: Any?) { webView.reload() }
+
+    /// Command-R, in every state the window can be in (`PageReload`).
+    @objc func reloadPage(_ sender: Any?) {
+        cancelPageSheets()
+        switch PageReload.route(in: windowState) {
+        case .reloadPage: webView.reload()
+        case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
+        case .startServer: Task { await session?.startServer() }
+        case .restartServer: session?.retry()
+        case .startAsSelected: session?.windowShown(self)
+        }
+    }
+
+    /// Loads the window's page again from the ready server, in place of a load still on its
+    /// way: the page that load was loading, else the one asked for or shown last, else the
+    /// entry page (`PageReload.loadPage`).
+    private func loadPageAgain(from endpoint: ServerEndpoint) {
+        // Before the stop: the page a load on its way was loading is `webView.url` only
+        // until the load stops (`PageRevealWebKitTests`). A window WebKit opened, before
+        // its first commit, has no load of the window's to stop, and still needs this.
+        rememberPage()
+        supersedeLoad()
+        isDiscarded = false
+        loadNextPageOnceAnswered(from: endpoint)
+    }
+
+    /// Answers the sheets the page opened as their Cancel does, one at a time, while one is
+    /// attached: an `alert`, `confirm`, or `prompt`, the open panel of a file input, or the
+    /// print panel (`PageSheets`). The app's own sheets stay, and the reload runs behind
+    /// them: the runtime-upgrade offer, a download's save panel, and a failed download's
+    /// alert. Each pass forgets the sheet it ends, so the loop ends even if AppKit detaches
+    /// it later.
+    private func cancelPageSheets() {
+        guard let window else { return }
+        for _ in 0..<pageSheets.count {
+            guard let sheet = window.attachedSheet, pageSheets.cancels(sheet) else { return }
+            pageSheets.closed(sheet)
+            if let panel = sheet as? NSOpenPanel {
+                panel.cancel(nil)  // an open panel ends its own sheet
+            } else {
+                window.endSheet(sheet, returnCode: .cancel)
+            }
+        }
+    }
+
+    /// The window as its menu items see it (`PageMenu`, `PageReload`).
+    private var windowState: FolderWindowState {
+        FolderWindowState(
+            phase: status.phase, showsPage: !container.showsStatus,
+            hasPage: webView.backForwardList.currentItem != nil, serverReady: endpoint != nil,
+            canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
+    }
+
     @objc func actualSize(_ sender: Any?) { setZoom(1) }
     @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
     @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
@@ -337,7 +393,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         guard let window else { return }
         let operation = webView.printOperation(with: NSPrintInfo.shared)
         operation.view?.frame = webView.bounds
-        operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        let before = window.attachedSheet
+        operation.runModal(
+            for: window, delegate: self, didRun: #selector(printOperationDidRun(_:success:contextInfo:)),
+            contextInfo: nil)
+        // The print panel is a sheet the page's print opened, once AppKit has attached it;
+        // one queued behind another sheet is not recorded, so Command-R leaves it.
+        if let sheet = window.attachedSheet, sheet !== before {
+            printSheet = sheet
+            pageSheets.opened(sheet)
+        }
+    }
+
+    @objc private func printOperationDidRun(
+        _ operation: NSPrintOperation, success: Bool, contextInfo: UnsafeMutableRawPointer?
+    ) {
+        if let printSheet { pageSheets.closed(printSheet) }
+        printSheet = nil
     }
 
     /// Every window's page Print buttons (`PagePrintRequests`): each prints through File >
@@ -369,15 +441,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        let showingPage = !container.showsStatus
+        let window = windowState
         switch item.action {
-        case #selector(navigateBack(_:)): return showingPage && webView.canGoBack
-        case #selector(navigateForward(_:)): return showingPage && webView.canGoForward
-        case #selector(reloadPage(_:)), #selector(printPage(_:)), #selector(actualSize(_:)),
-             #selector(zoomIn(_:)), #selector(zoomOut(_:)):
-            return showingPage
+        case #selector(navigateBack(_:)): return PageMenu.isEnabled(.back, in: window)
+        case #selector(navigateForward(_:)): return PageMenu.isEnabled(.forward, in: window)
+        case #selector(reloadPage(_:)): return PageMenu.isEnabled(.reload, in: window)
+        case #selector(printPage(_:)): return PageMenu.isEnabled(.print, in: window)
+        case #selector(actualSize(_:)): return PageMenu.isEnabled(.actualSize, in: window)
+        case #selector(zoomIn(_:)): return PageMenu.isEnabled(.zoomIn, in: window)
+        case #selector(zoomOut(_:)): return PageMenu.isEnabled(.zoomOut, in: window)
         case #selector(performFindAction(_:)):
-            guard showingPage, let action = NSTextFinder.Action(rawValue: item.tag) else { return false }
+            guard PageMenu.isEnabled(.find, in: window), let action = NSTextFinder.Action(rawValue: item.tag)
+            else { return false }
             return textFinder.validateAction(action)
         case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
         default: return true
@@ -516,7 +591,9 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.canChooseDirectories = parameters.allowsDirectories
-        panel.beginSheetModal(for: window) { result in
+        pageSheets.opened(panel)
+        panel.beginSheetModal(for: window) { [weak self] result in
+            self?.pageSheets.closed(panel)
             completionHandler(result == .OK ? panel.urls : nil)
         }
     }
@@ -562,8 +639,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         present(alert) { completionHandler($0 == .alertFirstButtonReturn ? field.stringValue : nil) }
     }
 
+    /// The page's `alert`, `confirm`, or `prompt`, as a sheet the page opened (`PageSheets`).
     private func present(_ alert: NSAlert, completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void) {
         guard let window else { return completion(alert.runModal()) }
-        alert.beginSheetModal(for: window, completionHandler: completion)
+        let sheet = alert.window
+        pageSheets.opened(sheet)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            self?.pageSheets.closed(sheet)
+            completion(response)
+        }
     }
 }

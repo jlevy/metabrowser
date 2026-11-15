@@ -645,6 +645,60 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
   }
 
+  // A key held with Command, Control, or Option is the browser's: Command-R reloads,
+  // Command-Left goes back in Chrome and Alt-Left elsewhere, Command-Up scrolls to the top.
+  // The map's keys act only unmodified.
+  const cellKeydown = container.viewport.listeners.keydown?.[0];
+  check("cell keydown handler bound", typeof cellKeydown === "function");
+  if (cellKeydown) {
+    const navigationsBefore = navigationCalls.length;
+    const swallowed = [];
+    for (const key of [
+      "r",
+      "Enter",
+      " ",
+      "ArrowRight",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowUp",
+      "Backspace",
+    ]) {
+      for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+        const event = {
+          key,
+          [modifier]: true,
+          defaultPrevented: false,
+          preventDefault() {
+            this.defaultPrevented = true;
+          },
+        };
+        cellKeydown(event);
+        if (event.defaultPrevented) {
+          swallowed.push(`${modifier} ${key}`);
+        }
+      }
+    }
+    check(
+      "the map takes no key held with a modifier",
+      swallowed.length === 0,
+      swallowed.join(", "),
+    );
+    check(
+      "a modified Enter or Backspace navigates nowhere",
+      navigationCalls.length === navigationsBefore,
+      JSON.stringify(navigationCalls.slice(navigationsBefore)),
+    );
+    const plain = {
+      key: "ArrowRight",
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+    };
+    cellKeydown(plain);
+    check("a plain arrow still moves within the map", plain.defaultPrevented);
+  }
+
   // Viewport height is measured, not the CSS calc: innerHeight 1000
   // minus rect.top 120 minus the 64px bottom reserve.
   check(
