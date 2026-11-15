@@ -66,6 +66,14 @@ All notable changes to Metabrowser are documented here.
   so it gets no heading anchor, and embedding a section through `![[Note#Heading]]` no
   longer stops at it.
 
+- In a pull request’s rendered Markdown diff, a fold such as “6 unchanged blocks” is now
+  a quiet line in the document instead of a bordered box, and opening it shows the
+  blocks it held in place, set exactly like the unchanged blocks around them.
+  It drew a box with space above and below it, and when open a rule under its label that
+  pushed the rest of the document 1px further than the blocks it showed.
+  The label now starts on the text’s left edge.
+  A document’s own `<details>` sections look as before.
+
 - The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
   and the pull request count with how fresh it is — now looks the same on every tab.
   It was three styles: on Pulls it was smaller, gray, and hard against the filters with
