@@ -786,7 +786,7 @@ def _without_label_formula(text: str) -> str:
     github.com's, written in ``rgb()`` and ``hsl()`` of the label's own custom properties
     (docs/design-system.md, "Label Colors"): in oklch it would not paint what github.com
     paints. Its two rules are taken out whole, so a color anywhere else in the sheet is
-    still found; and each color they write is computed from a ``--label-`` property, never
+    still found; and each color they write is computed from a ``--github-label-`` property, never
     a literal.
     """
 
@@ -795,7 +795,7 @@ def _without_label_formula(text: str) -> str:
     for rule in rules:
         assert not re.search(r"#[0-9a-fA-F]{3,8}\b", rule), rule
         calls = [_call_at(rule, found.start()) for found in re.finditer(r"(?:rgba?|hsla?)\(", rule)]
-        assert calls and all("var(--label-" in call for call in calls), rule
+        assert calls and all("var(--github-label-" in call for call in calls), rule
     return _LABEL_RULE.sub("", text)
 
 
@@ -1628,13 +1628,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '"diff-file-bar disclosure-toggle"',
         '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
     ),
-    "diff/diff-summary.js": ('"diff-summary-row diff-summary-folder disclosure-toggle"',),
+    "diff/diff-summary.js": (
+        '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
+    ),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
         '"github-pulls-row disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
     ),
-    "github/pull-files-view.js": ('"github-pull-folder-row disclosure-toggle"',),
+    "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
     "github/pull-page.js": (
         '"btn github-pull-stack-trigger disclosure-toggle"',
         '{ class: "fold-expander disclosure-toggle" }',
@@ -1676,7 +1678,10 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
     ),
     "diff/diff-summary.js": (
-        ("host.chevron()", '"diff-summary-row diff-summary-folder disclosure-toggle"'),
+        (
+            "host.chevron()",
+            '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
+        ),
     ),
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
@@ -1686,7 +1691,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
     ),
     "github/pull-files-view.js": (
-        ("host.chevron()", '"github-pull-folder-row disclosure-toggle"'),
+        ("host.chevron()", '"changed-file-row github-pull-folder-row disclosure-toggle"'),
     ),
     "github/pull-page.js": (
         ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
@@ -1727,6 +1732,7 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "github-pulls-row",
         "github-pulls-stack-row",
         "github-pull-folder-row",
+        "changed-file-row",
         "btn",
         "github-pull-stack-trigger",
     }
@@ -2051,7 +2057,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert 'entry.title.classList.toggle("mb-refreshing", on);' in panel
     assert 'entry.row.setAttribute("aria-busy"' not in panel, "a usable row is never busy"
     files = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(encoding="utf-8")
-    assert 'class: "github-pull-file-name mb-refreshing-text"' in files
+    assert 'class: "changed-file-name github-pull-file-name mb-refreshing-text"' in files
     assert 'group.classList.toggle("mb-refreshing-group", next.refreshing);' in files
     assert '"aria-busy"' not in files, "the usable tree group is never busy"
     assert "spinner.hidden = !next.loading;" in files
@@ -2172,11 +2178,15 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
     assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
-    avatar = github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"]
-    assert avatar == "calc(var(--github-pulls-sep) + 18px + 4px + 1.75em)", "a name beside it"
+    avatar = " ".join(github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"].split())
+    assert avatar == (
+        "calc( var(--github-pulls-sep) + var(--github-pull-avatar-size) +"
+        " var(--github-pull-identity-gap) + 1.75em )"
+    ), "a name beside it"
+    # The floor counts the avatar and its gap, through the two tokens that size them (mb-xlla).
     assert (github[".github-pull-avatar"]["width"], github[".github-pull-identity"]["gap"]) == (
-        "18px",
-        "4px",
+        "var(--github-pull-avatar-size)",
+        "var(--github-pull-identity-gap)",
     ), "the floor counts the avatar and its gap"
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
@@ -2234,7 +2244,12 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Its box is its line, so its text is the rhythm from the events beside it (mb-w7rt).
     assert "min-height" not in commit and commit["padding"].startswith("0 ")
     assert github[".github-pull-body"]["gap"] == "var(--github-pull-rhythm)"
-    assert github[".github-pull-threads"]["gap"] == "var(--github-pull-rhythm)"
+    # Under Review comments the rhythm is between its cards only: its heading sits at the
+    # section's gap over the first, as every section's heading does (mb-xlla).
+    assert ".github-pull-threads" not in github
+    assert github[".github-pull-threads > .github-pull-card + .github-pull-card"] == {
+        "margin-block-start": "calc(var(--github-pull-rhythm) - var(--github-pull-gap))"
+    }
     assert ".github-pull-commit .git-commit-sha" not in github
     assert (
         github[".github-pull-commit .github-pull-age"]
@@ -2395,6 +2410,189 @@ def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> 
             f"a muted line at rest reads {resting:.2f}:1, not muted's, in the {theme} theme"
         )
         assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
+
+
+def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
+    """The one wait that dims what is shown has its own token, and dims nothing twice.
+
+    "Refreshing Content" says content already shown is never covered by progress, and names
+    the one exception: a Group by choice's first sections, where the tree on screen is the
+    arrangement the reader left ("Grouping the Files Tree", Waiting). It dims through
+    `--loading-dim-opacity`, used nowhere else, and every tree row the dimmed content
+    token already dims is held at that token under the wait rather than multiplied by it.
+    tests/test_files_tab_chrome.py measures both in Chrome (mb-xlla).
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "`--loading-dim-opacity`" in doc
+    sheets = [STATIC / "styles.css", *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    uses = sum(
+        sheet.read_text(encoding="utf-8").count("var(--loading-dim-opacity)") for sheet in sheets
+    )
+    assert uses == 2, "the dim's keyframe and the hold's are its only uses"
+    dim = re.search(r"@keyframes tree-regrouping-dim \{(.*?)\n\}", styles, re.DOTALL)
+    hold = re.search(r"@keyframes tree-regrouping-hold \{(.*?)\n\}", styles, re.DOTALL)
+    assert dim is not None and "opacity: var(--loading-dim-opacity);" in dim[1]
+    assert hold is not None and (
+        "opacity: min(1, calc(var(--dimmed-content-opacity) / var(--loading-dim-opacity)));"
+        in hold[1]
+    )
+    rules = _rules_of(STATIC / "styles.css")
+    held = next(
+        selector
+        for selector, body in rules
+        if body.get("animation", "").startswith("tree-regrouping-hold ")
+    )
+    assert held.startswith("#tab-files.tree-regrouping :is(") and held.endswith(")"), held
+    holds = {
+        name.strip()
+        for name in held.removeprefix("#tab-files.tree-regrouping :is(")[:-1].split(",")
+    }
+    dimmed = {
+        selector.removeprefix(".tree-item")
+        for selector, body in rules
+        if body.get("opacity") == "var(--dimmed-content-opacity)"
+        and selector.startswith(".tree-item.")
+    }
+    assert dimmed and dimmed == holds, (dimmed, holds)
+
+
+def test_tabular_figures_are_the_token_everywhere() -> None:
+    """Every stylesheet sets tabular figures through `--tabular-numerals`, never the literal.
+
+    The token is one place to change how figures align; a literal beside it is a second.
+    """
+
+    sheets = [STATIC / "styles.css", *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]
+    for sheet in sheets:
+        for selector, body in _rules_of(sheet):
+            assert body.get("font-variant-numeric") != "tabular-nums", (sheet.name, selector)
+
+
+def test_no_badge_rule_names_a_review_state_that_has_no_badge() -> None:
+    """A review state whose verb says it all draws no chip, so no rule can style one.
+
+    `REVIEW_STATES` in pull-page.js maps a plain review (COMMENTED) and a pending one to null
+    (docs/design-system.md, "Conversation Timeline", Headings); a `.github-pull-badge` rule
+    for either could never match and reads as a chip that exists.
+    """
+
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    states = re.search(r"const REVIEW_STATES = Object\.freeze\(\{(.*?)\}\);", page, re.DOTALL)
+    assert states is not None
+    unbadged = re.findall(r"^\s*([A-Z_]+): null,", states[1], re.MULTILINE)
+    assert set(unbadged) == {"COMMENTED", "PENDING"}, unbadged
+    github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
+    for state in unbadged:
+        assert f'.github-pull-badge[data-state="{state}"]' not in github, state
+
+
+def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
+    """The Pulls tab's changed files and the Diff summary draw the shell's one row set.
+
+    The class set is `static/styles.css`'s `.changed-file-row` and its parts, beside the
+    Files tree's rows; each plugin's stylesheet sets only its depth's indent, and no plugin
+    restyles a row's box, hover, or ring, which is how the Diff summary's copy drifted to an
+    8px inset and a rounded, outset ring (mb-xlla). `tests/test_changed_file_rows_chrome.py`
+    measures the two trees row for row in Chrome.
+    """
+
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    row = shell[".changed-file-row"]
+    assert row["padding"] == "2px 12px 2px calc(10px + var(--changed-file-indent, 0px))"
+    assert row["border-left"] == "2px solid transparent"
+    assert row["height"] == "var(--ui-row-height)"
+    assert shell[".changed-file-row:hover"] == {"background": "var(--hover-bg)"}
+    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "-2px"
+    assert shell[".changed-file-toggle"]["width"] == "var(--tree-icon-slot)"
+    sources = {
+        "diff/diff-summary.js": "diff-summary-row",
+        "github/pull-files-view.js": "github-pull-",
+    }
+    for source, own in sources.items():
+        text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
+        for part in (
+            "changed-file-row",
+            "changed-file-toggle",
+            "changed-file-name",
+            "changed-file-stats",
+        ):
+            assert f'"{part} {own}' in text, (source, part)
+    owned = {"--changed-file-indent", "scroll-margin-block-start", "color"}
+    for sheet, classes in (
+        ("diff/styles.css", ("diff-summary-row",)),
+        ("github/styles.css", ("github-pull-file-row", "github-pull-folder-row")),
+    ):
+        for selector, body in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / sheet):
+            subject = selector.split()[-1]
+            named = any(re.search(rf"\.{name}(?![\w-])", subject) for name in classes)
+            if named and "::" not in subject:
+                assert set(body) <= owned, (sheet, selector, body)
+    # The Diff summary's header hovers and rings as its rows do: square, the ring inside.
+    diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
+    toggle = ".metabrowser-diff-host .diff-summary-toggle"
+    assert diff[toggle]["border-radius"] == "0"
+    assert diff[toggle + ":focus-visible"]["outline-offset"] == "-2px"
+    # A folder's tooltip gives what its sums leave out, the counts alone.
+    for source in sources:
+        text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
+        assert "element.dataset.tipText = missing;" in text, source
+        assert "${row.name}, ${missing}" not in text, source
+
+
+def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
+    """A size two rules share is one token, and what is made of it is derived from it.
+
+    The tree's icon slot is the glyph's width, `--tree-icon-slot: var(--icon-glyph)`, and the
+    chevron centered in it is `--toggle-chevron-size`; a menu's, a palette's, and a file
+    identity's icon box is `--icon-box`. The Conversation timeline's avatar and the gap after
+    it are `--github-pull-avatar-size` and `--github-pull-identity-gap`, and the commit row's
+    start, the line's x, the empty slot, and the authors' floors are derived from them
+    (mb-xlla).
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "--tree-icon-slot: var(--icon-glyph);" in styles
+    assert "--toggle-chevron-size: 12px;" in styles and "--icon-box: 16px;" in styles
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    chevron = shell[".toggle-chevron"]
+    assert (chevron["width"], chevron["height"]) == ("var(--toggle-chevron-size)",) * 2
+    centered = "calc((var(--tree-icon-slot) - var(--toggle-chevron-size)) / 2)"
+    assert shell[".tree-folder > .tree-toggle"]["margin-inline"] == centered
+    assert shell[".tree-container > .tree-toggle"]["margin"] == f"0 {centered}"
+    for box in (".menu-item-icon", ".search-palette-icon", ".file-identity-icon"):
+        assert (shell[box]["width"], shell[box]["height"]) == ("var(--icon-box)",) * 2, box
+    github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
+    rules = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # The page and the Pulls tab both draw authors, so both carry the two tokens.
+    assert ".github-pull,\n.github-pulls {\n  --github-pull-avatar-size: 18px;\n" in github
+    assert rules[".github-pulls"] == {
+        "--github-pull-avatar-size": "18px",
+        "--github-pull-identity-gap": "4px",
+    }
+    for selector in (".github-pull-avatar", ".github-pull-avatar-slot"):
+        assert (
+            rules[selector]["width"]
+            == rules[selector]["height"]
+            == ("var(--github-pull-avatar-size)")
+        ), selector
+    assert rules[".github-pull-identity"]["gap"] == "var(--github-pull-identity-gap)"
+    assert rules[".github-pull-event"]["--github-pull-rail"] == (
+        "calc(var(--github-pull-text-inset) + var(--github-pull-avatar-size) / 2)"
+    )
+    for selector in (
+        ".github-pull-commit",
+        ".github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar)",
+        ".github-pulls-by:has(.github-pull-avatar)",
+    ):
+        geometry = " ".join(
+            rules[selector].get("padding", rules[selector].get("min-width", "")).split()
+        )
+        assert "var(--github-pull-avatar-size)" in geometry, selector
+        assert "var(--github-pull-identity-gap)" in geometry, selector
+    # No avatar size or gap is written as a pixel literal in a rule.
+    assert "18px + 4px" not in github and "+ 9px" not in github
 
 
 # A serif face, named directly, as a family, or through the token KPress reads it from.

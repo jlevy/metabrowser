@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Design-system consistency fixes.
+  The Group by trigger no longer pulses while a grouping loads, and an ignored file
+  under the tree’s dim stays as legible as it is at rest.
+  A pull request’s stack menu opens with focus on the current pull request, which it
+  marks as the Pulls list marks the current row, and Escape returns to the button; a
+  pull request in two stacks names each stack on its button, as its Pulls row does.
+  The Diff summary’s files line up with a Pulls row’s changed files, and a folder’s
+  tooltip in either gives only what its line counts leave out.
+
 - A Group by choice in the Files tab shows that it was taken, however long the server
   takes. The trigger reads the choice at once, and if the groups take longer than the
   quiet period the tree dims while the progress row under it reads “Grouping by file

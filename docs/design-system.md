@@ -1294,10 +1294,18 @@ Opened, it shows the change set’s files as a tree by folder, the
 letters, and inline change stats at the row’s end, a chain of single folders as one row,
 and every folder with the line counts of the files under it rolled up, open or closed,
 as a Files folder keeps its size whichever way it is turned.
-A folder says in its accessible name and tooltip what its sums leave out (“2 files
-without line counts”, or each side’s when they differ).
-A path a patch lists more than once, as a file that became a symlink, is one row with
-both changes’ counts, and goes to the first of its sections.
+Both trees draw one row, the shell’s `.changed-file-row` class set in
+`static/styles.css` beside the Files tree’s rows: the 12 px content inset past the 2 px
+bar, the square hover, and the focus ring 2 px inside the row; each plugin sets only its
+depth’s indent, `--changed-file-indent`. The header hovers and rings as its rows do.
+`tests/test_changed_file_rows_chrome.py` mounts both trees on one list in Chrome and
+holds them to one row; before the shared set the summary’s rows started 2 px further
+left.
+A folder says in its accessible name what its sums leave out (“2 files without line
+counts”, or each side’s when they differ), and its tooltip says that alone, since its
+name is on the row ([Tooltips Add Information](#tooltips-add-information)). A path a
+patch lists more than once, as a file that became a symlink, is one row with both
+changes’ counts, and goes to the first of its sections.
 The tree sits in a box under the toolbar, at most `60vh` tall, which scrolls inside
 itself so the files stay a scroll away, and it is drawn a window at a time.
 Nothing of it is mounted until the header first opens it.
@@ -1559,7 +1567,8 @@ a commit. It is said the way a card head says a comment:
   It is set at `--body-font-size` on the head’s line, and its box is that line, with no
   room of its own above or below, in a frame as wide as a card’s that draws nothing.
   Its subject is bold in text ink where a head’s author is, and starts where the
-  author’s name does after the 18 px avatar.
+  author’s name does after the avatar, `--github-pull-avatar-size` (18 px), and the
+  identity’s gap, `--github-pull-identity-gap` (4 px).
   A card head whose author has no usable avatar keeps the avatar’s box, empty and hidden
   from assistive technology (`authorLabel`’s `slot`), so every head’s name and every
   commit’s subject start at one x. The header and Pulls rows draw no such box.
@@ -1579,7 +1588,8 @@ a commit. It is said the way a card head says a comment:
 
 - **Spacing:** one rhythm (mb-w7rt). Every two consecutive events are
   `--github-pull-rhythm` (20 px) apart, card to card, card to commit, commit to card,
-  and commit to commit alike, and so are two review comments under Review comments.
+  and commit to commit alike, and so are two review comments under Review comments,
+  whose heading sits over the first at the sections’ own gap, as every section’s does.
   The space is what the reader sees: a card’s border, and a commit’s text, whose row is
   its line. 20 px is the space between two commits’ text that the owner called good; the
   12 px between cards read as crowded.
@@ -1595,8 +1605,9 @@ a commit. It is said the way a card head says a comment:
 
 This is the structure of GitHub’s own pull request page, a line down the timeline with a
 mark at each commit, drawn in the shell’s tokens and none of GitHub’s assets.
-Its one token is the rhythm; the rest of its geometry is the avatar’s and the card
-head’s.
+Its tokens are the rhythm and the avatar’s two: the commit row’s start, the line’s x
+down the avatars’ centers, and an absent avatar’s slot are derived from the avatar’s
+size and the identity’s gap, and the rest of its geometry is the card head’s.
 
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
@@ -1676,9 +1687,13 @@ tall as a neutral one and the header’s rows keep their heights.
 
 The colors are github.com’s own formula, read from its stylesheets (Primer’s
 `.IssueLabel`, on 2026-11-15). The page sets the label’s red, green, and blue, 0 to 255,
-and its hue, saturation, and lightness, each rounded to a whole number, as `--label-r`,
-`--label-g`, `--label-b`, `--label-h`, `--label-s`, and `--label-l` on the chip, as
-github.com does; `github/styles.css` states the formula once.
+and its hue, saturation, and lightness, each rounded to a whole number, as github.com
+does, on the chip as `--github-label-r`, `--github-label-g`, `--github-label-b`,
+`--github-label-h`, `--github-label-s`, and `--github-label-l`; `github/styles.css`
+states the formula once.
+The formula’s custom properties are github.com’s under the plugin’s `--github-label-`
+prefix, so none shares a name with the shell’s label register (`--label-color`,
+`--label-font-size`); the stylesheet maps each to Primer’s name.
 Its perceived lightness is (0.2126 R + 0.7152 G + 0.0722 B) / 255.
 
 | Part | Light theme | Dark theme |
@@ -1698,9 +1713,10 @@ These are the one place the stylesheet writes `rgb()` and `hsl()`
 ([Color and Theming](#color-and-theming)): the color is GitHub’s sRGB data and the
 formula is github.com’s, so stating it in `oklch` would paint other colors than
 github.com does. `test_colors_are_declared_in_oklch` takes out the formula’s two rules
-alone and holds that every color they write is computed from a `--label-` property.
-`tests/test_github_label_colors.py` holds the properties to the ones github.com set on
-112 colors of six public repositories’ labels.
+alone and holds that every color they write is computed from a `--github-label-`
+property.
+`tests/test_github_label_colors.py` holds the properties to the ones github.com
+set on 112 colors of six public repositories’ labels.
 `tests/dom/github-pull-header-chrome.mjs` (its `labels` part) holds each chip’s computed
 ground, text, and border in both themes to the formula and to what github.com’s own
 stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a gray
@@ -1939,8 +1955,8 @@ surface keeps a copy of either.
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
-| Position, “2/4” | `.github-pull-stack-position`, bold and tabular; on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page, at the right end of the author’s row; a Pulls row’s place, before its number, with no icon (`mb-dzsi`) |
-| Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
+| Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the author’s row; a Pulls row’s place, before its number, with no icon |
+| Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and on the current pull request a check, `aria-current="page"`, and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests the list holds, “4” or “3 of 4” | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
@@ -1956,7 +1972,11 @@ surface keeps a copy of either.
   text’s size: “3/4 · ⧉300 2/2”, where ⧉ is the glyph.
   A number alone, “#300”, read as the pull request number on the same row.
   Its own stack is its only stack, the one a group places it under, or else the first
-  GitHub lists.
+  GitHub lists. On the page a pull request in more than one stack has a stack button for
+  each, and each names its stack, “⧉286 4/4” and “⧉300 2/2”, since no button is the
+  page’s own stack; two bare positions told the stacks apart only by their tips
+  (`namedStackPosition` in `pull-stacks.js`). In one stack the button is the glyph and
+  the bare position, “⧉3/4”.
 - **Ink.** The position is in normal text ink wherever it appears: in a Pulls row’s
   place, the ink of the number it comes before, on the stack button, and in a member
   row. A member row is a link, so its position, title, and number each set their own ink,
@@ -1966,10 +1986,15 @@ surface keeps a copy of either.
   `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
   order.
 - **Links, hover, and focus.** A member row is a link to its pull request and a menu
-  item, with the menu’s hover and the current member’s hover ground.
-  A stack group’s row is a row of the Pulls tree, not a link, since no page stands for a
-  stack: it hovers, takes the focus ring, and takes the pointer as a pull request’s row
-  does, and a press opens or closes it as a folder’s does.
+  item, with the menu’s hover.
+  The current member is marked as the Pulls list marks its current row, `--highlight-bg`
+  and the 2px `--highlight-bar`, drawn inset since a menu row has no border, and keeps
+  that mark hovered or focused; focus on any member shows as the header’s link ring.
+  The menu’s keys are [Keys in a Menu](#keys-in-a-menu)’s: every way it opens, a press,
+  Enter, Space, `↓`, or `↑`, puts focus on the current member, and Escape gives it back
+  to the button. A stack group’s row is a row of the Pulls tree, not a link, since no
+  page stands for a stack: it hovers, takes the focus ring, and takes the pointer as a
+  pull request’s row does, and a press opens or closes it as a folder’s does.
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
   The stack button carries it, as its glyph and position do not name the stack, and its
@@ -2535,14 +2560,16 @@ the GitHub plugin’s four pull-request states are in
 Every icon in the chrome is drawn at `--icon-glyph`, whether it is a button, a file-type
 mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
-Where an icon reserves a column in a palette or menu row, the alignment box around it is
-16px — one step wider than the glyph, so the mark sits optically centered.
+Where an icon reserves a column in a palette or menu row, or a file identity’s, the
+alignment box around it is `--icon-box`, 16px — one step wider than the glyph, so the
+mark sits optically centered.
 
-A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, 14px: a folder’s
-or a container’s chevron, a file’s type icon, a change letter, and a Pulls row’s
-chevron, state icon, and a stack’s Layers icon all take it, so chevrons and icons make
-one column and the names after them line up (`mb-hmv7`). A 12px chevron sits 1px in, and
-a file icon fills the slot, the row’s 6px gap from its name.
+A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, which is
+`--icon-glyph`, 14px: a folder’s or a container’s chevron, a file’s type icon, a change
+letter, and a Pulls row’s chevron, state icon, and a stack’s Layers icon all take it, so
+chevrons and icons make one column and the names after them line up.
+The chevron is `--toggle-chevron-size`, 12px, and sits 1px in, and a file icon fills the
+slot, the row’s 6px gap from its name.
 At 16px a Files name started 22px from the row’s content edge and a Pulls title 44px,
 past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
 wider. `tests/test_files_tab_chrome.py` and `tests/test_github_pulls_stacks_chrome.py`
@@ -2815,12 +2842,16 @@ it resets them all, Show ignored back on, and keeps the grouping.
   starts with No grouping.
 - **Waiting.** A choice shows at once: the trigger reads it in the frame it is made,
   whatever the groups then take, because the bar renders from the choice before any
-  request starts. The tree on screen stays while the groups load, and the Group by
-  trigger breathes as refreshing text does once the wait passes `--loading-state-delay`.
-  For a choice’s first sections, the tree on screen is the arrangement the reader left,
-  so past the same quiet period it dims to `--dimmed-content-opacity`, and the
-  navigation’s scan row says what is coming, “Grouping by file type…” or “Grouping by
-  age…”, in its spinner and words.
+  request starts. The tree on screen stays while the groups load, and the trigger does
+  not breathe: it reads the choice in the link’s ink on the accent ground, and only
+  primary ink breathes ([Refreshing Content](#refreshing-content)). For a choice’s first
+  sections, the tree on screen is the arrangement the reader left, so past
+  `--loading-state-delay` it dims to `--loading-dim-opacity`, and the navigation’s scan
+  row says what is coming, “Grouping by file type…” or “Grouping by age…”, in its
+  spinner and words. The dim is the tree’s dimmest level, `--dimmed-content-opacity`’s
+  0.45, and a row already dimmed, an ignored file or an empty folder, is held there
+  rather than dimmed twice: at 0.45 of 0.45 its name read 1.54:1 in Chrome, near
+  invisible, where it reads 2.86:1, as at rest.
   The metadata band and notices above the tree keep their ink, and an answer inside the
   quiet period shows none of it.
   The scan row rather than a metadata line holds the words because a metadata line takes
@@ -3712,7 +3743,7 @@ counts are their accessible names, and the age’s exact time and a title cut sh
 the page the row opens.
 A pull request’s changed files under its row keep the tooltips the tree gives a file:
 its full path when its row shows only its name, “not in this comparison”, the name it
-was renamed from, and what a folder’s sums leave out.
+was renamed from, and what a folder’s sums leave out, the counts alone.
 
 **Restating is not adding.** A “Show ignored” check, in the Files filter row and a
 folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
@@ -3912,6 +3943,9 @@ drawer that holds it too.
 Focus lands on the checked row, or on the first row when none is checked, so `↑`, `↓`,
 `Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
 `W`’s branch list is the precedent: it opens with focus in its filter box.
+The pull request page’s stack menu opens the same way, on its current member, the row it
+checks, by a press, Enter, Space, `↓`, or `↑` ([Stacks](#stacks)); on its button, as on
+a filter’s trigger, `Home` and `End` open nothing.
 
 - **Closing.** Escape, a second click on the trigger, and a choice that closes a
   single-select menu give focus back to the trigger.
@@ -4259,6 +4293,13 @@ the content stays as it is, at full size and in place, with no spinner and no pr
 or staleness sentence beside it.
 A spinner over rendered content is the strongest loading signal pointed at something
 that is not loading, and it drew the eye to a wait the reader was not making.
+
+One wait dims what is shown, and it is named here because it is the exception: a Group
+by choice’s first sections ([Grouping the Files Tree](#grouping-the-files-tree),
+Waiting). The tree on screen then is not the content being checked but the arrangement
+the reader left, and the reader is waiting for the new one, so past the quiet period it
+dims to its own token, `--loading-dim-opacity`, while the scan row says what is coming.
+Nothing else takes that token.
 
 Instead, the text a refresh is checking **breathes**: its opacity eases down and back
 once every `--refreshing-text-period` (2.4 s), starting only after
