@@ -5,7 +5,7 @@ title: "Diff summary: one collapsible changed-files tree with folder roll-ups, r
 kind: feature
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T06:38:07.568Z
+updated_at: 2026-11-15T07:30:07.900Z
 started_at: 2026-11-15T06:32:50.037Z
 ---
 The user's request (2026-11-15), verbatim:
@@ -60,3 +60,23 @@ Done when:
 - `docs/design-system.md`, the views/models/routes map and CHANGELOG are updated.
 
 Ships in the combined PR with the other recent items (mb-s6vu, mb-1wfn, mb-sogv, mb-m5dd).
+
+## Notes
+
+Built on branch claude/diff-summary (PR 4 of the 2026-11-15 stack), three commits, not pushed:
+- f75e79e3b feat(github): the Pulls tree on a shared changed-files model, with folder roll-ups
+- 6b6723ed1 feat(diff): a Diff summary replaces the multi-file diff's count line
+- 689a56e0a docs(diff): the Diff summary in the design system, the map, and the changelog
+
+Design:
+- Shared model: static/changed-files-tree.js (window.MetabrowserChangedFilesTree), the shell's on-demand bundle `changed-files-tree`, reached by plugins only through the SDK: metabrowser.loadChangedFilesTree() (plugin-sdk-views.js). Plugins cannot import each other by URL (docs/plugins.md), and loading the diff plugin into the Pulls tab to borrow its module would cost ~55 KB gz. buildFileTree (with folder roll-ups: sums of known counts, null when none known, `unknown` count), visibleRows, expansionFor/isOpen/toggleFolder/revealPath, parentIndex, windowRange, statusBreakdown, describeChanges (header text + label), changeStats. Types in types.d.ts (declare global).
+- Pulls tab: pull-files-tree.js keeps its GitHub list logic; the controller takes deps.tree (model, or a loader function); pull-files-view.js paints folder roll-ups (open or closed) and a folder aria-label.
+- Diff summary: diff-view.js renderDiffSummary draws the collapsed header (button, chevron, aria-expanded, aria-label) in the toolbar; diff-summary.js (on demand; hover/focus prefetch) holds createSummaryTree (browserless) and mountSummaryTree (windowed paint in a 60vh scroll box, keys: arrows/Home/End/Left/Right move/toggle, Enter/Space/press jump). diff-model.js changeSummaryRow maps File Diff Format kinds to the tree's statuses.
+- Hosts: PR Changes and diff (patch) files. The Git commit view is unchanged and has no summary: on main it never drew the count line (showSummary: !ctx.revision in diff/index.js) and design-system.md "Git Commit Summary" requires one set of totals there. Deviation from the default, stated here and in the design system.
+- Open folders show roll-ups, like Files folders keep their size when open.
+
+Tests: tests/dom/diff-summary-session.js + tests/golden/cli-ui-diff-summary.tryscript.md (new); diff-view-behavior.js (header, lazy mount, window, chords, jump, dispose); github-pull-files-focus-behavior.js (Pulls folder roll-up paint); github-pull-files-tree-session.js golden gains folder roll-ups and one invariant; harnesses gain the shared tree via tests/dom/changed-files-tree-fixture.js; test_design_vocabulary.py and test_modified_keys.py register the new toggles, chevrons, and keydown listener. Red on main: new session (no modules), diff-view checks ("no count line", "header is the toggle"), Pulls folder roll-up assertion.
+
+Measured (headless Chrome 152, 1280x900, PR #260 as a patch: 596 files/649 rows; synthetic 2,000-file patch: 3,221 rows; 7 loads, two runs, load avg 12-39): header paints in the first file bar's frame, no later than main's line; open after hover 15.5-16.4 ms (max 19) and 42-46.8 ms (max 65.7) press-to-frame, 61 rows drawn, no long task; no-hover press 15-17 / 39-50 ms; deep folder toggle 9-26 ms. Real arrow keys and Enter verified in Chrome.
+
+Local: make -o install lint-check passes; focused pytest (240 + 23 incl. Chrome nav-metadata/pull-header) and 59 related tryscript goldens pass. Not verified: the Pulls tab's roll-ups in a real browser (fake-DOM only); the PR page's Changes in a real browser (exercised via patch files; same mountDiffView).
