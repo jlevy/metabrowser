@@ -853,46 +853,54 @@ An element wholly outside the viewport is not entered unless its scrollable over
 which holds content and positioned descendants laid out outside its box, reaches the
 viewport. Text under a hidden parent is visited but neither measured nor counted toward
 the 400. The walk stops at 1,500 nodes visited, entered or not, or 400 text nodes
-measured.
-When it stops at a bound, or found nothing after passing over an element on its
+measured. A text node longer than 2,000 characters, such as a source view’s line-number
+gutter, is measured from its start only, since its boxes cost in proportion to its lines
+(3 ms a call for the corpus’s `app.js` gutter, in every frame of that view); one whose
+start is not shown sends the search on to the hit test.
+When the walk stops at a bound, or found nothing after passing over an element on its
 own box, it hit-tests up to 60 points across the area where the root can paint (the
-viewport, cut by the root and every ancestor that clips), rows coarse to fine at four
-columns. A point whose topmost element (`elementFromPoint`) is outside the root, such as
-an overlay, does not show the root.
+viewport, cut by the root and every ancestor that clips), at four columns: first the two
+top rows of that area and of the root, where a view’s content starts, then rows coarse
+to fine. It starts no point after 3 ms of the call (the first always runs) and marks the
+frame’s read `searchTruncated` when it stops there, and it stops at the first point that
+finds content. A point whose topmost element (`elementFromPoint`) is outside the root,
+such as an overlay, does not show the root.
 Otherwise that element and its ancestors up to the root are tested as media and by their
 first 32 child text nodes, and, the first time a topmost element is met, so is the text
 the caret lands on there (`caretPositionFromPoint`), which sees text under
 `pointer-events: none` and the text nearest the point, so a lone line between the rows
-is found. Media are tested as the walk reaches them, not by a separate pass over the
-whole subtree.
+is found; a long text node is measured around the caret’s offset.
+Media are tested as the walk reaches them, not by a separate pass over the whole
+subtree.
 
-The bounds come from [transitions-search-cost.mjs](transitions-search-cost.mjs), which
-times one call on synthetic documents in headless Chrome.
-Median of 20 calls in ms, revision 5 against revision 6, at a load average of about 6
-(read the ratios, not the values):
+The bounds and the budget come from
+[transitions-search-cost.mjs](transitions-search-cost.mjs), which times one call on
+synthetic documents in headless Chrome, scrolled to the end of their lines (dense), or
+past them onto a tail that shows a heading at the screen’s top, one line at its bottom,
+lines under `pointer-events: none`, or nothing (blank).
+Median of 20 calls in ms, revision 5 / revision 6, at a load average of about 6 (read
+the ratios, not the values); `(cut)` marks a call that stopped at the budget, and every
+other call found what is on screen:
 
-| Document | Lines | End, rev. 5 | End, rev. 6 | Past the end, rev. 5 | Past the end, rev. 6 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| one `<div>` per line | 2,000 | 2.70 | 1.90 | 2.70 | 3.10 |
-| one `<div>` per line | 10,000 | 13.40 | 1.70 | 13.70 | 7.70 |
-| one `<div>` per line | 40,000 | 54.70 | 1.80 | 54.90 | 67.70 |
-| lines of 8 highlighted spans | 2,000 | 2.80 | 2.00 | 3.60 | 3.30 |
-| lines of 8 highlighted spans | 10,000 | 16.20 | 1.90 | 20.90 | 10.90 |
-| lines of 8 highlighted spans | 40,000 | 67.30 | 1.90 | 82.40 | 122.90 |
-| table rows of 3 cells | 2,000 | 2.70 | 2.00 | 0.40 | 0.10 |
-| table rows of 3 cells | 10,000 | 14.80 | 1.80 | 1.80 | 0.10 |
-| table rows of 3 cells | 40,000 | 59.70 | 1.80 | 7.30 | 0.10 |
-| sections of 50 lines | 2,000 | 0.10 | 0.10 | 0.20 | 0.20 |
-| sections of 50 lines | 10,000 | 0.30 | 0.30 | 0.70 | 0.50 |
-| sections of 50 lines | 40,000 | 1.30 | 1.10 | 3.20 | 1.70 |
+| Document | Lines | Dense | Sparse top | Sparse bottom | `pointer-events: none` | Blank |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| one `<div>` per line | 10,000 | 13.5 / 1.9 | 13.8 / 1.8 | 13.1 / 1.8 | 12.9 / 1.8 | 13.6 / 4.9 (cut) |
+| one `<div>` per line | 40,000 | 54.0 / 1.7 | 52.7 / 1.8 | 53.5 / 1.8 | 52.9 / 1.7 | 55.4 / 5.2 (cut) |
+| lines of 8 highlighted spans | 10,000 | 16.2 / 1.9 | 16.6 / 1.9 | 16.6 / 2.1 | 16.2 / 1.9 | 20.3 / 4.9 (cut) |
+| lines of 8 highlighted spans | 40,000 | 66.2 / 1.7 | 66.3 / 2.0 | 65.5 / 2.0 | 66.1 / 2.0 | 83.1 / 5.6 (cut) |
+| table rows of 3 cells | 10,000 | 14.7 / 1.8 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 1.8 / 0.1 |
+| table rows of 3 cells | 40,000 | 57.9 / 2.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 7.4 / 0.1 |
+| sections of 50 lines | 10,000 | 0.3 / 0.3 | 0.3 / 0.3 | 0.3 / 0.2 | 0.3 / 0.3 | 0.8 / 0.6 |
+| sections of 50 lines | 40,000 | 1.1 / 1.1 | 1.1 / 1.1 | 1.1 / 1.1 | 1.1 / 1.1 | 3.1 / 1.9 |
 
-At the top of every document both cost under 0.01 ms, and both found the lines at the
-end. A long document scrolled to its end now costs what a short one does, because the
-walk is bounded and the first hit-test point finds a line.
-Scrolled past every line onto blank space, a flat list of 40,000 lines costs 68 to 123
-ms a call, against 55 to 82 ms in revision 5: nothing is found, so all 60 hit-test
-points are tried, and each walks the list’s siblings.
-At 10,000 lines it costs 7.70 and 10.90 ms.
+A long document now costs what a short one does, because the walk is bounded and the
+first hit-test point finds the lines, the heading, the lone line, or the text under
+`pointer-events: none`. Over blank space past a long list the budget stops the call at
+about 5 ms, where each point costs a walk of the siblings it lands among (about 1.1 ms
+for `elementFromPoint` and 1.7 ms for the caret over 40,000 lines), so 60 points cost 68
+to 123 ms before the budget; such a frame reads blank, which it is.
+On the product, a frame of the corpus’s `app.js` source view reads in 2.4 ms (5.1 ms
+before the gutter’s bound), and of its Markdown files in under 1 ms.
 
 **Scenario revisions.** Each row carries `scenario_revision`, and `compare` refuses to
 mix revisions but judges two sets of rows of one older revision against each other,
@@ -1052,9 +1060,15 @@ start for a landing).
   A build that highlights another way must set the same mark, or the milestone never
   arrives. A milestone that never arrives is `null` and named in `milestonesMissing`;
 - the recorder’s own read (revision 6): `readCostMaxMs`, the longest read of a frame in
-  the window, and `readCostToReadyMs`, the reads summed up to the ready frame.
+  the window, `readCostToReadyMs`, the reads summed up to the ready frame, and
+  `searchTruncatedFrames`, the frames whose content search stopped at its hit-test
+  budget, where on-screen content can have read as blank.
   A read includes the frame’s state, its regions, and the ready and milestone
-  predicates, so a condition whose page makes the search work harder shows it here;
+  predicates, so a condition whose page makes the search work harder shows it here.
+  `compare` and `summarize` name every transition whose longest read passed
+  `READ_COST_CEILING_MS` (4 ms, about a quarter of a 60 Hz frame, in
+  `transitions-stats.mjs`), as `INSTRUMENT COST`, since the recorder may have delayed
+  that frame, and every transition with a truncated search, as `SEARCH TRUNCATED`;
 - retained memory (revision 6), after a full garbage collection, at every journey’s end
   (`journey.memory`, compared as `<journey>.end`) and, with `--memory-after`, after
   named transitions (`memory`): the page’s main-thread V8 heap (`Runtime.getHeapUsage`,
@@ -1253,10 +1267,10 @@ The hit test does, since a point whose topmost element is outside the root shows
 of it. Content smaller than the grid that escapes a pruned ancestor (a short
 fixed-position label under a block clipped to height 0) can fall between its points, and
 an element clipped away by `clip-path` is not read as hidden.
-Each hit-test point costs a walk of the siblings it lands among: over blank space past a
-flat list of 40,000 lines, where all 60 points are tried, a call costs 68 to 123 ms
-(revision 5: 55 to 82 ms), against about 2 ms at the end of the same list, where the
-first point finds a line.
+The hit test’s budget is time, so on a slower or busier machine it tries fewer points
+before it stops: sparse content past the first point can then read as blank, and the
+frame says so (`searchTruncated`). On the synthetic pages every sparse case was found at
+the first point, which always runs.
 A long text node still costs its rectangles: the source view’s line-number gutter is one
 text node, which a search that reaches it measures whole.
 The search reads an off-screen element’s scroll size to see whether its overflow reaches
