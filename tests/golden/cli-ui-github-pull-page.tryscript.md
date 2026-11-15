@@ -158,7 +158,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -264,7 +264,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -323,7 +323,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -375,7 +375,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -419,7 +419,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -468,7 +468,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -516,7 +516,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -572,7 +572,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
@@ -628,7 +628,7 @@ $ node tests/dom/github-pull-page-session.js
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement #2700af --label-r:39;--label-g:0;--label-b:175;--label-h:253;--label-s:100;--label-l:34 tip: A label's description is its chip's tooltip"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [

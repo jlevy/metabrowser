@@ -746,16 +746,126 @@ try {
     const progress = document.getElementById("index-progress");
     const tree = panel.querySelector(":scope > :not(.nav-metadata, .notice)");
     const trigger = document.querySelector('[data-chip-menu-toggle="group"]');
+    const token = (name) => Number(getComputedStyle(document.documentElement).getPropertyValue(name));
     return {
       trigger: trigger.textContent.trim(),
-      breathing: trigger.classList.contains("mb-refreshing"),
+      // Breathing is an animation on the trigger, by any class.
+      breathing: trigger.getAnimations().some((a) => a instanceof CSSAnimation) || trigger.classList.contains("mb-refreshing"),
       progress: progress.hidden ? null : progress.querySelector(".index-progress-text").textContent,
       progressShown: !progress.hidden && getComputedStyle(progress).visibility === "visible",
       treeOpacity: tree ? Math.round(Number(getComputedStyle(tree).opacity) * 100) / 100 : null,
       busy: panel.getAttribute("aria-busy"),
       sections: panel.querySelectorAll(".tree-section").length,
-      dimmedToken: Number(getComputedStyle(document.documentElement).getPropertyValue("--dimmed-content-opacity")),
+      dimmedToken: token("--dimmed-content-opacity"),
+      loadingDimToken: token("--loading-dim-opacity"),
     };
+  })()`;
+  // Paint, as Chrome draws it: a color as 8-bit sRGB, alpha-composited over the ground
+  // behind an element (the backgrounds of its ancestors, from the first opaque one in),
+  // and WCAG contrast. Opacity composites in sRGB, as a canvas does.
+  const PAINT = `(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const paint = (layers) => {
+      ctx.globalAlpha = 1;
+      ctx.clearRect(0, 0, 1, 1);
+      for (const [color, alpha] of layers) {
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, 1, 1);
+      }
+      return [...ctx.getImageData(0, 0, 1, 1).data];
+    };
+    const css = (rgba) => "rgb(" + rgba.slice(0, 3).join(" ") + ")";
+    const ground = (el, self = false) => {
+      const layers = [];
+      for (let node = self ? el : el.parentElement; node; node = node.parentElement) {
+        const background = getComputedStyle(node).backgroundColor;
+        const alpha = paint([[background, 1]])[3];
+        if (alpha > 0) layers.unshift([background, 1]);
+        if (alpha === 255) break;
+      }
+      layers.unshift(["rgb(255 255 255)", 1]);
+      return css(paint(layers));
+    };
+    const luminance = (rgba) => {
+      const [r, g, b] = rgba.slice(0, 3).map((v) => {
+        const c = v / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const contrast = (a, b) => {
+      const [hi, lo] = [luminance(paint([[a, 1]])), luminance(paint([[b, 1]]))].sort((x, y) => y - x);
+      return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100;
+    };
+    // The opacity an element is drawn at: its own and every ancestor's, multiplied.
+    const opacity = (el) => {
+      let product = 1;
+      for (let node = el; node; node = node.parentElement) product *= Number(getComputedStyle(node).opacity);
+      return Math.round(product * 10000) / 10000;
+    };
+    return { paint, css, ground, contrast, opacity };
+  })()`;
+  // The Group by trigger as it reads while a choice waits: its ink on its own ground, at
+  // rest, and what breathing did at its dimmest, the whole trigger at
+  // --refreshing-text-dim-opacity over the bar (before mb-xlla), in both themes.
+  const TRIGGER_INK = `(() => {
+    const { paint, css, ground, contrast } = ${PAINT};
+    const trigger = document.querySelector('[data-chip-menu-toggle="group"]');
+    const style = getComputedStyle(trigger);
+    const outer = ground(trigger);
+    const own = ground(trigger, true);
+    const dim = Number(getComputedStyle(document.documentElement).getPropertyValue("--refreshing-text-dim-opacity"));
+    return {
+      active: trigger.dataset.active,
+      rest: contrast(style.color, own),
+      breathingDimmest: contrast(
+        css(paint([[outer, 1], [style.color, dim]])),
+        css(paint([[outer, 1], [style.backgroundColor, dim]])),
+      ),
+    };
+  })()`;
+  // A theme set, once the transitions it starts are over: the chip's own color
+  // (`.chip`, --transition-fast) and the surfaces' crossfade (--theme-transition).
+  const THEME = (theme) => `(async () => {
+    document.documentElement.setAttribute("data-theme", ${JSON.stringify(theme)});
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    await frame();
+    for (let at = 0; at < 120 && document.getAnimations().some((a) => a instanceof CSSTransition); at += 1) {
+      await frame();
+    }
+    await frame();
+    return true;
+  })()`;
+  /** The trigger's ink in each theme. */
+  const triggerInk = async () => {
+    const themes = {};
+    for (const theme of ["light", "dark"]) {
+      await browser.evaluate(THEME(theme));
+      themes[theme] = await browser.evaluate(TRIGGER_INK);
+    }
+    await browser.evaluate(THEME("light"));
+    return themes;
+  };
+  // A tree row as an ignored file's is drawn (app.js gives an ignored entry's row
+  // `tree-item-gitignored`; this fixture has no Git repository, so none is ignored): the
+  // opacity its name is drawn at and its contrast on the tree's ground, once the dim's quiet
+  // period has passed for it. The row's class is put back as it was. Not the row under the
+  // pointer, which the menu's press left over the tree: hover lifts an ignored row.
+  const IGNORED_ROW = `(async () => {
+    const { paint, css, ground, contrast, opacity } = ${PAINT};
+    const row = document.querySelector("#tab-files .tree-item:not(.tree-item-gitignored, .tree-item-empty, :hover)");
+    row.classList.add("tree-item-gitignored");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const name = row.querySelector(".tree-item-name");
+    const drawn = opacity(name);
+    const under = ground(document.getElementById("tab-files"), true);
+    const ink = css(paint([[under, 1], [getComputedStyle(name).color, drawn]]));
+    row.classList.remove("tree-item-gitignored");
+    return { opacity: drawn, contrast: contrast(ink, under) };
   })()`;
   // The trigger as the click that chose leaves it, read before the frame it paints in.
   const ARM_CHOICE = `(() => {
@@ -807,6 +917,10 @@ try {
   // Past the quiet period the tree dims under the scan row's words.
   await sleep(300);
   result.waiting.slow = await browser.evaluate(WAITING);
+  // The trigger reads the choice without breathing, and a row already dimmed is not dimmed
+  // twice under the wait.
+  result.waiting.triggerInk = await triggerInk();
+  result.waiting.ignoredUnderDim = await browser.evaluate(IGNORED_ROW);
   // A reveal while those sections are on their way, as navigating to a file makes one,
   // lands once they paint (app.js, revealInTree).
   await browser.evaluate(
@@ -822,6 +936,8 @@ try {
   await browser.waitFor("document.querySelectorAll('.tree-section').length > 1", 30000);
   await browser.evaluate(frames);
   result.waiting.painted = await browser.evaluate(WAITING);
+  result.waiting.ignoredAtRest = await browser.evaluate(IGNORED_ROW);
+  result.waiting.triggerInkAfter = await triggerInk();
   await browser.waitFor("window.__revealed !== undefined", 30000);
   result.waiting.revealed = await browser.evaluate(
     `({ shown: window.__revealed, row: document.querySelector('.tree-section[data-tree-group="type:code"] .tree-item[data-path="src/lib/k03.py"]')?.classList.contains("selected") ?? null })`,
@@ -833,7 +949,7 @@ try {
   result.waiting.refreshedAfter = requested > beforeRelease;
   await release();
   await browser.waitFor(
-    `!document.querySelector('[data-chip-menu-toggle="group"]').classList.contains("mb-refreshing")`,
+    `document.getElementById("tab-files").getAttribute("aria-busy") === "false"`,
     30000,
   );
   releaseAll = true;

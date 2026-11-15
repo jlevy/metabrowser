@@ -251,6 +251,10 @@ try {
       k: [75, "KeyK"],
       ArrowLeft: [37, "ArrowLeft"],
       ArrowRight: [39, "ArrowRight"],
+      ArrowUp: [38, "ArrowUp"],
+      ArrowDown: [40, "ArrowDown"],
+      Enter: [13, "Enter"],
+      Escape: [27, "Escape"],
       " ": [32, "Space"],
     };
     const [keyCode, code] = codes[key];
@@ -947,6 +951,143 @@ try {
   }
   await shot(before ? "before-window" : "after-window");
   phase("menu");
+
+  if (!before) {
+    // The stack menu's keys (docs/design-system.md, "Keys in a Menu", mb-xlla): every way
+    // it opens puts focus on the current member, #9, the row checked, and Escape gives focus
+    // back to the trigger. The press above opened it.
+    const FOCUS = `(() => {
+      const el = document.activeElement;
+      if (el?.classList.contains("github-pull-stack-member")) {
+        return "#" + new URL(el.href).pathname.split("/")[2] + (el.getAttribute("aria-current") === "page" ? " current" : "");
+      }
+      return el?.classList.contains("github-pull-stack-trigger") ? "trigger " + el.getAttribute("aria-expanded") : (el?.tagName ?? null);
+    })()`;
+    const menuKeys = [["press", await evaluate(FOCUS)]];
+    for (const key of [
+      "Escape",
+      "ArrowDown",
+      "Escape",
+      "Enter",
+      "Escape",
+      " ",
+      "Escape",
+      "ArrowUp",
+    ]) {
+      await press(key);
+      menuKeys.push([key, await evaluate(FOCUS)]);
+    }
+    measured.menuKeys = menuKeys;
+    const opened = "#9 current";
+    const closed = "trigger false";
+    check(
+      "the stack menu opens on its current member however it opens, and Escape gives focus back",
+      JSON.stringify(menuKeys) ===
+        JSON.stringify([
+          ["press", opened],
+          ["Escape", closed],
+          ["ArrowDown", opened],
+          ["Escape", closed],
+          ["Enter", opened],
+          ["Escape", closed],
+          [" ", opened],
+          ["Escape", closed],
+          ["ArrowUp", opened],
+        ]),
+      JSON.stringify(menuKeys),
+    );
+    // The current member is marked as the Pulls list marks its current row, #9's: the
+    // highlight's ground and its 2px bar, not the hover ground, hovered, focused, or not
+    // (mb-xlla). Focus shows on it as on every member, by the ring.
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 895 });
+    const CURRENT = `(() => {
+      const member = document.querySelector('.github-pull-stack-menu .github-pull-stack-member[aria-current="page"]');
+      const row = document.querySelector(".github-pulls-row.selected");
+      const ms = getComputedStyle(member);
+      const rs = row === null ? null : getComputedStyle(row);
+      const focused = document.activeElement;
+      return {
+        focused: focused === member,
+        member: { background: ms.backgroundColor, shadow: ms.boxShadow, outline: ms.outlineStyle },
+        row: rs === null ? null : { number: row.dataset.number, background: rs.backgroundColor, bar: rs.borderLeftColor, width: rs.borderLeftWidth },
+        focusGround: getComputedStyle(focused).backgroundColor,
+        focusRing: getComputedStyle(focused).outlineStyle,
+      };
+    })()`;
+    await press("ArrowDown");
+    const atRest = await evaluate(CURRENT);
+    await press("ArrowUp");
+    const focusedCurrent = await evaluate(CURRENT);
+    const hoveredCurrent = await (async () => {
+      await hover('.github-pull-stack-menu .github-pull-stack-member[aria-current="page"]');
+      return evaluate(CURRENT);
+    })();
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 895 });
+    measured.currentMember = { atRest, focusedCurrent, hoveredCurrent };
+    const marked = (state) =>
+      state.row?.number === "9" &&
+      state.member.background === state.row.background &&
+      state.member.shadow === `${state.row.bar} 2px 0px 0px 0px inset` &&
+      state.row.width === "2px";
+    check(
+      "the stack menu's current member takes the Pulls list's current row's ground and bar",
+      !atRest.focused &&
+        marked(atRest) &&
+        atRest.member.background !== atRest.focusGround &&
+        atRest.member.outline === "none",
+      JSON.stringify(atRest),
+    );
+    check(
+      "focused or hovered, it keeps them, and focus shows on it by the ring",
+      focusedCurrent.focused &&
+        marked(focusedCurrent) &&
+        focusedCurrent.focusRing === "solid" &&
+        marked(hoveredCurrent),
+      JSON.stringify({ focusedCurrent, hoveredCurrent }),
+    );
+    await press("Escape");
+    // One stack: the chip is its glyph and position. A pull request in two, #10, has a chip
+    // for each, and each names its stack before its position, as #10's Pulls row does,
+    // "4/4 · 300 2/2" (mb-xlla): two bare positions differed only in their tips.
+    const CHIPS = `[...document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger")].map((t) => ({
+      text: t.textContent,
+      icon: t.querySelector(".github-pull-stack-icon svg") !== null,
+      label: t.getAttribute("aria-label"),
+      whole: t.scrollWidth <= t.clientWidth,
+    }))`;
+    const oneStack = await evaluate(CHIPS);
+    await click('a.github-pulls-row[data-number="10"]');
+    await waitFor(
+      `document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger").length === 2`,
+    );
+    await frames();
+    const twoStacks = await evaluate(CHIPS);
+    measured.chips = { oneStack, twoStacks };
+    check(
+      "one stack's chip is its glyph and bare position; in two, each chip names its stack",
+      JSON.stringify(oneStack) ===
+        JSON.stringify([
+          { text: "3/4", icon: true, label: "Navigate Stack #286, position 3 of 4", whole: true },
+        ]) &&
+        JSON.stringify(twoStacks) ===
+          JSON.stringify([
+            {
+              text: "286 4/4",
+              icon: true,
+              label: "Navigate Stack #286, position 4 of 4",
+              whole: true,
+            },
+            {
+              text: "300 2/2",
+              icon: true,
+              label: "Navigate Stack #300, position 2 of 2",
+              whole: true,
+            },
+          ]),
+      JSON.stringify(measured.chips),
+    );
+    phase("chips");
+  }
   check("no script error on the page", pageErrors.length === 0, pageErrors.join("\n"));
 } finally {
   await chrome.close();

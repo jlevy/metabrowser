@@ -52,13 +52,16 @@
   color: var(--text);
 }
 
+/* The header's hover and focus ring are the tree rows' under it (`.changed-file-row`):
+   square, and the ring drawn 2px inside the box, so the header and its rows hover and
+   focus as one tree. */
 .metabrowser-diff-host .diff-summary-toggle {
   flex: 0 1 auto;
   min-height: var(--ui-row-height);
   margin: 0 0 0 -4px;
   padding: 0 6px 0 0;
   border: 0;
-  border-radius: var(--radius-tag);
+  border-radius: 0;
   background: transparent;
   font-family: var(--font-sans);
   text-align: left;
@@ -72,7 +75,8 @@
 
 .metabrowser-diff-host .diff-summary-toggle:focus-visible {
   outline: 2px solid var(--link);
-  outline-offset: 0;
+  outline-offset: -2px;
+  background: var(--hover-bg);
 }
 
 .metabrowser-diff-host .diff-summary-chevron {
@@ -121,65 +125,10 @@
   margin: 4px 0;
 }
 
+/* A row is the shell's changed-file row (static/styles.css, `.changed-file-row`), the Pulls
+   tab's tree's too, so the two trees draw one row; here is only its depth's indent. */
 .metabrowser-diff-host .diff-summary-row {
-  position: absolute;
-  right: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: var(--ui-row-height);
-  padding: 2px 12px 2px calc(8px + var(--diff-summary-depth, 0) * var(--tree-indent));
-  border-left: 2px solid transparent;
-  gap: 6px;
-  color: var(--text);
-  font-size: var(--nav-font-size);
-  cursor: pointer;
-  -webkit-user-select: var(--toggle-user-select);
-  user-select: var(--toggle-user-select);
-}
-
-.metabrowser-diff-host .diff-summary-row:hover {
-  background: var(--hover-bg);
-}
-
-.metabrowser-diff-host .diff-summary-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
-  background: var(--hover-bg);
-}
-
-.metabrowser-diff-host .diff-summary-row-toggle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--tree-icon-slot);
-}
-
-.metabrowser-diff-host .diff-summary-row-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The inline change stats (docs/design-system.md, "Inline Change Stats"), at the row's end:
-   a file's own, and a folder's rolled up from every file under it. */
-.metabrowser-diff-host .diff-summary-row-stats {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 4px;
-  margin-left: auto;
-  font-size: var(--ui-small-font-size);
-  font-variant-numeric: tabular-nums;
-}
-
-.metabrowser-diff-host
-  .diff-summary-row
-  > :is(.diff-summary-row-badge, .diff-summary-row-name, .diff-summary-row-stats) {
-  align-self: baseline;
+  --changed-file-indent: calc(var(--diff-summary-depth, 0) * var(--tree-indent));
 }
 
 .metabrowser-diff-host .diff-layout-control {

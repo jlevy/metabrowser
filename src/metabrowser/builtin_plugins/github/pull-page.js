@@ -38,6 +38,7 @@ import { createComparisonPrefetch } from "./comparison-prefetch.js";
 import {
   createStackIndex,
   memberRoute,
+  namedStackPosition,
   stackLabel,
   stackMembership,
   stackMenuOrder,
@@ -473,7 +474,7 @@ export function labelColorProperties(color) {
     }
   }
   const [h, s, l] = [hue, saturation * 100, lightness * 100].map(Math.round);
-  return `--label-r:${r};--label-g:${g};--label-b:${b};--label-h:${h};--label-s:${s};--label-l:${l}`;
+  return `--github-label-r:${r};--github-label-g:${g};--github-label-b:${b};--github-label-h:${h};--github-label-s:${s};--github-label-l:${l}`;
 }
 
 /**
@@ -1073,12 +1074,12 @@ function describeCore(pull) {
     actorAvatar: avatarUrl(state === "merged" ? pull.merged_by_avatar_url : pull.author_avatar_url),
     baseRef: text(pull.base?.ref),
     headRef: text(pull.head?.ref),
-    // "<merger> merged 6 commits: <head> → <base>", and for an open, draft, or closed
-    // pull request "<author> wants to merge 1 commit: <head> → <base>". The verbs are
-    // github.com's; the branches read source → target, never github.com's "into <base>
-    // from <head>" (docs/design-system.md, "Merge Direction"). An account GitHub deleted
-    // is its "ghost"; a record that names no merger at all says only "merged 6 commits",
-    // rather than crediting anyone.
+    // "<merger> merged 6 commits", and for an open, draft, or closed pull request
+    // "<author> wants to merge 1 commit", with "<head> → <base>" on the branch line under
+    // it. The verbs are github.com's; the branches read source → target, never
+    // github.com's "into <base> from <head>" (docs/design-system.md, "Merge Direction").
+    // An account GitHub deleted is its "ghost"; a record that names no merger at all says
+    // only "merged 6 commits", rather than crediting anyone.
     actor:
       state !== "merged"
         ? who(pull.author)
@@ -3228,17 +3229,28 @@ let stackMenuSerial = 0;
  * position badge, the menu's heading is the stack's label, and its members come in
  * `stackMenuOrder`, the order the Pulls tab's stack groups list them in. A member's title
  * is the SDK's `titleNodes` (docs/design-system.md, "Titles").
+ *
+ * A pull request in more than one stack has a trigger for each, and each then names its
+ * stack before its position, "300 2/2", as a Pulls row's place names every stack but its
+ * own (`named`, and `update`'s): two bare positions told the stacks apart only by their
+ * tips. However it opens, by a press, Enter, Space, `↓`, or `↑`, focus lands on the
+ * current member, the row checked, as a filter's menu opens on its checked row
+ * (docs/design-system.md, "Keys in a Menu"); Escape closes it and gives focus back to the
+ * trigger.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void, named?: boolean}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
   let currentTitle = deps.currentTitle;
+  let named = deps.named === true;
   const position = stack.pulls.indexOf(number);
-  const count = h("span", { class: "github-pull-stack-position" }, [
-    stackPosition(position, stack.pulls.length),
-  ]);
+  /** The trigger's position, named by its stack when the pull request is in another too.
+   * @param {number} at */
+  const shownPosition = (at) =>
+    namedStackPosition(stackPosition(at, stack.pulls.length), named ? stack.number : null);
+  const count = h("span", { class: "github-pull-stack-position" }, [shownPosition(position)]);
   const menuId = `github-pull-stack-menu-${++stackMenuSerial}`;
   const root = /** @type {HTMLDetailsElement} */ (
     h("details", { class: "github-pull-stack-disclosure" })
@@ -3248,7 +3260,7 @@ export function createStackMenu(initial, number, deps) {
     {
       class: "btn github-pull-stack-trigger disclosure-toggle",
       "aria-label": `Navigate ${stackPositionHint(stack, position)}`,
-      // The tip a Pulls row's badge has: the stack and the place in it.
+      // The tip says in words the stack and the place the glyph and position show.
       "data-tip-text": stackPositionHint(stack, position),
       "aria-haspopup": "menu",
       "aria-controls": menuId,
@@ -3377,6 +3389,28 @@ export function createStackMenu(initial, number, deps) {
     }
   }
 
+  /** Bring *link* into the menu's own view, scrolling the menu and never the page: the
+   * menu opening is not a reason to move the page under it.
+   * @param {HTMLElement} link */
+  function reveal(link) {
+    const top = link.offsetTop;
+    const bottom = top + link.offsetHeight;
+    if (top < menu.scrollTop) {
+      menu.scrollTop = top;
+    } else if (bottom > menu.scrollTop + menu.clientHeight) {
+      menu.scrollTop = bottom - menu.clientHeight;
+    }
+  }
+
+  /** Put focus on the current member, the row the menu opens on, or the first row. */
+  function focusCurrent() {
+    const target = links.find((link) => link.getAttribute("aria-current") === "page") ?? links[0];
+    if (target) {
+      target.focus({ preventScroll: true });
+      reveal(target);
+    }
+  }
+
   root.addEventListener(
     "toggle",
     () => {
@@ -3384,6 +3418,11 @@ export function createStackMenu(initial, number, deps) {
       if (root.open && !signal.aborted) {
         populate();
         deps.onOpen();
+        // A press opens the menu here, with focus on the trigger; a key that opened it
+        // has put focus in it already.
+        if (!menu.contains(document.activeElement)) {
+          focusCurrent();
+        }
       }
     },
     { signal },
@@ -3407,7 +3446,7 @@ export function createStackMenu(initial, number, deps) {
           trigger.setAttribute("aria-expanded", "true");
           populate();
           deps.onOpen();
-          links[0]?.focus({ preventScroll: true });
+          focusCurrent();
         }
         return;
       }
@@ -3430,23 +3469,28 @@ export function createStackMenu(initial, number, deps) {
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) {
         return;
       }
+      const at = links.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+      // On the trigger, Home and End are left alone, as on a filter's trigger: the arrows
+      // open the menu, on its current member, and Home and End move within it.
+      if (at < 0 && (key === "Home" || key === "End")) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
-      root.open = true;
-      trigger.setAttribute("aria-expanded", "true");
-      populate();
-      deps.onOpen();
-      const at = links.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+      if (at < 0) {
+        root.open = true;
+        trigger.setAttribute("aria-expanded", "true");
+        populate();
+        deps.onOpen();
+        focusCurrent();
+        return;
+      }
       const next =
         key === "Home"
           ? 0
           : key === "End"
             ? links.length - 1
-            : at < 0
-              ? key === "ArrowUp"
-                ? links.length - 1
-                : 0
-              : (at + (key === "ArrowUp" ? -1 : 1) + links.length) % links.length;
+            : (at + (key === "ArrowUp" ? -1 : 1) + links.length) % links.length;
       links[next]?.focus({ preventScroll: true });
       links[next]?.scrollIntoView({ block: "nearest" });
     },
@@ -3496,9 +3540,10 @@ export function createStackMenu(initial, number, deps) {
     /** A title or membership update keeps the menu open and retains surviving link focus.
      * @param {import("./pull-stacks.js").NativeStack} next
      * @param {string} title
+     * @param {boolean} [nextNamed] Whether the pull request is in another stack too.
      */
-    update(next, title) {
-      if (next === stack && title === currentTitle) {
+    update(next, title, nextNamed = false) {
+      if (next === stack && title === currentTitle && nextNamed === named) {
         return;
       }
       const reordered =
@@ -3506,8 +3551,9 @@ export function createStackMenu(initial, number, deps) {
         stack.pulls.some((target, index) => target !== next.pulls[index]);
       stack = next;
       currentTitle = title;
+      named = nextNamed;
       const at = stack.pulls.indexOf(number);
-      count.textContent = stackPosition(at, stack.pulls.length);
+      count.textContent = shownPosition(at);
       trigger.setAttribute("aria-label", `Navigate ${stackPositionHint(stack, at)}`);
       trigger.setAttribute("data-tip-text", stackPositionHint(stack, at));
       if (populated && reordered) {
@@ -4277,16 +4323,19 @@ export function mountPullPage(container, ctx, mb) {
         stackMenus.delete(id);
       }
     }
+    // In more than one stack, each chip names its stack, as a Pulls row's place does.
+    const named = memberships.length > 1;
     const nodes = memberships.map((stack) => {
       let menu = stackMenus.get(stack.number);
       if (menu) {
-        menu.update(stack, model.pull?.title ?? "");
+        menu.update(stack, model.pull?.title ?? "", named);
         return menu.element;
       }
       menu = createStackMenu(stack, number, {
         link: (target) => pageLink(memberRoute(target, model.tab), "", []),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
+        named,
         titleNodes: mb.titleNodes,
         onOpen() {
           preferredStack = stack.number;

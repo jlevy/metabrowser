@@ -146,10 +146,14 @@ All notable changes to Metabrowser are documented here.
   row above it has the icon, and a place that arrives after its row moves nothing.
   A pull request in two stacks appears once, under the first, and its place names the
   other stack by the stack icon and its number before its position, as “3/4 · ⧉300 2/2”,
-  where it showed two bare positions, such as “4/4 · 2/2”. A stack’s row and the pull
-  request page’s stack menu share one label, gray, all caps, and tracked, and the menu’s
-  positions are in the row’s ink rather than link blue
-  ([Stacks](docs/design-system.md#stacks)).
+  where it showed two bare positions, such as “4/4 · 2/2”; on its page each of its stack
+  buttons names its stack the same way, “⧉286 4/4” and “⧉300 2/2”, where they differed
+  only by their tips. A stack’s row and the pull request page’s stack menu share one
+  label, gray, all caps, and tracked, and the menu’s positions are in the row’s ink
+  rather than link blue.
+  Every way the stack menu opens, a press, Enter, Space, `↓`, or `↑`, puts focus on the
+  current pull request, which the menu marks as the Pulls list marks its current row,
+  and Escape gives focus back to the button ([Stacks](docs/design-system.md#stacks)).
 
 - The Files tab has a Group by menu, first on its filter row: No grouping, By age, or By
   file type, each read the same in the menu and on its closed trigger.
@@ -171,10 +175,11 @@ All notable changes to Metabrowser are documented here.
   When files change, the sections refresh in place, keeping the open folders, the scroll
   position, and the focused row.
   A choice shows that it was taken, however long the server takes: the trigger reads it
-  at once, and if the groups take longer than the quiet period the tree dims while the
-  progress row under it reads “Grouping by file type…” or “Grouping by age…”. Choosing
-  again, or No grouping, cancels the wait at once, and going to a file while the groups
-  load shows it in its section once they come.
+  at once, and if the groups take longer than the quiet period the tree dims, an ignored
+  file staying as legible as it is at rest, while the progress row under it reads
+  “Grouping by file type…” or “Grouping by age…”. Choosing again, or No grouping,
+  cancels the wait at once, and going to a file while the groups load shows it in its
+  section once they come.
   The server reads every group from one pass over the index: on a 100,000-file folder By
   file type takes about 0.1 s, and on a folder of 270,000 files and 110,000 folders
   about 0.4 s. Pressing a row, or moving to it with the keyboard, asks for that grouping
@@ -275,10 +280,11 @@ All notable changes to Metabrowser are documented here.
   tree by folder. The header lists only the statuses some file has, in one order (added,
   removed, modified, renamed, then the rest), writes its numbers in the shell’s format,
   and still says “(estimated)” when the totals are not exact.
-  The tree is the one the Pulls tab shows under a pull request: folders toggle, a chain
-  of single folders is one row, and each file has its change letter and line counts.
-  Every folder now shows the line counts of the files under it, rolled up, in the Diff
-  summary and in the Pulls tab alike.
+  The tree is the one the Pulls tab shows under a pull request, row for row: folders
+  toggle, a chain of single folders is one row, and each file has its change letter and
+  line counts. Every folder now shows the line counts of the files under it, rolled up,
+  in the Diff summary and in the Pulls tab alike, and a folder’s tooltip gives only what
+  those counts leave out.
   Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
   request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
   move along the rows without moving the diff.

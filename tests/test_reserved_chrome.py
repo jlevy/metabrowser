@@ -269,7 +269,8 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     author = _rule(css, ".github-pull-meta-details > .github-pull-identity")
     assert "flex: 0 100 auto;" in author and "min-width: 1.75em;" in author
     assert "overflow: hidden;" in author
-    assert "min-width: calc(18px + 4px + 1.75em);" in _rule(
+    floor = "min-width: calc(var(--github-pull-avatar-size) + var(--github-pull-identity-gap) + 1.75em);"
+    assert floor in _rule(
         css, ".github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar)"
     )
     name = _rule(css, ".github-pull-meta-details .github-pull-author")

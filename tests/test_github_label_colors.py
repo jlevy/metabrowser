@@ -64,8 +64,8 @@ def test_each_color_gets_the_properties_github_com_gave_it() -> None:
         r, g, b = (int(color[at : at + 2], 16) for at in (0, 2, 4))
         hue, saturation, lightness = observed[color]
         assert properties == (
-            f"--label-r:{r};--label-g:{g};--label-b:{b};"
-            f"--label-h:{hue};--label-s:{saturation};--label-l:{lightness}"
+            f"--github-label-r:{r};--github-label-g:{g};--github-label-b:{b};"
+            f"--github-label-h:{hue};--github-label-s:{saturation};--github-label-l:{lightness}"
         ), color
 
 
@@ -77,7 +77,9 @@ def test_the_page_paints_only_six_hex_digits() -> None:
     assert (
         upper
         == lower
-        == ("--label-r:215;--label-g:58;--label-b:74;--label-h:354;--label-s:66;--label-l:54")
+        == (
+            "--github-label-r:215;--github-label-g:58;--github-label-b:74;--github-label-h:354;--github-label-s:66;--github-label-l:54"
+        )
     )
     assert refused == [None] * 8
 
