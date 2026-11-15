@@ -503,6 +503,11 @@ export function registerTreemap(mb, palette, rollupControls) {
       mb.tooltip.hide();
     });
     viewport.addEventListener("keydown", (e) => {
+      // A key held with Command, Control, or Option is the browser's: Command-R
+      // reloads, and Command-Left or Alt-Left goes back.
+      if (e.altKey || e.ctrlKey || e.metaKey) {
+        return;
+      }
       const key = e.key;
       if (key === "Enter" || key === " ") {
         const cell = cells[actionableIndexes[focusPos]];
