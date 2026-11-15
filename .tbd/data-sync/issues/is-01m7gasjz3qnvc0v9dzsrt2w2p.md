@@ -3,15 +3,19 @@ type: is
 id: is-01m7gasjz3qnvc0v9dzsrt2w2p
 title: Tooltips only when they add information; none on Pulls nav rows
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T19:26:23.202Z
-updated_at: 2026-11-15T19:26:23.202Z
+updated_at: 2026-11-15T19:27:09.432Z
+started_at: 2026-11-15T19:27:09.431Z
 ---
 The user's request (2026-11-15), verbatim:
 
