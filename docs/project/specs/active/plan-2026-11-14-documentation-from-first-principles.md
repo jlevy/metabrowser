@@ -4,7 +4,8 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. The open questions below wait on review; no document has changed yet.
+**Status:** Approved 2026-11-14, with the decisions below.
+No document has changed yet.
 
 ## Overview
 
@@ -250,7 +251,7 @@ switcher shows, centered above a centered title.
   Metabrowser’s inert Markdown keeps only in-tree images, and keeps `align` only on
   table cells, so it shows the icon left-aligned.
   PyPI, which publishes the README as the package description, shows the alt text
-  instead, as it does for today’s screenshot (see Open Questions).
+  instead, as it does for today’s screenshot (see Decisions).
 
 **Outline:**
 
@@ -572,21 +573,21 @@ because it splits the repository document and completes the server document that
 edits. When the fdu provider ships, its pull request takes the engine-swap steps under
 Architecture Documents.
 
-## Open Questions
+## Decisions
 
 1. **Benchmark sizes:** two sizes, 100,000 and 300,000 files, one run each, stay under
    the serving cap. A million-file row needs the cap lifted, so it arrives with the fdu
-   engine. Proposed: these two sizes now.
+   engine. Decided: these two sizes now.
 2. **Screenshots:** one refreshed hero image of the Files tab, plus one image each in
    the pull-request, history, and app guides, taken of this repository.
-   Proposed: yes, with no personal paths visible.
+   Decided: yes, with no personal paths visible.
 3. **Images on PyPI:** relative paths render on GitHub and in Metabrowser but show alt
    text on PyPI; absolute `raw.githubusercontent.com` URLs render on PyPI but not in
    Metabrowser’s inert view, and not in the pull request before merge.
-   Proposed: relative paths.
+   Decided: relative paths.
 4. **Retiring by deletion:** the hosted-review and external-resources architecture
    documents describe nothing in the code.
-   Proposed: delete them, since Git and the reference tag keep them, rather than add an
+   Decided: delete them, since Git and the reference tag keep them, rather than add an
    architecture archive.
 
 ## References
