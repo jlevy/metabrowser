@@ -9,10 +9,15 @@ The hypotheses this loop is working through are registered in
 The write-ups are in [experiments/](experiments/), one file per round.
 
 The backend half measures the inventory engine.
-The rule about what may run once per entry, and the measurement discipline this bench
-enforces, are [the engine performance model](../../docs/engine-performance-model.md);
-the reference engine’s measured costs are
-[Python inventory cost](../../docs/project/architecture/arch-python-inventory-cost.md).
+The rule about what may run once per entry is
+[the engine performance model](../../docs/engine-performance-model.md), the measurement
+discipline this bench enforces is
+[Benchmarking Scan and Serve](../../docs/development.md#measurement-discipline), and the
+reference engine’s measured costs are in
+[the Python inventory engine](../../docs/project/architecture/arch-inventory-engine-python.md).
+
+Measurements taken once to set a design-system rule, in WebKit and Chrome, are in
+[Design Rule Measurements](design-rule-measurements.md).
 
 The browser half is the Metabrowser adapter for the reusable
 [Web Performance Framework](../../docs/web-performance-framework.md).
@@ -158,9 +163,9 @@ an improvement, and exp-010 is the worked example of finding that out six rounds
 
 Nothing a round depends on lives in a transient location, other than what rerunning a
 command recreates, such as the `/tmp/mb-at-*` worktrees and `$ENVS` in the recipes
-below. [Durable Storage](../../docs/development.md#durable-storage) says where each kind
-of file and the series lock belong, and `tests/test_experiment_storage.py` checks the
-records. For a round, that means:
+below. [Durable Storage](#durable-storage) says where each kind of file and the series
+lock belong, and `tests/test_experiment_storage.py` checks the records.
+For a round, that means:
 
 - **The protocol is committed** beside the record as `exp-NNN-protocol.txt` before the
   first timed run, and each amendment, with its timestamp, before the measurement it
@@ -169,6 +174,58 @@ records. For a round, that means:
   after the round is recorded; a later correction goes in the record.
 - **Samples and analysis scripts are committed** beside the record, named in
   `method.record` or linked from the body.
+
+## Durable Storage
+
+An agent’s session scratchpad lives under `/private/tmp`, and the operating system
+empties it, `/tmp`, and the `/var/folders` directories `$TMPDIR` names on restart and at
+other times without warning.
+A restart that empties them also takes every lock, coordination script, and protocol a
+running campaign depends on, and ends every subagent and background loop.
+
+**A transient location holds only output that rerunning a command recreates.** Anything
+a later step, another session, a record, or a lock depends on goes somewhere durable:
+
+| What | Where |
+| --- | --- |
+| An experiment’s protocol, criteria, and amendments | Committed beside its record as `exp-NNN-protocol.txt`, named in the record’s `method.protocol` |
+| Samples, analysis, and figure scripts a record cites | Committed beside the record, and linked from it or named in `method.record` |
+| Logs, drivers, and probe output that hold local paths | The worktree’s gitignored `attic/` |
+| Raw bench output and corpora | The gitignored `.bench/` |
+| A lock that serializes timed rounds across worktrees | `$(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock`, which every worktree of the checkout shares |
+| Coordination scripts a campaign reuses | A worktree’s gitignored `attic/` |
+| Rebuilt intermediates, such as a filtered sample file or a scratch worktree in a “Reproducing” recipe | `/tmp/` or `$TMPDIR`, inside the recipe’s fenced block |
+
+**Write a protocol so it can be committed.** Name builds by their version line and
+commit, and machine paths by placeholders such as `$CONTROL` and `$CORPUS`, so the
+public-hygiene check accepts it.
+It is plain text (`.txt`), not Markdown, so `make format` never rewrites it and its
+sha256 holds, and so the records’ `exp-*.md` glob does not read it as a record.
+Commit it before the first timed run, and commit each amendment, with its timestamp,
+before the measurement it governs; the history then shows which version governed what.
+
+**A lock outlives a crash.** A campaign’s driver takes the series lock; the transition
+harness takes none.
+The lock is a directory made with one atomic `mkdir`, with an `owner`
+file naming the process and the start time, as [`wkprobe-lock.mjs`](wkprobe-lock.mjs)
+makes the WKWebView probe’s. A lock whose owner is no longer running is reported as
+stale and left for a person or the coordinating agent to remove, never removed
+automatically, because a process id can be reused after a restart and an owner file can
+be written some other way.
+
+**After a restart,** expect every subagent, background loop, and timed series to have
+ended. Check what a timed series recorded before it stopped, resume agents by message,
+and re-arm any watcher from its durable copy.
+
+`tests/test_experiment_storage.py` holds the rule for experiment records:
+
+- no record points its evidence at a session scratchpad, or, outside a fenced recipe, at
+  an operating system temporary directory;
+- every file a record names is in the repository: its protocol, with the sha256 the
+  record’s `method.protocol` gives, the files `method.record` names, and every relative
+  link;
+- a record that cites a pre-registration by sha256, or is dated from the rule on, names
+  its committed protocol.
 
 ## Running a round
 
@@ -1109,9 +1166,9 @@ When a start-up number moves, the cause is an import.
 ### Loading-Tier Probe
 
 A loading tier is a claim about what an asset costs and when it is needed
-([Asset Loading Tiers](../../docs/development.md#asset-loading-tiers)). `tier-probe.mjs`
-measures the claim in stock Chrome with a throwaway profile, loading one address on each
-build in turn, each load with an empty HTTP cache:
+([the browser shell](../../docs/project/architecture/arch-browser-shell.md)).
+`tier-probe.mjs` measures the claim in stock Chrome with a throwaway profile, loading
+one address on each build in turn, each load with an empty HTTP cache:
 
 ```shell
 node explorations/performance-loop/tier-probe.mjs \
@@ -1484,6 +1541,57 @@ for connected plugin renderers.
 It deterministically traverses a cold source file, a cold JSON or YAML structured view,
 a cold Markdown view, and a cached source revisit so an asynchronously ready renderer
 cannot disappear behind otherwise synchronous cases.
+
+### Reviewing Pull-Request and Git Navigation
+
+Pull-request and Commits navigation is reviewed with this playbook, timed by the
+sequence above, with the focused browserless sessions for deterministic behavior:
+
+1. Freeze the build, public repository, PR numbers, full Git revisions, and viewport.
+   Name the Git-object, detailed-record, browser HTTP, asset, and prepared-payload cache
+   states separately, and use an isolated test cache for absent-record cases.
+2. Open a first PR from the neutral prompt, then a different uncached PR from a fully
+   rendered, settled cached PR; a neutral prompt is not prior useful content.
+   The previous description and reading position survive until the correct new
+   description or an actionable failure appears.
+3. Measure description readiness separately from completed discussion, checks, and
+   comparison. Exercise row selection, a cold direct link, retry after failure, rapid
+   keyboard replacement, and cached reopening, on a managed repository and a checkout.
+   A description preview never claims that unread sections or Git acquisition are
+   complete. Hold the selected refresh after its description appears and finish it
+   between polling ticks; the waiting cache read returns the correct full record, and a
+   duplicate or canceled read does not change provider work.
+4. For background description preparation, start in Files and open Pulls.
+   Click once as soon as the row is visible, once while preparation runs, and once after
+   it finishes, recording the batch state with each planned dwell.
+   - With two tabs, a refused preparation leaves the first tab’s window available.
+   - Let one owned batch settle without polling its result, then scroll to a cohort that
+     answers cache-only `ready` or lease-held `partial`: the previous exact token is
+     released before another cohort starts.
+     Hide or dispose during that release, and the coverage-only token is never treated
+     as the owner.
+   - Hold a batch while scrolling to a second window: viewport demand covers every
+     visible row, and the background cursor continues through the cached catalog beyond
+     the first transport batch.
+   - Keep the provider busy for over a minute: retry resumes without another scroll.
+     Hide or disconnect the browser, and the unfinished cursor resumes.
+   - Default Open rows warm before newer Closed rows, a known rate reset resumes the
+     pass while Files stays selected, and repeated ready reads do not refetch unchanged
+     rows.
+   - Reopen an early prepared description after later batches, a minute, and a server
+     restart: the durable lightweight record is served without a provider call.
+     While a batch runs or after it is ready, change one admitted summary: an unchanged
+     sibling stays readable.
+   - Replace the repository or authenticated reader: old admission or cached metadata
+     cannot cross that boundary.
+5. In Commits, compare natural and prepared selection, re-enter the displayed row, and
+   leave for a file while deferred requests are active.
+   Check exact route and subject, cancellation, queued work, single active ownership,
+   and final content.
+6. Keep matching request counts and bytes beside painted readiness, Long Tasks, Event
+   Timing, retained heap, and sampled backend RSS. Follow the loop’s repetition and
+   [accept rule](#the-accept-rule), keep failures, and distinguish an isolated mechanism
+   probe from a complete navigation result.
 
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000 --provider python

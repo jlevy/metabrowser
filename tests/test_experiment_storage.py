@@ -1,6 +1,7 @@
 """An experiment's evidence lives where a restart cannot remove it.
 
-The checks behind docs/development.md, "Durable Storage", for experiment records:
+The checks behind explorations/performance-loop/README.md, "Durable Storage", for
+experiment records:
 
 - no record points its evidence at a session scratchpad, or, outside a fenced recipe, at an
   operating system temporary directory;

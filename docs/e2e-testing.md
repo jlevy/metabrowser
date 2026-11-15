@@ -70,21 +70,15 @@ fresh sandbox and diffs the result, so a transcript is both a test and a readabl
 of what the command does.
 
 This is the layer that proves **routes**, because `metab --api <route>` issues a real
-request through the real application — the same middleware, routing, and serialization
+request through the real application: the same middleware, routing, and serialization
 the browser reaches.
-`--walk` and `--diff` call their libraries directly, so they prove the model and not the
-wire; a route could accept a parameter the library never sees and those transcripts
-would stay green.
-
-Fixtures pin everything they can so transcripts assert real values rather than
-wildcards: mtimes with `touch -t`, and Git identity and dates so commit revisions are
-byte-identical on every machine.
-Only what no fixture can pin is normalized, and `metabrowser/normalize.py` is the single
-table saying what and why.
-
-Regenerate with `make golden-update` **only to record an intended change**, then read
-the diff line by line before committing it.
-A regenerated transcript nobody read turns a regression into a committed expectation.
+Fixtures pin mtimes with `touch -t` and Git identity and dates, so commit revisions are
+byte-identical on every machine and transcripts assert real values.
+Regenerate with `make golden-update` only to record an intended change, then read the
+diff line by line.
+[CLI and Functional UI Parity](development.md#cli-and-functional-ui-parity) gives the
+reasons: why `--walk` and `--diff` prove a model and not the wire, what counts as
+evidence for a route, and why only what no fixture can pin is normalized.
 
 ### One Harness and One Update Command
 
@@ -160,9 +154,9 @@ Each marker is written after comparing, so what stopped repeating is printed.
   and the marker’s count changes.
 
 A transcript must not depend on how busy the machine is.
-The server logs a request slower than two seconds to stderr, which a transcript
-captures, so the Make targets run tryscript with `METABROWSER_SLOW_SERVER_MS` set past
-tryscript’s own command timeout.
+The server logs a request slower than `SLOW_OPERATION_LOG_SECONDS` (`settings.py`) to
+stderr, which a transcript captures, so the Make targets run tryscript with
+`METABROWSER_SLOW_SERVER_MS` set past tryscript’s own command timeout.
 Run tryscript through `make test` or `make golden-update`, or set that variable, when
 the machine is loaded.
 
@@ -174,18 +168,7 @@ and CLI. This catches missing package data and source-checkout assumptions.
 
 ## Running Tests
 
-```shell
-# Complete Python suite.
-uv --config-file uv.toml run --frozen pytest
-
-# One module or test.
-uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py
-uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
-
-# Full release gate.
-make verify
-```
-
+[Everyday Commands](development.md#everyday-commands) lists the commands.
 Node and Git are prerequisites.
 The first test that needs one and finds it missing stops the run, with one message that
 names the tool and the way to opt out.
@@ -322,11 +305,11 @@ Strict mode is off on a developer machine, which can add these:
 
 ### Timeouts
 
-A test has 60 seconds, set in `pyproject.toml`. When that timeout fires it ends the
-whole run, not one test, so a bound inside a test must be shorter to do any good: a
-child process’s `timeout`, or a polling deadline, is at most 50 seconds.
-A test that needs longer carries its own `pytest.mark.timeout` with the measurement that
-forced it written beside it.
+A test’s budget is `timeout` in `pyproject.toml`’s pytest options.
+When it fires it ends the whole run, not one test, so a bound inside a test must be
+shorter to do any good: a child process’s `timeout`, or a polling deadline, is at most
+`MAX_INNER_BOUND_S` in `tests/test_suite_gates.py`. A test that needs longer carries its
+own `pytest.mark.timeout` with the measurement that forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
 
@@ -389,9 +372,8 @@ a listed functional aspect lacks the command-line evidence it claims.
 A data aspect must run through `metab`; an interaction aspect must name an executable
 browserless session; only paint or platform behavior may carry a specific browser-only
 exemption. See [CLI and functional UI parity](../AGENTS.md#cli-and-functional-ui-parity)
-for the rule and
-[Views, Models, and Routes](project/architecture/arch-views-models-routes.md) for the
-table it checks.
+for the rule and the [parity registry](project/architecture/arch-parity-registry.md) for
+the tables it checks.
 
 For regressions, make the test fail for the original defect before applying the fix.
 Assert behavior and public contracts instead of copying implementation structure into
@@ -413,230 +395,42 @@ Keep consumer plugin fixtures in the consumer repository.
 The Metabrowser suite should use generic sample plugins so it cannot pass only because
 an unrelated workspace package happens to be installed.
 
-The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-sequences foundation testing, GitHub URL browsing, and direct PRs, with manual and
-automated scenarios and the landing checklist.
-The step-by-step procedure is
-[QA: v0.12 Repository Library](qa-v012-repository-library.md).
+## Manual Browser Checks
 
-## Manual Browser Check
-
-Before a release, serve the public-safe manual corpus and check the real browser:
-
-```shell
-uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
-```
-
-The corpus contains Markdown with frontmatter, structured JSON, JSONL events, source
-code, an SVG image, and an opaque file large enough to exercise the binary view.
-Keep these fixtures generic and free of copied production data.
-
-Open the printed URL and verify:
-
-- first paint appears before a large tree finishes indexing;
-- Markdown, structured data, source, JSONL, image, and binary views render;
-- the binary Bytes view loads a second chunk on **Load more**, appends without
-  re-rendering the bytes already shown, and wraps without horizontal overflow at narrow
-  and wide panes in both themes;
-- a binary file above the preview ceiling renders a bounded prefix and reports where the
-  preview is cut off;
-- changing and deleting files updates tree and recent views;
-- a direct `/view/<path>` address opens the selected file independently of the tree
-  crawl; fragments identify locations within that document, such as headings or source
-  lines;
-- when the served root is in a Git repository, opening a commit that changes the root
-  renders its changed-file diff in a fresh browser session;
-- light and dark themes, narrow panes, keyboard focus, and print output remain usable;
-- the console and Network panel contain no unexpected errors or missing assets.
-
-Do not make the manual check the only coverage for a deterministic contract.
-
-### Markdown Reading Layout
-
-Open a long Markdown file with a table of contents in the built-in browser.
-Compare the document card border with the leftmost tab’s outer edge.
-Switch to Source and check the pane gutter and line-number column.
-At a preview width of 75 rem or more, check the TOC to the right of the prose and follow
-a heading link.
-Use a document with a thumbnail and a wide table to check their positions
-beside the rail.
-
-Narrow the preview through tablet and phone widths.
-Scroll past the first section, open the TOC with its icon, and follow a heading.
-Reopen the overlay and dismiss it with Escape.
-Open a short file, then reopen it after a warm read to check the same start edge.
-In Folder Overview, compare the README’s prose edge with the same file opened directly,
-and check the section rules and panel borders along the stack.
-In a wide pane, compare paragraph widths in Markdown and a PR conversation at both 102
-and 80 in **Max text width**. Restore the setting after the comparison.
-
-Check the first tab’s outer box against the document card border and Source surface.
-Keep KPress’s normal left and right padding inside the card; prose does not have to
-align with the tab label.
-Both views keep the shared outer pane padding; the document card’s inner padding must
-not conceal an absent outer gutter.
-Compare the same README directly and in Overview, retaining the same text measure.
-
-### PR and Git Navigation Performance
-
-Use the
-[performance loop](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay)
-for timing and the focused browserless sessions for deterministic behavior.
-Keep a small review playbook beside the experiment rather than adding another test
-framework:
-
-1. Freeze the build, public repository, PR numbers, full Git revisions and viewport.
-   Name Git-object, detailed-record, browser HTTP, asset and prepared-payload cache
-   states separately. Use an isolated test cache for absent-record cases.
-2. Test a first PR from the neutral prompt, then a different uncached PR from a fully
-   rendered, settled cached PR. A neutral prompt is not prior useful content.
-   Require the previous description and reading position to survive until the correct
-   new description or an actionable failure appears.
-3. Measure description readiness separately from completed discussion, checks and
-   comparison. Exercise row selection, a cold direct link, retry after failure, rapid
-   keyboard replacement, and cached reopening on a managed repository and a checkout.
-   A description preview must not claim that unread sections or Git acquisition are
-   complete. Hold the selected refresh after its description appears and finish it
-   between polling ticks.
-   Check that the waiting cache read returns the correct full record, and that a
-   duplicate or canceled read does not change provider work.
-   To test background description preparation, start in Files and open Pulls.
-   Click once as soon as the row is visible, once while preparation is running, and once
-   after it finishes. Record the actual batch state with each planned dwell.
-   With two tabs, confirm a refused preparation leaves the first tab’s window available.
-   Let one owned batch settle without polling its result, then scroll to a cohort that
-   answers cache-only `ready` or lease-held `partial`. Confirm the previous exact token
-   is released before another cohort starts.
-   Hide or dispose during that release and check that the coverage-only token is never
-   treated as the owner.
-   Hold a batch while scrolling to a second window.
-   Check that viewport demand covers all visible rows and that the background cursor
-   continues through the cached catalog beyond the first transport batch.
-   Keep the provider busy for longer than a minute, then confirm retry resumes without
-   another scroll. Hide or disconnect the browser, then resume the unfinished cursor.
-   Check that default Open rows warm before newer Closed rows and that a known rate
-   reset resumes the pass while Files remains selected.
-   Repeated ready reads must not refetch unchanged rows.
-   Reopen an early prepared description after later batches, a minute, and server
-   restart; confirm that the durable lightweight record is served without a provider
-   call. While a batch runs or after it becomes ready, change one admitted summary and
-   confirm an unchanged sibling is still readable.
-   Replace the repository or authenticated reader and confirm that old admission or
-   cached metadata cannot cross that boundary.
-4. In Commits, compare natural and prepared selection, re-enter the displayed row, and
-   leave for a file while deferred requests are active.
-   Check exact route and subject, cancellation, queued work, single active ownership and
-   final content.
-5. Keep matching request counts and bytes beside painted readiness, Long Tasks, Event
-   Timing, retained heap and sampled backend RSS. Follow the loop’s repetition and
-   acceptance rules; retain failures and distinguish an isolated mechanism probe from a
-   complete navigation result.
-
-### Shared Content Layout and Stack Navigation
-
-Compare a Markdown document, its Source and Raw views, a folder README, a commit with a
-description, and a PR with comments.
-At wide and narrow pane widths, check that card borders and source surfaces begin at the
-first display tab’s outer edge.
-Retain the document card’s roomy KPress inset, with the desktop contents rail on the
-right and the existing narrow contents icon and drawer.
-A wide table must remain reachable by horizontal scrolling without expanding the pane.
-Commit descriptions and PR prose use the same sans size, ink, and neutral bordered
-surface. Author, action, and age must share a baseline while branch chips stay smaller.
-
-On a PR in a known stack, open the position menu.
-Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
-click, and keyboard selection.
-Use `P` toward the base and `N` toward the top, with and without Shift; preserve the
-selected PR tab and clear the old file selection.
-With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row and not the
-stack. Confirm endpoint handling and that an editor or open dialog retains its keys.
-
-### Quick Search and Main Tabs
-
-Open the same public GitHub repository in a checkout and a managed mirror.
-From Files or a selected commit, press `T` and type `#`. Check that the list shows
-recent PRs across states.
-Add title text, then replace it with a number prefix.
-Check that both queries show only PR options and that an exact number appears first.
-Check the title, number, state, and accessible option name.
-Press Enter and verify that Conversation opens in one history step.
-Back returns to the previous view.
-
-With an isolated cache, try a search before opening Pulls.
-A catalog refresh should start once, and subsequent queries should read the local
-catalog. Reopen a cached result with `gh` unavailable.
-In a plain folder, the dialog should still say Quick Search and search only files.
-
-After Git discovery, check Files, Pulls, and Commits order and their letters in Help,
-with no `⌘` beside them.
-Check that `F`, `R`, and `H` open each tab with and without Shift, and that Command or
-Ctrl with a letter or digit is left to the browser, so Command or Ctrl with a digit
-still switches browser tabs.
-In a plain folder, check that `F` still opens Files and that `R` and `H` leave the
-selection alone. [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the full
-scheme.
-
-### Pulls Watch and Reconnect
-
-The
-[watch verification plan](project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md)
-covers incremental provider updates, cached use during an outage, connection recovery,
-and the Reload action in both repository modes.
-
-### Pulls Paging
-
-Use a repository or a seeded catalog with more than 500 matching PRs.
-Start in Pulls and verify the initial window.
-Scroll near its end and check that the next window appears without a click.
-Repeat through the final partial window.
-Keep an eye on the selected row and switch filters during an in-flight page.
-For a partial catalog, verify the same interaction joins the metadata refresh and can
-continue when rows arrive.
-
-### Pull Request Checks
-
-In a checkout and a managed repository, open a PR with checks.
-Select **Checks** and verify the status summary and detail links.
-Navigate to Conversation and Changes, then use Back and Forward to restore the selected
-tab. Reload `/pull/<n>/checks` directly.
-Repeat with an empty check list and a pending PR record to verify each loading or empty
-state. On a cached PR, all three tabs use the same record.
+Do not make a manual check the only coverage for a deterministic contract.
+What only a person in a real browser can judge before a release, from the reading layout
+to Quick Search and the Pulls tab, is the checklist in
+[Manual Browser Checks](project/qa/qa-2026-11-14-manual-browser-checks.md).
+Pull-request and Git navigation timing is reviewed with the performance loop’s
+[navigation playbook](../explorations/performance-loop/README.md#reviewing-pull-request-and-git-navigation).
 
 ### Headless Screenshots
 
 There is no automated visual-regression layer.
-When a change is presentational and a reviewer needs to see it, drive a real browser
-manually.
+When a change is presentational and a reviewer needs to see it, drive a real browser.
 
 Chrome’s `--headless --screenshot --virtual-time-budget` mode does not work against the
 shell: the page holds the `/api/events` stream open, so virtual time never drains and
 Chrome hangs without writing a file.
-Two approaches work instead.
+Two approaches work instead:
 
-Drive the live application over the DevTools protocol.
-Start Chrome with `--headless=new --remote-debugging-port=<port>` and a scratch
-`--user-data-dir`, read the page target from `http://127.0.0.1:<port>/json/list`, then
-send `Emulation.setDeviceMetricsOverride`, `Page.enable`, `Page.navigate`, and
-`Page.captureScreenshot` over the target’s WebSocket.
-Node 24 provides a `WebSocket` global, so the driver needs no dependency.
+- **Drive the live application over the DevTools protocol.** Start Chrome with
+  `--headless=new --remote-debugging-port=<port>` and a scratch `--user-data-dir`, read
+  the page target from `http://127.0.0.1:<port>/json/list`, then send
+  `Emulation.setDeviceMetricsOverride`, `Page.enable`, `Page.navigate`, and
+  `Page.captureScreenshot` over the target’s WebSocket.
+  Node’s global `WebSocket` means the driver needs no dependency.
+- **Skip the shell for a question only about document CSS.** Request
+  `/api/kpress/render` for the file and view, then write a standalone page that inlines
+  the returned `html` with the stylesheet entries of the returned asset manifest and
+  `/static/styles.css`. It holds no event stream, so the ordinary
+  `--virtual-time-budget` screenshot works, at several widths and disclosure states in
+  one pass.
 
-For a question that is only about document CSS, skip the shell.
-Request `/api/kpress/render` for the file and view, then write a standalone page that
-inlines the returned `html` alongside the stylesheet entries in the returned asset
-manifest and `/static/styles.css`. Such a page holds no event stream, so the ordinary
-`--virtual-time-budget` screenshot works, and it can be rendered at several widths and
-disclosure states in one pass.
-Keep these harnesses in a scratch directory; they are debugging aids, not fixtures.
-
-The same driver answers rendering-cost questions that no contract test can.
-Comparing DOM strategies for the binary Bytes view this way showed that CSS-wrapping one
-large run is quadratic — 43 ms at 32 KiB rising to 33 s at 1 MiB — while pre-broken
-lines in `content-visibility` blocks render the same 1 MiB in about 50 ms.
-When a limit looks arbitrary, measure before changing it, and record what was measured
-next to the constant.
-[Rendering large content](large-content-rendering.md) holds the cost model and the
-procedure for establishing the shape of a cost before setting a bound.
+Keep these harnesses in the worktree’s gitignored `attic/`; they are debugging aids, not
+fixtures. The same driver answers rendering-cost questions no contract test can, and
+[Rendering Large Content](large-content-rendering.md) holds the procedure for measuring
+the shape of a cost before setting a bound.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
