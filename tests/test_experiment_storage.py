@@ -7,6 +7,8 @@ The checks behind docs/development.md, "Durable Storage", for experiment records
 - every file a record names is in the repository: its protocol and registered analysis
   scripts, with the sha256 `method.protocol` and `method.analysis` give, the files
   `method.record` names, and every relative link;
+- each analysis script's hash is one the protocol registered, or the record declares the
+  change as a deviation, gives the registered hash, and rules on it under a heading;
 - a record that cites a pre-registration by sha256, or is dated from the rule on, names its
   committed protocol in `method.protocol`.
 """
@@ -42,6 +44,7 @@ PREREGISTRATION = re.compile(r"pre[- ]?registration|protocol file", re.IGNORECAS
 LINK = re.compile(r"\]\(([^)\s#]+)(?:#[^)]*)?\)")
 NAMED_FILE = re.compile(r"(?<![\w./-])[\w./-]*[\w-]\.(?:jsonl|json|mjs|py|txt)\b")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DEVIATION_HEADING = re.compile(r"^#{1,6}\s.*\bDeviation", re.IGNORECASE)
 
 # Records written before the rule that point at evidence that no longer exists, with why.
 # The record is corrected, not rewritten, so its text stays; nothing new joins this list.
@@ -105,29 +108,67 @@ def _method_schema(field: str) -> dict[str, Any]:
     return schema["properties"]["method"]["properties"][field]
 
 
-def _check_committed_beside(name: str, field: str, entry: dict[str, Any]) -> None:
-    """A `{path, sha256}` entry names a file beside the records, committed with that hash."""
-    target = (EXPERIMENTS / str(entry["path"])).resolve()
-    assert target.parent == EXPERIMENTS, f"{name}: {field} {entry['path']} is not beside the record"
-    assert target.is_file(), f"{name}: {field} {target.name} is not committed"
+def _check_committed(name: str, field: str, entry: dict[str, Any]) -> Path:
+    """A `{path, sha256}` entry names a file under experiments/, committed with that hash."""
+    raw = Path(str(entry["path"]))
+    target = (EXPERIMENTS / raw).resolve()
+    assert ".." not in raw.parts and target.is_relative_to(EXPERIMENTS), (
+        f"{name}: {field} {entry['path']} is not under experiments/"
+    )
+    assert target.is_file(), f"{name}: {field} {entry['path']} is not committed"
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     assert digest == entry["sha256"], (
-        f"{name}: {field} {target.name} hashes to {digest}, not the {entry['sha256']} the "
-        "record cites; a file a recorded round registered is not edited again"
+        f"{name}: {field} {entry['path']} hashes to {digest}, not the {entry['sha256']} the "
+        "record cites"
+    )
+    return target
+
+
+def _has_deviation_heading(body: str) -> bool:
+    return any(
+        not fenced and DEVIATION_HEADING.match(line) for _, line, fenced in _outside_fences(body)
     )
 
 
-def _check_method_files(name: str, method: dict[str, Any]) -> None:
-    """The committed protocol and registered analysis scripts a record's method names."""
+def _check_method_files(name: str, method: dict[str, Any], body: str) -> None:
+    """The committed protocol and registered analysis scripts a record's method names.
+
+    The protocol is beside the record and keeps its hash. Each analysis script is under
+    experiments/ and matches the hash its entry cites; the hash the protocol registered
+    is that one, or, for a script changed after registration, the entry's
+    `registered_sha256`, and the record then has a "Deviation" heading.
+    """
     protocol = method.get("protocol")
+    registered: set[str] = set()
     if protocol is not None:
         jsonschema.validate(protocol, _method_schema("protocol"))
-        _check_committed_beside(name, "method.protocol", protocol)
+        target = _check_committed(name, "method.protocol", protocol)
+        assert target.parent == EXPERIMENTS, (
+            f"{name}: method.protocol {protocol['path']} is not beside the record; "
+            "a recorded round's protocol is not edited again"
+        )
+        registered = {h.lower() for h in SHA256.findall(target.read_text(encoding="utf-8"))}
     analysis = method.get("analysis")
-    if analysis is not None:
-        jsonschema.validate(analysis, _method_schema("analysis"))
-        for entry in analysis:
-            _check_committed_beside(name, "method.analysis", entry)
+    if analysis is None:
+        return
+    jsonschema.validate(analysis, _method_schema("analysis"))
+    assert protocol is not None, f"{name}: method.analysis needs the method.protocol it registers"
+    for entry in analysis:
+        _check_committed(name, "method.analysis", entry)
+        cited = entry.get("registered_sha256", entry["sha256"])
+        assert cited in registered, (
+            f"{name}: method.analysis {entry['path']} cites {cited}, which "
+            f"{protocol['path']} does not register; a script changed after registration "
+            "gives the protocol's hash as registered_sha256 and a deviation"
+        )
+        if "registered_sha256" in entry:
+            assert entry["registered_sha256"] != entry["sha256"], (
+                f"{name}: method.analysis {entry['path']} declares a deviation but is unchanged"
+            )
+            assert _has_deviation_heading(body), (
+                f"{name}: method.analysis {entry['path']} declares a deviation, and the record "
+                'has no heading containing "Deviation" that rules on it'
+            )
 
 
 @pytest.mark.parametrize("path", _records(), ids=_id)
@@ -165,7 +206,7 @@ def test_known_lost_records_exist_and_are_dated_before_the_rule() -> None:
 def test_every_file_a_record_names_is_in_the_repository(path: Path) -> None:
     front, body = _split(path)
     method = front.get("method") or {}
-    _check_method_files(path.name, method)
+    _check_method_files(path.name, method, body)
     record = method.get("record")
     if isinstance(record, str):
         for name in NAMED_FILE.findall(record):
@@ -227,22 +268,56 @@ def test_the_transient_check_sees_what_it_must() -> None:
     assert flagged == ["1", "2", "3", "4", "5", "6"]
 
 
+def _sha256(name: str) -> str:
+    return hashlib.sha256((EXPERIMENTS / name).read_bytes()).hexdigest()
+
+
 def test_the_analysis_check_refuses_what_it_must() -> None:
-    script = "exp-079-exclude.mjs"
-    digest = hashlib.sha256((EXPERIMENTS / script).read_bytes()).hexdigest()
-    _check_method_files("synthetic", {"analysis": [{"path": script, "sha256": digest}]})
-    wrong = "0" * 64 if digest != "0" * 64 else "1" * 64
-    refused = {
-        "hashes to": [{"path": script, "sha256": wrong}],
-        "is not committed": [{"path": "exp-999-analyze.mjs", "sha256": digest}],
-        "is not beside": [{"path": "../README.md", "sha256": digest}],
+    # exp-079's protocol registers exclude.mjs and the subdirectory derive script as
+    # committed, and analyze.mjs as b09ab7c8..., which the committed file no longer is.
+    protocol = {"path": "exp-079-protocol.txt", "sha256": _sha256("exp-079-protocol.txt")}
+    exclude = {"path": "exp-079-exclude.mjs", "sha256": _sha256("exp-079-exclude.mjs")}
+    nested = "exp-065-instruments/derive-h92-h106.mjs"
+    derive = {"path": nested, "sha256": _sha256(nested)}
+    analyze = {"path": "exp-079-analyze.mjs", "sha256": _sha256("exp-079-analyze.mjs")}
+    registered = "b09ab7c8dd47d67fe28df1f30e1b543e5d26e095584f615158a36ccf293b76d6"
+    deviated = {**analyze, "registered_sha256": registered, "deviation": "edited after reading"}
+    ruled = "## Deviation from the Protocol\n\nThe analysis changed.\n"
+
+    def check(analysis: object, body: str = "") -> None:
+        _check_method_files("synthetic", {"protocol": protocol, "analysis": analysis}, body)
+
+    check([exclude, derive])
+    check([deviated], ruled)
+    refused: dict[str, tuple[list[dict[str, str]], str]] = {
+        "does not register": ([analyze], ruled),
+        "hashes to": ([{**exclude, "sha256": analyze["sha256"]}], ""),
+        "is not committed": ([{**exclude, "path": "exp-999-analyze.mjs"}], ""),
+        "is not under": ([{**exclude, "path": "../README.md"}], ""),
+        "not under": ([{**exclude, "path": "exp-065-instruments/../exp-079-exclude.mjs"}], ""),
+        "no heading": ([deviated], "The analysis changed.\n```\n## Deviation\n```\n"),
+        "is unchanged": (
+            [{**exclude, "registered_sha256": exclude["sha256"], "deviation": "x"}],
+            "",
+        ),
     }
-    for message, analysis in refused.items():
+    refused_unregistered = {**deviated, "registered_sha256": "0" * 64}
+    for message, (analysis, body) in refused.items():
         with pytest.raises(AssertionError, match=message):
-            _check_method_files("synthetic", {"analysis": analysis})
-    for malformed in ([], {"path": script, "sha256": digest}, [{"path": script}]):
+            check(analysis, body)
+    with pytest.raises(AssertionError, match="does not register"):
+        check([refused_unregistered], ruled)
+    with pytest.raises(AssertionError, match="needs the method.protocol"):
+        _check_method_files("synthetic", {"analysis": [exclude]}, "")
+    for malformed in (
+        [],
+        exclude,
+        [{"path": exclude["path"]}],
+        [{**analyze, "registered_sha256": registered}],
+        [{**analyze, "deviation": "edited"}],
+    ):
         with pytest.raises(jsonschema.ValidationError):
-            _check_method_files("synthetic", {"analysis": malformed})
+            check(malformed, ruled)
 
 
 def test_an_unclosed_fence_is_refused() -> None:

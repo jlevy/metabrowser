@@ -7,9 +7,11 @@
 //     --load-filter LOAD_FILTER.mjs [--max-load N]
 //
 // The load rule is LOAD_FILTER (the committed exp-060-062-load-filter.mjs), run as it is,
-// with --max-load N when given and at its own default otherwise: a pair is excluded if any
-// run in it saw a one-minute load above N at its start or at any measured transition's
-// start, or if it is incomplete (a run refused, or a condition missing).
+// with --max-load N when given and at its own default (12) otherwise; paced-series.sh
+// passes --max-load only when the config sets EXCLUDE_MAX_LOAD, so by default it runs the
+// filter as exp-079 did. A pair is excluded if any run in it saw a one-minute load above
+// the bound at its start or at any measured transition's start, or if it is incomplete (a
+// run refused, or a condition missing).
 //
 // The power rule is exp-087's. POWER.jsonl has one line per attempt, as paced-series.sh
 // writes it: its series, and lowpowermode and the power source read before (lpm_start,

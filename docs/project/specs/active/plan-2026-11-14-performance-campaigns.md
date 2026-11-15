@@ -4,9 +4,10 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft.
-The lanes and readiness below are current; the priority order waits on
-the architecture review in [Open Questions](#open-questions).
+**Status:** Approved.
+The lanes and the order of work follow the
+[architecture review](../../research/research-2026-11-14-performance-architecture-review.md)
+of 2026-11-14.
 
 ## Overview
 
@@ -24,8 +25,12 @@ The first is Phases 2 and 3 of the same campaign, H90 and H93 to H111, from
 The second is the older load-time backlog in
 [the load-time plan’s registry](plan-2026-08-21-load-time-performance.md#hypotheses).
 It has been worked one row at a time since exp-010 and was never sorted into loops.
-This plan sorts both into lanes, records what each hypothesis still needs before its
-first timed run, and gives the order to work them in.
+An architecture review then asked whether the design itself is built for the best
+performance it can reach.
+It found four boundaries that still charge a fixed cost to every transition or window
+open, and registered seven hypotheses, H112 to H118, that remove them and subsume about
+a dozen older rows. This plan sorts all of it into lanes, records what each hypothesis
+still needs before its first timed run, and gives the order to work them in.
 The registry stays the one place each hypothesis is defined.
 This plan only orders them and names what blocks each one.
 
@@ -97,24 +102,33 @@ Its timed series still queue behind the others.
 
 | Lane | What | Rows and beads, in order | Gated on |
 | --- | --- | --- | --- |
-| 0 | Instruments | Recorder revision 6: `mb-86b9`, `mb-5xzz`, `mb-s0e4`, a retained-memory reading, a dwell journey, a time-to-highlighted milestone; then `compare --aa` on `main` (`mb-tpol`) | Nothing |
-| A | Attribution | `mb-0t7d` and `mb-f8g9` as one series over the four lane merges; `mb-i9vb`’s mechanism against `commits.cold.1` | Nothing; runs on revision 5 |
-| B | Background and prediction | H90’s re-test (`mb-mbd3`), then H93, H94, H108, H104 | H90 and H93 before H94; H93 caps the requests the rest add |
-| C | Retention | H95, then H98, H99 (a), H105 | Lane 0; H90 for H98 |
-| D | Landing | `mb-mjc0`’s waterfall, then H109 or H110, then H96, then H103 | One cost, so one sequence |
-| E | Render cost | H100, H102, then H99 (b) before H101 | H99 (b) and H101 cut the same task |
-| W | `WKWebView` | `mb-o3hr`, `mb-32en`’s WebKit half, `mb-8k5g`, then H97 | The user present; batch it |
+| 0 | Instruments | Recorder revision 6: `mb-86b9`, `mb-5xzz`, `mb-s0e4`, a retained-memory reading, a dwell journey, a time-to-highlighted milestone, then `compare --aa` on `main` (`mb-tpol`); Server-Timing summed to the end of each body over one landing (U2, `mb-cejc`) | Nothing |
+| A | Attribution | `mb-0t7d` and `mb-f8g9`: counts (requests, replaced nodes, DOM nodes) from one untimed run per lane merge, and timed pairs only on the held-key skim’s last row and `main_subject.commits_to_pulls`; H111 (`mb-i9vb`) | Nothing; revision 5 |
+| S | Server work per request | H115, encode once or not at all (`mb-9uyq`); H116, one git process per comparison (`mb-83zg`) | Their server-side instruments; revision 5 |
+| C | Retention | H112, one surface store (`mb-wki1`), which absorbs H95, H98, H99 (a), H100 and H105 | Lane 0 |
+| P | Pull request page | H114, the first screen in one answer (`mb-3zvb`), then whatever H108 (`mb-nitp`) still covers | Nothing |
+| D | Landing | H113, Markdown render by GET (`mb-mbf4`), with H118, landing data with the document (`mb-gdmt`), as one round; H109 and H110 (`mb-mjc0`) only if U2 shows the server does not bound the landing; H102 (`mb-4ufj`) after H113 | H115 (a) before H118 |
+| R | Resident server | H117, a resident server and shell (`mb-obgj`), then Loop 1’s counters | `mb-qzny` and H97 |
+| B | Background and prediction | H93 (a), a client cap that pauses on input (`mb-16d7`), then H94 (`mb-fejb`) and H104 (`mb-b7ru`); H93 (b) only if (a) fails | H112 before H94 |
+| E | Render cost | U6 (`mb-xws3`), then H101 with H99 (b) as one row (`mb-y04k`, `mb-1bh1`) | U6 |
+| W | `WKWebView` | U1 (`mb-r303`) and U5 (`mb-ttfq`) first, then `mb-o3hr`, `mb-32en`’s WebKit half, `mb-8k5g`, H97 (`mb-touu`), and the WebKit halves of H112, H117 and H118 | The user present; batch it |
 | Close | Phase 2–3 closing round | `mb-vmb4` | Every lane above that lands |
+
+H90 is not re-tested: its deciding metrics were met and it failed only on one-frame
+flags (exp-086), and H113 and H112 take what it was for.
+Its code at `6b876c54` is H113’s fallback.
 
 Rounds that compete for the same cost, and so must not be judged against one another’s
 control:
 
-- **Cold landing:** H96, H109, H110, and H103. H103 changes how
-  `startup_script_transfer_kb` is measured.
-- **Retained revisits:** H95, H98, H99 (a), and H105 share one memory budget, and H100’s
-  share of a revisit shrinks once surfaces are retained.
-- **The large source view:** H99 (b) and H101.
-- **Background requests:** H93 governs the requests H94, H108, and H104 add.
+- **Cold landing:** H113, H118, H115, and H109 or H110. H115 changes the basis of
+  `startup_script_transfer_kb`, which is read on loopback.
+- **Retained revisits:** H112 sets one memory budget, and H94 fills its hosts.
+- **Git routes:** H116 and H111 both move `commits.cold.*`; each carries the other’s
+  deciding metric as a guard.
+- **The large source view:** H101 and H99 (b), now one row.
+- **Background requests:** H93 governs the requests H94 and H104 add, and H115 and H116
+  lower the two costs that inflated foreground latency most.
 
 ### Loops of the load-time backlog
 
@@ -125,34 +139,45 @@ open pays for the first and the fourth is off the app’s path.
 
 | Rank | Loop | Order | Build first |
 | --- | --- | --- | --- |
-| 1 | A folder’s first frame, and server start | H56, H54, H52; alongside, H14 then H17; H57’s open half runs as H103 then H96 | A `visual_states` counter; a deep-against-shallow spawn pair; startup pairs with cached bytecode |
-| 2 | Scan and walker | H39, then H40 as fdu provider adoption (`mb-hej8`); H18, H72, H22; H33, H43; H34, H47 | A gitignore toggle in `scan_bench.py`; an executor-size knob; a “tracked indexed” metric |
-| 3 | Revisit and persistence | H49, then H21, H46, H42 | Warm-reopen and server-memory adapters; a persisted-format load-cost prototype |
+| 1 | A folder’s first frame, and server start | H117 (Lane R), then H56, H54, H52; H14 and H17 as attribution only; H57’s open half runs as H115 and H118 | A `visual_states` counter; a deep-against-shallow spawn pair; startup pairs with cached bytecode and an adopt arm |
+| 2 | Scan and walker | U3 (`mb-wb7e`), fdu against the Python provider, first; H39, H40 (`mb-hej8`), H18, H72, H22, H33, H43, H34 and H47 wait on it | One paired run: walk to settled, footprint, foreground latency during the walk |
+| 3 | Revisit and persistence | H49’s adapters; H21 and H46 wait on U3 | Warm-reopen and server-memory adapters |
 | 4 | Remote link, `metab --remote` only | H44, H29, H25, H45 | A prefetch-total metric; a batched `/api/trees` prototype |
 
-Loop 3 has the highest ceiling for relaunch, but only H49 can show whether re-walks stay
-common once warm folders land.
-The registry rows carry each hypothesis’s current status, and the rows the audit found
-overtaken are retired or merged there.
+The review demoted Loop 2’s walker rows: their costs are CPython’s, which a better
+Python walker can only shave, so one reading against fdu decides whether they run at
+all. It retired H42, since a client tree replica cannot paint before the process a
+relaunch waits for. The registry rows carry each hypothesis’s current status, and the
+rows the audits found overtaken are retired or merged there.
 
 ## Implementation Plan
 
 ### Order of work
 
-1. **Lane 0 and Lane A first, together.** Lane A runs on revision 5 now, so exp-079’s
-   unexplained wrong-way results are pinned on their causes before H108 tries to win the
-   pull request page’s time back.
+1. **Lane 0 and Lane A, together.** Lane A runs on revision 5 now, so exp-079’s
+   unexplained wrong-way results are pinned on their causes before Lanes C and P try to
+   win the pull request page’s time back.
    Lane 0 is code with no timed series until its A/A run.
-2. **Then the first improvement lanes:** Lane B (H90’s re-test, H93, then H108) and Lane
-   D (the waterfall), and load-time Loop 1, in that order of timed series.
-3. **Then Lane C** once revision 6 is frozen, and Lane E.
-4. **Lane W** whenever the user can be at the machine, with everything waiting on
-   `WKWebView` batched into that session.
-5. **The Phase 2–3 closing round** (`mb-vmb4`) once the lanes that are going to land
+   Every revision 6 protocol declares exp-087’s later-frame test before it measures.
+2. **Lane S beside Lane 0.** H115 and H116 are decided on server-side instruments, run
+   on revision 5, and make every later background request cheaper.
+3. **Lane C, ahead of Lane B.** H112 moves the most rows per timed series, and
+   prediction has nothing to win until a return is cheap.
+4. **Lane P, then Lane D as one round:** H114, then H113 with H118.
+5. **Lane R,** H117’s core half, then Loop 1’s counters.
+   Compiling bytecode in the app’s install flow halves the server’s import, 0.92 s to
+   0.43 s in the review’s probe, and belongs to the native app plan.
+6. **Lane B:** H93 (a), H94, H104.
+7. **Lane W** whenever the user can be at the machine, with everything waiting on
+   `WKWebView` batched into that session, U1 and U5 first.
+8. **Lane E** after U6, with H102; from Loops 2 and 3, only U3 and H49’s adapters; Loop
+   4 last.
+9. **The Phase 2–3 closing round** (`mb-vmb4`) once the lanes that are going to land
    have landed.
 
-The architecture review may reorder steps 2 and 3. Its findings go into the registry as
-rows and into this list as a revision, not as a second plan.
+The largest gains a reader of the native app would see, in order, are H117 (up to a
+second for every folder opened), H112 (every return), then H114 and H116 (pull request
+and commit clicks).
 
 ### Picking up a lane as a fresh agent
 
@@ -181,28 +206,29 @@ since an open pull request can hold one.
 
 ## Testing Strategy
 
-The plan itself is checked by the storage test for every record it leads to
-(`tests/test_experiment_storage.py`) and by the parity and link checks `make verify`
-runs. Each lane’s rounds are tested the way the runbook requires: an instrument change
-fails its own definition tests before it measures anything, and a round’s record is
+Every record a lane writes is checked by the storage test
+(`tests/test_experiment_storage.py`): its protocol and registered analysis by hash, and
+every file and relative link it names.
+Nothing checks this plan’s own links, so a change to it checks them by hand.
+Each lane’s rounds are tested the way the runbook requires: an instrument change fails
+its own definition tests before it measures anything, and a round’s record is
 regenerated from its committed samples.
 
 ## Open Questions
 
-- **The architecture review.** A deeper review is to ask whether the design is built for
-  the best performance it can reach, not which small changes remain: where the shell,
-  the server, and the client tree divide the work; which of those divisions forces cost
-  on every transition; and which uncertainties deserve a measurement before anyone
-  builds. Its findings become registry rows in the standard form and may reorder the
-  lanes.
 - **WebKit time.** Lane W needs the user at an unlocked screen.
-  When that session happens decides when H97 and the Phase 2–3 closing round can finish.
+  When that session happens decides when U1, U5, H97 and the Phase 2–3 closing round can
+  finish, and U1 can change how many tiers H112 keeps.
+- **Whether H112’s merge holds.** H112 replaces five registered rows with one store.
+  If its round shows the tiers need different mechanisms, its lettered verdicts say
+  which, and the merged rows can be reopened under their own numbers.
 
 ## References
 
 - [Instant transitions and stable layout](plan-2026-11-11-ui-apparent-performance.md)
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md)
 - [Apparent UI performance for the native app](../../research/research-2026-11-11-ui-apparent-performance.md)
+- [Architecture review of the performance design](../../research/research-2026-11-14-performance-architecture-review.md)
 - [Performance-loop runbook](../../../../explorations/performance-loop/README.md)
 - [exp-079, the Phase 1 closing round](../../../../explorations/performance-loop/experiments/exp-079-every-accepted-change-at-final-main.md)
 - [Native macOS app plan](plan-2026-11-10-native-macos-app.md)

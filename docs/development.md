@@ -957,10 +957,12 @@ that verifies green can still push a commit that fails CI.
   A failure in another session’s work is something to raise, not to silently fix.
 - Lefthook cannot run from a git worktree created outside the repository, so pushing
   from a clean temporary worktree is not a workaround for a dirty one.
-- A new worktree has no `node_modules`, and `make lint-check` runs `npm ci` through
-  `make install` when it is missing or stale.
-  Copy it from a checkout with the same `package-lock.json` (`cp -cR`, a cheap clone on
-  APFS), or run `make -o install lint-check`; never symlink it, because `npm ci` then
+- A new worktree has no `node_modules`, and `make lint-check`, `make test`, and
+  `make format` run `make install` first every time, which runs `npm ci` and replaces
+  `node_modules` even when it is present.
+  Copy `node_modules` from a checkout with the same `package-lock.json` (`cp -cR`, a
+  cheap clone on APFS) so hooks and `node_modules/.bin` tools work, and run those
+  targets as `make -o install lint-check`; never symlink it, because `npm ci` then
   deletes the other checkout’s copy.
 
 ## Durable Storage
