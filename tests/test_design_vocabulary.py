@@ -1971,7 +1971,8 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # Ages, filters, buttons, and the spinner are the shell's.
     assert "mb.formatAge(" in panel
     assert "controls.groupHtml(" in panel
-    assert 'class: "github-pulls-connection"' in panel
+    assert 'class: "github-pulls-connection nav-metadata nav-metadata-note"' in panel
+    assert 'class: "github-pulls-status nav-metadata"' in panel
     assert 'class: "btn github-pulls-reload"' in panel
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel

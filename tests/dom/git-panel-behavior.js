@@ -1331,8 +1331,10 @@ async function run() {
   {
     const container = document.getElementById("tab-git");
     const toolbar = document.register("nav-toolbar-git", document.createElement("div"));
+    // As the server ships it (server.py): a navigation metadata line holding the pending
+    // tally in the count's own span.
     const shipped = document.createElement("div");
-    shipped.className = "git-history-summary";
+    shipped.className = "git-history-summary nav-metadata";
     toolbar.appendChild(shipped);
     const revisions = [SHA_A, SHA_B];
     const fresh = internals.emptyState();
@@ -1354,6 +1356,23 @@ async function run() {
     fresh.rowCount = 2;
     fresh.virtualWindow.setRowCount(2);
     fresh.scopeFingerprint = "scope";
+    // The list is in, the count is not: the pending tally sits in the count's own span,
+    // where the count will be, as the Files totals hold theirs. A lone flex item sat at
+    // the top of the line instead (review A1 on #435).
+    internals.setStateForTests(fresh);
+    container.replaceChildren();
+    internals.renderPanel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const pendingLine = toolbar.querySelector(".git-history-summary");
+    const pendingCount = toolbar.querySelector(".git-history-summary-count");
+    assertTrue(
+      "toolbar: a pending tally sits in the count's own span of a metadata line",
+      pendingLine?.classNames.has("nav-metadata") &&
+        pendingLine.children.length === 1 &&
+        pendingLine.children[0] === pendingCount &&
+        pendingCount.children.length === 1 &&
+        pendingCount.children[0].classNames.has("tally-pending"),
+    );
     fresh.summary = { commitCount: 2, firstCommitAt: null };
     internals.setStateForTests(fresh);
     // A panel showing its first list: the earlier scenarios left one mounted.
@@ -1379,7 +1398,7 @@ async function run() {
       "toolbar: a failed history settles the tally",
       toolbar.textContent === "History unavailable" &&
         toolbar.querySelector(".tally-pending") === null &&
-        toolbar.querySelector(".git-history-summary") !== null,
+        toolbar.querySelector(".git-history-summary")?.classNames.has("nav-metadata-note"),
     );
     document.byId.delete("nav-toolbar-git");
     toolbar.remove();

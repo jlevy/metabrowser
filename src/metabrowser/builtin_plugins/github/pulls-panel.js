@@ -2907,7 +2907,10 @@ export function mountPullsPanel(container, ctx, mb) {
     chip.append(" ", tally);
     return [{ chip, value, tally }];
   });
-  const status = h("p", { class: "github-pulls-status" });
+  // The count and the connection are the shell's navigation metadata line (`.nav-metadata`,
+  // docs/design-system.md, "Navigation Metadata Line"): two lines of one band under the
+  // toolbar, set as the Files and Commits tallies are.
+  const status = h("p", { class: "github-pulls-status nav-metadata" });
   // A tree: a row's changed files hang off it as a group. Its keys are this view's, bound by
   // the tab's host; the Files tree's keyboard handler is scoped to the Files tab and never
   // sees these rows.
@@ -2929,7 +2932,7 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   reloadButton.addEventListener("click", () => void controller.reload());
   filters.append(reloadButton);
-  const connection = h("div", { class: "github-pulls-connection" }, [
+  const connection = h("div", { class: "github-pulls-connection nav-metadata nav-metadata-note" }, [
     connectionText,
     connectionHelp,
   ]);
@@ -3753,7 +3756,7 @@ export function mountPullsPanel(container, ctx, mb) {
           model.countNumber === null || model.countSuffix === null
             ? [repository]
             : [
-                h("strong", { class: "github-pulls-total" }, [model.countNumber]),
+                h("span", { class: "github-pulls-total" }, [model.countNumber]),
                 model.countSuffix,
                 repository,
               ],
