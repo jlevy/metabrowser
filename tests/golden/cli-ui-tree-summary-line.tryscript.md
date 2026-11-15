@@ -14,8 +14,9 @@ shell’s own text helpers.
 
 This browserless session runs the real `static/navigation.js` with `esc`, `formatCount`,
 and `formatSize` extracted verbatim from `static/app.js`, the helpers the shell hands
-it. For each state the line paints in, it records the line’s classes, how it reads, how
-many figures are still pending, and its markup.
+it, over the real `static/formatters.js`, whose `formatBytes` writes every size the
+shell shows. For each state the line paints in, it records the line’s classes, how it
+reads, how many figures are still pending, and its markup.
 `live` records the two figures the shell patches as the walker’s root aggregate changes.
 The transcript pins these behaviors:
 
@@ -56,9 +57,9 @@ $ node tests/dom/tree-summary-line-session.js
     },
     "the split, with ignored files": {
       "classes": "tree-summary tree-summary-split nav-metadata",
-      "reads": "12,797 files (394.6 MB) + 248,189 ignored (9632.1 MB)",
+      "reads": "12,797 files (394.6 MB) + 248,189 ignored (9.4 GB)",
       "pending": 0,
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\">12,797 files</span><span class=\"tree-summary-bytes\">(394.6 MB)</span><span class=\"tree-summary-ignored\"><span class=\"tree-summary-plus\">+</span>248,189 ignored<span class=\"tree-summary-bytes\">(9632.1 MB)</span></span></div>"
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\">12,797 files</span><span class=\"tree-summary-bytes\">(394.6 MB)</span><span class=\"tree-summary-ignored\"><span class=\"tree-summary-plus\">+</span>248,189 ignored<span class=\"tree-summary-bytes\">(9.4 GB)</span></span></div>"
     },
     "an empty folder": {
       "classes": "tree-summary tree-summary-split nav-metadata",

@@ -157,8 +157,11 @@ function createPage(server) {
     TypeError,
   });
   context.window = context;
-  const navigation = path.join(staticDir, "navigation.js");
-  vm.runInContext(fs.readFileSync(navigation, "utf8"), context, { filename: navigation });
+  // formatters.js writes the sizes the summary line states (`formatBytes`).
+  for (const script of ["formatters.js", "navigation.js"]) {
+    const file = path.join(staticDir, script);
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  }
   vm.runInContext(COLLABORATORS, context, { filename: "root-summary-collaborators.js" });
   vm.runInContext(refreshBlock(), context, { filename: "app-root-summary-refresh.js" });
 

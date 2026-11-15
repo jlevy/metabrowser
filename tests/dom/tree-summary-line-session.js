@@ -6,7 +6,8 @@
 // two figures are patched live by `treeSummaryCountHtml` and `treeSummarySizeHtml` as the
 // walker's root aggregate changes. This runs the real navigation.js with `esc`,
 // `formatCount`, and `formatSize` extracted verbatim from app.js, the helpers app.js
-// hands it, and records the line for each state: before any count, counted before the
+// hands it, over the real formatters.js, whose `formatBytes` writes every size the
+// shell shows (tests/dom/byte-sizes-session.js), and records the line for each state: before any count, counted before the
 // split arrives, a Git pin with no sizes, the split with and without ignored files, an
 // empty folder, and each live figure. Where the line sits is layout, measured in Chrome
 // by tests/test_nav_metadata_chrome.py.
@@ -31,8 +32,10 @@ function appFunction(name) {
 
 const context = vm.createContext({ console, Number, Object, String, Math, Error, TypeError });
 context.window = context;
-const navigation = path.join(staticDir, "navigation.js");
-vm.runInContext(fs.readFileSync(navigation, "utf8"), context, { filename: navigation });
+for (const script of ["formatters.js", "navigation.js"]) {
+  const file = path.join(staticDir, script);
+  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+}
 vm.runInContext(["esc", "formatSize", "formatCount"].map(appFunction).join("\n"), context, {
   filename: "app-text-helpers.js",
 });
