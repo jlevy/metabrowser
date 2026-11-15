@@ -1902,6 +1902,16 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
+        # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
+        # page that shows a pull request's files or a multi-file diff asks for it: a diff
+        # asks beside its comparison, and the Pulls tab when it mounts.
+        "changed-files-tree": [
+            {
+                "src": _static_asset_url("changed-files-tree.js"),
+                "provides": "MetabrowserChangedFilesTree",
+            }
+        ],
         # Only a served mirror has freshness to show, so a folder never fetches
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.

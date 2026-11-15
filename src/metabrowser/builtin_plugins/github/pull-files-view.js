@@ -7,7 +7,9 @@
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
 // one `.tree-children[role="group"]` after the pull request's row, folders that lead with the
 // registry's chevron in the 16 px box and file rows with the change letter a patch's children
-// carry in place of an icon, the tree's indent and row height, and the inline change stats. It
+// carry in place of an icon, the tree's indent and row height, and the inline change stats: a
+// file's own, and a folder's rolled up from every file under it, open or closed, as a Files
+// folder keeps its size whichever way it is turned. It
 // takes none of `.tree-item`, `[data-tree-id]`, or the Files tree's keyboard, which the shell
 // keeps for the Files tab: these rows are the plugin's, and their keys come from the Pulls
 // tab's host.
@@ -27,7 +29,7 @@
 // usable, so nothing marks them busy; the live region says what changed. The spinner is only
 // for a list with no rows yet.
 
-import { createFileTreeController, LISTING_FILES, windowRange } from "./pull-files-tree.js";
+import { createFileTreeController, LISTING_FILES } from "./pull-files-tree.js";
 import { alignRefreshing, h, isPlainClick } from "./pull-page.js";
 
 // Rows drawn past the view each way. Chrome 152, 2026-11-03, with a 700px nav pane:
@@ -72,6 +74,8 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   focusedIn: () => void,
  *   lastInput?: () => number | null,
  *   held?: (hold: "opening" | "lateRows", heldMs: number, outcome: string) => void,
+ *   tree: MetabrowserChangedFilesTree | PromiseLike<MetabrowserChangedFilesTree>,
+ *   formatCount: (count: number) => string,
  * }} host
  */
 export function mountFileTree(host) {
@@ -125,7 +129,7 @@ export function mountFileTree(host) {
   /** @param {TreeRow} row */
   function contentOf(row) {
     return row.kind === "folder"
-      ? row.name
+      ? JSON.stringify([row.name, row.additions, row.deletions])
       : JSON.stringify([
           row.name,
           row.badge,
@@ -134,6 +138,25 @@ export function mountFileTree(host) {
           row.deletions,
           row.previousName,
         ]);
+  }
+
+  /**
+   * A row's `+A −D`, its own or a folder's rolled up, or nothing for a row that knows no
+   * counts.
+   *
+   * @param {TreeRow} row
+   * @returns {Node[]}
+   */
+  function statsOf(row) {
+    const stats = controller.tree()?.changeStats(row, host.formatCount) ?? null;
+    return stats === null
+      ? []
+      : [
+          h("span", { class: "github-pull-file-stats", "aria-hidden": "true" }, [
+            h("span", { class: "diff-stat-add" }, [stats.additions]),
+            h("span", { class: "diff-stat-del" }, [stats.deletions]),
+          ]),
+        ];
   }
 
   /**
@@ -148,6 +171,7 @@ export function mountFileTree(host) {
       return [
         h("span", { class: "github-pull-files-toggle", "aria-hidden": "true" }, [host.chevron()]),
         name,
+        ...statsOf(row),
       ];
     }
     const badge = h(
@@ -159,16 +183,7 @@ export function mountFileTree(host) {
       },
       [row.badge],
     );
-    const parts = [badge, name];
-    if (row.additions !== null || row.deletions !== null) {
-      parts.push(
-        h("span", { class: "github-pull-file-stats", "aria-hidden": "true" }, [
-          h("span", { class: "diff-stat-add" }, [`+${row.additions ?? "?"}`]),
-          h("span", { class: "diff-stat-del" }, [`−${row.deletions ?? "?"}`]),
-        ]),
-      );
-    }
-    return parts;
+    return [badge, name, ...statsOf(row)];
   }
 
   /**
@@ -183,6 +198,20 @@ export function mountFileTree(host) {
         : `, ${row.additions ?? "unknown"} added, ${row.deletions ?? "unknown"} deleted`;
     const from = row.previousName === null ? "" : `, from ${row.previousName}`;
     return `${row.name}, ${row.statusLabel.toLowerCase()}${from}${lines}`;
+  }
+
+  /**
+   * What a folder row is called, for a screen reader: its name, its files, and its lines.
+   *
+   * @param {TreeRow & {kind: "folder"}} row
+   */
+  function folderNameOf(row) {
+    const files = `${host.formatCount(row.files)} ${row.files === 1 ? "file" : "files"}`;
+    const lines =
+      row.additions === null && row.deletions === null
+        ? ""
+        : `, ${row.additions === null ? "unknown" : host.formatCount(row.additions)} added, ${row.deletions === null ? "unknown" : host.formatCount(row.deletions)} deleted`;
+    return `${row.name}, ${files}${lines}`;
   }
 
   /**
@@ -242,6 +271,7 @@ export function mountFileTree(host) {
       element.setAttribute("aria-label", nameOf(row));
     } else {
       element.dataset.tipText = row.name;
+      element.setAttribute("aria-label", folderNameOf(row));
     }
     place(element, row, at);
     return { element, at, content: contentOf(row), folder: row.kind === "folder" };
@@ -269,9 +299,13 @@ export function mountFileTree(host) {
       drawn.clear();
       return;
     }
+    const shared = controller.tree();
+    if (shared === null) {
+      return;
+    }
     const view = host.scrollRoot.getBoundingClientRect();
     const top = list.getBoundingClientRect().top;
-    const { start, end } = windowRange({
+    const { start, end } = shared.windowRange({
       count: rows.length,
       rowHeight: height,
       viewTop: view.top,
@@ -323,9 +357,10 @@ export function mountFileTree(host) {
       const content = contentOf(row);
       if (entry.content !== content) {
         entry.element.replaceChildren(...partsOf(row));
-        if (row.kind === "file") {
-          entry.element.setAttribute("aria-label", nameOf(row));
-        }
+        entry.element.setAttribute(
+          "aria-label",
+          row.kind === "file" ? nameOf(row) : folderNameOf(row),
+        );
         entry.content = content;
         built += 1;
       }
@@ -493,6 +528,7 @@ export function mountFileTree(host) {
       leave: host.leave,
       ...(host.lastInput === undefined ? {} : { lastInput: host.lastInput }),
       ...(host.held === undefined ? {} : { held: host.held }),
+      tree: host.tree,
     },
     {
       number: host.number,

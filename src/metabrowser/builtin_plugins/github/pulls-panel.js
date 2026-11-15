@@ -3019,6 +3019,13 @@ export function mountPullsPanel(container, ctx, mb) {
   // Which rows show their changed files, and each one's tree, by number: open ones, and the
   // last MAX_HELD_TREES closed, so one opened again is as the reader left it.
   const expansion = createRowExpansion();
+  // The changed-files tree every row's files are drawn with, which a diff's Diff summary
+  // shares (static/changed-files-tree.js). It is asked for now, as the list mounts, so it is
+  // in hand before a reader opens a row; a tree opened first waits for it in its read.
+  const changedFilesTree = mb.loadChangedFilesTree();
+  void changedFilesTree.catch((error) => {
+    console.error("metabrowser github: the changed-files tree did not load", error);
+  });
   /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
   const trees = new Map();
   /** The tree a file row with focus is in, whose keys the host's file keys are. */
@@ -3123,6 +3130,8 @@ export function mountPullsPanel(container, ctx, mb) {
         lastInput: () => lastInputAt,
         held: (hold, heldMs, outcome) =>
           mb.perf.measure(`githubPulls:${hold}Hold`, () => {}, { number, heldMs, outcome }),
+        tree: changedFilesTree,
+        formatCount: (count) => mb.formatInteger(count),
       });
       trees.set(number, tree);
       const entry = painted.get(number);

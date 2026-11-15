@@ -9,9 +9,12 @@ env:
 Expanding a row of the Pulls tab shows the pull request’s changed files as a tree, built
 from the list `GET /api/plugin/github/pull-files` answers and never from hydrated diff
 documents. This browserless session loads the production
-`builtin_plugins/github/pull-files-tree.js`, with `pulls-panel.js` for the words a
-failed refresh is given, and plays answers the route gave while a fake `gh` replayed
-full-size pages, recorded in `tests/fixtures/github-pull-files-responses.json`.
+`builtin_plugins/github/pull-files-tree.js` over the shell’s changed-files tree
+(`static/changed-files-tree.js`), which a diff’s Diff summary draws too, with
+`pulls-panel.js` for the words a failed refresh is given, and plays answers the route
+gave while a fake `gh` replayed full-size pages, recorded in
+`tests/fixtures/github-pull-files-responses.json`. A folder row ends with the line
+counts of every file under it, rolled up, whether it is open or closed.
 
 `a list fills page by page` is pull request 106’s first list, read between its pages:
 each step says the window the tree asked for, which is past the rows it holds while the
@@ -76,12 +79,12 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1)",
+          "v assets/ (1) +0 -0",
           "  M logo.png +0 -0",
-          "v docs/ (2)",
+          "v docs/ (2) +3 -12",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/app/plugins/github/ (96)",
+          "v src/app/plugins/github/ (96) +384 -192",
           "  M mod_000.py +4 -2",
           "  M mod_001.py +4 -2",
           "  M mod_002.py +4 -2",
@@ -104,12 +107,12 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1)",
+          "v assets/ (1) +0 -0",
           "  M logo.png +0 -0",
-          "v docs/ (2)",
+          "v docs/ (2) +3 -12",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/app/plugins/github/ (196)",
+          "v src/app/plugins/github/ (196) +784 -392",
           "  M mod_000.py +4 -2",
           "  M mod_001.py +4 -2",
           "  M mod_002.py +4 -2",
@@ -132,25 +135,25 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1)",
+          "v assets/ (1) +0 -0",
           "  M logo.png +0 -0",
-          "v docs/ (2)",
+          "v docs/ (2) +3 -12",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/app/ (242)",
-          "  v plugins/github/ (240)",
+          "v src/app/ (242) +1086 -479",
+          "  v plugins/github/ (240) +1076 -478",
           "    M mod_000.py +4 -2",
           "    M mod_001.py +4 -2",
           "    M mod_002.py +4 -2",
           "    … 235 more",
           "    M mod_238.py +4 -2",
           "    A pull_files.py +120 -0",
-          "  v views/ (2)",
+          "  v views/ (2) +10 -1",
           "    M one.py +1 -1",
           "    A two.py +9 -0",
-          "v tools/new/ (1)",
+          "v tools/new/ (1) +0 -0",
           "  R script.sh (from scripts/script.sh) +0 -0",
-          "v weird/ (2)",
+          "v weird/ (2) +2 -1",
           "  A bell�name.txt +1 -0",
           "  M zero�width.md +1 -1",
           "M README.md +2 -1"
@@ -202,44 +205,44 @@ $ node tests/dom/github-pull-files-tree-session.js
     ],
     "a chain row toggles as one": {
       "closed": [
-        "v assets/ (1)",
+        "v assets/ (1) +0 -0",
         "  M logo.png +0 -0",
-        "v docs/ (2)",
+        "v docs/ (2) +3 -12",
         "  R guide.md (from docs/old-guide.md) +3 -0",
         "  D removed.md +0 -12",
-        "> src/app/ (242)",
-        "v tools/new/ (1)",
+        "> src/app/ (242) +1086 -479",
+        "v tools/new/ (1) +0 -0",
         "  R script.sh (from scripts/script.sh) +0 -0",
-        "v weird/ (2)",
+        "v weird/ (2) +2 -1",
         "  A bell�name.txt +1 -0",
         "  M zero�width.md +1 -1",
         "M README.md +2 -1"
       ],
       "reopened": [
-        "v assets/ (1)",
+        "v assets/ (1) +0 -0",
         "  M logo.png +0 -0",
-        "v docs/ (2)",
+        "v docs/ (2) +3 -12",
         "  R guide.md (from docs/old-guide.md) +3 -0",
         "  D removed.md +0 -12",
-        "v src/app/ (242)",
-        "  v plugins/github/ (240)",
+        "v src/app/ (242) +1086 -479",
+        "  v plugins/github/ (240) +1076 -478",
         "    M mod_000.py +4 -2"
       ]
     },
     "past the threshold only the top level shows": [
-      "> assets/ (1)",
-      "> docs/ (2)",
-      "> src/app/ (242)",
-      "> tools/new/ (1)",
-      "> weird/ (2)",
+      "> assets/ (1) +0 -0",
+      "> docs/ (2) +3 -12",
+      "> src/app/ (242) +1086 -479",
+      "> tools/new/ (1) +0 -0",
+      "> weird/ (2) +2 -1",
       "M README.md +2 -1"
     ],
     "the file a page shows is revealed and current": [
-      "> assets/ (1)",
-      "> docs/ (2)",
-      "> src/app/ (242)",
-      "> tools/new/ (1)",
-      "v weird/ (2)",
+      "> assets/ (1) +0 -0",
+      "> docs/ (2) +3 -12",
+      "> src/app/ (242) +1086 -479",
+      "> tools/new/ (1) +0 -0",
+      "v weird/ (2) +2 -1",
       "  A bell�name.txt +1 -0  <- current",
       "  M zero�width.md +1 -1",
       "M README.md +2 -1"
@@ -268,9 +271,9 @@ $ node tests/dom/github-pull-files-tree-session.js
       "failure": null,
       "says": null,
       "rows": [
-        "v docs/ (1)",
+        "v docs/ (1) +1 -0",
         "  A new.md +1 -0",
-        "v src/ (1)",
+        "v src/ (1) +1 -0",
         "  M app.txt +1 -0"
       ]
     },
@@ -568,6 +571,7 @@ $ node tests/dom/github-pull-files-tree-session.js
     "filled rows are the list's rows": true,
     "no single-child folder is its own row": true,
     "each folder counts the files under it": true,
+    "each folder's lines are the sum of its files' lines": true,
     "every name is the server's display": true,
     "a list for another read starts again at 0": true
   }

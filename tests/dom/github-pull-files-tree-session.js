@@ -5,11 +5,12 @@
 // tests/test_github_pull_files_tree_session.py, which fails when the recording drifts. A list
 // filling was read between its pages, as a tree polling while it fills reads it.
 //
-// builtin_plugins/github/pull-files-tree.js loads whole, and pulls-panel.js for the words a
-// failed refresh is given. Each story prints what the tree would show: the window it asks for
-// next, the count, the state, and its visible rows, a folder as "v" open or ">" closed with the
-// files under it, a file as its change badge, its name, and its line counts. A long run of
-// files in one folder is shown by its ends.
+// builtin_plugins/github/pull-files-tree.js loads whole, over the shell's changed-files tree
+// (static/changed-files-tree.js), which it shares with a diff's Diff summary, and pulls-panel.js
+// for the words a failed refresh is given. Each story prints what the tree would show: the
+// window it asks for next, the count, the state, and its visible rows, a folder as "v" open or
+// ">" closed with the files under it and their line counts rolled up, a file as its change
+// badge, its name, and its line counts. A long run of files in one folder is shown by its ends.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -24,6 +25,8 @@ for (const envelope of Object.values(recorded)) {
   envelope.rows = envelope.rows.map((row) => JSON.parse(row));
 }
 const treePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-files-tree.js");
+// The shared tree, as the `changed-files-tree` bundle installs it.
+const shared = require("./changed-files-tree-fixture.js").changedFilesTree();
 // Open every folder up to this many files. The panel's measured threshold is the next step's;
 // here one list is under the first and over the second.
 const LARGE = 300;
@@ -43,7 +46,12 @@ function escaped(text) {
 function line(row) {
   const indent = "  ".repeat(row.depth);
   if (row.kind === "folder") {
-    return `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files})`;
+    const counts =
+      row.additions === null && row.deletions === null
+        ? ""
+        : ` +${row.additions ?? "?"} -${row.deletions ?? "?"}`;
+    const unknown = row.unknown > 0 ? `, ${row.unknown} without counts` : "";
+    return `${indent}${row.expanded ? "v" : ">"} ${row.name}/ (${row.files}${unknown})${counts}`;
   }
   const from = row.previousName === null ? "" : ` (from ${row.previousName})`;
   const counts = `+${row.additions ?? "?"} -${row.deletions ?? "?"}`;
@@ -95,12 +103,12 @@ async function main() {
     const asked = holder.query();
     const envelope = recorded[name];
     const changed = holder.accept(envelope);
-    const built = tree.buildFileTree(holder.rows());
+    const built = shared.buildFileTree(holder.rows());
     // How folders start is decided once, when the first rows arrive, by the list's own count.
     if (expansion === null && built.files > 0) {
       expansion = tree.initialExpansion(envelope, LARGE);
     }
-    const rows = tree.visibleRows(built, expansion ?? tree.initialExpansion(envelope, LARGE));
+    const rows = shared.visibleRows(built, expansion ?? tree.initialExpansion(envelope, LARGE));
     fill.push({
       answer: name,
       asked,
@@ -177,7 +185,7 @@ async function main() {
   }
 
   stories["a long tree draws only its viewport and overscan"] = [0, 12000, 200000].map((top) =>
-    tree.windowRange({
+    shared.windowRange({
       count: 4539,
       rowHeight: 24,
       viewTop: top,
@@ -186,27 +194,27 @@ async function main() {
       overscan: 40,
     }),
   );
-  const whole = tree.buildFileTree(holder.rows());
+  const whole = shared.buildFileTree(holder.rows());
 
   // The chain a reader closes stays closed for every folder in it.
-  const chain = tree.visibleRows(whole, expansion).find((row) => row.name === "src/app");
-  const closed = tree.toggleFolder(expansion, chain);
-  const reopened = tree.toggleFolder(closed, { ...chain, expanded: false });
+  const chain = shared.visibleRows(whole, expansion).find((row) => row.name === "src/app");
+  const closed = shared.toggleFolder(expansion, chain);
+  const reopened = shared.toggleFolder(closed, { ...chain, expanded: false });
   stories["a chain row toggles as one"] = {
-    closed: show(tree.visibleRows(whole, closed)),
-    reopened: show(tree.visibleRows(whole, reopened)).slice(0, 8),
+    closed: show(shared.visibleRows(whole, closed)),
+    reopened: show(shared.visibleRows(whole, reopened)).slice(0, 8),
   };
 
   // Past the threshold, only the top level shows, from the first page on, since GitHub's Link
   // said three pages; the page's file is revealed and current.
   const top = tree.initialExpansion(recorded["filling 1"], AUTO_EXPAND_FILES);
   const shown = "weird/bell\u0007name.txt";
-  stories["past the threshold only the top level shows"] = show(tree.visibleRows(whole, top));
+  stories["past the threshold only the top level shows"] = show(shared.visibleRows(whole, top));
   stories["the file a page shows is revealed and current"] = show(
-    tree.visibleRows(whole, tree.revealPath(top, shown), { current: shown }),
+    shared.visibleRows(whole, shared.revealPath(top, shown), { current: shown }),
   );
-  stories["a name is the server's display, and its path the identity"] = tree
-    .visibleRows(whole, tree.revealPath(top, shown))
+  stories["a name is the server's display, and its path the identity"] = shared
+    .visibleRows(whole, shared.revealPath(top, shown))
     .filter((row) => row.kind === "file" && row.path.startsWith("weird/"))
     .map((row) => ({
       path: escaped(row.path),
@@ -235,7 +243,7 @@ async function main() {
     localHolder.query();
   stories["a list from the local comparison"] = {
     ...describe(local),
-    rows: show(tree.visibleRows(tree.buildFileTree(local.rows), tree.initialExpansion(local, 150))),
+    rows: show(shared.visibleRows(shared.buildFileTree(local.rows), tree.initialExpansion(local, 150))),
   };
   stories["GitHub stops at 3,000 files"] = describe(recorded.capped);
   stories["a list asked for and not yet arrived"] = describe(recorded.pending);
@@ -244,7 +252,7 @@ async function main() {
   // Rows already listed are never covered by progress, and a stale list says nothing of being
   // stale: its refresh, asked for or running, is `refreshing`, which the paint breathes on the
   // names, with no line; the spinner (`loading`) is only for a list with no rows yet.
-  const shownRows = tree.visibleRows(whole, tree.initialExpansion(recorded.filled, LARGE));
+  const shownRows = shared.visibleRows(whole, tree.initialExpansion(recorded.filled, LARGE));
   const quietStale = { ...recorded.stale, last_refresh: null };
   const shows = (envelope, rows, asking) => {
     const model = tree.describeFileTree(envelope, {
@@ -303,7 +311,7 @@ async function main() {
     }
   };
   walk(whole.root);
-  const everything = tree.visibleRows(whole, { all: true, toggled: new Map() });
+  const everything = shared.visibleRows(whole, { all: true, toggled: new Map() });
   const displayOf = new Map(listRows.map((row) => [row.path, row.display.split("/").at(-1)]));
   const invariants = {
     "filled rows are the list's rows":
@@ -319,6 +327,15 @@ async function main() {
     "each folder counts the files under it": whole.folderIds.every(
       (id) => nodes.get(id).files === listRows.filter((row) => row.path.startsWith(id)).length,
     ),
+    "each folder's lines are the sum of its files' lines": whole.folderIds.every((id) => {
+      const under = listRows.filter((row) => row.path.startsWith(id));
+      const sum = (side) => {
+        const known = under.filter((row) => row[side] !== null);
+        return known.length === 0 ? null : known.reduce((total, row) => total + row[side], 0);
+      };
+      const node = nodes.get(id);
+      return node.additions === sum("additions") && node.deletions === sum("deletions");
+    }),
     "every name is the server's display": everything
       .filter((row) => row.kind === "file")
       .every((row) => row.name === displayOf.get(row.path)),
@@ -397,6 +414,7 @@ async function controllerStory(tree) {
       open: (route) => opens.push(route),
       routable: (path) => !unroutable.has(path),
       leave() {},
+      tree: shared,
     },
     { number: 106, autoExpandFiles: 300 },
   );

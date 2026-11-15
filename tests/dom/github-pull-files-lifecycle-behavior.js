@@ -83,6 +83,7 @@ function rig(create) {
       page: () => null,
       open() {},
       leave() {},
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
     },
     { number: 7, autoExpandFiles: 100 },
   );

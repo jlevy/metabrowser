@@ -255,6 +255,7 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
       const tree = { drawnAt: null, model: null };
       tree.controller = module.createFileTreeController(
         {
+          tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
           request,
           schedule,
           cancel: (id) => timers.delete(id),

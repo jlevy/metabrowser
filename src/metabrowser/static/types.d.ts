@@ -1367,6 +1367,8 @@ type MetabrowserSdk = {
   langForExtension(ext: string): string;
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
+  /** The shared changed-files tree model, loaded once on demand (static/changed-files-tree.js). */
+  loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   repository: MetabrowserRepositoryContext | null;
@@ -3288,6 +3290,131 @@ declare global {
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
+  /** One changed file, as a list of a change set's files gives it (static/changed-files-tree.js). */
+  type MetabrowserChangedFileRow = {
+    path: string;
+    previous_path: string | null;
+    status: string;
+    additions: number | null;
+    deletions: number | null;
+    display: string;
+    previous_display: string | null;
+  };
+
+  type MetabrowserChangedFilesFolder = {
+    kind: "folder";
+    id: string;
+    name: string;
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    unknown: number;
+    children: MetabrowserChangedFilesNode[];
+  };
+
+  type MetabrowserChangedFilesNode =
+    | MetabrowserChangedFilesFolder
+    | { kind: "file"; id: string; name: string; row: MetabrowserChangedFileRow };
+
+  type MetabrowserChangedFilesTreeModel = {
+    root: MetabrowserChangedFilesFolder;
+    files: number;
+    folderIds: string[];
+  };
+
+  /** Which folders are open: `all` for a folder no reader touched, `toggled` by id. */
+  type MetabrowserChangedFilesExpansion = {
+    all: boolean;
+    toggled: ReadonlyMap<string, boolean>;
+  };
+
+  type MetabrowserChangedFilesFolderRow = {
+    kind: "folder";
+    id: string;
+    ids: string[];
+    name: string;
+    depth: number;
+    position: number;
+    setSize: number;
+    expanded: boolean;
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    unknown: number;
+  };
+
+  type MetabrowserChangedFilesFileRow = {
+    kind: "file";
+    id: string;
+    name: string;
+    depth: number;
+    position: number;
+    setSize: number;
+    path: string;
+    display: string;
+    badge: string;
+    status: string;
+    statusLabel: string;
+    additions: number | null;
+    deletions: number | null;
+    previousName: string | null;
+    current: boolean;
+  };
+
+  type MetabrowserChangedFilesRow = MetabrowserChangedFilesFolderRow | MetabrowserChangedFilesFileRow;
+
+  type MetabrowserChangedFilesSummary = {
+    files: string;
+    breakdown: string;
+    additions: string;
+    deletions: string;
+    estimated: boolean;
+    text: string;
+    label: string;
+  };
+
+  /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
+  type MetabrowserChangedFilesTree = Readonly<{
+    STATUS_BADGES: Readonly<Record<string, string>>;
+    STATUS_LABELS: Readonly<Record<string, string>>;
+    STATUS_WORDS: Readonly<Record<string, string>>;
+    buildFileTree(rows: ReadonlyArray<MetabrowserChangedFileRow>): MetabrowserChangedFilesTreeModel;
+    changeStats(
+      row: { additions: number | null; deletions: number | null },
+      formatCount: (count: number) => string,
+    ): { additions: string; deletions: string } | null;
+    describeChanges(
+      totals: { files: number; additions: number | null; deletions: number | null; exact: boolean },
+      statuses: Iterable<string>,
+      formatCount: (count: number) => string,
+    ): MetabrowserChangedFilesSummary;
+    expansionFor(files: number, autoExpandFiles: number): MetabrowserChangedFilesExpansion;
+    isOpen(expansion: MetabrowserChangedFilesExpansion, id: string): boolean;
+    parentIndex(rows: ReadonlyArray<{ depth: number }>, at: number): number | null;
+    revealPath(
+      expansion: MetabrowserChangedFilesExpansion,
+      path: string,
+    ): MetabrowserChangedFilesExpansion;
+    statusBreakdown(statuses: Iterable<string>): Array<{ status: string; count: number; word: string }>;
+    toggleFolder(
+      expansion: MetabrowserChangedFilesExpansion,
+      row: { ids: ReadonlyArray<string>; expanded: boolean },
+    ): MetabrowserChangedFilesExpansion;
+    visibleRows(
+      tree: MetabrowserChangedFilesTreeModel,
+      expansion: MetabrowserChangedFilesExpansion,
+      options?: { current?: string | null },
+    ): MetabrowserChangedFilesRow[];
+    windowRange(where: {
+      count: number;
+      rowHeight: number;
+      viewTop: number;
+      viewBottom: number;
+      listTop: number;
+      overscan: number;
+    }): { start: number; end: number };
+  }>;
+
   type MetabrowserPublicSdk = MetabrowserSdk;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
@@ -3395,6 +3522,8 @@ declare global {
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
+    /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
+    MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
