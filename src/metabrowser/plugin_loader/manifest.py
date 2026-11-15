@@ -141,7 +141,7 @@ class ContainerSpec(BaseModel):
     """The ``container`` table on a ``[[kind]]`` — folder-like behavior.
 
     A container kind's files play both nav-tree roles from
-    ``docs/project/architecture/arch-nav-containers.md``: item-like
+    ``docs/project/architecture/arch-plugin-system.md``: item-like
     (selecting the file opens its normal views — the overview) and
     folder-like (the row expands to child entries). Children come from
     the named data hook; a child's document is served by the same kind's

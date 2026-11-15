@@ -1640,8 +1640,8 @@ function treeChildGroupStartHtml(groupId, depth, expanded) {
 }
 
 // Container kinds by extension, injected by the server from the loaded
-// plugin manifests (arch-nav-containers.md). A file whose extension is
-// listed plays the folder-like role in addition to its own.
+// plugin manifests (docs/project/architecture/arch-plugin-system.md). A file
+// whose extension is listed plays the folder-like role in addition to its own.
 var CONTAINER_EXTS = window.METABROWSER_CONTAINER_EXTS || {};
 
 function containerForNode(node) {
@@ -1945,7 +1945,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: fileLabelId,
       });
       // A file whose kind declares the container capability is
-      // folder-like too (arch-nav-containers.md): it keeps its file
+      // folder-like too (arch-plugin-system.md): it keeps its file
       // identity and views, and gains a chevron that discloses the
       // entries inside it, fetched on first expand.
       var container = containerForNode(node);

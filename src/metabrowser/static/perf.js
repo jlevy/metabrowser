@@ -902,7 +902,7 @@
     observerNotes.push("longtask");
   }
 
-  // "Idle Work" in docs/development.md.
+  // "Idle Work" in docs/project/architecture/arch-browser-shell.md.
   var FRAME_GAP_MS = 50;
   var FRAME_SAMPLE_WINDOW_MS = 10000;
   var raf = { gaps: 0, max_ms: 0, over_200ms: 0, sampled_ms: 0 };
