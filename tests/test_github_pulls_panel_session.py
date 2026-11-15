@@ -653,10 +653,15 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
 def test_optional_native_stack_state_is_shared_and_owned() -> None:
     assert run_session("github-pull-stacks-behavior.js") == {
         "rowCaptions": {
-            "single": {"text": "2/3", "hint": "Stack #286, position 2 of 3"},
+            "single": {
+                "text": "2/3",
+                "hint": "Stack #286, position 2 of 3",
+                "parts": [{"position": "2/3", "stack": None}],
+            },
             "shared": {
-                "text": "3/3 · #900 1/2",
+                "text": "3/3 · 900 1/2",
                 "hint": "Stack #286, position 3 of 3; Stack #900, position 1 of 2",
+                "parts": [{"position": "3/3", "stack": None}, {"position": "1/2", "stack": 900}],
             },
             "foreign": None,
         },

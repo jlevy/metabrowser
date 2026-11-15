@@ -15,7 +15,7 @@
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
-import { changeSummaryRow, fileChangeLabel, validateDocument } from "./diff-model.js";
+import { diffSummaryOf, fileChangeLabel, plainTotals, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 
@@ -1031,7 +1031,10 @@ function renderViewFileControl(action, view, notice) {
  */
 function renderFileBar(change, toggleId, bodyId, view) {
   const api = view.api;
-  const { letter, label, notes } = fileChangeLabel(change);
+  // The path is shown as the Diff summary shows it, by the server's display rule, and the
+  // raw path stays for the copy control and the jump; without the shared tree it is raw.
+  const model = view.changedFiles;
+  const { letter, label, notes } = fileChangeLabel(change, model?.displayPath);
   const bar = el("div", "diff-file-bar disclosure-toggle");
   const toggle = el("button", "diff-file-toggle expanded");
   toggle.setAttribute("type", "button");
@@ -1054,10 +1057,21 @@ function renderFileBar(change, toggleId, bodyId, view) {
   const pathSpan = el("span", "diff-file-path", label);
   pathSpan.dataset.tipText = label;
   toggle.append(pathSpan);
-  if (change.additions !== null && change.additions !== undefined) {
+  /** @param {unknown} value */
+  const count = (value) => (typeof value === "number" ? value : null);
+  const counts =
+    model === null
+      ? change.additions !== null && change.additions !== undefined
+        ? { additions: `+${change.additions}`, deletions: `\u2212${change.deletions}` }
+        : null
+      : model.changeStats(
+          { additions: count(change.additions), deletions: count(change.deletions) },
+          countFormatter(api),
+        );
+  if (counts !== null) {
     const stats = el("span", "diff-file-stats");
-    stats.append(el("span", "diff-stat-add", `+${change.additions}`));
-    stats.append(el("span", "diff-stat-del", `−${change.deletions}`));
+    stats.append(el("span", "diff-stat-add", counts.additions));
+    stats.append(el("span", "diff-stat-del", counts.deletions));
     toggle.append(stats);
   }
   for (const note of notes) {
@@ -1390,20 +1404,8 @@ let summaryIds = 0;
  * @returns {{element: HTMLElement, dispose: () => void}}
  */
 function renderDiffSummary(totals, files, view, model) {
-  const rows = files.map((change) => changeSummaryRow(change, model.displayPath));
   const formatCount = countFormatter(view.api);
-  /** @param {unknown} value */
-  const lines = (value) => (typeof value === "number" ? value : null);
-  const said = model.describeChanges(
-    {
-      files: Number(totals.files),
-      additions: lines(totals.additions),
-      deletions: lines(totals.deletions),
-      exact: totals.exact === true,
-    },
-    rows.map((row) => row.status),
-    formatCount,
-  );
+  const { rows, said } = diffSummaryOf(totals, files, model, formatCount);
   const parts = [el("span", "diff-summary-files", said.files)];
   if (said.breakdown !== "") {
     parts.push(el("span", "diff-summary-breakdown", `(${said.breakdown})`));
@@ -1443,8 +1445,14 @@ function renderDiffSummary(totals, files, view, model) {
   /** @type {Promise<typeof import("./diff-summary.js")> | null} */
   let loading = null;
   let disposed = false;
+  let failures = 0;
   const load = () => {
-    loading ??= import("./diff-summary.js").catch((error) => {
+    // A module that did not load is asked for again at an address of its own: a browser keeps
+    // a failed import in its module map, and the same address would fail again unasked.
+    loading ??= /** @type {Promise<typeof import("./diff-summary.js")>} */ (
+      failures === 0 ? import("./diff-summary.js") : import(`./diff-summary.js?retry=${failures}`)
+    ).catch((error) => {
+      failures += 1;
       loading = null;
       throw error;
     });
@@ -1462,12 +1470,19 @@ function renderDiffSummary(totals, files, view, model) {
         try {
           module = await load();
         } catch (error) {
+          // The press did nothing, so the header says so, and that the next press tries again.
           console.error("metabrowser diff: the Diff summary's tree did not load", error);
+          if (!disposed) {
+            toggle.setAttribute("aria-disabled", "true");
+            toggle.dataset.tipText = "The list of files did not load. Press to try again.";
+          }
           return;
         }
         if (disposed || view.disposed) {
           return;
         }
+        toggle.removeAttribute("aria-disabled");
+        delete toggle.dataset.tipText;
         tree ??= measureProjection(
           view.api,
           "diffSummary:mount",
@@ -1493,7 +1508,7 @@ function renderDiffSummary(totals, files, view, model) {
                 if (view.openFile !== null) {
                   view.openFile(path);
                 } else {
-                  jumpToFile(view, path);
+                  jumpToFirstFile(view, path);
                 }
               },
             }),
@@ -1538,10 +1553,27 @@ function renderDiffToolbar(totals, files, view, showSummary) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
   let disposeSummary = null;
-  if (showSummary && Number(totals.files) !== 1 && view.changedFiles !== null) {
-    const summary = renderDiffSummary(totals, files, view, view.changedFiles);
-    disposeSummary = summary.dispose;
-    toolbar.append(summary.element);
+  if (showSummary && Number(totals.files) !== 1) {
+    if (view.changedFiles === null) {
+      // The shared tree did not load: the totals stand on their own, as they always did, and
+      // only the tree of files is lost.
+      const said = plainTotals(totals, countFormatter(view.api));
+      const line = el("div", "diff-summary");
+      const stats = el("span", "diff-summary-stats");
+      stats.append(
+        el("span", "diff-stat-add", said.additions),
+        el("span", "diff-stat-del", said.deletions),
+      );
+      line.append(el("span", "diff-summary-files", said.files), stats);
+      if (said.estimated) {
+        line.append(el("span", "diff-summary-note", "(estimated)"));
+      }
+      toolbar.append(line);
+    } else {
+      const summary = renderDiffSummary(totals, files, view, view.changedFiles);
+      disposeSummary = summary.dispose;
+      toolbar.append(summary.element);
+    }
   }
   const filterControls = view.api?.filterControls;
   if (!filterControls) {
@@ -2535,6 +2567,43 @@ export function jumpToFile(view, path) {
   if (entry === null) {
     return { kind: "not_in_comparison", path, listTruncated: view.listTruncated };
   }
+  return jumpToEntry(view, entry, path);
+}
+
+/**
+ * Go to the first section that names *path*, the Diff summary's in-place jump. A patch can
+ * list a path more than once, as a file that became a symlink or a commit series that
+ * touches a file twice, and the summary shows such a path as one row, which goes to where it
+ * first appears. Where a path appears once, this is `jumpToFile`.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} path
+ * @returns {FileJump}
+ */
+export function jumpToFirstFile(view, path) {
+  if (view.disposed) {
+    return { kind: "disposed", path };
+  }
+  for (const section of view.sections) {
+    const entry = view.bySection.get(section);
+    const oldSide = /** @type {{path?: string} | null | undefined} */ (entry?.change.old);
+    const newSide = /** @type {{path?: string} | null | undefined} */ (entry?.change.new);
+    if (entry !== undefined && (newSide?.path === path || oldSide?.path === path)) {
+      return jumpToEntry(view, entry, path);
+    }
+  }
+  return { kind: "not_in_comparison", path, listTruncated: view.listTruncated };
+}
+
+/**
+ * Put one file at the top of the pane, and ask for its lines first.
+ *
+ * @param {MountedDiffState} view
+ * @param {FileEntry} entry
+ * @param {string} path
+ * @returns {FileJump}
+ */
+function jumpToEntry(view, entry, path) {
   entry.expand();
   view.pinned = entry.section;
   view.pinnedAt = eventClockNow();

@@ -6,6 +6,7 @@ One transcript per scenario, each small enough to read in a review:
   read when a tracked name looks like a wire identity;
 - ``cli-git-pin-index.txt`` -- index status, capabilities, source status, ``--check-api``;
 - ``cli-git-pin-tree.txt`` -- ``/api/tree`` chrome, nesting, a subtree, and a type filter;
+- ``cli-git-pin-groups.txt`` -- Group by: File type groups, one group's tree, and no Age;
 - ``cli-git-pin-rollup.txt`` -- ``/api/rollup`` and ``/api/catalog``;
 - ``cli-git-pin-files.txt`` -- ``/api/file`` per kind of entry, and the blob-reading hooks;
 - ``cli-git-pin-refusals.txt`` -- every refusal ``--api`` can reach.
@@ -421,6 +422,24 @@ def test_golden_pin_tree(pin: _Pin) -> None:
         expected = sorted(nodes, key=lambda node: (node["type"] != "dir", node["name"].encode()))
         assert nodes == expected
     pin.check("cli-git-pin-tree.txt")
+
+
+@posix_only
+def test_golden_pin_groups(pin: _Pin) -> None:
+    """Group by on a pin: File type groups and one group's tree, and no Age, since a pin
+    has no mtimes (metabrowser/tree_groups.py)."""
+
+    grouped = pin.api("/api/tree?group_by=type&depth=1").payload()
+    docs = pin.api("/api/tree?group=type:docs&depth=2").payload()
+    pin.api("/api/tree?group_by=age&depth=0", fails=True)
+    pin.api("/api/tree?group=age:live&depth=1", fails=True)
+
+    # Documentation first, and every group the pin holds anything of is listed.
+    ids = [group["id"] for group in grouped["groups"]]
+    assert ids[0] == "docs"
+    assert all(group["entries"] for group in grouped["groups"])
+    assert docs["filtered"]["files"] == grouped["groups"][0]["files"]
+    pin.check("cli-git-pin-groups.txt")
 
 
 @posix_only

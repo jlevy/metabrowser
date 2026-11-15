@@ -349,6 +349,7 @@ const SHELL_FUNCTIONS = [
   "isGitHistoryLanding",
   "cancelMainTabPreview",
   "resumeRootSummaryRefresh",
+  "closeFilterMenu",
   "attachMainTabs",
   "initNavTabs",
   "initHomeHeading",
@@ -392,6 +393,9 @@ const shellSource = [
   appDeclaration(/^var _rootSummaryRefresh = null;$/m, "root summary refresh"),
   // Nor does any of them group the Files tree.
   appDeclaration(/^var _groupedRefresh = null;$/m, "Group by section refresh"),
+
+  // Leaving Files closes an open filter menu; none of these states opens one.
+  appDeclaration(/^var filterOpenMenu = null;$/m, "open filter menu"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(

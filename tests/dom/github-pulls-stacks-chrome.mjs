@@ -89,6 +89,9 @@ const LIST = `(() => {
       open.members.push({
         number: Number(row.dataset.number),
         badge: row.querySelector(".github-pulls-stack")?.textContent ?? "",
+        // Another stack named in it, by the Layers glyph before its number.
+        others: row.querySelectorAll(".github-pulls-stack .github-pull-stack-other svg").length,
+        tip: row.querySelector(".github-pulls-stack")?.getAttribute("aria-label") ?? "",
       });
     } else {
       open = null;
@@ -125,6 +128,13 @@ const LIST = `(() => {
             height: box(chip).height,
             filterHeight: box(filter).height,
             label: chip.getAttribute("aria-label"),
+            word: chip.textContent,
+            // The toolbar keeps its controls on one line, and scrolls sideways past that.
+            toolbarOverflow: (() => {
+              const bar = document.getElementById("nav-toolbar-pulls");
+              return bar === null ? null : bar.scrollWidth - bar.clientWidth;
+            })(),
+            toolbarWidth: document.getElementById("nav-toolbar-pulls")?.clientWidth ?? null,
           };
     })(),
   };
@@ -188,6 +198,7 @@ try {
       k: [75, "KeyK"],
       ArrowLeft: [37, "ArrowLeft"],
       ArrowRight: [39, "ArrowRight"],
+      " ": [32, "Space"],
     };
     const [keyCode, code] = codes[key];
     const text = key.length === 1 ? { text: key } : {};
@@ -210,6 +221,19 @@ try {
     evaluate(`(() => {
       const el = document.activeElement;
       return el?.dataset?.stack ? "stack " + el.dataset.stack : el?.dataset?.number ? "#" + el.dataset.number : el?.tagName ?? null;
+    })()`);
+  /** Whether the first stack's row is inside the list's scroller's view, and where it is. */
+  const stackInView = () =>
+    evaluate(`(() => {
+      const row = document.querySelector(".github-pulls-stack-row");
+      const scroller = document.querySelector(".tree-content");
+      const view = scroller.getBoundingClientRect();
+      const box = row?.getBoundingClientRect();
+      return {
+        inView: box !== undefined && box.bottom > view.top && box.top < view.bottom,
+        rowTop: box === undefined ? null : Math.round(box.top - view.top),
+        scrollTop: Math.round(scroller.scrollTop),
+      };
     })()`);
   const hover = async (selector) => {
     const point = await evaluate(`(() => {
@@ -240,6 +264,21 @@ try {
   await waitFor(`document.querySelector(".github-pulls-item") !== null`);
   measured.firstRowMs = Math.round((await now()) - asked);
   phase("first row");
+  if (!before) {
+    // Open, the default list, paints flat and its stacks arrive after it: at the top of the
+    // list, the groups take the top, rather than the first row read keeping its place
+    // below them.
+    await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
+    measured.groupedMs = Math.round((await now()) - asked);
+    phase("grouped");
+    await frames();
+    measured.groupedInView = await stackInView();
+    check(
+      "grouping that arrives after the first paint shows its first stack's row",
+      measured.groupedInView.inView && measured.groupedInView.scrollTop === 0,
+      JSON.stringify(measured.groupedInView),
+    );
+  }
   await click('.github-pulls-filters [data-chip-value="all"]');
   await waitFor(
     `document.querySelector('.github-pulls-list[data-filter="all"] a.github-pulls-row') !== null`,
@@ -261,10 +300,9 @@ try {
     measured.badgesMs = Math.round((await now()) - asked);
     await shot("before-pulls-all", await paneClip());
   } else {
-    await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
-    measured.groupedMs = Math.round((await now()) - asked);
-    phase("grouped");
-    await evaluate(`document.querySelector(".tree-content").scrollTop = 0`);
+    await waitFor(
+      `document.querySelector(".github-pulls-stack-row .github-pulls-stack-count")?.textContent === "4"`,
+    );
     await frames();
     const list = await evaluate(LIST);
     measured.list = list;
@@ -285,7 +323,9 @@ try {
     check("with its count", first?.count === "4", first?.count);
     check(
       "#10, in two stacks, sits once, and its badge names the other",
-      first?.members[0]?.badge === "4/4 · #300 2/2" &&
+      first?.members[0]?.badge === "4/4 · 300 2/2" &&
+        first.members[0].others === 1 &&
+        first.members[0].tip === "Stack #286, position 4 of 4; Stack #300, position 2 of 2" &&
         !list.stacks.slice(1).some((s) => s.members.some((m) => m.number === 10)),
       JSON.stringify(list.stacks),
     );
@@ -315,12 +355,17 @@ try {
       `${list.countRight} ${list.flatAgeRight}`,
     );
     check(
-      "the option's chip is on, and a chip's height",
+      "the option's chip is on, worded, named Group by stack, and a chip's height",
       list.toggle?.pressed === "true" &&
         list.toggle.disabled === "false" &&
+        list.toggle.word === "Stacks" &&
+        list.toggle.label === "Group by stack" &&
         near(list.toggle.height, list.toggle.filterHeight),
       JSON.stringify(list.toggle),
     );
+    // How far past the pane the toolbar's one line reaches, which it scrolls along rather
+    // than wrapping or cutting (static/styles.css, `.nav-toolbar`): recorded, not held.
+    measured.toolbarOverflow = list.toggle?.toolbarOverflow ?? null;
     // A stack's row and a pull request's row hover alike.
     const stackHover = await hover(".github-pulls-stack-row");
     const memberHover = await hover('.github-pulls-item[data-level="2"] > .github-pulls-row');
@@ -349,6 +394,7 @@ try {
           `document.querySelector(".github-pulls-stack-row").getAttribute("aria-expanded")`,
         ),
         ring: await evaluate(`getComputedStyle(document.activeElement).outlineStyle`),
+        place: await stackInView(),
       });
     }
     measured.keys = keys;
@@ -363,6 +409,73 @@ try {
           ["#10", "true"],
         ]),
       JSON.stringify(keys),
+    );
+    check(
+      "Left then Right on a stack's row leaves it in view",
+      keys[2].place.inView && keys[3].place.inView,
+      JSON.stringify(keys.map((k) => k.place)),
+    );
+    // Space on a stack's row, and a press on it, close and open it; focus stays on it.
+    const stackState = () =>
+      evaluate(
+        `[document.querySelector(".github-pulls-stack-row").getAttribute("aria-expanded"), document.activeElement?.dataset?.stack ?? null]`,
+      );
+    await evaluate(`document.querySelector(".github-pulls-stack-row").focus()`);
+    const toggles = [];
+    for (const how of ["space", "space", "press", "press"]) {
+      if (how === "space") {
+        await press(" ");
+      } else {
+        await click(".github-pulls-stack-row .github-pull-stack-label");
+        await frames();
+      }
+      toggles.push([how, ...(await stackState())]);
+    }
+    measured.toggles = toggles;
+    check(
+      "Space and a press on a stack's row close and open it, and focus stays on it",
+      JSON.stringify(toggles) ===
+        JSON.stringify([
+          ["space", "false", "286"],
+          ["space", "true", "286"],
+          ["press", "false", "286"],
+          ["press", "true", "286"],
+        ]),
+      JSON.stringify(toggles),
+    );
+    // A member's changed files: Right opens them a tree level further in; Left closes them
+    // and keeps the pull request, and Left again goes to the stack's row.
+    await evaluate(`document.querySelector('a.github-pulls-row[data-number="7"]').focus()`);
+    await press("ArrowRight");
+    await waitFor(
+      `document.querySelector('.github-pulls-item[data-number="7"] .github-pull-file-row, .github-pulls-item[data-number="7"] .github-pull-folder-row') !== null`,
+    );
+    const files = await evaluate(`(() => {
+      const member = document.querySelector('a.github-pulls-row[data-number="7"]');
+      const file = document.querySelector('.github-pulls-item[data-number="7"] :is(.github-pull-file-row, .github-pull-folder-row)');
+      const start = (row) => parseFloat(getComputedStyle(row).paddingLeft) + row.getBoundingClientRect().left;
+      return {
+        expanded: member.getAttribute("aria-expanded"),
+        level: file.getAttribute("aria-level"),
+        indent: Math.round(start(file) - start(member)),
+      };
+    })()`);
+    await press("ArrowLeft");
+    const afterLeft = await evaluate(
+      `[document.querySelector('a.github-pulls-row[data-number="7"]').getAttribute("aria-expanded"), document.activeElement?.dataset?.number ?? null]`,
+    );
+    await press("ArrowLeft");
+    files.afterLeft = afterLeft;
+    files.afterSecondLeft = await focused();
+    measured.memberFiles = files;
+    check(
+      "a member's changed files are a tree level further in, and Left closes them, then leaves for its stack",
+      files.expanded === "true" &&
+        files.level === "3" &&
+        files.indent === Math.round(list.treeIndent) &&
+        JSON.stringify(files.afterLeft) === JSON.stringify(["false", "7"]) &&
+        files.afterSecondLeft === "stack 286",
+      JSON.stringify(files),
     );
     check(
       "a stack's row takes the focus ring a pull request's row does",
@@ -398,12 +511,17 @@ try {
     await click(".github-pulls-group-toggle");
     await waitFor(`document.querySelector(".github-pulls-stack-row") !== null`);
     measured.toggleOnMs = Math.round((await now()) - onAt);
+    await frames();
+    measured.toggledInView = await stackInView();
+    check(
+      "turning grouping on at the top shows its first stack's row",
+      measured.toggledInView.inView,
+      JSON.stringify(measured.toggledInView),
+    );
     phase("toggled");
   }
 
   // The page's stack menu, from a member's row, brought into view as a reader would.
-  await evaluate(`document.querySelector(".tree-content").scrollTop = 0`);
-  await frames();
   if (before) {
     // Scrolled to the end as it grows: the rows near it mount once the window reaches them.
     await waitFor(

@@ -240,6 +240,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
     ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
   );
+  // A menu of one group is named once, by the heading over its members: the host's group
+  // heading, in the stack's label class (docs/design-system.md, "Stacks").
+  const heading = [...members.descendants()].find(
+    (element) => element.getAttribute("class") === "group-heading github-pull-stack-label",
+  );
+  assert.equal(heading?.textContent, "Stack #286");
+  assert.equal(members.getAttribute("aria-labelledby"), heading.getAttribute("id"));
+  assert.equal(members.getAttribute("aria-label"), null, "the menu has no second name");
+  assert.equal(heading.parentElement?.getAttribute("role") ?? null, null, "no group role");
   const anchors = [...members.descendants()].filter((element) => element.tag === "a");
   anchors[0].focus();
   next.setTab("files");

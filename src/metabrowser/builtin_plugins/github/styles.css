@@ -961,7 +961,7 @@
 }
 .github-pull-file-row
   > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
-.github-pull-folder-row > .github-pull-file-name {
+.github-pull-folder-row > :is(.github-pull-file-name, .github-pull-file-stats) {
   align-self: baseline;
 }
 /* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
@@ -1103,13 +1103,26 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Another stack named in a badge: the Layers glyph before its number, at the text's
+   size, so the number never reads as the row's own pull request number. */
+.github-pull-stack-other {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-inline-end: 1px;
+  vertical-align: -0.125em;
+}
+.github-pull-stack-other svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .github-pull-stack-dot {
   color: var(--muted);
   font-size: var(--micro-font-size);
 }
 /* A member row is a link, so its parts set their own ink, as a pull request's title does
-   (docs/design-system.md, "Stacks"): the position inherited the link's, and was the one
-   blue part of the row. */
+   (docs/design-system.md, "Stacks"): a part that set none would take the link's blue. */
 .github-pull-stack-member-position,
 .github-pull-stack-member-number {
   color: var(--text);
@@ -1132,9 +1145,13 @@
      .github-pull-stack-label     "Stack #N": on the shell's .group-heading, the label
                                   register (gray, all caps, tracked), so the menu's
                                   heading and a stack row's are one class and resolve to
-                                  the same --label-* tokens. Never restyled here.
+                                  the same --label-* tokens. Its register, the --label-*
+                                  properties, is never restyled here; its numerals,
+                                  wrapping, and place in a row are.
      .github-pull-stack-icon      the Layers glyph, at --icon-glyph.
      .github-pull-stack-position  the bold position, "2/4".
+     .github-pull-stack-other     the Layers glyph at the text's size, naming another
+                                  stack in a badge before its number.
    Grouped by stack, the Pulls list's first level is a stack's row, then the rows of its
    pull requests a tree level in, top of the stack first, then the rows in no stack. A
    stack's row starts on the list's row inset, as every first-level row does, as a menu
@@ -1172,15 +1189,10 @@
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
-/* The Group by stack chip holds the Layers glyph and no word, at the height a chip of
-   words has (--chip-height): with the glyph alone it was 20 px beside the filters' 24. */
+/* The Group by stack chip is the shared renderer's worded `.chip-toggle`; it keeps its
+   word on the toolbar's line, and unavailable it waits as Reload does. */
 .github-pulls-group-toggle {
-  display: inline-flex;
   flex: none;
-  align-items: center;
-  box-sizing: border-box;
-  height: var(--chip-height);
-  padding-inline: 6px;
 }
 .github-pulls-group-toggle[aria-disabled="true"],
 .github-pulls-group-toggle[aria-disabled="true"]:hover {

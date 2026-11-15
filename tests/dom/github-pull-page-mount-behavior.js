@@ -1703,6 +1703,8 @@ async function run() {
     fetchPluginData: async () => {
       throw Object.assign(new Error("comparison failed"), { status: failureStatus });
     },
+    // The shared changed-files tree, which the SDK loads from the shell's bundle.
+    loadChangedFilesTree: async () => require("./changed-files-tree-fixture.js").changedFilesTree(),
   };
   const logError = console.error;
   console.error = (...args) => errors.push(args);

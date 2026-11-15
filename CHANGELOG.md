@@ -17,16 +17,20 @@ All notable changes to Metabrowser are documented here.
 - The Pulls tab can group a native GitHub stack’s pull requests under a “Stack #N” row,
   open by default, with the stack’s pull requests under it top of the stack first, as
   the pull request page’s stack menu lists them, and the pull requests in no stack after
-  the stacks. Group by stack is a chip with the stack icon in the Pulls toolbar; it is on
-  once the repository’s stacks are known, and your choice is kept.
+  the stacks. Stacks, a chip in the Pulls toolbar named Group by stack, turns it on and
+  off; it is on once the repository’s stacks are known, and your choice is kept.
+  A stack’s row counts the pull requests of it the list holds, and its tip says where
+  any sit under another stack.
   A pull request in two stacks appears once, under the first, and its badge names the
-  other, as in “4/4 · #300 2/2”: a badge with two positions now names the second stack’s
-  number everywhere. Until the stacks are known, or when GitHub CLI’s stack extension is
-  missing, the list stays as it was and the chip says why.
+  other stack by the stack icon and its number before its position, everywhere a badge
+  shows two positions; it showed two bare positions, such as “4/4 · 2/2”. Until the
+  stacks are known, or when they cannot be read, the list stays as it was and the chip
+  says why and what to do.
   A stack’s row opens and closes like a folder: J and K stop on it, Enter, Space, and
   the arrow keys open, close, enter, and leave it.
-  The stack row’s header and the stack menu’s heading are now one label, gray, all caps,
-  and tracked, and the menu’s positions are in the row’s ink rather than link blue
+  The chip takes `4` among the Pulls tab’s numbers, so Reload is now `5`. The stack
+  row’s header and the stack menu’s heading are now one label, gray, all caps, and
+  tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
 - The Files tab has a Group by menu, the one control on its filter row: No grouping,
@@ -39,7 +43,15 @@ All notable changes to Metabrowser are documented here.
   is not shown, and a Git revision offers no Age.
   Modified within, File type, Minimum file size, and Show ignored move into the drawer
   behind the chevron, whose badge counts the filters set; Clear keeps the grouping.
-  Holding Shift numbers Group by first, then the drawer’s filters while it is open.
+  Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
+  drawer is open; a filter’s number opens the drawer with its menu.
+  Grouping keeps symbolic links: File type puts them in Other, and Age places them by
+  their own modification time.
+  When files change, the sections refresh in place, keeping the open folders, the scroll
+  position, and the focused row.
+  For plugin authors, a `filterControls` option may carry a `summary`, the words its
+  closed trigger shows when it is the one chosen: Group by’s trigger reads “By age”
+  where its row reads “Age”.
 
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.
@@ -52,14 +64,17 @@ All notable changes to Metabrowser are documented here.
 - The Files tab’s File type menu shows up to 16 rows before it scrolls, where it showed
   about 8, and never reaches past the window: in a short window it stops 8 px above the
   bottom edge and scrolls inside, and it fits itself again when the window is resized.
-  A menu with fewer rows, such as Modified within, keeps its size.
+  The other filter menus follow the same rule; one with few rows, such as Modified
+  within, keeps its size unless the window is too short to hold it.
   Its group headings, such as “Groups” and “Code”, now start on the menu’s left edge,
   over the check marks, instead of indented to the row labels as if they were rows.
-  A pull request’s stack menu heads its members the same way.
-  For plugin authors, menu groups have one pattern: a `.menu-group` with `role="group"`
-  and `aria-labelledby` naming its `.group-heading`, which draws its own divider; the
-  `.menu-section-label` class is gone.
-  `filterControls.fitOpenMenus(root)` sizes an open filter dropdown
+  A pull request’s stack menu heads its members the same way, and screen readers now
+  read its name once. The gear menu’s “Max text width” label starts on the same edge as
+  the menu’s title. For plugin authors, menu groups have one pattern: a `.menu-group`
+  with `role="group"` and `aria-labelledby` naming its `.group-heading`, which draws its
+  own divider; the `.menu-section-label` class is gone.
+  `filterControls.bind` fits a filter dropdown when its trigger opens it, and
+  `filterControls.fitOpenMenus(root)` fits one rendered open another way
   ([Groups in a Menu](docs/design-system.md#groups-in-a-menu),
   [Menu Height](docs/design-system.md#menu-height)).
 
@@ -96,7 +111,8 @@ All notable changes to Metabrowser are documented here.
   blocks it held in place, set exactly like the unchanged blocks around them.
   It drew a box with space above and below it, and when open a rule under its label that
   pushed the rest of the document 1px further than the blocks it showed.
-  The label now starts on the text’s left edge.
+  The fold’s chevron now lines up with the text’s left edge, and its label brightens to
+  the text colour under the pointer.
   A document’s own `<details>` sections look as before.
 
 - A diff of more than one file now opens with a Diff summary, collapsed, in place of the
@@ -113,7 +129,10 @@ All notable changes to Metabrowser are documented here.
   request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
   move along the rows without moving the diff.
   A name shows a control or invisible character, such as a right-to-left override, as
-  U+FFFD, as the Pulls tab does.
+  U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
+  counts now read in the shell’s number format.
+  A path a patch lists more than once, as a file that became a symlink, is one row.
+  If the tree cannot load, the totals line stays.
   It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
   commit summary’s totals, as before.
 
@@ -558,10 +577,10 @@ All notable changes to Metabrowser are documented here.
   design system’s reveal motion, `--motion-reveal`.
 
 - The Pulls tab’s filters and its Reload answer to numbers: `1`, `2`, and `3` choose
-  Open, Closed, and All and put focus on the chosen filter, and `4` is Reload, which
-  does nothing while it waits, as a click does.
+  Open, Closed, and All and put focus on the chosen filter, `4` is Group by stack, and
+  `5` is Reload, each of which does nothing while it waits, as a click does.
   The navigation pane’s numbers come first, so beside the Pulls tab a pull request
-  page’s View on GitHub and the actions after it now start at `5`. Holding Shift shows
+  page’s View on GitHub and the actions after it now start at `6`. Holding Shift shows
   each number. See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
 
 - `L` switches a diff between Split and Unified, in a diff file, a commit, and a pull

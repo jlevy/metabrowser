@@ -263,18 +263,28 @@
 
     /**
      * Read the filter triggers again, after the filter bar rebuilds its markup. Each is a
-     * situational control, numbered by its place on screen: Group by on the bar's row,
-     * then Modified within and File type while the drawer that holds them is open (a
-     * closed drawer is inert, so its triggers take no number). A Git pin has no
-     * modified-within filter.
+     * situational control, numbered by its place: Group by on the bar's row, then
+     * Modified within and File type, on their triggers while the drawer that holds them
+     * is open and on their stand-ins beside the chevron while it is closed. A Git pin
+     * has no modified-within filter.
      */
     function syncFilters() {
       if (disposed) {
         return;
       }
+      // A closed drawer is inert, so its filters are numbered on their stand-ins beside the
+      // chevron (app.js, filterKeySlotsHtml) and keep their places whether or not it is open.
+      const drawerOpen =
+        filterBar()?.querySelector("#filter-drawer")?.getAttribute("data-open") === "true";
       shortcuts.batch(() => {
         for (const key of ["group", "recency", "types"]) {
-          const trigger = filterTrigger(key);
+          const control = filterTrigger(key);
+          const trigger =
+            control && key !== "group" && !drawerOpen
+              ? /** @type {HTMLElement | null} */ (
+                  filterBar()?.querySelector(`[data-filter-key-slot="${key}"]`) ?? control
+                )
+              : control;
           const held = filterNumbers.get(key);
           if (!trigger) {
             held?.detach();

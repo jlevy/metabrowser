@@ -193,31 +193,14 @@ export function mountFileTree(host) {
   }
 
   /**
-   * What a file row is called, for a screen reader: its name, its change, and its lines.
+   * What a row is called, for a screen reader, as every tree of changed files names its
+   * rows (`rowLabel`): set wherever the row is placed, so a row whose files or counts a
+   * later page changes is named as it now is.
    *
-   * @param {TreeRow & {kind: "file"}} row
+   * @param {TreeRow} row
    */
-  function nameOf(row) {
-    const lines =
-      row.additions === null && row.deletions === null
-        ? ""
-        : `, ${row.additions ?? "unknown"} added, ${row.deletions ?? "unknown"} deleted`;
-    const from = row.previousName === null ? "" : `, from ${row.previousName}`;
-    return `${row.name}, ${row.statusLabel.toLowerCase()}${from}${lines}`;
-  }
-
-  /**
-   * What a folder row is called, for a screen reader: its name, its files, and its lines.
-   *
-   * @param {TreeRow & {kind: "folder"}} row
-   */
-  function folderNameOf(row) {
-    const files = `${host.formatCount(row.files)} ${row.files === 1 ? "file" : "files"}`;
-    const lines =
-      row.additions === null && row.deletions === null
-        ? ""
-        : `, ${row.additions === null ? "unknown" : host.formatCount(row.additions)} added, ${row.deletions === null ? "unknown" : host.formatCount(row.deletions)} deleted`;
-    return `${row.name}, ${files}${lines}`;
+  function labelOf(row) {
+    return controller.tree()?.rowLabel(row, host.formatCount) ?? row.name;
   }
 
   /**
@@ -236,7 +219,11 @@ export function mountFileTree(host) {
     element.setAttribute("aria-level", String(row.depth + 1 + ownerLevel()));
     element.setAttribute("aria-posinset", String(row.position));
     element.setAttribute("aria-setsize", String(row.setSize));
+    element.setAttribute("aria-label", labelOf(row));
     if (row.kind === "folder") {
+      // The tooltip says what the folder's sums leave out, as its accessible name does.
+      const missing = controller.tree()?.missingCounts(row, host.formatCount) ?? "";
+      element.dataset.tipText = missing === "" ? row.name : `${row.name}, ${missing}`;
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
@@ -275,12 +262,6 @@ export function mountFileTree(host) {
       )
     );
     element.dataset.id = row.id;
-    if (row.kind === "file") {
-      element.setAttribute("aria-label", nameOf(row));
-    } else {
-      element.dataset.tipText = row.name;
-      element.setAttribute("aria-label", folderNameOf(row));
-    }
     place(element, row, at);
     return { element, at, content: contentOf(row), folder: row.kind === "folder" };
   }
@@ -365,10 +346,6 @@ export function mountFileTree(host) {
       const content = contentOf(row);
       if (entry.content !== content) {
         entry.element.replaceChildren(...partsOf(row));
-        entry.element.setAttribute(
-          "aria-label",
-          row.kind === "file" ? nameOf(row) : folderNameOf(row),
-        );
         entry.content = content;
         built += 1;
       }

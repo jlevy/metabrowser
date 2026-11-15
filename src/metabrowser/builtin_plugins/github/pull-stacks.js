@@ -17,7 +17,14 @@
  * last_refresh: {outcome: string, at: string, reset_at: string | null} | null,
  * stacks: NativeStack[],
  * }} StackEnvelope */
-/** @typedef {{text: string, hint: string}} StackCaption */
+/**
+ * A badge's positions, its own stack's first. A part with a `stack` names another stack,
+ * drawn as the Layers glyph before its number; `text` is what the badge's letters read,
+ * the glyph aside ("4/4 · 300 2/2"), and `hint` its tip and accessible name.
+ *
+ * @typedef {{position: string, stack: number | null}} StackCaptionPart
+ * @typedef {{text: string, hint: string, parts: StackCaptionPart[]}} StackCaption
+ */
 /** @typedef {{
  * known: boolean, reason: string | null,
  * source: string | null, reader: string | null,
@@ -52,10 +59,11 @@ export function stackMenuOrder(stack) {
 }
 
 /**
- * A badge's text and tip for a pull request's stacks, *first* first. The first position is
+ * A badge's parts and tip for a pull request's stacks, *first* first. The first position is
  * bare, since the row's own stack needs no name, its only one or the one it is grouped
- * under; each other stack's position is named by its number, "#900 1/2", so a badge never
- * holds two positions a reader cannot tell apart.
+ * under; each other stack's position is named by the Layers glyph and its number, so a
+ * badge never holds two positions a reader cannot tell apart, and never a number that reads
+ * as a pull request's "#N" beside the row's own.
  *
  * @param {NativeStack[]} memberships @param {number} number @param {number | null} [first]
  * @returns {StackCaption | null}
@@ -71,16 +79,18 @@ function caption(memberships, number, first = null) {
   if (ordered.length === 0) {
     return null;
   }
-  const parts = ordered.map((stack) => ({ stack, at: stack.pulls.indexOf(number) }));
+  const places = ordered.map((stack) => ({ stack, at: stack.pulls.indexOf(number) }));
+  /** @type {StackCaptionPart[]} */
+  const parts = places.map(({ stack, at }, index) => ({
+    position: stackPosition(at, stack.pulls.length),
+    stack: index === 0 ? null : stack.number,
+  }));
   return {
     text: parts
-      .map(({ stack, at }, index) =>
-        index === 0
-          ? stackPosition(at, stack.pulls.length)
-          : `#${stack.number} ${stackPosition(at, stack.pulls.length)}`,
-      )
+      .map((part) => (part.stack === null ? part.position : `${part.stack} ${part.position}`))
       .join(" · "),
-    hint: parts.map(({ stack, at }) => stackPositionHint(stack, at)).join("; "),
+    hint: places.map(({ stack, at }) => stackPositionHint(stack, at)).join("; "),
+    parts,
   };
 }
 
@@ -129,8 +139,9 @@ export function stackMembership(index, identity, number) {
   return sameIdentity(index, identity) ? (index.byPull.get(number) ?? []) : [];
 }
 
-/** A precomputed row caption: no membership traversal on viewport paint. A row grouped
- * under one of its stacks (*under*) has that stack's position first, bare.
+/** A row's caption, precomputed for every row but one grouped under a stack other than its
+ * first, which is built when painted: that is rare, a pull request in two stacks. A row
+ * grouped under one of its stacks (*under*) has that stack's position first, bare.
  * @param {StackIndex} index @param {StackIdentity | null} identity @param {number} number
  * @param {number | null} [under]
  */
@@ -199,28 +210,36 @@ export function groupByStack(numbers, index, identity, options = {}) {
       }
     }
   }
-  /** @type {Set<number>} */
-  const placed = new Set();
-  /** @type {{stack: NativeStack, members: number[]}[]} */
+  /** The stack each placed pull request sits under. @type {Map<number, number>} */
+  const placed = new Map();
+  /** @type {{stack: NativeStack, members: number[], listed: number, elsewhere: Map<number, number>}[]} */
   const groups = [];
   for (const stack of order.values()) {
-    const members = stackMenuOrder(stack).filter(
-      (number) => listed.has(number) && !placed.has(number),
-    );
+    const listedMembers = stackMenuOrder(stack).filter((number) => listed.has(number));
+    const members = listedMembers.filter((number) => !placed.has(number));
     if (members.length === 0) {
       continue;
     }
-    for (const number of members) {
-      placed.add(number);
+    // Its listed pull requests under earlier stacks, by the stack each sits under.
+    /** @type {Map<number, number>} */
+    const elsewhere = new Map();
+    for (const number of listedMembers) {
+      const under = placed.get(number);
+      if (under !== undefined) {
+        elsewhere.set(under, (elsewhere.get(under) ?? 0) + 1);
+      }
     }
-    groups.push({ stack, members });
+    for (const number of members) {
+      placed.set(number, stack.number);
+    }
+    groups.push({ stack, members, listed: listedMembers.length, elsewhere });
   }
   const rest = numbers.filter((number) => !placed.has(number));
   const firstLevel =
     groups.length + Math.max(rest.length, (options.setSize ?? numbers.length) - placed.size);
   /** @type {GroupedRow[]} */
   const rows = [];
-  for (const [at, { stack, members }] of groups.entries()) {
+  for (const [at, { stack, members, listed: shown, elsewhere }] of groups.entries()) {
     const total = stack.pulls.length;
     const expanded = !collapsed.has(stack.number);
     rows.push({
@@ -228,8 +247,8 @@ export function groupByStack(numbers, index, identity, options = {}) {
       key: stackRowKey(stack.number),
       stack,
       label: stackLabel(stack.number),
-      count: members.length === total ? `${total}` : `${members.length} of ${total}`,
-      hint: stackGroupHint(stack, members.length),
+      count: shown === total ? `${total}` : `${shown} of ${total}`,
+      hint: stackGroupHint(stack, shown, elsewhere),
       members,
       expanded,
       level: 1,
@@ -264,15 +283,25 @@ export function groupByStack(numbers, index, identity, options = {}) {
   return { stacks: groups.length, placed: placed.size, rows };
 }
 
-/** A stack row's tip and accessible name: its label, its size, and how many are listed.
- * @param {NativeStack} stack @param {number} shown
+/**
+ * A stack row's tip and accessible name: its label, its size, how many of its pull requests
+ * the list holds, and where those under an earlier stack sit, so a count of listed pull
+ * requests that is more than the rows under it says why.
+ *
+ * @param {NativeStack} stack
+ * @param {number} shown How many of its pull requests the list holds.
+ * @param {ReadonlyMap<number, number>} [elsewhere] How many sit under each earlier stack.
  */
-export function stackGroupHint(stack, shown) {
+export function stackGroupHint(stack, shown, elsewhere = new Map()) {
   const total = stack.pulls.length;
-  const size = `${total} pull request${total === 1 ? "" : "s"}`;
-  return shown === total
-    ? `${stackLabel(stack.number)}, ${size}`
-    : `${stackLabel(stack.number)}, ${size}, ${shown} in this list`;
+  const parts = [stackLabel(stack.number), `${total} pull request${total === 1 ? "" : "s"}`];
+  if (shown < total) {
+    parts.push(`${shown} in this list`);
+  }
+  for (const [under, count] of elsewhere) {
+    parts.push(`${count} under ${stackLabel(under)}`);
+  }
+  return parts.join(", ");
 }
 
 /** A member selection has the same explicit-reader fetch intent as a catalog click.

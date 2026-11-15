@@ -311,8 +311,10 @@ Strict mode is off on a developer machine, which can add these:
   which reads a pull request’s Conversation timeline’s type, spacing, and line from the
   boxes Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`,
   which reads the face documents and chrome prose are drawn in under each reading font
-  and font set; and `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw`
-  answer Chrome kept under the trusted profile after the folder is served `--untrusted`.
+  and font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
+  Chrome kept under the trusted profile after the folder is served `--untrusted`; and
+  `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
+  fold of unchanged blocks closed, open, and under the pointer.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until

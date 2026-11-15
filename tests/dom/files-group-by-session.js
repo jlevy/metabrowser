@@ -5,9 +5,10 @@
 // folder inside a section opens, and what a later filter or grouping change reloads. The
 // server owns which groups hold what, in what order, with what counts
 // (metabrowser/tree_groups.py, pinned by tests/golden/cli-api-tree-groups.tryscript.md);
-// the answer this session paints is that golden's first answer, kept in
-// tests/fixtures/tree-groups-answer.json, which tests/test_tree_groups_session.py holds
-// equal to the golden.
+// the answer this session paints is read from that golden, its first answer, so the two
+// cannot drift. It also drives the shell's Group by decisions, which tree-filter-model.js
+// holds as pure functions: each section's share of the first paint's rows, the section a
+// revealed row is looked for in first, the reopen plan after a refresh, and the prefetch.
 //
 // Prints one JSON transcript; tests/golden/cli-ui-files-group-by.tryscript.md pins it.
 
@@ -48,8 +49,15 @@ for (const relative of ["filter-state.js", "tree-filter-model.js"]) {
 }
 const filter = sandbox.metabrowser.filterState;
 const model = sandbox.MetabrowserTreeFilterModel;
+// The route's own answer, as the golden records it.
+const golden = fs.readFileSync(
+  path.join(repoRoot, "tests/golden/cli-api-tree-groups.tryscript.md"),
+  "utf-8",
+);
+const command = "$ metab groupsroot --api '/api/tree?group_by=type&depth=1'";
+const recorded = golden.slice(golden.indexOf(command));
 const answer = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/tree-groups-answer.json"), "utf-8"),
+  recorded.slice(recorded.indexOf("status: 200\n") + 12, recorded.indexOf("\n? 0")),
 );
 const LIMIT = 5000;
 const floors = filter.SIZE_MIN_BYTES;
@@ -180,6 +188,171 @@ check(
   choose("No grouping", { group: "none" }) === "load-recent",
 );
 check("no window is the tree", choose("Any age", { recency: "all" }) === "load-tree");
+
+// Each section opens folders from its share of the viewport's rows, at least one.
+transcript.rowShares = {
+  "30 rows, 4 sections": model.sectionRowBudget(30, 4),
+  "5 rows, 10 sections": model.sectionRowBudget(5, 10),
+  "0 sections": model.sectionRowBudget(30, 0),
+};
+check(
+  "row shares",
+  JSON.stringify(transcript.rowShares) ===
+    '{"30 rows, 4 sections":7,"5 rows, 10 sections":1,"0 sections":30}',
+  transcript.rowShares,
+);
+
+// Revealing a row: its likely section first, then every other one; a folder has no guess,
+// since it stands in every section that holds its files.
+const groupForFile = (name, ext) => (ext === ".md" || name === "README" ? "docs" : "code");
+const nowSec = 2_000_000_000;
+const typeKeys = ["type:docs", "type:code", "type:other"];
+const ageKeys = ["age:live", "age:1h", "age:older"];
+transcript.reveal = {
+  "a Markdown file": model.revealSectionOrder(
+    typeKeys,
+    model.likelySectionKey(
+      "type",
+      { type: "file", name: "a.md", ext: ".md" },
+      nowSec,
+      windows,
+      groupForFile,
+    ),
+  ),
+  "a folder": model.revealSectionOrder(
+    typeKeys,
+    model.likelySectionKey("type", { type: "dir", name: "src" }, nowSec, windows, groupForFile),
+  ),
+  "a symlink": model.revealSectionOrder(
+    typeKeys,
+    model.likelySectionKey(
+      "type",
+      { type: "symlink", name: "link" },
+      nowSec,
+      windows,
+      groupForFile,
+    ),
+  ),
+  // Drawn in Live when the answer came, 91 s old now: Past hour first, Live still tried.
+  "a file past Live's edge": model.revealSectionOrder(
+    ageKeys,
+    model.likelySectionKey(
+      "age",
+      { type: "file", name: "a.md", mtime: nowSec - 91 },
+      nowSec,
+      windows,
+      groupForFile,
+    ),
+  ),
+  "a file with no mtime": model.revealSectionOrder(
+    ageKeys,
+    model.likelySectionKey("age", { type: "file", name: "a.md" }, nowSec, windows, groupForFile),
+  ),
+};
+check(
+  "every reveal looks in every section",
+  Object.values(transcript.reveal).every((order) => order.length === 3),
+  transcript.reveal,
+);
+check(
+  "a folder keeps display order",
+  transcript.reveal["a folder"].join() === typeKeys.join(),
+  transcript.reveal,
+);
+check(
+  "a file past an edge is still looked for where it is drawn",
+  transcript.reveal["a file past Live's edge"].join() === "age:1h,age:live,age:older",
+  transcript.reveal,
+);
+
+// The reopen plan after a refresh: folders open before come back open in the same frame
+// from the answer or the cache; an open folder the answer reaches with its children in
+// neither is fetched before the paint, and one it no longer reaches is dropped.
+const plan = model.graftOpenedFolders(
+  [
+    { type: "dir", path: "src", children: null },
+    { type: "dir", path: "docs", children: [{ type: "file", path: "docs/a.md" }] },
+    { type: "file", path: "README.md" },
+  ],
+  ["src", "docs", "src/app", "src/gone", "removed"],
+  (folder) =>
+    folder === "src"
+      ? [
+          { type: "dir", path: "src/app", children: null },
+          { type: "dir", path: "src/lib", children: null },
+        ]
+      : null,
+);
+transcript.reopen = {
+  paintedOpen: plan.expanded,
+  fetchFirst: plan.fetch,
+  srcChildren: plan.tree[0].children.map((node) => node.path),
+};
+check(
+  "the reopen plan",
+  JSON.stringify(transcript.reopen) ===
+    '{"paintedOpen":["src","docs"],"fetchFirst":["src/app"],"srcChildren":["src/app","src/lib"]}',
+  transcript.reopen,
+);
+
+// The prefetch: opening the menu asks for what it offers, opening it again within the
+// TTL asks for nothing new, a request no longer offered is aborted, a choice takes its
+// answer once, a stale one is refetched, and a change to the files clears them.
+{
+  let clock = 0;
+  const started = [];
+  const aborted = [];
+  const prefetch = model.createGroupsPrefetch({
+    now: () => clock,
+    ttlMs: 10_000,
+    start(url) {
+      started.push(url);
+      return { answer: Promise.resolve(url), abort: () => aborted.push(url) };
+    },
+  });
+  const steps = [];
+  const step = (label, run) => {
+    const before = started.length;
+    const result = run();
+    steps.push({
+      step: label,
+      started: started.slice(before),
+      aborted: aborted.splice(0),
+      kept: prefetch.size(),
+      ...(result === undefined ? {} : { took: result !== null }),
+    });
+  };
+  step("open the menu", () => prefetch.prefetch(["age", "type"]));
+  clock = 2_000;
+  step("open it again", () => prefetch.prefetch(["age", "type"]));
+  step("open it while grouped by type", () => prefetch.prefetch(["age"]));
+  step("choose Age", () => prefetch.take("age"));
+  step("choose Age again", () => prefetch.take("age"));
+  step("open the menu", () => prefetch.prefetch(["age", "type"]));
+  clock = 20_000;
+  step("open it after the TTL", () => prefetch.prefetch(["age", "type"]));
+  step("a file changes", () => prefetch.clear());
+  transcript.prefetch = steps;
+  check(
+    "a reopened menu within the TTL asks for nothing",
+    steps[1].started.length === 0 && steps[1].aborted.length === 0,
+    steps[1],
+  );
+  check("a dropped offer is aborted", steps[2].aborted.join() === "type", steps[2]);
+  check("an answer is taken once", steps[3].took === true && steps[4].took === false, steps);
+  check("a stale answer is asked again", steps[6].started.length === 2, steps[6]);
+  check(
+    "a change clears every answer",
+    steps[7].kept === 0 && steps[7].aborted.length === 2,
+    steps[7],
+  );
+}
+
+// A source that could not count a group keeps it, with no count.
+transcript.uncounted = model.groupSections({
+  group_by: "type",
+  groups: [{ id: "docs", label: "Documentation", files: null, size: null, tree: [] }],
+})[0];
 
 // A malformed answer is refused, not painted in part.
 const refused = [];

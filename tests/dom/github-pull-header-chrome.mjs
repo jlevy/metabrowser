@@ -267,10 +267,13 @@ const MEASURE = `async (name, change, tab, width) => {
             (textLeft(heading) - box(member).left - parseFloat(getComputedStyle(member).paddingLeft)) * 100,
           ) / 100
         : null;
-    chipMoves.headingNamesGroup =
+    // A menu of one group: its heading names the menu, once, over its members.
+    const menuElement = probe.element.querySelector(".github-pull-stack-menu");
+    chipMoves.headingNamesMenu =
       heading !== null &&
-      heading.parentElement.getAttribute("role") === "group" &&
-      heading.parentElement.getAttribute("aria-labelledby") === heading.id &&
+      menuElement?.getAttribute("aria-labelledby") === heading.id &&
+      !menuElement.hasAttribute("aria-label") &&
+      !heading.parentElement.hasAttribute("role") &&
       heading.parentElement.contains(member);
     probe.dispose();
     holder.remove();
@@ -413,7 +416,24 @@ const PULLS_ROWS = `async (rows, width) => {
     stack.hidden = false;
     stack.append(
       h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }),
-      h("span", { class: "github-pull-stack-position" }, [row.stack]),
+      // As pulls-panel.js#paintStackBadge draws it: another stack is the Layers glyph
+      // before its number, written here as "#N".
+      h(
+        "span",
+        { class: "github-pull-stack-position" },
+        row.stack.split(" · ").flatMap((part, at) => {
+          const named = /^#([0-9]+) (.+)$/.exec(part);
+          return [
+            ...(at === 0 ? [] : [" · "]),
+            ...(named === null
+              ? [part]
+              : [
+                  h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }),
+                  named[1] + " " + named[2],
+                ]),
+          ];
+        }),
+      ),
     );
   }
   await frames();
@@ -666,9 +686,9 @@ async function main() {
                 String(shape.chipMoves.headingInset),
               );
               check(
-                `${where}: the stack menu's heading names the group of its members`,
-                shape.chipMoves.headingNamesGroup === true,
-                String(shape.chipMoves.headingNamesGroup),
+                `${where}: the stack menu's heading names the menu, once`,
+                shape.chipMoves.headingNamesMenu === true,
+                String(shape.chipMoves.headingNamesMenu),
               );
             }
             seen[`${label} ${tab || "conversation"}`] = shape;

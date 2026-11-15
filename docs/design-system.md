@@ -739,6 +739,15 @@ its container. It is one primitive, `.fold-expander` in `static/styles.css`, on 
 or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives` holds
 it.
 
+One fold is not a row: a rendered Markdown diff’s fold of unchanged blocks (“6 unchanged
+blocks”) is a line in the document, because the user asked that it have no borders and
+expand in place in the rendered document.
+It has no box, fill, or rules, closed or open; its chevron starts on the blocks’ text
+edge; its label brightens from muted to `--text` under the pointer, as a document’s own
+disclosures in the shell do; and opening it sets the blocks it holds exactly as the
+unchanged blocks around them.
+`tests/test_diff_markdown_fold_chrome.py` measures it in Chrome.
+
 ### Disclosure Motion
 
 Every toggle travels the same way: the body animates `height` between `auto` and `0` on
@@ -1266,6 +1275,10 @@ numbers use the shell’s number format; the totals are the
 [inline change stats](#inline-change-stats); and “(estimated)” follows totals that are
 not exact. Its accessible name says the same in words.
 A change set of no files has nothing to open, so its header is a line.
+Where the shared tree did not load, the header is the line main drew, “N changed files
++A −D” in the shell’s number format, with no toggle; and a header whose tree did not
+load when pressed is marked `aria-disabled`, with a tooltip saying a press tries again,
+until a press loads it.
 A commit’s view has no Diff summary: its [commit summary](#git-commit-summary) carries
 the totals.
 
@@ -1275,6 +1288,10 @@ Opened, it shows the change set’s files as a tree by folder, the
 letters, and inline change stats at the row’s end, a chain of single folders as one row,
 and every folder with the line counts of the files under it rolled up, open or closed,
 as a Files folder keeps its size whichever way it is turned.
+A folder says in its accessible name and tooltip what its sums leave out (“2 files
+without line counts”, or each side’s when they differ).
+A path a patch lists more than once, as a file that became a symlink, is one row with
+both changes’ counts, and goes to the first of its sections.
 The tree sits in a box under the toolbar, at most `60vh` tall, which scrolls inside
 itself so the files stay a scroll away, and it is drawn a window at a time.
 Nothing of it is mounted until the header first opens it.
@@ -1288,11 +1305,16 @@ names it and Back returns; a patch file has no address for a place in its diff, 
 the diff moves in place and the address stays the file’s. A path is its author’s text: a
 row shows it by the server’s display rule, with a control, format, or invisible
 character, such as a right-to-left override or a zero-width space, as U+FFFD, as the
-Pulls tab shows the same path.
-`tests/dom/diff-summary-session.js` holds the words, the rows, and the keys, and the
-paint’s measurement is in the views, models, and routes map (`diff.summary-paint`).
+Pulls tab shows the same path, and the file bar the row goes to shows it the same way
+([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the words,
+the rows, and the keys, and the paint’s measurement is in the views, models, and routes
+map (`diff.summary-paint`).
 
 ### Diff File Bar
+
+The bar shows its path, and a rename’s two, by the server’s display rule, as the
+[Diff summary](#diff-summary) does, and its stats in the shell’s number format; its copy
+control copies the path as it is.
 
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
@@ -1710,7 +1732,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line ([Merge Direction](#merge-direction)) |
 | Stack position | Layers icon and bold position/total in a column on the title line, before the age; its late arrival cuts the title shorter and moves nothing | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip ([Stacks](#stacks)) |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
-| Group by stack | A standalone `.chip.chip-toggle` with the Layers glyph, at `--chip-height`, before Reload; unavailable, its tip says why | Off and on are the reader’s, and persist |
+| Group by stack | `filterControls.toggleHtml`’s worded `.chip-toggle`, “Stacks”, named “Group by stack”, before Reload; unavailable, its tip and description say why | Off and on are the reader’s, and persist |
 | Head and base | `mb.mergeRefs`, head → base, after the author on the muted line | Remote [ref chips](#branch-chips), slightly smaller than the line’s text by the [chip ratio](#one-ratio); they share the line with the author and ellipsize there, and on a line too short for them they move to a line of their own, whole ([Merge Direction](#merge-direction)) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1759,7 +1781,7 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, bold and tabular, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page; a Pulls row’s badge |
 | Member row | Its position, bold; its title, bold in normal text ink; its `#number`; and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
-| Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests listed, “4” or “3 of 4” | The Pulls tab |
+| Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests the list holds, “4” or “3 of 4” | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
   the register the menu’s heading has, so the menu’s heading and a stack group’s row are
@@ -1769,14 +1791,17 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
   so its label sits in the title’s column.
 - **Position.** A member’s place is its position counted from the stack’s base, as
   GitHub numbers it, over the stack’s size: “2/4”. A pull request in more than one stack
-  shows each position, separated by a middle dot, and names every stack but its own:
-  “3/4 · #300 2/2”. Its own is its only stack, the one a group places it under, or else
-  the first GitHub lists.
+  shows each position, separated by a middle dot, and names every stack but its own by
+  the Layers glyph and its number before its position, `.github-pull-stack-other` at the
+  text’s size: “3/4 · ⧉300 2/2”, where ⧉ is the glyph.
+  A number alone, “#300”, read as the pull request number on the same row.
+  Its own stack is its only stack, the one a group places it under, or else the first
+  GitHub lists.
 - **Ink.** The position takes the ink of what holds it: muted in a Pulls row’s badge,
   which is passive, and normal text ink on the stack button and in a member row.
   A member row is a link, so its position, title, and number each set their own ink, and
-  no link, visited, hover, focus, or current state changes them; the position once
-  inherited the link’s blue.
+  no link, visited, hover, focus, or current state changes them; a part that set none
+  would take the link’s blue.
 - **Order.** A stack’s members are listed top of the stack first, the order of
   `stackMenuOrder`: the menu’s rows and a stack group’s rows in the Pulls tab are one
   order.
@@ -1788,13 +1813,18 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
 - **Tips.** The position’s tip names the stack and the place: “Stack #286, position 3 of
   4”, every stack of a pull request in two, joined by semicolons.
   The stack button carries it, and its accessible name is “Navigate” before it.
-  A stack group’s row says its size and, when the list holds fewer, how many: “Stack
-  #286, 4 pull requests, 3 in this list”.
+  A badge’s glyph has no words of its own: its tip and accessible name name each stack,
+  “Stack #300, position 2 of 2”. A stack group’s row says its size, how many the list
+  holds when that is fewer, and how many of those sit under an earlier stack: “Stack
+  #286, 4 pull requests, 3 in this list, 1 under Stack #290”.
 
 ### Stack Groups in the Pulls Tab
 
 **Group by stack** is a standalone boolean [filter chip](#filter-controls) in the Pulls
-toolbar, the Layers glyph and no word, at a chip’s height, before Reload.
+toolbar, drawn by `filterControls.toggleHtml` with its word, “Stacks”, before Reload.
+At the default pane width (299 px in the measurement below) the toolbar’s line is 36 px
+wider than the pane with it, and scrolls along its line, as every toolbar does; with no
+chip there are 23 px to spare, so a glyph-only chip, 24 to 34 px, would still overflow.
 It is on by default once the stacks are known, and the reader’s choice persists in the
 shell’s preferences (`metabrowser.prefs`). Its name is always “Group by stack”;
 unavailable, its description and its tip say why.
@@ -1809,12 +1839,17 @@ Like the filters beside it, it takes a number among the screen’s situational c
   The pull requests in no stack follow the stacks, in the list’s order.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its badge names the other.
+  A later stack’s row still counts it among the pull requests the list holds, and its
+  tip says where it sits.
   A stack all of whose listed pull requests sit under earlier stacks has no row; their
   badges name it.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
   them. Until a snapshot is known for the list’s own GitHub account, while none of the
-  list’s pull requests is in a stack, or when the gh stack extension is missing, the
-  list stays flat and the chip, unavailable, says why in its tip and its name.
+  list’s pull requests is in a stack, or when the stacks cannot be read, the list stays
+  flat and the chip, unavailable, says why in its tip and its description: being read,
+  the gh stack extension missing, the remedy the connection line names for the refresh’s
+  outcome, another account’s stacks, or no pull request in a stack, “read so far” while
+  more of the list is to come.
   A snapshot kept through a failed or expired refresh still groups, as the badges and
   the stack menu still show it.
 - **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
@@ -1822,15 +1857,25 @@ Like the filters beside it, it takes a number among the screen’s situational c
   first pull request; Left closes it, or from a pull request in it whose files are
   closed, goes to it. An address that names a pull request in a closed stack opens the
   stack. A grouped list’s Tab stop, until the reader moves it, is its first row.
+- **Scroll.** A grouping that arrives or turns on at the top of the list keeps the top,
+  so its first stack’s row shows; elsewhere the row the reader is reading keeps its
+  place, and a stack’s row can be that row, so opening one keeps its header still.
+- **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
+  stack’s row passed over, and the first pull requests drawn.
 
-`tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the option, and the
-keys against the production code on the server’s recorded answers, and mounts the page’s
-stack menu to hold that the groups list its order.
+`tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the option, the
+keys, and what an open reads ahead against the production code on the server’s recorded
+answers; mounts the panel to drive its handle’s Space, Right, and Left and a press on a
+stack’s row, and print the tree’s roles and places; and mounts the page’s stack menu to
+hold that the groups list its order.
 `tests/test_github_pulls_stacks_chrome.py` measures in headless Chrome, against a
 running server with two native stacks, that a stack row’s header and the stack menu’s
 heading resolve to the same label tokens, where a stack’s row and its pull requests
 start, that the two kinds of row hover and focus alike, that the chip is a chip’s
-height, that the keys move real focus, that the menu lists the group’s order with its
+height, that real keys and a press move focus and open and close a stack, that a
+member’s changed files are a level further in, that the first stack’s row is in view
+after grouping arrives, after the option turns on, and after Left then Right, that a
+badge names another stack by its glyph, that the menu lists the group’s order with its
 positions in text ink, and that the choice survives a reload.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
 for every stack word.
@@ -1929,13 +1974,13 @@ What is numbered, in reading order, each only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Group by, then, while the filter drawer is open, Modified within (Any age) and File type (Any type); a Git pin has no Modified within |
-| The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
+| The Files tab | Group by, Modified within (Any age), and File type (Any type), open or closed as the filter drawer is; a Git pin has no Modified within |
+| The Pulls tab | Open, Closed, and All, then Group by stack (Stacks) and Reload, each of which keeps its number while it waits |
 | A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
 
-The navigation pane’s numbers come first, so a pull request page’s numbers start at `5`
-beside the Pulls tab, at `2` beside the Files tab with its drawer closed, and at `4`
-with it open.
+The navigation pane’s numbers come first, so a pull request page’s numbers start at `6`
+beside the Pulls tab and at `4` beside the Files tab, its drawer open or closed (`3` on
+a Git pin).
 
 The keys and buttons that have no key, and why: every copy control, ancillary; a changed
 file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
@@ -2527,24 +2572,43 @@ Clear sits beside the chevron and undoes the filters, keeping the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
+- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
+  Other, since a link has no file type, and Age places it by its own modification time.
+  A file filter set beside the grouping leaves links out, as it does without one.
+  On a Git pin a link is a blob, counted and grouped by its name as a file is.
+- **Keys.** The drawer’s filters keep their numbers while it is closed.
+  Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
+  the order the triggers take when it opens, and a filter’s number opens the drawer with
+  its menu.
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
   breathes as refreshing text does once the wait passes `--loading-state-delay`. Opening
-  the Group by menu asks for both groupings ahead of the choice.
+  the Group by menu asks ahead of the choice for each grouping it offers that is not
+  already shown.
+- **Refresh.** When files change, the sections refresh in place, in one frame: each
+  keeps its heading and updates its count, a group that fills or empties appears or
+  goes, the folders open in a section stay open, and the scroll position and the focused
+  row are kept. A folder whose cached children a write dropped is fetched before the
+  paint. A refresh that fails keeps what is shown and retries with a backoff.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
 `tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
-browserlessly in `tests/dom/files-group-by-session.js`; and
-`tests/test_files_tab_chrome.py` measures the row, the drawer, the numbers, and the
-sections’ headings in Chrome.
+browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
+`tests/dom/group-by-refresh-behavior.js`; and `tests/test_files_tab_chrome.py` measures
+the row, the drawer, the numbers, the sections’ headings, and a refresh after a write in
+Chrome.
 
 Measured in headless Chrome on a served folder (2026-11-15), grouping costs the server a
 pass over the index per group: on 22,104 files File type answered in 106 ms where the
 ungrouped tree took 34 ms, and on 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19
 s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
-spinner shown.
+spinner shown. Computing every group in one pass over the index is tracked as `mb-navs`.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
 
 ### Filters Say What They Do Not Know
 
@@ -3306,51 +3370,62 @@ and a plugin’s use the same markup:
 
 - **Heading.** A `.group-heading` is the quiet small-caps label register, and it starts
   on the menu’s row inset, `--menu-row-inset`: the edge a row’s first column starts on,
-  a check or an icon, and the edge the menu’s `.menu-title` and `.menu-version` start
-  on. It is not indented to the rows’ labels.
-  The type filter’s headings once were, and read as rows of the group rather than its
-  name.
+  a check or an icon, and the edge the menu’s `.menu-title`, a labelled `.menu-row`, and
+  `.menu-version` start on.
+  It is not indented to the rows’ labels: a heading on the label column reads as a row
+  of its group rather than its name.
 - **Separator.** A `.menu-group` draws its own divider as its top edge, in the
   `.menu-separator` geometry (4 px, a 1 px rule, 4 px), unless it is the menu’s first
-  child, where the menu’s edge already sets it off.
+  child, where the menu’s edge already sets it off, or follows a `.menu-separator`,
+  which already draws the rule.
   So a heading never lacks a divider or gets two.
   Rows that no heading names, such as the type filter’s raw extensions after its groups,
   are set off with a plain `.menu-separator`.
 - **Semantics.** The group carries `role="group"` and `aria-labelledby` naming its
   heading, so a screen reader announces the group as the eye reads it.
   The heading is the group’s first child.
-- **Title.** A heading that names the whole menu rather than a part of it is the menu’s
-  `.menu-title`, as the gear menu’s wordmark is.
-  A menu whose rows are all one named group, as a pull request’s stack menu is, uses one
-  `.menu-group`.
+- **Title or one group.** A heading names the whole menu when nothing else in the menu
+  needs a name: the menu’s own `.menu-title`, as the gear menu’s wordmark is, or a menu
+  whose rows are all one group, as a pull request’s stack menu is.
+  That one group keeps the `.menu-group` and `.group-heading` look, but the menu is
+  named from the heading through `aria-labelledby`, with no `aria-label` of its own and
+  no `role="group"` on the wrapper, so the name is read once.
+  A menu with two or more groups names each one, as above.
 
 `tests/test_files_tab_chrome.py` and the stack part of
 `tests/test_github_pull_header_chrome.py` measure in Chrome that each heading’s text
-starts on its rows’ inset and names its group; `tests/test_browser_filter_ui.py` pins
-that every inset reads the one token.
+starts on its rows’ inset and names its group or its menu;
+`tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot, and
+heading all read the one token.
 
 ### Menu Height
 
-**A dropdown takes its rows’ natural height, up to 16 rows, and never reaches past the
-window.** Its `max-height` is the smaller of 16 rendered rows plus its padding and
-border, and the room from its top edge to the window’s bottom edge less 8 px, the
+**A filter dropdown takes its rows’ natural height, up to 16 rows, and never reaches
+past the window.** Its `max-height` is the smaller of 16 rendered rows plus its padding
+and border, and the room from its top edge to the window’s bottom edge less 8 px, the
 tooltip’s viewport margin.
 Past that it scrolls inside itself.
 The rule is stated from the rendered row, not in pixels, so it follows the row if the
 row’s type or padding changes.
 
 The room depends on where the trigger sits and on the window, so the height is measured,
-not declared: `filterControls.fitOpenMenus(root)` fits every open filter dropdown when
-its consumer renders it open, and `filterControls.bind` fits them again when the window
-resizes.
-The rule applies to every filter dropdown, not only the type filter: a menu with
-few rows, such as Modified within or Minimum file size, is shorter than both caps in any
-window it can open in, so it keeps its natural height, and a short window is the one
-place either would have run off the screen.
+not declared: `filterControls.bind` fits a dropdown when its trigger opens it and again
+when the window resizes, and a consumer that renders one open another way calls
+`filterControls.fitOpenMenus(root)` after rendering.
+Until it is fitted, the panel’s CSS keeps it inside the window.
+A panel with no box, its toolbar hidden, is not fitted, and the Files toolbar closes an
+open filter menu when it is hidden.
+
+The rule applies to every filter dropdown, not only the type filter.
+A dropdown with few rows, such as Modified within or Minimum file size, keeps its
+natural height unless the window is shorter than its top, plus that height, plus the 8
+px margin; then it scrolls like the others.
+Other menus are out of scope and keep their own caps: a pull request’s stack menu at
+`min(60vh, 480px)`, the branch and tag list at `min(50vh, 320px)`, and Quick Search at
+`min(70vh, 640px)`.
 
 Measured in headless Chrome on the Files type filter: every row is 29 px and the frame
-10 px, so the cap is 474 px, where the fixed 320 px it replaced held 8 rows; in a 413 px
-viewport the 320 px menu ran 12 px past the window’s bottom edge.
+10 px, so the cap is 474 px.
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.

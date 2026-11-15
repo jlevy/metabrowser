@@ -21,7 +21,16 @@ GITHUB = PACKAGE / "builtin_plugins" / "github"
 SHELL_CSS = PACKAGE / "static" / "styles.css"
 LABEL_CLASS = '"group-heading github-pull-stack-label"'
 # What the label register is: the properties the shell's label tokens set.
-REGISTER = ("color", "font-family", "font-size", "font-weight", "letter-spacing", "text-transform")
+# `font` is the shorthand that sets the family, size, and weight at once.
+REGISTER = (
+    "color",
+    "font",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "letter-spacing",
+    "text-transform",
+)
 COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 RULE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
 

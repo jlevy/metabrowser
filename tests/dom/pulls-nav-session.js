@@ -919,13 +919,24 @@ function twoTreesPage() {
     });
   const pulls = [3900, 3899, 3898].map(pullRow);
   const copyRef = make("button", { "aria-label": "Copy ref main" });
-  const pullsTab = make("div", { id: "tab-pulls", "data-tab-content": "pulls" }, [
-    make(
-      "ul",
-      { class: "github-pulls-list", role: "tree" },
-      pulls.map((row, index) => make("li", { role: "none" }, index === 0 ? [row, copyRef] : [row])),
-    ),
-  ]);
+  const pullsList = make(
+    "ul",
+    { class: "github-pulls-list", role: "tree" },
+    pulls.map((row, index) => make("li", { role: "none" }, index === 0 ? [row, copyRef] : [row])),
+  );
+  const pullsTab = make("div", { id: "tab-pulls", "data-tab-content": "pulls" }, [pullsList]);
+  // A stack's row, as the panel paints one while the list is grouped by stack: a tree row
+  // that is not a link, carrying its stack's number. In the list only for the Space story.
+  const stackRow = make("div", {
+    class: "github-pulls-row github-pulls-stack-row",
+    role: "treeitem",
+    "aria-level": "1",
+    "aria-expanded": "true",
+    tabindex: "-1",
+    "data-stack": "286",
+    "data-tree-id": "Stack #286",
+  });
+  const stackItem = make("li", { role: "none" }, [stackRow]);
   document.body.append(
     make("div", { id: "tree-pane" }, [make("div", { id: "tree-content" }, [filesTab, pullsTab])]),
     make("div", { id: "preview-pane" }),
@@ -1032,6 +1043,16 @@ function twoTreesPage() {
               return true;
             },
             collapse() {
+              return true;
+            },
+            toggleStack(number) {
+              const row = container
+                .querySelectorAll(".github-pulls-stack-row")
+                .find((item) => Number(item.dataset.stack) === number);
+              assert.ok(row, "Space identifies the focused stack's row");
+              const open = row.getAttribute("aria-expanded") !== "true";
+              row.setAttribute("aria-expanded", String(open));
+              log.push(`${open ? "opened" : "closed"} Stack #${number}`);
               return true;
             },
             toggleFiles(number) {
@@ -1144,6 +1165,16 @@ function twoTreesPage() {
     pulls,
     changedFiles,
     copyRef,
+    stackRow,
+    /** Put a stack's row in the list, or take it out. @param {boolean} shown */
+    showStack(shown) {
+      if (shown) {
+        pullsList.append(stackItem);
+      } else {
+        pullsList.children.splice(pullsList.children.indexOf(stackItem), 1);
+        stackItem.parentElement = null;
+      }
+    },
     shell,
     take: () => log.splice(0),
     /** A key pressed where focus is, and its release. */
@@ -1209,6 +1240,29 @@ async function twoTreesStory() {
     assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the PR");
   }
   assert.equal(nextPull.getAttribute("aria-expanded"), null, "Space ignores the new tab stop");
+  // Grouped by stack, Space on a stack's row opens and closes the stack, by its number, and
+  // a held Space does nothing more.
+  page.showStack(true);
+  page.stackRow.focus();
+  story["Space on a stack's row closes the stack"] = page.press(" ");
+  story["holding Space on it leaves it closed"] = page.press(" ", { repeat: true });
+  story["Space again opens it"] = page.press(" ");
+  assert.equal(page.stackRow.getAttribute("aria-expanded"), "true", "Space opens the stack again");
+  assert.deepEqual(
+    [
+      story["Space on a stack's row closes the stack"],
+      story["holding Space on it leaves it closed"],
+      story["Space again opens it"],
+    ].map((action) => [action.handled, action.did.join()]),
+    [
+      [true, "closed Stack #286"],
+      [true, ""],
+      [true, "opened Stack #286"],
+    ],
+    "Space on a stack's row is the stack's, not a pull request's",
+  );
+  page.showStack(false);
+  firstPull.focus();
   page.copyRef.focus();
   const copySpace = page.press(" ");
   assert.equal(copySpace.handled, false, "Space on a copy button retains its native behavior");
