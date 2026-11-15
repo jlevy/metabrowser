@@ -891,9 +891,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "Closed 2",
       "All 102"
     ],
-    "the count and repository name are bold": [
+    "only the repository name is bold": [
       {
-        "node": "STRONG",
+        "node": "SPAN",
         "text": "102"
       },
       {
