@@ -302,6 +302,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, on
   card, card to commit, commit to card, and commit to commit alike, a card measured by
   its border and a commit by its text, roomier than the 12 px cards had.
   It replaces `mb-xz1r`’s “at least as far” with equal.
+- **Headings** (`mb-novh`): every event’s heading is the author, a plain verb, and the
+  age; a boxed chip only for a review state the verb does not say (Approved, Changes
+  requested, Dismissed), so a plain review is no longer boxed as “Reviewed”.
 
 ### Sans Headings
 
@@ -372,6 +375,7 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, on
 ### Phase 8: Conversation Rhythm and Headings (`claude/conversation-rhythm`)
 
 - [ ] `mb-w7rt`: one rhythm between every two consecutive events.
+- [ ] `mb-novh`: every event’s heading reads alike.
 
 ## Testing Strategy
 

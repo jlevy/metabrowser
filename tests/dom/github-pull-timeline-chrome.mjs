@@ -20,6 +20,8 @@
 // What it holds (docs/design-system.md, "The Pull Request Page", "Conversation Timeline"):
 // - a commit row is set in the type of a card head: the same size and line, its verb and
 //   age as a comment's, and its hash one step below, as a revision is beside body text;
+// - every heading reads alike (mb-novh): the author, a plain verb, and the age, and a boxed
+//   chip after the age only for a review state the verb does not say;
 // - one rhythm (mb-w7rt): every two consecutive events are the timeline's one token apart,
 //   a card by its border and a commit by its text, card to card, card to commit, commit to
 //   card, and commit to commit alike, and roomier than the 12 px cards had;
@@ -343,6 +345,21 @@ const MEASURE = `async (arrangement, width, theme) => {
       item.slot = avatar?.classList.contains("github-pull-avatar-slot") ?? false;
       item.headOnly = node.children.length === 1;
       item.type = { head: type(head), age: type(head?.querySelector(".github-pull-age")) };
+      // The heading as read: its words, the verb said in the head's own text, and its chips.
+      item.heading = head ? head.textContent.replace(/\\s+/g, " ").trim() : null;
+      item.verb = head
+        ? [...head.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent.trim())
+            .filter(Boolean)
+        : [];
+      item.chips = head
+        ? [...head.querySelectorAll(".github-pull-badge")].map((chip) => ({
+            text: chip.textContent,
+            last: chip === head.lastElementChild && chip.previousElementSibling?.classList.contains("github-pull-age"),
+            boxed: getComputedStyle(chip).borderTopStyle !== "none",
+          }))
+        : [];
     }
     return item;
   });
@@ -503,6 +520,37 @@ function hold(measured, image) {
     );
   }
 
+  // Every event's heading reads alike (mb-novh): the author, a plain verb in the head's own
+  // text, and the age, and a boxed chip after the age only for a review's state the verb
+  // does not say. The recorded reviews are a plain one, which has none, and an approval.
+  for (const card of cards) {
+    const label = `${where}: card "${card.label}"`;
+    const verb = card.verb[0];
+    check(
+      `${label}'s heading is the author, a plain verb, and the age`,
+      ["opened", "commented", "reviewed"].includes(verb) &&
+        card.heading.startsWith(`${card.heading.split(" ")[0]} ${verb} `),
+      JSON.stringify({ heading: card.heading, verb: card.verb }),
+    );
+    check(
+      `${label} boxes only a state its verb does not say, after its age`,
+      card.chips.every(
+        (chip) =>
+          chip.boxed &&
+          chip.last &&
+          ["Approved", "Changes requested", "Dismissed"].includes(chip.text),
+      ),
+      JSON.stringify(card.chips),
+    );
+  }
+  const reviews = cards.filter((card) => card.verb[0] === "reviewed");
+  check(
+    `${where}: a plain review has no chip, and an approval one, "Approved"`,
+    reviews.length === 2 &&
+      reviews.some((card) => card.chips.length === 0) &&
+      reviews.some((card) => card.chips.length === 1 && card.chips[0].text === "Approved"),
+    JSON.stringify(reviews.map((card) => [card.heading, card.chips])),
+  );
   // One rhythm (mb-w7rt): the visible space between any two consecutive events, card or
   // commit, is the timeline's one token, roomier than the 12 px cards had. Visible is a card's
   // border, and a commit row's text, whose row is its line: so every box is the token apart,

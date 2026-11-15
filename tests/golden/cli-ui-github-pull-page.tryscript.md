@@ -162,7 +162,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -268,7 +268,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -327,7 +327,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -379,7 +379,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -423,7 +423,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -472,7 +472,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -520,7 +520,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -576,7 +576,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -632,7 +632,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139",
           "comment forker 2026-09-17T12:03:00Z issue_comment/3341937856"

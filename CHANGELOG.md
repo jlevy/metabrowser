@@ -28,6 +28,10 @@ All notable changes to Metabrowser are documented here.
   header’s type. Every two events are now 20 px apart, comments, reviews, and commits
   alike, and so are review comments: comments were 12 px apart and read as crowded, and
   a commit stood 23.5 px from a comment.
+  Every heading reads alike, “jlevy commented 4d ago”, “jlevy reviewed 4d ago”: a review
+  no longer boxes “Reviewed” like a status, and a box after the age is kept for a state
+  the verb does not say, Approved, Changes requested, or Dismissed (“Requested changes”
+  is now “Changes requested”, as on GitHub).
   A line now joins the description, comments, reviews, and commits down the avatars’
   column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.

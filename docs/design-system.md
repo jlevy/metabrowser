@@ -1557,6 +1557,15 @@ a commit. It is said the way a card head says a comment:
   `--nav-font-size`, one step below the text beside it, as in the
   [Git Commit Summary](#git-commit-summary).
 
+- **Headings:** every event’s heading reads alike (mb-novh): the author, a plain verb in
+  the heading’s own type, and the age, “jlevy opened 4d ago”, “jlevy commented 4d ago”,
+  “jlevy reviewed 4d ago”, and a commit’s “committed 4d ago”.
+  A boxed chip follows the age only where it says a state the verb does not: a review’s
+  Approved, Changes requested, or Dismissed, in its status ink, as GitHub marks them.
+  A plain review is all in its verb, and a pending one in its “(pending)”, so neither
+  has a chip; a chip on every review read “Reviewed” as a status where a comment’s
+  “commented” was plain text.
+
 - **Spacing:** one rhythm (mb-w7rt). Every two consecutive events are
   `--github-pull-rhythm` (20 px) apart, card to card, card to commit, commit to card,
   and commit to commit alike, and so are two review comments under Review comments.
@@ -1605,7 +1614,7 @@ of events is 20 px apart, as in Chrome.
 | Element | Primitive | Why |
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
-| State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
+| State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
