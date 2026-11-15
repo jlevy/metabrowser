@@ -594,6 +594,12 @@ profile and records the result.
 If headed capture is unavailable, use `run.py probe` and paste its exact output into the
 visible page rather than retyping it.
 
+**`server-time.mjs`** sums what the server did for one landing, by phase, to the end of
+every body, and the serial time for its assets; see
+[Server Time over a Landing](#server-time-over-a-landing).
+Use it to say where a landing’s server time went before choosing which of the two above
+to time.
+
 Most rounds want both.
 exp-003 is the worked example of why: the route got 40% faster server-side and time to
 first row did not move at all, because the first request of a page load misses a cache
@@ -1388,6 +1394,52 @@ that set `startup_script_transfer_kb` this way, with its samples; at 27ea216c th
 commands gave its 225,531-byte and 261,266-byte builds.
 [The eager startup-script cost](../../docs/project/research/research-2026-11-12-eager-startup-script-cost.md)
 is its write-up.
+
+### Server Time over a Landing
+
+`server-time.mjs` sums the server’s own time over one landing, by phase.
+It starts the named build’s `metab` on a tree with the verbose request log on, waits for
+the inventory, and loads one address in headless Chrome through the transition harness’s
+launcher (`launchBrowser` in `transitions-recorder.mjs`):
+
+```shell
+node explorations/performance-loop/server-time.mjs --metab "$CONTROL/.venv/bin/metab" \
+  --tree "$CORPUS" --path /view/docs/design-system.md --out .bench/server-time/control.json
+node explorations/performance-loop/server-time.mjs --summarize .bench/server-time/control.json
+```
+
+One run is `--warmup` unrecorded cold landings (default 1, so the server’s caches are
+warm and the browser’s are not), then one measured cold landing in a fresh profile and
+one reload of it, each window ending when the load event has fired and the network has
+been quiet for 750 ms.
+For every request the server answered in a window it sums the time to the end of the
+body and each phase of `metabrowser.server_timing` (`read`, `render`, `git`, `encode`,
+and any other a route names), and what no phase covers, by route family and over the
+landing’s assets (`/static`, `/plugin-static`, `/kpress-static`), with the assets
+requested before `DOMContentLoaded` apart, as the startup budgets’ probe selects them.
+The end of a body comes from the request log’s `end_ms`, because `Server-Timing` is sent
+before a body and holds only what was done by then; the headers the browser saw are
+summed beside it as that start-of-response view, counting only the responses the server
+sent in the window, since a cached answer keeps the header it was stored with.
+The Pulls catalog’s timer-driven work is its own family, `background`, and `foreground`
+is the total without it; a landing does not wait for it.
+
+Then, with the page closed, it fetches the cold landing’s assets again one at a time in
+the order the browser asked for them, with Chrome’s `Accept-Encoding`, and sums their
+logged time: the serial server time for the landing’s assets, free of the contention a
+page’s parallel requests put on one event loop.
+A build from before `end_ms` logs the end of a body only to the millisecond; the table
+says how many rows that is.
+`--server-arg ARG`, repeatable, passes `ARG` to `metab`. The record also keeps the
+build’s provenance, Chrome’s version, the load average before and after, and the
+server’s resident memory at the end.
+
+It is untimed by design: one landing, no pairs, no comparison.
+A round that judges a change runs it under its own protocol on both builds, back to
+back. Its logic is tested browserless by `tests/test_server_time_instrument.py`, which
+also parses the line the server writes.
+The served tree should be one the GitHub plugin has no remote for, or the run reaches
+GitHub with the user’s `gh`; put `tests/no-real-gh` first on `PATH` to be sure.
 
 ### WKWebView Probe
 
