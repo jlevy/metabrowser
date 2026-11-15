@@ -94,8 +94,11 @@ from metabrowser.file_type_registry import (
 from metabrowser.fs_paths import derive_ext
 from metabrowser.wire_models import NavigationTallies, RollupResult
 
+# Dirty paths one `ChangeBatch` may name; past it a batch is `all_dirty` instead.
 MAX_CHANGE_PATHS = 1_024
+# Paths one refresh or priority request may carry.
 MAX_COMMAND_PATHS = 1_024
+# Queries one `ReadRequest` may bundle, which also bounds a dirty-path projection batch.
 MAX_QUERIES_PER_READ = 1_024
 # Bound host-side materialization even when a provider returns endlessly advancing cursors.
 MAX_ASSEMBLED_PAGES = 4_096
@@ -104,8 +107,12 @@ MAX_ASSEMBLED_ROWS = 1_000_000
 MAX_INVENTORY_ISSUES = MAX_CHANGE_PATHS
 # Bound provider-supplied diagnostic text before it crosses an FFI boundary.
 MAX_ISSUE_DETAIL_BYTES = 4_096
+# The contract's default discovery budget, for a config built without one. The
+# application always passes ``settings.INVENTORY_MAX_FILES`` (``runtime.py``).
 DEFAULT_DISCOVERY_MAX_FILES = 500_000
+# Default work bound for a broad query that does not name its own.
 DEFAULT_QUERY_MAX_WORK = 1_000_000
+# Default and largest `count_cap`: past it a count is a proven lower bound, not exact.
 DEFAULT_COUNT_CAP = 10_000
 MAX_COUNT_CAP = 1_000_000
 INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"

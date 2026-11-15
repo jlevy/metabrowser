@@ -93,25 +93,27 @@ SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
 # ── Inventory provider walker ────────────────────────────────
 
+# Deepest directory level a depth-bounded read descends to by default: an event
+# snapshot at a scope other than root-depth-2, and ``walk_tree`` and the ``walk``
+# library when no depth is given. The opened provider itself discovers without a
+# depth limit.
 INVENTORY_MAX_DEPTH = 20
-# Hard ceiling on files indexed by the BFS walker at startup. The
-# walker streams entries as it discovers them so /api/tree responds
-# from a partial index immediately; this cap is just the point at
-# which it stops. Tune up for large monorepos, down for memory-
-# constrained hosts. Approx wall-clock at the cap on a local SSD
-# is N/7 000 seconds (500k -> ~70 s on Linux ext4, longer on FUSE
-# / NFS mounts). On truncation, partially-walked dirs still emit
-# their accumulated totals so the UI shows usable numbers rather
-# than skeletons.
+# The discovery budget: the most regular files the inventory discovers for one served
+# root (``DiscoveryBudget.max_files``). It bounds the memory the retained index holds
+# and the time a first walk takes. Discovery streams entries as it finds them, so
+# routes answer from a partial index at once; this is where it stops. At the cap the
+# provider reports partial coverage with a resource-budget issue, keeps what it found
+# readable, and stops observing the tree; see "The Cap" in
+# docs/project/architecture/arch-inventory-provider.md. Measured walk times are in
+# docs/scale-benchmark.md.
 INVENTORY_MAX_FILES = 500_000
 # One provider read may materialize this many tree rows. Complete route and event
 # snapshots follow version-pinned pages, so this bounds individual projection work
 # without truncating the response. It is deliberately separate from ``max_files``:
 # the latter is a discovery coverage budget and can be two orders of magnitude larger.
 INVENTORY_TREE_PAGE_ROWS = 4_096
-# Refresh-TTL: re-walk an entry older than this on the walker's
-# next idle pass. Bounds staleness when the active-tracker /
-# watcher backends miss a change.
+# Not read by anything: ``walker.py`` re-exports it as ``DEFAULT_REFRESH_TTL_S``,
+# and no idle re-walk of old entries exists.
 INVENTORY_REFRESH_TTL_S = 600.0
 
 # Walker-emit batch size. The initial scan generates one upsert
@@ -124,9 +126,9 @@ INVENTORY_WALKER_EMIT_BATCH = 256
 
 # ── /api/events SSE transport ────────────────────────────────
 
-# Ring buffer holds ~5 minutes of typical write traffic. Resume
-# below the head signals a gap and the client falls back to a
-# fresh snapshot.
+# The event bus's ring buffer assigns process-wide event ids and keeps this many
+# recent envelopes for diagnostics. It is never replayed: every connection, a
+# reconnect included, starts from a fresh coherent snapshot.
 SSE_RING_BUFFER_CAPACITY = 5_000
 
 # Per-connection bounded queue. Overflow replaces stale deltas with
@@ -135,23 +137,25 @@ SSE_RING_BUFFER_CAPACITY = 5_000
 # delivery across connections.
 SSE_PER_CONNECTION_QUEUE_SIZE = 1_024
 
-# The event bus subscribes to the inventory once and fans out to
-# all connections. The walker batches its upserts, but large roots
-# and watcher bursts can still fill this bounded queue. Overflow
-# replaces stale deltas with one resync marker so browsers refresh
-# from authoritative snapshots without losing live updates silently.
+# The inventory's change-queue size (``InventoryConfig.change_queue_size``): it bounds
+# the provider's change history and subscriber queue and the coordinator's relay queue
+# and history, which the event bus reads once and fans out to every connection. The
+# walker batches its upserts, but large roots and watcher bursts can still fill a
+# queue. Overflow becomes one reset, so browsers refresh from authoritative snapshots
+# rather than lose live updates silently.
 SSE_BUS_INVENTORY_QUEUE_SIZE = 4_096
 
 # Heartbeat cadence — long enough to keep proxies alive; short
 # enough that a stalled producer is noticed quickly client-side.
 SSE_HEARTBEAT_INTERVAL_S = 15.0
 
-# Worker-pool size for asyncio's default executor. Cache-served
-# /api/tree and /api/recent calls run via asyncio.to_thread; the
-# default pool (~12) queues them behind activity stat storms.
+# Worker-pool size for asyncio's default executor. Provider reads and cache-served
+# /api/tree and /api/recent calls run via asyncio.to_thread; the default pool (~12)
+# queues them behind activity stat storms. Under the GIL more workers buy queueing,
+# not parallelism.
 DEFAULT_EXECUTOR_WORKERS = 64
 
-# ── Active-file tracker (replaces /api/activity polling) ─────
+# ── Active-file tracker ──────────────────────────────────────
 
 # Cadence at which the active-file tracker walks .logs/.state
 # entries to refresh their fingerprint. The live stream and
