@@ -227,8 +227,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-labels").contains(trigger),
-    "stack control ends the labels row",
+    warm.querySelector(".github-pull-meta").children.at(-1).contains(trigger),
+    "stack control ends the author's row (mb-cf0l)",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");

@@ -256,9 +256,11 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "width: 0;" in strut and "visibility: hidden;" in strut
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
     assert "btn github-pull-stack-trigger github-pull-stack-strut" in page
-    # The state row ends in a strut, not in the stack's slot: a late chip there took its
-    # width from the sentence and the merge (review E3 on #370).
-    assert "[stateDetails, strut()]" in page
+    # The author's row ends in the stack's slot, which holds a strut until a chip arrives
+    # (mb-cf0l): the sentence keeps its start, and is only cut short at its end. On the row
+    # that also held the merge, a late chip took its width from the sentence and the merge
+    # (review E3 on #370).
+    assert "[stateDetails, stackColumn]" in page
     # The state badge leads the row of ages (mb-4ydo), one line in every state.
     opened = _rule(css, ".github-pull-opened")
     assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
@@ -292,22 +294,33 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
 
 
 def test_labels_have_a_row_that_always_exists() -> None:
-    """It ends in the stack's slot, so a late chip moves nothing and cuts the labels shorter."""
+    """A label's height whether there are labels or none; the stack's chip is on the author's row."""
 
     css = _github_css()
     rule = _rule(css, ".github-pull-labels")
     assert "min-height: calc(1lh + 2px);" in rule
     assert "flex-wrap: nowrap;" in rule
-    # It positions the stack's menu, so it clips nothing; its list of labels does.
-    assert "position: relative;" in rule and "overflow" not in rule
+    assert "overflow" not in rule
     labels = _rule(css, ".github-pull-label-list")
     assert "min-width: 0;" in labels and "overflow: hidden;" in labels
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert "if (pull.labels.length > 0)" not in page
+    assert 'h("div", { class: "github-pull-labels" }, [labelList])' in page
+
+
+def test_the_stack_chip_ends_the_authors_row() -> None:
+    """A late chip lands in the row's empty end, at the header's content edge (mb-cf0l)."""
+
+    css = _github_css()
     stacks = _rule(css, ".github-pull-stacks")
     assert "margin-inline-start: auto;" in stacks and "flex: none;" in stacks
     assert ".github-pull-stacks[hidden]" not in css, "the slot is never hidden"
+    # The author's row positions the stack's menu, which hangs from the chip's end.
+    assert "position: relative;" in _rule(css, ".github-pull-meta")
+    menu = _rule(css, ".github-pull-stack-menu")
+    assert "inset-inline-end: 0;" in menu and "inset-inline-start" not in menu
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert "if (pull.labels.length > 0)" not in page
-    assert 'h("div", { class: "github-pull-labels" }, [labelList, stackColumn])' in page
+    assert 'h("div", { class: "github-pull-meta" }, [stateDetails, stackColumn])' in page
 
 
 def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:

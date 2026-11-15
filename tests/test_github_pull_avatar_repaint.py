@@ -39,9 +39,10 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "step": "Conversation",
                 "header": "first",
                 "rebuilt": "first",
-                # The header; the branches (mb-fon5) and the state and its ages (mb-4ydo) have
-                # rows of their own.
-                "built": 44,
+                # The header: the branches (mb-fon5) and the state and its ages (mb-4ydo) have
+                # rows of their own, and the author's row ends in the stack's slot, not a strut
+                # of its own (mb-cf0l).
+                "built": 42,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

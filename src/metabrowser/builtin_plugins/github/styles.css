@@ -201,11 +201,9 @@
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
-/* Always present, one line of labels whether there are none or many, ending in the stack
-   slot (`.github-pull-stacks`), so the row is a chip's height. The labels are cut short at
-   the slot, never moved. The row positions the stack's menu, so it clips nothing itself. */
+/* Always present, one line of labels whether there are none or many, a label's height,
+   the labels cut short at the row's end. */
 .github-pull-labels {
-  position: relative;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -1078,12 +1076,13 @@
   outline-offset: 1px;
 }
 
-/* Optional membership has its slot at the end of the retained labels row: its chip, which
-   arrives from its own /stacks answer, moves nothing. It takes its width from the labels,
-   which the row cuts shorter at the slot, a label that showed whole among them. At the end
-   of the state row it took its width from the sentence and the merge, and the merge slid
-   up to 35 px.
-   The menu aligns to that row, so it fits a narrow pane as well as a wide one. */
+/* Optional membership has its slot at the right end of the author's row (mb-cf0l), its
+   right edge the header's content edge, where a title that fills its lines ends with its
+   number: its chip, which arrives from its own /stacks answer, lands in the row's empty end
+   and moves nothing. The sentence keeps its start; where the row has no room left for the
+   chip, the sentence is cut short at its end, as it is at a narrow pane, and the row never
+   takes a second line. The menu hangs from the chip's end of that row, so it fits a narrow
+   pane as well as a wide one. */
 .github-pull-stacks {
   display: flex;
   flex: none;
@@ -1122,7 +1121,7 @@
 .github-pull-stack-menu {
   position: absolute;
   inset-block-start: calc(100% + 4px);
-  inset-inline-start: 0;
+  inset-inline-end: 0;
   width: 32rem;
   max-width: calc(100cqw - 2 * var(--content-padding-x));
   max-height: min(60vh, 480px);

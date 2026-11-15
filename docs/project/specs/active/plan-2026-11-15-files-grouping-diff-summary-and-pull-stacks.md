@@ -268,6 +268,11 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   line of their own under it, one line in every state.
 - **State** (`mb-4ydo`): the state badge (Draft, Open, Merged, Closed) leads the row of
   ages, “[Draft] Opened 9h ago · updated …”, instead of the author’s row.
+- **Stack chip** (`mb-cf0l`): the stack chip leaves the end of the labels row for the
+  right end of the author’s row, under the end of the title, so a late chip lands in the
+  row’s empty end: no author shift and no reserved gap.
+  Where the row has no room left, the sentence is cut short at its end rather than moved
+  or wrapped.
 
 ### Sans Headings
 
@@ -323,6 +328,7 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   from the next.
 - [ ] `mb-fon5`: the branches on a line of their own under the author’s sentence.
 - [ ] `mb-4ydo`: the state badge leads the row of ages.
+- [ ] `mb-cf0l`: the stack chip at the right end of the author’s row.
 
 ### Phase 7: Sans Headings (pull request 7)
 

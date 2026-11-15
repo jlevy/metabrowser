@@ -1137,9 +1137,9 @@ async function headerAges(page) {
 // The header's box is decided at first paint: the same rows, in the same order, whatever
 // the pull request carries and whichever tab shows, and while its record is on its way.
 // Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
-// row is there. A stack's chip has its slot at the labels row's end, held by a strut until
-// one arrives; the state row holds a strut of its own; and Refresh has its slot at the
-// status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
+// row is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
+// strut until one arrives, which holds that row at a chip's height; and Refresh has its
+// slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
 // late chip moves nothing.
 async function headerShape(page) {
   const rows = (container) =>
@@ -1181,13 +1181,14 @@ async function headerShape(page) {
       const refresh = end.children.at(-1);
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(
-        labels.children.at(-1),
+        meta.children.at(-1),
         stacks,
-        `${name} ${tab}: the stack slot ends the labels`,
+        `${name} ${tab}: the stack slot ends the author's row`,
       );
+      assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
       assert.ok(
-        meta.children.at(-1).classes.has("github-pull-stack-strut"),
-        `${name} ${tab}: a strut holds the state row at a chip's height`,
+        stacks.children.length !== 1 || stacks.children[0].classes.has("github-pull-stack-strut"),
+        `${name} ${tab}: a strut holds the author's row at a chip's height`,
       );
       assert.ok(
         stacks.children.length > 0 && !stacks.hidden,
@@ -1366,11 +1367,12 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The author's row is the details and a strut; the stack's slot is not on it, so a late
-    // chip takes no room from the sentence.
-    const [details, stateStrut] = meta.children;
+    // The author's row is the details, then the stack's slot at its end (mb-cf0l), which holds
+    // a strut while no stack is known: a late chip lands in the row's empty end.
+    const [details, stackSlot] = meta.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
-    assert.ok(stateStrut.classes.has("github-pull-stack-strut"));
+    assert.ok(stackSlot.classes.has("github-pull-stacks"));
+    assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
     assert.equal(meta.children.length, 2);
     // The state's badge leads the row of ages, under the branches (mb-4ydo).
     const opened = container.querySelector(".github-pull-opened");
@@ -1382,10 +1384,7 @@ async function run() {
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
     const stateBadge = stateBadgeSlot.children[0];
-    assert.equal(
-      container.querySelector(".github-pull-labels").children.at(-1),
-      container.querySelector(".github-pull-stacks"),
-    );
+    assert.equal(meta.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
     // The author's sentence is the row; the branches have the line below to themselves.

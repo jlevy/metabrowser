@@ -1421,17 +1421,19 @@ carries the whole of it in its tooltip.
 The colored badge that leads the row of ages gives the state in text and the title icon
 is decorative. The header’s box is decided at first paint, in every state and on every
 tab, so the tab bar under it never moves between pull requests or tabs: the author’s row
-is one line, the author and the sentence, the sentence cut short first and then the
-author; the branches have the line under it to themselves (mb-fon5), one line in every
-state, their names cut short rather than wrapping it; the row of ages begins with the
-state’s badge (mb-4ydo), as wide as the widest state, then “Opened”, the ages, View on
-GitHub, and Browse code, one line cut short at its end; the labels row is always there,
-a line of labels or none, and ends in the stack chip’s slot, so a chip that arrives late
-moves nothing: it takes its width from the labels, which the row then cuts shorter at
-the slot, a label that showed whole among them; the status row is one line that ends in
-Refresh’s slot, held hidden on a tab with nothing to refresh, its text and then its
-offers’ sentences cut short, never their controls, and a rate limit’s hold on the line
-too; and a cold page keeps every row, empty, at its height.
+is one line, the author and the sentence, then at its right end the stack chip’s slot
+(mb-cf0l), whose right edge is the header’s content edge, where a title that fills its
+lines ends with its number; a chip that arrives late lands in the row’s empty end and
+moves nothing, and where the row has no room left for it the sentence is cut short at
+its end, the action first and then the author, never moved or wrapped; the branches have
+the line under it to themselves (mb-fon5), one line in every state, their names cut
+short rather than wrapping it; the row of ages begins with the state’s badge (mb-4ydo),
+as wide as the widest state, then “Opened”, the ages, View on GitHub, and Browse code,
+one line cut short at its end; the labels row is always there, a line of labels or none,
+at a label’s height; the status row is one line that ends in Refresh’s slot, held hidden
+on a tab with nothing to refresh, its text and then its offers’ sentences cut short,
+never their controls, and a rate limit’s hold on the line too; and a cold page keeps
+every row, empty, at its height.
 Only a failure, which says what to do, wraps the status row.
 A tab switch or a poll builds again only the header’s parts whose inputs changed: the
 title, the badge, the author, the branch chips, the row of ages, the labels, and each
@@ -1480,9 +1482,16 @@ Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
-Membership has its slot at the end of the labels row, so its chip, which arrives from
-its own answer after the page, moves nothing; it cuts the labels shorter, a label that
-showed whole among them.
+Membership has its slot at the right end of the author’s row, under the end of the
+title, so its chip, which arrives from its own answer after the page, lands in the row’s
+empty end and moves nothing; where the row has no room left for it, the sentence is cut
+short at its end. Its menu hangs from the chip’s end of the row.
+Measured in Chrome 152 at 980 to 320 px, one stack’s chip is 54.75 px and two stacks’
+113.5 px; a late chip moved no part’s start and no row, kept 8 px from the sentence, and
+cut the sentence only where it needed the room: at 560 px two stacks cut a long author’s
+sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 commits” by
+38.04 px. Its `details` is no taller than the strut it replaces there, since the slot
+sets the chip’s own size.
 
 ### Text
 
@@ -1788,7 +1797,7 @@ GitHub plugin’s stylesheet on the shell’s tokens, so no surface keeps a copy
 | Part | Primitive | Where |
 | --- | --- | --- |
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
-| Position, “2/4” | `.github-pull-stack-position`, bold and tabular, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page; a Pulls row’s badge |
+| Position, “2/4” | `.github-pull-stack-position`, bold and tabular, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph` | The stack button on the page, at the right end of the author’s row; a Pulls row’s badge |
 | Member row | Its position, bold; its title, bold in normal text ink; its `#number`; and a check on the current pull request, which also carries `aria-current="page"` | The stack menu |
 | Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests the list holds, “4” or “3 of 4” | The Pulls tab |
 

@@ -221,21 +221,65 @@ const MEASURE = `async (name, change, tab, width) => {
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
     tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
   });
-  // A stack's chip arrives late, from its own answer, through the page's own builder.
+  // A stack's chip arrives late, from its own answer, through the page's own builder, at
+  // the right end of the author's row (mb-cf0l): one stack, "2/3", or two, "4/4" and "2/2".
+  // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
+  // The strut that holds the author's row at a chip's height, read before a chip replaces it.
+  const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
+  const strutHeight = heldBy ? Math.round(box(heldBy).height * 100) / 100 : null;
   let chipMoves = null;
   if (change.stackChip && group) {
     const before = places();
-    const menu = page.createStackMenu(
-      { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
-      body.number,
-      { link: () => document.createElement("a"), icon: null, currentTitle: "", onOpen() {} },
+    const layers = () => document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const stacks =
+      change.stackChip === 2
+        ? [
+            { number: 286, pulls: [body.number - 3, body.number - 2, body.number - 1, body.number] },
+            { number: 300, pulls: [body.number - 1, body.number] },
+          ]
+        : [{ number: 286, pulls: [body.number - 1, body.number, body.number + 1] }];
+    const menus = stacks.map((stack) =>
+      page.createStackMenu(stack, body.number, {
+        link: () => document.createElement("a"),
+        icon: layers(),
+        currentTitle: "",
+        onOpen() {},
+      }),
     );
-    header.querySelector(".github-pull-stacks").replaceChildren(menu.element);
+    const column = header.querySelector(".github-pull-stacks");
+    column.replaceChildren(...menus.map((menu) => menu.element));
     await frames();
     const after = places();
+    // Nothing moves: every part keeps its start, every row its height, the tab bar its place.
+    // The sentence alone, the author then the action, may give up width at its end where the
+    // row has none left: the action is cut first, to nothing, and then the author, so the
+    // sentence keeps its start and only the action's start, past a shorter name, moves.
+    const sentence = new Set([".github-pull-action", ".github-pull-identity"]);
+    const kept = (shape) => ({
+      parts: shape.parts.map(([selector, left, width]) => [
+        selector,
+        selector === ".github-pull-action" ? null : left,
+        sentence.has(selector) ? null : width,
+      ]),
+      rows: shape.rows,
+      tabBar: shape.tabBar,
+    });
+    const details = header.querySelector(".github-pull-meta-details");
+    const contentRight = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
     chipMoves = {
-      moved: JSON.stringify(before) === JSON.stringify(after) ? null : { before, after },
-      chipShown: shown(menu.element),
+      chips: stacks.length,
+      moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
+      cut:
+        Math.round(
+          before.parts
+            .filter(([selector]) => sentence.has(selector))
+            .reduce((sum, [, , width], at) => sum + width - after.parts.filter(([s]) => sentence.has(s))[at][2], 0) *
+            100,
+        ) / 100,
+      chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
+      overlap: Math.round((box(details).right - box(column).left) * 100) / 100,
+      rightEdge: Math.round((box(column).right - contentRight) * 100) / 100,
+      chipWidth: Math.round(box(column).width * 100) / 100,
     };
     // Its member menu heads its rows with the host's menu group, whose heading starts
     // on the rows' inset (docs/design-system.md, "Groups in a Menu"). A second menu of
@@ -286,14 +330,13 @@ const MEASURE = `async (name, change, tab, width) => {
   // The state badge leads the row of ages (mb-4ydo).
   const opened = header.querySelector(".github-pull-opened");
   const badge = opened?.querySelector(".github-pull-badge");
-  const strut = meta?.querySelector(".github-pull-stack-strut");
   const centre = (r) => r.top + r.height / 2;
   const result = {
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
-    strut: strut ? Math.round(box(strut).height * 100) / 100 : null,
+    strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
     offers: header.querySelectorAll(".github-pull-offer").length,
     mergeShown,
@@ -346,6 +389,7 @@ const RECORDS = [
   ["current", { pinBehind: true }],
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
+  ["current", { avatar: true }],
   ["current", { longNames: true }],
   ["current", { longNames: true, avatar: true }],
   ["merged", { longNames: true, avatar: true }],
@@ -657,8 +701,9 @@ async function main() {
         for (const [name, change] of RECORDS) {
           const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
           for (const tab of TABS) {
-            // The state row is the same on every tab, so its stack chip arrives on one.
-            const measured = tab === "" ? { ...change, stackChip: true } : change;
+            // The author's row is the same on every tab, so its stack chip arrives on one: one
+            // stack, and two for the records with an avatar, the longest rows.
+            const measured = tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change;
             const shape = await browser.evaluate(
               `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(measured)}, ${JSON.stringify(tab)}, ${width})`,
             );
@@ -680,6 +725,16 @@ async function main() {
                 `${where}: a late stack chip shows whole`,
                 shape.chipMoves.chipShown >= 0.99,
                 String(shape.chipMoves.chipShown),
+              );
+              check(
+                `${where}: the stack chip ends on the header's content edge`,
+                Math.abs(shape.chipMoves.rightEdge) <= 0.5,
+                String(shape.chipMoves.rightEdge),
+              );
+              check(
+                `${where}: the stack chip and the sentence do not overlap`,
+                shape.chipMoves.overlap <= 0.5,
+                String(shape.chipMoves.overlap),
               );
               check(
                 `${where}: the stack menu's heading starts on its rows' inset`,

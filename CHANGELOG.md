@@ -7,7 +7,9 @@ All notable changes to Metabrowser are documented here.
 - A pull request’s page header gives the head and base branches a line of their own,
   under “jlevy wants to merge 2 commits”, instead of ending that sentence with them.
   The state badge (Draft, Open, Merged, Closed) moves down a line, to lead “Opened 9h
-  ago · updated …”.
+  ago · updated …”. The stack button moves from the end of the labels row to the right
+  end of the author’s row, under the end of the title, and its menu opens from there;
+  arriving after the page, it still moves nothing.
 
 - On a pull request’s Conversation, a commit now reads like the comments around it.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
