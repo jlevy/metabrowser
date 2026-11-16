@@ -131,8 +131,11 @@ export const PEEK_MS = 60;
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
 // How long a warm of a likely next pull request's comparison waits for the browser to be
-// free. It is speculative, so it waits behind the page's own idle work, whose bound is
-// 300 ms, and this bounds it only for a page that is never free.
+// free, which bounds it only for a page that is never free. Idle callbacks run in the order
+// they were asked for, and on an open the warm is asked for before the page has read its
+// record, so this timeout does not put it behind the page: what does is that the warm waits
+// for every comparison read on its way to end before it sends its own (`quiet` in
+// comparison-prefetch.js).
 const WARM_IDLE_TIMEOUT_MS = 1000;
 const FETCHING = "Fetching pull requests…";
 // Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
@@ -2131,9 +2134,11 @@ export function createPullsController(deps, options = {}) {
    * so a warm of it already on its way is its page's rather than a second request, then the
    * rows the pointer or focus last rested on, newest first, the open pull request's
    * neighbours in each of its stacks, which Control-N and Control-P reach, and the anchored
-   * row's neighbours in the list. Only while shown, visible, and online; each is local work,
-   * a record from the cache and a comparison from the repository store, with no GitHub
-   * call, so the budget's floor and the lane's caps do not hold it, and the warmer's own do.
+   * row's neighbours in the list. Only while shown, visible, and online (`stopWarming`);
+   * each is local work, a record from the cache and a comparison from the repository store,
+   * with no GitHub call, so the budget's floor and the lane's caps do not hold it, and the
+   * warmer's own do. Its record reads are not views, so they add nothing to the records the
+   * server's lane refreshes after a scan.
    */
   function warmAhead() {
     const list = held();
@@ -2166,6 +2171,14 @@ export function createPullsController(deps, options = {}) {
         ...neighbours(),
       ]),
     ]);
+  }
+
+  /**
+   * A panel that is hidden, parked, or offline warms nothing more: its queue is emptied, and
+   * only the warm being read goes on.
+   */
+  function stopWarming() {
+    deps.warmComparisons?.([]);
   }
 
   /**
@@ -2915,6 +2928,7 @@ export function createPullsController(deps, options = {}) {
         clearTimer();
         cancelReads();
         queueCores();
+        stopWarming();
         return;
       }
       if (revealCurrent && current !== null && held().keys.has(current)) {
@@ -3121,6 +3135,7 @@ export function createPullsController(deps, options = {}) {
     },
     onOffline() {
       cancelWarmTimer();
+      stopWarming();
       cancelCoreRetry();
       stopPrefetchWatch();
       warmRead?.abort();
@@ -3137,6 +3152,7 @@ export function createPullsController(deps, options = {}) {
       if (!visible()) {
         clearTimer();
         cancelReads();
+        stopWarming();
         return;
       }
       warmPaused = false;
@@ -3147,6 +3163,7 @@ export function createPullsController(deps, options = {}) {
       parked = true;
       clearTimer();
       cancelReads();
+      stopWarming();
     },
     resume() {
       parked = false;
@@ -4557,9 +4574,11 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   // The comparisons of the pull requests a reader opens next, kept for the document so their
   // pages draw the Diff summary at once (comparison-prefetch.js). A record is the peek's when
-  // a peek read it, and otherwise one cache read, which never asks GitHub. Warming is idle
-  // work, so an SDK without `whenIdle`, as a session's that drives the panel alone is, has
-  // none, as one without `shortcuts` has no numbered controls below.
+  // a peek read it, and otherwise one cache read, which never asks GitHub and, marked
+  // `warm=1`, is not counted as a view: the server's prefetch lane refreshes the records a
+  // reader viewed last, and a warm is not one. Warming is idle work, so an SDK without
+  // `whenIdle`, as a session's that drives the panel alone is, has none, as one without
+  // `shortcuts` has no numbered controls below.
   warmer =
     typeof mb.whenIdle !== "function"
       ? null
@@ -4567,15 +4586,22 @@ export function mountPullsPanel(container, ctx, mb) {
           async read(number, readSignal) {
             let envelope = await controller.knownRecord(number);
             if (envelope === null) {
-              const response = await request(mb.perf, "GET", `${PULL_ROUTE}?number=${number}`, {
-                signal: readSignal,
-              });
+              const response = await request(
+                mb.perf,
+                "GET",
+                `${PULL_ROUTE}?number=${number}&warm=1`,
+                { signal: readSignal },
+              );
               envelope = response.status === 200 ? response.body : null;
             }
-            return isPullEnvelope(envelope) &&
-              /** @type {{number?: unknown}} */ (envelope).number === number
-              ? pullComparison(envelope)
-              : null;
+            if (!isPullEnvelope(envelope) || envelope.number !== number) {
+              throw new Error(`no record of pull request ${number}`);
+            }
+            return {
+              comparison: pullComparison(envelope),
+              // The record's own freshness window, past which its head may have moved.
+              freshForMs: envelope.fresh_for_s * 1000,
+            };
           },
           load: diffComparisonLoader(mb),
           schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),

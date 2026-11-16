@@ -15,9 +15,9 @@
 // two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
 // the run badge (`badges`), the label chips' colors in both themes (`labels`), the Diff
-// summary's row while its comparison is read, as it arrives, and as it fails
-// (`summary-wait`), and a page mounted with no record in hand as its record lands
-// (`cold-landing`). With no
+// summary's row while its comparison is read, as it arrives, as it fails, and as the same
+// pull request is opened again in the document (`summary-wait`), and a page mounted with no
+// record in hand as its record lands (`cold-landing`). With no
 // part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
@@ -664,6 +664,58 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     summary: async (slot, ctx) =>
       diff.mountDiffSummary(slot, ctx.raw, mb, { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} }),
   };
+
+  // A revisit opens the pull request whose comparison last arrived again, in this document
+  // (mb-neg9): the page draws its summary from the comparison it kept, and reads nothing.
+  // Its summary waits for the shared tree as the diff plugin's own does, which a loaded
+  // bundle answers from a resolved promise (asset-loader.js, ensureAsset). Each frame from
+  // the mount until the record's title is painted says what the row held, and the row's
+  // mutations say whether the placeholder was put in it at all.
+  if (outcome === "arrives") {
+    window.__summaryArrived = body.comparison_route;
+  } else if (outcome === "revisit") {
+    body.comparison_route = window.__summaryArrived;
+    const drawSummary = view.summary;
+    view.summary = async (slot, ctx) => {
+      await Promise.resolve().then(() => window.MetabrowserChangedFilesTree);
+      return drawSummary(slot, ctx);
+    };
+  }
+  let reads = 0;
+  const readOnce = view.prefetch;
+  view.prefetch = () => {
+    reads += 1;
+    return readOnce();
+  };
+  let placeholderPlaced = false;
+  const placements = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node.nodeType === 1 && (node.matches(".github-pull-summary-pending, .tally-pending") || node.querySelector(".tally-pending"))) {
+          placeholderPlaced = true;
+        }
+      }
+    }
+  });
+  placements.observe(container, { childList: true, subtree: true });
+  const seenFrames = [];
+  const recordPainted = new Promise((resolve) => {
+    const look = () => {
+      const row = container.querySelector(".github-pull-summary");
+      const title = container.querySelector(".github-pull-header h1")?.textContent?.trim() ?? "";
+      seenFrames.push({
+        title: title !== "",
+        summary: row?.querySelector(".diff-summary") != null,
+        placeholder: row?.querySelector(".tally-pending") != null,
+      });
+      if (title !== "" || seenFrames.length >= 30) {
+        resolve(seenFrames);
+      } else {
+        requestAnimationFrame(look);
+      }
+    };
+    requestAnimationFrame(look);
+  });
   const handle = page.mountPullPage(
     container,
     { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
@@ -692,6 +744,14 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     },
   );
   await Promise.resolve();
+  if (outcome === "revisit") {
+    const painted = await recordPainted;
+    placements.disconnect();
+    handle.dispose();
+    delete document.documentElement.dataset.theme;
+    return { revisit: { frames: painted, reads, placeholderPlaced } };
+  }
+  placements.disconnect();
   const header = container.querySelector(".github-pull-header");
   const row = header.querySelector(".github-pull-summary");
   const round = (value) => Math.round(value * 100) / 100;
@@ -1364,6 +1424,7 @@ async function main() {
       }
       const offersDrawn = new Set();
       const summaryWaits = [];
+      const revisits = [];
       const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
       for (const width of widths) {
         const seen = {};
@@ -1630,9 +1691,26 @@ async function main() {
                 JSON.stringify(failed.arrived.places) === JSON.stringify(failed.waiting.places),
               JSON.stringify(failed),
             );
+            // The pull request whose comparison arrived, opened again in this document: its
+            // summary is in the first frame that paints its record, no frame shows the
+            // placeholder, and nothing is read (mb-neg9).
+            const { revisit } = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "revisit")`,
+            );
+            const painted = revisit.frames.at(-1);
+            check(
+              `${where}: opened again, the summary is drawn in the frame that paints the record, with no placeholder in any frame and no read`,
+              painted?.title === true &&
+                painted.summary &&
+                revisit.frames.every((frame) => !frame.placeholder) &&
+                revisit.reads === 0,
+              JSON.stringify(revisit),
+            );
+            revisits.push({ where, ...revisit });
             summaryWaits.push({ where, waiting, arrived });
           }
         }
+        process.stderr.write(`summary-revisit: ${JSON.stringify(revisits)}\n`);
         process.stderr.write(
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );
