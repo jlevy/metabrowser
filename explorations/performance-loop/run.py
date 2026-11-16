@@ -832,6 +832,15 @@ def _served_body(port: int, path: str, timeout_s: float) -> bytes:
                 raise SystemExit(
                     f"startup script {path} is over {STARTUP_SCRIPT_MAX_BYTES:,} bytes"
                 )
+            # Given a size, http.client returns what arrived before the connection closed
+            # without raising, so a body cut short would be measured smaller and pass the
+            # gate (review C of #455, C3).
+            declared = response.headers.get("Content-Length")
+            if declared is not None and declared.strip() != str(len(body)):
+                raise SystemExit(
+                    f"startup script {path} arrived as {len(body):,} bytes of the "
+                    f"{declared.strip()} its Content-Length declared"
+                )
             return body
     except OSError as error:
         raise SystemExit(
@@ -857,9 +866,10 @@ def _startup_script_transfer_kb(
     the 300 bytes Resource Timing adds for a response's headers, rounded as probe.js
     rounds. On a build that gzips toward loopback this is the browser's figure byte for
     byte, which is how ``devtools/check_startup_scripts.py`` arrives at the same number
-    on every lint. *paths* are the scripts the browser fetched (probe.js leaves out one
-    its cache answered, which the browser's figure counted as nothing), and *read* is
-    given what is left of *deadline_s* for each.
+    on every lint. *paths* are the scripts whose body crossed the wire (probe.js leaves
+    out one its cache answered, which the browser's figure counted as nothing, and a
+    304, which it counted as its 300 bytes of headers), and *read* is given what is left
+    of *deadline_s* for each.
     """
 
     deadline = time.monotonic() + deadline_s

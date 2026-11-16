@@ -234,6 +234,14 @@ description = "Startup JavaScript before DOMContentLoaded as the remote path tra
 # 20.9 ms and an unprepared first KPress stylesheet request at 196.6 ms. This
 # ceiling leaves more than three times the healthy observation while rejecting
 # the deferred-import cost that held first paint.
+# Since H115 the figure is a larger quantity for a stamped /static stylesheet: its
+# `srv` now includes the whole read and compression, which the store finishes before
+# the headers leave, where a streamed file response sent them after its first 64 KiB
+# chunk. The 20.9 ms above predates that. In one untimed landing each (review B of
+# #455, B5), /static/styles.css read `srv` 9.2 ms before H115, 20.9 ms compressed and
+# 15.6 ms on the macOS app's start after it, with its end of body 25, 21.2 and 15.8 ms.
+# A comparison across H115 reads stylesheets by end of body (server-time.mjs's `end_ms`,
+# or Resource Timing's `responseEnd`), not by this figure.
 [metrics.startup_style_server_ms_max]
 category = "loading"
 maximum = 75

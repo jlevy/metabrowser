@@ -354,8 +354,15 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
     assert probe["kb"] == check.transfer_kb(scripts)
     assert probe["paths"] == [f"{script.url_path}?v=1" for script in scripts]
     # A script the browser's cache answered transferred nothing, and one answered 304
-    # transferred its headers' 300 bytes and no body: neither is read back.
-    cached = {"name": f"{origin}/static/app.js?v=2", "startTime": 5, "transferSize": 0}
+    # transferred its headers' 300 bytes and no body: neither is read back. Each has the
+    # shape Chrome gives it: a cache hit keeps its full encodedBodySize (review C of #455,
+    # C1, reproduced in headless Chrome).
+    cached = {
+        "name": f"{origin}/static/app.js?v=2",
+        "startTime": 5,
+        "transferSize": 0,
+        "encodedBodySize": 6413,
+    }
     revalidated = {
         "name": f"{origin}/static/app.js?v=3",
         "startTime": 5,

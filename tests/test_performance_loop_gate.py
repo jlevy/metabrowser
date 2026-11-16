@@ -1733,3 +1733,33 @@ def test_reading_the_startup_scripts_back_is_bounded_in_size_and_time() -> None:
         server.server_close()
     with pytest.raises(SystemExit, match="more than 0 s"):
         module._startup_script_transfer_kb(["/static/a.js"], lambda _p, _t: b"", deadline_s=0)
+
+
+def test_a_startup_script_cut_short_is_refused() -> None:
+    """A body shorter than its Content-Length is not measured (review C of #455, C3)."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    module = _runner()
+
+    class _CutShort(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Length", "5000")
+            self.end_headers()
+            self.wfile.write(b"x" * 1200)
+            self.wfile.flush()
+            self.close_connection = True
+
+        def log_message(self, format: str, *_args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _CutShort)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(SystemExit, match="1,200 bytes of the 5000"):
+            module._served_body(server.server_address[1], "/static/a.js", 5.0)
+    finally:
+        server.shutdown()
+        server.server_close()
