@@ -44,9 +44,10 @@ would be short; ``unavailable``, the store could not compare the two, as for a m
 object or a shallow history that cannot say where they meet. Only an answer and
 ``too_large`` are kept: a refusal is asked again, since a fetch can answer it.
 
-An answer holds for the stack snapshot's window (``fresh_for_s``). Its entity tag is the
-envelope's, as every GitHub route's is, for a client that holds one, ``--api`` among them;
-the Pulls tab sends none.
+An answer has no window of its own. It changes when the stack's members, the top's record,
+or the merge base do, and the Pulls tab asks again when the catalog says a member or the
+top's head changed (``stack-lines.js``). Its entity tag is the envelope's, as every GitHub
+route's is, for a client that holds one, ``--api`` among them; the Pulls tab sends none.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
-from metabrowser.builtin_plugins.github.pull_stacks import STACK_FRESHNESS_S, read_stacks
+from metabrowser.builtin_plugins.github.pull_stacks import read_stacks
 from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.loading_cache import LoadingCache
 
@@ -110,9 +111,6 @@ class StackChangeEnvelope(TypedDict):
     top: int | None
     base: str | None
     head: str | None
-    # How long the answer holds: the stack snapshot's own window, past which its members,
-    # and so its ends, may have moved.
-    fresh_for_s: float
     files: int | None
     additions: int | None
     deletions: int | None
@@ -177,7 +175,6 @@ def absent(
         top=None if ends is None else ends.top,
         base=None if ends is None else ends.base,
         head=None if ends is None else ends.head,
-        fresh_for_s=STACK_FRESHNESS_S,
         files=None,
         additions=None,
         deletions=None,
@@ -338,7 +335,6 @@ async def stack_change(
         top=ends.top,
         base=ends.base,
         head=ends.head,
-        fresh_for_s=STACK_FRESHNESS_S,
         files=sums.files,
         additions=sums.additions,
         deletions=sums.deletions,

@@ -2497,13 +2497,19 @@ toolbar, the Show group and Reload, has 23 px to spare.
   top’s cached record and the base branch the store mirrors (`GET stack-change`), so a
   file two layers change counts once and the base branch’s own changes are not the
   stack’s. It never asks GitHub or fetches.
-  It is read for the stacks the list draws, one at a time when the browser is idle,
-  within the Pulls tab’s hourly cap, and kept for the document under the stack’s two
-  commits, so a heading drawn again has it in its first paint
-  (`builtin_plugins/github/stack-lines.js`). While it is read, the heading holds the
-  shell’s pending placeholder where the line will be, after the quiet period, so nothing
-  moves when it arrives; a stack whose change cannot be had, its top not cached, its
-  base branch not mirrored, or no store to compare in, shows neither.
+  It is read for the stacks the list draws, one at a time when the browser is idle, once
+  for a stack’s members and its top’s head as the list’s rows report them, so a stack is
+  read again when its top moves or its members change and never on a timer, within the
+  lines’ own hourly cap, apart from the comparison warms’; it is kept for the document
+  under the stack’s two commits, so a heading drawn again has it in its first paint, and
+  a line stays shown while its stack is read again and when that read fails
+  (`builtin_plugins/github/stack-lines.js`). While its stack’s read is on its way, the
+  heading holds the shell’s pending placeholder where the line will be, after the quiet
+  period, and its accessible name says “change pending”, in the filter chips’ words; a
+  heading whose read is queued behind another’s does not wait.
+  A stack whose change cannot be had, its top not cached, its base branch not mirrored,
+  or no store to compare in, shows neither, and does not wait again until its members or
+  its top’s head change, so its heading never pulses and goes blank twice.
   The row stays one line at every pane width: the label is never cut for the line, the
   line’s statuses are cut short first, as the pull request header’s are, its totals stay
   whole, and where even its dot and totals have no room the whole line goes.

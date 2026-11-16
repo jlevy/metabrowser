@@ -547,11 +547,10 @@ export const WARM_COMPARISONS = 5;
 // and 345 ms at the most, 12 KB gzipped at the median and 112 KB at the most. So an hour's
 // cap is about 14 s of comparison time at the median and 41 s at the most, and at most 4 s
 // of record reads, and the answers stay in the keep and in the server's own
-// (`MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`).
+// (`MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`). The cap is the warms' alone: the stack
+// headings' change lines count their reads against a cap of their own (stack-lines.js,
+// `STACK_LINES_PER_HOUR`), so they cannot spend the warms' share (review of #484, A2).
 export const WARM_PER_HOUR = 120;
-// The cap is the Pulls tab's, not one lane's: its stack headings' change lines (stack-lines.js)
-// count against it too, each a read of the cache and, the first time a stack's two ends are
-// asked for, a comparison listed in the store, so one hour's local work is bounded once.
 // The pull requests whose last outcome the lane remembers, oldest out first.
 const WARM_FOUND = 64;
 // The recent outcomes a snapshot reports.
@@ -559,8 +558,9 @@ const WARM_RECENT = 8;
 const HOUR_MS = 3_600_000;
 
 /**
- * The Pulls tab's hourly count of the local reads it starts on its own, which the comparison
- * warmer and the stack lines share (`WARM_PER_HOUR`). A read is counted as it starts.
+ * An hourly count of the local reads a Pulls tab's lane starts on its own: the comparison
+ * warmer's (`WARM_PER_HOUR`), and apart from it the stack lines' (stack-lines.js,
+ * `STACK_LINES_PER_HOUR`). A read is counted as it starts.
  *
  * @param {() => number} now
  * @param {number} [limit]
@@ -621,12 +621,11 @@ export function createWarmBudget(now, limit = WARM_PER_HOUR) {
  *   cancel(handle: unknown): void,
  *   isVisible(): boolean,
  *   now(): number,
- *   budget?: WarmBudget,
  * }} deps
  */
 export function createComparisonWarmer(deps) {
   const keep = deps.keep ?? documentComparisons;
-  const budget = deps.budget ?? createWarmBudget(deps.now);
+  const budget = createWarmBudget(deps.now);
   /** @type {number[]} */
   let queue = [];
   /** @type {unknown} */

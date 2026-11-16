@@ -10,11 +10,12 @@ All notable changes to Metabrowser are documented here.
   where the two meet, so a file that several layers change counts once, and what the
   base branch itself changed since a layer was fetched is not counted as the stack’s.
   They are summed from the local repository cache with no GitHub request, for the stacks
-  in view, when the browser is idle; a gray placeholder holds the line’s place while it
-  is read, so nothing moves when it arrives, and a stack whose top pull request has not
-  been fetched, or whose base branch the cache does not mirror, shows no line.
-  In a narrow Pulls column the line’s file statuses are cut short first, and the whole
-  line goes where its totals do not fit, so the heading stays one line.
+  in view, when the browser is idle, and read again only when a stack’s top pull request
+  moves or its members change; a gray placeholder holds the line’s place while it is
+  read, and a screen reader hears that the change is pending, and a stack whose top pull
+  request has not been fetched, or whose base branch the cache does not mirror, shows no
+  line. In a narrow Pulls column the line’s file statuses are cut short first, and the
+  whole line goes where its totals do not fit, so the heading stays one line.
   Screen readers hear the line in words after the stack’s name.
   A new cache-only route, `/api/plugin/github/stack-change`, answers a stack’s combined
   change. See [Stacks](docs/design-system.md#stack-groups-in-the-pulls-tab).

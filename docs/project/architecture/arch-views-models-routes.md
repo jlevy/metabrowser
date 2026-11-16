@@ -585,10 +585,13 @@ it has not summed it, a manifest with no patch, whose sums it keeps by the merge
 the head, the store, and the build (`pull_stack_change.py`). Its envelope has `state`
 (`current` or `absent`), `reason` (`not_github`, `no_store`, `not_stacked`,
 `not_cached`, `no_comparison`, `no_base_branch`, `too_large`, or `unavailable`),
-`number`, `bottom`, `top`, `base`, the merge base, `head`, `fresh_for_s`, the stack
-snapshot’s window, `files`, `additions`, `deletions`, `exact`, and `statuses`, each a
-pull request’s status word and its count.
-It names nothing but `number`; its tag is the envelope’s.
+`number`, `bottom`, `top`, `base`, the merge base, `head`, `files`, `additions`,
+`deletions`, `exact`, and `statuses`, each a pull request’s status word and its count.
+It has no window: the Pulls tab reads a stack again when its members or its top’s head,
+as the catalog’s rows report it, change (`stack-lines.js`). It names nothing but
+`number`. Its tag is the envelope’s, as every GitHub route’s is, for a client that holds
+one, `--api` among them; the Pulls tab sends none, and reads a `304` as its last answer
+holding.
 
 `GET github/labels` reads the repository’s cached label set with no query parameters
 (`mb-varu`): `state`, `reason`, `source`, `reader`, `fetched_at`, remaining

@@ -166,7 +166,6 @@ def test_a_stacks_change_is_its_tops_head_against_its_base_branch(
         "top": 11,
         "base": meets,
         "head": top,
-        "fresh_for_s": 300.0,
         "files": 2,
         "additions": 5,
         "deletions": 0,
