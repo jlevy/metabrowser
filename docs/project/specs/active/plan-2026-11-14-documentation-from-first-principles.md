@@ -260,8 +260,13 @@ switcher shows, centered above a centered title.
 - **Relative paths:** GitHub and Metabrowser itself both render an in-tree image.
   Metabrowser’s inert Markdown keeps only in-tree images, and keeps `align` only on
   table cells, so it shows the icon left-aligned.
-  PyPI, which publishes the README as the package description, shows the alt text
-  instead, as it does for today’s screenshot (see Decisions).
+  The raw HTML has two more costs in Metabrowser, accepted for the centered block on
+  GitHub: the dropped `align` attributes are reported as two `html_sanitized_attribute`
+  warnings, so the README page shows a Diagnostics disclosure, and the rendered-Markdown
+  diff, which refuses raw HTML, shows no rendered diff of a README change.
+  Keeping presentational `align` on `p` and `h1` is tracked as mb-4cwy. PyPI, which
+  publishes the README as the package description, shows the alt text instead, as it
+  does for today’s screenshot (see Decisions).
 
 **Outline:**
 
@@ -506,61 +511,61 @@ two groups keep their phase names.
 
 ### Phase 1: The Reader’s Path
 
-- [ ] Add checks 1 to 3 with their failing fixtures, and fix what they find; add the
+- [x] Add checks 1 to 3 with their failing fixtures, and fix what they find; add the
   values-live-in-code rule (Rules, item 2) to the documentation conventions in
   `docs/development.md` and to the Documentation section of `AGENTS.md`, with its
   reason, so every later rewrite follows it.
-- [ ] Rewrite `README.md` with the icon block, the thesis, a refreshed screenshot, and
+- [x] Rewrite `README.md` with the icon block, the thesis, a refreshed screenshot, and
   the outline above, linking the documents that exist; extend
   `apps/macos/scripts/build-icon.sh` to write the README image.
-- [ ] Rewrite `docs/installation.md` as the owner of requirements and release-bound
+- [x] Rewrite `docs/installation.md` as the owner of requirements and release-bound
   status; write `docs/macos-app.md` and remove its material from `apps/macos/README.md`.
-- [ ] Write `docs/browsing-files.md` and `docs/keyboard-shortcuts.md`, moving the user
+- [x] Write `docs/browsing-files.md` and `docs/keyboard-shortcuts.md`, moving the user
   keyboard table and its pin out of the design system and the user parts out of
   `docs/realtime-debugging.md`; correct the tab order in `static/main-tabs.js`’s header
   comment.
-- [ ] Write `docs/browsing-history.md`; cut `docs/command-line.md` and
+- [x] Write `docs/browsing-history.md`; cut `docs/command-line.md` and
   `docs/reviewing-pull-requests.md` to their subjects, linking internals the repository
   document already holds and moving the rest into it; document the five missing
   `--remote` options and the configuration file and environment variables.
-- [ ] Write `docs/working-with-agents.md` and update `SKILL.md`, keeping the anchors
+- [x] Write `docs/working-with-agents.md` and update `SKILL.md`, keeping the anchors
   installed skills link to.
-- [ ] Cut `SECURITY.md` to its policy and trust-settings section, moving the trust model
+- [x] Cut `SECURITY.md` to its policy and trust-settings section, moving the trust model
   into a new `arch-server-and-content.md`; make `CONTRIBUTING.md` agree with
   `AGENTS.md`; bring `TODO.md` to the current release.
-- [ ] Add `make benchmark` and `docs/scale-benchmark.md` with the Python-provider
+- [x] Add `make benchmark` and `docs/scale-benchmark.md` with the Python-provider
   baseline, and link it from the README’s Scale section.
 
 ### Phase 2: The Builder’s Path
 
-- [ ] CLI, server, inventory, and delivery: write `arch-cli.md`,
+- [x] CLI, server, inventory, and delivery: write `arch-cli.md`,
   `arch-inventory-engine-python.md`, and `arch-live-delivery.md`; make
   `arch-inventory-provider.md` engine-independent; complete
   `arch-server-and-content.md`; retire `arch-state-and-delivery.md` and
   `arch-python-inventory-cost.md`; trim `docs/realtime-debugging.md`.
-- [ ] Git and diffs: write `arch-git.md`, `arch-source-sessions-and-pins.md`, and
+- [x] Git and diffs: write `arch-git.md`, `arch-source-sessions-and-pins.md`, and
   `arch-diff-pipeline.md`, folding in the general diff rendering plan’s design; retire
   the Git document, moving the paths `tests/test_git_arch_doc.py` reads.
-- [ ] Repository and GitHub: write `arch-repository-cache.md`,
+- [x] Repository and GitHub: write `arch-repository-cache.md`,
   `arch-mirror-acquisition-and-refresh.md`, and `arch-github-pull-requests.md`, folding
   in the Pulls tab and pull-request review plans’ designs; retire the repository
   document, moving the paths `devtools/check_artifact_contracts.py` reads.
-- [ ] Plugins and the browser: write `arch-plugin-system.md`, with how to add a file
+- [x] Plugins and the browser: write `arch-plugin-system.md`, with how to add a file
   type, and `arch-browser-shell.md`, folding in the Quick Search plan’s design; trim
   `docs/plugins.md` and `docs/web-performance-framework.md`; retire
   `arch-nav-containers.md`.
-- [ ] The app: write `arch-macos-app.md`; cut `apps/macos/README.md` to build, test, and
+- [x] The app: write `arch-macos-app.md`; cut `apps/macos/README.md` to build, test, and
   release; refresh the native app plan’s status.
-- [ ] Contributor documents: cut `docs/design-system.md` as described above; revise
+- [x] Contributor documents: cut `docs/design-system.md` as described above; revise
   `docs/development.md` and `docs/e2e-testing.md`; trim
   `docs/engine-performance-model.md`, moving its benchmark method into
   `docs/development.md`; move the rollup palette out of `file-rollup-format/` and its
   maintenance notes in.
-- [ ] The map and the entry point: split `arch-views-models-routes.md` into the map and
+- [x] The map and the entry point: split `arch-views-models-routes.md` into the map and
   `arch-parity-registry.md`, moving the paths `devtools/check_parity.py` and three tests
   read; rewrite `docs/architecture.md` as the entry point; cut and correct
   `docs/large-content-rendering.md`.
-- [ ] Records: retire the four documents listed above; move shipped specs, the v0.12
+- [x] Records: retire the four documents listed above; move shipped specs, the v0.12
   runbook, and superseded research; correct `docs/project/README.md`; add check 4.
 
 ## Testing Strategy
