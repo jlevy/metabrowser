@@ -1283,30 +1283,23 @@
 .github-pulls-item[data-level="2"] {
   --github-pulls-indent: var(--tree-indent);
 }
-/* A stack's row is one line: the chevron, the Layers icon, the label, and the count, which
-   takes the age's place at the row's end. It is a row of the tree, and hovers, focuses, and
-   takes the pointer as a pull request's row does (`.github-pulls-row`). Its label sits in
-   the title's column, cut short rather than pushing the count out of the row. */
+/* A stack's row is one line: the chevron, the Layers icon, and the label, with no tally,
+   since its pull requests are the rows under it (docs/design-system.md, "Heading
+   Tallies"). It is a row of the tree, and hovers, focuses, and takes the pointer as a pull
+   request's row does (`.github-pulls-row`). Its label starts in the title's column and
+   has the row to its end, cut short rather than leaving the row. */
 .github-pulls-stack-row > .github-pull-stack-icon {
   grid-column: 2;
   justify-self: center;
   color: var(--muted);
 }
 .github-pulls-stack-row > .github-pull-stack-label {
-  grid-column: 3;
+  grid-column: 3 / -1;
   min-width: 0;
   overflow: hidden;
   /* The row's grid places the heading; the menu's padding is its inset in a menu. */
   padding: 0;
   text-overflow: ellipsis;
-}
-.github-pulls-stack-count {
-  grid-column: 4 / -1;
-  justify-self: end;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  font-variant-numeric: var(--tabular-numerals);
-  white-space: nowrap;
 }
 .github-pull-loading {
   margin: 0;

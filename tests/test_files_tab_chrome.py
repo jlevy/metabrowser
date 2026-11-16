@@ -24,8 +24,13 @@ opens the Modified within menu in both. This judges what it measured against
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
+- each section heading's tally sits beside its name after the separator, on its one line
+  at the default pane and the 180 px minimum, its numeral at the numbers' weight, and
+  the section and its tree are named by the heading's words without the dot ("Heading
+  Tallies");
 - a file written into a folder open in a section refreshes the sections in place, keeping
-  that folder open, the scroll position, and the focused row;
+  that folder open, the scroll position, the focused row, and the heading, whose tally
+  counts the new file;
 - with the grouped requests held, a choice reads on the trigger in its click and takes
   the request its press asked for ahead; past the quiet period the tree dims to
   ``--loading-dim-opacity`` and the scan row says "Grouping by file type…", while the
@@ -359,18 +364,53 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "Archives",
         "Media",
     ]
-    assert [section["count"] for section in sections] == [
+    tallies = [
         "10 files",
         f"{len(_CODE) * 3 + _LIB_FILES} files",
         "6 files",
         "1 file",
         "3 files",
     ]
+    # Each heading's tally sits beside its name after the separator, never at the far end,
+    # with its numeral bold at the numbers' weight and its words regular, and the dot
+    # hidden from assistive technology (docs/design-system.md, "Heading Tallies").
+    assert [section["tally"] for section in sections] == [f" · {tally}" for tally in tallies]
     for index, section in enumerate(sections):
         assert "group-heading" in section["headingClasses"], section
         assert _close(section["fromRowInset"], 0), section
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
+        assert _close(section["tallyFromLabel"], 0), section
+        assert section["tallyToEnd"] > 100, section
+        assert section["lines"] == 1, section
+        assert not section["nameCut"] and section["tallyWhole"], section
+        assert section["weights"] == {
+            "label": "700",
+            "tally": "400",
+            "figure": section["numberWeight"],
+        }, section
+        assert section["numberWeight"] == "700", section
+        assert section["dotHidden"], section
+    # A section and its tree read the heading's words, the dot left out; Chrome's name
+    # carries the label register's capitals.
+    expected_names = [
+        f"{label.upper()} {tally}"
+        for label, tally in zip(
+            ["Documentation", "Code", "Data", "Archives", "Media"], tallies, strict=True
+        )
+    ]
+    assert [name["section"] for name in measured["byTypeNames"]] == expected_names
+    assert [name["tree"] for name in measured["byTypeNames"]] == expected_names
+    # At the narrowest pane, 180 px, each heading is still its one line, as tall as at the
+    # default width, with its tally whole beside the name.
+    narrow = measured["byTypeNarrow"]
+    assert [section["tally"] for section in narrow] == [s["tally"] for s in sections]
+    for wide, section in zip(sections, narrow, strict=True):
+        assert section["lines"] == 1, section
+        assert _close(section["headingHeight"], wide["headingHeight"]), (wide, section)
+        assert section["tallyWhole"], section
+        assert _close(section["tallyFromLabel"], 0), section
+        assert section["tallyToEnd"] >= -TOLERANCE, section
     # A folder opened inside Code lists Code's files only (src/lib, inside it, stays closed).
     code = measured["codeFiles"]
     assert len(code) == len(_CODE) * 3, code
@@ -391,6 +431,11 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert refresh["before"]["focused"] == focused and refresh["before"]["scrollTop"] > 0, refresh
     assert not refresh["before"]["written"], refresh
     assert refresh["after"] == {**refresh["before"], "written": True}, refresh
+    # Code's heading is the one it had, its tally counting the new file beside its name.
+    assert measured["refreshedHeading"] == {
+        "kept": True,
+        "tally": f" · {len(_CODE) * 3 + _LIB_FILES + 1} files",
+    }, measured["refreshedHeading"]
     # No grouping is the one Files tree again.
     assert measured["ungrouped"] == {"sections": 0, "trees": ["Files"]}
 

@@ -1592,10 +1592,25 @@ function failGroupedTree(reason) {
   }
 }
 
-/** @param {MetabrowserPublicTreeSection} section */
-function treeSectionCountText(section) {
-  // A group the source could not count (a truncated Git index) shows no count.
-  return section.files === null ? "" : formatCount(section.files);
+/**
+ * A section heading's inner markup: the group's name, then its file count beside it after
+ * the separator, as every heading's tally sits (docs/design-system.md, "Heading Tallies").
+ * The separator's dot is hidden from assistive technology, so the heading reads "Older
+ * 10,004 files". A group the source could not count (a truncated Git index) has no tally.
+ *
+ * @param {MetabrowserPublicTreeSection} section
+ */
+function treeSectionHeadingHtml(section) {
+  var label = `<span class="tree-section-label">${esc(section.label)}</span>`;
+  if (section.files === null) {
+    return label;
+  }
+  var unit = section.files === 1 ? "file" : "files";
+  return (
+    label +
+    `<span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span> ` +
+    `<span class="heading-tally-figure">${esc(section.files.toLocaleString())}</span> ${unit}</span>`
+  );
 }
 
 /**
@@ -1632,8 +1647,7 @@ function treeSectionHtml(section, nodes, expandedPaths) {
     `<section class="tree-section" data-tree-group="${esc(section.key)}"` +
     ` aria-labelledby="${esc(headingId)}">` +
     `<div class="group-heading tree-section-heading" id="${esc(headingId)}">` +
-    `<span class="tree-section-label">${esc(section.label)}</span>` +
-    `<span class="tree-section-count">${esc(treeSectionCountText(section))}</span></div>` +
+    `${treeSectionHeadingHtml(section)}</div>` +
     `${treeSectionTreeHtml(section, nodes, expandedPaths)}</section>`
   );
 }
@@ -1768,9 +1782,9 @@ function refreshGroupedSections(sections, truncationHtml) {
     var element = mounted.get(section.key);
     mounted.delete(section.key);
     if (element) {
-      var count = element.querySelector(".tree-section-count");
-      if (count) {
-        count.textContent = treeSectionCountText(section);
+      var heading = element.querySelector(":scope > .tree-section-heading");
+      if (heading) {
+        heading.innerHTML = treeSectionHeadingHtml(section);
       }
       var tree = element.querySelector(':scope > [role="tree"]');
       var template = document.createElement("template");

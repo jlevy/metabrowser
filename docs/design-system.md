@@ -1970,7 +1970,7 @@ holds the one helper and the one rule in source.
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then leaves the number’s line whole |
 | Stack place | `.github-pulls-place`, before the number on the number’s line and at its size, “1/6 · #455”, with what it shows set in [Stacks](#stacks); on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
-| Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
+| Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
 | Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
@@ -2021,7 +2021,7 @@ surface keeps a copy of either.
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the author’s row; a Pulls row’s place, before its number, with no icon |
 | Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and on the current pull request a check, `aria-current="page"`, and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
-| Stack group row | The registry’s chevron, the Layers icon, the label, and the count of its pull requests the list holds, “4” or “3 of 4” | The Pulls tab |
+| Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
   the register the menu’s heading has, so the menu’s heading and a stack group’s row are
@@ -2086,8 +2086,8 @@ toolbar, the Show group and Reload, has 23 px to spare.
   The pull requests in no stack follow the stacks, in the list’s order.
 - **Shared membership.** A pull request in two stacks sits once, under the first of them
   in that order, and its place names the other.
-  A later stack’s row still counts it among the pull requests the list holds, and its
-  accessible name says where it sits.
+  A later stack’s row’s accessible name still counts it among the pull requests the list
+  holds and says where it sits.
   A stack all of whose listed pull requests sit under earlier stacks has no row; their
   places name it.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
@@ -2114,18 +2114,19 @@ print the tree’s roles and places; and mounts the page’s stack menu to hold 
 groups list its order.
 `tests/test_github_pulls_stacks_chrome.py` measures in headless Chrome, against a
 running server with two native stacks, that a stack row’s header and the stack menu’s
-heading resolve to the same label tokens, where a stack’s row and its pull requests
-start, that the two kinds of row hover and focus alike, that the toolbar fits the
-default pane with room to spare, that real keys and a press move focus and open and
-close a stack, that a member’s changed files are a level further in, that the first
-stack’s row is in view after grouping arrives and after Left then Right, that a member’s
-place is on its number’s line, before the number, in the number’s ink, and names another
-stack by its glyph, that a member’s row draws no stack icon and its title has a
-first-level row’s room less its indent, and that the menu lists the group’s order with
-its positions in text ink.
-`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows from 420 px to the 180
-px minimum and holds that a place arriving moves nothing on its row’s title line and
-leaves the title its width, that it sits before the number, which shows whole, that
+heading resolve to the same label tokens, that a stack’s row shows its label alone, with
+its size in its accessible name, where a stack’s row and its pull requests start, that
+the two kinds of row hover and focus alike, that the toolbar fits the default pane with
+room to spare, that real keys and a press move focus and open and close a stack, that a
+member’s changed files are a level further in, that the first stack’s row is in view
+after grouping arrives and after Left then Right, that a member’s place is on its
+number’s line, before the number, in the number’s ink, and names another stack by its
+glyph, that a member’s row draws no stack icon and its title has a first-level row’s
+room less its indent, and that the menu lists the group’s order with its positions in
+text ink.
+`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows from 420 px to
+the 180 px minimum and holds that a place arriving moves nothing on its row’s title line
+and leaves the title its width, that it sits before the number, which shows whole, that
 nothing ends past the row, and that one stack’s place shows whole and, at 300 px and
 wider, keeps its row two lines.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
@@ -2890,7 +2891,8 @@ it resets them all, Show ignored back on, and keeps the grouping.
   takes every file the registry does not recognize.
   A group the filters leave empty is not shown.
 - **Sections.** Each section is a group heading in the menu group pattern, the group’s
-  name and its file count, over a full tree of the group’s members after the filters.
+  name with its file count beside it ([Heading Tallies](#heading-tallies)), over a full
+  tree of the group’s members after the filters.
   The heading starts on the tree’s row inset, 12 px, as a menu’s starts on its rows’,
   and names the section and its tree; sections after the first draw the divider above
   themselves. A folder opened inside a section lists only that group’s members.
@@ -2963,9 +2965,10 @@ The server decides membership, order, and counts (`/api/tree?group_by=` and `?gr
 `tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
 browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
 `tests/dom/group-by-refresh-behavior.js`; and `tests/test_files_tab_chrome.py` measures
-the row, the drawer, the numbers, the sections’ headings, a refresh after a write, and,
-with the grouped requests held, the wait: the trigger in the choice’s frame, the dimmed
-tree and the scan row’s words, a refresh that waits, and cancelling, in Chrome.
+the row, the drawer, the numbers, the sections’ headings and their tallies, a refresh
+after a write, and, with the grouped requests held, the wait: the trigger in the
+choice’s frame, the dimmed tree and the scan row’s words, a refresh that waits, and
+cancelling, in Chrome.
 
 The server reads every group from one pass over the index, at one index version
 (`GroupedTreeQuery` in `inventory_engine/contract.py`). Measured in process, warm, on
@@ -3632,6 +3635,8 @@ rule is equally close to a heading with or without a disclosure control.
 A use site owns the space around the heading, and the type and the rule stay with the
 primitive. Overview’s panels and a pull request’s sections carry it, and
 `test_section_headings_and_fold_expanders_are_primitives` holds it.
+A heading that counts its section sets the count beside its name
+([Heading Tallies](#heading-tallies)), as Review comments does.
 
 ### Folder Views Are Tabs
 
@@ -3975,6 +3980,53 @@ and a plugin’s use the same markup:
 starts on its rows’ inset and names its group or its menu;
 `tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot, and
 heading all read the one token.
+
+### Heading Tallies
+
+**A heading that counts what it heads sets the count beside its name, after the
+separator, on the heading’s line: “Older · 10,004 files”.** The far end of a line is
+where a row keeps its total, a folder’s size or a menu row’s count, so a count there
+read as a total of the heading’s row rather than the size of its group.
+
+```html
+<div class="group-heading tree-section-heading" id="metabrowser-tree-section-age%3Aolder">
+  <span class="tree-section-label">Older</span>
+  <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span> <span class="heading-tally-figure">10,004</span> files</span>
+</div>
+```
+
+- **Primitive.** `.heading-tally` in the shell’s `styles.css` follows the heading’s
+  name: a space, the dot, a space, the figure, and its unit if it has one, on one line
+  of markup, since the tally keeps its white space.
+  Any heading takes it, a [group heading](#groups-in-a-menu) or a
+  [section heading](#section-headings).
+- **Register.** The tally is a figure, not part of the name, so the heading’s caps,
+  tracking, and weight are for the name alone: the tally is at the heading’s size,
+  regular, untracked, in `--muted`, with tabular numerals.
+  Its numeral and words follow the count-summary rule for numbers.
+- **One line.** The tally never wraps, and keeps its spaces where a heading lays out its
+  name and tally as flex items.
+  Where the two do not fit, the name is cut short with an ellipsis and the tally stays
+  whole.
+- **Accessible name.** The dot is hidden from assistive technology, so the heading reads
+  its name and its count: Chrome names a Files section “OLDER 10,004 files”, in the
+  label register’s capitals.
+- **No tally where its rows are the count.** A heading over rows that each stand for one
+  of what it would count carries none, since the rows show it: a Pulls stack group’s row
+  shows no count of its pull requests ([Stacks](#stacks)). Its accessible name still
+  says how many.
+
+The headings that carry a tally are a Files Group by section’s
+([Grouping the Files Tree](#grouping-the-files-tree)) and a pull request page’s Review
+comments. A filter menu’s group headings, the stack menu’s heading, Overview’s panel
+headings, and File Overview’s type groups count nothing.
+`tests/test_files_tab_chrome.py` measures in Chrome that each File type section’s tally
+starts where its name ends, leaves the rest of the line empty, shares the name’s line at
+the default pane and at the 180 px minimum, sets its numeral at the numbers’ weight, and
+leaves the section and its tree named by the heading’s words without the dot;
+`tests/dom/github-pull-timeline-chrome.mjs` holds the Review comments heading to the
+same place and register, and `tests/dom/github-pulls-stacks-chrome.mjs` holds that a
+stack’s row shows its label alone.
 
 ### Menu Height
 

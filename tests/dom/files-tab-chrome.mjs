@@ -12,12 +12,13 @@
 // heading starts against its rows, how tall an open menu is drawn against its rows and
 // the window, which controls the bar's row and closed drawer hold, whether the row fits
 // its pane, how it wraps in a narrower one, and which take keyboard numbers, where a
-// Group by section's heading starts against its tree, whether a refresh after a write
-// keeps the scroll position and the focused row, what a Group by choice shows while its
-// request is held, and a tree row's leading slot, a
-// folder's chevron and a file's icon, against the name after it (docs/design-system.md,
-// "Groups in a Menu", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
-// "Navigation Toolbars Wrap"). The wrap is held to its rule by
+// Group by section's heading starts against its tree and where its tally sits beside its
+// name, at the default pane and the narrowest, and what Chrome names the section, whether
+// a refresh after a write keeps the scroll position and the focused row, what a Group by
+// choice shows while its request is held, and a tree row's leading slot, a folder's
+// chevron and a file's icon, against the name after it (docs/design-system.md, "Groups
+// in a Menu", "Heading Tallies", "Menu Height", "Grouping the Files Tree", "One Glyph
+// Size", and "Navigation Toolbars Wrap"). The wrap is held to its rule by
 // tests/dom/nav-toolbar-wrap.mjs. The requests and sections themselves run browserlessly
 // in
 // tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
@@ -280,8 +281,11 @@ const OPEN_MENU = `({
   drawerOpen: document.getElementById("filter-drawer").dataset.open,
 })`;
 
-// Each Group by section: its heading against its rows, and how the heading names it.
+// Each Group by section: its heading against its rows, how the heading names it, and
+// where its tally sits: beside the name, after the separator, on the heading's one line
+// (docs/design-system.md, "Heading Tallies").
 const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) => {
+  const round = (value) => Math.round(value * 100) / 100;
   const heading = section.querySelector(":scope > .tree-section-heading");
   const label = heading.querySelector(".tree-section-label");
   const range = document.createRange();
@@ -290,10 +294,36 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
   const box = row.getBoundingClientRect();
   const style = getComputedStyle(row);
   const tree = section.querySelector(":scope > [role='tree']");
+  const tally = heading.querySelector(":scope > .heading-tally");
+  const figure = tally.querySelector(".heading-tally-figure");
+  const headingBox = heading.getBoundingClientRect();
+  const headingStyle = getComputedStyle(heading);
+  const tallyBox = tally.getBoundingClientRect();
+  const labelBox = label.getBoundingClientRect();
+  const lineTops = new Set(
+    [...range.getClientRects(), tallyBox].map((rect) => Math.round(rect.top)),
+  );
   return {
     key: section.dataset.treeGroup,
     label: label.textContent,
-    count: heading.querySelector(".tree-section-count").textContent,
+    tally: tally.textContent,
+    // The tally starts where the name's box ends, its separator's space its own.
+    tallyFromLabel: round(tallyBox.left - labelBox.right),
+    // And it does not reach for the far end: the room left after it.
+    tallyToEnd: round(headingBox.right - parseFloat(headingStyle.paddingRight) - tallyBox.right),
+    // The name and the tally share one line, and the heading is that line.
+    lines: lineTops.size,
+    headingHeight: round(headingBox.height),
+    nameCut: label.scrollWidth > label.clientWidth,
+    tallyWhole: tally.scrollWidth <= tally.clientWidth + 0.5 &&
+      tallyBox.right <= headingBox.right - parseFloat(headingStyle.paddingRight) + 0.5,
+    weights: {
+      label: getComputedStyle(label).fontWeight,
+      tally: getComputedStyle(tally).fontWeight,
+      figure: getComputedStyle(figure).fontWeight,
+    },
+    numberWeight: getComputedStyle(document.documentElement).getPropertyValue("--pull-number-weight").trim(),
+    dotHidden: tally.querySelector(".heading-tally-dot")?.getAttribute("aria-hidden") === "true",
     headingClasses: [...heading.classList],
     fromRowInset: Math.round((range.getBoundingClientRect().left - box.left -
       parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)) * 100) / 100,
@@ -646,6 +676,37 @@ try {
   await browser.waitFor("document.querySelectorAll('.tree-section').length > 1", 30000);
   await browser.evaluate(frames);
   result.byType = await browser.evaluate(SECTIONS);
+  // What a section and its tree are named, as Chrome computes it for assistive technology:
+  // the heading's words, its tally's dot left out.
+  await browser.send("Accessibility.enable");
+  result.byTypeNames = [];
+  const sectionCount = await browser.evaluate("document.querySelectorAll('.tree-section').length");
+  for (let index = 0; index < sectionCount; index += 1) {
+    const named = {};
+    for (const [part, selector] of [
+      ["section", ""],
+      ["tree", ".querySelector(':scope > [role=\"tree\"]')"],
+    ]) {
+      const { result: handle } = await browser.send("Runtime.evaluate", {
+        expression: `document.querySelectorAll('.tree-section')[${index}]${selector}`,
+      });
+      const { nodes } = await browser.send("Accessibility.getPartialAXTree", {
+        objectId: handle.objectId,
+        fetchRelatives: false,
+      });
+      named[part] = nodes.find((node) => !node.ignored)?.name?.value ?? null;
+    }
+    result.byTypeNames.push(named);
+  }
+  // Off again, so the accessibility tree is not kept up through the steps after this.
+  await browser.send("Accessibility.disable");
+  // At the narrowest pane the heading is still one line: a name too long for it is cut
+  // short and the tally stays whole.
+  await paneWidth(NARROWEST);
+  await browser.evaluate(frames);
+  result.byTypeNarrow = await browser.evaluate(SECTIONS);
+  await paneWidth(null);
+  await browser.evaluate(frames);
   // A folder inside a section opens under that section's group.
   await browser.evaluate(
     `document.querySelector('.tree-section[data-tree-group="type:code"] .tree-folder[data-path="src"]').click(), true`,
@@ -695,6 +756,9 @@ try {
   await browser.evaluate(frames);
   const REFRESH_STATE = `({ scrollTop: document.getElementById("tree-content").scrollTop, focused: document.activeElement?.dataset?.treeId ?? null, libOpen: document.querySelector('${LIB}')?.getAttribute("aria-expanded") ?? null, written: Boolean(document.querySelector('.tree-section[data-tree-group="type:code"] .tree-file[data-path="src/lib/k99.py"]')) })`;
   const beforeWrite = await browser.evaluate(REFRESH_STATE);
+  // Code's heading, marked, to tell a heading refreshed in place from one drawn again.
+  const CODE_HEADING = `document.querySelector('.tree-section[data-tree-group="type:code"] > .tree-section-heading')`;
+  await browser.evaluate(`(${CODE_HEADING}.dataset.before = "1", true)`);
   fs.writeFileSync(path.join(root, "src", "lib", "k99.py"), "x99\n");
   const written = Date.now();
   let afterWrite = await browser.evaluate(REFRESH_STATE);
@@ -704,6 +768,10 @@ try {
   }
   await browser.evaluate(frames);
   result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
+  // The heading kept its place and updated its tally beside its name.
+  result.refreshedHeading = await browser.evaluate(
+    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
+  );
   phase("refreshed");
   // No grouping is the one tree again.
   await toggle("group", true);
