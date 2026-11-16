@@ -181,6 +181,11 @@ class FakeElement {
     return [...this.walk()].filter((node) => node.classList.contains(className));
   }
 
+  /** The first descendant of one class, `.name`, as a page answers it, or null. */
+  querySelector(selector) {
+    return this.find(selector.slice(1)).find((node) => node !== this) ?? null;
+  }
+
   text() {
     return [...this.walk()]
       .map((node) => node.textContent)
@@ -366,8 +371,8 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     const said = header.reads();
     check(
       "the header says what the change set holds, in the shell's number format",
-      said.includes("2 changed files") &&
-        said.includes("(1 added, 1 modified)") &&
+      said.includes("2 files changed") &&
+        said.includes("1 A, 1 M") &&
         said.includes("+1,201") &&
         said.includes("−1"),
       said,
@@ -378,14 +383,57 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     check(
       "the header's counts, and only its counts, are bold numbers",
       JSON.stringify(numbers) === JSON.stringify(["2", "1", "1"]) &&
-        header.find("diff-summary-files")[0]?.children[1]?.reads() === " changed files" &&
+        header.find("diff-summary-files")[0]?.children[1]?.reads() === " files changed" &&
         header.find("diff-stat-add")[0]?.reads() === "+1,201",
       JSON.stringify(numbers),
     );
+    // Each status is its rows' letter in the shell's status primitive, which inks it by its
+    // status; the dots between the groups and the comma between the statuses are the
+    // shell's muted punctuation, the dots hidden from a screen reader (mb-vb51). The header
+    // is painted by the shell's painters, the SDK's `countPartsNodes` for its file count and
+    // `changeLineNodes` for the brief change line after it, the one component for
+    // "1 A, 1 M · +1,201 −1" (mb-9ekj), and each dot is one item of its line with the group
+    // before it, so a wrap breaks after a dot.
+    const letters = header
+      .find("file-change-status")
+      .map((letter) => `${letter.reads()} ${letter.getAttribute("data-file-status")}`);
+    /** A part of the header: its class, a mark with its aria-hidden, or a group's parts. */
+    const item = (child) =>
+      child.classList.contains("summary-punctuation")
+        ? `${child.reads()} ${child.getAttribute("aria-hidden")}`
+        : ["diff-summary-group", "change-line", "change-line-group", "change-line-stats"].includes(
+              child.className,
+            )
+          ? { [child.className]: child.children.map(item) }
+          : child.className;
+    const groups = header.children
+      .filter((child) => typeof child === "object" && child.className !== "diff-summary-chevron")
+      .map(item);
+    const commas = header
+      .find("change-line-statuses")[0]
+      ?.find("summary-punctuation")
+      .map((mark) => `${mark.reads()} ${mark.getAttribute("aria-hidden")}`);
     check(
-      "the header names it all for a screen reader",
+      "the header's statuses are letters in their statuses' ink, its marks muted punctuation",
+      JSON.stringify(letters) === JSON.stringify(["A added", "M modified"]) &&
+        JSON.stringify(groups) ===
+          JSON.stringify([
+            { "diff-summary-group": ["diff-summary-files", "· true"] },
+            {
+              "change-line": [
+                { "change-line-group": ["change-line-statuses", "· true"] },
+                { "change-line-stats": ["diff-stat-add", "diff-stat-del"] },
+              ],
+            },
+          ]) &&
+        JSON.stringify(commas) === JSON.stringify([", null"]) &&
+        header.find("visually-hidden").length === 0,
+      JSON.stringify({ letters, groups, commas }),
+    );
+    check(
+      "the header names it all for a screen reader, in words",
       header.getAttribute("aria-label") ===
-        "2 changed files: 1 added, 1 modified; 1,201 lines added, 1 deleted",
+        "2 files changed: 1 added, 1 modified; 1,201 lines added, 1 deleted",
       header.getAttribute("aria-label") ?? "",
     );
     check(
@@ -755,11 +803,16 @@ async function main() {
     mountDiffView: mountDiffViewImpl,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
+  // A count summary and a brief change line are painted by the shell's painters, as the
+  // SDK's `countPartsNodes`, `changeLine`, and `changeLineNodes` hand them the page's
+  // document (formatters.js).
+  const painters = require("./changed-files-tree-fixture.js").shellPainters();
   const defaultTestApi = {
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForPath: () => "",
     prefs: { get: () => "unified" },
+    ...painters,
   };
   const mountDiffView = (container, document, api = {}, options) =>
     mountDiffViewImpl(container, document, { ...defaultTestApi, ...api }, options);
@@ -1340,12 +1393,13 @@ async function main() {
   };
   mountDiffView(many, twoFiles);
   // A change set's totals are its Diff summary's header, drawn on the shared changed-files
-  // tree. Without the tree, the totals stand as the line main drew, in the shell's number
-  // format, with no toggle: only the tree of files is lost (A3 of review A on #448).
+  // tree. Without the tree, the totals stand as a line, the header without its statuses, in
+  // the shell's number format, with no toggle: only the statuses and the tree of files are
+  // lost (A3 of review A on #448), and the muted dot still sets the totals apart (mb-vb51).
   const plain = many.find("diff-summary")[0];
   check(
     "a change set without the shared tree keeps its totals line",
-    plain?.reads().includes("2 changed files") &&
+    plain?.reads().includes("2 files changed") &&
       plain.reads().includes("+1") &&
       plain.reads().includes("\u22121") &&
       plain.find("diff-summary-toggle").length === 0 &&
@@ -1356,6 +1410,29 @@ async function main() {
     "the totals line's file count is a bold number, as the Diff summary's is",
     JSON.stringify(plain?.find("summary-number").map((number) => number.reads())) ===
       JSON.stringify(["2"]),
+  );
+  const plainMarks = plain
+    ?.find("summary-punctuation")
+    .map((mark) => `${mark.reads()} ${mark.getAttribute("aria-hidden")}`);
+  check(
+    "the totals line sets its totals apart with the Diff summary's muted, hidden dot",
+    JSON.stringify(plainMarks) === JSON.stringify(["· true"]),
+    JSON.stringify(plainMarks),
+  );
+  // A line has no name that says it in words, as the toggle's does, so a screen reader is
+  // told a comma in its dot's place, and the dot is one item with the file count before it.
+  const plainGroup = plain?.find("diff-summary-group")[0];
+  check(
+    "the totals line says a comma in its hidden dot's place",
+    JSON.stringify(
+      plainGroup?.children.map((part) => `${part.className}: ${part.reads()}`) ?? null,
+    ) ===
+      JSON.stringify([
+        "diff-summary-files: 2 files changed",
+        "summary-punctuation: ·",
+        "visually-hidden: , ",
+      ]) && plain.children[0] === plainGroup,
+    JSON.stringify(plainGroup?.children.map((part) => part.className) ?? null),
   );
   const hosted = new FakeElement("div");
   mountDiffView(hosted, twoFiles, undefined, { showSummary: false, changedFiles: sharedTree });
@@ -1398,7 +1475,7 @@ async function main() {
   const standalone = mountDiffSummary(
     slot,
     twoFiles,
-    { formatInteger: (count) => String(count) },
+    { formatInteger: (count) => String(count), ...painters },
     { changedFiles: sharedTree, openFile() {} },
   );
   const drawn = slot.children[0];
@@ -1406,7 +1483,7 @@ async function main() {
     "a page draws a Diff summary on its own from the document",
     slot.children.length === 1 &&
       drawn.classList.contains("diff-summary-toggle") &&
-      drawn.reads().includes("2 changed files"),
+      drawn.reads().includes("2 files changed"),
     drawn?.reads() ?? "",
   );
   standalone.dispose();
@@ -1428,17 +1505,17 @@ async function main() {
   const cutHeader = cutPlace.find("diff-summary-toggle")[0];
   check(
     "a list cut short says the page's whole totals and how many it lists",
-    cutHeader?.reads().includes("5 changed files") &&
+    cutHeader?.reads().includes("5 files changed") &&
       cutHeader.reads().includes("+15") &&
       cutHeader.reads().includes("−3") &&
       cutHeader.reads().includes("(2 listed)") &&
-      cutHeader.find("diff-summary-breakdown").length === 0,
+      cutHeader.find("change-line-statuses").length === 0,
     cutHeader?.reads() ?? "",
   );
   check(
     "and names them for a screen reader",
     cutHeader?.getAttribute("aria-label") ===
-      "5 changed files; 15 lines added, 3 deleted; 2 listed",
+      "5 files changed; 15 lines added, 3 deleted; 2 listed",
     cutHeader?.getAttribute("aria-label") ?? "",
   );
   const cutPlain = new FakeElement("div");
@@ -1448,7 +1525,7 @@ async function main() {
   });
   check(
     "a list cut short says them without the shared tree too",
-    cutPlain.reads().includes("5 changed files") && cutPlain.reads().includes("(2 listed)"),
+    cutPlain.reads().includes("5 files changed") && cutPlain.reads().includes("(2 listed)"),
     cutPlain.reads(),
   );
   const wholePlace = new FakeElement("div");
@@ -1459,7 +1536,7 @@ async function main() {
   });
   check(
     "a whole list says its own totals",
-    wholePlace.reads().includes("2 changed files") && !wholePlace.reads().includes("listed"),
+    wholePlace.reads().includes("2 files changed") && !wholePlace.reads().includes("listed"),
     wholePlace.reads(),
   );
   await diffSummaryChecks(mountDiffView, twoFiles);
@@ -1470,12 +1547,12 @@ async function main() {
   // while it is whole (A7 of review A on #470). It runs after the checks of a tree that did
   // not load, since a hover loads the tree's module.
   const tipSlot = new FakeElement("div");
-  const tipped = mountDiffSummary(tipSlot, twoFiles, undefined, {
+  const tipped = mountDiffSummary(tipSlot, twoFiles, painters, {
     changedFiles: sharedTree,
     openFile() {},
   });
   const tipHeader = tipSlot.children[0];
-  const tipBreakdown = tipHeader.find("diff-summary-breakdown")[0];
+  const tipBreakdown = tipHeader.find("change-line-statuses")[0];
   tipHeader.dispatch("pointerenter");
   check("a whole breakdown has no tooltip", tipHeader.dataset.tipText === undefined);
   tipBreakdown.scrollWidth = 180;
@@ -1483,7 +1560,7 @@ async function main() {
   tipHeader.dispatch("pointerenter");
   check(
     "a breakdown cut short gives its header's whole words",
-    tipHeader.dataset.tipText === "2 changed files (2 modified)  +1 \u22121",
+    tipHeader.dataset.tipText === "2 files changed \u00b7 2 M \u00b7 +1 \u22121",
     tipHeader.dataset.tipText ?? "",
   );
   tipBreakdown.scrollWidth = 60;

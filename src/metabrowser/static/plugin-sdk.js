@@ -64,6 +64,12 @@
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
+//     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
+//                                          marks muted, and its status letters in their
+//                                          statuses' ink: the shell's one painter of them
+//     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
+//                                          −567", from statuses and line totals
+//     changeLineNodes(line, options?)    — its nodes, the shell's one component for it
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
@@ -1558,6 +1564,29 @@
     return global.MetabrowserFormatters.titleNodes(global.document, title);
   }
 
+  // The shell's painters of a count summary and a brief change line, into the page's
+  // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
+  // Line").
+  /** @param {MetabrowserCountParts} parts @returns {Array<Node | string>} */
+  function countPartsNodes(parts) {
+    return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
+  }
+
+  /** @param {MetabrowserChangeLineInput} change @returns {MetabrowserChangeLine} */
+  function changeLine(change) {
+    const formatters = global.MetabrowserFormatters;
+    return formatters.changeLine(change, formatters.formatInteger);
+  }
+
+  /**
+   * @param {MetabrowserChangeLine} line
+   * @param {MetabrowserChangeLineOptions} [options]
+   * @returns {Array<Node | string>}
+   */
+  function changeLineNodes(line, options) {
+    return global.MetabrowserFormatters.changeLineNodes(global.document, line, options);
+  }
+
   function formatTimestamp(secondsSinceEpoch) {
     // Local-time short form; matches the file header / activity feed.
     if (!secondsSinceEpoch) {
@@ -1780,6 +1809,9 @@
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
     titleNodes: titleNodes,
+    countPartsNodes: countPartsNodes,
+    changeLine: changeLine,
+    changeLineNodes: changeLineNodes,
     countClass: countClass,
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,

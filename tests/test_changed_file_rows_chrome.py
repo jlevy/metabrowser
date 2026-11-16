@@ -253,6 +253,63 @@ def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str
     return broken
 
 
+# The token each status's letter takes (static/styles.css, `.file-change-status`).
+STATUS_INK = {
+    "added": "--git-status-added",
+    "removed": "--git-status-deleted",
+    "modified": "--git-status-modified",
+    "renamed": "--git-status-renamed",
+}
+
+
+def _header_inks(paint: dict[str, Any]) -> list[str]:
+    """What breaks the Diff summary header's inks in one theme, as Chrome computes them.
+
+    Each status is its letter in its status's ink, each dot between the groups and each
+    comma between the statuses the muted punctuation, the dots hidden from a screen reader,
+    and the file count, its words, and the statuses' counts the line's own ink; the
+    accessible name says it all in words (mb-vb51).
+    """
+
+    where = f"commit's Diff summary, {paint['theme']}"
+    tokens = paint["tokens"]
+    broken = []
+    # Distinct inks, or a letter at the line's ink would pass as its status's.
+    inks = [tokens[name] for name in ("--text", "--muted", *STATUS_INK.values())]
+    if len(set(inks)) != len(inks):
+        broken.append(f"{where}: the tokens are not distinct, {tokens}")
+    if [(text, status) for text, status, _ in paint["letters"]] != [
+        ("A", "added"),
+        ("D", "removed"),
+        ("M", "modified"),
+    ]:
+        broken.append(f"{where}: letters {paint['letters']}")
+    for text, status, color in paint["letters"]:
+        if color != tokens[STATUS_INK[status]]:
+            broken.append(f"{where}: {text} at {color}, not {STATUS_INK[status]}")
+    if [(text, hidden) for text, hidden, _ in paint["marks"]] != [
+        ("·", "true"),
+        (",", None),
+        (",", None),
+        ("·", "true"),
+    ]:
+        broken.append(f"{where}: marks {paint['marks']}")
+    for text, _, color in paint["marks"]:
+        if color != tokens["--muted"]:
+            broken.append(f"{where}: {text!r} at {color}, not --muted")
+    if paint["words"] != tokens["--text"]:
+        broken.append(f"{where}: the words at {paint['words']}, not --text")
+    for text, color in paint["numbers"]:
+        if color != tokens["--text"]:
+            broken.append(f"{where}: number {text} at {color}, not --text")
+    if (
+        paint["label"]
+        != "4 files changed: 1 added, 1 deleted, 2 modified; 3 lines added, 1 deleted"
+    ):
+        broken.append(f"{where}: label {paint['label']!r}")
+    return broken
+
+
 def _toolbar_draws_no_rule(toolbar: dict[str, Any], where: str) -> list[str]:
     """What breaks the diff toolbar's rule: no line under it, and the cards' gap to the first card."""
 
@@ -387,7 +444,17 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     broken += _counts_read_bold(commit_page["counts"]["summary"], "commit's Diff summary")
     broken += _counts_read_bold(commit_page["counts"]["commits"], "Commits tally")
     assert broken == [], (broken, patch, commit_page)
-    # The commit's header bolds its file count and each status's: 4 changed files, 1 added,
-    # 1 removed, 2 modified.
+    # The commit's header bolds its file count and each status's: 4 files changed, 1 A, 1 D,
+    # 2 M.
     numbers = [run["text"] for run in commit_page["counts"]["summary"] if run["number"]]
     assert numbers == ["4", "1", "1", "2"], commit_page["counts"]["summary"]
+    # It reads "4 files changed · 1 A, 1 D, 2 M · +3 −1", each letter in its status's ink and
+    # its dots and commas muted, in both themes (mb-vb51). Before, it read "4 changed files (1
+    # added, 1 removed, 2 modified)", its statuses in words and all of them muted.
+    paints = commit_page["paint"]
+    assert [paint["theme"] for paint in paints] == ["light", "dark"], paints
+    assert all(paint["text"] == "4 files changed·1 A, 1 D, 2 M·+3−1" for paint in paints), paints
+    inks = [problem for paint in paints for problem in _header_inks(paint)]
+    assert inks == [], (inks, paints)
+    # The two themes ink the letters apart, so each was read in its own.
+    assert paints[0]["letters"] != paints[1]["letters"], paints
