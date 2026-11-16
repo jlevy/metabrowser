@@ -193,6 +193,11 @@ def _run_until_interrupted(uvicorn_server: _QuietForceExitServer) -> bool:
     return uvicorn_server.interrupted is True
 
 
+# The banner line of a server that sends a loopback client its answers uncompressed
+# (metabrowser.delivery); a server that compresses for every client prints none.
+LOCAL_DELIVERY_BANNER = "Compression: off for loopback clients of this machine"
+
+
 def run_serve(
     root: Path,
     *,
@@ -370,6 +375,10 @@ def serve_until_interrupted(
     typer.echo(f"Serving {served} at {url}" + (f"  [dev build: {state}]" if state else ""))
     for line in banner:
         typer.echo(line)
+    if delivery.serving_locally():
+        # The one start that changes what a client is sent, said where an operator, and
+        # server-time.mjs, can read it (#455 A10).
+        typer.echo(LOCAL_DELIVERY_BANNER)
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")

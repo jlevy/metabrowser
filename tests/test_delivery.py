@@ -150,6 +150,9 @@ def _serves_locally(
     result = CliRunner().invoke(_app, argv)
     assert result.exit_code == 0, f"{result.output}{result.exception!r}"
     assert len(seen) == 1
+    # The banner says so exactly when the server was told it (#455 A10).
+    banner = serve_module.LOCAL_DELIVERY_BANNER in result.output.splitlines()
+    assert banner is seen[0], result.output
     return seen[0]
 
 

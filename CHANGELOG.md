@@ -8,10 +8,12 @@ All notable changes to Metabrowser are documented here.
   scripts, stylesheets, and fonts are compressed once rather than on every request.
   Compressing cost the server time on every answer, on the thread every request waits
   for, to save bytes that never left the machine.
-  Only the server the app starts stops: `metab` on a loopback address with
+  Only the server the app starts stops compressing: `metab` on a loopback address with
   `--exit-on-eof`, outside an SSH session, a Codespace, or a Dev Container.
   It then answers a loopback client uncompressed, unless the request carries a proxy’s
-  or a CDN’s forwarding header.
+  or a CDN’s forwarding header, and its banner says
+  `Compression: off for loopback clients of this machine`. Any other program that starts
+  `metab` that way, for the flag’s stop, gets the same.
   Every other server compresses as before, `metab ./notes` opening a browser and the
   server `--remote` starts included, so a remote host of any release still sends gzip
   through the tunnel, and nothing new is passed to it.
