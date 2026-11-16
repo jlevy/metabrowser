@@ -291,6 +291,37 @@ def test_api_tree_group_by_assembles_a_group_past_the_page_bound(
     )
 
 
+def test_api_tree_group_by_builds_each_group_s_tree_in_a_turn_of_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The grouped route lets the event loop run after each group's tree, the last one
+    included, so a wide folder's trees and body never hold it in one turn (mb-ik2x)."""
+
+    _build_fixture(tmp_path)
+    turns: list[str] = []
+    original_build = proc_browser.build_inventory_tree_from_entries
+
+    def build(**kwargs: Any) -> list[dict[str, Any]]:
+        turns.append("tree")
+        # Runs at the loop's next turn: between two trees only if the route yields.
+        asyncio.get_running_loop().call_soon(turns.append, "turn")
+        return original_build(**kwargs)
+
+    monkeypatch.setattr(proc_browser, "build_inventory_tree_from_entries", build)
+
+    async def run() -> None:
+        paths_safe._set_root_dir(tmp_path)
+        async with inventory_harness(tmp_path) as harness:
+            response = await proc_browser.api_tree(
+                cast(Any, _FakeRequest({"group_by": "type", "depth": "2"}, app=harness.app))
+            )
+            assert response.status_code == 200
+
+    asyncio.run(run())
+    assert len(turns) >= 12
+    assert turns == ["tree", "turn"] * (len(turns) // 2)
+
+
 def test_api_tree_group_by_reads_overlapping_wide_groupings_without_missing_a_page(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
