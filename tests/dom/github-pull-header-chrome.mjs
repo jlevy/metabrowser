@@ -236,7 +236,8 @@ const MEASURE = `async (name, change, tab, width) => {
     tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
   });
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
-  // the right end of the author's row (mb-cf0l): one stack, "2/3", or two, "4/4" and "2/2".
+  // the right end of the author's row (mb-cf0l): one stack, "⧉2/3", or two, "⧉286 4/4" and
+  // "⧉300 2/2", each named by its stack, as the page names a chip in more than one stack.
   // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
   // The strut that holds the author's row at a chip's height, read before a chip replaces it.
   const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
@@ -257,6 +258,7 @@ const MEASURE = `async (name, change, tab, width) => {
         link: () => document.createElement("a"),
         icon: layers(),
         currentTitle: "",
+        named: change.stackChip === 2,
         titleNodes: mb.titleNodes,
         onOpen() {},
       }),

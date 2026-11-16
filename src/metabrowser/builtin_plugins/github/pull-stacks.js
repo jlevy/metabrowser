@@ -193,8 +193,8 @@ export function stackRowKey(number) {
  * first pull request in the list, so the list's own order still decides which comes
  * first; a tie, two stacks first listed at one shared member, keeps the envelope's order.
  * A pull request in more than one stack sits once, under the first of them in that order;
- * a stack whose listed pull requests all sit under earlier stacks has no row, and their
- * badges name it. Pull requests in no stack follow the stacks, in the list's order.
+ * a stack whose listed pull requests all sit under earlier stacks has no row; their
+ * places name it. Pull requests in no stack follow the stacks, in the list's order.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that

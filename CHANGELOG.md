@@ -33,11 +33,11 @@ All notable changes to Metabrowser are documented here.
   count, “#8 is not listed under Open.”
   See [Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item).
 
-- The Pulls column shows no tooltips: a pull request’s row and its parts no longer show
-  one on hover, and a stack’s row has none.
-  Elsewhere a tooltip appears only when it adds something not already visible, and one
-  that repeats an element’s own text shows only while that text is cut short.
-  “Load more” no longer repeats its own words in a tooltip, and neither do a “Show
+- The Pulls column’s rows show no tooltips: a pull request’s row and its parts no longer
+  show one on hover, and a stack’s row has none; the changed files under a row keep the
+  tree’s tooltips. Elsewhere a tooltip appears only when it adds something not already
+  visible, and one that repeats an element’s own text shows only while that text is cut
+  short. “Load more” no longer repeats its own words in a tooltip, and neither do a “Show
   ignored” check or the treemap’s parent button.
   A crumb’s tooltip is its own name, shown only when the crumb is cut short, rather than
   the path the trail already shows, and a Files tree row’s tooltip leaves out the size
@@ -148,9 +148,10 @@ All notable changes to Metabrowser are documented here.
   other stack by the stack icon and its number before its position, as “3/4 · ⧉300 2/2”,
   where it showed two bare positions, such as “4/4 · 2/2”; on its page each of its stack
   buttons names its stack the same way, “⧉286 4/4” and “⧉300 2/2”, where they differed
-  only by their tips. A stack’s row and the pull request page’s stack menu share one
-  label, gray, all caps, and tracked, and the menu’s positions are in the row’s ink
-  rather than link blue.
+  only in their names for screen readers; each button’s tooltip also names its stack and
+  place, as in “Stack #286, position 4 of 4”. A stack’s row and the pull request page’s
+  stack menu share one label, gray, all caps, and tracked, and the menu’s positions are
+  in the row’s ink rather than link blue.
   Every way the stack menu opens, a press, Enter, Space, `↓`, or `↑`, puts focus on the
   current pull request, which the menu marks as the Pulls list marks its current row,
   and Escape gives focus back to the button ([Stacks](docs/design-system.md#stacks)).

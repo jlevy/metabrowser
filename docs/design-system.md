@@ -1438,16 +1438,17 @@ The colored badge that leads the row of ages gives the state in text and the tit
 is decorative. The header’s box is decided at first paint, in every state and on every
 tab, so the tab bar under it never moves between pull requests or tabs: the author’s row
 is one line, the author and the sentence, then at its right end the stack chip’s slot
-(see native stack navigation below), and the sentence is cut short at its end, the
-action first and then the author, never moved or wrapped; the branches have the line
-under it to themselves, one line in every state, their names cut short rather than
-wrapping it; the row of ages begins with the state’s badge, as wide as the widest state,
-then “Opened”, the ages, View on GitHub, and Browse code, one line cut short at its end;
-the labels row is always there, a line of labels or none, at a label’s height; the
-status row is one line that ends in Refresh’s slot, held hidden on a tab with nothing to
-refresh, its text and then its offers’ sentences cut short, never their controls, and a
-rate limit’s hold on the line too; and a cold page keeps every row, empty, at its
-height. Only a failure, which says what to do, wraps the status row.
+(see native stack navigation below); where the row has no room left, the sentence is cut
+short at its end, the action first and then the author, never moved or wrapped; the
+branches have the line under it to themselves, one line in every state, their names cut
+short rather than wrapping it; the row of ages begins with the state’s badge, as wide as
+the widest state, then “Opened”, the ages, View on GitHub, and Browse code, one line cut
+short at its end; the labels row is always there, a line of labels or none, at a label’s
+height; the status row is one line that ends in Refresh’s slot, held hidden on a tab
+with nothing to refresh, its text and then its offers’ sentences cut short, never their
+controls, and a rate limit’s hold on the line too; and a cold page keeps every row,
+empty, at its height.
+Only a failure, which says what to do, wraps the status row.
 A tab switch or a poll builds again only the header’s parts whose inputs changed: the
 title, the badge, the author, the branch chips, the row of ages, the labels, and each
 status control are kept while what they show is the same, so a repaint that leaves a
@@ -1499,12 +1500,13 @@ Membership has its slot at the right end of the author’s row, under the end of
 title, so its chip, which arrives from its own answer after the page, lands in the row’s
 empty end and moves nothing; where the row has no room left for it, the sentence is cut
 short at its end. Its menu hangs from the chip’s end of the row.
-Measured in Chrome 152 at 980 to 320 px, one stack’s chip is 54.75 px and two stacks’
-113.5 px; a late chip moved no part’s start and no row, kept 8 px from the sentence, and
-cut the sentence only where it needed the room: at 560 px two stacks cut a long author’s
-sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 commits” by
-38.04 px. Its `details` is no taller than the strut it replaces there, since the slot
-sets the chip’s own size.
+Measured in Chrome 152 at 980 to 320 px, one stack’s chip, “⧉2/3”, is 54.75 px and two
+stacks’ named chips, “⧉286 4/4” and “⧉300 2/2”, 156.31 px; a late chip moved no part’s
+start and no row, kept 8 px from the sentence, and cut the sentence only where it needed
+the room: at 560 px two stacks cut a long author’s sentence by 77.69 px, and at 360 px
+two stacks cut “forker wants to merge 2 commits” by 80.85 px.
+Its `details` is no taller than the strut it replaces there, since the slot sets the
+chip’s own size.
 
 ### Text
 
