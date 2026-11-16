@@ -3,9 +3,9 @@ type: is
 id: is-01m7hdz8vrx2wktnbpnskn2qd5
 title: "PR #464 A3: a reveal draws only one more page of a long folder"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m7hcjm7dvfsqanbt2jtdyxfy
 hold: null
 hold_until: null
 created_at: 2026-11-16T05:41:09.623Z
-updated_at: 2026-11-16T06:21:48.080Z
+updated_at: 2026-11-16T06:51:33.779Z
 started_at: 2026-11-16T05:41:17.085Z
+closed_at: 2026-11-16T06:51:33.778Z
+close_reason: "Fixed in 4586511 (coordinator's option 2): mountTreePageAt draws only the page that holds the row; last of 10,000 files reveals in 18 ms median (20 ms max), selected and in view; the loop measured 2.75 s. Session (1,400-file folder) and Chrome (1,000-file fixture, f605, two presses in order) fail at 0b49516."
+resolution: null
+duplicate_of: null
 ---
 Medium. Review A on PR #464 (https://github.com/jlevy/metabrowser/pull/464#pullrequestreview-5915452177). app.js:9113,9147,9170-9181: mountTreePageHolding mounts one TREE_PAGE_SIZE page; rows past 400 stay undrawn. Loop, production-like stand-in, Chrome fixture past 400 files, measure cost for thousands.
 

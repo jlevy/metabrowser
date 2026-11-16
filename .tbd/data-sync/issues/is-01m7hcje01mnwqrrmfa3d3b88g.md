@@ -5,7 +5,7 @@ title: "PR #457 (merge): review, address, gate — feat(keys): Control-N and Con
 kind: task
 status: open
 priority: 1
-version: 7
+version: 8
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -16,6 +16,7 @@ child_order_hints:
   - is-01m7hdan2tc1wvmhjrpmskbb8w
   - is-01m7hdanvpcbztabydhbyak0xh
   - is-01m7hdapg56ynkb1p45ry02vxb
+  - is-01m7hgqtwwfyr11f95dc0apthv
 created_at: 2026-11-16T05:16:40.320Z
-updated_at: 2026-11-16T05:29:55.459Z
+updated_at: 2026-11-16T06:29:31.675Z
 ---

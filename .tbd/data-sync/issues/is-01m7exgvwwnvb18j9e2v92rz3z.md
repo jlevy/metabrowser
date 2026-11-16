@@ -3,9 +3,9 @@ type: is
 id: is-01m7exgvwwnvb18j9e2v92rz3z
 title: KPress's :root aliases replace the shell's --font-sans and --font-mono once a document loads
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:15:11.515Z
-updated_at: 2026-11-16T06:26:07.916Z
+updated_at: 2026-11-16T07:05:48.423Z
 started_at: 2026-11-16T06:26:07.914Z
+closed_at: 2026-11-16T07:05:48.423Z
+close_reason: "Fixed in https://github.com/jlevy/metabrowser/pull/475: the plugin SDK no longer re-links a stylesheet the page already links, and --font-mono and --kpress-host-font-mono share the host-only --app-mono stack. Measured in Chrome 152 (CDP) and WKWebView on macOS 26.5: Menlo and SF Mono respectively on every surface, before and after a Markdown view. make verify passed locally."
+resolution: null
+duplicate_of: null
 ---
 Found in review A of #438 (finding A5, https://github.com/jlevy/metabrowser/pull/438#pullrequestreview-5909379904) and seen while measuring faces for mb-k838.
 
