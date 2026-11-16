@@ -94,7 +94,7 @@ global.document = { createElement: (tag) => new Element(tag) };
     formatSize: (value) => `${value} B`,
     sizeClass: () => "",
     tooltip: {
-      hide: () => tooltipCalls.push({ action: "hide" }),
+      hide: (within) => tooltipCalls.push({ action: "hide", within }),
       show: (html, anchor) => tooltipCalls.push({ action: "show", anchor, html }),
     },
   };
@@ -302,10 +302,24 @@ global.document = { createElement: (tag) => new Element(tag) };
       sharedStyles.includes("--mb-distribution-segment-gap:"),
     styles,
   );
+  // A draw puts away its own segments' tooltip and no other surface's: the page has one
+  // tooltip, and an unscoped hide on every draw took a Files tree row's from under a
+  // pointer that had not moved (mb-alff, docs/design-system.md, "A Surface Puts Away Only
+  // Its Own Tooltip").
+  const totalsRoot = container.children[0];
+  tooltipCalls.length = 0;
+  view.update(totals);
+  check(
+    "a draw hides only a tooltip anchored in the totals",
+    tooltipCalls.length === 1 &&
+      tooltipCalls[0].action === "hide" &&
+      tooltipCalls[0].within === totalsRoot,
+    JSON.stringify(tooltipCalls.map((call) => [call.action, call.within === totalsRoot])),
+  );
   view.dispose();
   check(
-    "disposing Files clears the shared tooltip",
-    tooltipCalls.at(-1)?.action === "hide",
+    "disposing Files clears its own tooltip",
+    tooltipCalls.at(-1)?.action === "hide" && tooltipCalls.at(-1)?.within === totalsRoot,
     JSON.stringify(tooltipCalls.map((call) => call.action)),
   );
   check(

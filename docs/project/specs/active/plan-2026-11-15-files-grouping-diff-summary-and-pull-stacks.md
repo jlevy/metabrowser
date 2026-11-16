@@ -1,6 +1,6 @@
 # Feature: Files Grouping, a Diff Summary, Pull Stack Groups, and the Conversation Timeline
 
-**Date:** 2026-11-15 (last updated 2026-11-15)
+**Date:** 2026-11-15 (last updated 2026-11-16)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -14,7 +14,11 @@ pull request titles, navigation that reveals the item, label colors, Group by’
 a large folder, a design-system consistency pass over all of them, a Pulls row’s two
 lines, one Diff summary at a page’s top, a cached label set, and a Diff summary that
 opens in the page’s flow, from the same day.
-They land as one native GitHub stack of twenty-two pull requests on `main`:
+Six more followed from later requests: heading tallies, a diff toolbar with no rule and
+count summaries with bold numbers, the pull request header’s lines and its Diff
+summary’s wait, Home, a comparison kept and read ahead, and the Diff summary’s status
+letters. They landed as one native GitHub stack of twenty-eight pull requests on `main`,
+all merged:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -72,6 +76,31 @@ They land as one native GitHub stack of twenty-two pull requests on `main`:
 22. **Diff summary in the flow:** an opened Diff summary has no scroll bar of its own
     and grows in the page’s flow, drawing the rows in view, and its tree steps in from
     its header one `--tree-indent` a level, as nested rows do elsewhere (`mb-hi4l`).
+23. **Heading tallies:** a group or section heading’s tally sits beside its name after “
+    · ”, in one shell primitive, and a Pulls stack group’s row shows none (`mb-mcjd`,
+    `mb-yk0i`).
+24. **Toolbar rule and bold counts:** a diff’s toolbar draws no rule under the Split |
+    Unified chooser (`mb-a073`), and every count summary bolds its numbers and keeps its
+    words regular (`mb-roa9`).
+25. **Header lines and the summary’s wait:** a pull request’s freshness line is one of
+    its header’s metadata lines, with text actions, and a pull request with no labels
+    has no labels row (`mb-2u08`); the header’s Diff summary row holds the pending
+    placeholder while its comparison is read (`mb-onr2`).
+26. **Home:** the folder’s name at the top of the navigation, `0`, and Shift-0 show the
+    folder’s home view as a fresh load shows it, in the page (`mb-5lzl`).
+27. **Comparison kept and read ahead:** a pull request’s comparison is kept for the
+    document, so a revisit draws its Diff summary in the paint that shows its record,
+    and the Pulls tab reads ahead the comparisons a reader is likely to open next
+    (`mb-neg9`).
+28. **Diff summary letters:** the Diff summary’s header says each status as the letter
+    its rows carry, in its status’s color, with muted dots and commas (`mb-vb51`); a
+    commit’s hover card says its changes in the same words (`mb-khm6`); and the brief
+    change line is one component (`mb-9ekj`, its first half).
+
+Two more pieces of this work land as pull requests of their own on `main`, outside the
+stack, each adding its row to [Stack Order](#stack-order) and its phase: the brief
+change line in each Pulls stack heading, the second half of `mb-9ekj`, and one header
+design for a commit’s page and a pull request’s page (`mb-26zj`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -183,8 +212,9 @@ request must prove.
 
 ### Stack Order
 
-One native stack, linked with `gh stack link`, each pull request based on the one below
-it:
+Pull requests 1 to 28 are one native stack, linked with `gh stack link`, each based on
+the one below it. The rows after them are the pull requests of their own on `main` that
+finish the work, each of which adds its row here and its phase below:
 
 | # | Branch | Beads | Why it sits here |
 | --- | --- | --- | --- |
@@ -206,15 +236,17 @@ it:
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
-| 19 | `claude/pulls-rows-two-lines` | `mb-lkkt` | On pull request 18; lays a Pulls row out on two lines |
+| 19 | `claude/pulls-rows-two-lines` | `mb-lkkt`, `mb-3cbf` | On pull request 18; lays a Pulls row out on two lines |
 | 20 | `claude/diff-summary-top` | `mb-pb35` | On pull request 19; moves the Diff summary to the top of the commit and pull request pages, under the header whose rows pull requests 13 and 19 change |
 | 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 | 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
+| 23 | `claude/group-heading-tally` | `mb-mcjd`, `mb-yk0i` | On pull request 22 (#472); sets a heading’s tally beside its name, on the Files Group by sections pull request 2 adds and on the Review comments heading, and takes it off the Pulls stack rows pull request 5 adds |
+| 24 | `claude/diff-toolbar-rule` | `mb-a073`, `mb-roa9` | On pull request 23 (#473); drops the rule under a diff’s toolbar, whose Diff summary header pull request 22 makes its tree’s root, and bolds the numbers of every count summary, that header among them |
 | 25 | `claude/pull-header-status` | `mb-2u08`, `mb-onr2` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, and holds the pending placeholder in the Diff summary row pull request 20 adds |
 | 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 | 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
-| 28 | `claude/diff-summary-letters` | `mb-vb51` | On pull request 27 (#478); rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, and resizes the pending placeholder pull request 25 holds in its row |
-| 29 | `claude/stack-change-lines` | `mb-9ekj` | On pull request 28 (#479); draws the brief change line that pull request 28 makes one component on each Pulls stack heading pull request 5 adds, read from a new route that sums a stack’s change in the store, within the read-ahead cap pull request 27 sets |
+| 28 | `claude/diff-summary-letters` | `mb-vb51`, `mb-khm6`, `mb-9ekj` (its first half) | On pull request 27 (#478), and merged on `main` once #478 had; rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, says a commit’s hover card in the same words, makes the brief change line after the file count one component, and resizes the pending placeholder pull request 25 holds in its row |
+| 29 | `claude/stack-change-lines` | `mb-9ekj` (its second half) | On `main`, after pull request 28 merged (#484); draws the brief change line that pull request 28 makes one component on each Pulls stack heading pull request 5 adds, read from a new route that accumulates the stack’s members’ own changed files from the cache, within a read cap of its own apart from the one pull request 27 sets |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -691,85 +723,85 @@ it, and ideally cached it up front”.
 
 ### Phase 1: Menu Group Pattern and Filter Menu Height (pull request 1)
 
-- [ ] `mb-s6vu`: inventory every menu that groups rows; one group pattern at the row
+- [x] `mb-s6vu`: inventory every menu that groups rows; one group pattern at the row
   inset; document it in `docs/design-system.md` and for plugins.
-- [ ] `mb-1wfn`: the type filter menu fits its rows up to about 16 and stays inside the
+- [x] `mb-1wfn`: the type filter menu fits its rows up to about 16 and stays inside the
   window; the age menu is unchanged.
 
 ### Phase 2: Files Group By (pull request 2)
 
-- [ ] `mb-sogv`: the Group by control, the drawer layout, age and type groups, the
+- [x] `mb-sogv`: the Group by control, the drawer layout, age and type groups, the
   shared type order, sections, persistence, and the route or model with its golden.
-- [ ] `mb-x1h6`: Show ignored on the row after Group by, and a badge that counts only
+- [x] `mb-x1h6`: Show ignored on the row after Group by, and a badge that counts only
   the drawer’s filters.
 
 ### Phase 3: Diff Fold in Place (pull request 3)
 
-- [ ] `mb-m5dd`: a borderless fold that expands in place.
+- [x] `mb-m5dd`: a borderless fold that expands in place.
 
 ### Phase 4: Diff Summary (pull request 4)
 
-- [ ] `mb-epw2`: the shared tree model with folder roll-ups, the summary component in
+- [x] `mb-epw2`: the shared tree model with folder roll-ups, the summary component in
   every multi-file diff host, and the Pulls tab’s tree on the same model.
 
 ### Phase 5: Pull Stack Groups (pull request 5)
 
-- [ ] `mb-cm61`: stack rows, ordering, shared membership, fallbacks and keys, with the
+- [x] `mb-cm61`: stack rows, ordering, shared membership, fallbacks and keys, with the
   model’s session and golden.
-- [ ] `mb-vmwh`: grouping always on, with no toolbar control.
-- [ ] `mb-ghff`: a Pulls row names no branches; the pull request’s page keeps them.
-- [ ] `mb-dzsi`: a member’s place before its number on the metadata line, with no stack
+- [x] `mb-vmwh`: grouping always on, with no toolbar control.
+- [x] `mb-ghff`: a Pulls row names no branches; the pull request’s page keeps them.
+- [x] `mb-dzsi`: a member’s place before its number on the metadata line, with no stack
   icon on its row.
-- [ ] `mb-hmv7`: one tighter slot, `--tree-icon-slot`, for a tree row’s chevrons and
+- [x] `mb-hmv7`: one tighter slot, `--tree-icon-slot`, for a tree row’s chevrons and
   icons.
-- [ ] `mb-vrvs`: a pull request’s number in bold wherever it names the pull request,
+- [x] `mb-vrvs`: a pull request’s number in bold wherever it names the pull request,
   through `--pull-number-weight`.
 
 ### Phase 6: Conversation Timeline (pull request 6)
 
-- [ ] `mb-g3ao`: commit rows on the timeline’s type scale and spacing, and the timeline
+- [x] `mb-g3ao`: commit rows on the timeline’s type scale and spacing, and the timeline
   line joining every event.
-- [ ] `mb-xz1r`: a run of commits stands at least as far from a comment as one commit
+- [x] `mb-xz1r`: a run of commits stands at least as far from a comment as one commit
   from the next.
-- [ ] `mb-fon5`: the branches on a line of their own under the author’s sentence.
-- [ ] `mb-4ydo`: the state badge leads the row of ages.
-- [ ] `mb-cf0l`: the stack chip at the right end of the author’s row.
-- [ ] `mb-z416`: the title’s number at the header’s right edge, over the stack chip.
+- [x] `mb-fon5`: the branches on a line of their own under the author’s sentence.
+- [x] `mb-4ydo`: the state badge leads the row of ages.
+- [x] `mb-cf0l`: the stack chip at the right end of the author’s row.
+- [x] `mb-z416`: the title’s number at the header’s right edge, over the stack chip.
 
 ### Phase 7: Sans Headings (pull request 7)
 
-- [ ] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
+- [x] `mb-l4vm`: an upright h2 in every sans context, pinned by an h2 check added to
   #438’s Chrome session.
 
 ### Phase 8: Stack Keys (pull request 8)
 
-- [ ] `mb-lnqj`: Control-N and Control-P walk the stack; the registry’s Control chord,
+- [x] `mb-lnqj`: Control-N and Control-P walk the stack; the registry’s Control chord,
   its guards, its platform naming, and the keymap goldens, sessions, Help copy, and
   docs.
-- [ ] `mb-6rfu`: `P` opens the Pulls tab; `R` is freed, and the reserved table,
+- [x] `mb-6rfu`: `P` opens the Pulls tab; `R` is freed, and the reserved table,
   sessions, goldens, and docs say so.
 
 ### Phase 9: Narrow Toolbars (pull request 9)
 
-- [ ] `mb-nm4z`: one wrap rule for every navigation toolbar and the tab bar, with token
+- [x] `mb-nm4z`: one wrap rule for every navigation toolbar and the tab bar, with token
   line spacing, the segmented group’s cluster fallback, and the Files, Pulls, and
   Commits Chrome tests sweeping every pane width in both font sets.
 
 ### Phase 10: The Group By Menu (pull request 10)
 
-- [ ] `mb-4mir`: Group by’s rows read “By age” and “By file type”, as its trigger does,
+- [x] `mb-4mir`: Group by’s rows read “By age” and “By file type”, as its trigger does,
   pinned in Chrome and in the Group by session’s golden.
-- [ ] `mb-ibo4`: Group by’s rows take `N`, `A`, and `T` while it is open and has focus,
+- [x] `mb-ibo4`: Group by’s rows take `N`, `A`, and `T` while it is open and has focus,
   shown by the Shift reveal and in Help’s Menus group, with one menu-key convention in
   the design system; the key reveal session and its golden, and a Chrome check.
-- [ ] `mb-spqw`: every key that opens a menu focuses its checked row through one path in
+- [x] `mb-spqw`: every key that opens a menu focuses its checked row through one path in
   the filter controls, and Escape gives focus back to the trigger; the key reveal
   session and the filter controls behavior test, and a Chrome check of
   `document.activeElement`.
 
 ### Phase 11: Tooltips Add Information (pull request 11)
 
-- [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
+- [x] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
   once in the design system; the app’s other tooltips audited, those that repeat visible
   text removed and the owner’s decisions on the borderline ones applied; the shell shows
   a tip equal to its element’s text, or to a box’s inside it, only while that text is
@@ -778,23 +810,23 @@ it, and ideally cached it up front”.
 
 ### Phase 12: Conversation Rhythm and Headings (pull request 12)
 
-- [ ] `mb-w7rt`: one rhythm between every two consecutive events.
-- [ ] `mb-novh`: every event’s heading reads alike.
+- [x] `mb-w7rt`: one rhythm between every two consecutive events.
+- [x] `mb-novh`: every event’s heading reads alike.
 
 ### Phase 13: Title Prefixes (pull request 13)
 
-- [ ] `mb-z57p`: the split and its golden session, the shared helper on every title
+- [x] `mb-z57p`: the split and its golden session, the shared helper on every title
   surface, the one weight rule, the Chrome weights, and the docs.
 
 ### Phase 14: Navigation Reveals the Item (pull request 14)
 
-- [ ] `mb-6y0g`: every route to an item reveals it in its tab, with one shared path, its
+- [x] `mb-6y0g`: every route to an item reveals it in its tab, with one shared path, its
   exceptions in `docs/design-system.md`, a browserless session and golden, and a Chrome
   check.
 
 ### Phase 15: Label Colors (pull request 15)
 
-- [ ] `mb-9qob`: a pull request’s queries ask for each label’s color and description;
+- [x] `mb-9qob`: a pull request’s queries ask for each label’s color and description;
   the record keeps both under a raised projection, and the catalog vouches for no record
   of an earlier one, which a refresh reads in full; the catalog’s rows keep names alone;
   the chips are painted by github.com’s formula in both themes at our chip’s size, with
@@ -805,37 +837,37 @@ it, and ideally cached it up front”.
 
 ### Phase 16: Group By Speed and Feedback (pull request 16)
 
-- [ ] `mb-navs`: the provider’s one-pass grouped read, its conformance test against each
+- [x] `mb-navs`: the provider’s one-pass grouped read, its conformance test against each
   group’s filtered tree, a route test that a grouping costs one read, and the prefetch
   on a pressed row or one the arrow keys reach; the measurements in the design system’s
   “Grouping the Files Tree”.
-- [ ] `mb-75l5`: the trigger in the choice’s frame, the dimmed tree under the scan row’s
+- [x] `mb-75l5`: the trigger in the choice’s frame, the dimmed tree under the scan row’s
   words, cancelling, kept prefetches, refreshes that wait, and a reveal that lands after
   the sections paint; in the Group by session and its golden, and in the Files Chrome
   test with the grouped requests held.
 
 ### Phase 17: Consistency in Code (pull request 17)
 
-- [ ] `mb-xlla`: each code finding of the consistency review (`mb-r5jr`) fixed in the
+- [x] `mb-xlla`: each code finding of the consistency review (`mb-r5jr`) fixed in the
   layer’s code or stylesheet: existing tokens and shared classes in place of local
   literals and copies, and the menu, stack, and loading behavior the design system
   states, each with its test.
 
 ### Phase 18: Consistency in Docs (pull request 18)
 
-- [ ] `mb-vg55`: the CHANGELOG’s Unreleased block reads as one change from 0.12.0, with
+- [x] `mb-vg55`: the CHANGELOG’s Unreleased block reads as one change from 0.12.0, with
   each feature in its final state; the design system, the user docs, and this plan
   describe the stack as pull request 17 leaves it, each rule stated once with links from
   the other sections, and with no bead IDs in the design system.
 
 ### Phase 19: Pulls Rows (pull request 19)
 
-- [ ] `mb-lkkt`: the number’s line first, “1/4 · #113 · jlevy” with the age at the row’s
+- [x] `mb-lkkt`: the number’s line first, “1/4 · #113 · jlevy” with the age at the row’s
   end, then the title under the age to the row’s end; the number’s line one line at
   every width, its author giving way first and its place after; measured in Chrome from
   420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
   stylesheet’s tests.
-- [ ] `mb-3cbf`: the chevron and the state icon lead the first line, in their 14 px
+- [x] `mb-3cbf`: the chevron and the state icon lead the first line, in their 14 px
   slots and centered on the number’s line, and the title is alone on the second, from
   the text column to the row’s end; the row stays 43 px, the stack row’s and members’
   chevrons and an open pull request’s files keep their columns; measured in the same
@@ -844,7 +876,7 @@ it, and ideally cached it up front”.
 
 ### Phase 20: Diff Summary at the Top (pull request 20)
 
-- [ ] `mb-pb35`: one Diff summary at the top of the commit page and of the pull request
+- [x] `mb-pb35`: one Diff summary at the top of the commit page and of the pull request
   page, on every tab; the commit page’s stats block removed; the pull request header’s
   last row held from first paint and measured in Chrome to move nothing; pinned in the
   diff view, git panel, pull page mount, and prefetch sessions, the prefetch golden, the
@@ -852,7 +884,7 @@ it, and ideally cached it up front”.
 
 ### Phase 21: Label Color Cache (pull request 21)
 
-- [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
+- [x] `mb-varu`: the repository’s label set is fetched once and cached per repository,
   read on demand by a job of its own when a page shows a label named alone that the set
   lacks, at most once in its age, and a chip takes its color and description from it
   whenever its record lacks them; a `metab` route and golden, a browserless session of
@@ -861,7 +893,7 @@ it, and ideally cached it up front”.
 
 ### Phase 22: Diff Summary in the Flow (pull request 22)
 
-- [ ] `mb-hi4l`: an opened Diff summary with no scroll bar of its own, in the page’s
+- [x] `mb-hi4l`: an opened Diff summary with no scroll bar of its own, in the page’s
   flow, drawn a window at a time against the page’s scroll, measured on 106, 600, and
   2,000 files; its tree one `--tree-indent` a level in from its header in a patch’s
   toolbar, a commit’s page, and a pull request’s header; pinned in the changed-file
@@ -869,21 +901,21 @@ it, and ideally cached it up front”.
 
 ### Phase 23: Heading Tallies (pull request 23)
 
-- [ ] `mb-mcjd`: a group or section heading’s tally sits beside its name after “ · ”, on
+- [x] `mb-mcjd`: a group or section heading’s tally sits beside its name after “ · ”, on
   its line, in one shell primitive; the Files Group by sections and the Review comments
   heading take it, and folder rows keep their right-aligned totals; measured in Chrome
   at the default pane and the 180 px minimum, with the accessible names pinned.
-- [ ] `mb-yk0i`: a Pulls stack group’s row shows no tally, its size kept in its
+- [x] `mb-yk0i`: a Pulls stack group’s row shows no tally, its size kept in its
   accessible name; the stack groups’ session and golden and the stacks Chrome test
   updated.
 
 ### Phase 24: Toolbar Rule and Bold Counts (pull request 24)
 
-- [ ] `mb-a073`: the diff’s toolbar draws no rule under the Split | Unified chooser, on
+- [x] `mb-a073`: the diff’s toolbar draws no rule under the Split | Unified chooser, on
   a commit’s page, a pull request’s Changes, and a patch, where the Diff summary’s
   header is its tree’s root; the first file card’s border, 12 px below, is the one line;
   measured in Chrome on a patch and a commit’s page.
-- [ ] `mb-roa9`: every count summary bolds its numbers, `.summary-number`, and keeps its
+- [x] `mb-roa9`: every count summary bolds its numbers, `.summary-number`, and keeps its
   words regular, stated once in the design system (“Count Summaries Bold Their
   Numbers”): the Diff summary’s header and fallback line, the Files totals and filter
   remark, the Commits tally, the Pulls count, a pull request’s Checks summary, and a
@@ -893,13 +925,13 @@ it, and ideally cached it up front”.
 
 ### Phase 25: Pull Request Header Lines and the Summary’s Wait (pull request 25)
 
-- [ ] `mb-2u08`: the freshness line is one of the header’s metadata lines, its Refresh,
+- [x] `mb-2u08`: the freshness line is one of the header’s metadata lines, its Refresh,
   Fetch, and Switch to the head text actions, and a pull request with no labels has no
   labels row, held only while the record is on its way; measured in Chrome 152 at 560,
   420, and 360 px in both themes, with a header Chrome check that fails on the old
   layout, and pinned in the page mount session, the reserved-chrome and design
   vocabulary tests, and the design system.
-- [ ] `mb-onr2`: the header’s Diff summary row holds the shell’s pending placeholder
+- [x] `mb-onr2`: the header’s Diff summary row holds the shell’s pending placeholder
   while its comparison is read, and is empty once a read draws none; the prefetch tells
   the page of a failed read; measured in Chrome 152 at 560, 420, and 360 px in both
   themes by the header Chrome session’s `summary-wait` part, which fails on the old
@@ -907,7 +939,7 @@ it, and ideally cached it up front”.
 
 ### Phase 26: Home (pull request 26)
 
-- [ ] `mb-5lzl`: the folder’s name at the top of the nav, `0`, and Shift-0 show the
+- [x] `mb-5lzl`: the folder’s name at the top of the nav, `0`, and Shift-0 show the
   served folder’s home view as a fresh load of `/view/` shows it, in the page: Files in
   front with the root drawn again at its default view, every tab’s destination and
   scroll forgotten, so Pulls opens its list and a pull request from it opens on
@@ -923,7 +955,7 @@ it, and ideally cached it up front”.
 
 ### Phase 27: Comparison Kept and Read Ahead (pull request 27)
 
-- [ ] `mb-neg9`: a pull request’s comparison is kept for the document, so a revisit
+- [x] `mb-neg9`: a pull request’s comparison is kept for the document, so a revisit
   draws its Diff summary in the paint that shows its record, with no request, and the
   Pulls tab reads ahead the comparisons a reader opens next; measured in headless Chrome
   on the GitHub stand-in before and after, pinned in the prefetch session and the Pulls
@@ -935,7 +967,7 @@ it, and ideally cached it up front”.
 
 ### Phase 28: Diff Summary Letters (pull request 28)
 
-- [ ] `mb-vb51`: the Diff summary’s header reads “19 files changed · 10 A, 5 D, 4 M ·
+- [x] `mb-vb51`: the Diff summary’s header reads “19 files changed · 10 A, 5 D, 4 M ·
   +1,234 −567”, each status the letter its rows carry in its status’s color, the dots
   and commas muted, and its accessible name in words; one rule in the design system, a
   count summary’s separators and list punctuation muted (`.summary-punctuation`) and
@@ -1051,8 +1083,14 @@ merges.
   `mb-novh`, the Conversation’s rhythm and headings; `mb-z57p`, the title prefixes;
   `mb-6y0g`; `mb-9qob`, the label colors; `mb-navs` and `mb-75l5`, Group by’s speed and
   feedback on a large folder; `mb-r5jr`, the consistency pass, with `mb-xlla` and
-  `mb-vg55`; `mb-hi4l`, the Diff summary in the page’s flow; and `mb-a073` and
-  `mb-roa9`, the diff toolbar’s rule and the count summaries’ bold numbers.
+  `mb-vg55`; `mb-lkkt` and `mb-3cbf`, a Pulls row’s two lines; `mb-pb35`, the Diff
+  summary at a page’s top; `mb-varu`, the label color cache; `mb-hi4l`, the Diff summary
+  in the page’s flow; `mb-mcjd` and `mb-yk0i`, the heading tallies; `mb-a073` and
+  `mb-roa9`, the diff toolbar’s rule and the count summaries’ bold numbers; `mb-2u08`
+  and `mb-onr2`, the header’s lines and the Diff summary’s wait; `mb-5lzl`, Home;
+  `mb-neg9`, the comparison kept and read ahead; `mb-vb51`, `mb-khm6`, and `mb-9ekj`,
+  the Diff summary’s letters and the brief change line, with `mb-bvl2`, review A’s round
+  on pull request 28; and `mb-26zj`, the shared header design, its pull request pending.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

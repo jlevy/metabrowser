@@ -570,8 +570,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # The Diff summary is the header's last row on every tab (mb-pb35), and holds the
         # shell's pending placeholder while a comparison is on its way and while it is read,
         # on Changes the mounted diff's, and nothing once a read draws none, until a read of
-        # it starts again (mb-onr2); a pull request opened again in the document is drawn
-        # from the kept comparison as it mounts, one first read on Changes too (mb-neg9).
+        # it starts again (mb-onr2), as one does at the page's next paint after a failure;
+        # a pull request opened again in the document is drawn from the kept comparison as
+        # it mounts, one first read on Changes too (mb-neg9).
         "headerSummary": [
             "Conversation, the comparison not yet read: the pending placeholder",
             "the comparison read: the summary",
@@ -583,7 +584,8 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "opened again on Conversation after Changes, before any idle: the summary",
             "a read that will fail, not yet answered: the pending placeholder",
             "the read fails: nothing",
-            "a repaint after it failed: nothing",
+            "a repaint after it failed, its read asked again: the pending placeholder",
+            "that read fails too: nothing",
             "a comparison the summary draws nothing for: nothing",
             "opened on Changes, whose diff reads no comparison: nothing",
             "the record on its way: nothing",
