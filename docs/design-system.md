@@ -4319,9 +4319,13 @@ a pending hide and leaves the tooltip exactly where it is.
 ### A Surface Puts Away Only Its Own Tooltip
 
 **A surface that repaints or is disposed puts away the tooltip it showed, and no
-other.** `mb.tooltip.hide(within)` hides the tooltip only when its anchor is `within` or
+other.** `mb.tooltip.hide(within)` hides the tooltip when its anchor is `within` or
 inside it, whether the tooltip is up or still waiting out its delay.
-`MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
+It also hides a tooltip whose anchor has left the document: that tooltip belongs to no
+surface on the page and would never hear the pointer leave, so a view’s `hide(root)` at
+disposal still puts its own away after its markup is gone.
+A tooltip shown with no anchor is inside no element, so only a bare `hide()` puts it
+away. `MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
 Without `within`, `hide()` puts away whatever tooltip there is, which is what a pointer
 leaving a surface means, but one in the nav’s header: the header is the shell’s chrome,
 which no view draws, so a view’s hide never takes the folder’s name’s tooltip
@@ -4332,7 +4336,7 @@ another surface’s too.
 The folder view’s totals drew again whenever the folder’s sums arrived, and each draw
 called `hide()`. A reader hovering a Files tree row then saw the row’s tooltip vanish,
 or never appear, when the folder view beside it updated (mb-alff).
-The folder view’s totals and treemap and the Commits history now hide within their own
+The folder view’s totals and treemap and the Commits history hide within their own
 element when they repaint or are disposed.
 `tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
 `tests/dom/files-tab-chrome.mjs` checks it in Chrome on a tree row while the totals

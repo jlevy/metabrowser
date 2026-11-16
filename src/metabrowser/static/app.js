@@ -3294,14 +3294,14 @@ function hideTooltip() {
 /**
  * Put the tooltip away only when its anchor is `within` or inside it, whether the tooltip
  * is up or still waiting out its delay. A surface that repaints or is disposed clears its
- * own tooltip this way and leaves another surface's: the page has one tooltip, and the
- * folder view's totals, which put it away on every draw, took a Files tree row's from
- * under a pointer that had not moved (mb-alff, docs/design-system.md, "A Surface Puts Away
- * Only Its Own Tooltip"). A tooltip whose anchor has left the document belongs to no
- * surface on the page, and would never hear the mouseleave that ends it, so any surface's
- * call puts it away, even one made after that surface removed its markup.
+ * own tooltip this way and leaves another surface's: the page has one tooltip, so a
+ * surface that hid every tooltip on each draw would take another's from under a pointer
+ * that has not moved (mb-alff, docs/design-system.md, "A Surface Puts Away Only Its Own
+ * Tooltip"). A tooltip whose anchor has left the document belongs to no surface on the
+ * page, and would never hear the mouseleave that ends it, so any surface's call puts it
+ * away, even one made after that surface removed its markup.
  *
- * @param {Node} within
+ * @param {Element} within
  */
 function hideTooltipWithin(within) {
   if (tooltipAnchor && (!tooltipAnchor.isConnected || within.contains(tooltipAnchor))) {
@@ -3379,10 +3379,10 @@ if (typeof window !== "undefined") {
     // The header is the shell's chrome, which no view draws, so its tooltips are never one
     // a view showed, and a view's bare hide leaves them: Home redraws the folder overview
     // and the Commits panel, whose hides took the folder's name's tooltip away under a click
-    // (docs/design-system.md, "Home"). Anything but an element, such as the event when
-    // `hide` is itself a listener, is none.
+    // (docs/design-system.md, "Home"). Anything but an element, such as the document or the
+    // event when `hide` is itself a listener, is none.
     hide: (within) => {
-      if (within instanceof Node) {
+      if (within instanceof Element) {
         hideTooltipWithin(within);
         return;
       }

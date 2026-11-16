@@ -1414,10 +1414,9 @@ type MetabrowserSdk = {
     set(name: string, value: unknown): boolean;
   };
   tooltip: {
-    /** Put the tooltip away. With `within`, only a tooltip anchored at or inside it,
-     *  shown or still waiting out its delay: a view that repaints or is disposed clears
-     *  its own and leaves another surface's. With none, whatever tooltip there is but one
-     *  anchored in the nav's header, the shell's chrome, which no view draws. See
+    /** Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     *  whose anchor has left the document, and never one shown with no anchor. With
+     *  none, any tooltip but one anchored in the nav's header. See
      *  docs/design-system.md, "A Surface Puts Away Only Its Own Tooltip". */
     hide(within?: Element | null): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip

@@ -11,10 +11,11 @@ All notable changes to Metabrowser are documented here.
   control; the tooltip vanished, or never appeared, until the pointer left the row.
   A rebuild that puts focus back where it was no longer counts as focus moving, so it
   leaves the tooltip be.
-  For plugin authors, `mb.tooltip.hide(within)` puts the tooltip away only when its
-  anchor is `within` or inside it, so a view that repaints or is disposed clears its own
-  tooltip and leaves another surface’s; `hide()` with no argument hides whatever tooltip
-  there is but one in the navigation’s header, as before.
+  For plugin authors, `mb.tooltip.hide(within)` puts the tooltip away when its anchor is
+  `within` or inside it, or has left the document, so a view that repaints or is
+  disposed clears its own tooltip, even after its markup is gone, and leaves another
+  surface’s; `hide()` with no argument hides whatever tooltip there is but one in the
+  navigation’s header, as before.
   See
   [A Surface Puts Away Only Its Own Tooltip](docs/design-system.md#a-surface-puts-away-only-its-own-tooltip).
 
