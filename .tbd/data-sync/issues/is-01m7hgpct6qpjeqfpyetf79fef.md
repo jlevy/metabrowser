@@ -3,9 +3,9 @@ type: is
 id: is-01m7hgpct6qpjeqfpyetf79fef
 title: "Land docs stack #454 (#452 docs rebuild, #453 plan) after review, once #446 lands"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 14
+version: 15
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -24,5 +24,9 @@ child_order_hints:
   - is-01m7k2and11b7wk741vmfrq5nc
   - is-01m7k2ap7d78zj4qae07h5daaw
 created_at: 2026-11-16T06:28:44.485Z
-updated_at: 2026-11-16T20:56:09.708Z
+updated_at: 2026-11-16T23:51:54.722Z
+closed_at: 2026-11-16T23:51:54.720Z
+close_reason: "Documentation rebuild #452 reviewed (A senior, B follow-up), addressed, merged d89489ab5"
+resolution: null
+duplicate_of: null
 ---

@@ -5,7 +5,7 @@ title: "macOS app: an ephemeral CI keychain script, rehearsed on every change"
 kind: task
 status: open
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md
 labels: []
 dependencies:
@@ -13,6 +13,6 @@ dependencies:
     target: is-01m7k2xdgr9b8sra4vrd372fe2
 parent_id: is-01m7k1vctj6d370jg7hqdps4hk
 created_at: 2026-11-16T21:06:09.460Z
-updated_at: 2026-11-16T21:06:23.383Z
+updated_at: 2026-11-16T22:07:19.958Z
 ---
-Phase 2 of the publishing plan. Add apps/macos/scripts/ci-keychain.sh create|import|cleanup: a keychain in RUNNER_TEMP with a password generated in the job, the identity imported with -T /usr/bin/codesign and partition list apple-tool:,apple:,codesign:, the Developer ID G2 intermediate pinned by SHA-256 in the script, the keychain first on the user search list, and cleanup that deletes it and restores the list. macos-app.yml rehearses it with a throwaway self-signed identity on every change. Done when the rehearsal passes, find-identity lists the identity, and a forced import failure still runs cleanup.
+Phase 2 of the publishing plan. Add apps/macos/scripts/ci-keychain.sh create|import|cleanup: a keychain in RUNNER_TEMP with a password generated in the job, the identity imported with -T /usr/bin/codesign and partition list apple-tool:,apple:,codesign:, the G2 intermediate imported from the copy committed under apps/macos/packaging/ so the job downloads nothing (PR #485 A21), the keychain first on the user search list, the API key written to a mode 0600 file in RUNNER_TEMP, and cleanup that deletes the keychain and the key and restores the list. The passwords reach security as arguments, as in GitHub's recipe, acceptable only on a runner discarded after the job; the script turns shell tracing off and never echoes them (PR #485 A9). macos-app.yml rehearses it with a throwaway self-signed identity on every change. Done when the rehearsal passes, find-identity lists the identity, and a forced import failure still runs cleanup.
