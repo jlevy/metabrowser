@@ -49,6 +49,31 @@ def test_dangling_legacy_documentation_names_are_rejected() -> None:
     assert find_hygiene_findings("src/metabrowser/example.py", public_url) == []
 
 
+def _encoded_twice(text: str) -> str:
+    return text.encode("utf-8").decode("latin-1")
+
+
+def test_double_encoded_utf8_is_rejected() -> None:
+    # The three sequences a merge once left in a stylesheet's comments.
+    assert _encoded_twice("─").encode("utf-8") == b"\xc3\xa2\xc2\x94\xc2\x80"
+    assert _encoded_twice("…").encode("utf-8") == b"\xc3\xa2\xc2\x80\xc2\xa6"
+    assert _encoded_twice("·").encode("utf-8") == b"\xc3\x82\xc2\xb7"
+
+    lines = (
+        "/* ── The Pulls tab ──── */",
+        "Fetching pull requests…",
+        '"1/6 · #N"',
+        "Café",
+    )
+    for line in lines:
+        assert find_hygiene_findings("src/metabrowser/example.css", _encoded_twice(line)) == [
+            "src/metabrowser/example.css:1: double-encoded UTF-8"
+        ]
+        assert find_hygiene_findings("src/metabrowser/example.css", line) == []
+
+    assert find_hygiene_findings("README.md", "SÃO PAULO") == []
+
+
 def test_terminal_private_home_paths_are_rejected() -> None:
     home_paths = (
         "/" + "Users/alice",

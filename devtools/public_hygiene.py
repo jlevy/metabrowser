@@ -73,6 +73,15 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"(?<!/)kpress-design\.md"
         ),
     ),
+    # UTF-8 read as Latin-1 and written back as UTF-8, which a merge once did to
+    # six stylesheet comment lines: a U+2000-U+27FF character such as a box rule
+    # or an ellipsis becomes U+00E2 and a C1 control, a Latin-1 symbol such as
+    # the middle dot gains a U+00C2, and an accented letter becomes U+00C3 and
+    # one more. The `.*` takes the rest of the line, so a line is named once.
+    (
+        "double-encoded UTF-8",
+        re.compile(r"(?:\xe2[\x80-\x9f]|\xc2[\xa0-\xbf]|\xc3[\x80-\xbf]).*"),
+    ),
 )
 STALE_IMPLEMENTATION_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.])P\d+(?:\.\d+)*\b|"
