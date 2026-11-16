@@ -74,11 +74,17 @@ On a PR in a known stack, open the position menu:
 
 - check titles, ordinal and PR number, the current-member mark, focus, Escape, an
   outside click, and keyboard selection;
-- `P` moves toward the base and `N` toward the top, with and without Shift, keeping the
-  selected PR tab and clearing the old file selection;
+- on a Mac, Control-P moves toward the base and Control-N toward the top, with and
+  without Shift, and a held chord walks once, keeping the selected PR tab and clearing
+  the old file selection;
+- `N` alone does nothing there, `P` alone focuses the Pulls list rather than walking the
+  stack, and Help and the Shift strip write the chords `⌃N` and `⌃P`;
 - with a Pulls row focused, Shift+`J` and Shift+`K` move the row and not the stack;
-- the stack’s endpoints consume the key without moving, and an editor or an open dialog
-  keeps its keys.
+- the stack’s endpoints consume the key without moving, an editor or an open dialog
+  keeps its keys, and Control-N and Control-P in Quick Search’s field move its caret on
+  macOS;
+- on Windows and Linux, Help and the Shift strip list neither chord, Ctrl+N opens a new
+  window and Ctrl+P the browser’s Print, and the position menu walks the stack.
 
 ## Quick Search and Main Tabs
 
@@ -98,10 +104,11 @@ After Git discovery:
 
 - Help lists Files, Pulls, and Commits in that order with their letters, and no `⌘`
   beside them;
-- `F`, `R`, and `H` open each tab with and without Shift, and Command or Ctrl with a
-  letter or digit is left to the browser, so Command or Ctrl with a digit still switches
+- `F`, `P`, and `H` open each tab with and without Shift, `R` opens nothing, and Command
+  or Ctrl with a letter or digit is left to the browser, but for Control-N and Control-P
+  on a stack’s pull request on a Mac, so Command or Ctrl with a digit still switches
   browser tabs;
-- in a plain folder, `F` still opens Files and `R` and `H` leave the selection alone.
+- in a plain folder, `F` still opens Files and `P` and `H` leave the selection alone.
 
 [Keyboard Shortcuts](../../keyboard-shortcuts.md) has the full scheme.
 

@@ -1,6 +1,7 @@
 # Keyboard Shortcuts
 
-Every Metabrowser shortcut is a single key with no modifier, and Shift changes nothing.
+Every Metabrowser shortcut is a single key with no modifier, except Control-N and
+Control-P on macOS and iOS, and Shift changes nothing.
 A letter means the same thing wherever it works, and the numbers `1` to `9` reach the
 controls on the current screen in reading order.
 Press `?` for Help, which lists the keys by what they do, and hold Shift to see each key
@@ -13,10 +14,10 @@ on the control it reaches now.
 | `?` | Help | Always |
 | `T` or `/` | Quick Search, the file finder | Always |
 | `F` | The Files tab | Always |
-| `R` | The Pulls tab: pull Requests | The Pulls tab is shown, for a GitHub repository |
+| `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
-| `N` or `P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open |
+| `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
 | `W` | The branch or tag switcher | A pinned revision of a cached repository is shown |
 | `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown |
@@ -39,7 +40,7 @@ Each control is numbered only while it is shown:
 
 | Screen | Numbered controls |
 | --- | --- |
-| The Files tab | Modified within (Any age), then File type (Any type); a Git pin has only File type |
+| The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has no Modified within |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
 | A pull request page | The header’s links and actions, such as View on GitHub, Browse code, and Refresh, in the order the header shows them |
 
@@ -65,6 +66,9 @@ commit.
 
 In the Pulls list, Up and Down or `K` and `J` move a row, Enter opens the pull request,
 and Space shows or hides its changed files; Right shows them and Left hides them.
+Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
+opens it or goes to its first pull request, and Left closes it or returns to it from a
+pull request inside it whose files are closed.
 
 In Quick Search, Up and Down move through the results, Enter opens one, and Escape
 closes it. In Help, `?` or Escape closes it.
@@ -72,8 +76,11 @@ closes it. In Help, `?` or Escape closes it.
 ## Browser and App Keys
 
 A key held with Command, Control, or Option belongs to the browser, and in the macOS app
-to the app’s menus: no Metabrowser shortcut uses one, and the page takes none.
-The one exception is Option-Tab inside a dialog or an open menu: the dialog or menu
+to the app’s menus, except Control-N and Control-P on macOS and iOS, which no browser or
+app menu uses there.
+On Windows and Linux, where Control-N opens a window and Control-P prints, neither is
+bound, and the stack menu on a pull request page walks the stack.
+The other exception is Option-Tab inside a dialog or an open menu: the dialog or menu
 keeps it, because Safari moves focus with Option-Tab.
 
 Command-R (Control-R or F5 elsewhere) always reloads, whatever has focus.

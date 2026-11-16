@@ -46,6 +46,61 @@ function envelope(file) {
     ],
   };
 }
+/**
+ * A tree whose shared changed-files tree fails to load says so, offers Retry, and draws its
+ * rows on Retry, which asks for the tree again (A4 of review A on #448).
+ *
+ * @param {Function} create
+ */
+async function treeLoadFailsOnce(create) {
+  const tree = require("./changed-files-tree-fixture.js").changedFilesTree();
+  let loads = 0;
+  let model = null;
+  const listing = {
+    ...envelope("a.txt"),
+  };
+  const controller = create(
+    {
+      request: async () => ({ status: 200, etag: null, body: listing }),
+      schedule: () => Symbol(),
+      cancel() {},
+      now: () => 1000,
+      isVisible: () => true,
+      formatTime: (stamp) => stamp,
+      render: (next) => {
+        model = next;
+      },
+      markAnchor() {},
+      markCurrent() {},
+      markMuted() {},
+      page: () => null,
+      open() {},
+      leave() {},
+      tree: () => {
+        loads += 1;
+        return loads === 1
+          ? Promise.reject(new Error("the bundle did not load"))
+          : Promise.resolve(tree);
+      },
+    },
+    { number: 7, autoExpandFiles: 100 },
+  );
+  controller.expand();
+  await settle();
+  assert.equal(model.notice?.text, "The changed files could not be drawn.");
+  assert.equal(model.notice?.action, "retry");
+  assert.equal(model.rows.length, 0);
+  await controller.retry();
+  await settle();
+  assert.equal(loads, 2, "Retry asks for the tree again");
+  assert.equal(model.notice, null);
+  assert.deepEqual(
+    model.rows.map((row) => row.id),
+    ["a.txt"],
+  );
+  controller.dispose();
+}
+
 function rig(create) {
   const requests = [];
   const timers = new Map();
@@ -83,6 +138,7 @@ function rig(create) {
       page: () => null,
       open() {},
       leave() {},
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
     },
     { number: 7, autoExpandFiles: 100 },
   );
@@ -298,6 +354,7 @@ async function run() {
   });
   await repair;
   idle.controller.dispose();
+  await treeLoadFailsOnce(createFileTreeController);
   return { ownedReads: reads, ownedRefreshReplies: refreshes };
 }
 run()

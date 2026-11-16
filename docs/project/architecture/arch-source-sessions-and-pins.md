@@ -157,7 +157,12 @@ The rules they follow:
   `/api/capabilities` answer from the recursive blob index with no watcher.
   An incomplete size tally omits `summary` and the rollup rather than answering zero.
   `types` and `min_size` filter as on a folder, using the same bounded compound-tail
-  logical extension.
+  logical extension. Group by works by file type: `group_by=type` answers each display
+  group’s tree from the same blob index, and `group=type:<id>` lists one group’s tree.
+  A group’s `size` is null when its blob sizes are incomplete, and its `files` too when
+  the index is truncated.
+  `group_by=age` and `group=age:…` answer `unsupported_for_subject` (409), as `recency`
+  does, and the page offers no Age.
 - **A tree** answered by `/api/file` is folder chrome with recursive tallies.
   A direct-child README mounts Overview, and a complete size tally mounts the treemap.
 - **A blob** answered by `/api/file` chooses its kind from its name’s last extension, as

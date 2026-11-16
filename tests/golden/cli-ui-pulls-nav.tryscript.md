@@ -26,13 +26,19 @@ Files was chosen by hand; a load that fails, which says so only to a reader look
 tries again on the next show; and a page that goes while the view loads, whose late
 mount is disposed. `keys` is each key through the real registry and what it told the
 view, and `help` is what Help reads for the group.
-`stack keys` drives N and P, with and without Shift, through the real global registry
-and the active PR’s public stack capability, including endpoints, membership changes,
-editor and modal guards, and disposal; Shift-J and Shift-K on a focused pull request row
-or changed file move the row, as J and K do, and never reach the stack.
-`the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
-listeners it adds, that only a walking key’s release ends a walk, and that an `init`
-after a `dispose` listens again.
+`stack keys` drives Control-N and Control-P on a Mac, with and without Shift, through
+the real global registry and the active PR’s public stack capability, including
+endpoints, membership changes, editor and modal guards, and disposal, and shows that N
+and P alone, Command-N, Control-Command-N, and AltGr’s Control-Alt walk nothing, that a
+text field keeps both chords, and that a held chord walks once and its repeats are
+consumed; Shift-J and Shift-K on a focused pull request row or changed file move the
+row, as J and K do, and never reach the stack.
+Its `platforms` registers the same keys under each platform’s navigator: on a Mac the
+chords are bound, listed in Help and the Shift strip, and walk, and on Windows, Linux,
+and with no navigator they are not bound, so neither is listed and the browser gets both
+uncancelled. `the page’s host` is the module’s own `init` and `dispose` on a page it is
+played: the listeners it adds, that only a walking key’s release ends a walk, and that
+an `init` after a `dispose` listens again.
 `the two trees` is the Files tree and the Pulls list in one navigation pane, both trees
 of `treeitem` rows, with app.js’s `initKeyboardInfrastructure` and
 `resolveApplicationFocusFallback` run verbatim on a stand-in for the DOM whose focus
@@ -110,6 +116,28 @@ $ node tests/dom/pulls-nav-session.js
         "collapsed changed files"
       ],
       "focus on": "/pull/3900",
+      "address": "/view/"
+    },
+    "Space on a stack's row closes the stack": {
+      "handled": true,
+      "did": [
+        "closed Stack #286"
+      ],
+      "focus on": "Stack #286",
+      "address": "/view/"
+    },
+    "holding Space on it leaves it closed": {
+      "handled": true,
+      "did": [],
+      "focus on": "Stack #286",
+      "address": "/view/"
+    },
+    "Space again opens it": {
+      "handled": true,
+      "did": [
+        "opened Stack #286"
+      ],
+      "focus on": "Stack #286",
       "address": "/view/"
     },
     "J on it is the list's": {
@@ -192,6 +220,23 @@ $ node tests/dom/pulls-nav-session.js
       -1,
       1
     ],
+    "plainLettersWalkNothing": [
+      false,
+      false,
+      false
+    ],
+    "otherChordsWalkNothing": {
+      "Command-N": false,
+      "Control-Command-N": false,
+      "Control-Alt-N, as AltGr": false,
+      "Control-Alt-P, as AltGr": false
+    },
+    "textFieldsKeepTheChords": [
+      false,
+      false,
+      false
+    ],
+    "repeatConsumedWithoutWalking": true,
     "endpointConsumed": true,
     "plainJRemainsRowNavigation": true,
     "shiftedRowKeysMoveTheRow": {
@@ -217,6 +262,7 @@ $ node tests/dom/pulls-nav-session.js
     "guards": [
       "repeat",
       "input",
+      "textarea",
       "contenteditable",
       "Help",
       "modal",
@@ -229,14 +275,77 @@ $ node tests/dom/pulls-nav-session.js
     ],
     "help": [
       {
-        "keys": "N",
+        "keys": "Control N",
         "action": "Next in stack"
       },
       {
-        "keys": "P",
+        "keys": "Control P",
         "action": "Previous in stack"
       }
     ],
+    "platforms": {
+      "macOS": {
+        "bound": [
+          "pulls.stack.top",
+          "pulls.stack.base"
+        ],
+        "help": true,
+        "strip": true,
+        "cancelled": [
+          true,
+          true,
+          true
+        ],
+        "walked": [
+          1,
+          -1
+        ]
+      },
+      "Windows": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      },
+      "Linux": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      },
+      "Windows, by its client hints": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      },
+      "no navigator, as in a browserless session": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      }
+    },
     "cleanup": true
   },
   "addresses": {
@@ -582,32 +691,32 @@ $ node tests/dom/pulls-nav-session.js
       {
         "keys": "Up arrow or K",
         "action": "Previous pull request",
-        "description": "Open the previous pull request in the list."
+        "description": "Open the previous pull request in the list, or go to a stack's row."
       },
       {
         "keys": "Down arrow or J",
         "action": "Next pull request",
-        "description": "Open the next pull request in the list."
+        "description": "Open the next pull request in the list, or go to a stack's row."
       },
       {
         "keys": "Enter",
         "action": "Open pull request",
-        "description": "Open the focused pull request."
+        "description": "Open the focused pull request, or open or close the focused stack."
       },
       {
         "keys": "Space",
         "action": "Toggle changed files",
-        "description": "Expand or collapse the focused pull request's changed files."
+        "description": "Expand or collapse the focused pull request's changed files, or the focused stack."
       },
       {
         "keys": "Right arrow",
         "action": "Show changed files",
-        "description": "Show the focused pull request's changed files, or go to the first."
+        "description": "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests."
       },
       {
         "keys": "Left arrow",
         "action": "Hide changed files",
-        "description": "Hide the focused pull request's changed files."
+        "description": "Hide the focused pull request's changed files, or go to its stack; on a stack, close it."
       },
       {
         "keys": "Up arrow or K",

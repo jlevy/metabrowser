@@ -52,6 +52,8 @@ const sandbox = {
   treeDirChipHtml: () => "",
   treeChildGroupStartHtml: () => "",
   treeNodeDisplayName: (name) => String(name ?? ""),
+  // Outside a Group by section (app.js, withTreeIdScope).
+  _treeIdScope: "",
   // No fixture is a container file; a container adds a chevron and three attributes
   // the decision does not read.
   containerForNode: () => null,

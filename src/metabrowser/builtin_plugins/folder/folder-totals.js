@@ -222,7 +222,7 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
   const families = new Map(fileTypes.families.map((family) => [family.id, family]));
   /** @type {Array<{key: string, label: string, paletteKey: string, groupId: string, tally: {allFiles: number, allBytes: number, unignoredFiles: number, unignoredBytes: number}}>} */
   const candidates = [];
-  for (const group of fileTypes.groups) {
+  for (const group of fileTypes.displayGroups) {
     const rawGroup = groups.get(group.id);
     if (!rawGroup) {
       continue;
@@ -259,7 +259,7 @@ export function buildFolderTotalsComposition(envelope, fileTypes, metric) {
       tally: envelope.specialTypes.remainingTypes,
     });
   }
-  const orderedCandidates = fileTypes.groups.flatMap((group) =>
+  const orderedCandidates = fileTypes.displayGroups.flatMap((group) =>
     candidates
       .filter((candidate) => candidate.groupId === group.id)
       .sort((left, right) => {

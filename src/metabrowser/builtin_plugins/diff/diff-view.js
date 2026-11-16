@@ -1,5 +1,8 @@
 // Unified diff renderer over File Diff Format.
 //
+// A diff of more than one file opens with its Diff summary, the toolbar's header that says
+// what the change set holds and opens to its files as a tree by folder (diff-summary.js).
+//
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
 // heading), change notes, the inline +N −N stat pair, the View file
@@ -12,7 +15,7 @@
 // deliberately dumber than the model: the data plane is tested by the
 // conformance corpus and CLI goldens, and this layer only projects it.
 
-import { fileChangeLabel, validateDocument } from "./diff-model.js";
+import { diffSummaryOf, fileChangeLabel, plainTotals, validateDocument } from "./diff-model.js";
 import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
 import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 
@@ -28,6 +31,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
+ * @property {MetabrowserPublicSdk["formatInteger"]} [formatInteger]
  */
 
 /**
@@ -83,6 +87,10 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {import("./diff-view-file.js").ViewFileOpener | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
+ * @property {MetabrowserChangedFilesTree | null} changedFiles The shared tree the Diff
+ *   summary is drawn on, or null where it could not be loaded.
+ * @property {((path: string) => void) | null} openFile How the host opens one changed file
+ *   at its own address, or null where a file has none in this diff.
  */
 
 /**
@@ -1023,7 +1031,10 @@ function renderViewFileControl(action, view, notice) {
  */
 function renderFileBar(change, toggleId, bodyId, view) {
   const api = view.api;
-  const { letter, label, notes } = fileChangeLabel(change);
+  // The path is shown as the Diff summary shows it, by the server's display rule, and the
+  // raw path stays for the copy control and the jump; without the shared tree it is raw.
+  const model = view.changedFiles;
+  const { letter, label, notes } = fileChangeLabel(change, model?.displayPath);
   const bar = el("div", "diff-file-bar disclosure-toggle");
   const toggle = el("button", "diff-file-toggle expanded");
   toggle.setAttribute("type", "button");
@@ -1046,10 +1057,21 @@ function renderFileBar(change, toggleId, bodyId, view) {
   const pathSpan = el("span", "diff-file-path", label);
   pathSpan.dataset.tipText = label;
   toggle.append(pathSpan);
-  if (change.additions !== null && change.additions !== undefined) {
+  /** @param {unknown} value */
+  const count = (value) => (typeof value === "number" ? value : null);
+  const counts =
+    model === null
+      ? change.additions !== null && change.additions !== undefined
+        ? { additions: `+${change.additions}`, deletions: `\u2212${change.deletions}` }
+        : null
+      : model.changeStats(
+          { additions: count(change.additions), deletions: count(change.deletions) },
+          countFormatter(api),
+        );
+  if (counts !== null) {
     const stats = el("span", "diff-file-stats");
-    stats.append(el("span", "diff-stat-add", `+${change.additions}`));
-    stats.append(el("span", "diff-stat-del", `−${change.deletions}`));
+    stats.append(el("span", "diff-stat-add", counts.additions));
+    stats.append(el("span", "diff-stat-del", counts.deletions));
     toggle.append(stats);
   }
   for (const note of notes) {
@@ -1348,48 +1370,230 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
 }
 
 /**
- * The layout control is always present in the shell. Multi-file totals
- * share its toolbar; single-file views avoid repeating their file bar.
+ * The shell's number format, which every count a reader sees is written in, or the
+ * browser's own outside the shell.
+ *
+ * @param {DiffViewApi | undefined} api
+ * @returns {(count: number) => string}
+ */
+function countFormatter(api) {
+  const format = api?.formatInteger;
+  if (typeof format === "function") {
+    return (count) => format(count);
+  }
+  const fallback = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+  return (count) => fallback.format(count);
+}
+
+/** Each Diff summary's tree has an id of its own, which its header controls. */
+let summaryIds = 0;
+
+/**
+ * A multi-file diff's Diff summary: the header that says what the change set holds, "35
+ * changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423", and is the disclosure
+ * toggle of its files as a tree by folder. It starts collapsed, and the tree is not mounted,
+ * or its module imported, until the header is first opened; hovering or focusing the header
+ * asks for the module first. Its words are the shared model's (`describeChanges`), from the
+ * manifest's totals and the kinds of the files it lists. A change set of no files has
+ * nothing to open, so its header is a line.
+ *
  * @param {Record<string, unknown>} totals
+ * @param {Record<string, unknown>[]} files
+ * @param {MountedDiffState} view
+ * @param {MetabrowserChangedFilesTree} model
+ * @returns {{element: HTMLElement, dispose: () => void}}
+ */
+function renderDiffSummary(totals, files, view, model) {
+  const formatCount = countFormatter(view.api);
+  const { rows, said } = diffSummaryOf(totals, files, model, formatCount);
+  const parts = [el("span", "diff-summary-files", said.files)];
+  if (said.breakdown !== "") {
+    parts.push(el("span", "diff-summary-breakdown", `(${said.breakdown})`));
+  }
+  const stats = el("span", "diff-summary-stats");
+  stats.append(
+    el("span", "diff-stat-add", said.additions),
+    el("span", "diff-stat-del", said.deletions),
+  );
+  parts.push(stats);
+  if (said.estimated) {
+    parts.push(el("span", "diff-summary-note", "(estimated)"));
+  }
+  if (rows.length === 0) {
+    const line = el("div", "diff-summary");
+    line.append(...parts);
+    return { element: line, dispose: () => {} };
+  }
+  const toggle = el("button", "diff-summary diff-summary-toggle disclosure-toggle collapsed");
+  toggle.setAttribute("type", "button");
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-label", said.label);
+  const chevron = el("span", "diff-summary-chevron");
+  chevron.setAttribute("aria-hidden", "true");
+  const chevronSvg = shellIcon("toggle");
+  if (chevronSvg) {
+    chevron.innerHTML = chevronSvg;
+  } else {
+    chevron.textContent = "›";
+  }
+  toggle.append(chevron, ...parts);
+
+  summaryIds += 1;
+  const id = `diff-summary-tree-${summaryIds}`;
+  /** @type {ReturnType<typeof import("./diff-summary.js").mountSummaryTree> | null} */
+  let tree = null;
+  /** @type {Promise<typeof import("./diff-summary.js")> | null} */
+  let loading = null;
+  let disposed = false;
+  let failures = 0;
+  const load = () => {
+    // A module that did not load is asked for again at an address of its own: a browser keeps
+    // a failed import in its module map, and the same address would fail again unasked.
+    loading ??= /** @type {Promise<typeof import("./diff-summary.js")>} */ (
+      failures === 0 ? import("./diff-summary.js") : import(`./diff-summary.js?retry=${failures}`)
+    ).catch((error) => {
+      failures += 1;
+      loading = null;
+      throw error;
+    });
+    return loading;
+  };
+  const listening = new AbortController();
+  const { signal } = listening;
+  toggle.addEventListener("pointerenter", () => void load().catch(() => {}), { signal });
+  toggle.addEventListener("focus", () => void load().catch(() => {}), { signal });
+  toggle.addEventListener(
+    "click",
+    async () => {
+      if (tree === null) {
+        let module;
+        try {
+          module = await load();
+        } catch (error) {
+          // The press did nothing, so the header says so, and that the next press tries again.
+          console.error("metabrowser diff: the Diff summary's tree did not load", error);
+          if (!disposed) {
+            toggle.setAttribute("aria-disabled", "true");
+            toggle.dataset.tipText = "The list of files did not load. Press to try again.";
+          }
+          return;
+        }
+        if (disposed || view.disposed) {
+          return;
+        }
+        toggle.removeAttribute("aria-disabled");
+        delete toggle.dataset.tipText;
+        tree ??= measureProjection(
+          view.api,
+          "diffSummary:mount",
+          () =>
+            module.mountSummaryTree({
+              tree: model,
+              files: rows,
+              id,
+              formatCount,
+              // The header's own chevron, for each folder row of the tree.
+              chevron: () => {
+                if (!chevronSvg) {
+                  return null;
+                }
+                const box = el("span", "");
+                box.innerHTML = chevronSvg;
+                return box.firstElementChild;
+              },
+              // A file opens at its own address where the host has one, as a pull request's
+              // Changes does (`/pull/<n>/files/<path>`), and the address shows it; elsewhere
+              // the diff goes to it in place.
+              jump: (path) => {
+                if (view.openFile !== null) {
+                  view.openFile(path);
+                } else {
+                  jumpToFirstFile(view, path);
+                }
+              },
+            }),
+          { file_count: rows.length },
+        );
+        toggle.setAttribute("aria-controls", id);
+        toggle.closest(".diff-toolbar")?.after(tree.body);
+      }
+      const open = !tree.isOpen();
+      const shown = tree;
+      measureProjection(view.api, "diffSummary:toggle", () => shown.setOpen(open), {
+        file_count: rows.length,
+        open,
+      });
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.classList.toggle("expanded", open);
+      toggle.classList.toggle("collapsed", !open);
+    },
+    { signal },
+  );
+  return {
+    element: toggle,
+    dispose() {
+      disposed = true;
+      listening.abort();
+      tree?.dispose();
+      tree = null;
+    },
+  };
+}
+
+/**
+ * The layout control is always present in the shell. A multi-file diff's toolbar leads with
+ * its Diff summary; single-file views avoid repeating their file bar.
+ * @param {Record<string, unknown>} totals
+ * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, view, showSummary) {
+function renderDiffToolbar(totals, files, view, showSummary) {
   const toolbar = el("div", "diff-toolbar");
+  /** @type {(() => void) | null} */
+  let disposeSummary = null;
   if (showSummary && Number(totals.files) !== 1) {
-    const plus = totals.additions === null ? "?" : String(totals.additions);
-    const minus = totals.deletions === null ? "?" : String(totals.deletions);
-    const summary = el("div", "diff-summary");
-    summary.append(
-      el(
-        "span",
-        "diff-summary-files",
-        `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
-      ),
-      el("span", "diff-stat-add", `+${plus}`),
-      el("span", "diff-stat-del", `−${minus}`),
-    );
-    if (!totals.exact) {
-      summary.append(el("span", "diff-summary-note", "(estimated)"));
+    if (view.changedFiles === null) {
+      // The shared tree did not load: the totals stand on their own, as they always did, and
+      // only the tree of files is lost.
+      const said = plainTotals(totals, countFormatter(view.api));
+      const line = el("div", "diff-summary");
+      const stats = el("span", "diff-summary-stats");
+      stats.append(
+        el("span", "diff-stat-add", said.additions),
+        el("span", "diff-stat-del", said.deletions),
+      );
+      line.append(el("span", "diff-summary-files", said.files), stats);
+      if (said.estimated) {
+        line.append(el("span", "diff-summary-note", "(estimated)"));
+      }
+      toolbar.append(line);
+    } else {
+      const summary = renderDiffSummary(totals, files, view, view.changedFiles);
+      disposeSummary = summary.dispose;
+      toolbar.append(summary.element);
     }
-    toolbar.append(summary);
   }
   const filterControls = view.api?.filterControls;
   if (!filterControls) {
-    return { toolbar, unbind: () => {} };
+    return { toolbar, unbind: () => disposeSummary?.() };
   }
   const control = el("div", "diff-layout-control");
   view.layoutControl = control;
   renderLayoutControl(view);
   toolbar.append(control);
-  const unbind = filterControls.bind(control, {
+  const unbindControls = filterControls.bind(control, {
     onChange(key, value, select) {
       if (key === "diff-layout" && select === "one") {
         setLayout(view, value);
       }
     },
   });
+  const unbind = () => {
+    unbindControls();
+    disposeSummary?.();
+  };
   // Once, after the first draw; each later draw retargets it, and dispose() detaches it.
   // Every host reaches this view through the plugin's render, so a diff file, the Git
   // commit view, and a pull request's Changes all have `L`.
@@ -2363,6 +2567,43 @@ export function jumpToFile(view, path) {
   if (entry === null) {
     return { kind: "not_in_comparison", path, listTruncated: view.listTruncated };
   }
+  return jumpToEntry(view, entry, path);
+}
+
+/**
+ * Go to the first section that names *path*, the Diff summary's in-place jump. A patch can
+ * list a path more than once, as a file that became a symlink or a commit series that
+ * touches a file twice, and the summary shows such a path as one row, which goes to where it
+ * first appears. Where a path appears once, this is `jumpToFile`.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} path
+ * @returns {FileJump}
+ */
+export function jumpToFirstFile(view, path) {
+  if (view.disposed) {
+    return { kind: "disposed", path };
+  }
+  for (const section of view.sections) {
+    const entry = view.bySection.get(section);
+    const oldSide = /** @type {{path?: string} | null | undefined} */ (entry?.change.old);
+    const newSide = /** @type {{path?: string} | null | undefined} */ (entry?.change.new);
+    if (entry !== undefined && (newSide?.path === path || oldSide?.path === path)) {
+      return jumpToEntry(view, entry, path);
+    }
+  }
+  return { kind: "not_in_comparison", path, listTruncated: view.listTruncated };
+}
+
+/**
+ * Put one file at the top of the pane, and ask for its lines first.
+ *
+ * @param {MountedDiffState} view
+ * @param {FileEntry} entry
+ * @param {string} path
+ * @returns {FileJump}
+ */
+function jumpToEntry(view, entry, path) {
   entry.expand();
   view.pinned = entry.section;
   view.pinnedAt = eventClockNow();
@@ -2601,13 +2842,18 @@ function measureInContainer(root, container) {
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
  *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
- *   markdownHoldMs?: number
+ *   markdownHoldMs?: number,
+ *   changedFiles?: MetabrowserChangedFilesTree | null,
+ *   openFile?: (path: string) => void
  * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
  *   *markdownHoldMs* is how long the first screen's Markdown files wait for Rendered
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
+ *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
+ *   it a multi-file diff has no summary. *openFile* is the host's way to a changed file's own
+ *   address, which the summary's file rows take where the host has one.
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -2657,6 +2903,8 @@ export function mountDiffView(container, document_, api, options = {}) {
     viewFile: null,
     viewFileBusy: null,
     yielders: new Set(),
+    changedFiles: options.changedFiles ?? null,
+    openFile: options.openFile ?? null,
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
   if (
@@ -2707,7 +2955,12 @@ export function mountDiffView(container, document_, api, options = {}) {
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
   const totals = manifest.totals;
   view.listTruncated = manifest.truncated === true;
-  const { toolbar, unbind } = renderDiffToolbar(totals, view, options.showSummary !== false);
+  const { toolbar, unbind } = renderDiffToolbar(
+    totals,
+    manifest.files,
+    view,
+    options.showSummary !== false,
+  );
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.
   for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {

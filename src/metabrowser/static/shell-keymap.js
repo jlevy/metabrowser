@@ -131,7 +131,7 @@
       );
     }
 
-    /** @param {string} key A filter dropdown, `types` or `recency`. */
+    /** @param {string} key A filter dropdown: `group`, `recency`, or `types`. */
     const filterTrigger = (key) =>
       /** @type {HTMLElement | null} */ (
         filterBar()?.querySelector(`[data-chip-menu-toggle="${key}"]`) ?? null
@@ -245,7 +245,7 @@
      * shell's, then focus its checked row, or else its first, so the menu's arrow keys
      * work next. The focus half lives here, on demand, rather than in app.js.
      *
-     * @param {string} key `types` or `recency`
+     * @param {string} key `group`, `recency`, or `types`
      */
     function openFilterMenu(key) {
       shell.toggleFilterMenu(key, true);
@@ -263,16 +263,28 @@
 
     /**
      * Read the filter triggers again, after the filter bar rebuilds its markup. Each is a
-     * situational control, numbered by its place on screen: a Git pin has no
-     * modified-within filter, so the type filter is first there.
+     * situational control, numbered by its place: Group by on the bar's row, then
+     * Modified within and File type, on their triggers while the drawer that holds them
+     * is open and on their stand-ins beside the chevron while it is closed. A Git pin
+     * has no modified-within filter.
      */
     function syncFilters() {
       if (disposed) {
         return;
       }
+      // A closed drawer is inert, so its filters are numbered on their stand-ins beside the
+      // chevron (app.js, filterKeySlotsHtml) and keep their places whether or not it is open.
+      const drawerOpen =
+        filterBar()?.querySelector("#filter-drawer")?.getAttribute("data-open") === "true";
       shortcuts.batch(() => {
-        for (const key of ["recency", "types"]) {
-          const trigger = filterTrigger(key);
+        for (const key of ["group", "recency", "types"]) {
+          const control = filterTrigger(key);
+          const trigger =
+            control && key !== "group" && !drawerOpen
+              ? /** @type {HTMLElement | null} */ (
+                  filterBar()?.querySelector(`[data-filter-key-slot="${key}"]`) ?? control
+                )
+              : control;
           const held = filterNumbers.get(key);
           if (!trigger) {
             held?.detach();

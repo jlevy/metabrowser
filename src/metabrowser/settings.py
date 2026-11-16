@@ -25,6 +25,7 @@ from metabrowser.file_extensions import (
     SYNTAX_LANGUAGE_BY_EXTENSION,
 )
 from metabrowser.file_type_filters import (
+    FILE_TYPE_GROUP_DISPLAY_ORDER,
     FILTER_TYPE_PRESETS,
     serialize_distribution_colors,
     serialize_file_type_registry,
@@ -396,6 +397,7 @@ def client_settings_dict(
         "FILE_TYPE_REGISTRY": serialize_file_type_registry(),
         "DISTRIBUTION_COLORS": serialize_distribution_colors(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
+        "FILE_TYPE_GROUP_ORDER": FILE_TYPE_GROUP_DISPLAY_ORDER,
         "DOC_MAX_CHARS_DEFAULT": DOC_MAX_CHARS_DEFAULT,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,

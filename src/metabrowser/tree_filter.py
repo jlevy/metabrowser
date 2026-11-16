@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from metabrowser.settings import RECENT_WINDOW_SECONDS
+from metabrowser.tree_groups import TreeGroup
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,12 +21,21 @@ class TreeFilter:
     types: tuple[str, ...] = ()
     min_size: int = 0
     include_ignored: bool = True
+    # One Group by group (`group=<by>:<id>`), which narrows the tree to its members as one
+    # more filter does (metabrowser/tree_groups.py).
+    group: TreeGroup | None = None
 
     @property
     def active(self) -> bool:
         """Whether this selection removes anything."""
 
-        return bool(self.recency_seconds or self.types or self.min_size or not self.include_ignored)
+        return bool(
+            self.recency_seconds
+            or self.types
+            or self.min_size
+            or not self.include_ignored
+            or self.group is not None
+        )
 
 
 def parse_size_floor(raw: str) -> int:

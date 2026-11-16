@@ -56,14 +56,20 @@ defines the families.
 
 ### Filters and the Recent View
 
-The bar above the tree narrows it:
+The bar above the tree groups and narrows it:
 
-- **Modified within** keeps files changed within a window, from Live to the past month.
-  Live means changed in the last 90 seconds.
-- **File type** keeps the categories, families, or exact extensions you choose.
-- The **More filters** chevron opens **Minimum file size** and **Show ignored**, which
-  is on by default and shows gitignored files dimmed; turn it off to hide them.
-- **Clear** removes every filter.
+- **Group by** splits the tree into headed sections, one full tree per group under the
+  active filters: by **Age**, in bands of how recently a file changed, or by **File
+  type**, with Documentation first.
+  **No grouping** is the default.
+- **Show ignored**, beside it, is on by default and shows gitignored files dimmed; turn
+  it off to hide them.
+- The chevron opens the filters:
+  - **Modified within** keeps files changed within a window, from Live to the past
+    month. Live means changed in the last 90 seconds.
+  - **File type** keeps the categories, families, or exact extensions you choose.
+  - **Minimum file size** keeps files at least that large.
+- **Clear** removes every filter and turns Show ignored back on; it keeps the grouping.
 
 A type or size filter keeps the tree’s shape, shows only matching files and the folders
 that hold them, and says how many files match.
@@ -75,8 +81,8 @@ A chain of folders that each hold one folder shows as one row, and a folder whos
 were all written at about the same time starts collapsed.
 The view holds at most 5,000 files; when more match, it leaves out gitignored files
 first and says how many matched.
-A pinned Git revision has no modification times, so it offers only File type and Minimum
-file size.
+A pinned Git revision has no modification times, so it offers no Modified within and no
+Age grouping.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

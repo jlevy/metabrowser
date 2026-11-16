@@ -53,6 +53,7 @@ const PRODUCTION_MODULES = [
   "plugin-sdk.js",
   "filter-state.js",
   "filter-controls.js",
+  "tree-filter-model.js",
 ];
 
 // Gates and helpers lifted verbatim from app.js.
@@ -64,6 +65,8 @@ const LIFTED = [
   "rootTallyFromTopLevel",
   "treeNodeDisplayName",
   "filesPanelUsesRecentSource",
+  "filterGroupOptions",
+  "filterKeySlotsHtml",
   "startIndexProgressPolling",
   "startInventoryEventStream",
   "renderNavFilterBar",
@@ -82,6 +85,9 @@ var ICONS = { toggle: "" };
 var FILTER_SIZE_OPTIONS = [{ value: "1m", label: ">1M" }];
 var filterState = window.metabrowser.filterState;
 var filterControls = window.metabrowser.filterControls;
+var treeFilterModel = window.MetabrowserTreeFilterModel;
+// No grouping is loading: a page starts ungrouped.
+var _groupingPending = false;
 var quickFileCatalogFeed = {
   start() {
     __probe.catalogFeedStarts += 1;
@@ -123,7 +129,13 @@ function createContext() {
     intervals: [],
     progressRefreshes: 0,
   };
-  const navFilterBar = { innerHTML: "" };
+  // The bar the shell renders into: its markup, and no menu open to fit.
+  const navFilterBar = {
+    innerHTML: "",
+    querySelectorAll() {
+      return [];
+    },
+  };
   const document = {
     addEventListener() {},
     createElement() {
@@ -261,6 +273,8 @@ function observe(kind) {
 
   sandbox.renderNavFilterBar();
   const navFilterControls = chipKeys(navFilterBar.innerHTML);
+  // Group by offers Age only where the source has mtimes.
+  const groupByOptions = sandbox.filterGroupOptions().map((option) => option.value);
   sandbox.filterState.set({ recency: "24h" });
   const filesPanelUsesRecentSource = sandbox.filesPanelUsesRecentSource();
   sandbox.startIndexProgressPolling();
@@ -289,6 +303,7 @@ function observe(kind) {
         catalogFeedCanStart: sandbox.catalogFeedCanStart,
       },
       navFilterControls,
+      groupByOptions,
     },
   };
 }
@@ -307,6 +322,10 @@ assert(
 assert(
   folder.gates.filesPanelUsesRecentSource && !pin.gates.filesPanelUsesRecentSource,
   "Recent must answer a bounded window on a folder and never on a pin",
+);
+assert(
+  folder.gates.groupByOptions.join() === "age,type" && pin.gates.groupByOptions.join() === "type",
+  "Group by must offer Age on a folder and never on a pin, which has no mtimes",
 );
 assert(
   folder.gates.indexProgress.refreshes === 1 && pin.gates.indexProgress.refreshes === 0,

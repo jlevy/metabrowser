@@ -293,7 +293,12 @@ async function run() {
     { pin: branches.pin, ref: "refs/tags/v1" },
     { pin: branches.pin, ref: "refs/pull/7/head" },
     { pin: branches.pin, ref: null },
-  ].map((shown) => selectorRuntime.describe({ ...emptyState(), shown }).button);
+  ].map((shown) => {
+    // A pull request's number, which the button sets bold (docs/design-system.md, "Pull
+    // Request Numbers"), shown in brackets after the words.
+    const model = selectorRuntime.describe({ ...emptyState(), shown });
+    return model.pullNumber === null ? model.button : `${model.button} [bold ${model.pullNumber}]`;
+  });
 
   const copies = [
     "refs/remotes/origin/topic",

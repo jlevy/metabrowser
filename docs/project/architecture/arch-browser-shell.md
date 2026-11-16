@@ -284,6 +284,8 @@ them; the note beside the budget says why.
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
 | GitPath wire codec | Eager on a pin’s shell; on demand at a pull request’s first diff with View file controls | `PIN_STARTUP_SCRIPTS`, `viewFileOpener` in `builtin_plugins/diff/index.js` | exp-037 |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
+| The changed-files tree every diff and the Pulls tab draw with | On demand: a diff asks beside its comparison, a pull request’s Conversation warms it for Changes, and the Pulls tab asks as it mounts | `changed-files-tree`, reached through `metabrowser.loadChangedFilesTree()` | The comment beside the bundle in `server.py` |
+| The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |
 | A pull request’s rendered Markdown layer | On demand, beside a comparison that names a rendered route | `markdownLayer` in `builtin_plugins/diff/index.js` | The comment beside it |
 

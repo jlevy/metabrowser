@@ -378,10 +378,39 @@ def test_stack_shortcuts_follow_active_pr_and_preserve_registry_guards() -> None
     """Public page capability owns stack direction; shared scopes retain native input."""
 
     result = run_session("pulls-nav-session.js")["stack keys"]
-    # P toward the base and N toward the top, and Shift changes neither.
+    # Control-P toward the base and Control-N toward the top, and Shift changes neither
+    # (mb-lnqj).
     assert result["directions"] == [-1, 1]
     assert result["shiftedDirections"] == [-1, 1]
-    assert [entry["keys"] for entry in result["help"]] == ["N", "P"]
+    # The letters alone are free, AltGr (Control and Alt) types its character, Command
+    # stays the browser's, and a text field keeps both chords for its caret.
+    assert result["plainLettersWalkNothing"] == [False, False, False]
+    assert set(result["otherChordsWalkNothing"].values()) == {False}
+    assert "Control-Alt-N, as AltGr" in result["otherChordsWalkNothing"]
+    assert result["textFieldsKeepTheChords"] == [False, False, False]
+    # A held chord walks once and its repeats are consumed, so none reaches the browser.
+    assert result["repeatConsumedWithoutWalking"] is True
+    assert [entry["keys"] for entry in result["help"]] == ["Control N", "Control P"]
+    # The chords are bound only where Control reaches the page, a Mac here; on Windows and
+    # Linux, and with no navigator, Ctrl+N and Ctrl+P stay the browser's: no binding, no
+    # Help row, no Shift strip entry, and nothing cancelled.
+    platforms = result["platforms"]
+    assert platforms.pop("macOS") == {
+        "bound": ["pulls.stack.top", "pulls.stack.base"],
+        "help": True,
+        "strip": True,
+        "cancelled": [True, True, True],
+        "walked": [1, -1],
+    }
+    assert {"Windows", "Linux"} < set(platforms)
+    for platform, record in platforms.items():
+        assert record == {
+            "bound": [],
+            "help": False,
+            "strip": False,
+            "cancelled": [False, False, False],
+            "walked": [],
+        }, platform
     assert result["endpointConsumed"] is True
     assert result["plainJRemainsRowNavigation"] is True
     # A focused row keeps J and K with Shift held; they never reach the stack.

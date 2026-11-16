@@ -349,6 +349,7 @@ const SHELL_FUNCTIONS = [
   "isGitHistoryLanding",
   "cancelMainTabPreview",
   "resumeRootSummaryRefresh",
+  "closeFilterMenu",
   "attachMainTabs",
   "initNavTabs",
   "initHomeHeading",
@@ -390,6 +391,11 @@ const shellSource = [
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
   // Showing Files resumes a root summary that waited; none of these states asks for one.
   appDeclaration(/^var _rootSummaryRefresh = null;$/m, "root summary refresh"),
+  // Nor does any of them group the Files tree.
+  appDeclaration(/^var _groupedRefresh = null;$/m, "Group by section refresh"),
+
+  // Leaving Files closes an open filter menu; none of these states opens one.
+  appDeclaration(/^var filterOpenMenu = null;$/m, "open filter menu"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
@@ -531,7 +537,6 @@ function createShell(pathname, network, options = {}) {
   );
   /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
   const slotToolbar = (toolbar) => {
-    toolbar.querySelector ??= () => null;
     const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
     if (toolbar.dataset.navToolbar !== "files") {
       elements.set(id, toolbar);
@@ -929,8 +934,6 @@ function createShell(pathname, network, options = {}) {
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
     /** The toolbars in the navigation's slot, shown or not. */
     toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
-    /** @param {string} name One toolbar in the slot. */
-    toolbar: (name) => toolbars.find((toolbar) => toolbar.dataset.navToolbar === name),
     /** The toolbars shown in the navigation's slot: exactly the active tab's. */
     toolbarsShown: () =>
       toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
@@ -1003,15 +1006,18 @@ async function mainTabShortcuts() {
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
-  // F for Files, R for pull Requests, H for commit History ("Keyboard Shortcuts" in
-  // docs/design-system.md). A digit no longer names a main tab.
+  // F for Files, P for Pulls, H for commit History ("Keyboard Shortcuts" in
+  // docs/design-system.md). A digit names no main tab, and neither does R (mb-6rfu).
   assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
   assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
   assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
   assert.equal(press("3", { code: "Digit3" }), false, "3 is no main tab's");
-  assert.equal(press("r", { code: "KeyR" }), true, "Pulls is R while Git is absent");
+  assert.equal(press("r", { code: "KeyR" }), false, "R is no main tab's");
+  assert.equal(press("p", { code: "KeyP", ctrlKey: true }), false, "Control-P is no main tab's");
+  assert.equal(sandbox.mainTabs.active(), "files");
+  assert.equal(press("p", { code: "KeyP" }), true, "Pulls is P while Git is absent");
   assert.equal(sandbox.mainTabs.active(), "pulls");
-  assert.equal(press("R", { code: "KeyR", shiftKey: true }), true, "Shift does not change R");
+  assert.equal(press("P", { code: "KeyP", shiftKey: true }), true, "Shift does not change P");
   await settle();
 
   sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
@@ -1044,7 +1050,7 @@ async function mainTabShortcuts() {
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
   assert.equal(help.context, "Available outside text fields.");
-  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["F", "R", "H"]);
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["F", "P", "H"]);
   return {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),
@@ -1513,14 +1519,6 @@ async function independentMainTabs() {
     slots,
     { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
     "each tab shows its own toolbar, and only it",
-  );
-  // A toolbar a narrow pane scrolled comes back at its start.
-  slotted.toolbar("pulls").scrollLeft = 97;
-  slotted.sandbox.mainTabs.activate("pulls");
-  assert.equal(
-    slotted.toolbar("pulls").scrollLeft,
-    0,
-    "a scrolled toolbar comes back at its start",
   );
   const pullsLanding = createShell("/pulls", read, { pulls: true });
   assert.deepEqual(

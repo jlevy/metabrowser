@@ -165,7 +165,7 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
 
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     fetch_block = app[
-        app.index("function fetchSubtree(path)") : app.index("async function loadSubtree(")
+        app.index("function fetchSubtree(path, group)") : app.index("async function loadSubtree(")
     ]
 
     assert "const existing = subtreeRequests.get(key)" in fetch_block

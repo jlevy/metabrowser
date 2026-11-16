@@ -16,6 +16,9 @@ type MetabrowserRenderContext = {
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
+  /** How the host opens one of a comparison's changed files at its own address, as a pull
+   *  request's Changes does at `/pull/<n>/files/<path>`; absent where a file has none. */
+  openFile?: (path: string) => void;
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;
@@ -96,7 +99,13 @@ type MetabrowserPullsPanelHandle = Readonly<{
   activateAnchor(): boolean;
   /** Space on a pull request's row toggles its changed files in place. */
   toggleFiles(number: number): boolean;
-  /** Right and Left on a pull request's row: its changed files open, or close. */
+  /** Space on a stack's row, while the list is grouped by stack, opens or closes it. */
+  toggleStack(number: number): boolean;
+  /**
+   * Right and Left on a pull request's row: its changed files open, or close, and Left from
+   * a closed one goes to the stack's row it is under. On a stack's row: it opens, or Right
+   * goes to its first pull request, and Left closes it.
+   */
   expand(): boolean;
   collapse(): boolean;
   /** The keys of a changed file's row. */
@@ -554,6 +563,8 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
     fingerprint: string;
   }>;
   groups: ReadonlyArray<MetabrowserFileTypeCategory>;
+  /** The groups in the order the app lists them for a reader, Documentation first. */
+  displayGroups: ReadonlyArray<MetabrowserFileTypeCategory>;
   families: ReadonlyArray<MetabrowserFileTypeFamily>;
   kinds: ReadonlyArray<MetabrowserFileTypeKind>;
   classify(name: unknown, extension: unknown): MetabrowserFileTypeClassification;
@@ -873,6 +884,7 @@ type MetabrowserFilterOption = {
   icon?: string;
   iconClass?: string;
   label: string;
+  summary?: string;
   title?: string;
   value: string;
 };
@@ -880,10 +892,20 @@ type MetabrowserFilterOption = {
 type MetabrowserFilterSelection = string | Array<string> | null;
 
 type MetabrowserFilterSnapshot = {
+  group?: string;
   recency: string;
   showIgnored: boolean;
   size: string;
   types: Array<string> | null;
+};
+
+type MetabrowserTreeSection = {
+  files: number | null;
+  id: string;
+  key: string;
+  label: string;
+  size: number | null;
+  tree: Array<Record<string, unknown>>;
 };
 
 type MetabrowserFilterState = {
@@ -921,6 +943,8 @@ type MetabrowserFilterControls = {
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
+  fitJoinedGroups(root: Element): void;
+  fitOpenMenus(root: Element): void;
   groupHtml(spec: {
     className?: string;
     key: string;
@@ -931,6 +955,7 @@ type MetabrowserFilterControls = {
     value: MetabrowserFilterSelection;
   }): string;
   isSelected(current: MetabrowserFilterSelection, value: string): boolean;
+  joinedGroupFits(widths: { joined: number; room: number }): boolean;
   menuGroupHtml(spec: {
     anyLabel: string;
     anyValue?: string;
@@ -948,6 +973,12 @@ type MetabrowserFilterControls = {
     select?: string;
     value: MetabrowserFilterSelection;
   }): string;
+  menuMaxHeight(geometry: {
+    frame: number;
+    rowHeight: number;
+    top: number;
+    windowHeight: number;
+  }): number;
   nextSelection(
     select: string,
     current: MetabrowserFilterSelection,
@@ -962,7 +993,8 @@ type MetabrowserFilterControls = {
     key: string;
     label?: string;
     pressed?: boolean;
-    title?: string;
+    /** The tooltip, as `data-tip-text`; filter-controls.js reads `tip`, never `title`. */
+    tip?: string;
   }): string;
 };
 
@@ -1347,6 +1379,8 @@ type MetabrowserSdk = {
   langForExtension(ext: string): string;
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
+  /** The shared changed-files tree model, loaded once on demand (static/changed-files-tree.js). */
+  loadChangedFilesTree(): Promise<MetabrowserChangedFilesTree>;
   navigation: MetabrowserNavigationApi;
   sourceKind(): "filesystem" | "git_revision";
   repository: MetabrowserRepositoryContext | null;
@@ -1481,8 +1515,9 @@ type MetabrowserRecentRefetch = {
 };
 
 type MetabrowserRecentFilterCursor = Readonly<{
+  groupedRequestKey: string;
   recentRequestKey: string;
-  source: "recent" | "tree";
+  source: "recent" | "tree" | "grouped";
   treeRequestKey: string;
   windowKey: string;
 }>;
@@ -1560,6 +1595,54 @@ type MetabrowserRecentContinuity = {
 };
 
 type MetabrowserTreeFilterModel = {
+  GROUP_BY_VALUES: ReadonlyArray<string>;
+  ageGroupFor(ageSeconds: number, windows: Record<string, number | null>): string;
+  createGroupsPrefetch(deps: {
+    now(): number;
+    start(url: string): { abort(): void; answer: Promise<unknown> };
+    ttlMs: number;
+  }): {
+    clear(): void;
+    prefetch(urls: Array<string>): void;
+    size(): number;
+    take(url: string): Promise<unknown> | null;
+  };
+  graftOpenedFolders(
+    nodes: Array<Record<string, unknown>>,
+    opened: Array<string>,
+    cached: (path: string) => Array<Record<string, unknown>> | null | undefined,
+  ): { expanded: Array<string>; fetch: Array<string>; tree: Array<Record<string, unknown>> };
+  likelySectionKey(
+    by: string,
+    entry: { ext?: string; mtime?: number; name: string; type: string } | null,
+    nowSec: number,
+    windows: Record<string, number | null>,
+    groupForFile: (name: string, ext: string) => string | null | undefined,
+  ): string | null;
+  revealSectionOrder(sectionKeys: Array<string>, likelyKey: string | null): Array<string>;
+  sectionRowBudget(budget: number, sectionCount: number): number;
+  groupBy(state: MetabrowserFilterSnapshot | null): string;
+  groupSections(payload: unknown): Array<MetabrowserTreeSection>;
+  groupTreeUrl(
+    path: string,
+    groupKey: string,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+    extraParams?: Array<string>,
+  ): string;
+  groupedRequestKey(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string;
+  groupedRequestParams(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): Array<string>;
+  groupsUrl(
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+    depth: number,
+  ): string;
   beginRecentRequest(
     continuity: MetabrowserRecentContinuity,
     cursor: MetabrowserRecentFilterCursor,
@@ -1670,7 +1753,7 @@ type MetabrowserTreeFilterModel = {
     previous: MetabrowserRecentFilterCursor | null,
     current: MetabrowserRecentFilterCursor,
   ): Readonly<{
-    action: "apply" | "load-recent" | "load-tree" | "refetch-recent";
+    action: "apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent";
     current: MetabrowserRecentFilterCursor;
   }>;
   recentFilteredTallyText(
@@ -2189,8 +2272,13 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
   }): MetabrowserSearchPaletteApi;
 }>;
 
-/** One key: a binding states no modifier policy, and Shift never changes a key. */
+/**
+ * One key, or Control with a letter of `CONTROL_CHORD_KEYS` (`control: true`), registered
+ * only where `controlReachesPage()`: a binding states no other modifier policy, and Shift
+ * never changes a key.
+ */
 type MetabrowserShortcutBinding = Readonly<{
+  control?: true;
   key: string;
 }>;
 
@@ -2214,7 +2302,7 @@ type MetabrowserBindingPresentation = Readonly<{
   /** The keycaps are a run's two ends, the situational numbers 1 to 9, not alternatives. */
   range?: boolean;
   spoken: string;
-  /** One keycap label per alternative: every binding is a single key. */
+  /** One keycap label per alternative: a single key, or a Control chord such as `⌃N`. */
   visible: ReadonlyArray<string>;
 }>;
 
@@ -2292,12 +2380,14 @@ type MetabrowserShortcutRegistry = Readonly<{
   ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   dispose(): void;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
   ): MetabrowserBindingPresentation;
   describeKey(key: string): MetabrowserKeyDefinition;
-  /** Whether a live command in an active layer above `scope` is bound to `key`. */
+  /** Whether a live command in an active layer above `scope` is bound to `key` alone. */
   heldAbove(scope: string, key: string): boolean;
   invoke(commandId: string, context?: Record<string, unknown>): boolean;
   /** Whether a command would run now: active scope, `available()`, and a live target. */
@@ -2325,6 +2415,8 @@ type MetabrowserShortcutRegistry = Readonly<{
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
+  /** The letters a binding may hold with Control (`control: true`). */
+  CONTROL_CHORD_KEYS: ReadonlyArray<string>;
   GROUP_DEFINITIONS: Readonly<
     Record<string, Readonly<{ context: string; label: string; order: number }>>
   >;
@@ -2340,6 +2432,8 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
   ): void;
   appendKey(document: Document, container: HTMLElement, key: string): HTMLElement;
   bindingSignature(binding: MetabrowserShortcutBinding): string;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   create(options?: { document?: Document }): MetabrowserShortcutRegistry;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
@@ -2963,6 +3057,8 @@ declare global {
   type MetabrowserSourceRefSelectorModel = {
     selectedRef: { name: string; label: string; kind: string } | null;
     button: string;
+    /** The served pull request's number, "#7", when the page is a pull request's head. */
+    pullNumber: string | null;
     open: boolean;
     kind: MetabrowserSourceRefKind;
     query: string;
@@ -3175,6 +3271,8 @@ declare global {
     flushPull(): void;
     /** The Files panel came to the front: what waited while it was hidden may run. */
     filesShown(): void;
+    /** The Files panel left the front, its toolbar with it. */
+    filesHidden(): void;
     /** Focus the Files tree's roving row: the Files panel's `focusRow`. */
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;
@@ -3230,6 +3328,7 @@ declare global {
   type MetabrowserPublicKeyRevealApi = MetabrowserKeyRevealApi;
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
+  type MetabrowserPublicTreeSection = MetabrowserTreeSection;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
   type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
   type MetabrowserPublicShortcutCommand = MetabrowserShortcutCommand;
@@ -3242,6 +3341,148 @@ declare global {
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
+  /** One changed file, as a list of a change set's files gives it (static/changed-files-tree.js). */
+  type MetabrowserChangedFileRow = {
+    path: string;
+    previous_path: string | null;
+    status: string;
+    additions: number | null;
+    deletions: number | null;
+    display: string;
+    previous_display: string | null;
+  };
+
+  type MetabrowserChangedFilesFolder = {
+    kind: "folder";
+    id: string;
+    name: string;
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    unknown: number;
+    additionsUnknown: number;
+    deletionsUnknown: number;
+    children: MetabrowserChangedFilesNode[];
+  };
+
+  type MetabrowserChangedFilesNode =
+    | MetabrowserChangedFilesFolder
+    | { kind: "file"; id: string; name: string; row: MetabrowserChangedFileRow };
+
+  type MetabrowserChangedFilesTreeModel = {
+    root: MetabrowserChangedFilesFolder;
+    files: number;
+    folderIds: string[];
+  };
+
+  /** Which folders are open: `all` for a folder no reader touched, `toggled` by id. */
+  type MetabrowserChangedFilesExpansion = {
+    all: boolean;
+    toggled: ReadonlyMap<string, boolean>;
+  };
+
+  type MetabrowserChangedFilesFolderRow = {
+    kind: "folder";
+    id: string;
+    ids: string[];
+    name: string;
+    depth: number;
+    position: number;
+    setSize: number;
+    expanded: boolean;
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    unknown: number;
+    additionsUnknown: number;
+    deletionsUnknown: number;
+  };
+
+  type MetabrowserChangedFilesFileRow = {
+    kind: "file";
+    id: string;
+    name: string;
+    depth: number;
+    position: number;
+    setSize: number;
+    path: string;
+    display: string;
+    badge: string;
+    status: string;
+    statusLabel: string;
+    additions: number | null;
+    deletions: number | null;
+    previousName: string | null;
+    current: boolean;
+  };
+
+  type MetabrowserChangedFilesRow =
+    | MetabrowserChangedFilesFolderRow
+    | MetabrowserChangedFilesFileRow;
+
+  type MetabrowserChangedFilesSummary = {
+    files: string;
+    breakdown: string;
+    additions: string;
+    deletions: string;
+    estimated: boolean;
+    text: string;
+    label: string;
+  };
+
+  /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
+  type MetabrowserChangedFilesTree = Readonly<{
+    STATUS_BADGES: Readonly<Record<string, string>>;
+    STATUS_LABELS: Readonly<Record<string, string>>;
+    STATUS_WORDS: Readonly<Record<string, string>>;
+    buildFileTree(rows: ReadonlyArray<MetabrowserChangedFileRow>): MetabrowserChangedFilesTreeModel;
+    changeStats(
+      row: { additions: number | null; deletions: number | null },
+      formatCount: (count: number) => string,
+    ): { additions: string; deletions: string } | null;
+    describeChanges(
+      totals: { files: number; additions: number | null; deletions: number | null; exact: boolean },
+      statuses: Iterable<string>,
+      formatCount: (count: number) => string,
+    ): MetabrowserChangedFilesSummary;
+    /** A path as the server displays it: control, format, and invisible characters as U+FFFD. */
+    displayPath(path: string): string;
+    expansionFor(files: number, autoExpandFiles: number): MetabrowserChangedFilesExpansion;
+    isOpen(expansion: MetabrowserChangedFilesExpansion, id: string): boolean;
+    /** What a folder's sums leave out, in words, or "". */
+    missingCounts(
+      row: { kind: string; additionsUnknown?: number; deletionsUnknown?: number },
+      formatCount: (count: number) => string,
+    ): string;
+    /** What a row is called, for a screen reader. */
+    rowLabel(row: MetabrowserChangedFilesRow, formatCount: (count: number) => string): string;
+    parentIndex(rows: ReadonlyArray<{ depth: number }>, at: number): number | null;
+    revealPath(
+      expansion: MetabrowserChangedFilesExpansion,
+      path: string,
+    ): MetabrowserChangedFilesExpansion;
+    statusBreakdown(
+      statuses: Iterable<string>,
+    ): Array<{ status: string; count: number; word: string }>;
+    toggleFolder(
+      expansion: MetabrowserChangedFilesExpansion,
+      row: { ids: ReadonlyArray<string>; expanded: boolean },
+    ): MetabrowserChangedFilesExpansion;
+    visibleRows(
+      tree: MetabrowserChangedFilesTreeModel,
+      expansion: MetabrowserChangedFilesExpansion,
+      options?: { current?: string | null },
+    ): MetabrowserChangedFilesRow[];
+    windowRange(where: {
+      count: number;
+      rowHeight: number;
+      viewTop: number;
+      viewBottom: number;
+      listTop: number;
+      overscan: number;
+    }): { start: number; end: number };
+  }>;
+
   type MetabrowserPublicSdk = MetabrowserSdk;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
@@ -3349,6 +3590,8 @@ declare global {
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
+    /** static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. */
+    MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree;
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
@@ -3440,6 +3683,7 @@ declare global {
           priority: number;
         }>;
       };
+      FILE_TYPE_GROUP_ORDER?: Array<string>;
       FILTER_TYPE_PRESETS?: Array<{
         id: string;
         label: string;

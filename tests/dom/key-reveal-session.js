@@ -211,6 +211,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     removeEventListener: (type, listener, options) =>
       browserWindow.removeEventListener(type, listener, options),
     setTimeout: (callback, delayMs) => clock.schedule(callback, delayMs),
+    // A Mac's navigator: the stack's Control chords are bound only where Control reaches
+    // the page (static/keyboard-shortcuts.js, `controlReachesPage`), and
+    // pulls-nav-session.js shows Windows and Linux binding none.
+    navigator: { platform: "MacIntel" },
   };
   context.window = context;
   context.globalThis = context;
@@ -287,6 +291,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let palette = null;
   let selector = null;
   let filterOpenMenu = null;
+  // The filter drawer starts closed, as the shell's does, and a filter's number opens it.
+  let filterDrawerOpen = false;
   const stack = { inStack: false };
 
   const committedBar = () => keymap?.committedBar() ?? null;
@@ -309,6 +315,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     // bar again, which reports the new triggers to the keymap.
     toggleFilterMenu(key, open) {
       filterOpenMenu = open ? key : null;
+      // The filters live in the drawer: opening one opens the drawer with it.
+      if (open && key !== "group") {
+        filterDrawerOpen = true;
+      }
       renderFilters();
       did.push(`${open ? "opened" : "closed"} the ${key} menu`);
     },
@@ -457,9 +467,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   }
 
   /**
-   * renderNavFilterBar: the two dropdowns, from the production filter controls, so the
-   * triggers, panels, and checked rows the filter numbers reach are that module's markup.
-   * A pin has no modified-within filter. The options are a stand-in for the tallies.
+   * renderNavFilterBar: Group by on the row and, in the open drawer, the two filter
+   * dropdowns, from the production filter controls, so the triggers, panels, and checked
+   * rows the filter numbers reach are that module's markup. A pin has no modified-within
+   * filter. The options are a stand-in for the tallies.
    */
   function renderFilters() {
     const controls = context.metabrowser.filterControls;
@@ -491,7 +502,33 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       ],
       value: null,
     });
-    filterBar.innerHTML = `<div class="nav-filter-bar-main">${recency}${types}</div>`;
+    const group = controls.menuGroupHtml({
+      anyLabel: "No grouping",
+      anyValue: "none",
+      key: "group",
+      label: "Group by",
+      menuId: "filter-group-menu",
+      open: filterOpenMenu === "group",
+      options: [
+        { label: "Age", value: "age" },
+        { label: "File type", value: "type" },
+      ],
+      select: "one",
+      value: "none",
+    });
+    // The row end's stand-ins number the closed, inert drawer's filters (app.js,
+    // filterKeySlotsHtml).
+    const slots = (pin ? ["types"] : ["recency", "types"])
+      .map(
+        (key) =>
+          `<span class="filter-key-slot" data-filter-key-slot="${key}" aria-hidden="true"` +
+          ` aria-label="${key === "recency" ? "Modified within" : "File type"}"></span>`,
+      )
+      .join("");
+    filterBar.innerHTML =
+      `<div class="nav-filter-bar-main">${group}<span class="nav-filter-bar-end">${slots}</span></div>` +
+      `<div class="filter-drawer" id="filter-drawer" data-open="${filterDrawerOpen}"${filterDrawerOpen ? "" : " inert"}>` +
+      `<div class="filter-drawer-row">${recency}${types}</div></div>`;
     keymap?.syncFilters();
   }
 
@@ -519,6 +556,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const mainTabs = context.MetabrowserMainTabs.create({
     cancelPreview() {},
     filesShown() {},
+    filesHidden() {},
     flushPull() {},
     focusFilesRow: () => tree?.focusCurrent() ?? false,
     isGitHistoryLanding: () => false,
@@ -712,6 +750,12 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
           if (/^[A-Z]$/.test(label)) {
             shellCommands.add(`${label.toLowerCase()} ${id}: ${copy.action}`);
           }
+          // A Control chord, written as a Mac writes it.
+          const chord = /^⌃([A-Z])$/.exec(label);
+          if (chord) {
+            shellKeys.add(`control-${chord[1].toLowerCase()}`);
+            shellCommands.add(`control-${chord[1].toLowerCase()} ${id}: ${copy.action}`);
+          }
         }
       }
     }
@@ -838,6 +882,11 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   }
 
   /** The filter menu row that has focus, as its menu, label, and checked state. */
+  /** Whether the filter drawer is open, as its markup says. */
+  function drawerOpen() {
+    return filterBar.querySelector("#filter-drawer")?.getAttribute("data-open") === "true";
+  }
+
   function menuFocus() {
     const row = document.activeElement;
     const panel = row?.closest(".chip-menu-panel");
@@ -887,6 +936,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     mainTabs,
     measure,
     menuFocus,
+    drawerOpen,
     mountSelector,
     open,
     openCommit,
@@ -952,6 +1002,68 @@ function plainPage() {
   return plain;
 }
 
+/**
+ * A repository with a hosted origin, its Pulls tab in front on pull request 7, which is in
+ * a stack: where Control-N and Control-P walk.
+ */
+async function stackedPullPage() {
+  const hosted = createPage({
+    repository: recording.repository.repo.body.is_repo,
+    tabs: ["files", "pulls"],
+  });
+  hosted.renderFilters();
+  hosted.open(files[""]);
+  hosted.build();
+  hosted.discoverGit();
+  hosted.mainTabs.open("pulls");
+  await settle();
+  hosted.location.pathname = "/pull/7";
+  hosted.openPullPage(7);
+  hosted.stack.inStack = true;
+  hosted.record("the stacked pull request is open"); // takes what opening it did
+  return hosted;
+}
+
+/**
+ * Enter one place focus can be and press every key there with each chord, as the
+ * `modified` part records it: what each chord took, what that did, and where focus went.
+ */
+function pressChords(page, place, enter, keys, chords) {
+  page.document.body.focus();
+  enter();
+  page.record(place); // takes what entering did, so `did` below is the chords' own
+  const where = () =>
+    page.document.activeElement === page.document.body
+      ? "body"
+      : describe(page.document.activeElement);
+  const focus = where();
+  let presses = 0;
+  const taken = [];
+  for (const [chord, init] of Object.entries(chords)) {
+    for (const name of keys) {
+      if (chord === "Option" && name === "Tab") {
+        continue;
+      }
+      presses += 1;
+      if (page.press(name, init)) {
+        taken.push(`${chord}-${name === " " ? "Space" : name}`);
+      }
+    }
+  }
+  const after = page.record(place);
+  const focusAfter = where();
+  page.press("Escape");
+  return {
+    place,
+    focus,
+    presses,
+    commandR: taken.includes("Command-r") ? "taken" : "left to the browser",
+    taken,
+    did: after.did ?? [],
+    focusMoved: focusAfter === focus ? null : focusAfter,
+  };
+}
+
 // The session's parts, each its own command in the golden, so no transcript block grows
 // past what tryscript can match: the keymap of a folder's files, the gesture, the main
 // tabs with the pull request stack and a mirror's pin, and the chords left to the browser.
@@ -964,12 +1076,20 @@ const PARTS = {
     steps.push(plain.record("a plain folder shows Files only"));
     // The trigger's own path opens the menu, and focus goes to its checked row, so the
     // menu's arrow keys work next; Escape closes it through the same path.
-    // The filters are situational: Any age is 1 and Any type is 2, by their place.
+    // The filters are situational, numbered by their place: Group by is 1 on the row,
+    // Any age 2 and Any type 3, on stand-ins beside the chevron while the drawer is closed.
+    // A filter's number opens the drawer with its menu.
+    const drawerBefore = plain.drawerOpen();
     steps.push(
-      plain.record("2 opens the file type filter and focuses its checked row", {
-        pressed: { key: "2", handled: plain.press("2") },
-        focus: plain.menuFocus(),
-      }),
+      plain.record(
+        "3 opens the closed drawer and the file type filter, and focuses its checked row",
+        {
+          drawerBefore,
+          pressed: { key: "3", handled: plain.press("3") },
+          drawerAfter: plain.drawerOpen(),
+          focus: plain.menuFocus(),
+        },
+      ),
     );
     plain.press("ArrowDown");
     const next = plain.menuFocus();
@@ -1203,10 +1323,13 @@ const PARTS = {
    * once, and every letter, digit, and named key is pressed there with each chord; none
    * may be taken (`preventDefault`), run a command, or move focus. Option-Tab is the one
    * exception, and is not pressed: a modal's focus trap keeps it, since Safari moves focus
-   * with it.
+   * with it. Control-N and Control-P are the registry's two Control chords (mb-lnqj): on
+   * a pull request in a stack they walk the stack and are the only chords taken, and a
+   * text field keeps them there too.
    */
   async modified() {
     const page = plainPage();
+    const stacked = await stackedPullPage();
     const keys = [
       ..."abcdefghijklmnopqrstuvwxyz123456789?/",
       ...["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"],
@@ -1218,56 +1341,39 @@ const PARTS = {
       Control: { ctrlKey: true },
       Option: { altKey: true },
     };
+    const walked = ["moved toward the stack's top", "moved toward its base"];
+    // Each place: its page, how focus gets there, and the chords it takes with what they did.
     const places = [
-      ["the page", () => page.document.body.focus()],
-      ["a tree row", () => page.rows[0].focus()],
-      ["Quick Search's field", () => page.press("t")],
-      ["Help", () => page.press("?", { shiftKey: true })],
-      ["the file type filter's open menu", () => page.press("2")],
+      ["the page", page, () => page.document.body.focus()],
+      ["a tree row", page, () => page.rows[0].focus()],
+      ["Quick Search's field", page, () => page.press("t")],
+      ["Help", page, () => page.press("?", { shiftKey: true })],
+      ["the file type filter's open menu", page, () => page.press("3")],
+      [
+        "a pull request in a stack",
+        stacked,
+        () => stacked.document.body.focus(),
+        { taken: ["Control-n", "Control-p"], did: walked },
+      ],
+      ["Quick Search's field on a pull request in a stack", stacked, () => stacked.press("t")],
     ];
     const steps = [];
-    for (const [place, enter] of places) {
-      page.document.body.focus();
-      enter();
-      page.record(place); // takes what entering did, so `did` below is the chords' own
-      const where = () =>
-        page.document.activeElement === page.document.body
-          ? "body"
-          : describe(page.document.activeElement);
-      const focus = where();
-      let presses = 0;
-      const taken = [];
-      for (const [chord, init] of Object.entries(chords)) {
-        for (const name of keys) {
-          if (chord === "Option" && name === "Tab") {
-            continue;
-          }
-          presses += 1;
-          if (page.press(name, init)) {
-            taken.push(`${chord}-${name === " " ? "Space" : name}`);
-          }
-        }
+    const failed = [];
+    for (const [place, at, enter, expected = { taken: [], did: [] }] of places) {
+      const step = pressChords(at, place, enter, keys, chords);
+      steps.push(step);
+      if (
+        JSON.stringify(step.taken) !== JSON.stringify(expected.taken) ||
+        JSON.stringify(step.did) !== JSON.stringify(expected.did) ||
+        step.focusMoved
+      ) {
+        failed.push(step);
       }
-      const after = page.record(place);
-      const focusAfter = where();
-      steps.push({
-        place,
-        focus,
-        presses,
-        commandR: taken.includes("Command-r") ? "taken" : "left to the browser",
-        taken,
-        did: after.did ?? [],
-        focusMoved: focusAfter === focus ? null : focusAfter,
-      });
-      page.press("Escape");
     }
-    const failed = steps.filter(
-      (step) => step.taken.length > 0 || step.did.length > 0 || step.focusMoved,
-    );
     if (failed.length > 0) {
       throw new Error(`a page key took a chord: ${JSON.stringify(failed, null, 2)}`);
     }
-    return { steps, pages: [page], chords: Object.keys(chords), keys: keys.length };
+    return { steps, pages: [page, stacked], chords: Object.keys(chords), keys: keys.length };
   },
 
   /** The main tabs, the commit view, the pull request stack, and a mirror's pin. */
@@ -1293,11 +1399,15 @@ const PARTS = {
     );
     const toFiles = repo.press("F", { shiftKey: true });
     steps.push(
-      repo.record("F during the reveal shows the filter bar, and its filters gain 1 and 2", {
-        pressed: { key: "f", handled: toFiles },
-        active: repo.mainTabs.active(),
-        focus: repo.document.activeElement.dataset.path ?? repo.document.activeElement.textContent,
-      }),
+      repo.record(
+        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
+        {
+          pressed: { key: "f", handled: toFiles },
+          active: repo.mainTabs.active(),
+          focus:
+            repo.document.activeElement.dataset.path ?? repo.document.activeElement.textContent,
+        },
+      ),
     );
     repo.shiftUp();
     steps.push(repo.record("releasing Shift ends the reveal"));
@@ -1363,7 +1473,7 @@ const PARTS = {
     hosted.open(files[""]);
     hosted.build();
     steps.push(
-      hosted.record("Pulls drawn before Commits has R, and H does nothing until Commits comes", {
+      hosted.record("Pulls drawn before Commits has P, and H does nothing until Commits comes", {
         pressed: { key: "h", handled: hosted.press("h") },
         tabs: hosted.tabOrder(),
       }),
@@ -1375,44 +1485,77 @@ const PARTS = {
       }),
     );
 
-    // V is the rendered view everywhere, so P means only "previous", and does nothing
-    // outside a pull request stack.
+    // V is the rendered view everywhere, and Control-P, "previous", does nothing outside a
+    // pull request stack.
     hosted.open(files["page.html"]);
     steps.push(
-      hosted.record("the Preview tab is V, and P outside a stack does nothing", {
+      hosted.record("the Preview tab is V, and Control-P outside a stack does nothing", {
         pressed: { key: "v", handled: hosted.press("v") },
-        p: hosted.press("p"),
+        controlP: hosted.press("p", { ctrlKey: true }),
       }),
     );
 
-    hosted.press("r");
+    // P is the Pulls tab (mb-6rfu); the stack's walk is Control-N and Control-P.
+    const toPulls = hosted.press("p");
     await settle();
     steps.push(
-      hosted.record("R again, once the list has rows, moves focus to the selected row", {
-        pressed: { key: "r", handled: hosted.press("r") },
+      hosted.record("P opens the Pulls tab from a file", {
+        pressed: { key: "p", handled: toPulls },
+        active: hosted.mainTabs.active(),
+      }),
+    );
+    steps.push(
+      hosted.record("P again, once the list has rows, moves focus to the selected row", {
+        pressed: { key: "p", handled: hosted.press("p") },
         focus: hosted.document.activeElement.textContent,
       }),
     );
     hosted.location.pathname = "/pull/7";
     hosted.openPullPage(7);
     steps.push(
-      hosted.record("a pull request outside a stack has no N or P", {
+      hosted.record("a pull request outside a stack has no Control-N or Control-P", {
         focus: hosted.document.activeElement.textContent,
-        pressed: { key: "n", handled: hosted.press("n") },
+        pressed: { key: "Control-n", handled: hosted.press("n", { ctrlKey: true }) },
       }),
     );
     hosted.stack.inStack = true;
     hosted.document.body.focus();
     revealOn(hosted);
     steps.push(
-      hosted.record("a pull request in a stack lists N or P on the strip", {
-        pressed: { key: "n", handled: hosted.press("N", { shiftKey: true }) },
+      hosted.record("a pull request in a stack lists Control-N or Control-P on the strip"),
+    );
+    // A chord ends the reveal, as any modifier does, and still walks the stack: Shift
+    // changes nothing.
+    steps.push(
+      hosted.record("Control-N with Shift held walks the stack and ends the reveal", {
+        pressed: {
+          key: "Control-n",
+          handled: hosted.press("N", { ctrlKey: true, shiftKey: true }),
+        },
       }),
     );
     hosted.shiftUp();
     steps.push(
-      hosted.record("P walks the stack toward its base", {
-        pressed: { key: "p", handled: hosted.press("p") },
+      hosted.record("Control-P walks the stack toward its base", {
+        pressed: { key: "Control-p", handled: hosted.press("p", { ctrlKey: true }) },
+      }),
+    );
+    // N alone is free, AltGr, which reports Control and Alt, types its character rather
+    // than walking, and P alone is the Pulls tab's, which is in front, so it moves focus
+    // to the list and walks nothing.
+    hosted.document.body.focus();
+    const alone = {
+      n: hosted.press("n"),
+      altGr: hosted.press("n", { altKey: true, ctrlKey: true }),
+    };
+    steps.push(
+      hosted.record("N alone and Control-Alt-N walk nothing, and P alone is the Pulls tab", {
+        ...alone,
+        p: {
+          handled: hosted.press("p"),
+          active: hosted.mainTabs.active(),
+          focus: hosted.document.activeElement.textContent,
+        },
       }),
     );
 
@@ -1426,9 +1569,9 @@ const PARTS = {
     pinned.build();
     pinned.mountSelector();
     steps.push(
-      pinned.record("a mirror's pin has W, and its one filter is 1", {
+      pinned.record("a mirror's pin has W, Group by is 1, and its one filter is 2", {
         pressed: { key: "w", handled: pinned.press("w") },
-        two: pinned.press("2"),
+        three: pinned.press("3"),
       }),
     );
     pinned.press("Escape");

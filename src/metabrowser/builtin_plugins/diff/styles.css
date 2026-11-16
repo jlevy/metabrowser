@@ -38,12 +38,148 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
+   set holds and is the disclosure toggle of its files as a tree by folder. The header is a
+   row-like trigger, so it leads with the registry's chevron in the tree's icon slot. Its text
+   is one size, so its parts share a line box and need no baseline opt-in. */
 .metabrowser-diff-host .diff-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: 8px;
   font-size: var(--nav-font-size);
   color: var(--text);
+}
+
+.metabrowser-diff-host .diff-summary-toggle {
+  flex: 0 1 auto;
+  min-height: var(--ui-row-height);
+  margin: 0 0 0 -4px;
+  padding: 0 6px 0 0;
+  border: 0;
+  border-radius: var(--radius-tag);
+  background: transparent;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  column-gap: 6px;
+}
+
+.metabrowser-diff-host .diff-summary-toggle:hover {
+  background: var(--hover-bg);
+}
+
+.metabrowser-diff-host .diff-summary-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 0;
+}
+
+.metabrowser-diff-host .diff-summary-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+
+.metabrowser-diff-host .diff-summary-breakdown {
+  color: var(--muted);
+}
+
+.metabrowser-diff-host .diff-summary-stats {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* The tree, under the toolbar: the nav panel's tree rows in a box of their own, which
+   scrolls past its height so the diff stays a scroll away. Rows are drawn a window at a time,
+   each one row tall at its index, as the Pulls tab draws a pull request's files. The box
+   travels on the disclosure recipe. */
+.metabrowser-diff-host .diff-summary-body {
+  interpolate-size: allow-keywords;
+  height: auto;
+  max-height: 60vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--border);
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
+}
+
+.metabrowser-diff-host .diff-summary-body-collapsed {
+  height: 0;
+  border-bottom-width: 0;
+  visibility: hidden;
+}
+
+.metabrowser-diff-host .diff-summary-rows {
+  position: relative;
+  max-width: 56rem;
+  margin: 4px 0;
+}
+
+.metabrowser-diff-host .diff-summary-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--ui-row-height);
+  padding: 2px 12px 2px calc(8px + var(--diff-summary-depth, 0) * var(--tree-indent));
+  border-left: 2px solid transparent;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
+  user-select: var(--toggle-user-select);
+}
+
+.metabrowser-diff-host .diff-summary-row:hover {
+  background: var(--hover-bg);
+}
+
+.metabrowser-diff-host .diff-summary-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+
+.metabrowser-diff-host .diff-summary-row-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+
+.metabrowser-diff-host .diff-summary-row-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The inline change stats (docs/design-system.md, "Inline Change Stats"), at the row's end:
+   a file's own, and a folder's rolled up from every file under it. */
+.metabrowser-diff-host .diff-summary-row-stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.metabrowser-diff-host
+  .diff-summary-row
+  > :is(.diff-summary-row-badge, .diff-summary-row-name, .diff-summary-row-stats) {
+  align-self: baseline;
 }
 
 .metabrowser-diff-host .diff-layout-control {
@@ -502,9 +638,39 @@
   }
 }
 
-.metabrowser-diff-host .diff-markdown-context > summary {
+/* A fold of unchanged blocks is a place in the document, not a box in it: one quiet line
+   that opens to the blocks it holds, set as the blocks around them are. It is a
+   `<details>` inside the comparison's `article.kpress`, so KPress's document disclosure box
+   (a border, a block margin, and a rule under an open summary) is undone here, and the
+   face it sets is given back to the article, so the blocks the fold holds inherit what
+   their neighbours do. KPress's stylesheets may load before or after this one (a pull
+   request's description or an earlier Markdown document loads them first; a direct
+   visit to Changes loads them after), so these selectors outrank KPress's in either
+   order, its hover colour included. Context rows also carry `.diff-markdown-context`,
+   hence `details`. The label's chevron starts on the blocks' text edge, past their
+   change gutter, and the label brightens to the text colour under the pointer, as the
+   shell's document disclosures do (docs/design-system.md, "Fold Expanders").
+   tests/test_diff_markdown_fold_chrome.py measures it closed, open, and hovered. */
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-feature-settings: inherit;
+}
+
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary {
   cursor: pointer;
+  border: 0;
+  background: none;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   padding: 4px var(--content-padding-x);
+  padding-inline-start: calc(var(--content-padding-x) + var(--diff-change-gutter-width));
+}
+
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {
+  color: var(--text);
 }

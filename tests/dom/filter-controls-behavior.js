@@ -432,6 +432,148 @@ assertContains(
   menuSections,
   'data-chip-preset="family:javascript"',
 );
+// One group pattern (docs/design-system.md, "Groups in a Menu"): each section is a
+// .menu-group named by its .group-heading, and draws its own divider, so the one
+// .menu-separator left is the one before the raw rows, which no heading names.
+assertContains(
+  "a preset section is the menu group",
+  menuSections,
+  '<div class="menu-group" role="group" aria-labelledby="m-section-1" data-chip-menu-section="families">' +
+    '<div class="group-heading" id="m-section-1">Code</div>',
+);
+assertEqual(
+  "only the raw rows are set off by a separator",
+  menuSections.split('class="menu-separator"').length - 1,
+  1,
+);
+
+// ── Menu height ────────────────────────────────────────────────
+// Up to 16 rows of the rendered row, and never past the window's bottom edge less 8 px.
+// The numbers are the Files type menu's, measured in Chrome: 29 px rows, a 10 px frame,
+// and the panel's top at 105 px under the filter row.
+const menuGeometry = { rowHeight: 29, frame: 10, top: 105 };
+assertEqual(
+  "a tall window holds 16 rows",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 900 }),
+  16 * 29 + 10,
+);
+assertEqual(
+  "a short window holds what fits above its edge",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 420 }),
+  420 - 8 - 105,
+);
+assertEqual(
+  "the cap follows the rendered row",
+  fc.menuMaxHeight({ ...menuGeometry, rowHeight: 24, windowHeight: 900 }),
+  16 * 24 + 10,
+);
+assertEqual(
+  "a menu with no room still shows one row",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 120 }),
+  29 + 10,
+);
+
+// Fitting reads that geometry from the rendered panel and sets max-height on every open
+// menu; bind fits them again when the window resizes, and its disposer stops.
+{
+  const viewListeners = {};
+  const view = {
+    innerHeight: 420,
+    getComputedStyle: () => ({
+      paddingTop: "4px",
+      paddingBottom: "4px",
+      borderTopWidth: "1px",
+      borderBottomWidth: "1px",
+    }),
+    addEventListener(type, listener) {
+      viewListeners[type] = listener;
+    },
+    removeEventListener(type, listener) {
+      if (viewListeners[type] === listener) {
+        delete viewListeners[type];
+      }
+    },
+  };
+  const doc = { defaultView: view, addEventListener() {}, removeEventListener() {} };
+  const panel = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [{}],
+    getBoundingClientRect: () => ({ top: 105 }),
+    querySelector: (selector) =>
+      selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 29 }) } : null,
+  };
+  const empty = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [{}],
+    querySelector: () => null,
+  };
+  // Under a hidden toolbar a panel has rows but no box: every rect reads zero.
+  const hidden = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [],
+    getBoundingClientRect: () => ({ top: 0 }),
+    querySelector: (selector) =>
+      selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 0 }) } : null,
+  };
+  let asked = "";
+  const root = {
+    ownerDocument: doc,
+    addEventListener() {},
+    removeEventListener() {},
+    querySelectorAll(selector) {
+      asked = selector;
+      return [panel, empty, hidden];
+    },
+  };
+  fc.fitOpenMenus(root);
+  assertEqual(
+    "fitting looks only at open menus",
+    asked,
+    '.chip-menu[aria-expanded="true"] > .chip-menu-panel',
+  );
+  assertEqual("an open menu is fitted to the room", panel.style.maxHeight, "307px");
+  assertEqual("a menu with no rows is left alone", empty.style.maxHeight, undefined);
+  assertEqual("a menu with no box is not fitted to nothing", hidden.style.maxHeight, undefined);
+  const dispose = fc.bind(root, {});
+  view.innerHeight = 900;
+  viewListeners.resize?.();
+  assertEqual("a resize fits the open menu again", panel.style.maxHeight, "474px");
+  dispose();
+  assertEqual("the disposer stops listening for resizes", viewListeners.resize, undefined);
+
+  // A click on a trigger: the consumer renders the menu open, then bind fits it, so a
+  // consumer that only binds still gets a fitted menu.
+  const rootListeners = {};
+  const order = [];
+  const toggle = {
+    getAttribute: (name) => (name === "data-chip-menu-toggle" ? "types" : null),
+    closest: (selector) => (selector === ".chip-menu" ? { getAttribute: () => "false" } : null),
+  };
+  const clicked = {
+    ownerDocument: doc,
+    addEventListener(type, listener) {
+      rootListeners[type] = listener;
+    },
+    removeEventListener() {},
+    contains: () => true,
+    querySelectorAll() {
+      order.push("fit");
+      return [];
+    },
+  };
+  fc.bind(clicked, {
+    onMenuToggle(key, open) {
+      order.push(`toggle ${key} ${open}`);
+    },
+  });
+  rootListeners.click({
+    target: { closest: (selector) => (selector === "[data-chip-menu-toggle]" ? toggle : null) },
+  });
+  assertEqual("bind fits a menu after its consumer opens it", order, ["toggle types true", "fit"]);
+}
 assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
 
 const emptyPreset = fc.menuGroupHtml({
@@ -546,6 +688,178 @@ assertMissing("group labels are escaped", hostile, '"><img>');
   if (focused !== chips[1]) {
     failures.push("focus follows the chosen value across a repaint");
   }
+}
+
+// ── A segmented group wider than its line ──────────────────────
+// In a navigation toolbar a joined group that its line cannot hold takes the cluster
+// layout. Whether it fits is pure; the widths it is asked about are layout, measured in
+// Chrome (tests/test_github_pulls_stacks_chrome.py).
+
+assertEqual(
+  "a joined group fits a line exactly its width",
+  fc.joinedGroupFits({ joined: 193, room: 193 }),
+  true,
+);
+assertEqual(
+  "a joined group a 64th of a pixel wider than its line does not fit",
+  fc.joinedGroupFits({ joined: 193.015625, room: 193 }),
+  false,
+);
+
+// Bound in a navigation toolbar, the groups are fitted at once, on a change to the row's
+// text before the browser paints it, and on a change of size in the next frame, never in
+// the ResizeObserver's own callback. The disposer takes the observers and any waiting
+// frame down, and nothing fires after it.
+{
+  const log = [];
+  /** @type {{resize: any, mutation: any}} */
+  const observers = { resize: null, mutation: null };
+  const frames = new Map();
+  let nextFrame = 1;
+  class FakeResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = new Set();
+      observers.resize = this;
+    }
+    observe(target) {
+      this.targets.add(target);
+    }
+    unobserve(target) {
+      this.targets.delete(target);
+    }
+    disconnect() {
+      this.targets.clear();
+      log.push("resize observer disconnected");
+    }
+  }
+  class FakeMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.watching = false;
+      /** @type {Array<[unknown, unknown]>} */
+      this.targets = [];
+      observers.mutation = this;
+    }
+    observe(target, options) {
+      this.watching = true;
+      this.targets.push([target, options]);
+    }
+    takeRecords() {
+      return [];
+    }
+    disconnect() {
+      this.watching = false;
+      log.push("mutation observer disconnected");
+    }
+  }
+  const view = {
+    ResizeObserver: FakeResizeObserver,
+    MutationObserver: FakeMutationObserver,
+    requestAnimationFrame(callback) {
+      const id = nextFrame;
+      nextFrame += 1;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      if (frames.delete(id)) {
+        log.push("frame cancelled");
+      }
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const doc = { defaultView: view, addEventListener() {}, removeEventListener() {} };
+  let fitted = 0;
+  const rootIn = (toolbar) => ({
+    ownerDocument: doc,
+    addEventListener() {},
+    removeEventListener() {},
+    closest: (selector) => (selector === "[data-nav-toolbar]" ? toolbar : null),
+    querySelectorAll(selector) {
+      if (selector === '.chip-group[data-layout="joined"]') {
+        fitted += 1;
+      }
+      return [];
+    },
+  });
+  const runFrames = () => {
+    const waiting = [...frames.values()];
+    frames.clear();
+    for (const callback of waiting) {
+      callback();
+    }
+  };
+
+  fc.bind(rootIn(null), {})();
+  assertEqual(
+    "outside a navigation toolbar, nothing is observed or fitted",
+    [observers, fitted],
+    [{ resize: null, mutation: null }, 0],
+  );
+
+  const toolbar = {};
+  const root = rootIn(toolbar);
+  const dispose = fc.bind(root, {});
+  assertEqual("bound in a toolbar, the groups are fitted at once", fitted, 1);
+  assertEqual("the row is watched for its size", observers.resize.targets.has(root), true);
+  assertEqual("and for changes to its text", observers.mutation.watching, true);
+  assertEqual(
+    "and its toolbar for being shown, so a stale layout is fitted before it paints",
+    observers.mutation.targets.map(([target, options]) => [
+      target === root ? "row" : target === toolbar ? "toolbar" : "other",
+      options,
+    ]),
+    [
+      ["row", { childList: true, characterData: true, subtree: true }],
+      ["toolbar", { attributes: true, attributeFilter: ["hidden"] }],
+    ],
+  );
+  observers.resize.callback([]);
+  observers.resize.callback([]);
+  assertEqual(
+    "a change of size waits for one next frame, not the observer's own callback",
+    [fitted, frames.size],
+    [1, 1],
+  );
+  runFrames();
+  assertEqual("the frame fits the groups", fitted, 2);
+  observers.mutation.callback([]);
+  assertEqual("a change to the row's text is fitted before the browser paints it", fitted, 3);
+  observers.resize.callback([]);
+  dispose();
+  assertEqual("the disposer takes the observers and the waiting frame down", log, [
+    "resize observer disconnected",
+    "mutation observer disconnected",
+    "frame cancelled",
+  ]);
+  observers.resize.callback([]);
+  observers.mutation.callback([]);
+  runFrames();
+  assertEqual("after the disposer nothing fires", [fitted, frames.size], [3, 0]);
+
+  // A row that is its own toolbar, as the Files bar is, is one node to observe, and a
+  // second `observe` of a node replaces the first's options: it takes both in one.
+  const own = rootIn(null);
+  own.closest = (selector) => (selector === "[data-nav-toolbar]" ? own : null);
+  fc.bind(own, {})();
+  assertEqual(
+    "a row that is its own toolbar is watched for its text and for being shown at once",
+    observers.mutation.targets.map(([target, options]) => [target === own, options]),
+    [
+      [
+        true,
+        {
+          childList: true,
+          characterData: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["hidden"],
+        },
+      ],
+    ],
+  );
 }
 
 if (failures.length > 0) {

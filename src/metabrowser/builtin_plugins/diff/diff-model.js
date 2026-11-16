@@ -337,13 +337,113 @@ const KIND_LETTERS = /** @type {Record<string, string>} */ ({
 });
 
 /**
+ * What a change set's tree calls each change kind: the statuses of the shell's changed-files
+ * tree (static/changed-files-tree.js), which are GitHub's, so a diff's Diff summary and the
+ * Pulls tab's tree of a pull request's files read alike.
+ */
+const SUMMARY_STATUSES = /** @type {Record<string, string>} */ ({
+  added: "added",
+  deleted: "removed",
+  modified: "modified",
+  renamed: "renamed",
+  copied: "copied",
+  type_changed: "changed",
+  unmerged: "unmerged",
+});
+
+/**
+ * One change as a row of its change set's tree: the path it has now, or had, for a file the
+ * change deleted, which is the path the diff's jump finds it by; the path it came from, for a
+ * rename or a copy; its status in the tree's words; and its line counts, null where the
+ * change has none, as a binary file's. A path is whoever made the change's text, so what is
+ * shown of it is *display*'s: the server's rule, `displayPath` of the shared changed-files
+ * tree, which shows a control, format, or invisible character as U+FFFD.
+ *
+ * @param {Record<string, unknown>} change A validated change.
+ * @param {(path: string) => string} display
+ * @returns {MetabrowserChangedFileRow}
+ */
+export function changeSummaryRow(change, display) {
+  const kind = String(change.kind);
+  const oldSide = /** @type {{path?: unknown} | null | undefined} */ (change.old);
+  const newSide = /** @type {{path?: unknown} | null | undefined} */ (change.new);
+  const path = String((newSide ?? oldSide)?.path ?? "");
+  const previous =
+    (kind === "renamed" || kind === "copied") && oldSide ? String(oldSide.path ?? "") : null;
+  /** @param {unknown} count */
+  const lines = (count) => (typeof count === "number" ? count : null);
+  return {
+    path,
+    previous_path: previous,
+    status: SUMMARY_STATUSES[kind] ?? kind,
+    additions: lines(change.additions),
+    deletions: lines(change.deletions),
+    display: display(path),
+    previous_display: previous === null ? null : display(previous),
+  };
+}
+
+/**
+ * A change set's Diff summary, as a diff's toolbar draws it: its files as rows of the shared
+ * changed-files tree, each shown by the server's display rule, and its header's words from
+ * the manifest's totals and the statuses of the files it lists. Pure, so
+ * tests/dom/diff-summary-session.js runs the call `renderDiffSummary` makes.
+ *
+ * @param {Record<string, unknown>} totals The manifest's totals.
+ * @param {ReadonlyArray<Record<string, unknown>>} files The manifest's validated changes.
+ * @param {MetabrowserChangedFilesTree} model
+ * @param {(count: number) => string} formatCount The shell's number format.
+ */
+export function diffSummaryOf(totals, files, model, formatCount) {
+  const rows = files.map((change) => changeSummaryRow(change, model.displayPath));
+  /** @param {unknown} value */
+  const lines = (value) => (typeof value === "number" ? value : null);
+  const said = model.describeChanges(
+    {
+      files: Number(totals.files),
+      additions: lines(totals.additions),
+      deletions: lines(totals.deletions),
+      exact: totals.exact === true,
+    },
+    rows.map((row) => row.status),
+    formatCount,
+  );
+  return { rows, said };
+}
+
+/**
+ * A change set's totals as one line, for a diff whose shared changed-files tree did not
+ * load: what main's toolbar said, "41 changed files +6,526 −555", in the shell's number
+ * format, with "(estimated)" for totals that are not exact. Pure.
+ *
+ * @param {Record<string, unknown>} totals
+ * @param {(count: number) => string} formatCount
+ */
+export function plainTotals(totals, formatCount) {
+  const files = Number(totals.files);
+  /** @param {unknown} value */
+  const count = (value) => (typeof value === "number" ? formatCount(value) : "?");
+  return {
+    files: `${formatCount(files)} changed ${files === 1 ? "file" : "files"}`,
+    additions: `+${count(totals.additions)}`,
+    deletions: `\u2212${count(totals.deletions)}`,
+    estimated: totals.exact !== true,
+  };
+}
+
+/**
  * The tree/list indicator for one change: letter, similarity, and the
  * transition notes GitHub-style badges are built from.
  *
+ * The label shows each path through *display*: the server's display rule
+ * (`displayPath` of the shared changed-files tree) where a page has it, so a control,
+ * format, or invisible character a path's author put there shows as U+FFFD.
+ *
  * @param {Record<string, unknown>} change
+ * @param {(path: string) => string} [display]
  * @returns {{letter: string, label: string, notes: string[]}}
  */
-export function fileChangeLabel(change) {
+export function fileChangeLabel(change, display = (path) => path) {
   const kind = String(change.kind);
   let letter = KIND_LETTERS[kind] || "?";
   if (change.similarity !== undefined && change.similarity !== null) {
@@ -357,8 +457,8 @@ export function fileChangeLabel(change) {
   );
   const label =
     (kind === "renamed" || kind === "copied") && oldSide && newSide
-      ? `${oldSide.path} → ${newSide.path}`
-      : String((newSide || oldSide || { path: "?" }).path);
+      ? `${display(String(oldSide.path))} → ${display(String(newSide.path))}`
+      : display(String((newSide || oldSide || { path: "?" }).path));
   const notes = [];
   if (oldSide && newSide && oldSide.mode !== newSide.mode) {
     notes.push(`${oldSide.mode}→${newSide.mode}`);

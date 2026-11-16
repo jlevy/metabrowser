@@ -23,6 +23,9 @@ registerHooks({
 });
 const requests = [];
 let registered;
+const tree = require("./changed-files-tree-fixture.js").changedFilesTree();
+/** How the next `loadChangedFilesTree` answers. */
+let loadTree = () => Promise.resolve(tree);
 globalThis.window = {
   METABROWSER_SETTINGS: { BUILD_TAG: "page-build", STORE_TAG: "page-store" },
   metabrowser: {
@@ -33,6 +36,7 @@ globalThis.window = {
       requests.push({ plugin, hook, params, signal: options?.signal });
       return structuredClone(answer);
     },
+    loadChangedFilesTree: () => loadTree(),
   },
 };
 async function main() {
@@ -132,6 +136,25 @@ async function main() {
     console.error = logged;
   }
   assert.deepEqual(errors, ["metabrowser diff: rendered Markdown unavailable"]);
+
+  // Every diff is given the shared changed-files tree. One whose tree does not load is mounted
+  // without it, which keeps its totals line (diff-view-behavior.js), and says why; the next
+  // diff asks again (A3 and A4 of review A on #448).
+  assert.equal(plain.options.changedFiles, tree, "a diff is given the shared tree");
+  errors.length = 0;
+  loadTree = () => Promise.reject(new Error("the bundle did not load"));
+  console.error = (...args) => errors.push(args[0]);
+  let without;
+  try {
+    without = await registered.render({}, { comparison });
+  } finally {
+    console.error = logged;
+  }
+  assert.equal(without.options.changedFiles, null, "a tree that did not load is not given");
+  assert.deepEqual(errors, ["metabrowser diff: the Diff summary is unavailable"]);
+  loadTree = () => Promise.resolve(tree);
+  const again = await registered.render({}, { comparison });
+  assert.equal(again.options.changedFiles, tree, "the next diff asks for the tree again");
   console.log("diff comparison routes OK");
 }
 main().catch((error) => {

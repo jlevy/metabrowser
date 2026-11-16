@@ -88,6 +88,7 @@ function story(tree, answers, input, refresh = REFRESH_STARTED) {
   let made = null;
   const controller = tree.createFileTreeController(
     {
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
       request(method, route) {
         if (method === "POST") {
           return Promise.resolve({

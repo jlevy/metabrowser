@@ -167,7 +167,7 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     # Lazily fetched rows are observed in fetchSubtree, so a subtree pulled in
     # by the idle prefetch reaches the catalog the same as an expanded one.
     fetch_subtree = js[
-        js.index("function fetchSubtree(path)") : js.index("async function loadSubtree(")
+        js.index("function fetchSubtree(path, group)") : js.index("async function loadSubtree(")
     ]
     assert "knownFileCatalog?.observeLazyTree(data.tree)" in fetch_subtree
     assert fetch_subtree.index("observeLazyTree") < fetch_subtree.index(

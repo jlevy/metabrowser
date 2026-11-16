@@ -35,7 +35,16 @@
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
 import { createComparisonPrefetch } from "./comparison-prefetch.js";
-import { createStackIndex, memberRoute, stackMembership, watchStacks } from "./pull-stacks.js";
+import {
+  createStackIndex,
+  memberRoute,
+  stackLabel,
+  stackMembership,
+  stackMenuOrder,
+  stackPosition,
+  stackPositionHint,
+  watchStacks,
+} from "./pull-stacks.js";
 import {
   displayState,
   listedState,
@@ -2999,15 +3008,22 @@ export function avatarUrl(value) {
  * the network again, and when the header built its actor on every tab switch and poll the
  * unchanged avatar had no image for that round trip after each one.
  *
+ * A Conversation card head passes `slot`: an author with no usable avatar then keeps the
+ * avatar's empty box, so the name starts where its neighbors' names do and the timeline's
+ * line meets the head where an avatar would be (docs/design-system.md, "Conversation
+ * Timeline"). The header and Pulls rows leave the name where it is.
+ *
  * @param {string} name
  * @param {unknown} url
  * @param {string} [className]
- * @param {{loading?: "lazy" | "eager"}} [options]
+ * @param {{loading?: "lazy" | "eager", slot?: boolean}} [options]
  */
-export function authorLabel(name, url, className = "", { loading = "lazy" } = {}) {
+export function authorLabel(name, url, className = "", { loading = "lazy", slot = false } = {}) {
   const label = h("span", { class: "github-pull-identity" });
   const safe = avatarUrl(url);
-  if (safe !== null) {
+  if (safe === null && slot) {
+    label.append(h("span", { class: "github-pull-avatar-slot", "aria-hidden": "true" }));
+  } else if (safe !== null) {
     const image = h("img", {
       class: "github-pull-avatar",
       alt: "",
@@ -3112,7 +3128,10 @@ function outside(mb, href, base, children, className = "") {
 let stackMenuSerial = 0;
 
 /**
- * The native stack's compact trigger and lazy, keyboard-navigable member menu.
+ * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
+ * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
+ * position badge, the menu's heading is the stack's label, and its members come in
+ * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
  * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, onOpen(): void}} deps
@@ -3122,7 +3141,7 @@ export function createStackMenu(initial, number, deps) {
   let currentTitle = deps.currentTitle;
   const position = stack.pulls.indexOf(number);
   const count = h("span", { class: "github-pull-stack-position" }, [
-    `${position + 1}/${stack.pulls.length}`,
+    stackPosition(position, stack.pulls.length),
   ]);
   const menuId = `github-pull-stack-menu-${++stackMenuSerial}`;
   const root = /** @type {HTMLDetailsElement} */ (
@@ -3132,7 +3151,9 @@ export function createStackMenu(initial, number, deps) {
     "summary",
     {
       class: "btn github-pull-stack-trigger disclosure-toggle",
-      "aria-label": `Navigate Stack #${stack.number}, position ${position + 1} of ${stack.pulls.length}`,
+      "aria-label": `Navigate ${stackPositionHint(stack, position)}`,
+      // The tip a Pulls row's badge has: the stack and the place in it.
+      "data-tip-text": stackPositionHint(stack, position),
       "aria-haspopup": "menu",
       "aria-controls": menuId,
       "aria-expanded": "false",
@@ -3144,11 +3165,14 @@ export function createStackMenu(initial, number, deps) {
       count,
     ],
   );
+  // The menu's rows are all one group, so its heading names the menu itself
+  // (docs/design-system.md, "Groups in a Menu"): one name, read once.
+  const labelId = `${menuId}-heading`;
   const menu = h("div", {
     class: "menu github-pull-stack-menu",
     id: menuId,
     role: "menu",
-    "aria-label": `Stack #${stack.number}`,
+    "aria-labelledby": labelId,
   });
   root.append(trigger);
   const listening = new AbortController();
@@ -3157,7 +3181,14 @@ export function createStackMenu(initial, number, deps) {
   const links = [];
   /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
   const rows = new Map();
-  const label = h("div", { class: "menu-section-label" }, [`Stack #${stack.number}`]);
+  // The members under the heading that names them and the menu: the host's group
+  // look, with no group role, since a menu of one group is named by its heading. The
+  // heading is the stack's label, which a Pulls stack group's row is headed by too
+  // (docs/design-system.md, "Stacks").
+  const label = h("div", { class: "group-heading github-pull-stack-label", id: labelId }, [
+    stackLabel(stack.number),
+  ]);
+  const group = h("div", { class: "menu-group" });
   let populated = false;
 
   function updateTitles() {
@@ -3167,7 +3198,7 @@ export function createStackMenu(initial, number, deps) {
       if (row) {
         row.title.textContent =
           stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
-        row.position.textContent = `${at + 1}/${stack.pulls.length}`;
+        row.position.textContent = stackPosition(at, stack.pulls.length);
         row.number.textContent = `#${target}`;
       }
     }
@@ -3188,8 +3219,7 @@ export function createStackMenu(initial, number, deps) {
       }
     }
     links.length = 0;
-    for (let at = stack.pulls.length - 1; at >= 0; at -= 1) {
-      const target = stack.pulls[at];
+    for (const target of stackMenuOrder(stack)) {
       let row = rows.get(target);
       if (!row) {
         const link = deps.link(target);
@@ -3224,8 +3254,9 @@ export function createStackMenu(initial, number, deps) {
       links.push(row.link);
     }
     updateTitles();
-    menu.replaceChildren(label, ...links);
+    group.replaceChildren(label, ...links);
     if (!populated) {
+      menu.append(group);
       root.append(menu);
       populated = true;
     }
@@ -3376,12 +3407,10 @@ export function createStackMenu(initial, number, deps) {
         stack.pulls.some((target, index) => target !== next.pulls[index]);
       stack = next;
       currentTitle = title;
-      const at = stack.pulls.indexOf(number) + 1;
-      count.textContent = `${at}/${stack.pulls.length}`;
-      trigger.setAttribute(
-        "aria-label",
-        `Navigate Stack #${stack.number}, position ${at} of ${stack.pulls.length}`,
-      );
+      const at = stack.pulls.indexOf(number);
+      count.textContent = stackPosition(at, stack.pulls.length);
+      trigger.setAttribute("aria-label", `Navigate ${stackPositionHint(stack, at)}`);
+      trigger.setAttribute("data-tip-text", stackPositionHint(stack, at));
       if (populated && reordered) {
         populate(true);
       } else {
@@ -3505,18 +3534,25 @@ export function mountPullPage(container, ctx, mb) {
       { class: "btn github-pull-stack-trigger github-pull-stack-strut", "aria-hidden": "true" },
       [h("span", { class: "github-pull-stack-icon" }), "\u00a0"],
     );
-  // A stack's chip arrives from its own /stacks answer, so it has a slot at the end of the
-  // labels row: arriving, it moves nothing, and takes its width from the labels, which the
-  // row cuts shorter, a label that showed whole among them. At the end of the state row it
-  // took its width from the sentence and the merge, which slid up to 35 px. With no stack
-  // the slot holds a strut.
+  // A stack's chip arrives from its own /stacks answer, so it has a slot at the right end of
+  // the author's row, under the title's end (mb-cf0l): arriving, it lands in the row's
+  // empty end and moves nothing, and where the row has no room left the sentence is cut
+  // short at its end, never moved. With no stack the slot holds a strut, which gives the row
+  // a chip's height. At the end of the row that also held the branches, a chip took its
+  // width from the sentence and the merge, which slid up to 35 px.
   const stackStrut = strut();
   const stackColumn = h("div", { class: "github-pull-stacks" }, [stackStrut]);
   const labelList = h("div", { class: "github-pull-label-list" });
-  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList, stackColumn]);
+  const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stateDetails, strut()]);
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateDetails, stackColumn]);
+  // The head and base branches, on a line of their own under the author's sentence: a line
+  // tall, the merge's arrow's, while no record is shown too.
+  const branchesRow = h("div", { class: "github-pull-branches" });
+  // The pull request's state leads the row of its ages: its badge, then when it was
+  // opened, updated, merged, or closed.
+  const openedRow = h("div", { class: "github-pull-opened" });
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -4180,8 +4216,8 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * The menu most recently used chooses a stack when a PR has several memberships. A header
-   * held over the loading page shows no stack menu yet, so N and P wait with it, as the tab
-   * keys do (`holdTabColumn`).
+   * held over the loading page shows no stack menu yet, so Control-N and Control-P wait with
+   * it, as the tab keys do (`holdTabColumn`).
    */
   function currentStack() {
     if (
@@ -4251,8 +4287,8 @@ export function mountPullPage(container, ctx, mb) {
       headerPart("badge", [pull.state, pull.stateLabel], () => badge(pull.state, pull.stateLabel)),
       ...badgeSizers,
     ]);
-    // A narrow row gives way in its sentence first and its branches last: the action is
-    // cut short before the merge's names are (styles.css, "One line").
+    // A narrow row gives way in its sentence first: the action is cut short before the
+    // author is (styles.css, "One line"). The branches have the line below to themselves.
     const actor = pull.actor;
     placeChildren(stateDetails, [
       ...(actor === null
@@ -4263,10 +4299,10 @@ export function mountPullPage(container, ctx, mb) {
             ),
           ]),
       headerPart("action", [actor === null, pull.action], () =>
-        h("span", { class: "github-pull-action" }, [
-          `${actor === null ? "" : " "}${pull.action}: `,
-        ]),
+        h("span", { class: "github-pull-action" }, [`${actor === null ? "" : " "}${pull.action}`]),
       ),
+    ]);
+    placeChildren(branchesRow, [
       headerPart("branches", [pull.headRef, pull.head, pull.baseRef, pull.base], () =>
         mb.mergeRefs(
           { name: pull.headRef, label: pull.head },
@@ -4444,7 +4480,8 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      children.push(title, paintStateRow(pull), opened.row);
+      placeChildren(openedRow, [stateBadge, opened.row]);
+      children.push(title, paintStateRow(pull), branchesRow, openedRow);
       // A row that is always there, so a pull request with labels is as tall as one without.
       placeChildren(
         labelList,
@@ -4464,14 +4501,15 @@ export function mountPullPage(container, ctx, mb) {
       if (model.status !== "unavailable") {
         placeChildren(stateBadge, []);
         placeChildren(stateDetails, []);
-        placeChildren(labelList, []);
-        children.push(
-          stateRow,
+        placeChildren(branchesRow, []);
+        placeChildren(openedRow, [
+          stateBadge,
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
-          labelsRow,
-        );
+        ]);
+        placeChildren(labelList, []);
+        children.push(stateRow, branchesRow, openedRow, labelsRow);
       }
     }
     status.dataset.status = model.status;
@@ -4627,10 +4665,13 @@ export function mountPullPage(container, ctx, mb) {
     if (href === null) {
       return null;
     }
-    return h("div", { class: "github-pull-commit" }, [
+    // An event on the Conversation's timeline, said as a card head says a comment: the
+    // subject where the author is, then when, in the head's type (docs/design-system.md,
+    // "Conversation Timeline").
+    return h("div", { class: "github-pull-commit github-pull-event" }, [
       h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
       event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
-        ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
+        ? h("span", {}, ["committed ", age(event.committed_at)])
         : null,
       mb.decorateExternalLink(
         outside(
@@ -4821,9 +4862,9 @@ export function mountPullPage(container, ctx, mb) {
         pull.truncated,
       ],
       () =>
-        h("section", { class: "page-card github-pull-card" }, [
+        h("section", { class: "page-card github-pull-card github-pull-event" }, [
           h("div", { class: "github-pull-card-head" }, [
-            authorLabel(pull.author, pull.avatar),
+            authorLabel(pull.author, pull.avatar, "", { slot: true }),
             " opened ",
             age(pull.created),
           ]),
@@ -4847,7 +4888,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const item of model.corePreview ? [] : model.timeline) {
       const card = section(["card", pull.state, item], () => {
         const head = h("div", { class: "github-pull-card-head" }, [
-          authorLabel(item.author, item.avatar),
+          authorLabel(item.author, item.avatar, "", { slot: true }),
         ]);
         if (item.review !== null) {
           head.append(" ", badge(item.review.state, item.review.label, "review"));
@@ -4857,7 +4898,7 @@ export function mountPullPage(container, ctx, mb) {
         head.append(" ", item.at === null ? "(pending)" : age(item.at));
         const built = h(
           "section",
-          { class: `page-card github-pull-card github-pull-${item.kind}` },
+          { class: `page-card github-pull-card github-pull-${item.kind} github-pull-event` },
           [head],
         );
         if (item.text.trim() !== "" || item.kind === "comment") {
@@ -5076,6 +5117,9 @@ export function mountPullPage(container, ctx, mb) {
     },
     warm() {
       void mb.ensureKindAssets("diff").catch(() => {});
+      // The shared changed-files tree every diff draws its paths and summary with, so Changes
+      // never waits for it after its comparison (docs/development.md, Asset Loading Tiers).
+      void mb.loadChangedFilesTree().catch(() => {});
     },
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),
@@ -5146,6 +5190,21 @@ export function mountPullPage(container, ctx, mb) {
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
+              // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
+              // the route a press on it in the Pulls tab's tree takes, so the address names it
+              // and Back returns to where the reader was.
+              // A path the route cannot spell, as one with a backslash, which Git allows in a
+              // name, has no address: the diff goes to it in place instead.
+              openFile: (path) => {
+                const opened = /** @type {{then?: unknown} | null | undefined} */ (
+                  open({ number, tab: "files", file: path, replace: false, jumped: false })
+                );
+                if (opened && typeof opened.then === "function") {
+                  void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+                } else {
+                  jumpTo(path);
+                }
+              },
             }),
           { number },
         )

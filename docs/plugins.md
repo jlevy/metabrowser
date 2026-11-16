@@ -473,8 +473,10 @@ Useful helpers include:
 - `fileTypes` for the immutable File Rollup Format type catalog: its identity (`schema`,
   `schemaVersion`, `revision`, `fingerprint`, `registryIdentity`), its ordered `groups`,
   `families`, and `kinds`, and `classify`, `matchExtension`, `canonicalExtension`,
-  `groupForFile`, and `distributionKeyForExtension`; compare a rollup’s `registry`
-  identity before combining it with labels or colors from here;
+  `groupForFile`, and `distributionKeyForExtension`, plus `displayGroups`, the same
+  groups in the order the app lists them for a reader, Documentation first, which a view
+  that lists groups uses; compare a rollup’s `registry` identity before combining it
+  with labels or colors from here;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values;
@@ -492,6 +494,25 @@ restyle them ([The Tab Bar](design-system.md#the-tab-bar)). A control that shows
 hides content carries the host’s `disclosure-toggle` class so clicking it never selects
 text; a native `summary` needs nothing
 ([Disclosure Toggles Never Select Text](design-system.md#disclosure-toggles-never-select-text)).
+
+A menu a view draws on the host’s `.menu` surface heads each group of its rows with the
+host’s pattern: a `.menu-group` with `role="group"` and `aria-labelledby` naming its
+`.group-heading`, which draws its own divider and starts on the menu’s row inset.
+A menu whose rows are all one group is named from that heading instead, through the
+menu’s own `aria-labelledby`. `filterControls.bind` fits a dropdown to its rows and the
+window when its trigger opens it and when the window resizes; a view that renders one
+open another way calls `filterControls.fitOpenMenus(root)` after rendering.
+See [Groups in a Menu](design-system.md#groups-in-a-menu) and
+[Menu Height](design-system.md#menu-height).
+
+A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
+gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row
+between its controls when the pane is too narrow for one line and spaces its lines by
+the toolbar’s tokens; a control that ends the row takes the line’s end with
+`margin-inline-start: auto`. Bound there, `filterControls.bind` keeps each joined group
+fitted to its line: one the line cannot hold takes the cluster layout until it can, and
+`filterControls.fitJoinedGroups(root)` fits them at once.
+See [Navigation Toolbars Wrap](design-system.md#navigation-toolbars-wrap).
 
 A view that shows a message about the content, such as a description or a comment, plain
 or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
@@ -550,6 +571,11 @@ decorative; it is trusted host chrome, so never pass user-provided markup throug
   navigation target, forwarding an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view, and
   `loadKpressAssets()` loads the KPress browser assets once.
+- `loadChangedFilesTree()` loads the shell’s tree of a change set’s files once, on
+  demand: folders built from paths with their line counts rolled up, the visible rows,
+  which folders are open, a change set’s header text, and `displayPath`. A diff’s Diff
+  summary and the Pulls tab’s changed files both draw with it;
+  `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target, whose path is served-root-relative with `/`

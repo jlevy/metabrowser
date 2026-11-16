@@ -511,7 +511,7 @@ async function run() {
     }
     const model = panel.describePulls(answer.body, {
       filter: "all",
-      rows: answer.body.rows.map((row) => panel.describeRow(row, "octo/demo")),
+      rows: answer.body.rows.map((row) => panel.describeRow(row)),
       rowsVersion: 1,
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
@@ -550,31 +550,23 @@ async function run() {
     timers: page.timerDelays(),
   });
 
-  const hostile = panel.describeRow(
-    {
-      number: 7,
-      title: '<img src=x onerror="alert(1)"> & "quotes"',
-      state: "closed",
-      draft: false,
-      merged: true,
-      author: null,
-      updated_at: "2026-09-17T12:00:00Z",
-      base_ref: "main",
-      head_ref: "<b>topic</b>",
-      head_repository: null,
-    },
-    "octo/demo",
-  );
-  const spelled = panel.describeRow(
-    { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
-    "octo/demo",
-  ).refs;
+  const hostile = panel.describeRow({
+    number: 7,
+    title: '<img src=x onerror="alert(1)"> & "quotes"',
+    state: "closed",
+    draft: false,
+    merged: true,
+    author: null,
+    updated_at: "2026-09-17T12:00:00Z",
+    base_ref: "main",
+    head_ref: "<b>topic</b>",
+    head_repository: null,
+  });
   return {
     steps,
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
-    spelled,
     reader: await readerStory(),
     paint: await paintStory(panel),
     numbers: await numberStory(panel),
@@ -1233,14 +1225,14 @@ async function paintStory(panel, selection = false) {
     /** @param {any} parent @param {string} name */
     const child = (parent, name) =>
       parent.childNodes.find((node) => node.classList?.contains(name));
-    // The line wraps: the author and the branches each carry the separator before them, so
-    // either moves to the next line whole.
+    // The line wraps: the author carries the separator before it, so it moves to the next
+    // line whole. A row names no branches; the pull request's page does.
     const line = child(metadata, "github-pulls-line");
-    const numberLabel = child(line, "github-pulls-number");
+    const id = child(line, "github-pulls-id");
+    const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    const merge = child(line, "github-pulls-merge");
-    // The stack's position is on the title line, between the title and the age, and not on
-    // the muted line, which wraps: there its late arrival moved the merge or added a line.
+    // The title's line is the title and its age; a stack member's place is on the muted
+    // line, before the number, so the title has the room (mb-dzsi).
     // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
     const order = row(hostile)
       .childNodes.filter((node) => typeof node.className === "string")
@@ -1251,70 +1243,38 @@ async function paintStory(panel, selection = false) {
           "github-pulls-toggle",
           "github-pull-state-icon",
           "github-pulls-title",
-          "github-pulls-stack",
           "github-pulls-age",
           "github-pulls-meta",
         ]),
-      `the row is the toggle, the state icon, the title, the stack position, the age, and the muted line: ${order}`,
+      `the row is the toggle, the state icon, the title, the age, and the muted line: ${order}`,
     );
     assert(
-      !line.childNodes.some((node) => node.classList?.contains("github-pulls-stack")),
-      "the muted line holds no stack position",
+      id.childNodes[0].classList.contains("github-pulls-place") &&
+        id.childNodes[0].hidden &&
+        id.childNodes[0].textContent === "",
+      "the line starts with the stack place, with the number, empty and hidden while no stack holds it",
     );
     assert(
-      metadata.textContent ===
-        `#${first.body.rows[0].number} · ${first.body.rows[0].author} · fork:feature/←<literal> → release/←base`,
-      "the line reads number, author, then head → base",
+      metadata.textContent === `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      "the line reads number, then author, and names no branches",
     );
-    for (const part of [by, merge]) {
-      assert(
-        part.firstChild.classList.contains("github-pulls-sep") &&
-          part.firstChild.textContent === " · ",
-        "a part that may wrap carries its own separator",
-      );
-    }
+    assert(
+      !metadata.childNodes.some((node) => node.textContent.includes("→")) &&
+        line.childNodes.length === 2,
+      "the line has the place and number, and the author, and no merge",
+    );
+    assert(
+      by.firstChild.classList.contains("github-pulls-sep") && by.firstChild.textContent === " · ",
+      "a part that may wrap carries its own separator",
+    );
     const identity = child(by, "github-pull-identity");
     const authorLabel = child(identity, "github-pulls-author");
-    const branches = child(merge, "merge-refs");
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
     );
     assert(authorLabel.localName === "strong", "username is semantically bold");
     assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
-    // Merge Direction: the shared group, source → target, left to right, whatever the refs say.
-    const [source, arrow, target] = branches.childNodes;
-    assert(branches.getAttribute("dir") === "ltr", "the merge reads left to right in any page");
-    assert(
-      branches.textContent === "fork:feature/←<literal> → release/←base",
-      "the head, the shared arrow, then the base",
-    );
-    assert(
-      arrow.classList.contains("merge-refs-arrow") &&
-        arrow.getAttribute("role") === "img" &&
-        arrow.getAttribute("aria-label") === "merges into",
-      "the arrow is named, so a reader hears the head merge into the base",
-    );
-    assert(
-      arrow.dataset.tipText === "fork:feature/←<literal> merges into release/←base",
-      "the arrow's tooltip states the whole merge a narrow row may cut short",
-    );
-    const chips = [source, target];
-    assert(
-      chips.every((chip) => chip.classList.contains("git-ref")) &&
-        source.classList.contains("merge-refs-source") &&
-        target.classList.contains("merge-refs-target"),
-      "exactly two structured chips, including literal arrow refs",
-    );
-    assert(target.dataset.refCopy === "release/←base", "raw base ref remains intact");
-    assert(
-      source.dataset.refCopy === "feature/←<literal>",
-      "copy omits fork display qualification",
-    );
-    assert(
-      source.textContent === "fork:feature/←<literal>",
-      "head label is literal and owner-qualified",
-    );
 
     const status = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-status"),

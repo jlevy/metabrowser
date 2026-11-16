@@ -147,6 +147,59 @@ With an SVG added to the first screen, whose answer is revalidated, and an image
 another origin at a scheme-relative address, each of 5 returns in WKWebView asked for
 neither and had both complete in their first frame, as Chrome did for the SVG.
 
+## Pull Request Stacks and the Timeline
+
+Recorded on 2026-11-15, when the files-grouping and pull-stacks stack landed.
+
+For [Stacks](../../docs/design-system.md#stacks), the header’s stack chip: measured in
+Chrome 152 at 980 to 320 px, one stack’s chip is 54.75 px and two stacks’ 113.5 px; a
+late chip moved no part’s start and no row, kept 8 px from the sentence, and cut the
+sentence only where it needed the room: at 560 px two stacks cut a long author’s
+sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 commits” by
+38.04 px.
+
+For
+[Stack Groups in the Pulls Tab](../../docs/design-system.md#stack-groups-in-the-pulls-tab):
+at the default pane width, 299 px, a worded group-by-stack chip reached 36 px past the
+pane and a glyph-only one 7 to 17 px, where the toolbar, the Show group and Reload, has
+23 px to spare. A member’s title had 166 px at that width, where a position on the title
+line left it 65 to 125.
+
+For [Conversation Timeline](../../docs/design-system.md#conversation-timeline): in
+Chrome 152 and in the app’s WebKit alike, a run’s first commit’s glyphs sit 23.5 px
+below the card above, and its last commit’s 23.5 px above the card below, against 20 px
+between two commits’; before the run kept its room outside it, both were 16 px.
+Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
+px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
+joined the events. In the macOS app’s web view (WebKit 21624.2.5.11.8 on macOS 26.5.2),
+run through the WebKit gate’s `webkit-driver measure` (`apps/macos/webkit-gate`) on the
+same page and layouts, every one of that test’s layout checks passes in both themes,
+apart from its pixel reads, which the driver cannot make: an event card computes to
+`overflow-x: clip` and `overflow-y: visible`, and in every gap between joined events
+WebKit hit-tests the line’s x to the following event’s connector, which it would not do
+for a clipped one, and 9 px beside it to the page.
+Each node sits 0.5 px below its first line’s middle there, as in Chrome.
+
+## Tree Icon Slot
+
+For [One Glyph Size](../../docs/design-system.md#one-glyph-size), recorded 2026-11-15:
+at a 16px slot a Files name started 22px from the row’s content edge and a Pulls title
+44px, past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
+wider.
+
+## Grouping Cost
+
+For [Grouping the Files Tree](../../docs/design-system.md#grouping-the-files-tree),
+measured in headless Chrome on a served folder on 2026-11-15: grouping costs the server
+a pass over the index per group.
+On 22,104 files File type answered in 106 ms where the ungrouped tree took 34 ms, and on
+100,000 files in 0.72 to 0.91 s against 0.12 to 0.19 s. Opening a folder inside a
+section took 24 to 32 ms, the same as outside one, with no spinner shown.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

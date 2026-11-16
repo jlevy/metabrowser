@@ -45,7 +45,7 @@ objects instead of copying them; see
 
 ## The Pulls Tab
 
-Choose **Pulls** beside Files and Commits, or press `R`. The list starts on **Open**;
+Choose **Pulls** beside Files and Commits, or press `P`. The list starts on **Open**;
 **Closed** includes merged pull requests, and **All** shows both.
 Each filter shows its total when the catalog knows it.
 
@@ -68,9 +68,12 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), a 
 request in a native GitHub stack shows its position, such as **5/23**, on its row and on
 its page.
 On the page the position opens a menu of the stack’s members, from top to base.
-Press `N` for the next member toward the top and `P` for the previous one toward the
-base. Without the extension, or when GitHub cannot answer, pull requests read as usual
+On macOS, Control-N goes to the next member toward the top and Control-P to the previous
+one toward the base; on Windows and Linux, where those keys are the browser’s, use the
+menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
 and show no position unless one is cached.
+On the Pulls tab, the pull requests of each stack sit under a **Stack #N** row, top of
+the stack first, open by default; pull requests in no stack follow.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
@@ -82,11 +85,14 @@ GitHub**. A cached page shows at once and refreshes in the background; the
 The page has three tabs:
 
 - **Conversation** (`C`): the description, then comments, reviews, and commits in
-  GitHub’s order. Commits that arrive while you read are added after what is shown.
+  GitHub’s order, joined by a timeline line.
+  Commits that arrive while you read are added after what is shown.
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
-  (`L` switches). Markdown files open as rendered changes, as the next section describes.
+  (`L` switches). A diff of more than one file opens with a collapsed **Diff summary** of
+  its counts, which opens into the tree of changed files with rolled-up line counts.
+  Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.
@@ -107,8 +113,8 @@ and never moves the server’s pin.
 
 **Rendered** shows each changed block of a Markdown file as removed and added, with the
 changed words marked.
-Long runs of unchanged blocks fold, and a file’s **Rendered** | **Source** chooser
-switches between the two.
+Long runs of unchanged blocks fold into one quiet line that opens them in place, and a
+file’s **Rendered** | **Source** chooser switches between the two.
 
 Rendered shows what a change does to the document as it reads, so a change that does not
 show in the document appears only in **Source**: a link or image destination or title,

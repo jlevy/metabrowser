@@ -52,6 +52,8 @@ The page begins with the commit’s summary:
 
 Below it is the diff against the commit’s first parent, one section per file with its
 `+N` and `−N` counts.
+A commit that changes more than one file opens with a collapsed **Diff summary** of the
+counts, which opens into the tree of changed files.
 Click a file’s bar to collapse it.
 The diff draws **Split** or **Unified**; press `L` or use the layout control to switch,
 and a pane too narrow for Split draws Unified until there is room.

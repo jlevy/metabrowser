@@ -51,20 +51,19 @@ class ReservedKey:
 
 # The shell's own keys, which no view may take. Each letter is a known meaning that holds
 # wherever it is live, so it is reserved everywhere, even where it does nothing: `j` and
-# `k` move a row down and up, and `n` and `p` go to the next and previous item one
-# level up, such as the pull requests of a stack. The digits 1 to 9 are the situational
-# numbers, which the registry hands out by place on screen (static/keyboard-shortcuts.js,
+# `k` move a row down and up. Control-N and Control-P go to the next and previous item
+# one level up, such as the pull requests of a stack; a view's key is one letter alone,
+# so those chords reserve no letter. The digits 1 to 9 are the situational numbers,
+# which the registry hands out by place on screen (static/keyboard-shortcuts.js,
 # `attachNumbered`), so no view or plugin names one.
 RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
     {
         "f": ReservedKey("Files tab"),
-        "r": ReservedKey("Pulls tab"),
+        "p": ReservedKey("Pulls tab"),
         "h": ReservedKey("Commits tab"),
         "t": ReservedKey("Quick Search"),
         "j": ReservedKey("next row"),
         "k": ReservedKey("previous row"),
-        "n": ReservedKey("next item"),
-        "p": ReservedKey("previous item"),
         "u": ReservedKey("parent folder command"),
         "w": ReservedKey("branch or tag switcher"),
         **{digit: ReservedKey("situational numbers") for digit in "123456789"},
