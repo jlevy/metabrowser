@@ -3,9 +3,9 @@ type: is
 id: is-01m7gzdk5rsg1kaz7kpn7p2fyj
 title: "Diff summary: one summary at the top of the commit and PR pages, replacing the commit page's counts"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-16T01:26:50.295Z
-updated_at: 2026-11-16T02:08:20.112Z
+updated_at: 2026-11-16T20:03:33.646Z
 started_at: 2026-11-16T01:27:37.998Z
+closed_at: 2026-11-16T20:03:33.646Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 

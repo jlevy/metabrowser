@@ -3,9 +3,9 @@ type: is
 id: is-01m7he951v8gwjt3ejjes5d4ab
 title: "PR #473 (merge): review, address, gate — group heading tallies (mb-mcjd, mb-yk0i)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 9
+version: 10
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -19,5 +19,9 @@ child_order_hints:
   - is-01m7hfbebf3dph0p20h1f8zr0y
   - is-01m7hfbevw7jwng9xx65ax9qs9
 created_at: 2026-11-16T05:46:33.402Z
-updated_at: 2026-11-16T06:05:17.563Z
+updated_at: 2026-11-16T20:03:28.406Z
+closed_at: 2026-11-16T20:03:28.406Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

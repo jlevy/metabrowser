@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjhzg676034x3900gjvgd
 title: "PR #461 (merge): review, address, gate — fix(github): one Conversation rhythm, and headings that read alike (mb-w7rt, mb-novh)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 8
+version: 9
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -18,5 +18,9 @@ child_order_hints:
   - is-01m7hdjvq2qfs20kxb8chscmdj
   - is-01m7hdjwa0v2nj66s9c9avjymq
 created_at: 2026-11-16T05:16:44.399Z
-updated_at: 2026-11-16T05:34:23.550Z
+updated_at: 2026-11-16T19:05:40.287Z
+closed_at: 2026-11-16T19:05:40.286Z
+close_reason: "Merged into main (stack #446) after the gate."
+resolution: null
+duplicate_of: null
 ---

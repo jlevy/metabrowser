@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjx7q1sk1bp90ba48mdha
 title: "PR #472 (merge): review, address, gate — fix(diff): the Diff summary opens in the page's flow, one step in from its header (mb-hi4l"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 8
+version: 9
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -18,5 +18,9 @@ child_order_hints:
   - is-01m7hfr0rmvyjeq90x1m90wd23
   - is-01m7hfr18ftecxypnspcpyr4f8
 created_at: 2026-11-16T05:16:55.925Z
-updated_at: 2026-11-16T06:12:09.614Z
+updated_at: 2026-11-16T20:03:27.973Z
+closed_at: 2026-11-16T20:03:27.972Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

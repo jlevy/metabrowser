@@ -5,7 +5,7 @@ title: "Stack #446 (merge): review every layer and merge into main"
 kind: task
 status: in_progress
 priority: 1
-version: 30
+version: 32
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -37,14 +37,15 @@ child_order_hints:
   - is-01m7jk9jrrvx502cp9gf9029cx
   - is-01m7jkakkfddytvc7cwa16v0dj
   - is-01m7jp047k8p38s3q818n9hvc1
+  - is-01m7jz6wz5wjnb9thcvxybaek0
 hold: null
 hold_until: null
 created_at: 2026-11-16T05:12:26.236Z
-updated_at: 2026-11-16T17:20:40.690Z
+updated_at: 2026-11-16T20:01:39.812Z
 started_at: 2026-11-16T05:12:33.015Z
 ---
 Owner, 2026-11-15: "is the current app restarted with all the changes? Are all PRs reviewed? Make sure they follow our standard process of being reviewed, and then you should proceed with merging." Layers #444-#456 had Review A round 1, addressed. #457-#472 need senior reviews; #466 a dedicated performance review.
 
 ## Notes
 
-Owner, 2026-11-15, verbatim: "Make sure everything is reviewed and ready to merge in parallel. Mark all as ready to merge, and once everything is reviewed and all issues are fixed, you can merge the entire stack." Owner, 2026-11-16: "Continue making sure everything is reviewed and merged as you go." and "Make sure the stacks are all ready and everything is merged, and that it is reasonably ready and has met the criteria for merging." State 2026-11-16: layers #444-#458 green after the merge pass; #459 fix a93288f04 for a chord test broken by #457's refusal; second pass from #459 and new main 204e50fd9 under way.
+Owner 2026-11-16: "continue, I want everytihng fixed, reviewed, and merged". Merged so far: #444-#462 (main 509e0ed). Open #464-#479: all reviewed and addressed except #479 (fix round running). Whole-stack review of #464-#478 running (mb-3qgy). Files-tab Chrome flake fix on main in progress (mb-alff).

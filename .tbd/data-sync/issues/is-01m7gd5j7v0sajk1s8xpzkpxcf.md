@@ -3,9 +3,9 @@ type: is
 id: is-01m7gd5j7v0sajk1s8xpzkpxcf
 title: "GitHub labels: chips colored exactly as GitHub colors them, our sizes kept"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T20:07:52.826Z
-updated_at: 2026-11-15T20:08:55.172Z
+updated_at: 2026-11-16T20:03:31.328Z
 started_at: 2026-11-15T20:08:55.171Z
+closed_at: 2026-11-16T20:03:31.327Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 

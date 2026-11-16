@@ -3,9 +3,9 @@ type: is
 id: is-01m7gaskxmbjp91w7y96chkkj6
 title: "Conversation: event headings read alike; a status chip only for a review state"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:26:24.179Z
-updated_at: 2026-11-15T20:03:15.712Z
+updated_at: 2026-11-16T19:05:41.846Z
 started_at: 2026-11-15T19:27:14.725Z
+closed_at: 2026-11-16T19:05:41.845Z
+close_reason: "Merged into main (stack #446) after the gate."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 

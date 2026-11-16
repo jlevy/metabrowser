@@ -3,9 +3,9 @@ type: is
 id: is-01m7g6xxw3q44b9fp1ehr3nfq1
 title: "Menus: a key that opens a menu moves keyboard focus into it"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:18:51.139Z
-updated_at: 2026-11-15T18:20:08.388Z
+updated_at: 2026-11-16T18:47:25.043Z
 started_at: 2026-11-15T18:20:08.387Z
+closed_at: 2026-11-16T18:47:25.042Z
+close_reason: "Merged into main with #459."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 

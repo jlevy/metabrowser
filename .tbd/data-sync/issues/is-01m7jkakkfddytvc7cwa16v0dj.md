@@ -3,9 +3,9 @@ type: is
 id: is-01m7jkakkfddytvc7cwa16v0dj
 title: "PR #478 (merge): review, address, gate — comparisons kept and warmed, a revisit never waits (mb-neg9)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 16
+version: 17
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -26,5 +26,9 @@ child_order_hints:
   - is-01m7jqbyg2bbb4m8f6wntve70q
   - is-01m7jqbyyfxx04ksc2dh4pgnre
 created_at: 2026-11-16T16:33:58.382Z
-updated_at: 2026-11-16T17:44:37.070Z
+updated_at: 2026-11-16T20:03:30.162Z
+closed_at: 2026-11-16T20:03:30.161Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

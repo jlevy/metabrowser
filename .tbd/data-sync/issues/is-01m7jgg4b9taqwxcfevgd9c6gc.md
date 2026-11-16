@@ -3,9 +3,9 @@ type: is
 id: is-01m7jgg4b9taqwxcfevgd9c6gc
 title: "PR #476 (merge): review, address, gate — PR header freshness line and Diff summary placeholder (mb-2u08, mb-onr2)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 7
+version: 8
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -17,5 +17,9 @@ child_order_hints:
   - is-01m7jj4p5abjdbgjb9n55sqbgt
   - is-01m7jj4pmn3fyg79c8hj87jch8
 created_at: 2026-11-16T15:44:33.639Z
-updated_at: 2026-11-16T16:13:16.308Z
+updated_at: 2026-11-16T20:03:29.338Z
+closed_at: 2026-11-16T20:03:29.337Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

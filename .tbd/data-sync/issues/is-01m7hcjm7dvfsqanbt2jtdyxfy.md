@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjm7dvfsqanbt2jtdyxfy
 title: "PR #464 (merge): review, address, gate — feat(nav): navigating to an item reveals it in the nav pane by every route (mb-6y0g)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 13
+version: 14
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -23,5 +23,9 @@ child_order_hints:
   - is-01m7jh9bqp0hsbgkjzyvrevjan
   - is-01m7jh9cdxvcxvh50g13sem4rm
 created_at: 2026-11-16T05:16:46.699Z
-updated_at: 2026-11-16T15:58:21.113Z
+updated_at: 2026-11-16T20:03:24.644Z
+closed_at: 2026-11-16T20:03:24.643Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

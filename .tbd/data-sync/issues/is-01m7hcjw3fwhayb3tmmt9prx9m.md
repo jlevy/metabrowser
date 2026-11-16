@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjw3fwhayb3tmmt9prx9m
 title: "PR #471 (merge): review, address, gate — feat(github): cache each repository's label set so every chip is colored on first paint (m"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -27,5 +27,9 @@ child_order_hints:
   - is-01m7hgs9dke9a25nngkb0cvjaf
   - is-01m7hgs9wfy0t9qaae260yc72a
 created_at: 2026-11-16T05:16:54.766Z
-updated_at: 2026-11-16T06:30:19.790Z
+updated_at: 2026-11-16T20:03:27.541Z
+closed_at: 2026-11-16T20:03:27.540Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

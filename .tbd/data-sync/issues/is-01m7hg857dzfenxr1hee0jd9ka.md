@@ -3,9 +3,9 @@ type: is
 id: is-01m7hg857dzfenxr1hee0jd9ka
 title: "PR #474 (merge): review, address, gate — no rule under the chooser, bold count numerals (mb-a073, mb-roa9)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -20,5 +20,9 @@ child_order_hints:
   - is-01m7hhgqw9smfpm4mqhdqj87v0
   - is-01m7hhgrb3grtwjxsvemh3yacj
 created_at: 2026-11-16T06:20:57.964Z
-updated_at: 2026-11-16T06:43:08.258Z
+updated_at: 2026-11-16T20:03:28.875Z
+closed_at: 2026-11-16T20:03:28.874Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

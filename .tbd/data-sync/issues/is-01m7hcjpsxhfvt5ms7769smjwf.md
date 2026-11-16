@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjpsxhfvt5ms7769smjwf
 title: "PR #466 (merge): review, address, gate — perf(files): Group by reads every group in one pass and shows a choice while it waits (mb-"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 16
+version: 17
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -26,5 +26,9 @@ child_order_hints:
   - is-01m7hh0ty3vrhcsqwz1sxrzzja
   - is-01m7hh0vgfbenvcjgxf4q1cv0d
 created_at: 2026-11-16T05:16:49.340Z
-updated_at: 2026-11-16T06:34:27.214Z
+updated_at: 2026-11-16T20:03:25.494Z
+closed_at: 2026-11-16T20:03:25.493Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

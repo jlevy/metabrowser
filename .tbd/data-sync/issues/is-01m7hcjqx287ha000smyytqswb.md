@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjqx287ha000smyytqswb
 title: "PR #463 (merge): review, address, gate — fix: make the Files tab, stack menu, changed-file rows and GitHub tokens follow the design"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 12
+version: 13
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -22,5 +22,9 @@ child_order_hints:
   - is-01m7hdms9fqwc6vcv7m4kw1agj
   - is-01m7hdmswx1ppaedkczeymewjp
 created_at: 2026-11-16T05:16:50.465Z
-updated_at: 2026-11-16T05:35:26.620Z
+updated_at: 2026-11-16T20:03:25.918Z
+closed_at: 2026-11-16T20:03:25.917Z
+close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
+resolution: null
+duplicate_of: null
 ---

@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjgz0543fxmc38m3p8ajk
 title: "PR #460 (merge): review, address, gate — fix(tooltips): a tooltip only adds information; the Pulls column has none (mb-8mpo)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 9
+version: 10
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -19,5 +19,9 @@ child_order_hints:
   - is-01m7hdtvshxvy216926yh69a3f
   - is-01m7hdtwa3p6fvspq363zqcq2m
 created_at: 2026-11-16T05:16:43.360Z
-updated_at: 2026-11-16T05:38:45.698Z
+updated_at: 2026-11-16T19:05:39.874Z
+closed_at: 2026-11-16T19:05:39.863Z
+close_reason: "Merged into main (stack #446) after the gate."
+resolution: null
+duplicate_of: null
 ---
