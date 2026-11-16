@@ -181,6 +181,11 @@ class FakeElement {
     return [...this.walk()].filter((node) => node.classList.contains(className));
   }
 
+  /** The first descendant of one class, `.name`, as a page answers it, or null. */
+  querySelector(selector) {
+    return this.find(selector.slice(1)).find((node) => node !== this) ?? null;
+  }
+
   text() {
     return [...this.walk()]
       .map((node) => node.textContent)
@@ -385,25 +390,27 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     // Each status is its rows' letter in the shell's status primitive, which inks it by its
     // status; the dots between the groups and the comma between the statuses are the
     // shell's muted punctuation, the dots hidden from a screen reader (mb-vb51). The header
-    // is painted by the shell's one painter, the SDK's `countPartsNodes`, and each dot is
-    // one item of its line with the group before it, so a wrap breaks after a dot.
+    // is painted by the shell's painters, the SDK's `countPartsNodes` for its file count and
+    // `changeLineNodes` for the brief change line after it, the one component for
+    // "1 A, 1 M · +1,201 −1" (mb-9ekj), and each dot is one item of its line with the group
+    // before it, so a wrap breaks after a dot.
     const letters = header
       .find("file-change-status")
       .map((letter) => `${letter.reads()} ${letter.getAttribute("data-file-status")}`);
-    /** An item of the header's line: its class, or a group's parts, each mark with its aria-hidden. */
+    /** A part of the header: its class, a mark with its aria-hidden, or a group's parts. */
     const item = (child) =>
-      child.classList.contains("diff-summary-group")
-        ? child.children.map((part) =>
-            part.classList.contains("summary-punctuation")
-              ? `${part.reads()} ${part.getAttribute("aria-hidden")}`
-              : part.className,
-          )
-        : child.className;
+      child.classList.contains("summary-punctuation")
+        ? `${child.reads()} ${child.getAttribute("aria-hidden")}`
+        : ["diff-summary-group", "change-line", "change-line-group", "change-line-stats"].includes(
+              child.className,
+            )
+          ? { [child.className]: child.children.map(item) }
+          : child.className;
     const groups = header.children
       .filter((child) => typeof child === "object" && child.className !== "diff-summary-chevron")
       .map(item);
     const commas = header
-      .find("diff-summary-breakdown")[0]
+      .find("change-line-statuses")[0]
       ?.find("summary-punctuation")
       .map((mark) => `${mark.reads()} ${mark.getAttribute("aria-hidden")}`);
     check(
@@ -411,9 +418,13 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       JSON.stringify(letters) === JSON.stringify(["A added", "M modified"]) &&
         JSON.stringify(groups) ===
           JSON.stringify([
-            ["diff-summary-files", "· true"],
-            ["diff-summary-breakdown", "· true"],
-            "diff-summary-stats",
+            { "diff-summary-group": ["diff-summary-files", "· true"] },
+            {
+              "change-line": [
+                { "change-line-group": ["change-line-statuses", "· true"] },
+                { "change-line-stats": ["diff-stat-add", "diff-stat-del"] },
+              ],
+            },
           ]) &&
         JSON.stringify(commas) === JSON.stringify([", null"]) &&
         header.find("visually-hidden").length === 0,
@@ -792,15 +803,16 @@ async function main() {
     mountDiffView: mountDiffViewImpl,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
-  // A count summary is painted by the shell's one painter, as the SDK's `countPartsNodes`
-  // hands it the page's document (formatters.js).
-  const countPartsNodes = require("./changed-files-tree-fixture.js").countPartsNodes();
+  // A count summary and a brief change line are painted by the shell's painters, as the
+  // SDK's `countPartsNodes`, `changeLine`, and `changeLineNodes` hand them the page's
+  // document (formatters.js).
+  const painters = require("./changed-files-tree-fixture.js").shellPainters();
   const defaultTestApi = {
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForPath: () => "",
     prefs: { get: () => "unified" },
-    countPartsNodes,
+    ...painters,
   };
   const mountDiffView = (container, document, api = {}, options) =>
     mountDiffViewImpl(container, document, { ...defaultTestApi, ...api }, options);
@@ -1463,7 +1475,7 @@ async function main() {
   const standalone = mountDiffSummary(
     slot,
     twoFiles,
-    { formatInteger: (count) => String(count), countPartsNodes },
+    { formatInteger: (count) => String(count), ...painters },
     { changedFiles: sharedTree, openFile() {} },
   );
   const drawn = slot.children[0];
@@ -1497,7 +1509,7 @@ async function main() {
       cutHeader.reads().includes("+15") &&
       cutHeader.reads().includes("−3") &&
       cutHeader.reads().includes("(2 listed)") &&
-      cutHeader.find("diff-summary-breakdown").length === 0,
+      cutHeader.find("change-line-statuses").length === 0,
     cutHeader?.reads() ?? "",
   );
   check(
@@ -1535,17 +1547,12 @@ async function main() {
   // while it is whole (A7 of review A on #470). It runs after the checks of a tree that did
   // not load, since a hover loads the tree's module.
   const tipSlot = new FakeElement("div");
-  const tipped = mountDiffSummary(
-    tipSlot,
-    twoFiles,
-    { countPartsNodes },
-    {
-      changedFiles: sharedTree,
-      openFile() {},
-    },
-  );
+  const tipped = mountDiffSummary(tipSlot, twoFiles, painters, {
+    changedFiles: sharedTree,
+    openFile() {},
+  });
   const tipHeader = tipSlot.children[0];
-  const tipBreakdown = tipHeader.find("diff-summary-breakdown")[0];
+  const tipBreakdown = tipHeader.find("change-line-statuses")[0];
   tipHeader.dispatch("pointerenter");
   check("a whole breakdown has no tooltip", tipHeader.dataset.tipText === undefined);
   tipBreakdown.scrollWidth = 180;

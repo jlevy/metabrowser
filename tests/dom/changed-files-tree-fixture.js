@@ -38,14 +38,21 @@ function shellFormatters() {
 }
 
 /**
- * The SDK's `countPartsNodes` as a page has it: the shell's one painter of a count summary,
- * drawing into whatever document the caller has set up when it is called.
+ * The SDK's painters as a page has them, for a view handed an SDK of the caller's own: the
+ * shell's one painter of a count summary, `countPartsNodes`, and its brief change line,
+ * `changeLine` in the shell's number format and `changeLineNodes`, each drawing into whatever
+ * document the caller has set up when it is called.
  *
- * @returns {(parts: MetabrowserCountParts) => Array<Node | string>}
+ * @returns {Pick<MetabrowserPublicSdk, "countPartsNodes" | "changeLine" | "changeLineNodes">}
  */
-function countPartsNodes() {
+function shellPainters() {
   const formatters = shellFormatters();
-  return (parts) => formatters.countPartsNodes(globalThis.document, parts);
+  return {
+    countPartsNodes: (parts) => formatters.countPartsNodes(globalThis.document, parts),
+    changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
+    changeLineNodes: (line, options) =>
+      formatters.changeLineNodes(globalThis.document, line, options),
+  };
 }
 
 /** @returns {MetabrowserChangedFilesTree} */
@@ -66,4 +73,4 @@ function changedFilesTree() {
   return page.MetabrowserChangedFilesTree;
 }
 
-module.exports = { changedFilesTree, countPartsNodes, shellFormatters, source };
+module.exports = { changedFilesTree, shellFormatters, shellPainters, source };

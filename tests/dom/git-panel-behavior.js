@@ -922,16 +922,17 @@ async function run() {
         '<span class="git-commit-change-group"><span class="git-commit-change-files">' +
         '<span class="summary-number">32</span> files changed</span>' +
         '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
-        '<span class="git-commit-change-group"><span class="git-commit-file-statuses">' +
+        // The brief change line, the one component for "4 A, 28 M · +1,921 −160" (mb-9ekj).
+        '<span class="change-line"><span class="change-line-group"><span class="change-line-statuses">' +
         '<span class="summary-number">4</span> ' +
         '<span class="file-change-status" data-file-status="added">A</span>' +
         '<span class="summary-punctuation">,</span> ' +
         '<span class="summary-number">28</span> ' +
         '<span class="file-change-status" data-file-status="modified">M</span></span>' +
         '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
-        '<span class="git-commit-line-stats">' +
-        `<span class="git-stat-add">+${format(1921)}</span>` +
-        '<span class="git-stat-del">−160</span></span></span></div>',
+        '<span class="change-line-stats">' +
+        `<span class="diff-stat-add">+${format(1921)}</span>` +
+        '<span class="diff-stat-del">−160</span></span></span></span></div>',
     );
     assertNotContains(
       "tooltip: zero deleted files are omitted",
@@ -1087,8 +1088,8 @@ async function run() {
       '<span class="summary-number">2</span> files changed</span>' +
       '<span class="summary-punctuation" aria-hidden="true">·</span>' +
       '<span class="visually-hidden">, </span></span>' +
-      '<span class="diff-summary-stats"><span class="diff-stat-add">+5</span>' +
-      '<span class="diff-stat-del">−1</span></span></div></div>',
+      '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-add">+5</span>' +
+      '<span class="diff-stat-del">−1</span></span></span></div></div>',
   );
   assertNotContains(
     "detail: summary draws no change stats of its own",

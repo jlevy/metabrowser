@@ -491,7 +491,7 @@ async function main() {
       highlightSyntax: async () => null,
       isLargeTextPreview: () => true,
       langForPath: () => "",
-      countPartsNodes: require("./changed-files-tree-fixture.js").countPartsNodes(),
+      ...require("./changed-files-tree-fixture.js").shellPainters(),
       filterControls: {
         groupHtml: () => "",
         bind(_control, options) {

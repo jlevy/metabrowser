@@ -6529,6 +6529,44 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--muted);
 }
 
+/* A brief change line, "10 A, 5 D, 4 M · +1,234 −567": a change set's statuses and line
+   totals, the one component every surface that says them in brief draws (formatters.js,
+   changeLine and changeLineNodes; docs/design-system.md, "Brief Change Line"; mb-9ekj): the
+   Diff summary's header after its "N files changed · ", a commit's hover card, and a
+   commit page's totals line. Its statuses and the muted dot after them are one item
+   (`.change-line-group`), so a line that wraps breaks after the dot and no line starts with
+   one, and one 6 px gap, the Diff summary's, spaces the dot on both sides. Its line totals
+   are the inline change stats, bold, in their statuses' inks. It sets no size or ink of its
+   own: it takes its line's. */
+.change-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+}
+
+.change-line-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
+}
+
+.change-line-stats {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.change-line-stats > .diff-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+
+.change-line-stats > .diff-stat-del {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
+}
+
 /* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",
    at regular weight, and the rest at the title's own: bold wherever a title is bold
    (docs/design-system.md, "Titles"; mb-z57p). formatters.js's titleNodes and titleHtml
@@ -6731,8 +6769,9 @@ pre.code-block.metabrowser-source-lines > code {
    docs/design-system.md, "Git Commit Summary"). Its numbers are the shell's bold
    `.summary-number` in the line's ink, its letters the status primitive at the line's
    weight, its commas and dots `.summary-punctuation`, and its line totals the inline change
-   stats. Its groups are items of one line, spaced as the Diff summary's are, and each dot
-   is one item with the group before it, so a line that wraps breaks after a dot. */
+   stats: its file count, then the brief change line (`.change-line`). Its groups are items
+   of one line, spaced as the Diff summary's are, and each dot is one item with the group
+   before it, so a line that wraps breaks after a dot. */
 .git-commit-change-stats {
   margin-top: 6px;
   color: var(--text);
@@ -6750,12 +6789,6 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: baseline;
   column-gap: inherit;
-}
-
-.git-commit-line-stats {
-  display: inline-flex;
-  gap: 6px;
-  white-space: nowrap;
 }
 
 .git-commit-summary .git-commit-age {

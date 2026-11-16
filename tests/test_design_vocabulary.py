@@ -1133,7 +1133,7 @@ def test_git_commit_summary_is_one_component() -> None:
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     change_stats = _rule(styles, ".git-commit-change-stats")
     change_line = _rule(styles, ".git-commit-change-line")
-    line_stats = _rule(styles, ".git-commit-line-stats")
+    line_stats = _rule(styles, ".change-line-stats")
     compact = _rule(styles, ".git-commit-summary-compact")
     meta = _rule(styles, ".git-commit-meta")
     summary_sha = _rule(styles, ".git-commit-sha")
@@ -2247,10 +2247,15 @@ _PUNCTUATION_PAINTERS = {
         'attributes: [["aria-hidden", "true"]],',
         '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
         "{ status: entry.status, letter: entry.letter },",
+        'const CHANGE_LINE_CLASS = "change-line";',
+        "{ statuses: entries, additions: totals.additions, deletions: totals.deletions },",
     ),
     "static/plugin-sdk.js": (
         "return global.MetabrowserFormatters.countPartsNodes(global.document, parts);",
         "countPartsNodes: countPartsNodes,",
+        "return global.MetabrowserFormatters.changeLineNodes(global.document, line, options);",
+        "changeLine: changeLine,",
+        "changeLineNodes: changeLineNodes,",
     ),
     "static/changed-files-tree.js": (
         "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
@@ -2259,12 +2264,15 @@ _PUNCTUATION_PAINTERS = {
     "static/git-panel.js": (
         "const said = formatters.changeSummary(",
         "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
+        "formatters.changeLineHtml(said.line)",
         'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
     ),
     "builtin_plugins/diff/diff-view.js": (
         'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
         'const LINE_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
-        "const paint = api?.countPartsNodes;",
+        "const countPartsNodes = api?.countPartsNodes;",
+        '...paint.changeLineNodes(said.line, named ? {} : { spoken: ", " }),',
+        '...paint.changeLineNodes(paint.changeLine(said.change), { spoken: ", " }),',
     ),
     "builtin_plugins/github/pull-page.js": (
         'const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
@@ -2273,7 +2281,7 @@ _PUNCTUATION_PAINTERS = {
 }
 # A class only the one painter writes: no other source spells one as a class of its own.
 _PAINTED_CLASSES = re.compile(
-    r"""["'](summary-number|summary-punctuation|file-change-status)["']"""
+    r"""["'](summary-number|summary-punctuation|file-change-status|change-line(?:-[a-z]+)?)["']"""
 )
 
 
@@ -2332,6 +2340,19 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -
         "column-gap": "inherit",
     }
     assert shell[".git-commit-change-line"]["column-gap"] == "6px"
+    # The brief change line is one shell component, spaced as the Diff summary is, its
+    # statuses and their dot one item (mb-9ekj).
+    assert shell[".change-line"] == {
+        "display": "inline-flex",
+        "flex-wrap": "wrap",
+        "align-items": "baseline",
+        "column-gap": "6px",
+    }
+    assert shell[".change-line-group"] == {
+        "display": "inline-flex",
+        "align-items": "baseline",
+        "column-gap": "inherit",
+    }
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:

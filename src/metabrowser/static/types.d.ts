@@ -554,9 +554,22 @@ type MetabrowserFormatterRuntime = Readonly<{
       deletions: number | null;
       exact: boolean;
     },
-    entries: ReadonlyArray<{ status: string; letter: string; word: string; count: number | null }>,
+    entries: MetabrowserChangeLineInput["statuses"],
     formatCount: (count: number) => string,
   ): MetabrowserChangedFilesSummary;
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from statuses and line totals. */
+  changeLine(
+    change: MetabrowserChangeLineInput,
+    formatCount: (count: number) => string,
+  ): MetabrowserChangeLine;
+  /** A brief change line as nodes: its one `span.change-line`. */
+  changeLineNodes(
+    doc: Document,
+    line: MetabrowserChangeLine,
+    options?: MetabrowserChangeLineOptions,
+  ): Array<Node | string>;
+  /** A brief change line as markup. */
+  changeLineHtml(line: MetabrowserChangeLine, options?: MetabrowserChangeLineOptions): string;
   /** A count summary as markup, each kind of part in its one class, the words escaped. */
   countPartsHtml(parts: MetabrowserCountParts): string;
   /** A count summary as nodes, each kind of part in its one class, the words as text. */
@@ -1426,6 +1439,16 @@ type MetabrowserSdk = {
    *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,
    *  each status its letter in `span.file-change-status`, and the words as text. */
   countPartsNodes(parts: MetabrowserCountParts): Array<Node | string>;
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from a change set's statuses and
+   *  line totals, in the shell's number format: the one component for one
+   *  (docs/design-system.md, "Brief Change Line"). */
+  changeLine(change: MetabrowserChangeLineInput): MetabrowserChangeLine;
+  /** A brief change line as nodes for its element, painted as the shell paints every one: its
+   *  one `span.change-line`. */
+  changeLineNodes(
+    line: MetabrowserChangeLine,
+    options?: MetabrowserChangeLineOptions,
+  ): Array<Node | string>;
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;
@@ -3617,13 +3640,42 @@ declare global {
    */
   type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
 
+  /**
+   * What a brief change line is built from (formatters.js, `changeLine`): the statuses in
+   * the order shown, each with its letter, word, and count, null where not known, and the
+   * line totals, null where not known.
+   */
+  type MetabrowserChangeLineInput = {
+    statuses: ReadonlyArray<{ status: string; letter: string; word: string; count: number | null }>;
+    additions: number | null;
+    deletions: number | null;
+  };
+
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567" (docs/design-system.md). */
+  type MetabrowserChangeLine = {
+    /** "10 A, 5 D, 4 M", in a count summary's parts; none for no statuses. */
+    statusParts: MetabrowserCountParts;
+    /** "+1,234". */
+    additions: string;
+    /** "−567". */
+    deletions: string;
+    /** "10 A, 5 D, 4 M · +1,234 −567". */
+    text: string;
+    /** "10 added, 5 deleted, 4 modified; 1,234 lines added, 567 deleted". */
+    label: string;
+  };
+
+  /** How a brief change line is painted where it stands. */
+  type MetabrowserChangeLineOptions = {
+    /** What a screen reader is told in the hidden dot's place, on a line with no name in words. */
+    spoken?: string;
+  };
+
   type MetabrowserChangedFilesSummary = {
     /** "35 files changed", in its parts. */
     filesParts: MetabrowserCountParts;
-    /** "2 A, 3 D, 30 M", in its parts; none for no files. */
-    breakdownParts: MetabrowserCountParts;
-    additions: string;
-    deletions: string;
+    /** "2 A, 3 D, 30 M · +1,234 −3,423", the brief change line. */
+    line: MetabrowserChangeLine;
     estimated: boolean;
     text: string;
     label: string;

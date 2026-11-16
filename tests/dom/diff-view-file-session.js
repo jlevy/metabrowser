@@ -322,8 +322,9 @@ globalThis.window = {
     },
     // The shared changed-files tree, which the SDK loads from the shell's bundle.
     loadChangedFilesTree: async () => require("./changed-files-tree-fixture.js").changedFilesTree(),
-    // The shell's painter of a count summary, which the Diff summary is drawn with.
-    countPartsNodes: require("./changed-files-tree-fixture.js").countPartsNodes(),
+    // The shell's painters of a count summary and a brief change line, which the Diff summary is
+    // drawn with.
+    ...require("./changed-files-tree-fixture.js").shellPainters(),
     // The plugin-data transport: the recorded answer for exactly this request.
     async fetchPluginData(plugin, name, params) {
       const request = pluginRoute(plugin, name, params);

@@ -155,7 +155,7 @@ const CHROME = `(() => {
         // What holds a bold number: inline with its words, never a flex or grid line, where
         // it would be an item of its own.
         within: number ? getComputedStyle(parent.parentElement).display : null,
-        own: parent.closest(".diff-summary-stats, ${AGE}") !== null,
+        own: parent.closest(".change-line-stats, ${AGE}") !== null,
       });
     }
     return found;

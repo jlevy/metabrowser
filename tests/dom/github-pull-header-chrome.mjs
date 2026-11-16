@@ -338,7 +338,7 @@ const MEASURE = `async (name, change, tab, width) => {
     const rows = (shape) => JSON.stringify({ rows: shape.rows, tabBar: shape.tabBar });
     const headerLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
     const toggle = slot.querySelector(".diff-summary");
-    const breakdown = slot.querySelector(".diff-summary-breakdown");
+    const breakdown = slot.querySelector(".change-line-statuses");
     toggle?.dispatchEvent(new Event("pointerenter"));
     summaryMoves = {
       moved: rows(before) === rows(after) ? null : { before, after },

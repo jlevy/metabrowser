@@ -534,6 +534,14 @@ Useful helpers include:
   from assistive technology with an optional `spoken` said in its place, and
   `{status, letter}` for a file change status, its letter drawn in the status’s color
   ([Count Summaries Bold Their Numbers](design-system.md#count-summaries-bold-their-numbers));
+- `changeLine(change)` and `changeLineNodes(line, options)` for a brief change line, “10
+  A, 5 D, 4 M · +1,234 −567”, the host’s one component for a change set’s statuses and
+  line totals: `changeLine` builds it from `{statuses, additions, deletions}`, each
+  status `{status, letter, word, count}` in the order shown and a count `null` where it
+  is not known, in the host’s number format, and returns its parts, its `text`, and its
+  `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
+  with `{spoken: ", "}` on a line whose name does not say it in words
+  ([Brief Change Line](design-system.md#brief-change-line));
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and

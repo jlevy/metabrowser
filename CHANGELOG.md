@@ -67,7 +67,9 @@ All notable changes to Metabrowser are documented here.
   rows, “28 M 4 A files” and “+1921 −160 lines”, whose added and deleted counts were
   green and red; a screen reader hears them in words.
   Plugins can paint a count summary as the shell does with
-  `metabrowser.countPartsNodes(parts)`. See
+  `metabrowser.countPartsNodes(parts)`, and a brief change line, “10 A, 5 D, 4 M ·
+  +1,234 −567”, the one component the Diff summary’s header and the hover card share,
+  with `metabrowser.changeLine(change)` and `metabrowser.changeLineNodes(line)`. See
   [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers)
   and [Plugins](docs/plugins.md).
 

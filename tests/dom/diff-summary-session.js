@@ -130,10 +130,10 @@ function header(_model, manifest, whole = null) {
     text: said.text,
     label: said.label,
     estimated: said.estimated,
-    numbers: [...said.filesParts, ...said.breakdownParts].flatMap((part) =>
+    numbers: [...said.filesParts, ...said.line.statusParts].flatMap((part) =>
       typeof part === "object" && "number" in part ? [part.number] : [],
     ),
-    parts: { files: painted(said.filesParts), statuses: painted(said.breakdownParts) },
+    parts: { files: painted(said.filesParts), statuses: painted(said.line.statusParts) },
     ...(listed === null ? {} : { listed }),
   };
 }
@@ -426,13 +426,15 @@ async function main() {
       (manifest) => {
         const { said } = model.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
         const files = written(said.filesParts);
-        const breakdown = written(said.breakdownParts);
+        const breakdown = written(said.line.statusParts);
         const entries = shared.statusBreakdown(manifest.files.map((file) => rowOf(file).status));
         const words = entries.map((entry) => `${entry.count} ${entry.word}`).join(", ");
         const letters = entries.map((entry) => `${entry.count} ${entry.letter}`).join(", ");
         return (
           breakdown === letters &&
-          said.text.startsWith(`${files} · ${breakdown} · ${said.additions} ${said.deletions}`) &&
+          said.text.startsWith(
+            `${files} · ${breakdown} · ${said.line.additions} ${said.line.deletions}`,
+          ) &&
           said.label.startsWith(`${files}: ${words}; `)
         );
       },
@@ -445,10 +447,10 @@ async function main() {
         shared,
         formatCount,
       );
-      const letters = said.breakdownParts.filter(
+      const letters = said.line.statusParts.filter(
         (part) => typeof part === "object" && "status" in part,
       );
-      const marks = said.breakdownParts.filter(
+      const marks = said.line.statusParts.filter(
         (part) => typeof part === "object" && "punctuation" in part,
       );
       return (

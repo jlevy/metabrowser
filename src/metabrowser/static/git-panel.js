@@ -332,8 +332,9 @@
   /**
    * A commit's changes in its hover card, in the Diff summary's words and paint
    * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
-   * −160", through the same parts (formatters.js, `changeSummary`) and painter
-   * (`countPartsHtml`), so each number is bold in the line's ink, each status its letter in
+   * −160", through the same parts (formatters.js, `changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the brief change line after the file
+   * count), so each number is bold in the line's ink, each status its letter in
    * its status's ink at the line's weight, and the commas and dots muted. A family no file
    * has is left out, and a count the commit does not know is "?". Each dot is one item with
    * the group before it, so a line that wraps breaks after a dot. A screen reader is told
@@ -371,13 +372,8 @@
       `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
       '<span class="git-commit-change-line" aria-hidden="true">' +
       group("git-commit-change-files", said.filesParts) +
-      (said.breakdownParts.length > 0
-        ? group("git-commit-file-statuses", said.breakdownParts)
-        : "") +
-      '<span class="git-commit-line-stats">' +
-      `<span class="git-stat-add">${escapeHtml(said.additions)}</span>` +
-      `<span class="git-stat-del">${escapeHtml(said.deletions)}</span>` +
-      "</span></span></div>"
+      formatters.changeLineHtml(said.line) +
+      "</span></div>"
     );
   }
 
@@ -410,9 +406,10 @@
    * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
    * comparison fails, so the page always states its counts (A6 of review A on #470). Empty
    * where the detail has no count of files, and the place then takes no room. Its words and
-   * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painter
-   * (`countPartsHtml`): the file count bold, and the dot muted, one item with the count before
-   * it, and said as a comma to a screen reader, as a line has no name in words.
+   * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the totals): the file count bold, and the dot
+   * muted, one item with the count before it, and said as a comma to a screen reader, as a
+   * line has no name in words.
    *
    * @param {Partial<MetabrowserGitCommitStats>} stats
    * @returns {string}
@@ -428,10 +425,7 @@
       '<div class="diff-summary"><span class="diff-summary-group">' +
       `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span>` +
       `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span>` +
-      '<span class="diff-summary-stats">' +
-      `<span class="diff-stat-add">${escapeHtml(said.additions)}</span>` +
-      `<span class="diff-stat-del">${escapeHtml(said.deletions)}</span>` +
-      "</span></div>"
+      `${formatters.changeLineHtml(said.line)}</div>`
     );
   }
 

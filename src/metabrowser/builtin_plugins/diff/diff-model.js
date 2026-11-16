@@ -480,21 +480,26 @@ export function diffSummaryOf(totals, files, model, formatCount, whole = null) {
  * load: the Diff summary's header without its statuses, which only the tree's model names,
  * "41 files changed · +6,526 −555", in the shell's number format, with "(estimated)" for
  * totals that are not exact. `filesParts` is "41 files changed" in a count summary's parts,
- * its number bold where it is painted, as the Diff summary's is, and the line sets it apart
- * from the totals with the summary's muted " · ". Pure.
+ * its number bold where it is painted, as the Diff summary's is, and `change` is what the
+ * brief change line after it is built from, its line totals and no statuses
+ * (`metabrowser.changeLine`), so the line sets the totals apart with the summary's muted
+ * " · " and paints them as the summary does. Pure.
  *
  * @param {Record<string, unknown>} totals
  * @param {(count: number) => string} formatCount
+ * @returns {{filesParts: MetabrowserCountParts, change: MetabrowserChangeLineInput, estimated: boolean}}
  */
 export function plainTotals(totals, formatCount) {
   const files = Number(totals.files);
   /** @param {unknown} value */
-  const count = (value) => (typeof value === "number" ? formatCount(value) : "?");
+  const lines = (value) => (typeof value === "number" ? value : null);
   return {
-    /** @type {MetabrowserCountParts} */
     filesParts: [{ number: formatCount(files) }, ` ${files === 1 ? "file" : "files"} changed`],
-    additions: `+${count(totals.additions)}`,
-    deletions: `\u2212${count(totals.deletions)}`,
+    change: {
+      statuses: [],
+      additions: lines(totals.additions),
+      deletions: lines(totals.deletions),
+    },
     estimated: totals.exact !== true,
   };
 }

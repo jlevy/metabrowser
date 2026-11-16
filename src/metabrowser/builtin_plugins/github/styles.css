@@ -170,13 +170,18 @@
   max-width: 100%;
   white-space: nowrap;
 }
-/* The breakdown is cut short inside its group, the item that holds it and the dot after it
-   (`.diff-summary-group`), which shrinks with it. */
-.github-pull-header .github-pull-summary .diff-summary-group:has(> .diff-summary-breakdown),
-.github-pull-header .github-pull-summary .diff-summary-breakdown {
+/* The breakdown, the brief change line's statuses (`.change-line-statuses`), is cut short
+   inside the line and its group, the item that holds it and the dot after it, which shrink
+   with it; the line keeps to the header's one line. */
+.github-pull-header .github-pull-summary .change-line {
+  flex-wrap: nowrap;
+}
+.github-pull-header
+  .github-pull-summary
+  :is(.change-line, .change-line-group, .change-line-statuses) {
   min-width: 0;
 }
-.github-pull-header .github-pull-summary .diff-summary-breakdown {
+.github-pull-header .github-pull-summary .change-line-statuses {
   overflow: hidden;
   text-overflow: ellipsis;
 }

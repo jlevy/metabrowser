@@ -476,8 +476,9 @@ its place, and a status as `{status, letter}`; “12,797 files” is
 which paints each kind in its one class: the shell paints through `countPartsHtml` and
 `countPartsNodes` on `window.MetabrowserFormatters`, and a plugin through the SDK’s
 `metabrowser.countPartsNodes` ([plugins](plugins.md)), as the Diff summary and the
-Checks summary do. What a change set holds is said once, by `changeSummary` beside them:
-the Diff summary’s header and a commit’s hover card say it in its words.
+Checks summary do. What a change set holds is said once, by `changeSummary` beside them,
+as its file count and its [brief change line](#brief-change-line): the Diff summary’s
+header and a commit’s hover card say it in its words.
 The words and numbers of one phrase sit in one inline element: in a flex line, as a
 navigation metadata line is, each would be an item of its own, parted by the line’s gap
 and read as a run of its own.
@@ -1178,16 +1179,14 @@ place takes no room.
 `tests/test_git_commit_summary_chrome.py` holds it.
 The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
 sits below the identity metadata and says the commit’s changes in the Diff summary’s
-words and paint, through the same parts and painter (`changeSummary` and
-`countPartsHtml`,
-[Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)): “**32**
-files changed · **4** A, **28** M · +1,921 −160”, in the summary’s order, each count
-bold in the line’s ink, each letter in its status’s color at the line’s weight, and the
-commas and dots muted.
-Its families are Git’s, exact file-status families with Git’s letters: `A` contains
-added and copied files, `D` deleted files, and `M` modified, renamed, and type-changed
-files, so a rename that the commit page’s Diff summary counts as `R` is an `M` here.
-These families cover every supported file status exactly once.
+words and paint, through the same parts and painters (`changeSummary`, `countPartsHtml`,
+and the [brief change line](#brief-change-line) after its file count): “**32** files
+changed · **4** A, **28** M · +1,921 −160”, in the summary’s order, each count bold in
+the line’s ink, each letter in its status’s color at the line’s weight, and the commas
+and dots muted. Its families are Git’s, exact file-status families with Git’s letters:
+`A` contains added and copied files, `D` deleted files, and `M` modified, renamed, and
+type-changed files, so a rename that the commit page’s Diff summary counts as `R` is an
+`M` here. These families cover every supported file status exactly once.
 A zero family is omitted.
 The server computes all counts before bounding the returned file list, so a large commit
 remains exact. Line totals are the [inline change stats](#inline-change-stats), in the
@@ -1435,6 +1434,32 @@ folders, and its files read identically.
 Kind letters reuse the same mapping — added is `--status-success`, deleted is
 `--status-error` — and no diff surface introduces a local green or red.
 
+### Brief Change Line
+
+**A change set said in brief, its statuses and its line totals, “**10** A, **5** D,
+**4** M · +1,234 −567”, is one component, the brief change line.** It has one builder
+and one painter: `changeLine` builds it from the model `describeChanges` reads, the
+statuses in the header’s order, each with its letter, word, and count, and the line
+totals, and `changeLineNodes` and `changeLineHtml` paint it (`static/formatters.js`). A
+plugin reaches both through the SDK, `metabrowser.changeLine` and
+`metabrowser.changeLineNodes` ([plugins](plugins.md)). It is the
+[count summary](#count-summaries-bold-their-numbers)’s rule in one element,
+`.change-line` in the shell’s stylesheet: each count bold in the line’s ink, each status
+its letter in its status’s color at the line’s weight, the commas and the dot muted, and
+the totals the [inline change stats](#inline-change-stats).
+The statuses and the dot after them are one item (`.change-line-group`), so a line that
+wraps breaks after the dot and no line starts with one, and its 6 px gap is the Diff
+summary’s. A change set of no statuses is its totals alone, “+0 −0”, and a count it does
+not know is “?”. Its `label` says it in words for a screen reader, “10 added, 5 deleted,
+4 modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its
+hidden dot says a comma in its place (`spoken`). The [Diff summary](#diff-summary)’s
+header is its file count, “35 files changed · ”, then this component; a commit’s
+[hover card](#git-commit-summary) and a commit page’s totals line draw it too.
+It sets no size or ink of its own, so it takes its line’s.
+`tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
+and `test_count_summaries_mute_their_punctuation_and_ink_their_status_letters` its rule
+and that no plugin writes its classes itself.
+
 ### Diff Summary
 
 A change set has one Diff summary, and it starts collapsed.
@@ -1480,10 +1505,11 @@ em, and the block ends between the two; one of three statuses, “35 files chang
 state. Its header is one row-like disclosure toggle that leads with the registry’s
 chevron in the tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M
 · +1,234 −3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
-Its three groups, the file count, the statuses, and the line totals, are items of its
-line, with a muted dot between each two; each dot is one item with the group before it,
-so a header that wraps breaks after a dot and no line starts with one, and the line’s
-one gap spaces it on both sides, on a toggle and on a line alike.
+It is its file count, “35 files changed”, and a muted dot, then the
+[brief change line](#brief-change-line), the one component for the statuses and the line
+totals, “2 A, 3 D, 30 M · +1,234 −3,423”; each dot is one item with the group before it,
+so a header that wraps breaks after a dot and no line starts with one, and one 6 px gap
+spaces it on both sides, on a toggle and on a line alike.
 The statuses are only those some file has, in one order (added, deleted, modified,
 renamed, then copied, type changed, unmerged, and any other), each its count and the
 letter its rows carry, in its status’s color
