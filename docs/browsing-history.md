@@ -47,9 +47,8 @@ The page begins with the commit’s summary:
 - the subject, then the short ID with a copy control, the commit’s branches and tags,
   the author, and the age
 - the **Diff summary**, on every commit, one file or many: the files changed, counted by
-  status (added, removed, modified, and so on), and the lines added and deleted; it
-  starts collapsed and opens into the tree of changed files, where a file takes you to
-  its diff
+  status, and the lines added and deleted; it starts collapsed and opens into the tree
+  of changed files, where a file takes you to its diff
 - the full commit message, when there is more than a subject
 
 Below it is the diff against the commit’s first parent, one section per file with its
