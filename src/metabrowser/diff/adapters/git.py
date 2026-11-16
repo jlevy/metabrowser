@@ -1208,10 +1208,12 @@ class GitDiffSource:
                 *(["-M50", "-C"] if renames else ["--no-renames"]),
                 *([] if diff_filter is None else [f"--diff-filter={diff_filter}"]),
                 # The shape the parser reads, whatever a folder's configuration says: Git's
-                # own prefixes, which name a hunkless section, and no external driver.
+                # own prefixes, which name a hunkless section, no external driver, and no
+                # color, which `color.diff=always` would write around every line.
                 "--src-prefix=a/",
                 "--dst-prefix=b/",
                 "--no-ext-diff",
+                "--no-color",
                 "--diff-merges=first-parent",
                 *self._endpoints(resolved),
                 *([] if pathspec is None else ["--", *pathspec]),

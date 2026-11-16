@@ -15,6 +15,10 @@ All notable changes to Metabrowser are documented here.
   in a pull request’s Files changed alike.
   Past 256 KiB of patch such files are still named unreadable.
 
+- A folder whose Git configuration sets `color.diff` or `color.ui` to `always` now shows
+  a commit’s changes. Git wrote color codes around every line of the patch, and every
+  file was named “could not be read from the produced diff”.
+
 - A Markdown file in a pull request’s Changes now reads in your reading font, serif
   unless you chose Sans, as the same file does in its Document view.
   It was always sans, because the rule that keeps the pull request’s description,
