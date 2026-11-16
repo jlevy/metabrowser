@@ -5,9 +5,9 @@ handler cancel most chords, and the app's web view hands each key to the page be
 its menu, so a handler that calls ``preventDefault()`` on a chord keeps that chord from
 the browser and from View > Reload Page alike. The shortcut registry matches no chord
 but the two a binding declares, Control-N and Control-P, which walk a pull request's
-stack and which no browser on macOS and no menu of the app uses (mb-lnqj;
-``CONTROL_CHORD_KEYS`` and ``DISQUALIFYING_MODIFIERS`` in
-``static/keyboard-shortcuts.js``). Every other listener leaves chords alone: the tree
+stack and are bound only on macOS and iOS, where no browser and no menu of the app uses
+them (mb-lnqj; ``CONTROL_CHORD_KEYS``, ``controlReachesPage``, and
+``DISQUALIFYING_MODIFIERS`` in ``static/keyboard-shortcuts.js``). Every other listener leaves chords alone: the tree
 map, the filter bar's groups and menus, the branch switcher, and the pull request page's
 stack menu each moved on Command-Up or Command-Left as on the plain arrow, and the
 overlay's focus trap took Command-Tab and Control-Tab.
@@ -338,7 +338,6 @@ def test_the_registry_takes_control_only_with_n_or_p_and_never_from_a_text_field
     holds the guard to the matcher the registry's listener hands each key to.
     """
     text = _browser_sources()["static/keyboard-shortcuts.js"]
-    assert 'const CONTROL_CHORD_KEYS = Object.freeze(["n", "p"]);' in text
     matcher = _squeezed(_definition(text, "eventMatchesBinding"))
     for guard in (
         "event.ctrlKey && !event.altKey && !event.metaKey",
@@ -353,13 +352,30 @@ def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
 
     The design system says the app's menus give those chords no command; a menu item that
     took one would never fire, since the web view hands the page each key first.
+
+    A key equivalent is Command unless its item's modifier mask says otherwise, and the app
+    sets a mask in one place, ``MainMenu.item``, so every Control equivalent is a key
+    passed with its modifiers beside it. Those pairs are read with the source's whitespace
+    removed, so an item written over several lines is read too, and in either case, since
+    AppKit reads ``"N"`` as Shift-N and the page takes Control-Shift-N as Control-N.
     """
-    menu = (_REPO / "apps" / "macos" / "Sources" / "Metabrowser" / "MainMenu.swift").read_text(
-        encoding="utf-8"
+    sources = _REPO / "apps" / "macos" / "Sources"
+    masks = [
+        (path.name, line.strip())
+        for path in sorted(sources.rglob("*.swift"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if "keyEquivalentModifierMask" in line
+    ]
+    assert masks == [("MainMenu.swift", "menuItem.keyEquivalentModifierMask = modifiers")], (
+        "a modifier mask set outside MainMenu.item is a Control equivalent this cannot read"
     )
-    with_control = [line for line in menu.splitlines() if ".control" in line]
+    menu = _squeezed((sources / "Metabrowser" / "MainMenu.swift").read_text(encoding="utf-8"))
+    # Each one-character key with the modifiers after it: an `item(` call's arguments, or a
+    # row of the Find menu's table.
+    equivalents = re.findall(r'"([^"\\])",(\[[^\]]*\]|[\w.]+)', menu)
+    with_control = [(key, modifiers) for key, modifiers in equivalents if ".control" in modifiers]
     assert with_control, "the menu still names Control somewhere, so this reads it"
-    assert [line for line in with_control if re.search(r'"[np]"', line)] == []
+    assert [pair for pair in with_control if pair[0].lower() in ("n", "p")] == []
 
 
 def test_the_keyboard_shortcuts_reference_documents_command_r() -> None:

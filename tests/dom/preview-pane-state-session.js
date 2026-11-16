@@ -1007,7 +1007,7 @@ async function mainTabShortcuts() {
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
   // F for Files, P for Pulls, H for commit History ("Keyboard Shortcuts" in
-  // docs/design-system.md). A digit no longer names a main tab, nor R the Pulls tab (mb-6rfu).
+  // docs/design-system.md). A digit names no main tab, and neither does R (mb-6rfu).
   assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
   assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
   assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
