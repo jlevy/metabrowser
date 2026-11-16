@@ -404,3 +404,14 @@ def _isolated_configuration(tmp_path: Path) -> Generator[None, None, None]:  # p
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "metabrowser-config"))
         yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_delivery() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """A test that runs a serve mode says it serves for local use; the next one starts
+    from the default, which compresses for every client (metabrowser.delivery)."""
+    from metabrowser import delivery
+
+    delivery.serve_locally(False)
+    yield
+    delivery.serve_locally(False)

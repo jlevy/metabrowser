@@ -240,6 +240,130 @@ const LIST = `(() => {
   };
 })()`;
 
+// In the page: what the shell's tooltip shows when a pointer enters *anchor*, or null when
+// it shows none. The document's own listener decides (`showTipText` in static/app.js, and
+// `tipAddsInformation`, docs/design-system.md, "Tooltips Add Information"), and a tip it
+// shows is up once the shell's own delay, TOOLTIP_APPEAR_DELAY, has passed. The pointer
+// then leaves, and the tooltip is gone, after TOOLTIP_FADE_OUT, before the next anchor.
+const TIP_SHOWN = `async (anchor) => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const up = () => document.querySelector(".custom-tooltip")?.style.display === "block";
+  const gone = async () => {
+    const bound = performance.now() + 20 * TOOLTIP_FADE_OUT;
+    while (up() && performance.now() < bound) {
+      await wait(TOOLTIP_FADE_OUT / 5);
+    }
+  };
+  await gone();
+  anchor.dispatchEvent(new MouseEvent("mouseenter"));
+  await wait(TOOLTIP_APPEAR_DELAY);
+  await frames();
+  const shown = up() ? document.querySelector(".custom-tooltip").textContent : null;
+  anchor.dispatchEvent(new MouseEvent("mouseleave"));
+  await gone();
+  return shown;
+}`;
+
+// In the page: the shell's tooltip rule on anchors built over its own stylesheet. A tip that
+// is its button's whole text, in any case or spacing; the same tip on text cut short by an
+// ellipsis; a branch chip whole, and one cut short, as a chip is, by its label inside it; and
+// a glyph-only control's name.
+const SHELL_TIPS = `(async () => {
+  const shown = ${TIP_SHOWN};
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  const long = "A pull request title far longer than the box it is drawn in";
+  const branch = "feature/a-branch-name-longer-than-its-chip";
+  const chipCut = window.metabrowser.refChip(branch, { copy: false });
+  chipCut.style.maxWidth = "80px";
+  const anchors = {
+    whole: h("button", { type: "button", "data-tip-text": "Reload" }, ["Reload"]),
+    wholeSpaced: h("span", { "data-tip-text": "stack #286" }, ["  Stack   #286 "]),
+    cut: h("span", { "data-tip-text": long, style: "display: block; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }, [long]),
+    chipWhole: window.metabrowser.refChip("main", { copy: false }),
+    chipCut,
+    glyph: h("button", { type: "button", "data-tip-text": "Copy path", "aria-label": "Copy path" }, ["↑"]),
+  };
+  const host = h("div", { style: "position: fixed; left: 320px; top: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px" }, Object.values(anchors));
+  document.body.append(host);
+  const label = chipCut.querySelector(".git-ref-label");
+  const result = {
+    // The chip's label is the box cut short, inside the chip.
+    chipLabelCut: label.scrollWidth > label.clientWidth,
+  };
+  for (const [name, anchor] of Object.entries(anchors)) {
+    result[name] = await shown(anchor);
+  }
+  host.remove();
+  return result;
+})()`;
+
+// In the page: a changed file's row, #106's README.md at the top level, whose tip is its name
+// beside its status letter and counts: while its name is whole, and cut short (mb-n1ye).
+// Folders come first and #106 holds them all open, so it is the tree's last row, drawn once
+// the end of the tree is in view. Each reading says whether the row was still the one in the
+// document after it, so a row the tree redrew meanwhile cannot pass as one that showed
+// nothing.
+const FILE_TIPS = `(async () => {
+  const shown = ${TIP_SHOWN};
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const item = document.querySelector('.github-pulls-item[data-number="106"]');
+  const find = () => [...item.querySelectorAll(".github-pull-file-row")].find(
+    (node) => node.querySelector(".github-pull-file-name")?.textContent === "README.md",
+  );
+  // The row, in the middle of the view, the same element two frames apart.
+  const settled = async () => {
+    for (let tries = 0; tries < 60; tries += 1) {
+      const row = find();
+      if (row === undefined) {
+        item.querySelector(".github-pull-files-rows").scrollIntoView({ block: "end" });
+      } else {
+        row.scrollIntoView({ block: "center" });
+      }
+      await frames();
+      if (row !== undefined && find() === row) {
+        return row;
+      }
+    }
+    return undefined;
+  };
+  const read = async (narrow) => {
+    const row = await settled();
+    if (row === undefined) {
+      return { missing: [...item.querySelectorAll(".github-pull-file-name")].map((node) => node.textContent).slice(-6) };
+    }
+    const name = row.querySelector(".github-pull-file-name");
+    if (narrow) {
+      name.style.maxWidth = "3ch";
+    }
+    const reading = {
+      tip: row.dataset.tipText,
+      text: row.textContent,
+      cut: name.scrollWidth > name.clientWidth,
+      shown: await shown(row),
+      kept: row.isConnected && find() === row,
+    };
+    name.style.removeProperty("max-width");
+    return reading;
+  };
+  return { whole: await read(false), narrow: await read(true) };
+})()`;
+
+// In the page: a nested changed file's row, #7's docs/new.md, whose tip is its whole path
+// where the row shows only its name.
+const NESTED_TIP = `(async () => {
+  const shown = ${TIP_SHOWN};
+  const row = [...document.querySelectorAll('.github-pulls-item[data-number="7"] .github-pull-file-row')].find(
+    (node) => node.querySelector(".github-pull-file-name")?.textContent === "new.md",
+  );
+  return { tip: row?.dataset.tipText ?? null, shown: row === undefined ? null : await shown(row) };
+})()`;
+
 const chrome = await launchChrome(process.env.CHROME_BIN, {
   profiles: process.env.CHROME_PROFILES,
   width: 1280,
@@ -641,6 +765,7 @@ try {
         belowRow: Math.round((file.getBoundingClientRect().top - member.getBoundingClientRect().bottom) * 100) / 100,
       };
     })()`);
+    measured.nestedTip = await evaluate(NESTED_TIP);
     await press("ArrowLeft");
     const afterLeft = await evaluate(
       `[document.querySelector('a.github-pulls-row[data-number="7"]').getAttribute("aria-expanded"), document.activeElement?.dataset?.number ?? null]`,
@@ -665,6 +790,64 @@ try {
       JSON.stringify(keys),
     );
     phase("keys");
+  }
+
+  if (!before) {
+    // The shell's tooltip rule where it runs, the document's own listener, read from the
+    // tooltip it shows or does not (docs/design-system.md, "Tooltips Add Information").
+    const tips = await evaluate(SHELL_TIPS);
+    measured.shellTips = tips;
+    check(
+      "the shell shows no tooltip that is its element's whole text, in any case or spacing, and shows it while the text is cut short",
+      tips.whole === null &&
+        tips.wholeSpaced === null &&
+        tips.cut === "A pull request title far longer than the box it is drawn in",
+      JSON.stringify(tips),
+    );
+    check(
+      "the shell shows no tooltip on a whole branch chip, and shows the full name while the chip's label is cut short",
+      tips.chipWhole === null &&
+        tips.chipLabelCut === true &&
+        tips.chipCut === "feature/a-branch-name-longer-than-its-chip",
+      JSON.stringify(tips),
+    );
+    check("the shell shows a glyph-only control's tooltip", tips.glyph === "Copy path");
+    // A top-level changed file's tip is its name, beside its status letter and counts
+    // (mb-n1ye): it shows only while the name is cut short. A nested file's is its whole
+    // path, which the row does not show.
+    check(
+      "a nested changed file's row shows its whole path as its tooltip",
+      measured.nestedTip.tip === "docs/new.md" && measured.nestedTip.shown === "docs/new.md",
+      JSON.stringify(measured.nestedTip),
+    );
+    // #106 holds every folder open, and its one top-level file is its last row.
+    await evaluate(`document.querySelector('a.github-pulls-row[data-number="106"]').focus()`);
+    await press("ArrowRight");
+    // Every page of its files is in, so its rows stand still.
+    await waitFor(
+      `(() => { const files = document.querySelector('.github-pulls-item[data-number="106"] .github-pull-files'); return files?.querySelector(".github-pull-files-rows")?.firstElementChild != null && files.querySelector(".mb-delayed-loading")?.hidden === true; })()`,
+    );
+    const fileTips = await evaluate(FILE_TIPS);
+    measured.fileTips = fileTips;
+    check(
+      "a top-level changed file's row shows no tooltip while its name is whole, and shows it while the name is cut short",
+      fileTips.whole.tip === "README.md" &&
+        fileTips.whole.kept === true &&
+        fileTips.whole.cut === false &&
+        fileTips.whole.shown === null &&
+        fileTips.narrow.kept === true &&
+        fileTips.narrow.cut === true &&
+        fileTips.narrow.shown === "README.md",
+      JSON.stringify(fileTips),
+    );
+    await evaluate(`document.querySelector('a.github-pulls-row[data-number="106"]').focus()`);
+    await press("ArrowLeft");
+    await waitFor(
+      `document.querySelector('a.github-pulls-row[data-number="106"]').getAttribute("aria-expanded") === "false"`,
+    );
+    await evaluate(`document.querySelector(".tree-content").scrollTop = 0, true`);
+    await frames();
+    phase("tips");
   }
 
   if (!before) {
@@ -850,6 +1033,50 @@ try {
         await paneWidth(null);
         await settle();
       }
+      // Shown again after the pane crossed the break behind another tab, the group is
+      // fitted before the first frame paints it: at that frame's ResizeObserver delivery,
+      // after layout and before paint, it is already the cluster, whole, and the toolbar
+      // is the height it settles at, so the list under it does not jump a frame later.
+      await paneWidth(WIDEST);
+      await settle();
+      await click('.nav-tab-bar [data-tab="files"]');
+      await waitFor(`document.getElementById("nav-toolbar-pulls").hidden`);
+      await paneWidth(NARROWEST);
+      await settle();
+      const BAR_LOOK = `{
+        fit: group.getAttribute("data-fit"),
+        cut: group.scrollWidth > group.clientWidth,
+        height: Math.round(bar.getBoundingClientRect().height * 100) / 100,
+      }`;
+      const firstFrame = await evaluate(`new Promise((resolve) => {
+        const bar = document.getElementById("nav-toolbar-pulls");
+        const group = bar.querySelector(".chip-group");
+        const behind = group.getAttribute("data-fit");
+        const delivery = new ResizeObserver(() => {
+          delivery.disconnect();
+          resolve({ behind, ...${BAR_LOOK} });
+        });
+        document.querySelector('.nav-tab-bar [data-tab="pulls"]').click();
+        delivery.observe(bar);
+      })`);
+      await settle();
+      const settledShown = await evaluate(`(() => {
+        const bar = document.getElementById("nav-toolbar-pulls");
+        const group = bar.querySelector(".chip-group");
+        return ${BAR_LOOK};
+      })()`);
+      check(
+        `${set} fonts: Pulls shown again after the pane narrowed behind Files is the cluster in its first frame`,
+        firstFrame.behind === null &&
+          firstFrame.fit === "wrap" &&
+          !firstFrame.cut &&
+          firstFrame.height === settledShown.height &&
+          settledShown.fit === "wrap",
+        JSON.stringify({ firstFrame, settledShown }),
+      );
+      measured.wrap[`${set} fonts, shown again`] = { firstFrame, settledShown };
+      await paneWidth(null);
+      await settle();
     }
     await evaluate(`(${TALLIES})(null), true`);
     await evaluate(
@@ -886,8 +1113,13 @@ try {
       group.querySelector(".chip").textContent = "A";
       await frames();
       const mutatedAfter = group.getAttribute("data-fit");
+      host.hidden = true;
+      await frames();
+      host.hidden = false;
+      await frames();
+      const shownAfter = group.getAttribute("data-fit");
       host.remove();
-      return { bound, widened, narrowed, resizedAfter, mutatedAfter };
+      return { bound, widened, narrowed, resizedAfter, mutatedAfter, shownAfter };
     })()`);
     measured.wrapDisposal = disposal;
     check(
@@ -899,6 +1131,7 @@ try {
           narrowed: "wrap",
           resizedAfter: "wrap",
           mutatedAfter: "wrap",
+          shownAfter: "wrap",
         }),
       JSON.stringify(disposal),
     );

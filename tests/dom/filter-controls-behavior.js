@@ -811,10 +811,15 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     restore();
   };
   render();
+  // The rows the keys move focus to, as the consumer hears them (onMenuFocus).
+  const moves = [];
   fc.bind(root, {
     onMenuToggle(key, open) {
       state.open = open ? key : null;
       render();
+    },
+    onMenuFocus(key, value) {
+      moves.push(`${key}:${value}`);
     },
     onMenuPick(key, value) {
       if (key === "group") {
@@ -856,6 +861,9 @@ assertMissing("group labels are escaped", hostile, '"><img>');
   step("a second click closes it", () => trigger("group").click());
   step("↓ on its trigger opens it", () => press("ArrowDown"));
   step("↓ in it moves a row", () => press("ArrowDown"));
+  step("Option-↓ is the browser's, and moves nothing", () => press("ArrowDown", { altKey: true }));
+  step("↑ moves back", () => press("ArrowUp"));
+  step("Home moves to the first row", () => press("Home"));
   step("Escape closes it", () => press("Escape"));
   step("an Escape a surface above took leaves it open", () => {
     trigger("group").click();
@@ -888,6 +896,9 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     "a second click closes it: group trigger",
     "↓ on its trigger opens it: By age row",
     "↓ in it moves a row: By file type row",
+    "Option-↓ is the browser's, and moves nothing: By file type row",
+    "↑ moves back: By age row",
+    "Home moves to the first row: No grouping row",
     "Escape closes it: group trigger",
     "an Escape a surface above took leaves it open: By age row",
     "the next Escape closes it: group trigger",
@@ -905,6 +916,14 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     [state.group, state.types, state.open],
     ["type", [".md"], null],
   );
+  // A key that moves focus to a row reports it, the any-row as null; opening a menu onto
+  // its checked row, a chord, and a click report nothing.
+  assertEqual("each row a key moved focus to reached the consumer", moves, [
+    "group:type",
+    "group:age",
+    "group:null",
+    "types:.md",
+  ]);
 }
 
 // ── A segmented group wider than its line ──────────────────────
@@ -954,10 +973,13 @@ assertEqual(
     constructor(callback) {
       this.callback = callback;
       this.watching = false;
+      /** @type {Array<[unknown, unknown]>} */
+      this.targets = [];
       observers.mutation = this;
     }
-    observe() {
+    observe(target, options) {
       this.watching = true;
+      this.targets.push([target, options]);
     }
     takeRecords() {
       return [];
@@ -1013,11 +1035,23 @@ assertEqual(
     [{ resize: null, mutation: null }, 0],
   );
 
-  const root = rootIn({});
+  const toolbar = {};
+  const root = rootIn(toolbar);
   const dispose = fc.bind(root, {});
   assertEqual("bound in a toolbar, the groups are fitted at once", fitted, 1);
   assertEqual("the row is watched for its size", observers.resize.targets.has(root), true);
   assertEqual("and for changes to its text", observers.mutation.watching, true);
+  assertEqual(
+    "and its toolbar for being shown, so a stale layout is fitted before it paints",
+    observers.mutation.targets.map(([target, options]) => [
+      target === root ? "row" : target === toolbar ? "toolbar" : "other",
+      options,
+    ]),
+    [
+      ["row", { childList: true, characterData: true, subtree: true }],
+      ["toolbar", { attributes: true, attributeFilter: ["hidden"] }],
+    ],
+  );
   observers.resize.callback([]);
   observers.resize.callback([]);
   assertEqual(
@@ -1040,6 +1074,28 @@ assertEqual(
   observers.mutation.callback([]);
   runFrames();
   assertEqual("after the disposer nothing fires", [fitted, frames.size], [3, 0]);
+
+  // A row that is its own toolbar, as the Files bar is, is one node to observe, and a
+  // second `observe` of a node replaces the first's options: it takes both in one.
+  const own = rootIn(null);
+  own.closest = (selector) => (selector === "[data-nav-toolbar]" ? own : null);
+  fc.bind(own, {})();
+  assertEqual(
+    "a row that is its own toolbar is watched for its text and for being shown at once",
+    observers.mutation.targets.map(([target, options]) => [target === own, options]),
+    [
+      [
+        true,
+        {
+          childList: true,
+          characterData: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["hidden"],
+        },
+      ],
+    ],
+  );
 }
 
 if (failures.length > 0) {

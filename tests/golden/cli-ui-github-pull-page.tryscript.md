@@ -1715,6 +1715,10 @@ A cache miss waits for metadata settlement before asking the provider, and an ol
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
 A partial timeline and its focused commit link remain in place during the retry.
+Every review’s heading is its author, “reviewed”, and its age, with a chip after the age
+only for a state the verb does not say: Approved, Changes requested, and Dismissed, and
+a state GitHub adds later as itself, even one named as an `Object.prototype` property
+is. A plain review and a pending one have no chip (`reviewHeadings`).
 
 ```console
 $ node tests/dom/github-pull-timeline-session.js
@@ -1744,7 +1748,16 @@ $ node tests/dom/github-pull-timeline-session.js
   "unavailableKeepsDiscussion": true,
   "transientRetryIsBoundedAndKeepsPartial": true,
   "supersededRowsRetired": true,
-  "keptCommitRowsRetellAges": true
+  "keptCommitRowsRetellAges": true,
+  "reviewHeadings": {
+    "review/9007199254740993": "maintainer reviewed 1d ago",
+    "review/16": "maintainer reviewed 1d ago [Changes requested]",
+    "review/17": "maintainer reviewed 1d ago [Dismissed]",
+    "review/18": "maintainer reviewed 1d ago [Escalated]",
+    "review/19": "maintainer reviewed 1d ago [Constructor]",
+    "review/3279967139": "maintainer reviewed 1d ago [Approved]",
+    "review/15": "maintainer reviewed (pending)"
+  }
 }
 ? 0
 ```

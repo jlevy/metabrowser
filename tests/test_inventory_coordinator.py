@@ -29,7 +29,9 @@ from metabrowser.inventory_engine.contract import (
     EntryPresence,
     EntryProjection,
     EntryQuery,
+    FilteredTreeProjection,
     Freshness,
+    GroupedTreeQuery,
     IndexState,
     InventoryBackend,
     InventoryClosedError,
@@ -46,12 +48,15 @@ from metabrowser.inventory_engine.contract import (
     RefreshReceipt,
     RefreshRequest,
     SourceKind,
+    TreeGroupFilter,
     WorkCounters,
 )
 from metabrowser.inventory_engine.coordinator import (
+    CoordinatedRead,
     HostCursor,
     InventoryConsistencyError,
     InventoryCoordinator,
+    InventoryReadSession,
 )
 from metabrowser.inventory_engine.factory import (
     InventoryProvider,
@@ -59,7 +64,10 @@ from metabrowser.inventory_engine.factory import (
 )
 from metabrowser.inventory_engine.overlay import InventoryDecoration
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
-from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
+from metabrowser.inventory_engine.tree_page_assembly import (
+    assemble_grouped_tree,
+    assemble_tree_pages,
+)
 from tests.inventory_harness import inventory_harness
 
 
@@ -314,6 +322,59 @@ def test_tree_page_assembly_enforces_page_and_row_bounds(tmp_path: Path) -> None
                     page_query=query,
                     max_assembled_rows=3,
                 )
+
+    asyncio.run(run())
+
+
+def test_grouped_tree_assembly_enforces_page_and_row_bounds_page_by_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The grouped assembly stops at its row bound on the page that crosses it, as the
+    ungrouped one does, not after reading the rest of that group's pages; and with room,
+    each group's pages assemble into its whole filtered tree."""
+
+    for index in range(20):
+        (tmp_path / f"note-{index:02}.md").write_text("x")
+    (tmp_path / "app.py").write_text("x")
+    groups = (
+        TreeGroupFilter(key="docs", type_group="docs"),
+        TreeGroupFilter(key="code", type_group="code"),
+    )
+    query = GroupedTreeQuery(query_id="grouped", groups=groups, max_depth=2, max_rows=2)
+    reads: list[ReadRequest] = []
+    original_read = InventoryReadSession.read
+
+    async def counting_read(
+        self: InventoryReadSession, request: ReadRequest, **kwargs: bool
+    ) -> CoordinatedRead:
+        reads.append(request)
+        return await original_read(self, request, **kwargs)
+
+    monkeypatch.setattr(InventoryReadSession, "read", counting_read)
+
+    async def run() -> None:
+        async with inventory_harness(
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        ) as harness:
+            coordinator = harness.runtime.coordinator
+            with pytest.raises(InventoryConsistencyError, match="page bound"):
+                await assemble_grouped_tree(coordinator, query=query, max_pages=2)
+            assert len(reads) == 2
+            reads.clear()
+            with pytest.raises(InventoryConsistencyError, match="row bound"):
+                await assemble_grouped_tree(coordinator, query=query, max_assembled_rows=3)
+            # The first read, and the one page that crosses three rows.
+            assert len(reads) == 2
+            reads.clear()
+            assembly = await assemble_grouped_tree(coordinator, query=query)
+            assert [group.key for group in assembly.groups] == ["docs", "code"]
+            for group, assembled in zip(groups, assembly.groups, strict=True):
+                alone = await assemble_tree_pages(coordinator, page_query=query.group_query(group))
+                assert isinstance(alone.projection, FilteredTreeProjection)
+                assert assembled.entries == alone.projection.entries
+                assert assembled.next_page is None
+            assert len(assembly.groups[0].entries) == 20
 
     asyncio.run(run())
 

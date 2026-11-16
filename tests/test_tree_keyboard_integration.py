@@ -155,6 +155,8 @@ def test_every_tree_mutation_path_synchronizes_focus() -> None:
         ("setSelectedPath", 1000),
         # revealInTree reveals through revealWithin, in the panel or a Group by section.
         ("revealWithin", 2600),
+        # A reveal that draws one page of a long folder, past its first.
+        ("mountTreePageAt", 2000),
         ("renderGroupedSections", 3000),
         ("applyCellPatch", 6500),
         ("_removeRenderedRows", 2600),

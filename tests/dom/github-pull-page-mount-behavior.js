@@ -1304,12 +1304,19 @@ async function headerShape(page) {
 // comparison is read for it too; and the page's disposal disposes it. The summary's own
 // header and tree are the diff plugin's, pinned in tests/dom/diff-summary-session.js.
 async function headerSummary(page) {
-  /** @param {string} tab */
-  const mount = async (tab) => {
+  const shown = recorded.current.body.record.comparison.head;
+  /**
+   * @param {string} tab
+   * @param {{hidden?: boolean}} [how]
+   */
+  const mount = async (tab, how = {}) => {
     const tasks = [];
+    const listeners = [];
     globalThis.document = {
-      visibilityState: "visible",
-      addEventListener() {},
+      visibilityState: how.hidden ? "hidden" : "visible",
+      addEventListener(type, callback) {
+        listeners.push({ type, callback });
+      },
       removeEventListener() {},
       createElement: (tag) => new Element(tag),
       importNode: () => new Element("svg"),
@@ -1322,31 +1329,69 @@ async function headerSummary(page) {
       },
       clearTimeout() {},
     };
-    globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
+    // The next poll's answer, once; a 304 otherwise.
+    let polled = null;
+    globalThis.fetch = async (route) => {
+      const body = route.startsWith("/api/plugin/github/pull?") ? polled : null;
+      if (body !== null) {
+        polled = null;
+      }
+      return body === null
+        ? { status: 304, headers: { get: () => null } }
+        : { status: 200, headers: { get: () => null }, json: async () => body };
+    };
     const raw = { comparison: "read" };
-    const steps = { summaries: [], renders: [] };
+    // The heads whose read the server refuses.
+    const refused = new Set();
+    const steps = { summaries: [], renders: [], opened: [], jumps: [], openFile: null };
     const diffView = {
-      prefetch: async () => raw,
+      prefetch: async (comparison) => {
+        if (refused.has(comparison.right)) {
+          throw new Error("refused");
+        }
+        return comparison.right === shown ? raw : { comparison: comparison.right.slice(0, 7) };
+      },
       summary: async (slot, ctx) => {
-        steps.summaries.push(ctx.raw === raw ? "the comparison read" : "another");
+        const said = ctx.raw === raw ? "the comparison read" : ctx.raw.comparison;
+        steps.summaries.push(said);
+        steps.openFile = ctx.openFile;
         const header = new Element("button");
         header.className = "diff-summary diff-summary-toggle";
+        header.textContent = said;
         slot.append(header);
-        return { dispose: () => steps.summaries.push("disposed") };
+        return { dispose: () => steps.summaries.push(`disposed ${said}`) };
       },
       render: async (_host, ctx) => {
         steps.renders.push({ summary: ctx.summary, onDocument: typeof ctx.onDocument });
         ctx.onDocument?.(raw);
-        return { dispose() {} };
+        return {
+          dispose() {},
+          scrollToFile(path) {
+            steps.jumps.push(path);
+            return { kind: "jumped", path };
+          },
+        };
       },
     };
     const container = new Element("main");
-    const handle = page.mountPullPage(
+    let handle = null;
+    handle = page.mountPullPage(
       container,
       {
         number: 7,
         tab,
         reader: { initial: { etag: null, body: recorded.current.body }, fetchAfterMs: 60_000 },
+        // The route opener as pull-route.js's `open` answers: a route whose file it cannot
+        // spell, as one with a backslash, is refused, and a tab of the page shown is set.
+        open: (route) => {
+          steps.opened.push(route);
+          if (route.file?.includes("\\")) {
+            return Promise.reject(new Error("the route cannot spell this path"));
+          }
+          window.location.pathname = `/pull/7/${route.tab}`;
+          handle.setTab(route.tab);
+          return Promise.resolve({ status: "opened" });
+        },
       },
       {
         perf,
@@ -1364,12 +1409,27 @@ async function headerSummary(page) {
     );
     await settle();
     const row = () => container.querySelector(".github-pull-summary");
-    const idle = () => {
+    const idle = async () => {
       for (const task of tasks.splice(0)) {
         task();
       }
+      await settle();
     };
-    return { handle, row, steps, idle };
+    /** The next poll answers with *body*, and the timers run until it has. */
+    const poll = async (body) => {
+      polled = body;
+      await idle();
+    };
+    const show = async () => {
+      document.visibilityState = "visible";
+      for (const { type, callback } of listeners) {
+        if (type === "visibilitychange") {
+          callback();
+        }
+      }
+      await idle();
+    };
+    return { handle, row, steps, idle, poll, show, refused };
   };
 
   const conversation = await mount("");
@@ -1377,8 +1437,7 @@ async function headerSummary(page) {
   assert.equal(header.children.at(-1), conversation.row(), "the summary ends the header");
   assert.ok(conversation.row().classes.has("metabrowser-diff-host"), "with the diff's styles");
   assert.equal(conversation.row().children.length, 0, "held, empty, until the comparison is read");
-  conversation.idle();
-  await settle();
+  await conversation.idle();
   assert.deepEqual(conversation.steps.summaries, ["the comparison read"]);
   assert.equal(conversation.row().children.length, 1, "drawn in the row the header held");
   window.location.pathname = "/pull/7/files";
@@ -1388,13 +1447,90 @@ async function headerSummary(page) {
   assert.deepEqual(conversation.steps.summaries, ["the comparison read"], "drawn once");
   assert.equal(conversation.row().children.length, 1, "and kept on Changes");
   conversation.handle.dispose();
-  assert.deepEqual(conversation.steps.summaries, ["the comparison read", "disposed"]);
+  assert.deepEqual(conversation.steps.summaries, [
+    "the comparison read",
+    "disposed the comparison read",
+  ]);
 
   const checks = await mount("checks");
-  checks.idle();
-  await settle();
+  await checks.idle();
   assert.deepEqual(checks.steps.summaries, ["the comparison read"], "read for it on Checks too");
   checks.handle.dispose();
+
+  // A poll that brings a new comparison draws its summary in place of the old one. A read of
+  // it that is refused empties the row, at its held height, rather than leave the old
+  // comparison's counts there as the new one's, and the next paint asks again (A1 of review A
+  // on #470).
+  const moved = structuredClone(recorded.current.body);
+  const head = "e".repeat(40);
+  moved.record.comparison.head = head;
+  moved.record.pull.head.sha = head;
+  moved.comparison_route = moved.comparison_route.replace(`right=${shown}`, `right=${head}`);
+  const polling = await mount("");
+  await polling.idle();
+  assert.equal(polling.row().textContent, "the comparison read");
+  polling.refused.add(head);
+  await polling.poll(moved);
+  await polling.idle();
+  assert.equal(polling.row().children.length, 0, "a refused read of the new comparison empties it");
+  assert.deepEqual(polling.steps.summaries, [
+    "the comparison read",
+    "disposed the comparison read",
+  ]);
+  polling.refused.delete(head);
+  window.location.pathname = "/pull/7/checks";
+  polling.handle.land({ tab: "checks" });
+  await polling.idle();
+  assert.equal(polling.row().textContent, "eeeeeee", "the next paint reads it again, and draws it");
+  const switched = await mount("");
+  await switched.idle();
+  await switched.poll(moved);
+  await switched.idle();
+  assert.equal(switched.row().textContent, "eeeeeee", "an accepted read replaces the old summary");
+  assert.deepEqual(switched.steps.summaries, [
+    "the comparison read",
+    "eeeeeee",
+    "disposed the comparison read",
+  ]);
+  polling.handle.dispose();
+  switched.handle.dispose();
+
+  // A page opened out of sight reads nothing until it is shown, and then draws its summary on
+  // Checks as on Conversation (A2 of review A on #470).
+  for (const tab of ["", "checks"]) {
+    const behind = await mount(tab, { hidden: true });
+    await behind.idle();
+    assert.deepEqual(behind.steps.summaries, [], "a hidden page reads nothing");
+    await behind.show();
+    assert.deepEqual(behind.steps.summaries, ["the comparison read"], `shown on "${tab}"`);
+    assert.equal(behind.row().children.length, 1);
+    behind.handle.dispose();
+  }
+
+  // A press on a file in the summary opens Changes at the file's address; a file with no
+  // address, pressed on Conversation, where no diff is mounted, opens Changes and goes to the
+  // file once its diff mounts (A8 of review A on #470).
+  const pressed = await mount("");
+  await pressed.idle();
+  pressed.steps.openFile("docs/notes.md");
+  assert.deepEqual(pressed.steps.opened.at(-1), {
+    number: 7,
+    tab: "files",
+    file: "docs/notes.md",
+    replace: false,
+    jumped: false,
+  });
+  window.location.pathname = "/pull/7";
+  pressed.handle.land({ tab: "" });
+  await settle();
+  pressed.steps.openFile("docs\\notes.md");
+  await settle();
+  assert.deepEqual(pressed.steps.opened.slice(-2), [
+    { number: 7, tab: "files", file: "docs\\notes.md", replace: false, jumped: false },
+    { number: 7, tab: "files", replace: false, jumped: false },
+  ]);
+  assert.deepEqual(pressed.steps.jumps, ["docs\\notes.md"], "the diff goes to it once mounted");
+  pressed.handle.dispose();
 
   const changes = await mount("files");
   await settle();

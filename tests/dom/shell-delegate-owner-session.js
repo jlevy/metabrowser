@@ -187,7 +187,7 @@ const fileHeader = buttons(sandbox.headerAddressHtml("docs/a%25b.md", true));
 const folderHeader = buttons(sandbox.renderFolderHeader({ path: "docs/sub" }));
 const owner = fileHeader[0].getAttribute("data-mb-owner");
 check(
-  "the crumbs are well-formed controls with their own tooltips: a crumb's is its own name, which shows only when it is cut short",
+  "each crumb carries its tip text: the served root's name, and every other crumb's own name, not its path",
   JSON.stringify(fileHeader.map((element) => element.getAttribute("data-tip-text"))) ===
     JSON.stringify(["Served root", "docs", "a%b.md"]),
 );
@@ -230,7 +230,12 @@ for (const element of authored) {
 const authoredCalls = calls.splice(0);
 
 const tooltipFor = (element) => sandbox.tipTextAnchor({ target: element });
-check("a shell crumb shows its tooltip", tooltipFor(fileHeader[1]) === fileHeader[1]);
+// Whether an anchor's tip then shows is the shell's rule (`tipAddsInformation`), which
+// tests/dom/github-pulls-stacks-chrome.mjs reads in Chrome through this listener.
+check(
+  "the tooltip listener takes a shell crumb as its anchor",
+  tooltipFor(fileHeader[1]) === fileHeader[1],
+);
 check(
   "a document's data-tip-text is not the application's tooltip",
   authored.every((element) => tooltipFor(element) === null),

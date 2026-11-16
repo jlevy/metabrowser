@@ -19,6 +19,9 @@ The header lists only the statuses some file has, in one order: added, removed,
 modified, renamed, then the rest.
 Counts use the shell’s number format, the minus sign is U+2212, and “(estimated)”
 follows totals that are not exact.
+A list cut short at its bound, on a page that knows the whole change set’s totals, as a
+commit’s page does, says those, with no breakdown of the listed files alone, and how
+many files are listed.
 A screen reader is told the same in words.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
@@ -81,6 +84,12 @@ $ node tests/dom/diff-summary-session.js
       "text": "0 changed files  +0 −0",
       "label": "0 changed files; 0 lines added, 0 deleted",
       "estimated": false
+    },
+    "a list cut short, with the page's whole totals": {
+      "text": "5,000 changed files  +152,340 −30,211 (11 listed)",
+      "label": "5,000 changed files; 152,340 lines added, 30,211 deleted; 11 listed",
+      "estimated": false,
+      "listed": "11"
     },
     "the tree as it opens": [
       "v assets/ (2; 2 files without line counts)",

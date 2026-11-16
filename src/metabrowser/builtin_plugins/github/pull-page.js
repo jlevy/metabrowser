@@ -691,7 +691,10 @@ function timeline(record) {
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
-      review: { state, label: state in REVIEW_STATES ? REVIEW_STATES[state] : state.toLowerCase() },
+      review: {
+        state,
+        label: Object.hasOwn(REVIEW_STATES, state) ? REVIEW_STATES[state] : state.toLowerCase(),
+      },
     });
   }
   // A pending review has no time and sorts last; ties keep comments before reviews,
@@ -5397,6 +5400,7 @@ export function mountPullPage(container, ctx, mb) {
     },
     // What it read is the page's Diff summary too, on every tab (mb-pb35).
     loaded: (comparison, payload) => showSummary(comparison, payload),
+    failed: (comparison) => summaryFailed(comparison),
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),
     isVisible: () => document.visibilityState === "visible",
@@ -5415,30 +5419,85 @@ export function mountPullPage(container, ctx, mb) {
       open({ number, tab: "files", file: path, replace: false, jumped: false })
     );
     if (opened && typeof opened.then === "function") {
-      void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+      void Promise.resolve(opened).then(undefined, () => goToFileInPlace(path));
     } else {
-      jumpTo(path);
+      goToFileInPlace(path);
     }
   }
 
-  /** The comparison the page's Diff summary shows, and its mount. */
+  /**
+   * Go to a changed file that has no address: the diff jumps to it in place, or, with no diff
+   * mounted, as on Conversation and Checks, Changes opens at the page's own address and its
+   * diff goes to the file once it mounts (`landFile`), so the press is not lost (A8 of review
+   * A on #470).
+   *
+   * @param {string} path
+   */
+  function goToFileInPlace(path) {
+    if (listening.signal.aborted || diffHandle !== null) {
+      jumpTo(path);
+      return;
+    }
+    wantedFile = path;
+    void Promise.resolve(open({ number, tab: "files", replace: false, jumped: false })).catch(
+      () => {},
+    );
+  }
+
+  /**
+   * The page's Diff summary: the comparison it is drawn for, or being drawn for, the claim of
+   * its latest draw, and the mount in the row.
+   */
   let summaryShown = {
     key: "",
     claim: 0,
     handle: /** @type {{dispose: () => void} | null} */ (null),
   };
 
+  /** @param {{left: string, right: string, route?: string}} comparison */
+  const summaryKey = (comparison) => comparison.route ?? `${comparison.left}...${comparison.right}`;
+
+  /** Empty the summary's row, which keeps its held height, so nothing moves. */
+  function clearSummary() {
+    summaryShown.handle?.dispose();
+    summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
+    summaryRow.replaceChildren();
+  }
+
+  /**
+   * *comparison*, the one the page shows, has no summary to draw: its read failed. A summary
+   * of an earlier comparison is not left in the row, where it would read as this one's (A1 of
+   * review A on #470): the row is emptied, and the next read of the comparison draws it. A
+   * draw of this comparison already under way answers for itself, and a failure of another
+   * comparison, as an older one Changes shows while it is repaired, changes nothing here.
+   *
+   * @param {{left: string, right: string, route?: string}} comparison
+   */
+  function summaryFailed(comparison) {
+    const key = summaryKey(comparison);
+    const current = shown?.comparison ?? null;
+    if (
+      !listening.signal.aborted &&
+      current !== null &&
+      summaryKey(current) === key &&
+      summaryShown.key !== key
+    ) {
+      clearSummary();
+    }
+  }
+
   /**
    * Draw the page's Diff summary for *comparison* from what was read of it, once per
    * comparison, whichever read comes first: the prefetch, on any tab but Changes, or the
    * Changes diff's own. It is drawn out of sight and put in the header's held row in one
-   * step, so it moves nothing; a newer comparison's replaces it the same way.
+   * step, so it moves nothing; a newer comparison's replaces it the same way. One that draws
+   * nothing, or fails, empties the row rather than leave an earlier comparison's there.
    *
    * @param {{left: string, right: string, route?: string}} comparison
    * @param {unknown} raw
    */
   function showSummary(comparison, raw) {
-    const key = comparison.route ?? `${comparison.left}...${comparison.right}`;
+    const key = summaryKey(comparison);
     if (listening.signal.aborted || raw === undefined || raw === null || summaryShown.key === key) {
       return;
     }
@@ -5459,7 +5518,7 @@ export function mountPullPage(container, ctx, mb) {
           return;
         }
         if (handle === null) {
-          summaryShown = { ...summaryShown, key: "" };
+          clearSummary();
           return;
         }
         summaryShown.handle?.dispose();
@@ -5467,11 +5526,23 @@ export function mountPullPage(container, ctx, mb) {
         summaryRow.replaceChildren(...stage.childNodes);
       },
       () => {
-        if (summaryShown.claim === claim) {
-          summaryShown = { ...summaryShown, key: "" };
+        if (!listening.signal.aborted && summaryShown.claim === claim) {
+          clearSummary();
         }
       },
     );
+  }
+
+  /**
+   * The comparison is read on every tab but Changes, which reads it itself: the page's Diff
+   * summary is drawn from it (mb-pb35). A page opened out of sight asks once it is shown.
+   *
+   * @param {PullModel} model
+   */
+  function wantComparison(model) {
+    if (model.pull !== null && model.tab !== "files" && model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
   }
 
   /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
@@ -5541,12 +5612,6 @@ export function mountPullPage(container, ctx, mb) {
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
-              // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
-              // the route a press on it in the Pulls tab's tree takes, so the address names it
-              // and Back returns to where the reader was.
-              // A path the route cannot spell, as one with a backslash, which Git allows in a
-              // name, has no address: the diff goes to it in place instead.
-              openFile: openChangedFile,
             }),
           { number },
         )
@@ -5557,6 +5622,10 @@ export function mountPullPage(container, ctx, mb) {
         return;
       }
       diffHandle = handle;
+      // A diff that did not load read nothing to draw the header's summary from.
+      if (typeof handle?.currentFile !== "function") {
+        summaryFailed(comparison);
+      }
       watchCurrentFileAfterPaint(host, handle);
       // Landed before the wait, so the first screen the Markdown layer reports is the one the
       // reader lands on: a file the address names, not the top of the diff.
@@ -5597,6 +5666,7 @@ export function mountPullPage(container, ctx, mb) {
       if (!owns()) {
         return;
       }
+      summaryFailed(comparison);
       host.classList.remove("github-pull-diff-holding");
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
       retry.addEventListener("click", () => {
@@ -5811,11 +5881,7 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
-    // The comparison is read on every tab but Changes, which reads it itself: the page's
-    // Diff summary is drawn from it (mb-pb35).
-    if (model.comparison !== null) {
-      prefetch.want(model.comparison);
-    }
+    wantComparison(model);
     if (model.tab === "checks") {
       const key = JSON.stringify([
         "checks",
@@ -5835,9 +5901,6 @@ export function mountPullPage(container, ctx, mb) {
         paintChecks(model, model.pull);
       }
       return;
-    }
-    if (model.comparison !== null) {
-      prefetch.want(model.comparison);
     }
     if (hold === "delayed" || key === null) {
       return;
@@ -6407,12 +6470,10 @@ export function mountPullPage(container, ctx, mb) {
       controller.onVisibilityChange();
       followTimeline();
       // A page opened behind another tab is not prefetched until it is looked at: the
-      // wish is not recorded while hidden, so it is asked again when shown.
-      if (document.visibilityState === "visible" && shown?.tab === "") {
-        const comparison = shown?.comparison ?? null;
-        if (comparison !== null) {
-          prefetch.want(comparison);
-        }
+      // wish is not recorded while hidden, so it is asked again when shown, on every tab
+      // that paints it (A2 of review A on #470).
+      if (document.visibilityState === "visible" && shown !== null) {
+        wantComparison(shown);
       }
     },
     { signal: listening.signal },

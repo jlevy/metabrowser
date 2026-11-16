@@ -23,8 +23,9 @@
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
 // or a press on a file jumps; on a folder they toggle it. A host with an address for a file
-// takes the jump (diff-view.js `openFile`): a pull request's Changes opens
-// `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and the diff follows its address.
+// takes the jump (diff-view.js `openFile`): a pull request's page, whose header holds the
+// summary on every tab, opens `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and
+// its diff follows the address.
 //
 // A path is text whoever made the change wrote: it is painted with textContent and reaches
 // no class, style, or markup, and what is painted is its display, the server's rule
@@ -300,7 +301,7 @@ export function mountSummaryTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "changed-file-stats diff-summary-row-stats", "aria-hidden": "true" }, [
+          h("span", { class: "changed-file-stats", "aria-hidden": "true" }, [
             h("span", { class: "diff-stat-add" }, [stats.additions]),
             h("span", { class: "diff-stat-del" }, [stats.deletions]),
           ]),
@@ -309,13 +310,13 @@ export function mountSummaryTree(host) {
 
   /** @param {SummaryRow} row @returns {Node[]} */
   function partsOf(row) {
-    const name = h("span", { class: "changed-file-name diff-summary-row-name" }, [row.name]);
+    const name = h("span", { class: "changed-file-name" }, [row.name]);
     if (row.kind === "folder") {
       const chevron = host.chevron();
       return [
         h(
           "span",
-          { class: "changed-file-toggle diff-summary-row-toggle", "aria-hidden": "true" },
+          { class: "changed-file-toggle", "aria-hidden": "true" },
           chevron === null ? [] : [chevron],
         ),
         name,
@@ -325,7 +326,7 @@ export function mountSummaryTree(host) {
     const badge = h(
       "span",
       {
-        class: "tree-container-badge diff-summary-row-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },
