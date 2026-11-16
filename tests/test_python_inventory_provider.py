@@ -1303,10 +1303,36 @@ def test_evicted_continuation_fails_explicitly(
             assert isinstance(page, CatalogProjection)
             assert page.next_page is not None
             await handle.read(ReadRequest(queries=(query,)))
-            with pytest.raises(VersionUnavailableError, match="cursor is unavailable"):
+            # The error says the page was evicted, not that the files changed.
+            with pytest.raises(
+                VersionUnavailableError,
+                match="cursor is unavailable: its page was evicted, as the provider retains "
+                "at most 1 continuations",
+            ):
                 await handle.read(
                     ReadRequest(
                         queries=(replace(query, after=page.next_page),), at_version=first.version
+                    )
+                )
+            # Evicted to keep the retained rows within their bound, it says that instead.
+            monkeypatch.setattr(python_provider, "_PAGE_MEMO_CAPACITY", 64)
+            monkeypatch.setattr(python_provider, "MAX_ASSEMBLED_ROWS", 3)
+            first = await handle.read(ReadRequest(queries=(query,)))
+            page = first.projection("page")
+            assert isinstance(page, CatalogProjection)
+            assert page.next_page is not None
+            await handle.read(ReadRequest(queries=(query,)))
+            with pytest.raises(VersionUnavailableError, match="continuations reached 3 rows"):
+                await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, after=page.next_page),), at_version=first.version
+                    )
+                )
+            # A cursor that was never issued is only unavailable.
+            with pytest.raises(VersionUnavailableError, match="cursor is unavailable$"):
+                await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, after="unknown"),), at_version=first.version
                     )
                 )
         finally:

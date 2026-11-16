@@ -289,19 +289,22 @@ Strict mode is off on a developer machine, which can add these:
   transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
   and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
   the Folder Overview’s labels start at several window widths; the layout checks in
-  `tests/test_github_pull_header_chrome.py`, `tests/test_github_pull_text_chrome.py`,
-  `tests/test_github_pulls_stacks_chrome.py`, `tests/test_nav_metadata_chrome.py`, and
-  `tests/test_staged_fonts_chrome.py`; `tests/test_github_pull_timeline_chrome.py`,
-  which reads a pull request’s Conversation timeline’s type, spacing, and line from the
-  boxes Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`,
-  which reads the face documents and chrome prose are drawn in under each reading font
-  and font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
-  Chrome kept under the trusted profile after the folder is served `--untrusted`;
+  `tests/test_git_commit_summary_chrome.py`, `tests/test_github_pull_header_chrome.py`,
+  `tests/test_github_pull_text_chrome.py`, `tests/test_github_pulls_stacks_chrome.py`,
+  `tests/test_nav_metadata_chrome.py`, and `tests/test_staged_fonts_chrome.py`;
+  `tests/test_github_pull_timeline_chrome.py`, which reads a pull request’s Conversation
+  timeline’s type, spacing, and line from the boxes Chrome lays out and the pixels it
+  paints; `tests/test_prose_faces_chrome.py`, which reads the face documents and chrome
+  prose are drawn in under each reading font and font set;
+  `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer Chrome kept
+  under the trusted profile after the folder is served `--untrusted`;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
-  fold of unchanged blocks closed, open, and under the pointer; and
+  fold of unchanged blocks closed, open, and under the pointer;
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
   Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
-  host, and reads that only the Mac’s binds them.
+  host, and reads that only the Mac’s binds them; and
+  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
+  computed weight, face, size, and ink on every title surface.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until

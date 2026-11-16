@@ -2,8 +2,8 @@
 
 Every Metabrowser shortcut is a single key with no modifier, except Control-N and
 Control-P on macOS and iOS, and Shift changes nothing.
-A letter means the same thing wherever it works, and the numbers `1` to `9` reach the
-controls on the current screen in reading order.
+A letter means the same thing wherever it works, `0` goes home, and the numbers `1` to
+`9` reach the controls on the current screen in reading order.
 Press `?` for Help, which lists the keys by what they do, and hold Shift to see each key
 on the control it reaches now.
 
@@ -13,6 +13,7 @@ on the control it reaches now.
 | --- | --- | --- |
 | `?` | Help | Always |
 | `T` or `/` | Quick Search, the file finder | Always |
+| `0` | Home: the served folder’s home view, every tab at its first | Always |
 | `F` | The Files tab | Always |
 | `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
@@ -32,6 +33,23 @@ on the control it reaches now.
 | `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown |
 
 A letter that appears twice, such as `C`, belongs to two screens never shown together.
+
+`0` does what a click on the folder’s name at the top of the navigation pane does: it
+shows the folder as a fresh load shows it, with Files in front at the folder’s Overview,
+every filter and Group by at its default, and every tab back at its first view.
+What has been read, such as pull requests and history, stays in memory, so only the tree
+and the folder’s view are read again.
+
+## Keys in a Menu
+
+Opening a filter’s menu or a pull request’s stack menu, by a click, or by Enter, Space,
+`↓`, or `↑` on its button, or a filter’s number, puts focus in it, so its keys work at
+once: `↑`, `↓`, Home, End, Enter, and Escape.
+While a menu is open and has focus, the letters of its rows come first: in Group by, `N`
+chooses No grouping, `A` By age, and `T` By file type, where elsewhere `T` is Quick
+Search. `/` still opens Quick Search there, and every letter means what the table says
+again once the menu closes or focus leaves it.
+Holding Shift shows each row’s letter, and Help lists them under Menus.
 
 ## Numbered Controls
 

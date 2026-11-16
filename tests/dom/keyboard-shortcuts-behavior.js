@@ -424,6 +424,30 @@ check(
     { physical: true },
   ),
 );
+// Home's `0` is on the digit row too: US Shift-0 types `)` and AZERTY's unshifted key `à`,
+// each matched by its key; AZERTY's Shift-0 types `0` itself.
+check(
+  "the physical pass matches 0 on the digit row: US Shift-0",
+  shortcuts.eventMatchesBinding(
+    keyboardEvent(")", { code: "Digit0", shiftKey: true }),
+    { key: "0" },
+    { physical: true },
+  ),
+);
+check(
+  "the physical pass matches 0 on the digit row: AZERTY's unshifted à",
+  shortcuts.eventMatchesBinding(
+    keyboardEvent("à", { code: "Digit0" }),
+    { key: "0" },
+    { physical: true },
+  ),
+);
+check(
+  "a typed 0 matches 0 by its key, with Shift or without",
+  shortcuts.eventMatchesBinding(keyboardEvent("0", { code: "Digit0", shiftKey: true }), {
+    key: "0",
+  }) && shortcuts.eventMatchesBinding(keyboardEvent("0", { code: "Digit0" }), { key: "0" }),
+);
 check(
   "the physical pass leaves a typed digit to its key",
   !shortcuts.eventMatchesBinding(
@@ -1405,6 +1429,188 @@ batched.dispose();
   stagedHandle.detach();
   targetRegistry.dispose();
   check("disposal leaves no attribute", !rebuilt.hasAttribute("aria-keyshortcuts"));
+}
+
+// ── A menu's letters over the shell's ────────────────────────────
+// An open menu's row letters sit in its own scope, activated while it is open, so its T
+// outranks Quick Search's while the row's command is available; the live surfaces then
+// show Quick Search by `/` alone, and both its keys again once the menu has gone
+// (docs/design-system.md, "Keys in a Menu").
+{
+  const menuDocument = new FakeDocument();
+  const menuRegistry = shortcuts.create({ document: menuDocument });
+  const chose = [];
+  let focused = true;
+  menuRegistry.register(
+    command({
+      bindings: [{ key: "t" }, { key: "/" }],
+      copy: { action: "Quick Search", description: "Find a file.", hint: "Quick Search" },
+      group: "anywhere",
+      handler: () => chose.push("Quick Search") > 0,
+      id: "quick-file.open",
+      surfaces: { help: "always", reveal: "always" },
+    }),
+  );
+  menuRegistry.register(
+    command({
+      available: () => focused,
+      bindings: [{ key: "t" }],
+      copy: {
+        action: "By file type",
+        description: "Choose By file type in the Group by menu.",
+        hint: "By file type",
+      },
+      group: "menus",
+      handler: () => chose.push("By file type") > 0,
+      id: "menu.group.t",
+      scope: "menu:group",
+      surfaces: { help: "always", reveal: "always" },
+    }),
+  );
+  /** Each live command's keys, as the reveal strip shows them. */
+  const revealed = () =>
+    menuRegistry
+      .snapshot("reveal")
+      .flatMap((group) => group.commands)
+      .map((presented) => `${presented.bindings.visible.join(" or ")} ${presented.copy.action}`);
+  const pressT = () => menuDocument.dispatch(keyboardEvent("t"));
+  equal("with the menu closed the strip shows T or / for Quick Search", revealed(), [
+    "T or / Quick Search",
+  ]);
+  pressT();
+  const closeMenu = menuRegistry.activateScope("menu:group");
+  equal("while the menu is open and focused, the strip shows T for its row only", revealed(), [
+    "/ Quick Search",
+    "T By file type",
+  ]);
+  pressT();
+  focused = false;
+  equal("with focus outside the open menu, T is Quick Search's again", revealed(), [
+    "T or / Quick Search",
+  ]);
+  pressT();
+  focused = true;
+  closeMenu();
+  pressT();
+  equal("T reaches the row only while the menu is open and focused", chose, [
+    "Quick Search",
+    "By file type",
+    "Quick Search",
+    "Quick Search",
+  ]);
+  check(
+    "Help lists the menu's letter under Menus whether or not it is open",
+    menuRegistry
+      .snapshot("help", { includeInactive: true })
+      .some((group) => group.id === "menus" && group.commands[0].id === "menu.group.t"),
+  );
+  // A menu's N is the letter alone: Control-N is another key, so a stack's walk keeps it
+  // on the strip while the menu's N is live. On a Mac, where a chord is bound.
+  sandbox.navigator = { platform: "MacIntel" };
+  menuRegistry.register(
+    command({
+      bindings: [{ key: "n", control: true }],
+      copy: { action: "Next in stack", description: "Open the next one.", hint: "Next" },
+      group: "pull-stack",
+      handler: () => true,
+      id: "pulls.stack.next",
+      surfaces: { help: "always", reveal: "always" },
+    }),
+  );
+  menuRegistry.register(
+    command({
+      available: () => focused,
+      bindings: [{ key: "n" }],
+      copy: {
+        action: "No grouping",
+        description: "Choose No grouping in the Group by menu.",
+        hint: "No grouping",
+      },
+      group: "menus",
+      handler: () => true,
+      id: "menu.group.n",
+      scope: "menu:group",
+      surfaces: { help: "always", reveal: "always" },
+    }),
+  );
+  const closeAgain = menuRegistry.activateScope("menu:group");
+  check(
+    "a menu's N leaves Control-N on the strip",
+    menuRegistry
+      .snapshot("reveal")
+      .flatMap((group) => group.commands)
+      .some((presented) => presented.id === "pulls.stack.next"),
+  );
+  closeAgain();
+  menuRegistry.dispose();
+}
+
+// A view tab may hold a menu's letter, since only the shell's letters are reserved. While
+// the open menu's A is live and Shift is held, A reaches the row, so only the row is
+// badged A, and the tab's badge returns when the menu closes.
+{
+  const { FakeDocument, element, keyEvent } = require("./key-reveal-dom.js");
+  const tree = new FakeDocument();
+  const badgeRegistry = shortcuts.create({ document: tree });
+  const chose = [];
+  const viewTab = element(tree, "button", { class: "tab-btn", "data-tab": "age" }, "Ages");
+  const row = element(tree, "button", { class: "menu-row", "data-menu-key": "a" }, "By age");
+  tree.body.append(viewTab, row);
+  badgeRegistry.register(
+    command({
+      bindings: [{ key: "a" }],
+      copy: { action: "Ages", description: "Show the Ages view.", hint: "Ages" },
+      group: "view-tabs",
+      handler: () => chose.push("Ages") > 0,
+      id: "view-tabs.a",
+      scope: "view-tabs",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  badgeRegistry.register(
+    command({
+      bindings: [{ key: "a" }],
+      copy: {
+        action: "By age",
+        description: "Choose By age in the Group by menu.",
+        hint: "By age",
+      },
+      group: "menus",
+      handler: () => chose.push("By age") > 0,
+      id: "menu.group.a",
+      scope: "menu:group",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  badgeRegistry.attachTarget("view-tabs.a", viewTab);
+  badgeRegistry.attachTarget("menu.group.a", row);
+  const badgeOn = (target) => target.querySelector(".kbd-badge")?.textContent ?? null;
+  const pressA = () => tree.dispatchEvent(keyEvent("keydown", "a", { target: tree.body }));
+  badgeRegistry.setRevealed(true);
+  equal(
+    "with the menu closed the view tab is badged A",
+    [badgeOn(viewTab), badgeOn(row)],
+    ["A", null],
+  );
+  const closeMenu = badgeRegistry.activateScope("menu:group");
+  equal(
+    "while the menu's A is live, only its row is badged A",
+    [badgeOn(viewTab), badgeOn(row)],
+    [null, "A"],
+  );
+  pressA();
+  closeMenu();
+  equal(
+    "once the menu closes the view tab is badged A again",
+    [badgeOn(viewTab), badgeOn(row)],
+    ["A", null],
+  );
+  pressA();
+  equal("A reaches the row while the menu is open, the tab after", chose, ["By age", "Ages"]);
+  badgeRegistry.setRevealed(false);
+  badgeRegistry.dispose();
 }
 
 if (failures.length > 0) {

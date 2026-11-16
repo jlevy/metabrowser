@@ -9,10 +9,11 @@
 // registry's chevron in the tree's icon slot and file rows with the change letter a patch's
 // children carry in place of an icon, the tree's indent and row height, and the inline change
 // stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
-// a Files folder keeps its size whichever way it is turned. It
-// takes none of `.tree-item`, `[data-tree-id]`, or the Files tree's keyboard, which the shell
-// keeps for the Files tab: these rows are the plugin's, and their keys come from the Pulls
-// tab's host.
+// a Files folder keeps its size whichever way it is turned. Its rows are the shell's
+// `.changed-file-row` class set (static/styles.css), the Diff summary's too, so the two trees
+// of changed files draw one row. It takes none of `.tree-item`, `[data-tree-id]`, or the
+// Files tree's keyboard, which the shell keeps for the Files tab: these rows are the
+// plugin's, and their keys come from the Pulls tab's host.
 //
 // The rows are one flat list in the group, each with its level, place, and set size, as a
 // tree drawn a window at a time is: a list at GitHub's cap is 3,346 rows, and only those in
@@ -158,7 +159,7 @@ export function mountFileTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "github-pull-file-stats", "aria-hidden": "true" }, [
+          h("span", { class: "changed-file-stats github-pull-file-stats", "aria-hidden": "true" }, [
             h("span", { class: "diff-stat-add" }, [stats.additions]),
             h("span", { class: "diff-stat-del" }, [stats.deletions]),
           ]),
@@ -172,10 +173,14 @@ export function mountFileTree(host) {
    * @returns {Node[]}
    */
   function partsOf(row) {
-    const name = h("span", { class: "github-pull-file-name mb-refreshing-text" }, [row.name]);
+    const name = h(
+      "span",
+      { class: "changed-file-name github-pull-file-name mb-refreshing-text" },
+      [row.name],
+    );
     if (row.kind === "folder") {
       return [
-        h("span", { class: "github-pull-files-toggle", "aria-hidden": "true" }, [host.chevron()]),
+        h("span", { class: "changed-file-toggle", "aria-hidden": "true" }, [host.chevron()]),
         name,
         ...statsOf(row),
       ];
@@ -183,7 +188,7 @@ export function mountFileTree(host) {
     const badge = h(
       "span",
       {
-        class: "tree-container-badge github-pull-file-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },
@@ -221,9 +226,15 @@ export function mountFileTree(host) {
     element.setAttribute("aria-setsize", String(row.setSize));
     element.setAttribute("aria-label", labelOf(row));
     if (row.kind === "folder") {
-      // The tooltip says what the folder's sums leave out, as its accessible name does.
+      // The tooltip says what the folder's sums leave out, the counts alone, as its
+      // accessible name does, and nothing when they leave nothing out: its name is on the row
+      // already (docs/design-system.md, "Tooltips Add Information").
       const missing = controller.tree()?.missingCounts(row, host.formatCount) ?? "";
-      element.dataset.tipText = missing === "" ? row.name : `${row.name}, ${missing}`;
+      if (missing === "") {
+        delete element.dataset.tipText;
+      } else {
+        element.dataset.tipText = missing;
+      }
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
@@ -252,8 +263,8 @@ export function mountFileTree(host) {
         {
           class:
             row.kind === "folder"
-              ? "github-pull-folder-row disclosure-toggle"
-              : "github-pull-file-row",
+              ? "changed-file-row github-pull-folder-row disclosure-toggle"
+              : "changed-file-row github-pull-file-row",
           role: "treeitem",
           tabindex: "-1",
           ...(href === null ? {} : { href }),

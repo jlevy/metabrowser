@@ -26,16 +26,25 @@
   );
   --diff-fold-row-height: max(var(--ui-row-height), calc(1.5 * var(--ui-small-font-size) + 2px));
   --diff-notice-row-height: calc(1.5 * var(--body-font-size) + 2 * var(--diff-notice-padding-y));
+  /* How far the Diff summary's header pulls left of where it is placed, so its hover ground
+     reaches past its chevron (`.diff-summary-toggle`). Its tree's rows take it back out, so
+     their first level starts one --tree-indent in from the header (below). */
+  --diff-summary-toggle-pull: 4px;
 }
 
+/* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
+   12 px margin below, is the line between the toolbar and the files, and on a commit's or a
+   pull request's page, where the toolbar holds the layout control alone, a rule there would
+   draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
+   header is the tree's root, and the tree opens under it as it does at a page's top, with
+   no line between them. The toolbar is not sticky, so nothing scrolls under it. */
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   min-height: var(--ui-row-height);
-  border-bottom: 1px solid var(--border);
 }
 
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
@@ -52,13 +61,16 @@
   color: var(--text);
 }
 
+/* The header's hover and focus ring are the tree rows' under it (`.changed-file-row`):
+   square, and the ring drawn 2px inside the box, so the header and its rows hover and
+   focus as one tree. */
 .metabrowser-diff-host .diff-summary-toggle {
   flex: 0 1 auto;
   min-height: var(--ui-row-height);
-  margin: 0 0 0 -4px;
+  margin: 0 0 0 calc(-1 * var(--diff-summary-toggle-pull));
   padding: 0 6px 0 0;
   border: 0;
-  border-radius: var(--radius-tag);
+  border-radius: 0;
   background: transparent;
   font-family: var(--font-sans);
   text-align: left;
@@ -72,7 +84,8 @@
 
 .metabrowser-diff-host .diff-summary-toggle:focus-visible {
   outline: 2px solid var(--link);
-  outline-offset: 0;
+  outline-offset: -2px;
+  background: var(--hover-bg);
 }
 
 .metabrowser-diff-host .diff-summary-chevron {
@@ -93,16 +106,15 @@
   white-space: nowrap;
 }
 
-/* The tree, under the toolbar: the nav panel's tree rows in a box of their own, which
-   scrolls past its height so the diff stays a scroll away. Rows are drawn a window at a time,
-   each one row tall at its index, as the Pulls tab draws a pull request's files. The box
-   travels on the disclosure recipe. */
+/* The tree, under the toolbar: the nav panel's tree rows, as tall as they are, in the page's
+   flow, with no scroll bar of their own. Rows are drawn a window at a time, those in the
+   window's view, each one row tall at its index, as the Pulls tab draws a pull request's
+   files (diff-summary.js, SUMMARY_ROWS_OVERSCAN, says what that costs). The box travels on
+   the disclosure recipe; it clips what its height has not reached yet, and never scrolls. */
 .metabrowser-diff-host .diff-summary-body {
   interpolate-size: allow-keywords;
   height: auto;
-  max-height: 60vh;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: clip;
   border-bottom: 1px solid var(--border);
   transition:
     height var(--transition-fast),
@@ -121,65 +133,36 @@
   margin: 4px 0;
 }
 
+/* Where the header starts, from the tree's left edge: in a diff's toolbar, which the tree
+   opens under, the toolbar's padding; at the top of a commit's or a pull request's page,
+   where the tree opens right under the header, nothing. */
+.metabrowser-diff-host .diff-summary-body {
+  --diff-summary-header-inset: 0px;
+}
+.metabrowser-diff-host .diff-toolbar + .diff-summary-body {
+  --diff-summary-header-inset: var(--pane-header-padding-x);
+}
+
+/* A row is the shell's changed-file row (static/styles.css, `.changed-file-row`), the Pulls
+   tab's tree's too, so the two trees draw one row; here is only its depth's indent. The
+   header is the tree's root, so its first level starts one --tree-indent in from it, as a
+   folder's rows start one step in from the folder, and each level adds the step. A row's
+   content starts on the row inset, --pane-header-padding-x past the row's edge; the header
+   starts --diff-summary-header-inset in and pulls --diff-summary-toggle-pull left of that;
+   so the rows give back the difference. Measured in Chrome
+   (tests/test_changed_file_rows_chrome.py, tests/test_git_commit_summary_chrome.py,
+   tests/test_github_pull_header_chrome.py): in a patch's toolbar, under a commit's identity,
+   and in a pull request's header, a first-level row's chevron and name start 16px right of
+   the header's chevron and words, and each level 16px further. Before, they started 4px
+   right of them in the toolbar, and already 16px right of them at the top of a page. */
 .metabrowser-diff-host .diff-summary-row {
-  position: absolute;
-  right: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: var(--ui-row-height);
-  padding: 2px 12px 2px calc(8px + var(--diff-summary-depth, 0) * var(--tree-indent));
-  border-left: 2px solid transparent;
-  gap: 6px;
-  color: var(--text);
-  font-size: var(--nav-font-size);
-  cursor: pointer;
-  -webkit-user-select: var(--toggle-user-select);
-  user-select: var(--toggle-user-select);
-}
-
-.metabrowser-diff-host .diff-summary-row:hover {
-  background: var(--hover-bg);
-}
-
-.metabrowser-diff-host .diff-summary-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
-  background: var(--hover-bg);
-}
-
-.metabrowser-diff-host .diff-summary-row-toggle {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--tree-icon-slot);
-}
-
-.metabrowser-diff-host .diff-summary-row-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The inline change stats (docs/design-system.md, "Inline Change Stats"), at the row's end:
-   a file's own, and a folder's rolled up from every file under it. */
-.metabrowser-diff-host .diff-summary-row-stats {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 4px;
-  margin-left: auto;
-  font-size: var(--ui-small-font-size);
-  font-variant-numeric: tabular-nums;
-}
-
-.metabrowser-diff-host
-  .diff-summary-row
-  > :is(.diff-summary-row-badge, .diff-summary-row-name, .diff-summary-row-stats) {
-  align-self: baseline;
+  --changed-file-indent: calc(
+    (var(--diff-summary-depth, 0) + 1) *
+    var(--tree-indent) +
+    var(--diff-summary-header-inset) -
+    var(--diff-summary-toggle-pull) -
+    var(--pane-header-padding-x)
+  );
 }
 
 .metabrowser-diff-host .diff-layout-control {

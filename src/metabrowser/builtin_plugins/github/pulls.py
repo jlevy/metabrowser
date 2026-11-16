@@ -85,6 +85,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     CommitStatus,
     Comparison,
     IssueComment,
+    PullLabel,
     PullObservationSuperseded,
     PullRecord,
     PullRefreshStamp,
@@ -98,6 +99,8 @@ from metabrowser.builtin_plugins.github.pull_record import (
     UnavailablePart,
     cut_text,
     fit_record,
+    label_color,
+    label_description,
     read_pull_record,
     read_pull_refresh,
     write_pull_record,
@@ -146,7 +149,7 @@ _CORE_FIELDS: Final = """
       headRefName headRefOid headRepository { nameWithOwner }
       mergeable mergeCommit { oid } potentialMergeCommit { oid }
       commits(first:1) { totalCount }
-      labels(first:100) { nodes { name } }"""
+      labels(first:100) { nodes { name color description } }"""
 _CORE_QUERY: Final = (
     """query PullCore($owner:String!,$name:String!,$number:Int!) {
   viewer { login }
@@ -223,6 +226,23 @@ def _side(value: object) -> PullSide:
     )
 
 
+def _label(value: object) -> PullLabel | None:
+    """A label of the REST or GraphQL answer, or ``None`` for one without a name.
+
+    A color that is not six hex digits is left out, and the label is drawn neutral.
+    """
+
+    label = as_dict(value)
+    name = _short(label.get("name"))
+    if name is None:
+        return None
+    return PullLabel(
+        name=name,
+        color=label_color(label.get("color")),
+        description=label_description(_short(label.get("description"))),
+    )
+
+
 def _pull(value: object, number: int) -> PullRequest:
     item = as_dict(value)
     if item.get("number") != number:
@@ -230,11 +250,8 @@ def _pull(value: object, number: int) -> PullRequest:
     body, body_cut = _text(item.get("body"))
     title, _cut = _text(item.get("title"), MAX_TITLE_BYTES)
     labels = item.get("labels")
-    names = (
-        [_short(as_dict(label).get("name")) for label in labels[:MAX_LABELS]]
-        if isinstance(labels, list)
-        else []
-    )  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    listed: list[object] = labels[:MAX_LABELS] if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
+    read = [_label(label) for label in listed]
     mergeable = item.get("mergeable")
     return PullRequest(
         number=number,
@@ -253,7 +270,7 @@ def _pull(value: object, number: int) -> PullRequest:
         else "conflicting"
         if mergeable is False
         else "unknown",
-        labels=tuple(name for name in names if name is not None),
+        labels=tuple(label for label in read if label is not None),
         author=login_of(item.get("user")),
         author_avatar_url=avatar_of(item.get("user")),
         created_at=item["created_at"],

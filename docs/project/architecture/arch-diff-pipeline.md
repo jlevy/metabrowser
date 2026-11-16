@@ -200,6 +200,12 @@ memory, can be computed again:
   it, and an answer requested before a clear is not kept.
   A folder’s answer kept here can outlive a change to its Git configuration until one of
   those clears.
+- **A pull request page’s keep** (`createComparisonKeep` in
+  `builtin_plugins/github/comparison-prefetch.js`) keeps each comparison a pull
+  request’s page reads for the document rather than for one page, keyed by the
+  comparison’s route and bounded by `KEPT_COMPARISON_CHARS`, so a revisit draws its Diff
+  summary and mounts Changes with no request; see
+  [The Comparison Keep](arch-github-pull-requests.md#the-comparison-keep).
 
 A refusal is never kept, since a fetch can answer it.
 

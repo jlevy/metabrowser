@@ -80,7 +80,9 @@ const LIST = `(() => {
         stack: Number(row.dataset.stack),
         label: row.querySelector(".github-pull-stack-label").textContent,
         shown: row.querySelector(".github-pull-stack-label").innerText,
-        count: row.querySelector(".github-pulls-stack-count").textContent,
+        // Everything the row says on screen: its label, and no tally (mb-yk0i).
+        text: row.textContent,
+        name: row.getAttribute("aria-label"),
         expanded: row.getAttribute("aria-expanded"),
         tip: row.dataset.tipText,
         members: [],
@@ -112,6 +114,18 @@ const LIST = `(() => {
   // cut at. A member's and a first-level pull request's, and the pane they are in.
   const titleBox = (number) =>
     list.querySelector('a.github-pulls-row[data-number="' + number + '"] .github-pulls-title')?.getBoundingClientRect().width ?? null;
+  // The Pulls column carries no tooltip (mb-8mpo): every pull request's and stack's row and
+  // its parts, after a pointer has crossed each title, as a reader's would.
+  for (const title of list.querySelectorAll(".github-pulls-row .github-pulls-title")) {
+    title.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+    // Leaving, so no hover is left to read a pull request ahead.
+    title.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+  }
+  const tips = [...list.querySelectorAll(".github-pulls-row")].flatMap((row) =>
+    [row, ...row.querySelectorAll("*")]
+      .filter((node) => node.hasAttribute("data-tip-text") || node.hasAttribute("title"))
+      .map((node) => (row.dataset.number ?? "stack " + row.dataset.stack) + ": " + node.className),
+  );
   const titleRoom = {
     pane: Math.round(document.querySelector(".tree-pane").getBoundingClientRect().width),
     member: titleBox(10),
@@ -120,7 +134,55 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
+  // A pull request's two lines (mb-lkkt, mb-3cbf): the chevron, the icon, the number's line,
+  // and the age, then the title alone, from the text column to the row's end. Each row's
+  // parts, from its content box.
+  const lines = Object.fromEntries(
+    [10, 9, 106].map((number) => {
+      const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
+      if (row === null) return [number, null];
+      const style = getComputedStyle(row);
+      const r = row.getBoundingClientRect();
+      const inset = r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+      const end = r.right - parseFloat(style.paddingRight);
+      const of = (selector) => row.querySelector(selector).getBoundingClientRect();
+      const meta = of(".github-pulls-meta");
+      const age = of(".github-pulls-age");
+      const title = of(".github-pulls-title");
+      const toggle = of(".github-pulls-toggle");
+      const icon = of(".github-pull-state-icon");
+      const numberBox = of(".github-pulls-number");
+      const metaBox = row.querySelector(".github-pulls-meta");
+      const round = (value) => Math.round(value * 100) / 100;
+      return [number, {
+        text: metaBox.textContent,
+        // The number's line is above the title's, and one line of the number's type.
+        firstAbove: meta.bottom <= title.top + 0.5 && age.bottom <= title.top + 0.5,
+        oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
+        // The number's line starts in the title's column; the age ends at the row's end.
+        metaFromTitle: round(meta.left - title.left),
+        ageToEnd: round(end - age.right),
+        // The title runs from the text column, after the two glyph slots, to the row's end.
+        titleToEnd: round(end - title.right),
+        titleFromInset: round(title.left - inset),
+        textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
+        // The chevron and the icon are on the number's line, inside its box, above the title.
+        withNumber: [toggle, icon].every((box) => box.top >= meta.top - 0.5 && box.bottom <= meta.bottom + 0.5 && box.bottom <= title.top + 0.5),
+        // How far each glyph's middle is from the number's line's middle, and from the title's.
+        toggleOffNumber: round((toggle.top + toggle.bottom) / 2 - (meta.top + meta.bottom) / 2),
+        iconOffNumber: round((icon.top + icon.bottom) / 2 - (meta.top + meta.bottom) / 2),
+        toggleOffTitle: round((toggle.top + toggle.bottom) / 2 - (title.top + title.bottom) / 2),
+        toggleFromInset: round(toggle.left - inset),
+        iconFromInset: round(icon.left - inset),
+        numberLeft: round(numberBox.left - meta.left),
+        titleWidth: round(title.width),
+        height: round(r.height),
+      }];
+    }),
+  );
   return {
+    tips,
+    lines,
     titleRoom,
     stacks,
     rows: rows.length,
@@ -132,7 +194,8 @@ const LIST = `(() => {
     stackRowHeight: box(stackRow)?.height ?? null,
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
-    countRight: box(stackRow?.querySelector(".github-pulls-stack-count"))?.right ?? null,
+    // The label's room ends at the row's content end, where a row's age ends.
+    labelRoomRight: box(stackRow?.querySelector(".github-pull-stack-label"))?.right ?? null,
     flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and Reload, which sits at the line's end.
@@ -178,6 +241,130 @@ const LIST = `(() => {
       };
     })(),
   };
+})()`;
+
+// In the page: what the shell's tooltip shows when a pointer enters *anchor*, or null when
+// it shows none. The document's own listener decides (`showTipText` in static/app.js, and
+// `tipAddsInformation`, docs/design-system.md, "Tooltips Add Information"), and a tip it
+// shows is up once the shell's own delay, TOOLTIP_APPEAR_DELAY, has passed. The pointer
+// then leaves, and the tooltip is gone, after TOOLTIP_FADE_OUT, before the next anchor.
+const TIP_SHOWN = `async (anchor) => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const up = () => document.querySelector(".custom-tooltip")?.style.display === "block";
+  const gone = async () => {
+    const bound = performance.now() + 20 * TOOLTIP_FADE_OUT;
+    while (up() && performance.now() < bound) {
+      await wait(TOOLTIP_FADE_OUT / 5);
+    }
+  };
+  await gone();
+  anchor.dispatchEvent(new MouseEvent("mouseenter"));
+  await wait(TOOLTIP_APPEAR_DELAY);
+  await frames();
+  const shown = up() ? document.querySelector(".custom-tooltip").textContent : null;
+  anchor.dispatchEvent(new MouseEvent("mouseleave"));
+  await gone();
+  return shown;
+}`;
+
+// In the page: the shell's tooltip rule on anchors built over its own stylesheet. A tip that
+// is its button's whole text, in any case or spacing; the same tip on text cut short by an
+// ellipsis; a branch chip whole, and one cut short, as a chip is, by its label inside it; and
+// a glyph-only control's name.
+const SHELL_TIPS = `(async () => {
+  const shown = ${TIP_SHOWN};
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  const long = "A pull request title far longer than the box it is drawn in";
+  const branch = "feature/a-branch-name-longer-than-its-chip";
+  const chipCut = window.metabrowser.refChip(branch, { copy: false });
+  chipCut.style.maxWidth = "80px";
+  const anchors = {
+    whole: h("button", { type: "button", "data-tip-text": "Reload" }, ["Reload"]),
+    wholeSpaced: h("span", { "data-tip-text": "stack #286" }, ["  Stack   #286 "]),
+    cut: h("span", { "data-tip-text": long, style: "display: block; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }, [long]),
+    chipWhole: window.metabrowser.refChip("main", { copy: false }),
+    chipCut,
+    glyph: h("button", { type: "button", "data-tip-text": "Copy path", "aria-label": "Copy path" }, ["↑"]),
+  };
+  const host = h("div", { style: "position: fixed; left: 320px; top: 120px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px" }, Object.values(anchors));
+  document.body.append(host);
+  const label = chipCut.querySelector(".git-ref-label");
+  const result = {
+    // The chip's label is the box cut short, inside the chip.
+    chipLabelCut: label.scrollWidth > label.clientWidth,
+  };
+  for (const [name, anchor] of Object.entries(anchors)) {
+    result[name] = await shown(anchor);
+  }
+  host.remove();
+  return result;
+})()`;
+
+// In the page: a changed file's row, #106's README.md at the top level, whose tip is its name
+// beside its status letter and counts: while its name is whole, and cut short (mb-n1ye).
+// Folders come first and #106 holds them all open, so it is the tree's last row, drawn once
+// the end of the tree is in view. Each reading says whether the row was still the one in the
+// document after it, so a row the tree redrew meanwhile cannot pass as one that showed
+// nothing.
+const FILE_TIPS = `(async () => {
+  const shown = ${TIP_SHOWN};
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const item = document.querySelector('.github-pulls-item[data-number="106"]');
+  const find = () => [...item.querySelectorAll(".github-pull-file-row")].find(
+    (node) => node.querySelector(".github-pull-file-name")?.textContent === "README.md",
+  );
+  // The row, in the middle of the view, the same element two frames apart.
+  const settled = async () => {
+    for (let tries = 0; tries < 60; tries += 1) {
+      const row = find();
+      if (row === undefined) {
+        item.querySelector(".github-pull-files-rows").scrollIntoView({ block: "end" });
+      } else {
+        row.scrollIntoView({ block: "center" });
+      }
+      await frames();
+      if (row !== undefined && find() === row) {
+        return row;
+      }
+    }
+    return undefined;
+  };
+  const read = async (narrow) => {
+    const row = await settled();
+    if (row === undefined) {
+      return { missing: [...item.querySelectorAll(".github-pull-file-name")].map((node) => node.textContent).slice(-6) };
+    }
+    const name = row.querySelector(".github-pull-file-name");
+    if (narrow) {
+      name.style.maxWidth = "3ch";
+    }
+    const reading = {
+      tip: row.dataset.tipText,
+      text: row.textContent,
+      cut: name.scrollWidth > name.clientWidth,
+      shown: await shown(row),
+      kept: row.isConnected && find() === row,
+    };
+    name.style.removeProperty("max-width");
+    return reading;
+  };
+  return { whole: await read(false), narrow: await read(true) };
+})()`;
+
+// In the page: a nested changed file's row, #7's docs/new.md, whose tip is its whole path
+// where the row shows only its name.
+const NESTED_TIP = `(async () => {
+  const shown = ${TIP_SHOWN};
+  const row = [...document.querySelectorAll('.github-pulls-item[data-number="7"] .github-pull-file-row')].find(
+    (node) => node.querySelector(".github-pull-file-name")?.textContent === "new.md",
+  );
+  return { tip: row?.dataset.tipText ?? null, shown: row === undefined ? null : await shown(row) };
 })()`;
 
 const chrome = await launchChrome(process.env.CHROME_BIN, {
@@ -238,6 +425,10 @@ try {
       k: [75, "KeyK"],
       ArrowLeft: [37, "ArrowLeft"],
       ArrowRight: [39, "ArrowRight"],
+      ArrowUp: [38, "ArrowUp"],
+      ArrowDown: [40, "ArrowDown"],
+      Enter: [13, "Enter"],
+      Escape: [27, "Escape"],
       " ": [32, "Space"],
     };
     const [keyCode, code] = codes[key];
@@ -341,7 +532,7 @@ try {
     await shot("before-pulls-all", await paneClip());
   } else {
     await waitFor(
-      `document.querySelector(".github-pulls-stack-row .github-pulls-stack-count")?.textContent === "4"`,
+      `document.querySelector(".github-pulls-stack-row")?.getAttribute("aria-label") === "Stack #286, 4 pull requests"`,
     );
     await frames();
     const list = await evaluate(LIST);
@@ -360,7 +551,14 @@ try {
       JSON.stringify(first?.members.map((m) => m.number)) === "[10,9,8,7]",
       JSON.stringify(first?.members),
     );
-    check("with its count", first?.count === "4", first?.count);
+    // Its pull requests are the rows under it, so it shows no tally; its accessible name
+    // still says how many (docs/design-system.md, "Heading Tallies").
+    check("with no tally on screen", first?.text === "Stack #286", first?.text);
+    check(
+      "and its size in its accessible name",
+      first?.name === "Stack #286, 4 pull requests",
+      first?.name,
+    );
     check(
       "#10, in two stacks, sits once, and its badge names the other",
       first?.members[0]?.badge === "4/4 · 300 2/2" &&
@@ -376,12 +574,45 @@ try {
       JSON.stringify(first?.members.map((m) => m.line)),
     );
     check(
+      "no pull request's or stack's row, nor any part of one, carries a tooltip",
+      list.tips.length === 0,
+      JSON.stringify(list.tips),
+    );
+    check(
       "a member's row draws no stack icon",
       list.stacks.every((stack) => stack.members.every((m) => m.icons === 0)),
       JSON.stringify(list.stacks.map((stack) => stack.members.map((m) => m.icons))),
     );
     // Its place on the title line once cut a member's title to 65 px at the default pane,
     // where a first-level row's had 176 (mb-dzsi, measured before the change).
+    // The number's line first and the title under it, to the row's end (mb-lkkt): at the
+    // default pane a member's title had 170 px, beside its age, and has 208. The chevron and
+    // the icon lead the number's line (mb-3cbf): on the title's line their middles sat 19.5 px
+    // below its middle, and the title, after them, started in the text column it starts in
+    // alone.
+    check(
+      "a pull request's first line is the chevron, the icon, its number's line, and its age, its second the title alone, from the text column to the row's end",
+      [10, 9, 106].every((number) => {
+        const row = list.lines[number];
+        return (
+          row?.firstAbove &&
+          row.oneLine &&
+          Math.abs(row.metaFromTitle) < 0.5 &&
+          Math.abs(row.ageToEnd) < 0.5 &&
+          Math.abs(row.titleToEnd) < 0.5 &&
+          Math.abs(row.titleFromInset - row.textColumn) < 0.5 &&
+          row.withNumber &&
+          Math.abs(row.toggleOffNumber) < 0.5 &&
+          Math.abs(row.iconOffNumber) < 0.5 &&
+          row.toggleFromInset === 0 &&
+          row.height === list.titleRoom.flatRow
+        );
+      }) &&
+        list.lines[9].text.startsWith("3/4 · #9 · ") &&
+        list.lines[106].text.startsWith("#106 · ") &&
+        list.lines[106].numberLeft === 0,
+      JSON.stringify(list.lines),
+    );
     check(
       "a member's title has a first-level row's room, less its one indent",
       Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.treeIndent)) < 0.5 &&
@@ -429,9 +660,9 @@ try {
       `${list.stackRowHeight} ${list.rowHeightToken}`,
     );
     check(
-      "its count ends where a row's age does",
-      near(list.countRight, list.flatAgeRight),
-      `${list.countRight} ${list.flatAgeRight}`,
+      "its label has the row to where a row's age ends",
+      near(list.labelRoomRight, list.flatAgeRight),
+      `${list.labelRoomRight} ${list.flatAgeRight}`,
     );
     // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
     // the default pane width its one line fits, with room to spare (mb-vmwh): the worded
@@ -533,12 +764,18 @@ try {
       const member = document.querySelector('a.github-pulls-row[data-number="7"]');
       const file = document.querySelector('.github-pulls-item[data-number="7"] :is(.github-pull-file-row, .github-pull-folder-row)');
       const start = (row) => parseFloat(getComputedStyle(row).paddingLeft) + row.getBoundingClientRect().left;
+      // The file row's leading glyph, a folder's chevron or a file's change letter, from the
+      // pull request's chevron, which leads its number's line (mb-3cbf).
+      const chevron = member.querySelector(".github-pulls-toggle").getBoundingClientRect();
       return {
         expanded: member.getAttribute("aria-expanded"),
         level: file.getAttribute("aria-level"),
         indent: Math.round(start(file) - start(member)),
+        fromChevron: Math.round((file.firstElementChild.getBoundingClientRect().left - chevron.left) * 100) / 100,
+        belowRow: Math.round((file.getBoundingClientRect().top - member.getBoundingClientRect().bottom) * 100) / 100,
       };
     })()`);
+    measured.nestedTip = await evaluate(NESTED_TIP);
     await press("ArrowLeft");
     const afterLeft = await evaluate(
       `[document.querySelector('a.github-pulls-row[data-number="7"]').getAttribute("aria-expanded"), document.activeElement?.dataset?.number ?? null]`,
@@ -552,6 +789,7 @@ try {
       files.expanded === "true" &&
         files.level === "3" &&
         files.indent === Math.round(list.treeIndent) &&
+        near(files.fromChevron, list.treeIndent) &&
         JSON.stringify(files.afterLeft) === JSON.stringify(["false", "7"]) &&
         files.afterSecondLeft === "stack 286",
       JSON.stringify(files),
@@ -562,6 +800,64 @@ try {
       JSON.stringify(keys),
     );
     phase("keys");
+  }
+
+  if (!before) {
+    // The shell's tooltip rule where it runs, the document's own listener, read from the
+    // tooltip it shows or does not (docs/design-system.md, "Tooltips Add Information").
+    const tips = await evaluate(SHELL_TIPS);
+    measured.shellTips = tips;
+    check(
+      "the shell shows no tooltip that is its element's whole text, in any case or spacing, and shows it while the text is cut short",
+      tips.whole === null &&
+        tips.wholeSpaced === null &&
+        tips.cut === "A pull request title far longer than the box it is drawn in",
+      JSON.stringify(tips),
+    );
+    check(
+      "the shell shows no tooltip on a whole branch chip, and shows the full name while the chip's label is cut short",
+      tips.chipWhole === null &&
+        tips.chipLabelCut === true &&
+        tips.chipCut === "feature/a-branch-name-longer-than-its-chip",
+      JSON.stringify(tips),
+    );
+    check("the shell shows a glyph-only control's tooltip", tips.glyph === "Copy path");
+    // A top-level changed file's tip is its name, beside its status letter and counts
+    // (mb-n1ye): it shows only while the name is cut short. A nested file's is its whole
+    // path, which the row does not show.
+    check(
+      "a nested changed file's row shows its whole path as its tooltip",
+      measured.nestedTip.tip === "docs/new.md" && measured.nestedTip.shown === "docs/new.md",
+      JSON.stringify(measured.nestedTip),
+    );
+    // #106 holds every folder open, and its one top-level file is its last row.
+    await evaluate(`document.querySelector('a.github-pulls-row[data-number="106"]').focus()`);
+    await press("ArrowRight");
+    // Every page of its files is in, so its rows stand still.
+    await waitFor(
+      `(() => { const files = document.querySelector('.github-pulls-item[data-number="106"] .github-pull-files'); return files?.querySelector(".github-pull-files-rows")?.firstElementChild != null && files.querySelector(".mb-delayed-loading")?.hidden === true; })()`,
+    );
+    const fileTips = await evaluate(FILE_TIPS);
+    measured.fileTips = fileTips;
+    check(
+      "a top-level changed file's row shows no tooltip while its name is whole, and shows it while the name is cut short",
+      fileTips.whole.tip === "README.md" &&
+        fileTips.whole.kept === true &&
+        fileTips.whole.cut === false &&
+        fileTips.whole.shown === null &&
+        fileTips.narrow.kept === true &&
+        fileTips.narrow.cut === true &&
+        fileTips.narrow.shown === "README.md",
+      JSON.stringify(fileTips),
+    );
+    await evaluate(`document.querySelector('a.github-pulls-row[data-number="106"]').focus()`);
+    await press("ArrowLeft");
+    await waitFor(
+      `document.querySelector('a.github-pulls-row[data-number="106"]').getAttribute("aria-expanded") === "false"`,
+    );
+    await evaluate(`document.querySelector(".tree-content").scrollTop = 0, true`);
+    await frames();
+    phase("tips");
   }
 
   if (!before) {
@@ -979,6 +1275,143 @@ try {
   }
   await shot(before ? "before-window" : "after-window");
   phase("menu");
+
+  if (!before) {
+    // The stack menu's keys (docs/design-system.md, "Keys in a Menu", mb-xlla): every way
+    // it opens puts focus on the current member, #9, the row checked, and Escape gives focus
+    // back to the trigger. The press above opened it.
+    const FOCUS = `(() => {
+      const el = document.activeElement;
+      if (el?.classList.contains("github-pull-stack-member")) {
+        return "#" + new URL(el.href).pathname.split("/")[2] + (el.getAttribute("aria-current") === "page" ? " current" : "");
+      }
+      return el?.classList.contains("github-pull-stack-trigger") ? "trigger " + el.getAttribute("aria-expanded") : (el?.tagName ?? null);
+    })()`;
+    const menuKeys = [["press", await evaluate(FOCUS)]];
+    for (const key of [
+      "Escape",
+      "ArrowDown",
+      "Escape",
+      "Enter",
+      "Escape",
+      " ",
+      "Escape",
+      "ArrowUp",
+    ]) {
+      await press(key);
+      menuKeys.push([key, await evaluate(FOCUS)]);
+    }
+    measured.menuKeys = menuKeys;
+    const opened = "#9 current";
+    const closed = "trigger false";
+    check(
+      "the stack menu opens on its current member however it opens, and Escape gives focus back",
+      JSON.stringify(menuKeys) ===
+        JSON.stringify([
+          ["press", opened],
+          ["Escape", closed],
+          ["ArrowDown", opened],
+          ["Escape", closed],
+          ["Enter", opened],
+          ["Escape", closed],
+          [" ", opened],
+          ["Escape", closed],
+          ["ArrowUp", opened],
+        ]),
+      JSON.stringify(menuKeys),
+    );
+    // The current member is marked as the Pulls list marks its current row, #9's: the
+    // highlight's ground and its 2px bar, not the hover ground, hovered, focused, or not
+    // (mb-xlla). Focus shows on it as on every member, by the ring.
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 895 });
+    const CURRENT = `(() => {
+      const member = document.querySelector('.github-pull-stack-menu .github-pull-stack-member[aria-current="page"]');
+      const row = document.querySelector(".github-pulls-row.selected");
+      const ms = getComputedStyle(member);
+      const rs = row === null ? null : getComputedStyle(row);
+      const focused = document.activeElement;
+      return {
+        focused: focused === member,
+        member: { background: ms.backgroundColor, shadow: ms.boxShadow, outline: ms.outlineStyle },
+        row: rs === null ? null : { number: row.dataset.number, background: rs.backgroundColor, bar: rs.borderLeftColor, width: rs.borderLeftWidth },
+        focusGround: getComputedStyle(focused).backgroundColor,
+        focusRing: getComputedStyle(focused).outlineStyle,
+      };
+    })()`;
+    await press("ArrowDown");
+    const atRest = await evaluate(CURRENT);
+    await press("ArrowUp");
+    const focusedCurrent = await evaluate(CURRENT);
+    const hoveredCurrent = await (async () => {
+      await hover('.github-pull-stack-menu .github-pull-stack-member[aria-current="page"]');
+      return evaluate(CURRENT);
+    })();
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 895 });
+    measured.currentMember = { atRest, focusedCurrent, hoveredCurrent };
+    const marked = (state) =>
+      state.row?.number === "9" &&
+      state.member.background === state.row.background &&
+      state.member.shadow === `${state.row.bar} 2px 0px 0px 0px inset` &&
+      state.row.width === "2px";
+    check(
+      "the stack menu's current member takes the Pulls list's current row's ground and bar",
+      !atRest.focused &&
+        marked(atRest) &&
+        atRest.member.background !== atRest.focusGround &&
+        atRest.member.outline === "none",
+      JSON.stringify(atRest),
+    );
+    check(
+      "focused or hovered, it keeps them, and focus shows on it by the ring",
+      focusedCurrent.focused &&
+        marked(focusedCurrent) &&
+        focusedCurrent.focusRing === "solid" &&
+        marked(hoveredCurrent),
+      JSON.stringify({ focusedCurrent, hoveredCurrent }),
+    );
+    await press("Escape");
+    // One stack: the chip is its glyph and position. A pull request in two, #10, has a chip
+    // for each, and each names its stack before its position, as #10's Pulls row does,
+    // "4/4 · 300 2/2" (mb-xlla): two bare positions differed only in their tips.
+    const CHIPS = `[...document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger")].map((t) => ({
+      text: t.textContent,
+      icon: t.querySelector(".github-pull-stack-icon svg") !== null,
+      label: t.getAttribute("aria-label"),
+      whole: t.scrollWidth <= t.clientWidth,
+    }))`;
+    const oneStack = await evaluate(CHIPS);
+    await click('a.github-pulls-row[data-number="10"]');
+    await waitFor(
+      `document.querySelectorAll(".github-pull-stacks .github-pull-stack-trigger").length === 2`,
+    );
+    await frames();
+    const twoStacks = await evaluate(CHIPS);
+    measured.chips = { oneStack, twoStacks };
+    check(
+      "one stack's chip is its glyph and bare position; in two, each chip names its stack",
+      JSON.stringify(oneStack) ===
+        JSON.stringify([
+          { text: "3/4", icon: true, label: "Navigate Stack #286, position 3 of 4", whole: true },
+        ]) &&
+        JSON.stringify(twoStacks) ===
+          JSON.stringify([
+            {
+              text: "286 4/4",
+              icon: true,
+              label: "Navigate Stack #286, position 4 of 4",
+              whole: true,
+            },
+            {
+              text: "300 2/2",
+              icon: true,
+              label: "Navigate Stack #300, position 2 of 2",
+              whole: true,
+            },
+          ]),
+      JSON.stringify(measured.chips),
+    );
+    phase("chips");
+  }
   check("no script error on the page", pageErrors.length === 0, pageErrors.join("\n"));
 } finally {
   await chrome.close();

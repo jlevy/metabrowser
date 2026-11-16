@@ -23,6 +23,9 @@ The Files tab is a tree of the served folder beside the selected file or folder.
   browser’s Back, Forward, new tab, and copied links work as they do anywhere.
   A fragment selects a place in a document, such as a heading.
 - **Up:** `U`, or the folder header’s Up button, opens the parent folder.
+- **Home:** the folder’s name at the top of the navigation pane, or `0`, shows the
+  folder as a fresh load shows it: Files in front, every filter and Group by at its
+  default, and every tab back at its first view.
 
 Large trees are indexed in the background: the first view does not wait for the whole
 walk, and counts fill in as it goes.
@@ -59,9 +62,11 @@ defines the families.
 The bar above the tree groups and narrows it:
 
 - **Group by** splits the tree into headed sections, one full tree per group under the
-  active filters: by **Age**, in bands of how recently a file changed, or by **File
+  active filters: **By age**, in bands of how recently a file changed, or **By file
   type**, with Documentation first.
   **No grouping** is the default.
+  While its menu is open, `N`, `A`, and `T` choose No grouping, By age, and By file
+  type.
 - **Show ignored**, beside it, is on by default and shows gitignored files dimmed; turn
   it off to hide them.
 - The chevron opens the filters:
@@ -82,7 +87,7 @@ were all written at about the same time starts collapsed.
 The view holds at most 5,000 files; when more match, it leaves out gitignored files
 first and says how many matched.
 A pinned Git revision has no modification times, so it offers no Modified within and no
-Age grouping.
+By age grouping.
 
 The same filters are available from the command line:
 `metab ROOT --walk --type .md --age 7d`.

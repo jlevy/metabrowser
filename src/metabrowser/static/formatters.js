@@ -1,4 +1,5 @@
-// Locale-aware numeric formatting shared by the shell and plugins.
+// Locale-aware numeric formatting, the conventional-commit split of a commit's or a pull
+// request's title, and a count summary's bold numbers, shared by the shell and plugins.
 
 (() => {
   const integerFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -88,13 +89,121 @@
     return age(epochSeconds).className;
   }
 
+  // A title's conventional-commit prefix, "feat(ledger):", is drawn regular and the rest at
+  // the title's weight (docs/design-system.md, "Titles"): a type of lowercase letters, an
+  // optional scope of anything but parentheses, an optional "!", and the colon, at most 16
+  // code points, then whitespace and more of the title. The match is linear: each part is a
+  // run of one class, which the first character outside it ends.
+  const TITLE_PREFIX = /^[a-z]+(?:\([^()]+\))?!?:(?=\s+\S)/u;
+  const TITLE_PREFIX_MAX_CHARS = 16;
+  /** The one class that sets a prefix's weight (static/styles.css). */
+  const TITLE_PREFIX_CLASS = "title-prefix";
+  /** @type {Record<string, string>} */
+  const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  /** @param {string} text */
+  const escaped = (text) => text.replace(/[&<>"']/g, (character) => ESCAPES[character]);
+
+  /**
+   * A title's prefix and the rest after it, which together are the title, or null.
+   * @param {string} title
+   * @returns {{prefix: string, rest: string} | null}
+   */
+  function titlePrefix(title) {
+    const match = typeof title === "string" ? TITLE_PREFIX.exec(title) : null;
+    if (match === null || Array.from(match[0]).length > TITLE_PREFIX_MAX_CHARS) {
+      return null;
+    }
+    return { prefix: match[0], rest: title.slice(match[0].length) };
+  }
+
+  /**
+   * A title element's nodes: the prefix in a `span.title-prefix`, then the rest; with no
+   * prefix, the title alone. `part(text, start)` makes a part's nodes, so a caller can mark
+   * matches in it; by default a part is its text.
+   * @param {Document} doc
+   * @param {string} title
+   * @param {(text: string, start: number) => Array<Node | string>} [part]
+   * @returns {Array<Node | string>}
+   */
+  function titleNodes(doc, title, part = (text) => [text]) {
+    const split = titlePrefix(title);
+    if (split === null) {
+      return part(title, 0);
+    }
+    const prefix = doc.createElement("span");
+    prefix.className = TITLE_PREFIX_CLASS;
+    prefix.append(...part(split.prefix, 0));
+    return [prefix, ...part(split.rest, split.prefix.length)];
+  }
+
+  /**
+   * `titleNodes` as escaped markup; with no prefix, the escaped title alone.
+   * @param {string} title
+   * @returns {string}
+   */
+  function titleHtml(title) {
+    const split = titlePrefix(title);
+    if (split === null) {
+      return escaped(String(title));
+    }
+    return `<span class="${TITLE_PREFIX_CLASS}">${escaped(split.prefix)}</span>${escaped(split.rest)}`;
+  }
+
+  // A count summary's numbers are bold and its words keep the line's weight
+  // (docs/design-system.md, "Count Summaries Bold Their Numbers"). Every count summary the
+  // shell paints comes in one shape of parts: the words as strings, and each number, the
+  // whole figure with its marks, sign, "+", or unit, as `{number}`. "12,797 files" is
+  // `[{number: "12,797"}, " files"]`, and its text is the parts joined.
+  /** The one class that sets a count summary's number's weight (static/styles.css). */
+  const SUMMARY_NUMBER_CLASS = "summary-number";
+
+  /**
+   * A count summary's nodes: each number in a `span.summary-number`, the words as text. A
+   * caller puts them in one inline element: in a flex line, each would be an item of its
+   * own, parted by the line's gap and read as runs of their own.
+   * @param {Document} doc
+   * @param {MetabrowserCountParts} parts
+   * @returns {Array<Node | string>}
+   */
+  function countPartsNodes(doc, parts) {
+    return parts.map((part) => {
+      if (typeof part === "string") {
+        return part;
+      }
+      const number = doc.createElement("span");
+      number.className = SUMMARY_NUMBER_CLASS;
+      number.textContent = part.number;
+      return number;
+    });
+  }
+
+  /**
+   * `countPartsNodes` as escaped markup.
+   * @param {MetabrowserCountParts} parts
+   * @returns {string}
+   */
+  function countPartsHtml(parts) {
+    return parts
+      .map((part) =>
+        typeof part === "string"
+          ? escaped(part)
+          : `<span class="${SUMMARY_NUMBER_CLASS}">${escaped(part.number)}</span>`,
+      )
+      .join("");
+  }
+
   window.MetabrowserFormatters = Object.freeze({
     age,
     ageClass,
     countClass,
+    countPartsHtml,
+    countPartsNodes,
     formatBytes,
     formatFileCount,
     formatInteger,
     sizeClass,
+    titleHtml,
+    titleNodes,
+    titlePrefix,
   });
 })();

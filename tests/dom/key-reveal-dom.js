@@ -5,8 +5,8 @@
 // real tree with document order, attributes that reflect (`id`, `class`, `hidden`,
 // `inert`, `disabled`, `data-*`), inline styles the computed style reads, focus, event
 // capture and bubbling, and the selectors the shell's modules query with: tags, ids,
-// classes, attribute tests, `:not()`, and the descendant and child combinators, in comma
-// lists. It renders nothing.
+// classes, attribute tests, `:not()`, `:scope`, and the descendant and child combinators,
+// in comma lists. It renders nothing.
 //
 // The window is on every event's path, above the document, as in a browser: a capture
 // listener on it hears every event in the page, including the `focus` and `blur` that do
@@ -431,6 +431,12 @@ class FakeElement extends FakeNode {
     return null;
   }
 
+  /** No boxes: this stand-in lays nothing out, so a filter menu is never fitted here, as
+   * filter-controls.js leaves a panel with no box alone. */
+  getClientRects() {
+    return [];
+  }
+
   getBoundingClientRect() {
     const rect = this.rect ?? { left: 0, top: 0, width: 0, height: 0 };
     return {
@@ -704,10 +710,18 @@ function parseSelectorList(selector) {
 function parseCompound(token) {
   const tests = [];
   const pattern =
-    /([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([^\]]+)\]|:not\(((?:[^()]|\([^()]*\))*)\)|(\*)/g;
+    /(:scope)|([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([^\]]+)\]|:not\(((?:[^()]|\([^()]*\))*)\)|(\*)/g;
   for (const match of token.matchAll(pattern)) {
-    const [, tag, id, className, attribute, negated] = match;
-    if (tag) {
+    const [, scoped, tag, id, className, attribute, negated] = match;
+    if (scoped) {
+      // The element queried from, as `:scope > .row` in `container.querySelectorAll` names
+      // the container's own children; with no such element, the document's root.
+      tests.push(
+        (element, scope) =>
+          element ===
+          (scope instanceof FakeElement ? scope : element.ownerDocument.documentElement),
+      );
+    } else if (tag) {
       tests.push((element) => element.localName === tag.toLowerCase());
     } else if (id) {
       tests.push((element) => element.id === id);
@@ -749,13 +763,13 @@ function parseCompound(token) {
       tests.push((element) => !inner.some((group) => matchesGroup(element, group, null)));
     }
   }
-  return (element) => tests.every((test) => test(element));
+  return (element, scope) => tests.every((test) => test(element, scope));
 }
 
 /** Whether `element` matches one selector group, staying inside `scope` when given. */
 function matchesGroup(element, steps, scope) {
   const match = (candidate, index) => {
-    if (!(candidate instanceof FakeElement) || !steps[index].compound(candidate)) {
+    if (!(candidate instanceof FakeElement) || !steps[index].compound(candidate, scope)) {
       return false;
     }
     if (index === 0) {

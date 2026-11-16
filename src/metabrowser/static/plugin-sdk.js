@@ -62,6 +62,8 @@
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
 //     formatAge(secondsSinceEpoch, opts?) — the age primitive: {label, className}
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
+//     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
+//                                          commit prefix in span.title-prefix, then the rest
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
@@ -1548,6 +1550,14 @@
     return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }
 
+  // A commit's or pull request's title, for its element to hold: a conventional-commit
+  // prefix at regular weight in `span.title-prefix`, then the rest at the title's own weight
+  // (docs/design-system.md, "Titles"). The nodes belong to the page's document.
+  /** @param {string} title @returns {Array<Node | string>} */
+  function titleNodes(title) {
+    return global.MetabrowserFormatters.titleNodes(global.document, title);
+  }
+
   function formatTimestamp(secondsSinceEpoch) {
     // Local-time short form; matches the file header / activity feed.
     if (!secondsSinceEpoch) {
@@ -1769,6 +1779,7 @@
     formatFileCount: formatFileCount,
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
+    titleNodes: titleNodes,
     countClass: countClass,
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,

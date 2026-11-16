@@ -27,7 +27,7 @@ exit: 0
 api: /api/plugin/github/pull-timeline
 status: 200
 {
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "state": "complete",
   "events": [
     {
@@ -64,7 +64,7 @@ exit: 0
 api: /api/plugin/github/pull-timeline
 status: 200
 {
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "state": "complete",
   "events": [
     {

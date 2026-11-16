@@ -19,10 +19,12 @@ letters the manifest loader does.
 
 ``docs/design-system.md``, "Keyboard Shortcuts", is the one reference for the scheme:
 letters name known meanings and mean the same wherever they are pressed, the digits 1 to
-9 number the situational links and actions on a screen in reading order, and ancillary
-actions such as copying have no key. ``docs/keyboard-shortcuts.md`` is the users' table of
-the keys, and ``tests/test_keymap.py`` holds it to this one and to the keys the registry
-registers.
+9 number the situational links and actions on a screen in reading order, ``0`` is Home,
+and ancillary actions such as copying have no key. The one exception to the letters is an
+open menu that has focus, whose rows' letters come first until it closes
+(``docs/design-system.md``, "Keys in a Menu"). ``docs/keyboard-shortcuts.md`` is the
+users' table of the keys, and ``tests/test_keymap.py`` holds it to this one and to the
+keys the registry registers.
 
 This module imports nothing beyond the standard library, so the manifest loader and
 ``metab --doctor`` can use it without loading content classification or the server.
@@ -45,17 +47,22 @@ class ReservedKey:
     purpose: str
     # None reserves the key for every kind. A key live only in some contexts is
     # still reserved everywhere unless it is listed with kinds here, so a shell key
-    # never means one thing in one place and another elsewhere.
+    # never means one thing in one view and another elsewhere. An open menu that has
+    # focus is the one exception: its rows' letters come first while it is open
+    # (docs/design-system.md, "Keys in a Menu").
     kinds: frozenset[str] | None = None
 
 
 # The shell's own keys, which no view may take. Each letter is a known meaning that holds
 # wherever it is live, so it is reserved everywhere, even where it does nothing: `j` and
-# `k` move a row down and up. Control-N and Control-P go to the next and previous item
+# `k` move a row down and up. Only an open menu that has focus outranks a shell letter,
+# with its rows' own letters, and only until it closes (docs/design-system.md, "Keys in a
+# Menu"); no view can. Control-N and Control-P go to the next and previous item
 # one level up, such as the pull requests of a stack; a view's key is one letter alone,
 # so those chords reserve no letter. The digits 1 to 9 are the situational numbers,
 # which the registry hands out by place on screen (static/keyboard-shortcuts.js,
-# `attachNumbered`), so no view or plugin names one.
+# `attachNumbered`), so no view or plugin names one. `0` is Home, the one digit with a
+# fixed meaning: the numbers stop at 9, so it reaches no numbered control.
 RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
     {
         "f": ReservedKey("Files tab"),
@@ -66,6 +73,7 @@ RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
         "k": ReservedKey("previous row"),
         "u": ReservedKey("parent folder command"),
         "w": ReservedKey("branch or tag switcher"),
+        "0": ReservedKey("Home"),
         **{digit: ReservedKey("situational numbers") for digit in "123456789"},
     }
 )

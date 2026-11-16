@@ -175,6 +175,7 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | `entry` | `EntryQuery` | One relative path | Present, absent, or unknown lookup plus filesystem facts |
 | `directory` | `DirectoryQuery` | Positive depth, page-row, and work bounds | Directory-first, canonical UTF-8 name-ordered rows and an opaque continuation |
 | `filtered_tree` | `FilteredTreeQuery` | Positive depth, page-row, and work bounds | Matching tree rows and selected scalar totals |
+| `grouped_tree` | `GroupedTreeQuery` | Positive depth, page-row, and work bounds; one to `MAX_TREE_GROUPS` groups | Each group’s filtered tree from one pass: its first page, totals, and a filtered-tree continuation |
 | `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node and work bounds | Typed File Rollup Format record for one directory |
 | `navigation` | `NavigationQuery` | Positive tally-row and work bounds | Typed population, extension, family, preset, and recency record |
 | `recent` | `RecentQuery` | Positive row, count, and work bounds plus explicit observation time | Newest matching files and an exact-or-lower-bound product count; truncation is derived |
@@ -184,6 +185,19 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 `tests/test_inventory_provider_contract.py` checks that this table names every
 registered query. The row orders above are total, and the module docstring of
 `contract.py` states them.
+
+A grouped tree is Group by’s read (`metabrowser/tree_groups.py`). It answers each group
+exactly as the `FilteredTreeQuery` that `GroupedTreeQuery.group_query` names, from one
+pass over the index: the shared filter is tested once per leaf, and each group adds only
+its type group and age band.
+A group whose rows outrun the page bound carries that filtered tree’s continuation at
+the grouped read’s version, so a caller completes every group from one engine version.
+A folder stands in every group that holds something under it, with that group’s totals,
+so grouped rows take no host decoration join.
+`/api/tree` admits one grouped assembly at a time per runtime
+(`InventoryRuntime.grouped_tree_admission`), so overlapping grouped reads take turns;
+the Python engine’s reason, its retained continuations, is in
+[Retained State](arch-inventory-engine-python.md#retained-state).
 
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.
@@ -374,7 +388,7 @@ The performance gate shared by every provider is in the
 
 | Consumer | Queries |
 | --- | --- |
-| `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies |
+| `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies; with `group_by`, one `GroupedTreeQuery` and its groups’ version-pinned continuations |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
 | Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages of `budget.max_files` rows, so a catalog that fits the budget is one page |
@@ -433,6 +447,7 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
 | `test_filtered_tree_and_recent_share_filter_semantics_before_caps` |
+| `test_grouped_tree_answers_each_group_as_its_filtered_tree` |
 | `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |
 | `test_catalog_pages_are_lossless_without_suffix_counts` |
 | `test_provider_applies_work_bounds_to_continuation_pages` |

@@ -1,6 +1,6 @@
 // Run shared production ref rendering against the caller's deterministic DOM, with the SDK's
-// number format and the shell's changed-files tree a view that lists changed files draws with
-// (the bundle `loadChangedFilesTree` loads in a page, already in hand here).
+// number format and title nodes, and the shell's changed-files tree a view that lists changed
+// files draws with (the bundle `loadChangedFilesTree` loads in a page, already in hand here).
 const { createSdkSandbox } = require("./sdk-sandbox.js");
 const { changedFilesTree } = require("./changed-files-tree-fixture.js");
 function refHelpers(document) {
@@ -15,6 +15,7 @@ function refHelpers(document) {
     mergeRefs: sandbox.metabrowser.mergeRefs,
     mountRefCopies: sandbox.metabrowser.mountRefCopies,
     formatInteger: sandbox.metabrowser.formatInteger,
+    titleNodes: sandbox.metabrowser.titleNodes,
     loadChangedFilesTree: () => Promise.resolve(tree),
   };
 }

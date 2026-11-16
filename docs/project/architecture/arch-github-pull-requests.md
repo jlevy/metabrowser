@@ -3,8 +3,9 @@
 **Status:** Built: the GitHub provider (URL reducer, `gh` runner, and rate-budget
 governor), pull-request records with their commits fetched into the store, the
 repository catalog and its search, lightweight cores, changed-file lists, checks in the
-record, the Conversation timeline, native stack metadata, revision snapshots, rendered
-Markdown diffs, background prefetch, and pull requests beside a served checkout.
+record, the Conversation timeline, native stack metadata, the repository’s label set,
+revision snapshots, rendered Markdown diffs, background prefetch, the page’s comparison
+keep, and pull requests beside a served checkout.
 Not built: opening a timeline commit in Metabrowser rather than on GitHub, and hosted
 releases and other providers, which the
 [GitHub provider plan](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md)
@@ -302,15 +303,23 @@ showing a whole tree as added.
 with `merge_base`, reads only the selected store, never fetches, and forwards to the
 diff plugin’s comparison service with the prepared manifest, hydrating
 `INITIAL_PULL_FILES` files in its first answer.
-`GET pull-snapshot` (`pull_snapshot.py`) opens a file at the exact displayed base or
-head without changing the pin or the checkout, for a pair the record or its snapshot
-file admits; its docstring lists every outcome code.
-`GET pull-rendered-diff` (`pull_rendered_diff.py`) answers one changed Markdown file as
-`markdown-diff-v1` after the same admission, computed in a projection worker process.
-`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
-in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`; only
-KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
-The trust model behind that allowlist is in
+The page reads it for Changes and for the header’s Diff summary on every tab.
+A comparison asked for once is answered from the process’s memory after that, with no
+Git process, and its route names the pull request, both commits, the build, and the
+store, so its answer is immutable and a browser asks for it no more.
+`test_a_repeated_comparison_runs_no_git_and_a_moved_head_is_computed_afresh` in
+`tests/test_github_pull_manifests.py` holds both, and that a route naming another head,
+as a record whose head moved does, is computed.
+In the page, what was read is kept for the document rather than for one page
+([The Comparison Keep](#the-comparison-keep)). `GET pull-snapshot` (`pull_snapshot.py`)
+opens a file at the exact displayed base or head without changing the pin or the
+checkout, for a pair the record or its snapshot file admits; its docstring lists every
+outcome code. `GET pull-rendered-diff` (`pull_rendered_diff.py`) answers one changed
+Markdown file as `markdown-diff-v1` after the same admission, computed in a projection
+worker process. `GET pull-markdown` (`pull_markdown.py`) renders one text of the record
+through KPress in sanitized mode, then reduces it to the inert allowlist of
+`inert_html.py`; only KPress’s stylesheet manifest reaches the page, so no text chooses
+what loads. The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
 ## Conversation Timeline
@@ -337,6 +346,34 @@ The snapshot is bounded, a page past its bounds is omitted and marks it incomple
 membership missing from a partial or unavailable snapshot never means a pull request is
 unstacked. A failure keeps the preceding snapshot.
 
+## Label Sets
+
+A record carries each label’s color, but a record or a core cached before label colors
+names its labels alone.
+`pull_labels.py` keeps the repository’s whole label set, one bounded snapshot of
+`repos/<owner>/<repo>/labels` in `labels.json` beside the stack snapshot, so such a chip
+is colored by name from first paint; it shares its stamps, its hold, and its publish
+step with `pull_stacks.py` (`repository_snapshot.py`).
+
+- **Reads never ask GitHub.** `GET labels` reads the cached set with no query
+  parameters: `state`, `reason`, `source`, `reader`, `fetched_at`, remaining
+  `fresh_for_s`, `refreshing`, `last_refresh`, `complete`, `count`, and `labels`, each
+  its `name`, `color` (six lower-case hex digits or null), and `description`, in
+  GitHub’s order. `complete` says the last page read named no next page.
+  Its tag leaves out the countdown, as the stack snapshot’s does.
+- **One start.** `POST labels-refresh` accepts only an optional boolean `retry` and
+  returns `refresh`, `labels`, and `status_route`; `202` starts or joins the job and
+  `200` is `not_due`. The job runs under its own key, never inside the catalog’s or a
+  reader’s job, takes the network slot one page at a time, and asks GitHub only when the
+  set is absent, past its age (`LABEL_FRESHNESS_S`), or `retry` asks.
+  Nothing in the catalog’s refresh waits on it, and a failure keeps the preceding set.
+- **Who asks.** A pull request’s page sends it once, on the first read that shows a
+  label named without a color that the envelope has no entry for
+  (`github.pull-label-set` in the [Parity Registry](arch-parity-registry.md)). The pull
+  envelope’s `repository_labels` are the set’s entries for the labels its record or core
+  names without a color, and `labels_pending` says the job runs while the set does not
+  hold one of them.
+
 ## Background Prefetch
 
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
@@ -350,6 +387,43 @@ store turn and is cancelled when one starts waiting, and is joined and promoted 
 reader’s request for the same pull request.
 `GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
 `pulls-panel.js` chooses what to name and when.
+
+## The Comparison Keep
+
+A pull request’s page keeps what it reads for the document, not for one page
+(`createComparisonKeep` in `builtin_plugins/github/comparison-prefetch.js`), because a
+page is mounted again on every visit.
+Its key is the comparison’s route, which names the pull request, both commits, the
+build, and the store, so a kept answer holds for as long as a record names that route,
+and a record whose head or base moved names another one.
+A visit to a comparison the keep holds draws its Diff summary in the paint that shows
+the record, and its Changes mounts from the same answer, with no request.
+A page opened on Changes reads through the keep as well, so its next visit is drawn from
+it too. A request on its way is shared: a second page, a mount, or the Pulls tab joins
+it, and it is abandoned only when every asker has gone.
+The keep reads the comparison alone; the first screen’s rendered Markdown is the page’s
+own to ask for, under the page’s own signal, since a shared request outlives any one
+asker (`prefetchMarkdown` on the diff view).
+
+- **Bound:** `KEPT_COMPARISON_CHARS` of JSON characters, with a quarter for one answer,
+  least recently used first, sized in a task after the one that hands the answer on, as
+  the Commits panel’s is; the measurement is beside the constant.
+  A comparison past the bound, evicted or too large to keep, is read as before: once the
+  browser is idle, and answered by the browser’s cache without the server.
+- **Warming:** the Pulls tab warms it for the pull requests a reader opens next
+  (`createComparisonWarmer`), one at a time when the browser is idle, with a cache read
+  of the record and a comparison from the store, no GitHub call, within
+  `WARM_COMPARISONS` an ask and `WARM_PER_HOUR`, which counts each warm before its
+  record is read. Each outcome holds for the record’s freshness window, the envelope’s
+  `fresh_for_s`, so a record that names no comparison, a refusal, and an answer too
+  large to keep are read once rather than on every ask.
+- **Not a view:** a warm’s record read carries `warm=1`, so the server does not count it
+  among the records a reader viewed, which a prefetch’s `changed` refreshes.
+
+`tests/dom/github-pull-prefetch-session.js` holds the keep and the warmer,
+`tests/dom/github-pulls-files-prefetch-behavior.js` which pull requests the Pulls tab
+names, and `test_a_warm_read_answers_the_record_and_is_not_a_view` in
+`tests/test_github_pull_manifests.py` the flag.
 
 ## Beside a Checkout
 
@@ -402,15 +476,14 @@ Every route is under `/api/plugin/github/`, a `[[data_hook]]` of the plugin’s
 one that starts a refresh job returns `202` at once and names a `status_route`. Each
 handler’s docstring in `sidekick.py`, or the module it names, holds its contract.
 `tests/test_github_route_table.py` checks this table against the manifest, and the
-parity table in [Views, Models, and Routes](arch-views-models-routes.md) names each
-route’s golden.
+[Parity Registry](arch-parity-registry.md) names each route’s golden.
 
 | Route | Methods | Answers or starts |
 | --- | --- | --- |
 | `pull` | `GET` | One pull request’s envelope |
 | `pull-refresh` | `POST` | That pull request’s refresh, comparison, repair, or idle preparation |
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
-| `pull-comparison` | `GET` | The record’s comparison, from the store |
+| `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-snapshot` | `GET` | A file at the comparison’s base or head |
 | `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
@@ -421,6 +494,8 @@ route’s golden.
 | `pull-files-refresh` | `POST` | That list’s refresh |
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
+| `labels` | `GET` | The repository’s cached label set |
+| `labels-refresh` | `POST` | The label-set job |
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |
 | `cache-clear` | `POST` | Removal of the plugin’s records for the repository |
 

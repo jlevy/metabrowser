@@ -3,9 +3,25 @@
    markup. What is here is their placement, and the few forms only this page has, all from host
    tokens. Colors are design tokens. */
 
+/* An author's avatar and the gap after it (`.github-pull-identity`), on the page and on a
+   Pulls row. The Conversation timeline's geometry is theirs: where a commit's subject starts,
+   the x of the line down the avatars' centers, an absent avatar's empty slot, and the floor
+   an author keeps before it ends in an ellipsis. */
+.github-pull,
+.github-pulls {
+  --github-pull-avatar-size: 18px;
+  --github-pull-identity-gap: 4px;
+}
 .github-pull {
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
+  /* The Conversation's one rhythm (mb-w7rt): the visible space between any two consecutive
+     events, a card's border or a commit's text, and between two review comments. 20 px is
+     the space between two commits' glyphs that the owner called good (Chrome 152), where
+     cards had 12 px, crowded, and a commit stood 23.5 px from a card. It is the
+     Conversation's alone: the Files and Checks tabs keep the gap between their notices and
+     what they show, and Review comments keeps its break below a card (below). */
+  --github-pull-rhythm: 20px;
   /* The column includes the pane gutter on each side. */
   --page-reading-gutter: var(--content-padding-x);
   display: flex;
@@ -26,6 +42,35 @@
    from 137.6 to 202.6 px, and the tab bar moved on 26 of 26 switches between PRs. */
 .github-pull-title {
   min-height: 2lh;
+}
+/* A page mounted with no record in hand holds its cold header and tab column out of sight
+   for the shell's quiet period, and pull-page.js lifts the hold with the first header that
+   has a record (docs/design-system.md, "Layout"). A record that lands within the quiet
+   period, and whose header waits for the conversation's held first paint, keeps them out of
+   sight until that paint (`-held`), at most DESCRIPTION_HOLD_MS. Measured 2026-11-16 in
+   headless Chrome 152 at 560 px, at a load average of 9 to 14, three loads each: the page
+   mounted with no record in hand, its pull read answered after 5, 30, 120, and 600 ms, every
+   frame read to the landing. Before, a 30 ms read showed the cold header from the first
+   frame (17 ms) and an unlabelled pull request's tab bar moved from 255 to 229 px when its
+   record landed at 35 to 50 ms. With the hold, 5 and 30 ms reads first showed at 15 to 50
+   ms with their record, its tab bar at 229 or 255 px and never moved; 120 and 600 ms reads
+   showed the cold page at 48 to 67 ms and landed at 132 to 134 and 615 to 618 ms, moving
+   an unlabelled tab bar up 26 px and a labelled one not at all. With the description's
+   Markdown unanswered, the first paint waited to its 200 ms bound: a hold that ended with
+   the quiet period showed the cold header from 48 to 68 ms and moved it at 216 to 252 ms;
+   `-held` kept 5 and 30 ms reads unseen until 150 to 250 ms, and nothing moved. Opacity
+   alone, set in one step and back, so the rows keep their layout, the tab keys stay live,
+   and reduced motion has nothing to stop. */
+.github-pull-cold {
+  animation: github-pull-cold-hold 0s linear var(--loading-state-delay) backwards;
+}
+@keyframes github-pull-cold-hold {
+  from {
+    opacity: 0;
+  }
+}
+.github-pull-cold-held {
+  opacity: 0;
 }
 /* The icon, the title cut short at two lines, and the number at the content edge, level
    with the title's last line: the number is outside the clamp, so a title cut short keeps
@@ -107,6 +152,49 @@
 .github-pull-quiet {
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+/* The pull request's Diff summary, the header's last row (mb-pb35): the diff plugin's header
+   and tree (`.diff-summary`, builtin_plugins/diff/styles.css), above the tabs and on every one.
+   The row is held at the header's one line, a summary's row height, from first paint, and the
+   header stays on that line, its breakdown cut short rather than wrapping, so the summary
+   arriving with the comparison moves nothing. The tree opens under it, at the row's width. */
+.github-pull-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: var(--ui-row-height);
+}
+.github-pull-header .github-pull-summary > .diff-summary {
+  flex-wrap: nowrap;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.github-pull-header .github-pull-summary .diff-summary-breakdown {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-summary > .diff-summary-body {
+  align-self: stretch;
+}
+/* While the page waits for the comparison, the row holds the shell's pending placeholder
+   (mb-onr2; docs/design-system.md, "Diff Summary"): the navigation tally's gray block and slow
+   pulse (`.tally-pending`), shown after the quiet period (`.mb-delayed-loading`), in the
+   summary header's type, centred on the row's line from the row's start, and as wide as a
+   summary of one status. The summary takes its place in the row, which keeps its height, so
+   nothing moves. Measured in Chrome 152, a summary header of one status, from "1 changed file
+   (1 modified) +3 −1" to "8 changed files (8 modified) +120 −30", is 17.4 to 18.4 em of its
+   type, its text ending 16.6 to 17.6 em from the row's start; of three statuses, 30.4 em. */
+.github-pull-summary-pending {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  min-height: var(--ui-row-height);
+  font-size: var(--nav-font-size);
+}
+.github-pull-summary-pending > .tally-pending {
+  width: min(100%, 17em);
 }
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
    widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
@@ -210,12 +298,12 @@
 .github-pull-badge[data-state="stale"],
 .github-pull-badge[data-state="unknown"],
 .github-pull-badge[data-state="outdated"],
-.github-pull-badge[data-state="COMMENTED"],
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
-/* Always present, one line of labels whether there are none or many, a label's height,
-   the labels cut short at the row's end. */
+/* One line of labels, a label's height, cut short at the row's end. The row is there for a
+   pull request with labels, and held empty at that height while the record is on its way;
+   a pull request with none has no row (pull-page.js, mb-2u08). */
 .github-pull-labels {
   display: flex;
   flex-wrap: nowrap;
@@ -233,7 +321,8 @@
   min-width: 0;
   overflow: hidden;
 }
-/* A name the pull request carries, not a filter: the tag corner, not a chip's pill. */
+/* A name the pull request carries, not a filter: the tag corner, not a chip's pill. A label
+   without a color GitHub gave is this neutral chip. */
 .github-pull-label {
   flex: none;
   padding: 0 5px;
@@ -242,9 +331,86 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
-/* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
-   cut short before it wraps; its controls never are. A failure is the exception: it says
-   what to do, so the row wraps to show all of it, the one state where the tab bar may move. */
+/* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
+   formula of github.com's own label stylesheets (its global .hx_IssueLabel and Primer
+   React's .prc-Token-IssueLabel, which agree, read 2026-11-15), with its constants, from
+   the --github-label-r/g/b/h/s/l the page sets on the chip (labelColorProperties in
+   pull-page.js). docs/design-system.md, "Label Colors", says why these colors are not
+   oklch. Its custom properties are under the plugin's --github-label- prefix, so none
+   shares the shell's label register's --label- names (--label-color, --label-font-size):
+   each is github.com's of the same part, --github-label-r, -g, -b, -h, -s, and -l its
+   --label-r to --label-l; --github-label-lightness its --perceived-lightness; -switch its
+   --lightness-switch; -threshold its --lightness-threshold; -border-threshold,
+   -border-alpha, -background-alpha, and -lighten-by its --border-threshold,
+   --border-alpha, --background-alpha, and --lighten-by.
+   Light: the color is the ground; the text is black above a perceived lightness of 0.453
+   and white below it; the border, 25 points darker, shows only on a label paler than 0.96.
+   Dark: the color at 0.18 alpha is the ground; the text is the color lightened by however
+   far it is under 0.6; the border is that text at 0.3 alpha. */
+.github-pull-label[data-color] {
+  --github-label-lightness: calc(
+    (
+      (var(--github-label-r) * 0.2126) +
+      (var(--github-label-g) * 0.7152) +
+      (var(--github-label-b) * 0.0722)
+    ) /
+    255
+  );
+  --github-label-switch: max(
+    0,
+    min(calc((1 / (var(--github-label-threshold) - var(--github-label-lightness)))), 1)
+  );
+  --github-label-threshold: 0.453;
+  --github-label-border-threshold: 0.96;
+  --github-label-border-alpha: max(
+    0,
+    min(calc((var(--github-label-lightness) - var(--github-label-border-threshold)) * 100), 1)
+  );
+  background: rgb(var(--github-label-r), var(--github-label-g), var(--github-label-b));
+  border-color: hsla(
+    var(--github-label-h),
+    calc(var(--github-label-s) * 1%),
+    calc((var(--github-label-l) - 25) * 1%),
+    var(--github-label-border-alpha)
+  );
+  color: hsl(0deg, 0%, calc(var(--github-label-switch) * 100%));
+}
+/* The dark theme's, scoped as every rule here is: :where() adds no specificity, so this rule,
+   later, wins over the light one only in the dark theme. */
+.github-pull-label[data-color]:where([data-theme="dark"] *) {
+  --github-label-threshold: 0.6;
+  --github-label-background-alpha: 0.18;
+  --github-label-border-alpha: 0.3;
+  --github-label-lighten-by: calc(
+    ((var(--github-label-threshold) - var(--github-label-lightness)) * 100) *
+    var(--github-label-switch)
+  );
+  background: rgba(
+    var(--github-label-r),
+    var(--github-label-g),
+    var(--github-label-b),
+    var(--github-label-background-alpha)
+  );
+  border-color: hsla(
+    var(--github-label-h),
+    calc(var(--github-label-s) * 1%),
+    calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%),
+    var(--github-label-border-alpha)
+  );
+  color: hsl(
+    var(--github-label-h),
+    calc(var(--github-label-s) * 1%),
+    calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
+  );
+}
+/* One of the header's metadata lines, under the row of ages and as tall as it: one line of
+   the small type, ending in Refresh's slot on every tab. Refresh, Fetch, and Switch to the
+   head are text actions (`.github-pull-text-action`), a line tall, as Browse code on the row
+   of ages is (mb-2u08). As bordered `.btn`s they made this row 26 px where the row of ages is
+   18, and with the empty labels row it stood 32 px under that row against the 6 px between
+   the others (Chrome 152). Its text is cut short before it wraps; its controls never are.
+   A failure is the exception: it says what to do, so the row wraps to show all of it, the
+   one state where the tab bar may move. */
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -328,6 +494,8 @@
   inset: var(--content-padding-y) var(--content-padding-x) auto;
   visibility: visible;
 }
+/* Every tab's body keeps the page's gap; the Conversation's events stand the rhythm apart
+   ("The Conversation timeline", below). */
 .github-pull-body {
   display: flex;
   flex-direction: column;
@@ -350,39 +518,29 @@
   border-bottom: 0;
 }
 
-/* ── The Conversation timeline ──────────────────────────────────
-   docs/design-system.md, "Conversation Timeline". A commit row is a card head without its
-   card: the head's box, type, and line, in a frame as wide as a card's that draws nothing,
-   so its text sits in its row as a head's sits in its card, and its subject starts where
-   an author's name does after the 18 px avatar, or its empty slot, and the identity's
-   4 px gap. Its hash takes a revision's own size, one step below the text beside it
-   (`.git-commit-sha`). Measured in Chrome 152 before this: the row was set at 12 px
-   against the head's 14, its text 1 px under its top and 6 px over its bottom. */
+/* ââ The Conversation timeline ââââââââââââââââââââââââââââââââââ
+   docs/design-system.md, "Conversation Timeline". A commit row is set in a card head's type
+   and line, and its subject starts where an author's name does after the avatar, or its
+   empty slot, and the identity's gap (--github-pull-avatar-size, --github-pull-identity-gap,
+   18 px and 4 px): its frame is as wide as a card's and draws
+   nothing. Its box is its line, with no room of its own above or below, so its text is as
+   far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash takes a
+   revision's own size, one step below the text beside it (`.git-commit-sha`). Measured in
+   Chrome 152 before the rhythm: a card head's room in the row put its glyphs 20 px from the
+   next commit's, and 23.5 px from a card, which stood 12 px from the next card. */
 .github-pull-commit {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 10px;
-  min-height: var(--ui-row-height);
-  padding: 3px var(--github-pull-text-inset) 3px calc(var(--github-pull-text-inset) + 18px + 4px);
-  border: 1px solid transparent;
+  padding: 0 var(--github-pull-text-inset) 0
+    calc(
+      var(--github-pull-text-inset) +
+      var(--github-pull-avatar-size) +
+      var(--github-pull-identity-gap)
+    );
+  border-inline: 1px solid transparent;
   font-size: var(--body-font-size);
-  /* The room the row keeps between its text and its edge: its 1 px frame, the head's
-     3 px, and at least the line's half-leading, since a face's glyphs are at least 1em
-     tall. A run of commits keeps it outside the run too (below). */
-  --github-pull-run-space: calc(1px + 3px + (1lh - 1em) / 2);
-}
-/* Two commits' glyphs are a gap and both rows' room apart, so a run of commits stands that
-   room further from whatever is above and below it than the gap: from a card's edge, or
-   Review comments', to the first commit's glyphs is then at least as far as from one
-   commit's glyphs to the next's, and so from the last commit's to the card below. Measured
-   in Chrome 152 before this: 16 px from a card's edge to a commit's glyphs, against 20 px
-   between two commits'. */
-.github-pull-body > :not(.github-pull-commit) + .github-pull-commit {
-  margin-top: var(--github-pull-run-space);
-}
-.github-pull-commit:has(+ :not(.github-pull-commit)) {
-  margin-bottom: var(--github-pull-run-space);
 }
 .github-pull-commit-subject {
   flex: 1 1 12em;
@@ -399,16 +557,24 @@
    edge. So it starts at the first event, ends at the last, and breaks where anything else
    (Review comments, a note) stands between two events. An event card lets the line out
    above it: it clips only sideways, as `.page-card`'s hidden overflow did, and its radius
-   is the chrome's 0. Offsets are from each event's padding box, which is 1 px inside its
-   frame for a card and a commit row alike. */
+   is the chrome's 0. Offsets are from each event's padding box: 1 px inside its frame for
+   a card, and on a commit row's own edge above and below, 1 px inside it at its sides. */
 .github-pull-event {
   --github-pull-line: 2px;
   --github-pull-node: 8px;
-  /* The avatar's center: the head's inset and half its 18 px. */
-  --github-pull-rail: calc(var(--github-pull-text-inset) + 9px);
-  /* A commit's first line: the head's 3 px and half a line. */
-  --github-pull-node-y: calc(3px + 0.5lh);
+  /* The avatar's center: the head's inset and half the avatar. */
+  --github-pull-rail: calc(var(--github-pull-text-inset) + var(--github-pull-avatar-size) / 2);
+  /* A commit's first line: half of it. */
+  --github-pull-node-y: 0.5lh;
   position: relative;
+}
+/* The rhythm stands above each of the Conversation's events, whatever is before it: the
+   body's gap and this margin. Only its events are `.github-pull-event`, so the Files and
+   Checks tabs keep the gap, 12 px, and so does a section or note below an event, with its
+   own margin: Review comments stands 28 px below a card, as before the rhythm. Measured in
+   Chrome 152 with the rhythm as the body's gap: 20 px for those notices, and 36 px. */
+.github-pull-body > * + .github-pull-event {
+  margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
 }
 .github-pull-event.page-card {
   overflow: visible;
@@ -423,8 +589,8 @@
   background: var(--border);
 }
 .github-pull-event + .github-pull-event.page-card::before {
-  top: calc(-1px - var(--github-pull-gap));
-  height: calc(var(--github-pull-gap) + 1px);
+  top: calc(-1px - var(--github-pull-rhythm));
+  height: calc(var(--github-pull-rhythm) + 1px);
 }
 /* No length of its own: the events beside it give it one. */
 .github-pull-commit::before {
@@ -432,17 +598,10 @@
   bottom: calc(100% - var(--github-pull-node-y));
 }
 .github-pull-event + .github-pull-commit::before {
-  top: calc(-1px - var(--github-pull-gap));
+  top: calc(-1 * var(--github-pull-rhythm));
 }
 .github-pull-commit:has(+ .github-pull-event)::before {
-  bottom: -1px;
-}
-/* Across a run's own room above and below it, to the card beside it. */
-.github-pull-event:not(.github-pull-commit) + .github-pull-commit::before {
-  top: calc(-1px - var(--github-pull-gap) - var(--github-pull-run-space));
-}
-.github-pull-commit:has(+ .github-pull-event:not(.github-pull-commit))::before {
-  bottom: calc(-1px - var(--github-pull-run-space));
+  bottom: 0;
 }
 /* The commit's node: a solid dot on the line, as every commit is in the history graph. */
 .github-pull-commit::after {
@@ -596,6 +755,12 @@
   gap: var(--github-pull-gap);
   margin-block-start: var(--content-padding-y);
 }
+/* Review comments, a comment's card from the next, at the Conversation's rhythm, and the
+   heading over the first card at the section's gap, as every section's heading sits over its
+   content. The margin is the rhythm less the gap the column already puts between two cards. */
+.github-pull-threads > .github-pull-card + .github-pull-card {
+  margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
+}
 .github-pull-checks {
   list-style: none;
 }
@@ -624,7 +789,7 @@
   color: var(--status-error);
 }
 
-/* ── A pull request's state ──────────────────────────────────────
+/* ââ A pull request's state ââââââââââââââââââââââââââââââââââââââ
    One vocabulary for a row and its page's header: docs/design-system.md, "The Pulls Tab". The
    four colors are GitHub's hues in both themes: green, a neutral gray, purple, and red. Each
    hue stays, and lightness and chroma answer the surface. The shapes differ, and the name is
@@ -679,7 +844,7 @@
   height: 1em;
 }
 
-/* ── The Pulls tab ───────────────────────────────────────────────
+/* ââ The Pulls tab âââââââââââââââââââââââââââââââââââââââââââââââ
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
    primitives; what is here is their placement, and a row, which takes the row contract. */
 .github-pulls-filters {
@@ -729,7 +894,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The shared spinner beside "Fetching pull requests…", centred on the words. */
+/* The shared spinner beside "Fetching pull requestsâ¦", centred on the words. */
 .github-pulls-connection-text {
   display: flex;
   align-items: center;
@@ -768,18 +933,20 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* Two lines and one target: the chevron, the state icon, the title, and the age on the
-   first, and the muted line under the title. A row is a container, so its chevron leads in
-   the slot a folder's takes, as its icon does (`--tree-icon-slot`, docs/design-system.md,
-   "Container Rows"). The row centers
-   its boxes and its text opts in to the first line's baseline (docs/design-system.md, "Row
-   Text Shares a Baseline"); the muted line is alone on its own, with no baseline to share. */
-/* The age has a column of one width, so an age that grows a digit does not move the title's
-   cut. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
+/* Two lines and one target (mb-lkkt): first the chevron, the state icon, and the number's
+   line, a stack member's place, the number, and the author, "1/4 · #N · jlevy", with the
+   age at the row's end; then the title alone, from the text column after the two glyph
+   slots, under the age to the row's end, cut there. A row is a container, so its chevron
+   leads in the slot a folder's takes, as its icon does (`--tree-icon-slot`,
+   docs/design-system.md, "Container Rows"). The row centers its boxes; on the first line
+   the number's line and the age share a baseline (docs/design-system.md, "Row Text Shares
+   a Baseline"), and the title is alone on its. The DOM keeps the title the row's first text,
+   so its accessible name gives the state, from the state icon's label, and then the title,
+   before the number's line. */
+/* The age has a column of one width, so an age that grows a digit does not move the number's
+   line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
-   engine. The title takes the rest of its line: a stack member's place in its stack, which
-   had a column of its own between the title and the age, is on the muted line, before the
-   number (`.github-pulls-place`, mb-dzsi), so the title has that room. */
+   engine. */
 .github-pulls-row {
   display: grid;
   grid-template-columns: var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch;
@@ -810,7 +977,7 @@
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
-.github-pulls-row > :is(.github-pulls-title, .github-pulls-age) {
+.github-pulls-row > :is(.github-pulls-meta, .github-pulls-title, .github-pulls-age) {
   align-self: baseline;
 }
 .github-pulls-row > .github-pulls-age {
@@ -843,20 +1010,26 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line: the number and the author. A row names no branches: the pull request's
-   page does, and the row's room goes to its title (docs/design-system.md, "The Pulls
-   Tab"). It wraps rather than clips: the author starts with its separator and may move to
-   the next line, and the line is laid out as wide as the row plus one separator, starting
-   one separator to the left, so that the separator of a part that starts a line falls
-   outside the row and is clipped. The number makes up that offset. A line breaks at the
-   author's floor, and above it the author grows toward its full width, its name ending in
-   an ellipsis. */
+/* The number's line: a stack member's place, the number, and the author, before the age. A
+   row names no branches: the pull request's page does, and the row's room goes to its title
+   (docs/design-system.md, "The Pulls Tab"). It is one line, so a row is always two
+   (mb-lkkt). Its parts give way in order: the author's name ends in an ellipsis down to its
+   floor, its avatar and a little of the name; past that the author, with the separator
+   before it, leaves the line whole, onto a second line that the box clips; and the place,
+   alone on the line with the number, ends in an ellipsis, the number whole after it
+   (`.github-pulls-id`). The line is laid out as wide as its box plus one separator,
+   starting one separator to the left, so that the separator of a part that starts a line
+   falls outside the box and is clipped; the number makes up that offset. Its box is one
+   line of the number's type tall, `1lh` at the number's size, and the author keeps the
+   smaller type it had. */
 .github-pulls-meta {
-  grid-column: 3 / -1;
+  grid-row: 1;
+  grid-column: 3;
   min-width: 0;
-  overflow: hidden;
+  height: 1lh;
+  overflow: clip;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .github-pulls-line {
   --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
@@ -873,8 +1046,8 @@
 }
 /* The line's first part: a stack member's place, if any, and the number, which never part.
    It makes up the line's one-separator offset. Alone on a line too short for it, it
-   shrinks: the place ends in an ellipsis, with all of it in its tip, and the number shows
-   whole (below). */
+   shrinks: the place ends in an ellipsis, with all of it in its accessible name, since the
+   Pulls column has no tooltips, and the number shows whole (below). */
 .github-pulls-id {
   display: inline-flex;
   flex: 0 1 auto;
@@ -888,7 +1061,7 @@
   color: var(--text);
   font-size: var(--nav-font-size);
 }
-/* A stack member's place in its stack, before its number on the muted line, in the
+/* A stack member's place in its stack, before its number on the number's line, in the
    number's type and ink, "1/6" before "#N" (`.github-pulls-id`). Its own stack's position is
    bare, as the row sits under that stack's row, and another stack's is named by the Layers
    glyph. */
@@ -902,20 +1075,30 @@
 .github-pulls-place[hidden] {
   display: none;
 }
-/* The title line's places: the title, and the age (above). */
-.github-pulls-row > .github-pulls-title {
-  grid-row: 1;
-  grid-column: 3;
-}
 /* The registry's chevron, at the tree's 12px glyph in the tree's icon slot; `.collapsed` and
-   `.expanded` on the row turn it, as they turn a folder's. */
-.github-pulls-toggle,
-.github-pull-files-toggle {
+   `.expanded` on the row turn it, as they turn a folder's (a changed folder's is the shell's
+   `.changed-file-toggle`). */
+.github-pulls-toggle {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
   width: var(--tree-icon-slot);
+}
+/* The first line's glyphs: the chevron and the state icon, centered on the number's line, as
+   a stack's row's chevron is on its one line (`.github-pulls-stack-row`). */
+.github-pulls-row > .github-pulls-toggle {
+  grid-row: 1;
+  grid-column: 1;
+}
+.github-pulls-row > .github-pull-state-icon {
+  grid-row: 1;
+  grid-column: 2;
+}
+/* The title's line: the title alone, from the text column, under the age to the row's end. */
+.github-pulls-row > .github-pulls-title {
+  grid-row: 2;
+  grid-column: 3 / -1;
 }
 
 /* A pull request's changed files, under its row: the Files tree's row contract, drawn a window
@@ -940,78 +1123,21 @@
   font-size: var(--ui-small-font-size);
   line-height: var(--ui-row-height);
 }
+/* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
+   `.changed-file-row`), the Diff summary's too. Here is only where a row sits: its depth's
+   indent, one level in from the pull request's row, and the room the sticky filters keep. */
 .github-pull-file-row,
 .github-pull-folder-row {
-  position: absolute;
-  right: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  height: var(--ui-row-height);
-  padding: 2px 12px 2px
-    calc(
-      10px +
-      var(--github-pulls-indent, 0px) +
-      var(--github-pull-file-depth, 1) *
-      var(--tree-indent)
-    );
-  border-left: 2px solid transparent;
-  gap: 6px;
-  color: var(--text);
-  font-size: var(--nav-font-size);
-  text-decoration: none;
-  cursor: pointer;
-  -webkit-user-select: var(--toggle-user-select);
-  user-select: var(--toggle-user-select);
+  --changed-file-indent: calc(
+    var(--github-pulls-indent, 0px) +
+    var(--github-pull-file-depth, 1) *
+    var(--tree-indent)
+  );
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
-.github-pull-file-row:hover,
-.github-pull-folder-row:hover {
-  background: var(--hover-bg);
-}
-.github-pull-file-row:focus-visible,
-.github-pull-folder-row:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: -2px;
-  background: var(--hover-bg);
-}
-.github-pull-file-row.selected {
-  background: var(--highlight-bg);
-  border-left-color: var(--highlight-bar);
-}
 /* A row the comparison does not hold: it is listed, and the diff has nothing to show of it. */
-.github-pull-file-muted {
+.github-pull-file-muted.changed-file-row {
   color: var(--muted);
-}
-.github-pull-file-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The inline change stats (docs/design-system.md, "Inline Change Stats"), at the end of the row. */
-.github-pull-file-stats {
-  display: inline-flex;
-  flex-shrink: 0;
-  gap: 4px;
-  margin-left: auto;
-  font-size: var(--ui-small-font-size);
-  font-variant-numeric: tabular-nums;
-}
-.github-pull-file-stats > .diff-stat-add {
-  color: var(--status-success);
-  font-weight: var(--weight-bold);
-}
-.github-pull-file-stats > .diff-stat-del {
-  color: var(--status-error);
-  font-weight: var(--weight-bold);
-}
-.github-pull-file-row
-  > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
-.github-pull-folder-row > :is(.github-pull-file-name, .github-pull-file-stats) {
-  align-self: baseline;
 }
 /* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
    its list refreshes its name breathes as a muted line does (docs/design-system.md,
@@ -1142,9 +1268,11 @@
   display: block;
   min-width: 0;
 }
+/* A stack's position takes the pull request number's weight, through its one token, so
+   "1/6 Â· #N" reads as one identifier (docs/design-system.md, "Pull Request Numbers"). */
 .github-pull-stack-position,
 .github-pull-stack-member-position {
-  font-weight: var(--weight-bold);
+  font-weight: var(--pull-number-weight);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
@@ -1187,11 +1315,17 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-.github-pull-stack-member[aria-current="page"] {
-  background: var(--hover-bg);
+/* The current member is marked as the Pulls list marks its current row
+   (`.github-pulls-row.selected`): the highlight's tint and its 2px bar at the row's left
+   edge, hovered or not. A menu row has no border to color, so the bar is drawn inset and
+   moves nothing. Focus on it shows as on every member, by the header's link ring
+   (`.github-pull-header a:focus-visible`). */
+.github-pull-stack-member.menu-item[aria-current="page"] {
+  background: var(--highlight-bg);
+  box-shadow: inset 2px 0 0 var(--highlight-bar);
 }
 
-/* ── Stacks (docs/design-system.md, "Stacks") ─────────────────────
+/* ââ Stacks (docs/design-system.md, "Stacks") âââââââââââââââââââââ
    One design names a stack wherever one is shown: the pull request page's stack button
    and menu, a Pulls row's place, and the Pulls tab's stack groups.
      .github-pull-stack-label     "Stack #N": on the shell's .group-heading, the label
@@ -1216,30 +1350,23 @@
 .github-pulls-item[data-level="2"] {
   --github-pulls-indent: var(--tree-indent);
 }
-/* A stack's row is one line: the chevron, the Layers icon, the label, and the count, which
-   takes the age's place at the row's end. It is a row of the tree, and hovers, focuses, and
-   takes the pointer as a pull request's row does (`.github-pulls-row`). Its label sits in
-   the title's column, cut short rather than pushing the count out of the row. */
+/* A stack's row is one line: the chevron, the Layers icon, and the label, with no tally,
+   since its pull requests are the rows under it (docs/design-system.md, "Heading
+   Tallies"). It is a row of the tree, and hovers, focuses, and takes the pointer as a pull
+   request's row does (`.github-pulls-row`). Its label starts in the title's column and
+   has the row to its end, cut short rather than leaving the row. */
 .github-pulls-stack-row > .github-pull-stack-icon {
   grid-column: 2;
   justify-self: center;
   color: var(--muted);
 }
 .github-pulls-stack-row > .github-pull-stack-label {
-  grid-column: 3;
+  grid-column: 3 / -1;
   min-width: 0;
   overflow: hidden;
   /* The row's grid places the heading; the menu's padding is its inset in a menu. */
   padding: 0;
   text-overflow: ellipsis;
-}
-.github-pulls-stack-count {
-  grid-column: 4 / -1;
-  justify-self: end;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  font-variant-numeric: var(--tabular-numerals);
-  white-space: nowrap;
 }
 .github-pull-loading {
   margin: 0;
@@ -1252,15 +1379,15 @@
 .github-pull-identity {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--github-pull-identity-gap);
   vertical-align: baseline;
 }
 .github-pull-avatar {
   display: inline-block;
   flex: none;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  width: var(--github-pull-avatar-size);
+  height: var(--github-pull-avatar-size);
   border-radius: 50%;
 }
 /* A Conversation card head's author with no usable avatar keeps the avatar's box, empty,
@@ -1270,21 +1397,21 @@
   display: inline-block;
   flex: none;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  width: var(--github-pull-avatar-size);
+  height: var(--github-pull-avatar-size);
 }
 /* In the pull request's author row the author gives way after the action
    (`.github-pull-meta-details`): down to its avatar, if it has one, and a little of the name,
    which then ends in an ellipsis, as a Pulls row's author does (`.github-pulls-by`). Without
    a floor of its own a long login kept its whole width and pushed what followed it out of
-   the row. The avatar's share is its 18px and the identity's 4px gap. */
+   the row. The avatar's share is its size and the identity's gap. */
 .github-pull-meta-details > .github-pull-identity {
   flex: 0 100 auto;
   min-width: 1.75em;
   overflow: hidden;
 }
 .github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar) {
-  min-width: calc(18px + 4px + 1.75em);
+  min-width: calc(var(--github-pull-avatar-size) + var(--github-pull-identity-gap) + 1.75em);
 }
 .github-pull-meta-details .github-pull-author {
   min-width: 0;
@@ -1294,20 +1421,27 @@
 
 /* The author never gets narrower than its separator, its avatar if it has one, and a little
    of the name, so neither the separator nor the avatar stands without a visible name: past
-   that, the author and its separator move to the next line together. Above it the name
-   ends in an ellipsis. The avatar's share is its 18px and the identity's 4px gap
-   (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
+   that, the author and its separator move to the next line together, which the number's
+   line's one-line box clips (`.github-pulls-meta`), so the author leaves the row's view.
+   Above it the name ends in an ellipsis. The avatar's share is its size and the identity's
+   gap (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
    hidden, so the name's share is still there. */
 .github-pulls-by {
   display: flex;
   flex: 1 1 0;
   align-items: baseline;
+  font-size: var(--ui-small-font-size);
   min-width: calc(var(--github-pulls-sep) + 1.75em);
   max-width: max-content;
   overflow: hidden;
 }
 .github-pulls-by:has(.github-pull-avatar) {
-  min-width: calc(var(--github-pulls-sep) + 18px + 4px + 1.75em);
+  min-width: calc(
+    var(--github-pulls-sep) +
+    var(--github-pull-avatar-size) +
+    var(--github-pull-identity-gap) +
+    1.75em
+  );
 }
 .github-pulls-by > .github-pull-identity {
   min-width: 0;

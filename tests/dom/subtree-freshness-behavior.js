@@ -35,7 +35,7 @@ const context = vm.createContext({
   treeUrl: (folder) => folder,
   // Ungrouped: no Group by sections, so no section refresh.
   filesPanelUsesGroupedSource: () => false,
-  groupsPrefetch: { clear() {} },
+  groupsPrefetch: { markChanged() {} },
   fetch: (folder) =>
     new Promise((resolve) => {
       requests.push({

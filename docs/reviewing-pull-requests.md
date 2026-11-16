@@ -62,24 +62,41 @@ files in place. The file list says **Listing changed files…** until GitHub ans
 Once the files show, a later page or an updated list does not move the rows you are
 reading: it is offered as **Show N more files** or **Show the updated list of N files**.
 
+To start over, click the folder’s name at the top of the navigation pane, or press `0`.
+That is Home: the folder as a fresh load shows it, with every tab at its first, so
+**Pulls** opens its list and a pull request you open from it opens on **Conversation**,
+whichever tab you last read.
+
 ### Stacks
 
-With the optional [gh-stack extension](installation.md#git-and-github-setup), a pull
-request in a native GitHub stack shows its position, such as **5/23**, on its row and on
-its page.
-On the page the position opens a menu of the stack’s members, from top to base.
+With the optional [gh-stack extension](installation.md#git-and-github-setup), the Pulls
+tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
+by default, top of the stack first; pull requests in no stack follow, and a stack’s row
+opens and closes like a folder.
+A member’s row shows its place before its number, such as **1/6 · #455 · octo**, and its
+title on the line under it.
+A pull request in two stacks sits under the first, and its place names the other stack
+by its number, such as **3/4 · ⧉300 2/2**.
+
+On the page, a stack button at the end of the author’s line shows the same position, and
+a pull request in two stacks has a button for each, which names its stack, such as
+**⧉300 2/2**. The button opens a menu of the stack’s members, from top to base.
 On macOS, Control-N goes to the next member toward the top and Control-P to the previous
 one toward the base; on Windows and Linux, where those keys are the browser’s, use the
 menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
-and show no position unless one is cached.
-On the Pulls tab, the pull requests of each stack sit under a **Stack #N** row, top of
-the stack first, open by default; pull requests in no stack follow.
+and the list stays flat, unless stacks are cached.
 Metabrowser reads stacks and never changes them.
 
 ## The Pull Request Page
 
-The header gives the title, state, author, branches, labels, and dates, with **View on
-GitHub**. A cached page shows at once and refreshes in the background; the
+The header gives the title and number; the author’s sentence, such as “octo wants to
+merge 2 commits”, with any stack button at its end; the head and base branches on a line
+of their own, head → base; the state and dates, with **View on GitHub**; and the labels,
+each in the color GitHub gives it, with its description, if any, shown on hover.
+Its last row is the **Diff summary**, on every tab: the change set’s file count and line
+totals, which opens into the tree of changed files with rolled-up line counts, and a
+file there opens **Changes** at that file.
+A cached page shows at once and refreshes in the background; the
 [design system](design-system.md#the-pull-request-page) describes how it draws.
 
 The page has three tabs:
@@ -90,9 +107,7 @@ The page has three tabs:
   A short commit ID opens that commit on GitHub.
   **Review comments** lists the inline review comments with their files and diff hunks.
 - **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
-  (`L` switches). A diff of more than one file opens with a collapsed **Diff summary** of
-  its counts, which opens into the tree of changed files with rolled-up line counts.
-  Markdown files open as rendered changes, as the next section describes.
+  (`L` switches). Markdown files open as rendered changes, as the next section describes.
   The changed-file list on the Pulls tab moves through this diff, and the selected file
   follows the diff as you scroll.
 - **Checks** (`E`): the check runs and commit statuses, with links to their details.

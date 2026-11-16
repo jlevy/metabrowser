@@ -166,7 +166,7 @@
      categorical wash. */
   color: var(--viz-text);
   opacity: 0.8;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   -webkit-user-select: text;
   user-select: text;
 }
@@ -234,7 +234,7 @@
   max-width: var(--tm-max-width);
   color: var(--muted);
   font-size: var(--ui-small-font-size);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   -webkit-user-select: text;
   user-select: text;
 }

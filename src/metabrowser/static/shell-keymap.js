@@ -1,11 +1,14 @@
-// The shell's own keys: the main pane's view tabs, the header's Up, a pin's branch
-// switcher, and the numbers of the navigation pane's filters.
+// The shell's own keys: Home, the main pane's view tabs, the header's Up, a pin's branch
+// switcher, the numbers of the navigation pane's filters, and the letters of their menus'
+// rows.
 //
 // Each command runs the activation path its control's click runs, which the shell
 // injects, plus the focus a keyboard user needs next; none synthesizes a click. Each is
 // targeted, so it is live only while the control it badges is on screen, and the
 // registry reads that at dispatch. The filters are situational, so they take numbers
-// through the registry's `attachNumbered()` rather than letters. The main tabs' letters
+// through the registry's `attachNumbered()` rather than letters; a menu's rows take the
+// letters they declare, in the menu's own scope, live only while it is open and has
+// focus (docs/design-system.md, "Keys in a Menu"). The main tabs' letters
 // stay in static/main-tabs.js and the pull keys in static/pulls-nav.js, which own those
 // controls. Copying a path or a revision is ancillary and has no key.
 //
@@ -92,6 +95,12 @@
     /** The filter triggers' numbers, each held while its trigger exists.
      * @type {Map<string, MetabrowserPublicShortcutTarget>} */
     const filterNumbers = new Map();
+    /** The filter menus' row letters, by command id, each held while its row exists.
+     * @type {Map<string, {signature: string, release: () => void, target: MetabrowserPublicShortcutTarget}>} */
+    const menuLetters = new Map();
+    /** The scope of the open menu whose rows have letters, while it is open.
+     * @type {{key: string, release: () => void} | null} */
+    let menuScope = null;
     let disposed = false;
 
     // The main pane and the navigation pane's filter bar, by the ids the server's shell
@@ -193,6 +202,34 @@
     /** @type {MetabrowserPublicShortcutTarget | null} */
     let parentTarget = null;
 
+    // `0` is Home, the one digit with a fixed meaning: the numbers stop at 9, so it never
+    // reaches a numbered control, and Shift-0, which types `)` on a US keyboard, is `0` by
+    // the registry's digit-row match. It runs the folder's name's own click path, and the
+    // name, which the nav's header always shows, is its target. Its badge sits beside the
+    // name, in the header that anchors it, since the name clips.
+    const releaseHome = registerCommand({
+      copy: {
+        action: "Home",
+        description:
+          "Show the served folder's home view, with every tab at its first, as a fresh load does.",
+        hint: "Home",
+      },
+      group: "anywhere",
+      handler: () => {
+        shell.goHome();
+        return true;
+      },
+      id: "shell.home",
+      key: "0",
+      order: 30,
+      surfaces: { help: "always", reveal: "always" },
+    });
+    const homeHeading = /** @type {HTMLElement | null} */ (document.querySelector(".header-path"));
+    /** @type {MetabrowserPublicShortcutTarget | null} */
+    let homeTarget = homeHeading
+      ? shortcuts.attachTarget("shell.home", homeHeading, { placement: "beside" })
+      : null;
+
     /**
      * Read the main-pane header again: Up's target is the folder header's Up button or,
      * for a file, the crumb of its folder, and none at the root.
@@ -242,22 +279,19 @@
 
     /**
      * A filter number's activation: open the dropdown through its trigger's own path, the
-     * shell's, then focus its checked row, or else its first, so the menu's arrow keys
-     * work next. The focus half lives here, on demand, rather than in app.js.
+     * shell's, then focus its checked row, or else its first, through the filter controls'
+     * one path for every way a dropdown opens (`filterControls.focusMenu`), so the menu's
+     * arrow keys, Enter, Escape, and its rows' letters work next
+     * (docs/design-system.md, "Keys in a Menu").
      *
      * @param {string} key `group`, `recency`, or `types`
      */
     function openFilterMenu(key) {
       shell.toggleFilterMenu(key, true);
-      const menu = filterBar()?.querySelector(
-        `.chip-menu[data-chip-menu="${key}"] .chip-menu-panel`,
-      );
-      const row = /** @type {HTMLElement | null} */ (
-        menu?.querySelector('.chip-menu-item[aria-checked="true"]') ??
-          menu?.querySelector(".chip-menu-item") ??
-          null
-      );
-      row?.focus();
+      const bar = filterBar();
+      if (bar) {
+        window.metabrowser?.filterControls?.focusMenu(bar, key);
+      }
       return true;
     }
 
@@ -298,7 +332,119 @@
             );
           }
         }
+        syncMenuLetters();
       });
+    }
+
+    /** @param {string} key A filter dropdown. */
+    const filterMenu = (key) =>
+      /** @type {HTMLElement | null} */ (
+        filterBar()?.querySelector(`.chip-menu[data-chip-menu="${key}"]`) ?? null
+      );
+
+    /** @param {string} key Whether focus is in that dropdown: on its trigger or a row. */
+    function menuHasFocus(key) {
+      const active = document.activeElement;
+      return Boolean(active && filterMenu(key)?.contains(active));
+    }
+
+    /**
+     * Release one row letter's command and its target.
+     *
+     * @param {string} id
+     */
+    function releaseMenuLetter(id) {
+      const held = menuLetters.get(id);
+      if (held) {
+        held.target.detach();
+        held.release();
+        menuLetters.delete(id);
+      }
+    }
+
+    /**
+     * Read the filter menus' row letters again (docs/design-system.md, "Keys in a Menu").
+     * A row that declares one, `data-menu-key`, holds a command in its menu's own scope,
+     * targeted on the row, whose handler runs the row's click path
+     * (`filterControls.activateMenuRow`); its Help copy names the row and the menu. A
+     * letter two rows of one menu declare stays the first's. The scope is active while
+     * that menu is open, so the letters outrank the shell's only then, and each command
+     * also waits for focus to be in the menu, so a letter pressed elsewhere is the shell's.
+     * Registered while the rows exist, closed or open, so Help lists them.
+     */
+    function syncMenuLetters() {
+      const bar = filterBar();
+      /** @type {Set<string>} */
+      const seen = new Set();
+      for (const element of bar?.querySelectorAll(".chip-menu[data-chip-menu]") ?? []) {
+        const menu = /** @type {HTMLElement} */ (element);
+        const key = menu.dataset.chipMenu || "";
+        const name =
+          menu.querySelector("[data-chip-menu-toggle]")?.getAttribute("aria-label") || key;
+        /** @type {Set<string>} */
+        const letters = new Set();
+        for (const rowElement of menu.querySelectorAll(".chip-menu-item[data-menu-key]")) {
+          const row = /** @type {HTMLElement} */ (rowElement);
+          const letter = row.dataset.menuKey || "";
+          if (!/^[a-z]$/.test(letter) || letters.has(letter)) {
+            continue;
+          }
+          letters.add(letter);
+          // One command per letter of a menu, as a view tab bar has one per letter.
+          const id = `menu.${key}.${letter}`;
+          const label = row.querySelector(".menu-item-label")?.textContent?.trim() || letter;
+          const order = letters.size;
+          const signature = [letter, label, name, order].join("\n");
+          seen.add(id);
+          const held = menuLetters.get(id);
+          if (held?.signature === signature) {
+            held.target.retarget(row);
+            continue;
+          }
+          // A command's copy is fixed at registration, so a row whose label or letter
+          // changed is registered again.
+          releaseMenuLetter(id);
+          const release = shortcuts.register({
+            available: () => menuHasFocus(key),
+            bindings: [{ key: letter }],
+            copy: {
+              action: label,
+              description: `Choose ${label} in the ${name} menu.`,
+              hint: label,
+            },
+            group: "menus",
+            handler: (context) => {
+              const target = targetOf(context);
+              return Boolean(target && window.metabrowser?.filterControls?.activateMenuRow(target));
+            },
+            id,
+            order,
+            scope: `menu:${key}`,
+            surfaces: { help: "always", reveal: "always" },
+            targeted: true,
+          });
+          menuLetters.set(id, { release, signature, target: shortcuts.attachTarget(id, row) });
+        }
+      }
+      for (const id of Array.from(menuLetters.keys())) {
+        if (!seen.has(id)) {
+          releaseMenuLetter(id);
+        }
+      }
+      const open = /** @type {HTMLElement | null} */ (
+        bar?.querySelector('.chip-menu[aria-expanded="true"]') ?? null
+      );
+      const openKey =
+        open?.querySelector(".chip-menu-item[data-menu-key]") && open.dataset.chipMenu
+          ? open.dataset.chipMenu
+          : null;
+      if (menuScope && menuScope.key !== openKey) {
+        menuScope.release();
+        menuScope = null;
+      }
+      if (openKey && !menuScope) {
+        menuScope = { key: openKey, release: shortcuts.activateScope(`menu:${openKey}`) };
+      }
     }
 
     /** Read the branch and tag selector again, once its on-demand bundle has mounted it. */
@@ -439,9 +585,17 @@
           held.detach();
         }
         filterNumbers.clear();
+        for (const id of Array.from(menuLetters.keys())) {
+          releaseMenuLetter(id);
+        }
+        menuScope?.release();
+        menuScope = null;
         parentTarget?.detach();
         parentTarget = null;
         releaseParent();
+        homeTarget?.detach();
+        homeTarget = null;
+        releaseHome();
       });
       disposed = true;
     }

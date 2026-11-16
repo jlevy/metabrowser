@@ -66,7 +66,7 @@ and the agent skill.
   See [reviewing pull requests](docs/reviewing-pull-requests.md).
 - **Find anything from the keyboard:** Quick Search finds files by name or path and, in
   a GitHub repository, pull requests by number or title; single-key shortcuts move
-  between tabs, views, and rows.
+  between tabs, views, and rows, and `0` goes home.
   See [keyboard shortcuts](docs/keyboard-shortcuts.md).
 - **Work with coding agents:** the `metabrowser` agent skill lets an agent open a
   folder, file, or pull request and hand you the page, and coding-agent session logs

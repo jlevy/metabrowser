@@ -878,11 +878,18 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     start = js.index("function _renderFilteredTally(panel, state, count)")
     block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
-    assert "Filtered to ${" in block
-    assert "treeFilterModel.recentFilteredTallyText(count" in block
+    # One model says the remark for the tree and for Recent, in parts, and the shell paints
+    # its numbers bold (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    assert "treeFilterModel.filteredTallyParts(" in block
+    assert "filesPanelUsesRecentSource()" in block
     assert "totalMatching: recentTotalMatching" in block
     assert "totalMatchingExact: recentTotalMatchingExact" in block
     assert "truncated: recentTruncated" in block
+    # The remark is one span in the line, which a repaint replaces, so the line's flex gap
+    # does not part its words and numbers.
+    assert "window.MetabrowserFormatters.countPartsNodes(document, parts)" in block
+    assert "existing.replaceChildren(remark);" in block
+    assert "line.append(remark);" in block
 
     # Removing the last filter clears the line through the shared tally helper.
     assert "existing.remove();" in block
@@ -892,12 +899,12 @@ def test_a_non_exact_recent_tally_is_visible_even_when_the_original_page_was_com
     """Deep live changes can invalidate an untruncated snapshot's exact total."""
 
     model = _read("tree-filter-model.js")
-    start = model.index("function recentFilteredTallyText(")
+    start = model.index("function filteredTallyParts(")
     block = model[start : start + 1400]
-    assert "!options.totalMatchingExact && !options.truncated" in block
+    assert "!recent.totalMatchingExact && !recent.truncated" in block
     assert "${count.toLocaleString()}+" in block
-    assert "options.truncated" in block
-    assert 'options.totalMatchingExact ? "" : "+"' in block
+    assert "recent.truncated" in block
+    assert 'recent.totalMatchingExact ? "" : "+"' in block
 
 
 def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
@@ -1036,8 +1043,9 @@ def test_leaving_recency_refetches_the_authoritative_tree() -> None:
     js = _read("app.js")
     start = js.index("function onFilterStateChange(state)")
     block = js[start : js.index("\n}\n", start)]
-    assert "loadTree();" in block
-    assert "renderFilesFromTree()" not in block
+    # Home's filter reset asks the same load to draw the tree as a fresh load does.
+    assert "loadTree({ asHome });" in block
+    assert "renderFilesFromTree(" not in block
 
 
 def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:

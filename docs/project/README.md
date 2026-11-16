@@ -64,9 +64,10 @@ It links each document below and the contributor standards in `docs/`.
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
 - [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md):
-  the menu group pattern, Files Group by, the diff fold in place, a Diff summary, pull
-  stack groups, the conversation timeline, and upright sans h2 headings, as one stack of
-  pull requests
+  the owner’s requests of 2026-11-15, from Files Group by, a Diff summary, Pulls stack
+  groups, and the conversation timeline to the pull request header, the keys, tooltips,
+  titles, label colors, and a design-system consistency pass, as one stack of pull
+  requests
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime

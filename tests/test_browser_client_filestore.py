@@ -276,12 +276,21 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
     assert "includeName === false" in js
 
     listener_start = js.index('treePane.addEventListener(\n  "mouseenter"')
-    listener_block = js[listener_start : listener_start + 1400]
-    # Every tree row already shows its name, so the hover tooltip omits it and
-    # shows size + date only (never duplicative).
+    listener_block = js[listener_start : listener_start + 2000]
+    # Every tree row already shows its name and a size or count, so the hover tooltip
+    # omits the name and what the chip shows exactly, and gives the exact date, a folder's
+    # other total, and the exact size behind one the chip rounds (mb-8mpo, mb-qg4z);
+    # tests/dom/files-tab-chrome.mjs reads it in Chrome.
     assert "var includeName = false" in listener_block
     assert "folderTooltipHtml(" in listener_block
     assert "fileTooltipHtml(" in listener_block
+    assert 'shows === "count" ? undefined : parseTipNumber(d.tipFiles)' in listener_block
+    assert 'typeof size === "number" && size >= 1024' in listener_block
+    assert 'shows === "size" && !chipRoundsSize ? undefined : size' in listener_block
+    # The folder's tooltip and the file's take that one size.
+    assert listener_block.count("tipSize,") == 2
+    assert "fileTooltipHtml(d.tipName, tipSize," in listener_block
+    assert listener_block.count("parseTipNumber(d.tipSize)") == 1
 
 
 def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
@@ -683,7 +692,7 @@ def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
     js = _read_app_js()
     helper_start = js.index("function _updateDeferredTreePageEntry(container, entry)")
     helper_block = js[helper_start : helper_start + 1000]
-    assert "_deferredTreePageForContainer(container)" in helper_block
+    assert "_deferredTreePageForContainer(container, entry.path)" in helper_block
     assert "node.path === entry.path" in helper_block
     assert "deferred.page.nodes[index]" in helper_block
     assert "current.type !== entry.type" in helper_block
@@ -765,10 +774,13 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     # A narrow pane ellipsizes the crumbs, so each one names its whole
     # component on hover rather than only the head of it — through the app's
     # own tooltip, because the browser's would be a second one on the same
-    # surface. See devtools/check_tooltips.py.
-    assert (
-        'data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}"' in fn_block
-    )
+    # surface. See devtools/check_tooltips.py. The tip is the crumb's own name,
+    # which the shell shows only while the crumb is cut short: the trail already
+    # shows the path (mb-8mpo, "Tooltips Add Information"). One name is the tip
+    # and the text, so they cannot drift apart (mb-ex5r).
+    assert "var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    assert 'data-tip-text="${name}">${name}</button>' in fn_block
+    assert "displayPath(walked)" not in fn_block
     assert "title=" not in fn_block
 
 
@@ -916,7 +928,14 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     # keeps the ref and commit the server rendered; tests/dom/source-kind-session.js
     # runs both branches.
     heading_start = js.index("function renderServedRootHeading(pathEl, root)")
-    assert "pathEl.innerHTML = pathBaseHtml(root)" in js[heading_start : heading_start + 400]
+    heading = js[heading_start : heading_start + 700]
+    # Home draws the tree again: the same name is not written again under the pointer. The
+    # name's text is compared, so a name with a quote, which the markup escapes and the
+    # element's serialization does not, is the same name too (source-kind-session.js).
+    assert (
+        "if (pathEl.textContent !== pathBaseName(root)) {\n"
+        "    pathEl.innerHTML = pathBaseHtml(root);"
+    ) in heading
     tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
     assert (

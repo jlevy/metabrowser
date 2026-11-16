@@ -55,8 +55,7 @@ fixed chip size the ratio replaced.
 | --- | --- | --- | --- |
 | A Git history row | 13px subject | 11.7px | 12px |
 | A commit’s summary and its tooltip | 14px metadata | 12.6px | 12px |
-| A pull request’s header | 14px action line | 12.6px | 12px |
-| A Pulls row | 12px muted line | 10.8px | 12px |
+| A pull request’s header | 14px branch line | 12.6px | 12px |
 | The ref selector’s button and list | 12px | 10.8px | 12px |
 
 ## Regions That Moved
@@ -156,7 +155,11 @@ Chrome 152 at 980 to 320 px, one stack’s chip is 54.75 px and two stacks’ 11
 late chip moved no part’s start and no row, kept 8 px from the sentence, and cut the
 sentence only where it needed the room: at 560 px two stacks cut a long author’s
 sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 commits” by
-38.04 px.
+38.04 px. Measured again on 2026-11-15 once two stacks’ chips named their stacks, “⧉286
+4/4” and “⧉300 2/2”: one stack’s chip, “⧉2/3”, is 54.75 px and two stacks’ named chips
+156.31 px; a late chip still moved no part’s start and no row and kept 8 px from the
+sentence, and at 560 px two stacks cut a long author’s sentence by 77.69 px, and at 360
+px “forker wants to merge 2 commits” by 80.85 px.
 
 For
 [Stack Groups in the Pulls Tab](../../docs/design-system.md#stack-groups-in-the-pulls-tab):
@@ -180,6 +183,25 @@ WebKit hit-tests the line’s x to the following event’s connector, which it w
 for a clipped one, and 9 px beside it to the page.
 Each node sits 0.5 px below its first line’s middle there, as in Chrome.
 
+Recorded again on 2026-11-15, when every two events took one rhythm,
+`--github-pull-rhythm`, at commit 4a46ec4: in Chrome 152 every two events’ boxes are 20
+px apart, in both themes and at 980 and 420 px, and their text 20 to 21 px apart, a
+commit’s read from its text nodes.
+At 420 px a commit row that wraps so that its hash ends it on a line of its own shows
+22.5 px below it: the hash’s smaller monospace face leaves 2.5 px of its line under its
+glyphs. Review comments stands 28 px below a card; with the rhythm as the body’s gap it
+stood 36 px below. Measured once outside that test, the Files and Checks tabs’ notices
+are 12 px from what they show, as before the rhythm; with the rhythm as the body’s gap
+they were 20 px. Before the rhythm, two cards were 12 px apart, a card and a commit 23.5
+px, and two commits 20 px.
+In the macOS app’s web view, through the same driver on the same page and layouts at
+that commit, the test’s type, spacing, and line checks as they were then pass in both
+themes, apart from its pixel reads; each node sits 0.5 px below its first line’s middle,
+and every pair of events is 20 px apart, as in Chrome.
+What the test holds since has not run in WebKit: the heading checks, the spacing read
+from a commit’s text nodes, the break above Review comments, and the rhythm as a margin
+above each event rather than the body’s gap.
+
 ## Tree Icon Slot
 
 For [One Glyph Size](../../docs/design-system.md#one-glyph-size), recorded 2026-11-15:
@@ -195,6 +217,28 @@ a pass over the index per group.
 On 22,104 files File type answered in 106 ms where the ungrouped tree took 34 ms, and on
 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19 s. Opening a folder inside a
 section took 24 to 32 ms, the same as outside one, with no spinner shown.
+
+Recorded again on 2026-11-15, once the server read every group from one pass over the
+index (`GroupedTreeQuery`), measured in process, warm, against the read per group it
+replaced, with identical answers:
+
+| Folder | Ungrouped rows | By file type | By age |
+| --- | --- | --- | --- |
+| 100,000 files (the bench corpus) | 2 ms | 92–96 ms, was 622–688 ms | 72–98 ms, was 404–505 ms |
+| 270,000 files and 110,000 folders | 3–4 ms | 0.42–0.48 s, was 4.0–4.5 s | 0.34–0.47 s, was 3.3–3.6 s |
+
+In headless Chrome on the 100,000-file corpus, a click on By file type painted its
+sections 130–132 ms later when the press asked for nothing ahead, and 27–47 ms later
+after a 100 ms press had asked for it; By age took 98–116 ms and 29–32 ms; No grouping
+painted its tree in 29–49 ms.
+On the larger folder By file type took 0.50–0.53 s, or 0.39–0.48 s after a 100 ms press,
+and No grouping 41–95 ms.
+Two groupings asked for at once each took twice as long there, 0.86 s against about 0.42
+s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
+spinner shown. On a folder of 112 files, a file written every 250 ms for 6 s into a
+folder open one or two levels down gave four paced refreshes of at most 8 ms of paint
+each, and the scroll position, the focused row inside that folder, and the open folders
+held through all of them.
 On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
 two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
 position, the focused row inside that folder, and the open folders held through all of

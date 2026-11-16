@@ -43,7 +43,7 @@ import re
 import secrets
 import sys
 import time
-from collections.abc import AsyncIterator, Mapping, MutableMapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from html import escape as html_escape
@@ -131,6 +131,7 @@ from metabrowser.inventory_engine.contract import (
     EntryType,
     FilteredTreeProjection,
     FilteredTreeQuery,
+    GroupedTreeQuery,
     InventoryFilter,
     LifecyclePhase,
     NavigationProjection,
@@ -151,8 +152,10 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
 from metabrowser.inventory_engine.runtime import InventoryRuntime
 from metabrowser.inventory_engine.tree_page_assembly import (
+    GroupedTreeAssembly,
     TreePageAssembly,
     TreePageQuery,
+    assemble_grouped_tree,
     assemble_tree_pages,
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
@@ -247,10 +250,12 @@ from metabrowser.tree_filter import (
     parse_types,
 )
 from metabrowser.tree_groups import (
+    GroupBy,
     age_band,
     group_row,
     groups_for,
     groups_payload,
+    inventory_group_filter,
     parse_group,
     parse_group_by,
 )
@@ -2055,7 +2060,7 @@ async def index(
 <body>
   <main class="container{mirror_class}">
     <div class="tree-pane" id="tree-pane">
-      <header class="app-header">
+      <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
              the two headers cannot disagree about what the root is. It is also
@@ -2068,13 +2073,17 @@ async def index(
              to prevent. See "One Tooltip, and It Is Ours" in
              docs/design-system.md.
 
-             The heading is home: app.js keeps a plain activation in the page and
-             opens the served root in the Files tab, from whichever tab is in front.
-             Its name stays the text it shows, and the description says where it
-             goes, so a screen reader hears both. -->
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" aria-describedby="header-home-description"
+             The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
+             plain activation in the page and shows the folder's home view as a fresh load
+             of this address does, every tab at its first, and `0` does the same. Its
+             accessible name is "Home:" and then the name it shows, read from its own
+             content, so the name a mirror's heading shows, its ref and commit with it,
+             stays in it. The header anchors the key's badge, which sits beside the name
+             because the name clips. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
+           aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
-        <span id="header-home-description" hidden>Go home: the root folder in the Files tab</span>
+        <span id="header-home-label" hidden>Home:</span>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
@@ -2381,6 +2390,150 @@ async def _read_tree_from_provider(
     return JSONResponse(payload)
 
 
+async def _read_with_known_parent[T](
+    runtime: InventoryRuntime,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    read: Callable[[], Awaitable[T]],
+    first_read: Callable[[T], CoordinatedRead],
+) -> tuple[T, EntryProjection]:
+    """Run *read*, whose first read carries the `tree-parent` entry query, and on a cold
+    start, while the index cannot yet say whether *subpath* exists, prioritize it and read
+    again for up to `_TREE_COLD_START_WAIT_S`."""
+
+    def parent_of(answer: T) -> EntryProjection:
+        parent = first_read(answer).result.completed_projection("tree-parent")
+        if not isinstance(parent, EntryProjection):
+            raise TypeError("the tree parent query returned the wrong projection")
+        return parent
+
+    answer = await read()
+    parent = parent_of(answer)
+    if parent.presence is EntryPresence.UNKNOWN:
+        if subpath:
+            await runtime.coordinator.prioritize(
+                PriorityRequest(paths=(subpath,), max_depth=max(1, remaining_depth))
+            )
+        deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.005)
+            answer = await read()
+            parent = parent_of(answer)
+            if parent.presence is not EntryPresence.UNKNOWN:
+                break
+    return answer, parent
+
+
+def _is_folder(parent: EntryProjection) -> bool:
+    """Whether the tree's parent may be a folder: present as one, or not yet known."""
+
+    return not (
+        parent.presence is EntryPresence.ABSENT
+        or (
+            parent.presence is EntryPresence.PRESENT
+            and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
+        )
+    )
+
+
+async def _grouped_tree_from_provider(
+    request: Request,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    tree_filter: TreeFilter,
+    group_by: GroupBy,
+) -> JSONResponse:
+    """`/api/tree?group_by=`: every group's tree under the filter, from one grouped read.
+
+    The provider computes every group from one pass over the index at one version
+    (`GroupedTreeQuery`), and cuts every age band at one instant, so the bands partition
+    mtimes and a file written mid-request is counted in one group or in none.
+    """
+
+    runtime = _inventory_runtime_for(request)
+    as_of_ns = time.time_ns()
+    groups = tuple(
+        group
+        for group in groups_for(group_by)
+        if not (group.by == "age" and age_band(group, tree_filter.recency_seconds).empty)
+    )
+    shared = _inventory_filter(tree_filter, as_of_ns=as_of_ns)
+    if group_by == "age":
+        shared = replace(shared, as_of_ns=as_of_ns)
+    query = GroupedTreeQuery(
+        query_id="tree-groups",
+        groups=tuple(inventory_group_filter(group) for group in groups),
+        path=subpath,
+        max_depth=max(1, remaining_depth),
+        max_rows=INVENTORY_TREE_PAGE_ROWS,
+        filter=shared,
+    )
+
+    async def read_groups() -> GroupedTreeAssembly:
+        # One grouped assembly at a time, so overlapping reads cannot evict each other's
+        # continuations (InventoryRuntime.grouped_tree_admission).
+        async with runtime.grouped_tree_admission:
+            return await assemble_grouped_tree(
+                runtime.coordinator,
+                query=query,
+                companion_queries=(EntryQuery(query_id="tree-parent", path=subpath),),
+            )
+
+    assembly, parent = await _read_with_known_parent(
+        runtime,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        read=read_groups,
+        first_read=lambda answer: answer.first_read,
+    )
+    if not _is_folder(parent):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    parent_ignored = bool(parent.entry.gitignored) if parent.entry is not None else False
+    rows: list[dict[str, Any]] = []
+    for group, answer in zip(groups, assembly.groups, strict=True):
+        rows.append(
+            group_row(
+                group,
+                {
+                    "filtered": {
+                        "files": answer.matching_files,
+                        "size": answer.matching_bytes,
+                        "entries": answer.matching_leaves,
+                    },
+                    "tree": (
+                        build_inventory_tree_from_entries(
+                            entries=answer.entries,
+                            parent_rel=subpath,
+                            max_depth=remaining_depth,
+                            parent_ignored=parent_ignored,
+                        )
+                        if remaining_depth > 0
+                        else []
+                    ),
+                },
+            )
+        )
+        # Each group's tree, and then the body, takes an event-loop turn of its own. On
+        # 200,000 files in 20 folders, where a depth-2 tree lists every file, building
+        # every tree and the JSON in one turn held the loop for 0.80-0.98 s; a turn each
+        # holds it for 0.33-0.64 s, the largest group's tree or the body (measured in
+        # process, warm, with a 5 ms ticker beside the request, 2026-11-15).
+        await asyncio.sleep(0)
+    state = assembly.final_read.result.state
+    envelope = {
+        "root": str(session_filesystem_root()),
+        "tally_cache_status": _index_status_from_state(
+            state.phase,
+            complete=state.coverage.complete,
+            budget=any(issue.code.value == "resource_budget" for issue in state.issues),
+        ),
+        "tally_cache_max_files": runtime.config.budget.max_files,
+    }
+    return JSONResponse(groups_payload(group_by, rows, envelope))
+
+
 async def _tree_payload_from_provider(
     request: Request,
     *,
@@ -2388,13 +2541,10 @@ async def _tree_payload_from_provider(
     remaining_depth: int,
     tree_filter: TreeFilter,
     as_of_ns: int,
-    with_navigation: bool = True,
 ) -> dict[str, Any] | None:
     """One /api/tree answer from the inventory, or None when *subpath* is no folder.
 
-    *as_of_ns* is the instant every time filter is cut at; a grouped answer passes one
-    instant to every group, so the age bands partition mtimes. *with_navigation* asks for the
-    root's chrome tallies at `depth=0`, which a group's answer has no use for.
+    *as_of_ns* is the instant every time filter is cut at.
     """
 
     runtime = _inventory_runtime_for(request)
@@ -2418,7 +2568,7 @@ async def _tree_payload_from_provider(
         )
 
     navigation_id: str | None = None
-    if with_navigation and not subpath and remaining_depth == 0:
+    if not subpath and remaining_depth == 0:
         navigation_id = "tree-navigation"
         companion_queries.append(
             NavigationQuery(
@@ -2451,29 +2601,14 @@ async def _tree_payload_from_provider(
         )
         return assembly.first_read, assembly
 
-    read, assembly = await read_tree()
-    parent = read.result.completed_projection("tree-parent")
-    if not isinstance(parent, EntryProjection):
-        raise TypeError("the tree parent query returned the wrong projection")
-    if parent.presence is EntryPresence.UNKNOWN:
-        if subpath:
-            await runtime.coordinator.prioritize(
-                PriorityRequest(paths=(subpath,), max_depth=max(1, remaining_depth))
-            )
-        deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
-        while asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(0.005)
-            read, assembly = await read_tree()
-            parent = read.result.completed_projection("tree-parent")
-            if not isinstance(parent, EntryProjection):
-                raise TypeError("the tree parent query returned the wrong projection")
-            if parent.presence is not EntryPresence.UNKNOWN:
-                break
-
-    if parent.presence is EntryPresence.ABSENT or (
-        parent.presence is EntryPresence.PRESENT
-        and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
-    ):
+    (read, assembly), parent = await _read_with_known_parent(
+        runtime,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        read=read_tree,
+        first_read=lambda answer: answer[0],
+    )
+    if not _is_folder(parent):
         return None
 
     tree_entries = ()
@@ -2571,26 +2706,13 @@ async def api_tree(request: Request) -> Response:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     if group_by is not None:
-        groups = []
-        envelope: dict[str, Any] | None = None
-        # One instant for every group, so each age band is cut where the next one starts.
-        as_of_ns = time.time_ns()
-        for group in groups_for(group_by):
-            if group.by == "age" and age_band(group, tree_filter.recency_seconds).empty:
-                continue
-            payload = await _tree_payload_from_provider(
-                request,
-                subpath=subpath,
-                remaining_depth=remaining_depth,
-                tree_filter=replace(tree_filter, group=group),
-                as_of_ns=as_of_ns,
-                with_navigation=False,
-            )
-            if payload is None:
-                return JSONResponse({"error": "Not found"}, status_code=404)
-            envelope = envelope or payload
-            groups.append(group_row(group, payload))
-        return JSONResponse(groups_payload(group_by, groups, envelope))
+        return await _grouped_tree_from_provider(
+            request,
+            subpath=subpath,
+            remaining_depth=remaining_depth,
+            tree_filter=tree_filter,
+            group_by=group_by,
+        )
 
     return await _read_tree_from_provider(
         request,

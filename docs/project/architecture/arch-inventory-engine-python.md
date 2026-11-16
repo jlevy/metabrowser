@@ -152,6 +152,7 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
 | `_navigation_tally_memo` | the index-wide tallies and sorted modification times | A moving revision older than the refresh bound |
 | `_navigation_read_memo` | one coherent root-entry and navigation read boundary | The same bound; root replacement clears it |
 | `_page_memos` | complete projections with another page to serve | Consumption, or eviction past `_PAGE_MEMO_CAPACITY` |
+| `_evicted_page_tokens` | why each recently evicted cursor’s page is gone | The oldest past `_EVICTED_PAGE_TOKEN_MEMORY` |
 | `_change_history` | recent change batches for resumption | Bounded by the configured change-queue size |
 
 - **The children index is maintained**, so a rollup or tree expansion reads only the
@@ -174,7 +175,15 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
   handles.
 - **Continuations** are retained in `_page_memos`, bounded by `_PAGE_MEMO_CAPACITY` and
   `MAX_ASSEMBLED_ROWS`. A page consumes its single-use cursor, and eviction raises
-  `VersionUnavailableError`.
+  `VersionUnavailableError`, whose message names the eviction for a cursor among the
+  last `_EVICTED_PAGE_TOKEN_MEMORY` evicted, so it does not read as a change to the
+  files. A grouped tree retains every outrunning group’s rows at once, against the
+  `MAX_ASSEMBLED_ROWS` bound that every continuation shares, which is why `/api/tree`
+  admits one grouped assembly at a time per runtime
+  (`InventoryRuntime.grouped_tree_admission`) and overlapping grouped reads take turns
+  rather than evicting each other’s pages.
+  A grouped read whose own continuations do not fit evicts its oldest, retries, and
+  fails with `VersionUnavailableError`.
 - **Change history** is bounded by the change-queue size; a cursor older than the
   history, or from another session, gets a reset.
 
