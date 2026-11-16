@@ -54,7 +54,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -163,6 +165,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
 # metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
@@ -219,7 +222,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -317,7 +322,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -869,7 +876,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -1030,7 +1039,9 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1131,7 +1142,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -1243,7 +1256,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -1347,7 +1362,9 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1448,7 +1465,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---

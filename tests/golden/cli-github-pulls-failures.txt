@@ -73,6 +73,7 @@ cloned https://github.com/octo/demo in 0.0 s
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
@@ -1255,7 +1256,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 2,
+  "cleared": 3,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1334,6 +1335,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
 ## A catalog whose versions cannot be read, here a write-ahead-log database, which no release writes, is left as it is and named the same way; the command clears it.
@@ -1415,7 +1417,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 2,
+  "cleared": 3,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1494,6 +1496,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
 ## An environment token cannot resolve its login while offline.

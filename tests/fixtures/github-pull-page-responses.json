@@ -22,7 +22,9 @@
       "snapshot_route": null,
       "rendered_route": null,
       "record": null,
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "refresh_started": {
@@ -50,7 +52,9 @@
         "snapshot_route": null,
         "rendered_route": null,
         "record": null,
-        "core_preview": null
+        "core_preview": null,
+        "repository_labels": [],
+        "labels_pending": false
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }
@@ -78,7 +82,9 @@
       "snapshot_route": null,
       "rendered_route": null,
       "record": null,
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "current": {
@@ -283,7 +289,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "markdown body": {
@@ -388,7 +396,9 @@
       "record": {
         "same_as": "current"
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "stale": {
@@ -421,7 +431,9 @@
       "record": {
         "same_as": "current"
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "refresh_again": {
@@ -456,7 +468,9 @@
         "record": {
           "same_as": "current"
         },
-        "core_preview": null
+        "core_preview": null,
+        "repository_labels": [],
+        "labels_pending": false
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }
@@ -491,7 +505,9 @@
       "record": {
         "same_as": "current"
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "refreshed_unchanged": {
@@ -696,7 +712,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "refreshed": {
@@ -910,7 +928,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "markdown added": {
@@ -1291,7 +1311,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "closed": {
@@ -1422,7 +1444,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "merged_unattributed": {
@@ -1547,7 +1571,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "failed": {
@@ -1580,7 +1606,9 @@
       "record": {
         "same_as": "merged_unattributed"
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "not_due": {
@@ -1615,7 +1643,9 @@
         "record": {
           "same_as": "merged_unattributed"
         },
-        "core_preview": null
+        "core_preview": null,
+        "repository_labels": [],
+        "labels_pending": false
       },
       "status_route": "/api/plugin/github/pull?number=8"
     }
@@ -1652,7 +1682,9 @@
         "record": {
           "same_as": "merged_unattributed"
         },
-        "core_preview": null
+        "core_preview": null,
+        "repository_labels": [],
+        "labels_pending": false
       },
       "status_route": "/api/plugin/github/pull?number=8"
     }
@@ -1844,7 +1876,9 @@
         },
         "unavailable": {}
       },
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "absent_14": {
@@ -1870,7 +1904,9 @@
       "snapshot_route": null,
       "rendered_route": null,
       "record": null,
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   },
   "too_many": {
@@ -1898,7 +1934,9 @@
         "snapshot_route": null,
         "rendered_route": null,
         "record": null,
-        "core_preview": null
+        "core_preview": null,
+        "repository_labels": [],
+        "labels_pending": false
       },
       "status_route": "/api/plugin/github/pull?number=14",
       "error": "too many pull requests are being fetched; try again when one has finished",
@@ -1928,7 +1966,9 @@
       "snapshot_route": null,
       "rendered_route": null,
       "record": null,
-      "core_preview": null
+      "core_preview": null,
+      "repository_labels": [],
+      "labels_pending": false
     }
   }
 }

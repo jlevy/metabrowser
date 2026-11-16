@@ -258,7 +258,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -651,7 +653,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -721,7 +725,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -779,7 +785,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -856,7 +864,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -893,7 +903,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -930,7 +942,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -1135,7 +1149,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1166,7 +1182,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1206,7 +1224,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1237,7 +1257,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1278,7 +1300,9 @@ status: 200
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }

@@ -22,6 +22,7 @@ from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
     Origin,
+    in_a_stable_order,
     install_fake_gh,
     logged_gh_calls,
     scenario,
@@ -79,7 +80,8 @@ def test_golden_repository_labels(
             sections["body"] = [json.dumps(body)]
         result = run_metab(args)
         shown = [arg.removeprefix(f"{tmp_path}/") for arg in args]
-        calls = logged_gh_calls(tmp_path)
+        # A record's parts are read together, in whatever order the processes ran.
+        calls = in_a_stable_order(logged_gh_calls(tmp_path))
         blocks.append(result.block(" ".join(quoted(arg) for arg in shown), **sections, gh=calls))
         if "status: 200\n{" in result.stdout:
             return json.loads(
