@@ -19,6 +19,9 @@ The header lists only the statuses some file has, in one order: added, removed,
 modified, renamed, then the rest.
 Counts use the shell’s number format, the minus sign is U+2212, and “(estimated)”
 follows totals that are not exact.
+A list cut short at its bound, on a page that knows the whole change set’s totals, as a
+commit’s page does, says those, with no breakdown of the listed files alone, and how
+many files are listed.
 A screen reader is told the same in words.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
@@ -28,8 +31,8 @@ sums leave out, for each side when the sides differ.
 A path a patch lists more than once, as a file that became a symlink or a commit series
 repeats it, is one row with both changes’ counts and a status for what happened to it,
 so the root’s counts are the header’s totals.
-A long tree has in the document only the rows in its box’s view, 40 more each way, and
-the row that takes Tab.
+A long tree has in the document only the rows in the window’s view of it, 40 more each
+way, and the row that takes Tab.
 A path is its author’s text, so a control, format, or invisible character in it, such as
 a right-to-left override or a zero-width space, shows as U+FFFD by the server’s display
 rule (`displayPath`), while the path itself stays the row’s identity.
@@ -81,6 +84,12 @@ $ node tests/dom/diff-summary-session.js
       "text": "0 changed files  +0 −0",
       "label": "0 changed files; 0 lines added, 0 deleted",
       "estimated": false
+    },
+    "a list cut short, with the page's whole totals": {
+      "text": "5,000 changed files  +152,340 −30,211 (11 listed)",
+      "label": "5,000 changed files; 152,340 lines added, 30,211 deleted; 11 listed",
+      "estimated": false,
+      "listed": "11"
     },
     "the tree as it opens": [
       "v assets/ (2; 2 files without line counts)",

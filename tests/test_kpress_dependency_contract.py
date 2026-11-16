@@ -173,6 +173,26 @@ def test_pinned_kpress_owns_the_inline_code_base_style() -> None:
     assert "padding: 0.25em 0.2em 0.1em 0.2em;" in inline_block
 
 
+def test_host_bridges_one_mono_stack_into_kpress_documents() -> None:
+    """Shell code and document code draw in one face.
+
+    --font-mono and KPress's --kpress-host-font-mono hook both read --app-mono, a name
+    only the host declares. A bridge through --font-mono would not reach the document:
+    KPress redeclares --font-mono inside `.kpress` as var(--kpress-font-mono).
+    """
+
+    root: dict[str, str] = {}
+    for selector, declarations in _rules_of(SOURCE_DIR / "static" / "styles.css"):
+        if selector == ":root":
+            root.update(declarations)
+    tokens = get_static_asset("css/style-tokens.css").content.decode("utf-8")
+
+    assert root["--font-mono"] == "var(--app-mono)"
+    assert root["--kpress-host-font-mono"] == "var(--app-mono)"
+    assert re.search(r"--kpress-font-mono:\s*var\(\s*--kpress-host-font-mono,", tokens)
+    assert "--app-mono" not in tokens
+
+
 def test_host_unifies_inline_and_block_code_chrome() -> None:
     styles = (SOURCE_DIR / "static" / "styles.css").read_text(encoding="utf-8")
     code_border = "--code-border: color-mix(in srgb, var(--border) 55%, transparent);"

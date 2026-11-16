@@ -25,12 +25,11 @@ from metabrowser.builtin_plugins.github import (
     gh_budget,
     gh_lists,
     pull_catalog,
-    pull_labels,
     pull_list,
     pull_list_refresh,
     pull_list_route,
 )
-from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, GhResponse
+from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
@@ -90,7 +89,6 @@ from tests.github_pull_fixture import (
     catalog_entries,
     generated_item,
     install_fake_gh,
-    label_entries,
     next_link,
     ok,
     seed_catalog,
@@ -145,17 +143,8 @@ def _provider(
         calls.append(key)
         return entries[key]["body"]["data"]
 
-    async def labels(path: str, **_kwargs: Any) -> GhResponse:
-        # The repository's label set, which the job asks for once it has published a page
-        # (pull_labels); it is not one of the catalog's calls.
-        answer = label_entries()[path]
-        return GhResponse(
-            200, {"etag": answer["headers"]["Etag"]}, json.dumps(answer["body"]).encode()
-        )
-
     monkeypatch.setattr(pull_list_refresh, "active_account", active)
     monkeypatch.setattr(pull_list_refresh, "gh_graphql", graphql)
-    monkeypatch.setattr(pull_labels, "gh_api", labels)
     return calls
 
 
@@ -429,11 +418,7 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
         json.loads(line)["args"]
         for line in (tmp_path / "fake-gh-log.jsonl").read_text().splitlines()
     ]
-    api = [args for args in log if args[0] == "api"]
-    # The catalog's page, then, once it is published, the repository's label set, its
-    # one REST page (pull_labels).
-    assert [args[:2] for args in api] == [["api", "graphql"], ["api", "--hostname"]]
-    assert api[1][-1] == "repos/octo/demo/labels?per_page=100&page=1"
+    assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
     assert any("avatar_url:avatarUrl(size:40)" in arg for args in log for arg in args)
     assert not list((repository.home / "repository-stores").iterdir())
 
@@ -1787,20 +1772,14 @@ def test_page_publication_cas_and_counts_do_not_walk_the_catalog(
 
 
 def test_hostile_bounded_rows_round_trip_without_dropped_rows(repository: ListedRepository) -> None:
-    hostile = {"name": "\x00" * 100, "color": "ffffff", "description": "\x00" * 100}
-    side = {"ref": "\x00" * 300, "sha": "0" * 40, "repo": {"full_name": "\x00" * 300}}
     items = [
-        generated_item(n)
-        | {"title": "\x00" * 3000, "head": side, "base": side, "labels": [hostile] * 100}
+        generated_item(n) | {"title": "\x00" * 3000, "labels": [{"name": "\x00" * 100}] * 100}
         for n in range(1, 101)
     ]
     state = _seed(repository, items)
     loaded, rows, _ = catalog_window(repository.home, repository.slug, "all", limit=100)
     assert loaded == state and len(rows) == 100
-    # Every text at its bound, 100 labels among them, fits the 32 KiB the catalog lets SQLite
-    # store in a row, and a label's description is the record's, not the row's.
     assert all(len(json.dumps(row).encode()) < 32 * 1024 for row in rows)
-    assert all(set(label) == {"name", "color"} for row in rows for label in row["labels"])
 
 
 def test_closed_includes_merged_and_duplicate_pages_do_not_inflate_cached(
@@ -2124,10 +2103,8 @@ def test_each_catalog_shape_is_pinned_to_the_version_that_names_it() -> None:
         "rows, CATALOG_PROJECTION": (CATALOG_PROJECTION, _shape(PullListRow.model_json_schema())),
     } == {
         "tables, CATALOG_SCHEMA": (1, "5f1b61292a43cde0"),
-        # The checkpoint bounds its projection_version by CATALOG_PROJECTION, so its digest
-        # moves with that version too, which names the change.
-        "checkpoint, CHECKPOINT_SCHEMA": (1, "4977874619334438"),
-        "rows, CATALOG_PROJECTION": (3, "0d6fbac3228ea579"),
+        "checkpoint, CHECKPOINT_SCHEMA": (1, "e74f6ea5853f5c34"),
+        "rows, CATALOG_PROJECTION": (2, "327ef662914d936d"),
     }
     # A checkpoint writes the version it names, or an older release cannot see it.
     assert CatalogState.model_fields["schema_version"].default == pull_catalog.CHECKPOINT_SCHEMA
@@ -2234,50 +2211,6 @@ def test_old_projection_enriches_once_and_resumes_without_losing_offline_rows(
     calls.clear()
     asyncio.run(refresh_pull_list(repository, "all", retry=True))
     assert calls == ["graphql:updated:start"]
-
-
-def test_rows_of_bare_label_names_are_neutral_until_the_projection_upgrade_colors_them(
-    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A projection 2 catalog, which names each label alone, as 0.12.0's projection 1 does.
-
-    Its rows read as they are, each label without a color, and the upgrade's one ALL scan
-    rewrites them with GitHub's colors. A row keeps no description: the record does.
-    """
-
-    labels = [
-        {"name": "bug", "color": "D73A4A", "description": "Something isn't working"},
-        {"name": "invalid", "color": "e4e669", "description": ""},
-        {"name": "odd", "color": "#123456", "description": None},
-    ]
-    items = [generated_item(n) | {"labels": labels} for n in range(1, 4)]
-    _seed(repository, items)
-    with sqlite3.connect(_path(repository)) as db:
-        checkpoint = json.loads(db.execute("SELECT value FROM checkpoint").fetchone()[0])
-        checkpoint["projection_version"] = 2
-        db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
-        for number, body in db.execute("SELECT number,body FROM pulls").fetchall():
-            value = json.loads(body)
-            value["labels"] = [label["name"] for label in value["labels"]]
-            db.execute("UPDATE pulls SET body=? WHERE number=?", (json.dumps(value), number))
-    old = read_catalog(repository.home, repository.slug)
-    assert old is not None and old.projection_version == 2
-    _state, rows, _after = catalog_window(repository.home, repository.slug, "all", limit=10)
-    assert [len(row["labels"]) for row in rows] == [3, 3, 3]
-    assert all(
-        label == {"name": label["name"], "color": None} for row in rows for label in row["labels"]
-    )
-    calls = _provider(monkeypatch, items)
-    final = asyncio.run(refresh_pull_list(repository, "all"))
-    assert calls == ["graphql:all:start"]
-    assert final.projection_version == CATALOG_PROJECTION and final.done["all"]
-    row = catalog_row(repository.home, repository.slug, 1)
-    assert row is not None
-    assert [label.model_dump() for label in row.labels] == [
-        {"name": "bug", "color": "d73a4a"},
-        {"name": "invalid", "color": "e4e669"},
-        {"name": "odd", "color": None},
-    ]
 
 
 def test_projection_reset_loser_keeps_the_winners_resume_cursor(

@@ -25,8 +25,9 @@
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
 // or a press on a file jumps; on a folder they toggle it. A host with an address for a file
-// takes the jump (diff-view.js `openFile`): a pull request's Changes opens
-// `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and the diff follows its address.
+// takes the jump (diff-view.js `openFile`): a pull request's page, whose header holds the
+// summary on every tab, opens `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and
+// its diff follows the address.
 //
 // A path is text whoever made the change wrote: it is painted with textContent and reaches
 // no class, style, or markup, and what is painted is its display, the server's rule
@@ -35,14 +36,16 @@
 //
 // Measured 2026-11-15 in headless Chrome 152 at 1280×900, medians of 7 loads, on this
 // repository's pull request #260 as a patch (596 files, 649 rows) and on a synthetic patch of
-// 2,000 files four folders deep (3,221 rows), at a load average of 12 to 39: the header
-// paints in the frame the first file bar does, no later than the count line it replaced;
-// a press after a hover drew 61 rows in 4.9 and 12.2 ms of script and showed them 16.4 and
-// 46.8 ms after the press (at most 19 and 65.7), with no long task; a press with no hover,
-// which imports this module itself, took 15.7 to 16.9 and 39.4 to 43.1 ms; a folder three
-// and four levels deep closed and opened in 9.4 to 26.3 ms. No spinner is drawn: nothing
-// waits long enough to need one. diff.summary-paint in
-// docs/project/architecture/arch-views-models-routes.md records the run.
+// 2,000 files four folders deep (3,221 rows), at a load average of 12 to 39, while the opened
+// tree still scrolled in a box at most 60vh tall, so the rows drawn are that box's view and
+// the overscan (SUMMARY_ROWS_OVERSCAN gives the window's): the header paints in the frame
+// the first file bar does, no later than the count line it replaced; a press after a hover
+// drew 61 rows in 4.9 and 12.2 ms of script and showed them 16.4 and 46.8 ms after the
+// press (at most 19 and 65.7), with no long task; a press with no hover, which imports this
+// module itself, took 15.7 to 16.9 and 39.4 to 43.1 ms; a folder three and four levels deep
+// closed and opened in 9.4 to 26.3 ms. No spinner is drawn: nothing waits long enough to
+// need one. diff.summary-paint in docs/project/architecture/arch-views-models-routes.md
+// records the run.
 
 /**
  * Folders start open up to this many files, as the Pulls tab's do (`AUTO_EXPAND_FILES` in
@@ -62,7 +65,7 @@ export const SUMMARY_AUTO_EXPAND_FILES = 3000;
  * most 2,000 files (`MAX_MANIFEST_FILES`), a few thousand rows, tens of thousands of pixels,
  * where a browser lays out 33,554,428 (docs/large-content-rendering.md). Measured 2026-11-15
  * in headless Chrome 152 at 1280×900, at a load average of 16, five loads each, a press after
- * a hover, on synthetic patches of 106 files (133 rows, 3,221 px), 600 files (968 rows,
+ * a hover, on synthetic patches of 106 files (133 rows, 3,197 px), 600 files (968 rows,
  * 23,237 px), and 2,000 files four folders deep (2,290 rows, 54,965 px): the rows showed 8.4
  * to 16.3, 16.2 to 19.8, and 48.3 to 57.4 ms after the press; the document held at most 116
  * rows; scrolling the page through the whole tree, 400 px and two frames a step, took the
@@ -320,7 +323,7 @@ export function mountSummaryTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "changed-file-stats diff-summary-row-stats", "aria-hidden": "true" }, [
+          h("span", { class: "changed-file-stats", "aria-hidden": "true" }, [
             h("span", { class: "diff-stat-add" }, [stats.additions]),
             h("span", { class: "diff-stat-del" }, [stats.deletions]),
           ]),
@@ -329,13 +332,13 @@ export function mountSummaryTree(host) {
 
   /** @param {SummaryRow} row @returns {Node[]} */
   function partsOf(row) {
-    const name = h("span", { class: "changed-file-name diff-summary-row-name" }, [row.name]);
+    const name = h("span", { class: "changed-file-name" }, [row.name]);
     if (row.kind === "folder") {
       const chevron = host.chevron();
       return [
         h(
           "span",
-          { class: "changed-file-toggle diff-summary-row-toggle", "aria-hidden": "true" },
+          { class: "changed-file-toggle", "aria-hidden": "true" },
           chevron === null ? [] : [chevron],
         ),
         name,
@@ -345,7 +348,7 @@ export function mountSummaryTree(host) {
     const badge = h(
       "span",
       {
-        class: "tree-container-badge diff-summary-row-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },
@@ -568,8 +571,16 @@ export function mountSummaryTree(host) {
   };
   // The tree has no scroll of its own: the window's view of it moves when the page, or any
   // box above it, scrolls, which a listener on the document hears in its capture phase, and
-  // when the window or the tree changes size.
-  document.addEventListener("scroll", onScroll, { capture: true, passive: true, signal });
+  // when the window or the tree changes size. A scroll of a box that does not hold the tree,
+  // a Split diff's code or the navigation pane, cannot move that view, so it draws nothing.
+  /** @param {Event} event */
+  const onPageScroll = (event) => {
+    const target = event.target;
+    if (target === document || (target instanceof Node && target.contains(body))) {
+      onScroll();
+    }
+  };
+  document.addEventListener("scroll", onPageScroll, { capture: true, passive: true, signal });
   window.addEventListener("resize", onScroll, { passive: true, signal });
   const sized = typeof ResizeObserver === "function" ? new ResizeObserver(onScroll) : null;
   sized?.observe(body);

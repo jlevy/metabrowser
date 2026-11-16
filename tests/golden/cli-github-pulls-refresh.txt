@@ -103,7 +103,6 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200
 gh api graphql catalog state=open cursor=open-300
@@ -317,10 +316,7 @@ status: 200
       "head_ref": "count-to-two",
       "head_repository": "forker/demo",
       "labels": [
-        {
-          "name": "enhancement",
-          "color": "2700af"
-        }
+        "enhancement"
       ],
       "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
@@ -464,10 +460,7 @@ status: 200
       "head_ref": "spam",
       "head_repository": null,
       "labels": [
-        {
-          "name": "invalid",
-          "color": "e4e669"
-        }
+        "invalid"
       ],
       "head_oid": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
       "merged": false
@@ -1346,7 +1339,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 5,
+  "cleared": 4,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1455,7 +1448,6 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200
 gh api graphql catalog state=open cursor=open-300

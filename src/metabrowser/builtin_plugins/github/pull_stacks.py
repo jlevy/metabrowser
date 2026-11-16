@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 import uuid
-from collections import OrderedDict
 from functools import partial
 from typing import Annotated, Final, Literal, Self
 
@@ -19,13 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints
 
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
-from metabrowser.builtin_plugins.github.gh import GhError, GhResponse, gh_api, gh_stack_available
+from metabrowser.builtin_plugins.github.gh import GhResponse, gh_api, gh_stack_available
 from metabrowser.builtin_plugins.github.gh_lists import (
     PullDataError,
-    UnreadableItemError,
     as_dict,
-    cache_failure_reason,
-    cache_unwritable,
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.gh_lists import active_account as active_account
@@ -34,16 +29,23 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRefreshStamp,
     Reader,
     Timestamp,
-    ensure_pulls_directory,
 )
-from metabrowser.cache.atomic import RecordError, read_bytes_bounded, read_record
-from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError, read_layout
-from metabrowser.cache.locks import run_lock_section, source_alias_lock
-from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_record, source_stacks
-from metabrowser.cache.records import REPOSITORY_SOURCE_CONTRACT_ID, RepositorySource
-from metabrowser.home import PrivateStorageError, write_private_file_atomic
-
-log = logging.getLogger(__name__)
+from metabrowser.builtin_plugins.github.repository_snapshot import (
+    FAILURES,
+    Unwritten,
+    check_hold,
+    failure_stamp,
+    publish_revision,
+    rate_hold,
+    record_failure,
+)
+from metabrowser.builtin_plugins.github.repository_snapshot import (
+    remaining_freshness as snapshot_freshness,
+)
+from metabrowser.cache.atomic import RecordError, read_bytes_bounded
+from metabrowser.cache.locks import run_lock_section
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_stacks
+from metabrowser.home import PrivateStorageError
 
 STACK_FRESHNESS_S: Final = 300.0
 STACK_PAGE_SIZE: Final = 100
@@ -58,7 +60,6 @@ MAX_SNAPSHOT_MEMBERS: Final = 10000
 MAX_STACK_BYTES: Final = 8 * 1024 * 1024
 # Room for the enclosing snapshot, refresh outcome and page metadata within the read cap.
 _ENVELOPE_BYTES: Final = 16 * 1024
-_MAX_UNWRITTEN: Final = 64
 
 Number = Annotated[int, Field(strict=True, ge=1, le=MAX_PULL_REQUEST_NUMBER)]
 Etag = Annotated[str, StringConstraints(pattern=ETAG_PATTERN)]
@@ -131,13 +132,8 @@ class StackCache(_Model):
         return self
 
 
-# A refused cache write must still back off in this process. No paths or raw provider
-# output are exposed, and only the coordinator's bounded working set is remembered.
-_UNWRITTEN: OrderedDict[tuple[str, str], PullRefreshStamp] = OrderedDict()
-
-
-def _key(repository: ListedRepository) -> tuple[str, str]:
-    return str(repository.home), repository.source
+# A refused cache write must still back off in this process (:class:`.Unwritten`).
+_UNWRITTEN: Final = Unwritten()
 
 
 def read_stacks(repository: ListedRepository) -> StackCache | None:
@@ -157,64 +153,21 @@ def read_stacks(repository: ListedRepository) -> StackCache | None:
 
 def last_refresh(repository: ListedRepository, cache: StackCache | None) -> PullRefreshStamp | None:
     durable = cache.last_refresh if cache is not None else None
-    transient = _UNWRITTEN.get(_key(repository))
-    if transient is not None and (durable is None or transient.at >= durable.at):
-        return transient
-    return durable
-
-
-def _remember(repository: ListedRepository, stamp: PullRefreshStamp) -> None:
-    key = _key(repository)
-    held = _UNWRITTEN.get(key)
-    if held is None or not pull_list.rate_limit_holds(held, now=pull_list.utc_now()):
-        _UNWRITTEN[key] = stamp
-    _UNWRITTEN.move_to_end(key)
-    while len(_UNWRITTEN) > _MAX_UNWRITTEN:
-        _UNWRITTEN.popitem(last=False)
+    return _UNWRITTEN.last_refresh(repository.home, repository.source, durable)
 
 
 def remaining_freshness(stamp: PullRefreshStamp | None) -> float:
-    if stamp is None:
-        return 0.0
-    age = (pull_list.utc_now() - pull_list.parse_stamp(stamp.at)).total_seconds()
-    return max(0.0, min(STACK_FRESHNESS_S, STACK_FRESHNESS_S - age))
+    return snapshot_freshness(stamp, STACK_FRESHNESS_S)
 
 
 def _rate_hold(repository: ListedRepository) -> PullRefreshStamp | None:
-    # The core catalog's provider refusal also applies to optional enrichment. Stack
-    # work reads that hold but never writes or clears the catalog's outcome.
-    candidates = (
-        last_refresh(repository, read_stacks(repository)),
-        pull_list.read_list_refresh(repository.home, repository.slug, "all"),
-    )
-    return next(
-        (
-            stamp
-            for stamp in candidates
-            if pull_list.rate_limit_holds(stamp, now=pull_list.utc_now())
-        ),
-        None,
-    )
+    return rate_hold(repository, last_refresh(repository, read_stacks(repository)))
 
 
 def refresh_wanted(repository: ListedRepository, *, retry: bool = False) -> bool:
     return _rate_hold(repository) is None and (
         retry or remaining_freshness(last_refresh(repository, read_stacks(repository))) == 0
     )
-
-
-def _source_matches(repository: ListedRepository) -> None:
-    layout = read_layout(repository.home, shared="refuse")
-    if layout is None:
-        raise ValueError("no cache layout")
-    source = read_record(
-        repository.home,
-        source_record(repository.slug, "source.yml"),
-        REPOSITORY_SOURCE_CONTRACT_ID,
-        shared="refuse",
-    )
-    if not isinstance(source, RepositorySource) or source.clone_url != repository.source:
-        raise ValueError("source identity changed")
 
 
 def publish_stacks(
@@ -228,30 +181,22 @@ def publish_stacks(
     A failure supplies no snapshot and retains the preceding successful data. Async
     callers use run_lock_section so a cancelled lock waiter cannot write later.
     """
-    _source_matches(repository)
-    with source_alias_lock(repository.home, repository.slug):
-        _source_matches(repository)
-        current = read_stacks(repository)
-        if (current.revision if current else None) != (previous.revision if previous else None):
-            return False
-        held = last_refresh(repository, current)
-        if (
-            pull_list.rate_limit_holds(held, now=pull_list.utc_now())
-            and stamp.outcome != "rate_limited"
-        ):
-            return False
-        result = StackCache(
-            source=repository.source,
-            snapshot=snapshot if snapshot is not None else current.snapshot if current else None,
-            last_refresh=stamp,
-        )
-        data = result.model_dump_json().encode()
-        if len(data) > MAX_STACK_BYTES:
-            raise ValueError("stack snapshot exceeds its cache bound")
-        ensure_pulls_directory(repository.home, repository.slug)
-        write_private_file_atomic(repository.home, source_stacks(repository.slug), data)
-        _UNWRITTEN.pop(_key(repository), None)
-        return True
+
+    def compose(current: StackCache | None) -> StackCache:
+        kept = snapshot if snapshot is not None else current.snapshot if current else None
+        return StackCache(source=repository.source, snapshot=kept, last_refresh=stamp)
+
+    return publish_revision(
+        repository,
+        previous,
+        stamp,
+        read=partial(read_stacks, repository),
+        compose=compose,
+        relative=source_stacks(repository.slug),
+        max_bytes=MAX_STACK_BYTES,
+        unwritten=_UNWRITTEN,
+        too_large="stack snapshot exceeds its cache bound",
+    )
 
 
 def _page(repository: ListedRepository, response: GhResponse, old: StackPage | None) -> StackPage:
@@ -286,11 +231,7 @@ def _page(repository: ListedRepository, response: GhResponse, old: StackPage | N
 
 
 async def _check_hold(repository: ListedRepository) -> None:
-    held = await asyncio.to_thread(_rate_hold, repository)
-    if held is not None:
-        raise GhError(
-            "GitHub's API rate limit is exhausted", state="rate_limited", reset_at=held.reset_at
-        )
+    await check_hold(partial(_rate_hold, repository))
 
 
 async def refresh_stacks(
@@ -349,54 +290,17 @@ async def refresh_stacks(
         stamp = PullRefreshStamp(outcome="succeeded", at=now, reader=reader)
         await run_lock_section(partial(publish_stacks, repository, previous, snapshot, stamp))
         return
-    except (GhError, PullDataError) as exc:
-        stamp = PullRefreshStamp(
-            outcome=exc.state,
-            message=str(exc),
-            reset_at=exc.reset_at,
-            at=utc_stamp(pull_list.utc_now()),
+    except FAILURES as exc:
+        stamp = failure_stamp(
+            exc,
+            repository,
             reader=reader,
+            subject="optional stack metadata",
+            unavailable="Optional stack metadata is unavailable",
         )
-    except (RecordError, PrivateStorageError, OSError, LayoutError, FutureLayoutFormatError) as exc:
-        log.debug("optional stack cache refused a write: %s", exc)
-        # Clearing the plugin's cache mends what it holds, not the home's layout or records.
-        message = (
-            str(
-                cache_unwritable(
-                    "optional stack metadata",
-                    exc,
-                    source=repository.source,
-                    checkout=repository.checkout,
-                )
-            )
-            if isinstance(exc, (PrivateStorageError, OSError))
-            else f"optional stack metadata could not be cached: {cache_failure_reason(exc)}"
-        )
-        stamp = PullRefreshStamp(
-            outcome="cache_unwritable",
-            message=message[:1000],
-            at=utc_stamp(pull_list.utc_now()),
-            reader=reader,
-        )
-    except (ValueError, KeyError, TypeError, UnreadableItemError) as exc:
-        log.debug("optional stack metadata was unreadable: %s", exc)
-        stamp = PullRefreshStamp(
-            outcome="unreadable",
-            message="Optional stack metadata is unavailable",
-            at=utc_stamp(pull_list.utc_now()),
-            reader=reader,
-        )
-    try:
-        await run_lock_section(partial(publish_stacks, repository, previous, None, stamp))
-    except (
-        RecordError,
-        PrivateStorageError,
-        OSError,
-        LayoutError,
-        FutureLayoutFormatError,
-        ValueError,
-    ):
-        _remember(repository, stamp)
+    await record_failure(
+        partial(publish_stacks, repository, previous, None, stamp), repository, stamp, _UNWRITTEN
+    )
 
 
 __all__ = [

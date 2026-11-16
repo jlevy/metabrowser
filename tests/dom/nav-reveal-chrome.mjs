@@ -80,6 +80,23 @@ try {
   );
   await send("Runtime.enable");
   await send("Page.enable");
+  // Step 9 presses Control-N and Control-P, which are bound only where Control reaches the
+  // page, macOS and iOS, as its navigator says (`controlReachesPage` in
+  // static/keyboard-shortcuts.js). So every page here has a Mac's navigator, on every host,
+  // CI's Linux runners included, as tests/dom/control-chords-chrome.mjs sets one; the key
+  // events are still this Chrome's own.
+  await send("Emulation.setUserAgentOverride", {
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    platform: "MacIntel",
+    userAgentMetadata: {
+      brands: [],
+      platform: "macOS",
+      platformVersion: "",
+      architecture: "x86",
+      model: "",
+      mobile: false,
+    },
+  });
   const waitFor = async (expression, what) => {
     try {
       return await chrome.waitFor(expression, STEP_MS);
@@ -172,6 +189,23 @@ try {
     check(`${label}: nothing is noted`, pane.notes.length === 0, JSON.stringify(pane));
     return pane;
   };
+  /**
+   * Hold the page's reads of its stacks at their answers until the returned function lets
+   * them go, so they arrive after the Pulls list's first window.
+   */
+  const pausedStacks = [];
+  chrome.on("Fetch.requestPaused", ({ requestId }) => pausedStacks.push(requestId));
+  const holdStacks = async () => {
+    await send("Fetch.enable", {
+      patterns: [{ urlPattern: "*/api/plugin/github/stacks*", requestStage: "Response" }],
+    });
+    return async () => {
+      for (const requestId of pausedStacks.splice(0)) {
+        await send("Fetch.continueRequest", { requestId });
+      }
+      await send("Fetch.disable");
+    };
+  };
   const fileRow = (filePath) => `#tab-files .tree-item[data-path="${filePath}"]`;
   const pullRow = (number) => `#tab-pulls .github-pulls-row[data-number="${number}"]`;
 
@@ -195,11 +229,79 @@ try {
   phase("link");
   await revealed("a link", fileRow("docs/deep/deeper/leaf.md"), "files");
 
-  // 3. Quick Search, to a file past the rows its long folder draws at once.
-  await quickSearch("f250", "f250");
+  // 3. Quick Search, to a file in the fourth page of a 1,000-file folder. Only that page
+  // is drawn: the pages before it stay behind a "more" row above it, and the last page
+  // behind the row that ends the folder.
+  await quickSearch("f605", "f605");
   phase("quick search: a long folder");
-  await revealed("Quick Search, a long folder", fileRow("long/f250.txt"), "files");
+  await revealed("Quick Search, a long folder", fileRow("long/f605.txt"), "files");
   await shot("long-folder");
+  // The long folder as drawn, in order: each run of consecutive rows, and each "more" row.
+  const LONG = `(() => {
+    const children = document.querySelector('#tab-files .tree-folder[data-path="long"]').nextElementSibling;
+    const parts = [];
+    let last = null;
+    for (const item of children.children) {
+      if (item.classList.contains("tree-page-more")) {
+        last = null;
+        parts.push(item.textContent);
+        continue;
+      }
+      const name = item.dataset.path.slice("long/".length, -".txt".length);
+      const number = Number(name.slice(1));
+      if (last !== null && number === last + 1) {
+        parts[parts.length - 1] = parts[parts.length - 1].split("–")[0] + "–" + name;
+      } else {
+        parts.push(name);
+      }
+      last = number;
+    }
+    return parts;
+  })()`;
+  const longIs = async (label, expected) => {
+    const parts = await evaluate(LONG);
+    check(label, JSON.stringify(parts) === JSON.stringify(expected), JSON.stringify(parts));
+  };
+  await longIs("Quick Search, a long folder: only the page that holds the row is drawn", [
+    "f000–f199",
+    "Show 400 more (1000 total)",
+    "f600–f799",
+    "Show 200 more (1000 total)",
+  ]);
+  // The "more" row above the revealed page draws the page before it there: the revealed
+  // row stays where it is, in view and selected, and the folder reads in order.
+  const MORE_ABOVE = `document.querySelector('#tab-files .tree-item[data-path="long/f600.txt"]').previousElementSibling`;
+  for (const [press, drawn, expected] of [
+    [
+      1,
+      "f399",
+      ["f000–f399", "Show 200 more (1000 total)", "f600–f799", "Show 200 more (1000 total)"],
+    ],
+    [2, "f599", ["f000–f799", "Show 200 more (1000 total)"]],
+  ]) {
+    await evaluate(`${MORE_ABOVE}.scrollIntoView({ block: "nearest" })`);
+    await frames();
+    const before = await evaluate(PANE(fileRow("long/f605.txt")));
+    check(
+      `the "more" row above the revealed page, press ${press}: the revealed row is in view first`,
+      before.row?.inView === true,
+      JSON.stringify(before),
+    );
+    await evaluate(`${MORE_ABOVE}.click()`);
+    await waitFor(
+      `document.querySelector(${JSON.stringify(fileRow(`long/${drawn}.txt`))}) !== null`,
+      `press ${press} draws the page before the revealed one`,
+    );
+    await frames();
+    const after = await evaluate(PANE(fileRow("long/f605.txt")));
+    check(
+      `the "more" row above the revealed page, press ${press}: the revealed row stays in view`,
+      after.row?.inView === true && after.row?.selected === true,
+      JSON.stringify({ before: before.row, after: after.row }),
+    );
+    await longIs(`the "more" row above the revealed page, press ${press}: in order`, expected);
+  }
+  phase("the rows a reveal left behind");
 
   // 4. Quick Search to the file shown, after the reader closed its folder: opening it
   // again reveals it. The folder closes as its chevron's toggle does, without opening it.
@@ -225,9 +327,9 @@ try {
     })`,
     "the long folder closes",
   );
-  await quickSearch("f250", "f250");
+  await quickSearch("f605", "f605");
   phase("quick search: the file shown");
-  await revealed("Quick Search, the file shown", fileRow("long/f250.txt"), "files");
+  await revealed("Quick Search, the file shown", fileRow("long/f605.txt"), "files");
 
   // The reader scrolls the tree away from that row before leaving Files.
   await evaluate(`document.getElementById("tree-content").scrollTop = 0`);
@@ -264,9 +366,9 @@ try {
   await evaluate("history.back()");
   await waitFor(`location.pathname === "/pulls"`, "Back to the list");
   await evaluate("history.back()");
-  await waitFor(`location.pathname === "/view/long/f250.txt"`, "Back to the file");
+  await waitFor(`location.pathname === "/view/long/f605.txt"`, "Back to the file");
   phase("back");
-  await revealed("Back", fileRow("long/f250.txt"), "files");
+  await revealed("Back", fileRow("long/f605.txt"), "files");
 
   // 7. Forward, twice: to the pull request.
   await evaluate("history.forward()");
@@ -280,12 +382,37 @@ try {
   await load(`${base}/pull/7`);
   phase("a pull request's address");
   await revealed("a pull request's address", pullRow(7), "pulls");
+  // Again, with the stacks read after the list's first window, as a loaded machine can read
+  // them: the first window reveals #7 far down the flat list, and the regroup that the
+  // stacks bring leaves it in view. A paint that kept the first row in view instead moved
+  // #7 into its stack, out of view.
+  const release = await holdStacks();
+  await load(`${base}/pull/7`);
+  await revealed("a pull request's address, before its stacks", pullRow(7), "pulls");
+  const flat = await evaluate(PANE(pullRow(7)));
+  const level = `document.querySelector(${JSON.stringify(pullRow(7))})?.getAttribute("aria-level")`;
+  check(
+    "a pull request's address, before its stacks: the list is flat",
+    (await evaluate(level)) === "1",
+    JSON.stringify(flat),
+  );
+  await release();
+  await waitFor(`${level} === "2"`, "#7 is grouped under its stack");
+  await frames();
+  phase("a pull request's address, stacks after the first window");
+  const grouped = await evaluate(PANE(pullRow(7)));
+  check(
+    "a pull request's address, stacks after the first window: the row stays in view",
+    grouped.row?.inView === true && grouped.row?.selected === true,
+    JSON.stringify({ flat: flat.row, grouped: grouped.row }),
+  );
 
   // 9. A key that opens an item: Control-N or Control-P walks the stack from #7 to its
   // neighbour, which the Pulls tab reveals, or, when the list does not hold it, names. #7
   // ends its stack, so one of the two goes nowhere. On a page that reached #7 by Forward on
   // a server that had just started, neither chord walked, with or without this change
-  // (2026-11-15), so the walk starts from the page's own address.
+  // (2026-11-15), so the walk starts from the page's own address. The chords are bound
+  // because the page's navigator names a Mac (above); under Linux's neither walks.
   await evaluate("document.activeElement?.blur?.()");
   await waitFor(
     `typeof window.metabrowser?.debug?.pullPage()?.hasStack === "function" && window.metabrowser.debug.pullPage().hasStack()`,
@@ -342,7 +469,214 @@ try {
   }
   await shot("control-n");
 
-  // 10. A file a filter hides: the tree selects nothing else and says why.
+  const STACK = `#tab-pulls .github-pulls-stack-row[data-stack="286"]`;
+  const stackState = () =>
+    evaluate(
+      `document.querySelector(${JSON.stringify(STACK)})?.getAttribute("aria-expanded") ?? null`,
+    );
+  const closeStack = async () => {
+    await waitFor(`document.querySelector(${JSON.stringify(STACK)}) !== null`, "Stack #286");
+    if ((await stackState()) !== "false") {
+      await evaluate(`document.querySelector(${JSON.stringify(STACK)}).click()`);
+    }
+    await waitFor(
+      `document.querySelector(${JSON.stringify(STACK)}).getAttribute("aria-expanded") === "false"`,
+      "Stack #286 closes",
+    );
+  };
+  const scrollTop = () => evaluate(`document.getElementById("tree-content").scrollTop`);
+  const scrollAway = async () => {
+    await evaluate(`document.getElementById("tree-content").scrollTop = 1e6`);
+    await frames();
+    return scrollTop();
+  };
+  // A step that moves nothing has had the time a reveal takes to move something.
+  const settled = async () => {
+    await evaluate("new Promise((resolve) => setTimeout(resolve, 400))");
+    await frames();
+  };
+  const tabButton = (tab) => `document.querySelector('.nav-tab-bar .tab-btn[data-tab="${tab}"]')`;
+  const activeIs = (tab) =>
+    `document.querySelector(".nav-tab-bar .tab-btn.active")?.dataset.tab === "${tab}"`;
+
+  // 10. Quick Search for the pull request shown, after the Pulls tab's button returned to it
+  // with the list as the reader left it: the reveal ends that kept place, and opens the
+  // stack the reader closed since.
+  await load(`${base}/pull/7`);
+  await revealed("a pull request's address, before its tab's button", pullRow(7), "pulls");
+  await evaluate(`${tabButton("files")}.click()`);
+  await waitFor(activeIs("files"), "the Files tab's button");
+  await evaluate(`${tabButton("pulls")}.click()`);
+  await waitFor(
+    `${activeIs("pulls")} && location.pathname === "/pull/7"`,
+    "the Pulls tab's button returns to #7",
+  );
+  await closeStack();
+  await scrollAway();
+  await quickSearch("#7", "#7");
+  phase("quick search: the pull request shown, after its tab's button");
+  await revealed(
+    "Quick Search, the pull request shown after its tab's button",
+    pullRow(7),
+    "pulls",
+  );
+  check(
+    "Quick Search, the pull request shown after its tab's button: its stack opened",
+    (await stackState()) === "true",
+  );
+
+  // 11. Another tab of the pull request shown is a step within it: the page's Changes tab
+  // leaves the stack the reader closed closed, and the list where the reader scrolled it.
+  await closeStack();
+  const beforeTab = await scrollAway();
+  await evaluate(`document.activeElement?.blur?.()`);
+  await evaluate(
+    `document.querySelector('#preview-pane a.tab-btn[role="tab"][href="/pull/7/files"]').click()`,
+  );
+  await waitFor(`location.pathname === "/pull/7/files"`, "the page's Changes tab");
+  await settled();
+  phase("the page's tab");
+  const afterTab = { stack: await stackState(), scrollTop: await scrollTop(), before: beforeTab };
+  check(
+    "the page's Changes tab: the closed stack stays closed",
+    afterTab.stack === "false",
+    JSON.stringify(afterTab),
+  );
+  check(
+    "the page's Changes tab: the list stays where the reader scrolled it",
+    Math.abs(afterTab.scrollTop - beforeTab) <= 1,
+    JSON.stringify(afterTab),
+  );
+
+  // 12. A changed file of the pull request shown, clicked in the Pulls tab or walked with J,
+  // is a step within it: the list stays on the reader's row, well below the pull request's
+  // own, rather than jumping back to it. #106 has 250 changed files.
+  await load(`${base}/pull/106`);
+  await revealed("a pull request with 250 changed files", pullRow(106), "pulls");
+  await evaluate(`document.querySelector(${JSON.stringify(pullRow(106))}).focus()`);
+  await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
+  const FILE_ROW = (name) =>
+    `#tab-pulls a.github-pull-file-row[href="/pull/106/files/src/app/plugins/github/${name}"]`;
+  const clicked = FILE_ROW("mod_040.py");
+  await waitFor(
+    `document.querySelector('#tab-pulls .github-pulls-item[data-number="106"] .github-pull-file-row') !== null`,
+    "#106's changed files are read",
+  );
+  // The file tree draws the rows near the view, so the list is scrolled down to the file.
+  await waitFor(
+    `(async () => {
+      const scroller = document.getElementById("tree-content");
+      for (let turn = 0; turn < 40 && document.querySelector(${JSON.stringify(clicked)}) === null; turn += 1) {
+        scroller.scrollTop += 300;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      }
+      return document.querySelector(${JSON.stringify(clicked)}) !== null;
+    })()`,
+    "#106's mod_040.py is drawn",
+  );
+  await evaluate(
+    `document.querySelector(${JSON.stringify(clicked)}).scrollIntoView({ block: "center" })`,
+  );
+  await frames();
+  const beforeClick = await scrollTop();
+  await evaluate(`document.querySelector(${JSON.stringify(clicked)}).click()`);
+  await waitFor(
+    `location.pathname === "/pull/106/files/src/app/plugins/github/mod_040.py"`,
+    "the clicked file's address",
+  );
+  await settled();
+  phase("a changed file clicked");
+  const afterClick = await evaluate(PANE(clicked));
+  check(
+    "a changed file clicked: the list stays where the reader scrolled it",
+    Math.abs(afterClick.row?.at?.[4] - beforeClick) <= 1,
+    JSON.stringify({ beforeClick, afterClick }),
+  );
+  check(
+    "a changed file clicked: its row stays in view",
+    afterClick.row?.inView === true,
+    JSON.stringify(afterClick),
+  );
+  // J from mod_044.py, three times: each opens the next file, and the row J moved to,
+  // which has focus, stays in view.
+  await evaluate(`document.querySelector(${JSON.stringify(FILE_ROW("mod_044.py"))}).focus()`);
+  const FOCUSED = `(() => {
+    const scroller = document.getElementById("tree-content");
+    const view = scroller.getBoundingClientRect();
+    const row = document.activeElement;
+    const box = row?.getBoundingClientRect?.();
+    return {
+      address: location.pathname,
+      row: row?.getAttribute?.("href") ?? null,
+      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      scrollTop: scroller.scrollTop,
+    };
+  })()`;
+  for (let walk = 1; walk <= 3; walk += 1) {
+    const from = await evaluate("location.pathname");
+    await press("j", { code: "KeyJ", keyCode: 74, text: "j" });
+    await waitFor(`location.pathname !== ${JSON.stringify(from)}`, `J ${walk} opens the next file`);
+    await settled();
+    const walked = await evaluate(FOCUSED);
+    check(
+      `J ${walk} through #106's files: the row J moved to has focus and stays in view`,
+      walked.inView && walked.row === walked.address,
+      JSON.stringify(walked),
+    );
+  }
+  phase("J through a pull request's files");
+
+  // 13. Two reveals in one long folder, the second above the first: the "more" row below
+  // the second's page, pressed by a reader reading down to it, draws its page down from
+  // there, with its first row in view and focused, and the row the reader left in view.
+  await load(`${base}/view/long/f905.txt`);
+  await revealed("a long folder's fifth page by its address", fileRow("long/f905.txt"), "files");
+  await quickSearch("f405", "f405");
+  phase("quick search: a second page of a long folder");
+  await revealed("Quick Search, a second page of a long folder", fileRow("long/f405.txt"), "files");
+  await longIs("two reveals in one long folder: each draws only its page", [
+    "f000–f199",
+    "Show 200 more (1000 total)",
+    "f400–f599",
+    "Show 200 more (1000 total)",
+    "f800–f999",
+  ]);
+  const MORE_BELOW = `document.querySelector('#tab-files .tree-item[data-path="long/f599.txt"]').nextElementSibling`;
+  await evaluate(`${MORE_BELOW}.scrollIntoView({ block: "nearest" })`);
+  await frames();
+  await evaluate(`${MORE_BELOW}.click()`);
+  await waitFor(
+    `document.querySelector(${JSON.stringify(fileRow("long/f600.txt"))}) !== null`,
+    `the "more" row below the reader's draws its page`,
+  );
+  await frames();
+  const below = await evaluate(PANE(fileRow("long/f600.txt")));
+  const left = await evaluate(PANE(fileRow("long/f599.txt")));
+  const focusedRow = await evaluate(`document.activeElement?.dataset?.path ?? null`);
+  const pressedBelow = JSON.stringify({ f600: below.row, f599: left.row, focusedRow });
+  check(
+    `the "more" row below the reader's: its first row is in view`,
+    below.row?.inView === true,
+    pressedBelow,
+  );
+  check(
+    `the "more" row below the reader's: its first row has focus`,
+    focusedRow === "long/f600.txt",
+    pressedBelow,
+  );
+  check(
+    `the "more" row below the reader's: the row above it stays in view`,
+    left.row?.inView === true,
+    pressedBelow,
+  );
+  await longIs(`the "more" row below the reader's: in order`, [
+    "f000–f199",
+    "Show 200 more (1000 total)",
+    "f400–f999",
+  ]);
+  phase("the row below a second reveal");
+
+  // 14. A file a filter hides: the tree selects nothing else and says why.
   await load(`${base}/view/README.md`);
   await revealed("before the filter", fileRow("README.md"), "files");
   await evaluate(`window.metabrowser.filterState.set({ types: [".md"] })`);
@@ -367,7 +701,7 @@ try {
   await shot("filtered");
   await evaluate(`window.metabrowser.filterState.set({ types: null })`);
 
-  // 11. A commit's address, halfway down a 300-commit history.
+  // 15. A commit's address, halfway down a 300-commit history.
   await load(`${historyBase}/commit/${deepCommit}`);
   phase("commit");
   await revealed(

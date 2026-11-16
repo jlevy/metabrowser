@@ -21,9 +21,8 @@
 // Add Information", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
 // "Navigation Toolbars Wrap"). The wrap is held to its rule by
 // tests/dom/nav-toolbar-wrap.mjs. The requests and sections themselves run browserlessly
-// in
-// tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
-// a browser in tests/dom/filter-controls-behavior.js.
+// in tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked
+// without a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -201,8 +200,8 @@ const TIP_WAITS = `
 `;
 
 // A tree row's tooltip, once it shows: what it holds, and what the row's chip shows. It
-// leaves out what the row shows and gives the exact date (mb-8mpo, docs/design-system.md,
-// "Tooltips Add Information").
+// leaves out what the row shows and gives the exact date, and the exact size behind one its
+// chip rounds (mb-8mpo, mb-qg4z, docs/design-system.md, "Tooltips Add Information").
 const TREE_TIPS = `(async () => {
   ${TIP_WAITS}
   const tree = document.querySelector('#tab-files [role="tree"]');
@@ -223,8 +222,11 @@ const TREE_TIPS = `(async () => {
     const chip = row.querySelector(".tree-item-size");
     const shown = {
       chip: chip === null ? null : chip.classList.contains("count") ? "count" : "size",
-      visible: tip !== null && tip.style.display === "block",
+      chipText: chip?.textContent ?? null,
+      visible: tipShown(),
       size: tip?.querySelector(".size") !== null,
+      // The size's digits, which the locale groups as it likes.
+      sizeDigits: tip?.querySelector(".size")?.textContent.replace(/\\D/g, "") ?? null,
       count: tip?.querySelector(".count") !== null,
       lines: tip === null ? 0 : tip.querySelectorAll(".tip-detail").length,
       name: tip?.querySelector(".tip-name") !== null,
@@ -432,6 +434,19 @@ const GEAR = `(() => {
 const frames =
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
 
+// The bar's transitions run to their end, the drawer's grid track and the bar's row-gap
+// on --transition-fast among them. `getAnimations` brings style up to date first, so a
+// transition the last change started is among them.
+const BAR_SETTLED = `(async () => {
+  const bar = document.getElementById("nav-filter-bar");
+  const running = () =>
+    bar.getAnimations({ subtree: true }).filter((animation) => animation instanceof CSSTransition);
+  for (let now = running(); now.length > 0; now = running()) {
+    await Promise.all(now.map((animation) => animation.finished.catch(() => null)));
+  }
+  return true;
+})()`;
+
 const profiles = process.env.CHROME_PROFILES;
 if (!process.env.CHROME_BIN || !profiles) {
   throw new Error("CHROME_BIN and CHROME_PROFILES are required");
@@ -589,14 +604,14 @@ try {
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.narrowKeyThree = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   result.narrowOpen = await browser.evaluate(NARROW);
   await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "false"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.narrowClosed = await browser.evaluate(NARROW);
   await paneWidth(null);
   await browser.evaluate(frames);
@@ -677,19 +692,35 @@ try {
   // 3 is File type: it opens the closed drawer with its menu.
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
   result.focus.three = await browser.evaluate(FOCUS);
-  // A pick in the multi-select menu keeps it open, and the bar rebuilds as the filter and
-  // the tree's tallies answer: focus stays on the row picked, and on it again unpicked.
+  // A pick in the multi-select menu keeps it open, and the bar rebuilds under it,
+  // synchronously from the filter's change: focus stays on the row picked, and on it again
+  // unpicked. A MutationObserver counts the bar's rebuilds, so each read waits for the
+  // rebuild it is about instead of for a time. New tallies rebuild the bar asynchronously
+  // too (loadTree in app.js), but a file written here does not, because the root summary's
+  // refresh leaves the bar alone while a menu is open; a rebuild with a row focused is
+  // pinned browserlessly in tests/dom/key-reveal-session.js and filter-controls-behavior.js.
+  await browser.evaluate(`(() => {
+    window.filterBarRebuilds = 0;
+    new MutationObserver((records) => { window.filterBarRebuilds += records.length; })
+      .observe(document.getElementById("nav-filter-bar"), { childList: true });
+    return true;
+  })()`);
+  const rebuilds = () => browser.evaluate("window.filterBarRebuilds");
+  const rebuiltSince = (count) => browser.waitFor(`window.filterBarRebuilds > ${count}`, 30000);
   await press("ArrowDown");
   result.typesRow = await browser.evaluate(FOCUS);
+  let rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesPicked = await browser.evaluate(FOCUS);
+  rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesUnpicked = await browser.evaluate(FOCUS);
+  result.typesRebuilds = await rebuilds();
   await browser.waitFor(
     `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
     30000,
@@ -882,8 +913,11 @@ try {
     }
   };
   let requested = 0;
-  browser.on("Fetch.requestPaused", () => {
+  /** @type {string[]} the groupings asked for, in order */
+  const asked = [];
+  browser.on("Fetch.requestPaused", (params) => {
     requested += 1;
+    asked.push(new URL(params.request.url).searchParams.get("group_by") || "");
   });
   await browser.send("Fetch.enable", { patterns: [{ urlPattern: "*group_by=*" }] });
   const WAITING = `(() => {
@@ -1003,7 +1037,9 @@ try {
     const { paint, css, ground, contrast, opacity } = ${PAINT};
     const row = document.querySelector("#tab-files .tree-item:not(.tree-item-gitignored, .tree-item-empty, :hover)");
     row.classList.add("tree-item-gitignored");
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Under the dim the row holds itself after the quiet period, by an animation; at rest it
+    // has none, so this is at once.
+    await Promise.all(row.getAnimations().map((animation) => animation.finished));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const name = row.querySelector(".tree-item-name");
     const drawn = opacity(name);
@@ -1118,6 +1154,41 @@ try {
   result.waiting.stale = await browser.evaluate(WAITING);
   releaseAll = true;
   await release();
+  // The keyboard asks only for a row it rests on (createGroupsPrefetch, rest). ↓ ↓ ↓ and
+  // Enter on the trigger, each in the frame after the last, pass By age on the way to By
+  // file type: the choice asks for By file type, and By age is never asked for.
+  const keyboard = async (keys, restMs = 0) => {
+    const before = asked.length;
+    await browser.evaluate(
+      `document.querySelector('[data-chip-menu-toggle="group"]').focus(), true`,
+    );
+    for (const key of keys) {
+      if (key === "rest") {
+        await sleep(restMs);
+      } else {
+        await press(key);
+      }
+    }
+    await browser.waitFor(
+      `!document.querySelector('[data-chip-menu-toggle="group"]').classList.contains("mb-refreshing") && document.querySelectorAll('.tree-section').length > 0`,
+      30000,
+    );
+    return asked.slice(before);
+  };
+  result.keyboard = {};
+  result.keyboard.walk = await keyboard(["ArrowDown", "ArrowDown", "ArrowDown", "Enter"]);
+  result.keyboard.walkTrigger = await browser.evaluate(
+    `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim()`,
+  );
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
+  // Resting on By age past the dwell asks for it ahead, and Enter takes that answer.
+  result.keyboard.rest = await keyboard(["ArrowDown", "ArrowDown", "rest", "Enter"], 700);
+  result.keyboard.restTrigger = await browser.evaluate(
+    `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim()`,
+  );
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
   await browser.send("Fetch.disable");
   phase("waited");
   process.stdout.write(`${JSON.stringify(result)}\n`);

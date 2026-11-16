@@ -149,8 +149,7 @@
    tests/test_github_pull_header_chrome.py): in a patch's toolbar, under a commit's identity,
    and in a pull request's header, a first-level row's chevron and name start 16px right of
    the header's chevron and words, and each level 16px further. Before, they started 4px
-   right of them in the toolbar, and 16px in from where the header was placed, 20px right of
-   it, at the top of a page. */
+   right of them in the toolbar, and already 16px right of them at the top of a page. */
 .metabrowser-diff-host .diff-summary-row {
   --changed-file-indent: calc(
     (var(--diff-summary-depth, 0) + 1) *

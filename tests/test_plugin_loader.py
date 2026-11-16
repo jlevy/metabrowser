@@ -792,7 +792,7 @@ def test_view_spec_rejects_an_always_reserved_shell_key() -> None:
         with pytest.raises(ValidationError, match="reserved"):
             ViewSpec(kind="x", id="y", label="Y", key=key)
     # Next and previous are Control-N and Control-P, which reserve no letter (mb-lnqj), and
-    # R is no longer the Pulls tab's.
+    # R is free for a view.
     for key in ("n", "R"):
         assert ViewSpec(kind="x", id="y", label="Y", key=key).key == key.lower()
 

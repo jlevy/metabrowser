@@ -89,6 +89,7 @@ const LAYOUT = `(() => {
     mounted: body !== null,
     step: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
+    viewHeight: innerHeight,
     header: {
       chevron: round(left(toggle.querySelector(".diff-summary-chevron"))),
       words: round(left(toggle.querySelector(".diff-summary-files"))),
@@ -125,8 +126,16 @@ async function openSummary(browser, patch) {
     `document.querySelector('.diff-summary-body [role="treeitem"]') !== null`,
     30000,
   );
-  // The box travels open in --transition-fast; read it once it has arrived.
-  await sleep(400);
+  // The box travels open in --transition-fast; read it once that travel, and any that
+  // replaced it, is over.
+  await browser.evaluate(`(async () => {
+    const travels = () => document.querySelector(".diff-summary-body").getAnimations();
+    const deadline = performance.now() + 10000;
+    while (travels().length > 0 && performance.now() < deadline) {
+      await Promise.allSettled(travels().map((travel) => travel.finished));
+    }
+    return true;
+  })()`);
   await browser.evaluate(frames);
   return { collapsed, open: await browser.evaluate(LAYOUT) };
 }

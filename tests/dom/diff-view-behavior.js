@@ -577,7 +577,8 @@ async function repeatedPathChecks(mountDiffView, twoFiles) {
 /**
  * A long change set's tree draws the rows in the window's view of it and a window past it,
  * and moves that window as the page scrolls, as the Pulls tab's tree does: the tree has no
- * scroll of its own (mb-hi4l).
+ * scroll of its own (mb-hi4l). A scroll of a box that does not hold the tree draws nothing,
+ * and disposal removes the listeners on the document and the window.
  */
 async function windowedSummaryChecks(repoRoot) {
   const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
@@ -588,20 +589,27 @@ async function windowedSummaryChecks(repoRoot) {
   global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
   const element = global.Element;
   global.Element = FakeElement;
+  const node = global.Node;
+  global.Node = FakeElement;
   let frame = null;
+  // Every listener the tree adds outside itself, with the signal that removes it.
+  const signals = [];
   global.window = {
     requestAnimationFrame(callback) {
       frame = callback;
       return 1;
     },
     cancelAnimationFrame() {},
-    addEventListener() {},
+    addEventListener(type, _handler, options) {
+      signals.push({ on: `window ${type}`, signal: options?.signal });
+    },
     innerHeight: 480,
   };
   // The page's scrolls, which the tree hears on the document in their capture phase.
   const scrolls = [];
   const listen = global.document.addEventListener;
   global.document.addEventListener = (type, handler, options) => {
+    signals.push({ on: `document ${type}`, signal: options?.signal });
     if (type === "scroll") {
       scrolls.push({ handler, capture: options?.capture === true });
     }
@@ -645,8 +653,15 @@ async function windowedSummaryChecks(repoRoot) {
     );
     const list = tree.body.children[0];
     list.box = { top: -12000, bottom: -12000 + 1201 * 24 };
+    // A box beside the tree, a Split diff's code or the navigation pane, scrolls: the
+    // window's view of the tree cannot have moved, so no frame is asked for.
+    frame = null;
     for (const { handler } of scrolls) {
-      handler({});
+      handler({ target: new FakeElement("div") });
+    }
+    check("a scroll of a box that does not hold the tree draws nothing", frame === null);
+    for (const { handler } of scrolls) {
+      handler({ target: global.document });
     }
     frame?.();
     const ids = tree.body.find("diff-summary-row").map((row) => row.dataset.id);
@@ -662,7 +677,13 @@ async function windowedSummaryChecks(repoRoot) {
     check("a press on a file jumps the diff to it", jumps.at(-1) === "pkg/file-0500.py");
     tree.dispose();
     check("a disposed tree leaves the document", tree.body.parentNode === null);
+    check(
+      "disposal removes its listeners on the document and the window",
+      signals.length === 2 && signals.every(({ signal }) => signal?.aborted === true),
+      JSON.stringify(signals.map(({ on, signal }) => [on, signal?.aborted ?? null])),
+    );
   } finally {
+    global.Node = node;
     global.document.addEventListener = listen;
     global.document.createElement = createElement;
     global.getComputedStyle = computed;
@@ -1375,9 +1396,86 @@ async function main() {
     drawn?.text() ?? "",
   );
   standalone.dispose();
+  // A list cut short at its bound, on a page that knows the whole change set's totals, as a
+  // commit's page does from the commit's own stats: the header says those, with no breakdown
+  // of the listed files alone, and how many files are listed (A3 of review A on #470). A list
+  // that is whole says its own totals, whatever the page gives.
+  const whole = { files: 5, additions: 15, deletions: 3, exact: true };
+  const cutShort = {
+    ...twoFiles,
+    manifest: { ...twoFiles.manifest, truncated: true, cursor: "manifest-cap" },
+  };
+  const cutPlace = new FakeElement("div");
+  mountDiffView(new FakeElement("div"), cutShort, undefined, {
+    changedFiles: sharedTree,
+    summaryHost: cutPlace,
+    summaryTotals: whole,
+  });
+  const cutHeader = cutPlace.find("diff-summary-toggle")[0];
+  check(
+    "a list cut short says the page's whole totals and how many it lists",
+    cutHeader?.text().includes("5 changed files") &&
+      cutHeader.text().includes("+15") &&
+      cutHeader.text().includes("−3") &&
+      cutHeader.text().includes("(2 listed)") &&
+      cutHeader.find("diff-summary-breakdown").length === 0,
+    cutHeader?.text() ?? "",
+  );
+  check(
+    "and names them for a screen reader",
+    cutHeader?.getAttribute("aria-label") ===
+      "5 changed files; 15 lines added, 3 deleted; 2 listed",
+    cutHeader?.getAttribute("aria-label") ?? "",
+  );
+  const cutPlain = new FakeElement("div");
+  mountDiffView(new FakeElement("div"), cutShort, undefined, {
+    summaryHost: cutPlain,
+    summaryTotals: whole,
+  });
+  check(
+    "a list cut short says them without the shared tree too",
+    cutPlain.text().includes("5 changed files") && cutPlain.text().includes("(2 listed)"),
+    cutPlain.text(),
+  );
+  const wholePlace = new FakeElement("div");
+  mountDiffView(new FakeElement("div"), twoFiles, undefined, {
+    changedFiles: sharedTree,
+    summaryHost: wholePlace,
+    summaryTotals: whole,
+  });
+  check(
+    "a whole list says its own totals",
+    wholePlace.text().includes("2 changed files") && !wholePlace.text().includes("listed"),
+    wholePlace.text(),
+  );
   await diffSummaryChecks(mountDiffView, twoFiles);
   await repeatedPathChecks(mountDiffView, twoFiles);
   await windowedSummaryChecks(repoRoot);
+  // A host that cuts the header's breakdown short, as a pull request's header does to keep
+  // its one line, gives the header its whole words as a tooltip while it is cut, and none
+  // while it is whole (A7 of review A on #470). It runs after the checks of a tree that did
+  // not load, since a hover loads the tree's module.
+  const tipSlot = new FakeElement("div");
+  const tipped = mountDiffSummary(tipSlot, twoFiles, undefined, {
+    changedFiles: sharedTree,
+    openFile() {},
+  });
+  const tipHeader = tipSlot.children[0];
+  const tipBreakdown = tipHeader.find("diff-summary-breakdown")[0];
+  tipHeader.dispatch("pointerenter");
+  check("a whole breakdown has no tooltip", tipHeader.dataset.tipText === undefined);
+  tipBreakdown.scrollWidth = 180;
+  tipBreakdown.clientWidth = 60;
+  tipHeader.dispatch("pointerenter");
+  check(
+    "a breakdown cut short gives its header's whole words",
+    tipHeader.dataset.tipText === "2 changed files (2 modified)  +1 \u22121",
+    tipHeader.dataset.tipText ?? "",
+  );
+  tipBreakdown.scrollWidth = 60;
+  tipHeader.dispatch("pointerenter");
+  check("a breakdown whole again has none", tipHeader.dataset.tipText === undefined);
+  tipped.dispose();
 
   // A long contiguous run folds behind an expander; ordinary runs do not.
   const longDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));

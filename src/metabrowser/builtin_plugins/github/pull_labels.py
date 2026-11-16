@@ -1,29 +1,30 @@
-"""The repository's whole label set, cached once, so every label chip has its color.
+"""The repository's whole label set, cached once, so a label named alone has its color.
 
-A pull request's record and the catalog's rows carry each label's color, but a record or
-a core cached before label colors names its labels alone, and the catalog vouches for
-such a record as current for as long as its pull request does not change, so it is never
-read again. This set colors those chips by name (``mb-varu``): one bounded snapshot of
+A pull request's record carries each label's color, but a record or a core cached before
+label colors names its labels alone. Such a record is fetched again once, after its page
+has painted it, and a core in that shape is drawn until its record arrives. This set
+colors those chips by name from first paint (``mb-varu``): one bounded snapshot of
 ``repos/<owner>/<repo>/labels``, every page with its ETag, at
 ``sources/<slug>/pulls/labels.json``, published under the source-alias lock and read
 lock-free with a size bound. It persists across restarts and is cleared with the rest of
 the plugin's cache.
 
-Reads never contact GitHub. The catalog's refresh job asks for the set once it has
-published a page, when the set is absent or older than :data:`LABEL_FRESHNESS_S`, or
-lacks a label a pull read showed without a color (:func:`note_unknown`) and was last
-asked for at least :data:`UNKNOWN_LABEL_HOLD_S` ago; ``POST github/labels-refresh`` asks
-for it too. Running inside the catalog's job keeps the two from asking GitHub at once. GitHub's
-rate limit holds it as it holds the catalog. A failure keeps the preceding snapshot.
+Reads never contact GitHub. The set is read on demand, by a job of its own under
+:func:`labels_job_key`, which ``POST github/labels-refresh`` starts or joins. A pull
+request's page sends it when it shows a label named alone that its envelope has no entry
+for, and the job asks GitHub only when the set is absent, :data:`LABEL_FRESHNESS_S` old,
+or a reader's own retry asks (:func:`refresh_wanted`). Nothing in the catalog's refresh
+waits on it, and no failure of it reaches the catalog. GitHub's rate limit holds it as it
+holds the catalog, and a failure keeps the preceding snapshot.
 
-This module follows :mod:`.pull_stacks`, the other optional repository-wide snapshot.
+It shares its stamps, its hold, and its publish step with :mod:`.pull_stacks`, the other
+optional repository-wide snapshot (:mod:`.repository_snapshot`).
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 import os
 import stat
 import threading
@@ -39,62 +40,62 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints
 
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
-from metabrowser.builtin_plugins.github.gh import GhError, GhResponse, gh_api
-from metabrowser.builtin_plugins.github.gh_lists import (
-    PullDataError,
-    UnreadableItemError,
-    as_dict,
-    cache_failure_reason,
-    cache_unwritable,
-    utc_stamp,
-)
+from metabrowser.builtin_plugins.github.gh import GhResponse, gh_api
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, as_dict, utc_stamp
 from metabrowser.builtin_plugins.github.gh_lists import active_account as active_account
-from metabrowser.builtin_plugins.github.pull_list import (
-    ETAG_PATTERN,
-    MAX_ROW_LABEL_BYTES,
-    ListedRepository,
-)
+from metabrowser.builtin_plugins.github.pull_list import ETAG_PATTERN, ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     LabelColor,
     PullRefreshStamp,
     Reader,
     Timestamp,
     cut_escaped,
-    ensure_pulls_directory,
     label_color,
     label_description,
 )
+from metabrowser.builtin_plugins.github.repository_snapshot import (
+    FAILURES,
+    Unwritten,
+    check_hold,
+    failure_stamp,
+    publish_revision,
+    rate_hold,
+    record_failure,
+)
+from metabrowser.builtin_plugins.github.repository_snapshot import (
+    remaining_freshness as snapshot_freshness,
+)
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
-from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
-from metabrowser.cache.locks import run_lock_section, source_alias_lock
+from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import source_labels
-from metabrowser.home import PrivateStorageError, write_private_file_atomic
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+from metabrowser.home import PrivateStorageError
 
-log = logging.getLogger(__name__)
-
-# A label set changes rarely, so it is refreshed as the native stack snapshot is, the
-# other repository-wide snapshot (pull_stacks.STACK_FRESHNESS_S). Each page is asked for
-# with its ETag, and an unchanged page answers 304.
+# A label set changes rarely, and only a page showing a label named alone asks for it, so
+# a set is read again at most once in this age, as the native stack snapshot is
+# (pull_stacks.STACK_FRESHNESS_S). Each page is asked for with its ETag, and an unchanged
+# page answers 304, but a 304 costs a gh process and a round trip as a 200 does. Measured
+# 2026-11-15 with real gh 2.98.0 against home-assistant/core (2,895 labels, 29 pages), one
+# page after another as the job reads them, three runs at a load average of 11 to 12: a
+# first read took 15.5 to 15.9 s, and a read again, all 29 pages answering 304, 14.0 to
+# 15.8 s. So the job runs beside the catalog's, never inside it, and only on demand.
 LABEL_FRESHNESS_S: Final = 300.0
-# A record that names a label the set does not hold asks for the set again, once a
-# freshness window: a label deleted on GitHub stays unknown, and must not be asked for on
-# every read.
-UNKNOWN_LABEL_HOLD_S: Final = FRESHNESS_WINDOW_S
 LABEL_PAGE_SIZE: Final = 100
 # Measured 2026-11-15 (``gh api repos/<r>/labels``): home-assistant/core has 2,894 labels,
 # elastic/kibana 1,732, and rust-lang/rust 999, the most of eleven large repositories.
-# Fifty pages hold 5,000. A label's name is at most 50 characters and its description 100,
-# and they are cut as a row's name is and at 100 characters of any script.
+# Fifty pages hold 5,000.
 MAX_LABEL_PAGES: Final = 50
+# A GitHub label's name is at most 50 characters and its description 100, and each is cut
+# at what that many characters of any script take escaped, 4 bytes each: a record names a
+# label by its whole name, so a name cut shorter would never match it.
+MAX_LABEL_NAME_BYTES: Final = 200
 MAX_LABEL_DESCRIPTION_BYTES: Final = 400
 # home-assistant/core's 2,894 labels are 208,661 bytes cached (29 pages, each with its
-# ETag). A set of 5,000 labels at every bound would be about 2.6 MB; 4 MiB is the read
-# bound and the write bound.
+# ETag). A set of 5,000 labels at every bound, each name and description of 4-byte
+# characters and each page's ETag of 256, is 3,246,738 bytes
+# (tests/test_github_pull_labels.py); 4 MiB is the read bound and the write bound.
 MAX_LABELS_BYTES: Final = 4 * 1024 * 1024
 # Memory for a server's few repositories, and a test's many homes.
 _MAX_INDEXES: Final = 16
-_MAX_UNWRITTEN: Final = 64
 # Room for the enclosing cache and its refresh outcome within the bound.
 _ENVELOPE_BYTES: Final = 16 * 1024
 
@@ -109,7 +110,7 @@ class _Model(BaseModel):
 class RepositoryLabel(_Model):
     """One label of the repository: its name, GitHub's color, and its description."""
 
-    name: Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTES)]
+    name: Annotated[str, StringConstraints(max_length=MAX_LABEL_NAME_BYTES)]
     color: LabelColor | None
     description: Annotated[str, StringConstraints(max_length=MAX_LABEL_DESCRIPTION_BYTES)] | None
 
@@ -123,6 +124,8 @@ class LabelPage(_Model):
 
 
 class LabelSnapshot(_Model):
+    """The pages one reader read, in GitHub's order; ``complete`` when the last named no next."""
+
     source: str
     reader: Reader
     fetched_at: Timestamp
@@ -172,19 +175,30 @@ class LabelEntry(TypedDict):
     description: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class LabelLookup:
+    """The set's entries for the labels named alone, and the names the set does not hold.
+
+    A name the set holds without a color is in neither: no read of the set can color it.
+    """
+
+    entries: list[LabelEntry]
+    missing: tuple[str, ...]
+
+
 def labels_job_key(source: str) -> str:
     """The coordinator key of a repository's label job, by its normalized source."""
 
     return f"{source}:labels"
 
 
-def labels_for(home: Path, slug: str, source: str, labels: Iterable[object]) -> list[LabelEntry]:
+def labels_for(home: Path, slug: str, source: str, labels: Iterable[object]) -> LabelLookup:
     """The set's entries for the *labels* a record or core names without a color.
 
     *labels* are a dumped record's or core's labels. One that has its own color needs
     nothing; one named alone, as a record cached before label colors names it, takes its
-    color and description from the set, by name. Blocking and bounded: a stat, and a parse
-    only when the set's file changed.
+    color and description from the set, by name. Each distinct name counts once. Blocking
+    and bounded: a stat, and a parse only when the set's file changed.
     """
 
     wanted: list[str] = []
@@ -194,66 +208,39 @@ def labels_for(home: Path, slug: str, source: str, labels: Iterable[object]) -> 
             if isinstance(name, str) and name not in wanted:
                 wanted.append(name)
     if not wanted:
-        return []
+        return LabelLookup([], ())
     index = label_index(home, slug, source)
     if index is None:
-        return []
+        return LabelLookup([], tuple(wanted))
     entries: list[LabelEntry] = []
+    missing: list[str] = []
     for name in wanted:
         found = index.get(name)
-        if found is not None and found.color is not None:
+        if found is None:
+            missing.append(name)
+        elif found.color is not None:
             entries.append(LabelEntry(name=name, color=found.color, description=found.description))
-    return entries
+    return LabelLookup(entries, tuple(missing))
 
 
-# A refused cache write must still back off in this process, as the stack job's does.
-_UNWRITTEN: OrderedDict[tuple[str, str], PullRefreshStamp] = OrderedDict()
-# The parsed set of each file, by its inode, modification time, and size: a pull read
-# reads the set on every poll, and a replaced file has a new inode.
+# A refused cache write must still back off in this process (:class:`.Unwritten`).
+_UNWRITTEN: Final = Unwritten()
+# The parsed set of each file, by home and source, with the file's inode, modification
+# time, and size: a pull read reads the set on every poll, and a replaced file has a new
+# inode.
 _INDEXES: OrderedDict[tuple[str, str], tuple[tuple[int, int, int], LabelIndex]] = OrderedDict()
 _INDEX_LOCK = threading.Lock()
 
 
-def _key(home: Path, source: str) -> tuple[str, str]:
-    return str(home), source
+def forget() -> None:
+    """Forget every set this process parsed and every outcome it could not write.
 
+    A new process starts with neither; the suite starts each test this way.
+    """
 
-# Labels a pull read showed without a color that the set did not hold, by source, which the
-# catalog's next refresh asks for (:func:`take_unknown`). A read never asks GitHub, so it
-# notes them here. Bounded: a few repositories, a page of names each.
-_UNKNOWN: OrderedDict[str, list[str]] = OrderedDict()
-_MAX_UNKNOWN_SOURCES: Final = 16
-_MAX_UNKNOWN_NAMES: Final = 100
-# The sets being read now, by home and source, so a pull read knows a color may be coming.
-_FETCHING: set[tuple[str, str]] = set()
-
-
-def note_unknown(source: str, names: Iterable[str], known: Iterable[LabelEntry]) -> None:
-    """Note *names* a read showed uncolored that *known*, the set's entries, lacks."""
-
-    held = {entry["name"] for entry in known}
-    missing = [name for name in names if name not in held]
-    if not missing:
-        return
-    noted = _UNKNOWN.setdefault(source, [])
-    for name in missing:
-        if name not in noted and len(noted) < _MAX_UNKNOWN_NAMES:
-            noted.append(name)
-    _UNKNOWN.move_to_end(source)
-    while len(_UNKNOWN) > _MAX_UNKNOWN_SOURCES:
-        _UNKNOWN.popitem(last=False)
-
-
-def take_unknown(source: str) -> tuple[str, ...]:
-    """The names :func:`note_unknown` noted for *source*, once."""
-
-    return tuple(_UNKNOWN.pop(source, ()))
-
-
-def labels_fetching(home: Path, source: str) -> bool:
-    """Whether *source*'s set is being read from GitHub now. Memory only."""
-
-    return _key(home, source) in _FETCHING
+    _UNWRITTEN.clear()
+    with _INDEX_LOCK:
+        _INDEXES.clear()
 
 
 def _file_stamp(home: Path, slug: str) -> tuple[int, int, int] | None:
@@ -282,15 +269,16 @@ def read_labels(home: Path, slug: str, source: str) -> LabelCache | None:
 def label_index(home: Path, slug: str, source: str) -> LabelIndex | None:
     """The cached set as an index, parsed once a file. Blocking and bounded.
 
-    A pull read calls this on every poll. Parsing and indexing home-assistant/core's 2,894
-    labels took a median 3.5 ms, at most 5.7, in 30 runs at a load average of 18
-    (2026-11-15); a file that has not changed since costs a stat.
+    A pull read calls this on every poll, and a refresh for each of its rate-limit checks.
+    Parsing and indexing home-assistant/core's 2,894 labels took a median 3.5 ms, at most
+    5.7, in 30 runs at a load average of 18 (2026-11-15); a file that has not changed
+    since costs a stat.
     """
 
     stamp = _file_stamp(home, slug)
     if stamp is None:
         return None
-    key = _key(home, source)
+    key = (str(home), source)
     with _INDEX_LOCK:
         held = _INDEXES.get(key)
         if held is not None and held[0] == stamp:
@@ -313,71 +301,42 @@ def label_index(home: Path, slug: str, source: str) -> LabelIndex | None:
     return index
 
 
+def _cached(repository: ListedRepository) -> LabelCache | None:
+    index = label_index(repository.home, repository.slug, repository.source)
+    return index.cache if index is not None else None
+
+
 def last_refresh(home: Path, source: str, cache: LabelCache | None) -> PullRefreshStamp | None:
     durable = cache.last_refresh if cache is not None else None
-    transient = _UNWRITTEN.get(_key(home, source))
-    if transient is not None and (durable is None or transient.at >= durable.at):
-        return transient
-    return durable
-
-
-def _remember(repository: ListedRepository, stamp: PullRefreshStamp) -> None:
-    key = _key(repository.home, repository.source)
-    held = _UNWRITTEN.get(key)
-    if held is None or not pull_list.rate_limit_holds(held, now=pull_list.utc_now()):
-        _UNWRITTEN[key] = stamp
-    _UNWRITTEN.move_to_end(key)
-    while len(_UNWRITTEN) > _MAX_UNWRITTEN:
-        _UNWRITTEN.popitem(last=False)
-
-
-def _age(stamp: PullRefreshStamp | None) -> float:
-    if stamp is None:
-        return float("inf")
-    return (pull_list.utc_now() - pull_list.parse_stamp(stamp.at)).total_seconds()
+    return _UNWRITTEN.last_refresh(home, source, durable)
 
 
 def remaining_freshness(stamp: PullRefreshStamp | None) -> float:
-    return max(0.0, min(LABEL_FRESHNESS_S, LABEL_FRESHNESS_S - _age(stamp)))
+    return snapshot_freshness(stamp, LABEL_FRESHNESS_S)
 
 
-def _rate_hold(repository: ListedRepository, cache: LabelCache | None) -> PullRefreshStamp | None:
-    # The catalog's provider refusal holds this optional set too; the set never writes
-    # or clears the catalog's outcome.
-    candidates = (
-        last_refresh(repository.home, repository.source, cache),
-        pull_list.read_list_refresh(repository.home, repository.slug, "all"),
-    )
-    return next(
-        (
-            stamp
-            for stamp in candidates
-            if pull_list.rate_limit_holds(stamp, now=pull_list.utc_now())
-        ),
-        None,
+def _rate_hold(repository: ListedRepository) -> PullRefreshStamp | None:
+    # The set's own stamp comes from its stat-gated index, so a check during a refresh,
+    # which holds the network slot, costs a stat and the catalog's small stamp file.
+    return rate_hold(
+        repository, last_refresh(repository.home, repository.source, _cached(repository))
     )
 
 
-def refresh_wanted(
-    repository: ListedRepository, *, retry: bool = False, names: Iterable[str] = ()
-) -> bool:
-    """Whether to ask GitHub for the set now. Blocking and bounded; never contacts GitHub.
+def refresh_wanted(repository: ListedRepository, *, retry: bool = False) -> bool:
+    """Whether an ask reads the set from GitHub now. Blocking and bounded; never contacts GitHub.
 
-    Wanted when nothing is cached, the set is older than :data:`LABEL_FRESHNESS_S`, or a
-    reader's own *retry* asks; or when it does not hold one of *names* and was last asked
-    for at least :data:`UNKNOWN_LABEL_HOLD_S` ago. Never while GitHub's limit holds.
+    Wanted when nothing is cached, once the set's last refresh is :data:`LABEL_FRESHNESS_S`
+    old, or when a reader's own *retry* asks; never while GitHub's limit holds. Only
+    ``POST github/labels-refresh`` asks, which a page sends for a label named alone that
+    its envelope has no entry for, so the set is read again at most once in that age, and
+    only while something asks. A failure backs off for that age too.
     """
 
-    names = tuple(names)
-    index = label_index(repository.home, repository.slug, repository.source)
-    cache = index.cache if index is not None else None
-    if _rate_hold(repository, cache) is not None:
+    if _rate_hold(repository) is not None:
         return False
-    stamp = last_refresh(repository.home, repository.source, cache)
-    if retry or remaining_freshness(stamp) == 0:
-        return True
-    unknown = bool(names) and (index is None or any(index.get(name) is None for name in names))
-    return unknown and _age(stamp) >= UNKNOWN_LABEL_HOLD_S
+    stamp = last_refresh(repository.home, repository.source, _cached(repository))
+    return retry or remaining_freshness(stamp) == 0
 
 
 def publish_labels(
@@ -392,28 +351,21 @@ def publish_labels(
     run_lock_section, so a cancelled lock waiter cannot write later.
     """
 
-    with source_alias_lock(repository.home, repository.slug):
-        current = read_labels(repository.home, repository.slug, repository.source)
-        if (current.revision if current else None) != (previous.revision if previous else None):
-            return False
-        held = last_refresh(repository.home, repository.source, current)
-        if (
-            pull_list.rate_limit_holds(held, now=pull_list.utc_now())
-            and stamp.outcome != "rate_limited"
-        ):
-            return False
-        result = LabelCache(
-            source=repository.source,
-            snapshot=snapshot if snapshot is not None else current.snapshot if current else None,
-            last_refresh=stamp,
-        )
-        data = result.model_dump_json().encode()
-        if len(data) > MAX_LABELS_BYTES:
-            raise ValueError("the label set exceeds its cache bound")
-        ensure_pulls_directory(repository.home, repository.slug)
-        write_private_file_atomic(repository.home, source_labels(repository.slug), data)
-        _UNWRITTEN.pop(_key(repository.home, repository.source), None)
-        return True
+    def compose(current: LabelCache | None) -> LabelCache:
+        kept = snapshot if snapshot is not None else current.snapshot if current else None
+        return LabelCache(source=repository.source, snapshot=kept, last_refresh=stamp)
+
+    return publish_revision(
+        repository,
+        previous,
+        stamp,
+        read=partial(read_labels, repository.home, repository.slug, repository.source),
+        compose=compose,
+        relative=source_labels(repository.slug),
+        max_bytes=MAX_LABELS_BYTES,
+        unwritten=_UNWRITTEN,
+        too_large="the label set exceeds its cache bound",
+    )
 
 
 def _label(value: object) -> RepositoryLabel | None:
@@ -423,7 +375,7 @@ def _label(value: object) -> RepositoryLabel | None:
         return None
     description = label_description(item.get("description"))
     return RepositoryLabel(
-        name=cut_escaped(name, MAX_ROW_LABEL_BYTES)[0],
+        name=cut_escaped(name, MAX_LABEL_NAME_BYTES)[0],
         color=label_color(item.get("color")),
         description=None
         if description is None
@@ -435,7 +387,11 @@ def _page(response: GhResponse, old: LabelPage | None) -> LabelPage:
     if response.status == 304:
         if old is None or old.etag is None:
             raise ValueError("an unconditional label page answered 304")
-        return old.model_copy(update={"etag": response.etag or old.etag})
+        # GitHub's ETag covers a page's body, not its Link header, and a 304 carries the
+        # Link: a full last page answers 304 after a label is added past it, naming the
+        # next page. Only a 304 that names no Link keeps the page's cached continuation.
+        has_next = response.has_next_page if "link" in response.headers else old.has_next
+        return old.model_copy(update={"etag": response.etag or old.etag, "has_next": has_next})
     payload = response.json()
     if not isinstance(payload, list) or len(payload) > LABEL_PAGE_SIZE:  # pyright: ignore[reportUnknownArgumentType]
         raise ValueError("unreadable label page")
@@ -445,57 +401,28 @@ def _page(response: GhResponse, old: LabelPage | None) -> LabelPage:
 
 
 async def _check_hold(repository: ListedRepository) -> None:
-    def held() -> PullRefreshStamp | None:
-        return _rate_hold(
-            repository, read_labels(repository.home, repository.slug, repository.source)
-        )
-
-    stamp = await asyncio.to_thread(held)
-    if stamp is not None:
-        raise GhError(
-            "GitHub's API rate limit is exhausted", state="rate_limited", reset_at=stamp.reset_at
-        )
+    await check_hold(partial(_rate_hold, repository))
 
 
 async def refresh_labels(
-    repository: ListedRepository,
-    *,
-    slot: asyncio.Semaphore | None = None,
-    retry: bool = False,
-    names: tuple[str, ...] = (),
-    reader: str | None = None,
+    repository: ListedRepository, *, slot: asyncio.Semaphore | None = None, retry: bool = False
 ) -> None:
-    """Ask GitHub for the set, yielding the network slot after each bounded page.
+    """Read the set when it is wanted, yielding the network slot after each bounded page.
 
-    *reader* is the account a caller already reads as, the catalog's job, which checks it
-    on every page of its own; without one, the job asks gh before and after its pages.
+    The job under :func:`labels_job_key` runs this. It asks gh for the account before its
+    pages and after them, so a snapshot's reader read every page of it.
     """
 
-    if not await asyncio.to_thread(refresh_wanted, repository, retry=retry, names=names):
+    if not await asyncio.to_thread(refresh_wanted, repository, retry=retry):
         return
-    fetching = _key(repository.home, repository.source)
-    _FETCHING.add(fetching)
-    try:
-        await _refresh(repository, slot=slot, known_reader=reader)
-    finally:
-        _FETCHING.discard(fetching)
-
-
-async def _refresh(
-    repository: ListedRepository, *, slot: asyncio.Semaphore | None, known_reader: str | None
-) -> None:
-    previous = await asyncio.to_thread(
-        read_labels, repository.home, repository.slug, repository.source
-    )
+    previous = await asyncio.to_thread(_cached, repository)
     reader: str | None = None
     try:
         repository = await claim_source(repository)
-        previous = await asyncio.to_thread(
-            read_labels, repository.home, repository.slug, repository.source
-        )
+        previous = await asyncio.to_thread(_cached, repository)
         async with slot if slot is not None else contextlib.nullcontext():
             await _check_hold(repository)
-            reader = known_reader or f"gh:{await active_account()}"
+            reader = f"gh:{await active_account()}"
         old = previous.snapshot if previous is not None else None
         if old is not None and old.reader != reader:
             old = None
@@ -522,7 +449,7 @@ async def _refresh(
             await asyncio.sleep(0)
         async with slot if slot is not None else contextlib.nullcontext():
             await _check_hold(repository)
-            if known_reader is None and f"gh:{await active_account()}" != reader:
+            if f"gh:{await active_account()}" != reader:
                 raise PullDataError(
                     "account_changed", "GitHub account changed while reading labels"
                 )
@@ -537,76 +464,40 @@ async def _refresh(
         stamp = PullRefreshStamp(outcome="succeeded", at=now, reader=reader)
         await run_lock_section(partial(publish_labels, repository, previous, snapshot, stamp))
         return
-    except (GhError, PullDataError) as exc:
-        stamp = PullRefreshStamp(
-            outcome=exc.state,
-            message=str(exc)[:1000],
-            reset_at=exc.reset_at,
-            at=utc_stamp(pull_list.utc_now()),
+    except FAILURES as exc:
+        stamp = failure_stamp(
+            exc,
+            repository,
             reader=reader,
+            subject="the repository's labels",
+            unavailable="The repository's labels are unavailable",
         )
-    except (RecordError, PrivateStorageError, OSError, LayoutError, FutureLayoutFormatError) as exc:
-        log.debug("the label set's cache refused a write: %s", exc)
-        message = (
-            str(
-                cache_unwritable(
-                    "the repository's labels",
-                    exc,
-                    source=repository.source,
-                    checkout=repository.checkout,
-                )
-            )
-            if isinstance(exc, (PrivateStorageError, OSError))
-            else f"the repository's labels could not be cached: {cache_failure_reason(exc)}"
-        )
-        stamp = PullRefreshStamp(
-            outcome="cache_unwritable",
-            message=message[:1000],
-            at=utc_stamp(pull_list.utc_now()),
-            reader=reader,
-        )
-    except (ValueError, KeyError, TypeError, UnreadableItemError) as exc:
-        log.debug("the repository's labels were unreadable: %s", exc)
-        stamp = PullRefreshStamp(
-            outcome="unreadable",
-            message="The repository's labels are unavailable",
-            at=utc_stamp(pull_list.utc_now()),
-            reader=reader,
-        )
-    try:
-        await run_lock_section(partial(publish_labels, repository, previous, None, stamp))
-    except (
-        RecordError,
-        PrivateStorageError,
-        OSError,
-        LayoutError,
-        FutureLayoutFormatError,
-        ValueError,
-    ):
-        _remember(repository, stamp)
+    await record_failure(
+        partial(publish_labels, repository, previous, None, stamp), repository, stamp, _UNWRITTEN
+    )
 
 
 __all__ = [
     "LABEL_FRESHNESS_S",
+    "LABEL_PAGE_SIZE",
     "LabelCache",
     "LabelEntry",
     "LabelIndex",
+    "LabelLookup",
     "LabelPage",
     "LabelSnapshot",
     "MAX_LABELS_BYTES",
+    "MAX_LABEL_NAME_BYTES",
     "MAX_LABEL_PAGES",
     "RepositoryLabel",
-    "UNKNOWN_LABEL_HOLD_S",
+    "forget",
     "label_index",
-    "labels_fetching",
     "labels_for",
     "labels_job_key",
     "last_refresh",
-    "note_unknown",
     "publish_labels",
     "read_labels",
     "refresh_labels",
     "refresh_wanted",
     "remaining_freshness",
-    "take_unknown",
 ]

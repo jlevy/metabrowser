@@ -104,12 +104,13 @@ Then `run.py report` and commit.
 
 ### Picking up a round as a fresh agent
 
-Work the
-[ordering table](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#ordering-what-to-work-next),
-top down, not `tbd ready` — the ready queue is priority-sorted across the whole
-repository and will hand you nine P0s with no ranking between them.
-The ordering table is the ranking, and it carries the reason each row sits where it
-does.
+Work the lanes in
+[the campaign plan](../../docs/project/specs/active/plan-2026-11-14-performance-campaigns.md#order-of-work),
+in its order, not `tbd ready`: the ready queue is priority-sorted across the whole
+repository and gives no ranking between items of the same priority.
+The plan says which hypothesis each lane runs next and what blocks it; the
+[registry](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses)
+defines each one.
 
 Rounds can run in parallel.
 Each takes one hypothesis, one branch, and one artifact, and the things that would
@@ -169,6 +170,15 @@ records. For a round, that means:
   after the round is recorded; a later correction goes in the record.
 - **Samples and analysis scripts are committed** beside the record, named in
   `method.record` or linked from the body.
+- **The analysis is registered before any result is read.** The protocol names the
+  exclusion and analysis scripts by sha256, committed before the first result is read.
+  A change to either after that is a deviation.
+  The record gives the change, which verdicts it moved, and the coordinator’s ruling,
+  and both versions stay in the branch’s history (exp-079). Its `method.analysis` names
+  each script with its sha256, which must be one the protocol registered.
+  A script changed afterwards gives its new sha256 together with `registered_sha256` and
+  a `deviation` reason, and the storage test then requires a Deviation section in the
+  record.
 
 ## Running a round
 
@@ -588,6 +598,12 @@ profile and records the result.
 If headed capture is unavailable, use `run.py probe` and paste its exact output into the
 visible page rather than retyping it.
 
+**`server-time.mjs`** reports the time the server was busy over one landing, by phase,
+to the end of every body, and a warm serial time for its assets; see
+[Server Time over a Landing](#server-time-over-a-landing).
+Use it to say where a landing’s server time went before choosing which of the two above
+to time.
+
 Most rounds want both.
 exp-003 is the worked example of why: the route got 40% faster server-side and time to
 first row did not move at all, because the first request of a page load misses a cache
@@ -625,6 +641,87 @@ server from client data and rendering spans.
 It also records time to a double-animation-frame ready boundary, frames without prior
 commit content, Long Tasks, Long Animation Frames, page exceptions, retained heap, and
 mounted comparison count.
+
+### Git Route Pairs
+
+`git-route-pairs.mjs` times Git routes back to back on two servers serving the same
+corpus, the server half of a Git hypothesis:
+
+```shell
+node explorations/performance-loop/git-route-pairs.mjs \
+  --control http://127.0.0.1:8910 --candidate http://127.0.0.1:8911 \
+  --n 15 --out .bench/git-routes.json \
+  --comparison <full commit ID> --comparison <another>
+```
+
+Start each server first with its own `--cache-dir` and `--config-dir`, and wait for
+`/api/index/progress` to say done.
+For each route there is one unrecorded warm-up request a server, then `n` pairs, odd
+pairs asking the control first and even pairs the candidate.
+Every request sends `accept-encoding: gzip` and reads the whole body.
+
+The routes are `/api/git/log?limit=250`, `/api/git/summary`, and `/api/git/refs`. Each
+`--comparison REV` adds `/api/plugin/diff/comparison?revision=REV`, the diff of a commit
+with its first parent that a click in the Commits list asks for, and
+`--comparisons-only` times those alone.
+Before a comparison’s pairs, one unrecorded request to each build without gzip records
+whether the two answer it byte for byte (`answer.answers_equal`). A comparison of a
+folder is computed for every request; a store’s, named by full commit IDs, is kept after
+the first, so on a store the pairs time the kept answer.
+
+A sample records its client time, start offset, status, body bytes, whether an ETag came
+back, and `Server-Timing`, and from that header’s `git` entry the `git` time (`git_ms`)
+and the Git processes the request started (`git_processes`). The entry counts them in
+its description, `git;dur=41.2;desc="2 processes"`, from H116 on; an older build’s
+samples hold null. A process is counted in the request that started it: one that joins a
+comparison another request is already listing counts none of that listing’s processes.
+To count an older build’s processes, start each server with `GIT_TRACE2_EVENT` naming an
+empty directory, where Git writes one file a process, and pass the directories as
+`--control-trace` and `--candidate-trace`. A sample then records the files that appeared
+while its request ran (`trace_processes`) and the commands they name (`trace_commands`),
+which show any process the server started on its own in that window.
+Only a folder’s reads are traced: a store’s Git runs with every inherited `GIT_*`
+variable dropped.
+Tracing writes as Git runs, so a traced pass counts and is never timed;
+the timed round runs untraced and reads `git_processes`. The summary gives, per build,
+each route’s median and range, the pair ratios, and the counts each build reported.
+
+H116’s untimed count (2026-11-14) on a four-commit folder, the branch against the build
+it was cut from: a commit within `MAX_LISTED_PATCH_BYTES` took 4 processes before and 2
+after (`rev-parse`, `diff`), a 450 KB commit past it 4 and 3, and the root commit 6 and
+6; every answer was byte-equal, and the candidate’s own count matched its trace on every
+sample. Two counts differ from these by design, and `tests/test_diff_one_run.py` holds
+them. A server’s first comparison of a folder or store also asks `git config` whether a
+textconv driver is named, beside its listing run, so it counts one more process, and a
+folder’s very first asks `git var` too, which system file Git reads; the warm-up request
+of each route absorbs them.
+The answer is kept only while every configuration file Git reads is unchanged, and not
+at all where it cannot be sure which those are (`textconv.py`), so such a folder asks
+every time. Where a driver is named, the page’s files are diffed in a run of their own,
+with their drivers, as before: 3 processes, and 4 for the first.
+`diff.submodule=diff` counts as a named driver, since Git diffs a changed submodule in a
+child `git diff` that runs the submodule’s own drivers.
+Git before 2.42 has no `git var GIT_CONFIG_SYSTEM`: a server’s very first comparison
+asks it instead to list its system file alone, one process more (5), and its answers are
+then kept as a newer Git’s are; a system file that holds no entry names itself nowhere,
+so every comparison asks `git config` again, 3 processes.
+A page whose files Git pairs otherwise in a run limited to their paths takes the whole
+patch within `MAX_LISTED_PATCH_BYTES` in a run of its own, one process more, wherever
+the listing run’s patch was not kept: from a kept manifest, from another request’s
+listing, or from a pull request’s own loader.
+The one run has half the read deadline; past it the listing and the page run apart, so a
+commit only the one run is slow on still answers within one deadline.
+
+What the pairs cannot see: they are serial requests from one client, so a cost that
+falls on other requests, such as a parse that holds the GIL, does not show in them, and
+the counts above depend on the Git version and on whether the served folder’s
+configuration names a driver, neither of which a result records yet.
+A round that times H116 records both beside its pairs.
+
+`--check-repo` with `--check-control` and `--check-candidate` adds a correctness check
+between pairs, untimed: a scratch clone the timed servers never serve, whose refs it
+moves before asking both builds for the refs, the summaries, and the first log page,
+which must agree. exp-061 is the round that used it.
 
 ### File View Navigation Scenario
 
@@ -694,7 +791,8 @@ Each run records the corpus’s commit, cleanliness, trunk, and a hash of all it
 its start and end, and refuses itself (`corpus_changed`) if any moved.
 
 `--journeys` narrows a diagnostic run, `--headed` shows the window, `--no-warmup`
-measures a cold server, and `--keep-going` continues past refusals to list them all.
+measures a cold server, `--keep-going` continues past refusals to list them all, and
+`--memory-after ID,...` reads retained memory after the named transitions (below).
 None of them is the standard regime: such a run says so when it starts, records
 `regime_flags`, and writes to `diagnostic.jsonl` instead of `runs.jsonl` unless `--out`
 names a file, and `compare` refuses to mix it with standard runs.
@@ -751,6 +849,7 @@ main-tab Pulls rows land on.
 | `palette` | Quick Search opened with `t`, then a query typed that returns both files and pull requests |
 | `skim` | ArrowDown held over six rows: one `keyDown`, five more flagged `autoRepeat`, 60 ms apart, then one `keyUp` |
 | `reveal` | A landing on a file three folders down, its ancestors collapsed |
+| `dwell` | A hover of each length in `SUBJECTS.dwell.ms` (0, 100, 200, and 450 ms) over its own cold Markdown file of 23 to 32 KB, then a click (H94, since revision 6) |
 
 **The Commits landing.** Main’s `19a36c5b` made every switch to Commits select the
 newest commit and show it, on that commit’s address.
@@ -804,6 +903,10 @@ Under the newest landing these transitions measure something else than they did 
 `compare` refuses runs whose `commits_landing` differs, or in which any one transition
 landed differently, since the same transition then measures a different subject on each
 side; `--allow-mixed-landing` compares them anyway and notes which transitions differ.
+A round that needs the flag registers which transitions it reports and does not judge.
+Their results are listed but decide nothing, because a transition with a different
+subject on each side is not the same measurement (exp-079 left six such transitions
+out).
 `summarize` names each condition’s landing and any transition whose landing drifted
 between its runs.
 
@@ -813,6 +916,9 @@ ResizeObserver on the document element, and Chrome delivers a new observation in
 same frame’s rendering steps, after layout and after every ResizeObserver the page
 created earlier. The read forces no layout, and a later task cannot change what a frame
 was recorded as showing.
+Since revision 6 each frame’s entry also records the read’s own duration and whether the
+read came after the input reached the page, and a root asked about twice in one read, by
+the frame’s state and by the ready predicate, is searched once.
 
 **Useful content** is visible, laid-out content in the preview’s active view: a text
 node on screen (its parent rendered, not at zero opacity or hidden, with a non-empty
@@ -820,10 +926,97 @@ text box that no clipping ancestor or the viewport cuts away) outside a placehol
 prompt, or screen-reader-only label; or an `<img>` once it has loaded and its `decode()`
 has resolved, a `<video>` with a current frame, or a canvas, iframe, or large SVG laid
 out at a useful size.
-The search skips, without counting them, the subtrees of elements with no box and of
-elements wholly outside the viewport, so a view that hides or scrolls away its first
-lines is still found; it tests at most 400 text nodes.
-Canvas and iframe pixels are not read.
+A root that is, or is inside, a placeholder, prompt, or label (`.sr-only` and, since
+revision 6, `.visually-hidden`) has none, so a pane-level placeholder with text of its
+own reads `P`, not `UP`, and so has a root hidden by its own
+`content-visibility: hidden`, which is not walked at all (revision 6). Canvas and iframe
+pixels are not read.
+
+**How content is found.** The search walks the root’s subtree in document order and
+stops at the first hit (`hasUseful` in `transitions-recorder.mjs`). It does not enter
+the subtree of a placeholder, prompt, or label (a source view’s line-number gutter,
+`.source-line-numbers`, among them); of an element with `display: none`,
+`content-visibility: hidden`, or zero opacity, none of whose descendants can show; or of
+an element with an empty box that clips its descendants (overflow other than visible, or
+paint containment), such as a block collapsed to height 0. A box-less element (an inline
+whose only child is positioned) and an empty one that does not clip (a windowed list’s
+zero-height anchor) are entered, so their descendants are tested by their own boxes.
+An element wholly outside the viewport is not entered unless its scrollable overflow,
+which holds content and positioned descendants laid out outside its box, reaches the
+viewport. A text node is measured only over its runs of lines that hold a non-space
+character, each trimmed to its first and last one, so blank lines on screen after text
+that is not are not content; at most 32 runs of a node are measured, and a node whose
+first 32 are not on screen sends the search on to the hit test.
+Text under a hidden parent is visited but neither measured nor counted toward the 400.
+The walk stops at 1,500 nodes visited, entered or not, or 400 text nodes measured.
+A text node longer than 2,000 characters, such as a plain source view’s text, is
+measured over its first 2,000 only, since its boxes cost in proportion to its lines (3
+ms a call for the corpus’s `app.js` gutter of 41,000 characters, in every frame of that
+view, before the bound); one whose start is not shown sends the search on to the hit
+test. When the walk stops at a bound, or found nothing after passing over an element on
+its own box, it hit-tests up to 60 points across the area where the root can paint (the
+viewport, cut by the root and every ancestor that clips), at four columns: first the two
+top rows of that area and of the root, where a view’s content starts, then as many rows
+as the points left fill, coarse to fine and each level from its outer rows inward, so
+the last level the 60 points reach still spans the area down to its bottom eighth.
+It stops at the first point that finds content.
+Its bound is counted in work, so the same page gives the same answer under any load:
+each point is charged the child nodes of every element from the one it lands on up to
+the root, and one per 8 characters of the text among that element’s first 32 children,
+and no point starts once the charge reaches 80,000 (the first always runs).
+A call that stops there marks the frame’s read `searchTruncated`; its time is only
+reported, in the read’s cost.
+A point whose topmost element (`elementFromPoint`) is outside the root, such as an
+overlay, does not show the root.
+Otherwise that element and its ancestors up to the root are tested as media and by the
+text among their first 32 children (elements and blank text count toward the 32), and,
+the first time a topmost element is met, so is the text the caret lands on there
+(`caretPositionFromPoint`), which sees text under `pointer-events: none` and the text
+nearest the point, so a lone line between the rows is found; that node is measured from
+the line the caret lands on.
+Media are tested as the walk reaches them, not by a separate pass over the whole
+subtree.
+
+The bounds come from [transitions-search-cost.mjs](transitions-search-cost.mjs), which
+times one call on synthetic documents in headless Chrome, scrolled to the end of their
+lines (dense), or past them onto a tail that shows a heading at the screen’s top, one
+line at its bottom, lines under `pointer-events: none`, or nothing (blank), and prints
+the search’s counts beside each time.
+Median of 20 calls in ms, revision 5 / revision 6, at a load average falling from about
+17 to 7 (read the ratios, not the values); `(cut)` marks a call that stopped at the
+hit-test bound, and every other call found what is on screen:
+
+| Document | Lines | Dense | Sparse top | Sparse bottom | `pointer-events: none` | Blank |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| one `<div>` per line | 10,000 | 13.5 / 1.9 | 14.0 / 1.7 | 13.0 / 1.7 | 12.7 / 1.8 | 13.3 / 2.7 (cut) |
+| one `<div>` per line | 40,000 | 53.9 / 1.7 | 52.9 / 1.7 | 53.5 / 1.8 | 52.1 / 1.8 | 54.8 / 1.8 (cut) |
+| lines of 8 highlighted spans | 10,000 | 14.6 / 2.0 | 14.6 / 1.9 | 16.2 / 1.9 | 16.5 / 2.0 | 19.9 / 3.3 (cut) |
+| lines of 8 highlighted spans | 40,000 | 66.5 / 1.9 | 66.0 / 1.9 | 64.7 / 1.9 | 65.6 / 1.9 | 81.5 / 1.8 (cut) |
+| table rows of 3 cells | 10,000 | 14.0 / 1.9 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 1.8 / 0.2 |
+| table rows of 3 cells | 40,000 | 57.8 / 2.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 7.4 / 0.1 |
+| sections of 50 lines | 10,000 | 0.3 / 0.3 | 0.3 / 0.3 | 0.3 / 0.3 | 0.3 / 0.3 | 0.7 / 0.5 |
+| sections of 50 lines | 40,000 | 1.1 / 1.0 | 1.1 / 1.0 | 1.1 / 1.0 | 1.1 / 1.0 | 3.2 / 1.7 |
+
+A long document of short lines now costs the search what a short one does, because the
+walk is bounded and the first hit-test point finds the lines, the heading, the lone
+line, or the text under `pointer-events: none`. Over blank space past a long flat list
+the hit-test bound stops the call: after 8 points past 10,000 lines and 2 past 40,000,
+each charged the list’s children, where all 60 points would cost 68 to 123 ms over
+40,000 lines; such a frame reads blank, which it is.
+The table rows and sections were charged little enough that every blank call tried all
+60 points. On the product, a frame of the corpus’s `app.js` source view read in 2.4 ms
+while the search still measured the first 2,000 characters of its gutter (5.1 ms with
+the whole gutter), and of its Markdown files in under 1 ms; the search now passes over
+the gutter, which has not been timed on the product.
+That bound is the search’s alone, and the probe times the search alone.
+The rest of a frame’s read, its state’s prompt and placeholder queries, the regions’
+selectors, and the alert query, traverses the view in every frame: review B of #442
+counted 15 such traversals a read, a million element visits on a highlighted source of
+8,671 lines, against the search’s 3, so on a large view the read costs in proportion to
+its DOM (`mb-gnh9`). A text node costs up to its 2,000 characters and their line boxes,
+so a view of many long nodes, such as a large file’s 64 KiB chunks after Load more,
+scrolled to its end, costs the search up to 400 of them (`mb-jg75`). Neither has been
+measured on the product’s views; both wait on the A/A run of revision 6.
 
 **Scenario revisions.** Each row carries `scenario_revision`, and `compare` refuses to
 mix revisions but judges two sets of rows of one older revision against each other,
@@ -836,6 +1029,96 @@ off-screen subtrees when it looks for useful content.
 Revision 5 accepts a switch to Commits that lands on the newest commit as well as one
 that lands on the prompt, and records the landing; revision 4 refused every build since
 main’s `19a36c5b`, which lands on the newest commit (**The Commits landing**, above).
+Revision 6 fixes three recorder defects and adds the readings Phases 2 and 3 need
+(**Revision 6**, below).
+**A round must not compare a revision 5 run with a revision 6 run**: `compare` refuses
+to, and a series that spans the change is rerun on one revision.
+
+**Revision 6.** What changed from revision 5, and why; everything not listed here is
+defined as in revision 5, so rounds on the two revisions differ by this list only.
+
+- **The input’s own frame is in its window** (`mb-s0e4`). Chrome can stamp the frame
+  that draws an input a fraction of a millisecond before the input’s own `timeStamp`.
+  Revision 5 placed frames in a window by their begin time alone, so it left that frame
+  out: a valid transition read `framesToReady` 0 and could drop a blank frame from its
+  counts. A frame is now in the window when its read came after the input reached the
+  page, whatever its begin time, so a frame read before the input is out of it even when
+  Chrome stamped it after the input, which revision 5 counted.
+  `accountFrames` and `regionMovement` use the same rule, so a region’s box logged by
+  the input’s own frame moves it, and one logged by a frame read before the input, which
+  revision 5 counted from 1 ms before the input, is where the region stood.
+- **The content search finds what is on screen, at a bounded cost** (`mb-86b9`, review
+  C’s C1 on #373). Revision 5 rejected a subtree on its ancestor’s own box, so it missed
+  text on screen under a box-less inline, a zero-height parent at the viewport’s top
+  edge, a container of floats, a windowed list’s zero-height anchor, a parent whose
+  content overflows into view, a fixed or a translated element under a scrolled-away
+  parent: a windowed list scrolled after ready read blank frames with its rows on
+  screen. It also measured every off-screen sibling without counting it, about 15 ms a
+  call at the end of 10,000 lines.
+  **How content is found** (above) is revision 6’s search.
+  Media are now found by the walk and the hit test, not by a pass over the whole
+  subtree, so an image after the walk’s bound is found only where a hit-test point lands
+  on it. Review C found revision 5’s search agreeing with an uncapped reference on 52
+  readings of the product’s file and commit views; revision 6’s has been checked on the
+  synthetic pages only, since no series was run.
+- **Hidden and parked retained surfaces read as hidden** (`mb-5xzz`, C2). Text under
+  `visibility: hidden`, at zero opacity, or in a collapsed block no longer uses up the
+  search’s 400 text nodes.
+  A region is the first rendered match whose box is on screen, cut by every ancestor
+  that clips it and the viewport; failing one, the first whose box a scroll could bring
+  there: each scroll container takes the box when it lies within all it can scroll to
+  and projects it onto its client box, before the ancestors outside it clip, so a tree
+  row pushed below the fold of `#tree-content` inside the shell’s panes, which clip
+  without scrolling, is still the row and still moves.
+  On each axis where the box has extent its overlap must be positive, so a host that
+  only touches an edge does not count.
+  A retained page collapsed to height 0 with its overflow hidden, which revision 5 read
+  as 0, 0, 0 for a 66 px move, one parked at `left: -10000px`, which it read as 10,000
+  px, and one parked at `left: 100%`, translated off by `translateX(100%)`, or parked
+  below inside the scrolling pane are now passed over like one hidden with
+  `display: none`. Among the matches a scroll could bring on screen, the one that was
+  the region in the previous read comes first while it still can, so a shown page
+  scrolled out of its pane stays the region rather than a retained one parked below it
+  in the pane; when the shown page is replaced, the first match in document order is
+  taken. One clipped away by `clip-path` is still taken, as in revision 5.
+- **The line-number gutter is not content.** A source view’s `.source-line-numbers` is
+  passed over like a label, so a source view is useful only once its code is on screen,
+  and the search measures the code’s first token rather than the gutter’s first 2,000
+  characters. The product writes the gutter and the code in one `innerHTML`
+  (`src/metabrowser/static/plugin-sdk-views.js`), so the two are painted in the same
+  frame and the ready frame does not move.
+- **Four reporting fixes** (`mb-5xzz`, C3). `compare` marks a settle time that either
+  side reached after the other side’s shortest window closed (revision 5 marked only a
+  control that settled after the candidate’s window); equal medians with as many pairs
+  beyond the tolerance each way name the pairs of both ways (revision 5 printed one pair
+  as “same beyond”); `blankFramesOriginPrompt` runs until the pane shows anything other
+  than the prompt, by the `U` and `E` letters alone, so the pending modifier or a
+  placeholder appearing beside the prompt no longer ends it; and a placeholder root
+  reads `P` (above).
+- **New readings.** The recorder’s own read cost per frame; retained memory at every
+  journey’s end and, with `--memory-after`, after named transitions, shown and not
+  judged (**How a round uses it**, below); a `sourceHighlighted` milestone on
+  `files.cold.source_large` and `files.revisit.source_large`; and the `dwell` journey,
+  last in the default order.
+  The two source transitions’ predicate is evaluated in each of their frames until it
+  holds, including the frames read after the window while it is awaited; those frames
+  are read back after the wait, so each milestone records the reads up to it
+  (`milestoneReads`), and the wait comes out of the 700 ms gap after them as every
+  milestone’s does: when highlighting completes more than 700 ms after the window
+  closes, the next Files transition starts later than in revision 5. The `dwell` journey
+  also runs in the warm-up pass, as every journey does, so its four files are read by a
+  warm server like every other subject; leaving it out would measure them server-cold.
+  A hover-click row records its realized dwell, `hoverDwellMs`, from the pointer’s
+  arrival over the target (its first `pointerover` inside the element the transition
+  armed, so a boundary event elsewhere under a stationary pointer is not the arrival) to
+  the press, shown as `hover_dwell_ms` and not judged: it runs some milliseconds past
+  the requested `hoverMs` (23 ms for a 0 ms dwell on a loaded machine), and the
+  product’s hover intent is 250 ms, so the 200 ms point can land on either side of it.
+  The end-of-journey reading runs after a journey’s last transition and before its
+  browser closes, so it changes nothing measured but adds a garbage collection and a few
+  protocol calls between journeys.
+  A worker’s session is forgotten when Chrome detaches it, so the reading does not ask
+  an exited worker, and nothing Chrome sends on that session afterward is recorded.
 
 **What each transition records.** The clock starts at the input event’s own `timeStamp`
 (the first `pointerdown`, `keydown`, or `popstate`, which must be trusted; navigation
@@ -868,11 +1151,11 @@ start for a landing).
 - the movement of each named region (`REGIONS` in `transitions-recorder.mjs`) over the
   window, per tracked component of its post-layout box: the largest single step, the net
   displacement, and the path length (every step summed), for the page and for each group
-  (`tree`, `palette`). A region is its selector’s first rendered match, not an element:
-  one the product re-creates, or that is absent for some frames, is still the same
-  region, a hidden surface kept mounted ahead of it is passed over, and its next box is
-  measured from where it last was, so a pull request page replaced by one with a taller
-  header moves the tab bar below it.
+  (`tree`, `palette`). A region is its selector’s first rendered match whose box is
+  reachable (revision 6, above), not an element: one the product re-creates, or that is
+  absent for some frames, is still the same region, a hidden surface kept mounted ahead
+  of it is passed over, and its next box is measured from where it last was, so a pull
+  request page replaced by one with a taller header moves the tab bar below it.
   A tree row is identified by its `data-path`, so a different row is a replacement, not
   a movement;
 - Layout Instability entries with value, `hadRecentInput`, and their sources;
@@ -899,8 +1182,67 @@ start for a landing).
 - milestones, each timed like painted ready and waited for after the window closes, so
   no other field’s window moves: on a landing, `shellToolsReady` and `styledMarkdown`;
   on every pull request transition, `prHeader`, and on a Conversation,
-  `prDescriptionShown` and `prDescriptionFinal`. A milestone that never arrives is
-  `null` and named in `milestonesMissing`;
+  `prDescriptionShown` and `prDescriptionFinal`; and since revision 6, on the large
+  source file’s cold visit and revisit, `sourceHighlighted` (H101), when its syntax
+  highlighting is complete: the file is shown, every code block the shell highlights
+  (`pre code` that is not `.no-highlight`) carries highlight.js’s `hljs` mark, which it
+  sets as it writes the token markup, and the view holds a token span.
+  A build that highlights another way must set the same mark, or the milestone never
+  arrives. A milestone that never arrives is `null` and named in `milestonesMissing`;
+- the recorder’s own read (revision 6), on the page clock, which resolves 0.1 ms there
+  (the page is not cross-origin isolated), so each read is rounded to 0.1 ms:
+  `readCostMaxMs`, the longest read of a frame in the window, `readCostToReadyMs`, the
+  reads summed up to the ready frame, and for each milestone in `milestoneReads` the
+  longest read, the reads summed, and the truncated searches up to it, the frames read
+  while it was awaited after the window included.
+  `searchTruncatedFrames` counts the window’s frames whose content search stopped at its
+  hit-test bound, where on-screen content can have read as blank,
+  `searchTruncatedToReady` the part of them up to the ready frame, and
+  `searchTruncatedAfterWindow` those read while milestones were awaited.
+  `searchTruncatedBeforeInput` is the same count for the arm check and the frames before
+  the input, which the ready-before-input guard read: when it is not 0,
+  `readyBeforeInputUncertain` is true, since a truncated search there can have hidden a
+  subject shown before the input.
+  `convergedUncertain` marks a converged check whose search was truncated, and its
+  refusal says so. A read includes the frame’s state, its regions, and the ready and
+  milestone predicates, so a condition whose page makes the search work harder shows it
+  here. `compare` and `summarize` name every transition whose longest read, up to its
+  ready frame or a milestone, passed `READ_COST_CEILING_MS` (4 ms, about a quarter of a
+  60 Hz frame, in `transitions-stats.mjs`), as `INSTRUMENT COST`, since the recorder may
+  have delayed that frame, and every transition with a truncated search, as
+  `SEARCH TRUNCATED`. The ceiling’s basis is a search’s cost, and its comment says what
+  it does not cover: a read runs one search per root it asks about, each with its own
+  bounds; the rest of a read traverses the view unbounded; a text node costs up to 2,000
+  characters; and a frame whose read hit-tests has its pre-paint run inside the read, so
+  its `INSTRUMENT COST` is an upper bound on the instrument’s own cost.
+  Where a search was truncated, on either side, `compare` leaves unjudged what it can
+  have bent, each as a gap with the reason in its verdict: truncated before the input,
+  every judged metric of the transition, since it should perhaps have been refused; up
+  to the ready frame, every judged metric but its milestones, since readiness found late
+  moves the end of the window that the settle times, the longest task, the placeholder
+  counts, the movement, and the request, shift, and DOM node counts are measured over;
+  after the ready frame, the blank counts (`blank_frames`, `blank_frames_after_ready`,
+  `blank_ms`); and up to a milestone, that milestone;
+- retained memory (revision 6), after a full garbage collection, at every journey’s end
+  (`journey.memory`, compared as `<journey>.end`) and, with `--memory-after`, after
+  named transitions (`memory`): the page’s main-thread V8 heap (`Runtime.getHeapUsage`,
+  `jsHeapUsedKb`, and where Chrome reports it the embedder heap, Blink’s own objects
+  with DOM nodes among them, `embedderHeapUsedKb`), the renderer’s live DOM nodes,
+  documents, and event listeners (`Memory.getDOMCounters`, attached and detached nodes
+  alike, so a surface kept off the document still counts), the elements attached to the
+  document, and the summed V8 heaps of the page’s dedicated workers, each collected
+  first. It does not count GPU memory, decoded images, compositor tiles, layout and style
+  objects outside those heaps, the HTTP and memory caches, the browser process, or any
+  other renderer. `performance.measureUserAgentSpecificMemory()` is not used: it needs a
+  cross-origin isolated page, which the product is not.
+  The collection is not something the page does on its own, so a reading between two
+  transitions changes what the later one measures, which is why `--memory-after` is not
+  the standard regime; the reading at a journey’s end follows its last transition.
+  The reading first empties the recorder’s own logs (its frames, region boxes, DOM
+  changes, entries, and inputs since the last arm, about 10 KB a second of logging on
+  review B’s probe), which every caller has read by then, so they do not count.
+  A name `--memory-after` gives that no transition of the run measured refuses the run
+  (`memory_after`), so a misspelled one does not quietly read nothing;
 - `inputSpanMs` and `readyAfterLastInputMs` for gestures of several events, a watched
   list’s row replacements (the palette’s results), request body bytes of every POST,
   top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
@@ -929,7 +1271,8 @@ start for a landing).
   rendered subject, active tab, and mounted owner all agree;
 - `input_observed`, `hit_test`, `target_missing`, `subject_missing`, and `setup`: the
   trusted input reached the page, a press at the target’s center lands on it, and every
-  subject and setup step was found.
+  subject and setup step was found;
+- `memory_after`: every transition `--memory-after` names was measured.
 
 **How a round uses it.** Run the control and the candidate in one series, at least six
 runs each, then `compare`, naming the hypothesis’s metric with
@@ -953,31 +1296,54 @@ says
 each candidate run divided by the control run of its pair, against `--tolerance` (1.3 by
 default, the rough cut on this loaded machine; it must be below 2). Ranges apart with
 two or more pairs beyond the tolerance is a result; one pair beyond under separated
-ranges is a rerun of that pair; ranges apart with every pair within is not a result; and
-two pairs beyond under overlapping ranges must be explained.
-One pair beyond under overlapping ranges is listed with the pair to rerun but is not a
-wrong-way result: at three runs a side it is common under load (88 of the 4,199
-comparisons of the exp-058 A/A split), and the runbook’s rerun of that pair is for a
-release. When the medians are equal, the pairs beyond the tolerance give the direction.
+ranges is a rerun of that pair; and ranges apart with every pair within is not a result.
+Under overlapping ranges the pairs beyond the tolerance are counted in each direction,
+whatever the medians do, and every verdict names them both ways: two or more beyond in
+one direction must be explained, and are a wrong-way result when that is the metric’s
+worse direction, however close the medians are and whatever the other direction holds.
+With fewer than three back-to-back pairs, one pair beyond in the worse direction is a
+gap, since the tolerance cannot be judged.
+One pair beyond under overlapping ranges, with three or more pairs, is listed with the
+pair to rerun but is not a wrong-way result: at three runs a side it is common under
+load (88 of the 4,199 comparisons of the exp-058 A/A split), and the runbook’s rerun of
+that pair is for a release.
+A line’s `direction` is the medians’, which an expectation’s first clause reads.
 A zero control median against a non-zero candidate with separated ranges is a result on
 the ranges alone, so a transition that gains its first long task in every run is a
 result; under overlapping ranges it goes through the pair rule, where a pair whose
 control is 0 and whose candidate is not is beyond any tolerance.
-A settle time the control reached after the candidate’s window closed (the window ends a
-settle time after the ready frame, so a build that is ready sooner is watched for less
-time) is marked, since a lower candidate value may only be a shorter window.
-Counts (requests, replacements, movement, shifts) are judged on their ranges.
+A settle time one side reached after the other side’s shortest window closed (the window
+ends a settle time after the ready frame, so a build that is ready sooner is watched for
+less time) cannot be compared, since a lower candidate value may only be a shorter
+window, and a higher one only a longer window: `settled_ms` is then a gap, so it is
+neither a result nor a met expectation, and `nav_settled_ms`, shown but not judged, is
+marked.
+Counts (requests, replacements, movement, and shifts) are judged on their ranges.
 Every line shows the pooled medians and ranges beside the pair ratios, and the report
 ends with the chance that two identical builds separate on one comparison at the n in
 hand, `2 / C(a + b, a)` (10% at three runs each, under 1% at five), and how many
 comparisons that predicts.
-It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
-wrong-way result (a judged metric that got worse, or a rerun or an explanation owed in
-the wrong direction), a gap, or an expectation not met.
-Figures it shows but does not judge are marked: `requests_background`, `input_span_ms`,
-`next_frame_ms`, `window_ms`, `nav_settled_ms`, `uncredited_frames`,
-`tree_rows_replaced`, `subject_settlement_reads`, `blank_frames_origin_prompt`, and the
-`revalidated` counts.
+It exits 0 when the comparison is complete with no wrong-way result, 1 on a wrong-way
+result (a judged metric that got worse, or a rerun or an explanation owed in the wrong
+direction), a gap, or an expectation not met, 2 when it refuses, and 3 when the tool
+itself fails, with its stack.
+A met expectation accounts for its own metric, so a round that predicts a cost in the
+metric’s worse direction and sees it met exits 0, and its line is marked
+`[WRONG WAY, EXPECTED]`. Figures it shows but does not judge are marked:
+`requests_background`, `input_span_ms`, `next_frame_ms`, `window_ms`, `nav_settled_ms`,
+`uncredited_frames`, `tree_rows_replaced`, `subject_settlement_reads`,
+`blank_frames_origin_prompt`, `read_cost_max_ms`, `read_cost_to_ready_ms`,
+`milestone_read_cost_max_ms`, the `search_truncated_…` counts, `hover_dwell_ms`, the
+retained memory, and the `revalidated` counts.
+The retained memory (`memory_js_heap_kb`, `memory_embedder_heap_kb`, `memory_dom_nodes`,
+`memory_worker_heap_kb`, `memory_listeners`, `memory_documents`) is report-only: shown
+at each `<journey>.end` and after any transition read with `--memory-after`, never
+judged, and a reading that is missing is named in a note, not a gap, so it counts toward
+no exit code. A heap varies from run to run, and a candidate can retain more by design
+(H101 moves lexing into a worker, H112 keeps hosts), so whether two ranges separate says
+nothing a round can act on.
+Judging it needs a budget a round registers first, as H112 asks, which `mb-eu2t` tracks;
+until then a round that guards memory reads the table and says what it shows.
 Write the verdict with the accept rule below, and say what did not move.
 
 `compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even
@@ -987,8 +1353,66 @@ build (it needs six runs); it exits 1 only on a gap.
 with paths reduced to their last component in identities and in refusal details, so a
 round can commit its samples beside its artifact and regenerate its tables from them.
 
+**A judged series.** A confirmatory round runs one pair at a time under
+[paced-series.sh](paced-series.sh), not one `run --runs 6`, so that load, power, and the
+corpus are checked before every pair rather than once.
+The driver reads a round’s values from a config file, kept in the round’s worktree as
+gitignored `attic/expNNN/series.env`, because it holds local paths; start one from
+[paced-series.example.env](paced-series.example.env).
+Run `paced-series.sh --config FILE --check` first.
+It takes no lock and times nothing, and reports each gate; `--self-test` shows on
+scratch fixtures that `--check` leaves the lock and the round’s files alone.
+Only the coordinator starts the series itself.
+The driver drives `transitions.mjs` only and needs macOS (`pmset`, `caffeinate`). The
+rules it enforces are the round’s registered ones:
+
+- **The lock.** The series lock under the git common dir, so no two `paced-series.sh`
+  series overlap on one machine.
+  `run.py`, `startup_pairs.py`, `wkprobe`, and a hand-run `transitions.mjs` take no
+  lock, and the driver waits only for a live `transitions.mjs` run, so start none of
+  them while a series holds the lock.
+- **Load.** The one-minute load stays under the registered bound for 60 s before each
+  pair.
+- **Power.** Low Power Mode and the power source are read before and after every pair,
+  and sampled every 15 s. The judged mode is the one read before the first attempt.
+  A pair measured in another mode, or with power unreadable, is excluded and not judged;
+  unreadable power before the first attempt stops the series, since there is no judged
+  mode.
+- **The corpus.** Never fetch, pull, or check out inside the corpus checkout.
+  The standing corpus v2 is `7a02fed4` checked out, trunk `083e78e4`, refs digest
+  `387f68dc4e8eb8e0` (`provenance.mjs`’s `corpusProvenance`). The driver refuses to
+  start a pair on any other digest.
+  On 2026-11-14 an unidentified `git fetch --quiet origin` moved its `origin/main`
+  during exp-086’s round (exp-079’s protocol records it); the trunk and the refs digest
+  both showed it, and the driver checks both.
+- **Order.** Which condition leads alternates by attempt.
+- **Stops.** The series stops at its target of judged pairs, or with a nonzero exit at
+  its cap on attempts, and an exit trap releases the lock.
+  A driver killed by SIGKILL, a crash, or a restart skips the trap and leaves its lock,
+  which `--check` reports as stale and nothing removes on its own.
+
+**A closing round** measures final `main` against the campaign’s control and judges
+every landed hypothesis on its own record’s criteria (exp-079). Final `main` is one
+build, so its results belong to all of it.
+One lane’s cost can leave another lane’s guard unresolved, as the pull request page’s
+first-paint holds did for H86 (b). Its record carries a **Final Performance Update**, a
+table with one row per hypothesis, since the schema holds one decision per record.
+
 `tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
 its recorder in headless Chrome on synthetic pages built to fail each definition above.
+Each of revision 6’s changes has a check that fails under revision 5’s logic: the
+`search` group’s seven shapes, windowed lists, hidden text ahead, long document, content
+past the walk’s bound, the hit test’s bound and rows, a text node of more runs than are
+measured, the line-number gutter, hidden roots, placeholder root, collapsed and parked
+retained pages, and the review’s tree page, the product’s clipping panes around
+`#tree-content`, and region page, scrolled as well as at its top; the `window` group’s
+page, which wraps `requestAnimationFrame` to stamp every frame 34 ms early, so the
+frames drawn after a press begin, by their stamps, before it, as Chrome’s did once by
+0.2 ms, or 34 ms late, so the frames read before it begin after it; the `readings`
+group’s memory, time to highlighted, and dwell journey on a stand-in Files tab; and the
+browserless checks of the frame window, missed frames, the region log, the origin’s
+prompt, the reads up to a milestone, the realized dwell, and `compare`’s pair rule,
+gates, marks, expectations, and exits.
 A check that can be repeated, and that failed while the recorder refused one of its
 measurements for its frame clock alone, is taken again, up to three attempts in all.
 A pass that needed another attempt is reported as a pytest warning.
@@ -1011,12 +1435,51 @@ subject, as on the recorder’s synchronous test pages; a transition that become
 later, on a response or a timer, is ready some frames after that paint.
 On the synchronous long-frame page, Chrome presented 9 to 12 ms after painted ready in
 five CI runs and 23 to 43 ms after it with the renderer’s CPU throttled fourfold.
-Frames are placed in a transition’s window by their begin time (the rAF timestamp),
-which Chrome can set before the input’s own `timeStamp` for a frame it draws after the
-input: a probe page’s ready frame began 0.2 ms before the press and showed what the
-press’s handler did.
-Such a ready frame is outside the window, so its transition reads `framesToReady` 0 and
-leaves that frame out of the blank and placeholder counts.
+Chrome can set a frame’s begin time (the rAF timestamp) before the input’s own
+`timeStamp` for a frame it draws after the input: a probe page’s ready frame began 0.2
+ms before the press and showed what the press’s handler did (`mb-s0e4`, 1 run in 8).
+Revision 5 placed frames in a window by their begin time alone, so such a frame was
+outside it: its transition read `framesToReady` 0 and left that frame out of the blank
+and placeholder counts.
+Since revision 6 a frame is in the window when its read came after the input, whatever
+its begin time, so the edge no longer drops a frame, and a frame read before the input
+that Chrome stamped after it no longer enters; the frame’s times are still its own, so
+`paintedReadyMs` can be under a frame interval there.
+A frame whose read never came is placed by what the next frame’s tick knew: before the
+input when the input had still not reached the page, in the window when the read before
+it saw the input, and otherwise, when the input arrived between the two, by its begin
+time, which can still drop it at the edge.
+exp-058’s 462 transitions have no `framesToReady` 0, and whether any revision 5 round
+dropped a blank frame cannot be told from its samples.
+The walk weighs nothing that covers the content it reaches, in either revision: text
+under an opaque overlay still reads as content.
+The hit test does, since a point whose topmost element is outside the root shows nothing
+of it. Content smaller than the grid that escapes a pruned ancestor can fall between its
+points, and an element clipped away by `clip-path` is not read as hidden.
+Content positioned out of a block collapsed to height 0 with its overflow clipped (a
+fixed or absolute box whose containing block is outside that block, which CSS does not
+clip) is not found at any size: the walk passes over the collapsed block without sending
+the search on to the hit test, and a box found by the hit test is cut by every clipping
+ancestor, the collapsed one included.
+The product’s views have no such shape.
+The hit test’s bound is counted in work, so a busier machine tries the same points and
+reaches the same answer; sparse content past the points the bound allows reads as blank,
+and the frame says so (`searchTruncated`). On the synthetic pages every sparse case was
+found at the first point, which always runs.
+The work is a model of what Chrome’s hit test passes, the children and text of the
+elements a point lands among, so a shape it undercounts costs more per point than its
+charge says, which the frame’s read cost shows.
+A text node is measured over at most 2,000 characters and 32 runs of non-blank lines,
+from its start, or in the hit test from the line the caret lands on, so blank lines on
+screen after text that is not do not read as content; on screen beyond those characters
+or runs, a node’s text is found only through the hit test.
+The search reads an off-screen element’s scroll size to see whether its overflow reaches
+the viewport. On 200 `content-visibility: auto` chunks of 50 lines scrolled to the
+middle, the chunking H99 (b) proposes, a call found the lines in 0.2 ms, but whether
+that read lays out a chunk’s skipped content was not measured directly; that round
+checks the recorder’s read cost on its own chunks first.
+The memory reading is Chrome’s own accounting after a forced collection, so it is
+comparable between builds in one series, not a size a reader’s machine would report.
 A ResizeObserver round after the first (the product’s own observers of content deeper
 than the document element) can change a frame after the recorder read it.
 The Pulls catalog walk runs for about the first minute of every page load and overlaps
@@ -1130,6 +1593,36 @@ Those answers do not depend on how busy the machine is.
 Its paint timings do, and they come from a headless window, so they are pair ratios for
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
+**What loopback is sent.** Only a server started as the macOS app starts it, with
+`--exit-on-eof` on a loopback bind, its stdin held, and outside a remote session, sends
+a loopback client its answers uncompressed (H115,
+[Compression](../../docs/command-line.md#compression)). The harnesses that start a build
+make one of the two starts:
+
+- **Compressed, the remote path’s bytes:** `run.py serve`, `transitions.mjs`,
+  `pr-page.mjs`, and `server-time.mjs` by default start a build `--no-open` alone, as
+  `metab --remote` starts its far server, so their bytes are the remote path’s, under
+  `--network` too.
+- **Uncompressed, the app’s start:** `wkprobe.mjs` adds `--exit-on-eof` to every build
+  whose help lists the flag, so that its server dies with the probe, and the WebKit gate
+  (`apps/macos/webkit-gate/processes.mjs`) always does.
+  Both bind the default `127.0.0.1`, and `wkprobe.mjs`’s pass-through proxy adds no
+  forwarding header. `server-time.mjs -- --exit-on-eof` starts a build this way on
+  purpose.
+
+So a `wkprobe.mjs` pair of a control from before H115 and a candidate from after it
+compares compressed delivery with uncompressed: the candidate’s per-family `bytes` grow,
+startup JavaScript about 3.4 times (185,791 against 630,836 bytes in #455’s untimed
+reading), which is the delivery and not a regression.
+Read such a pair’s bytes by decoded size.
+To measure the local path with a harness that starts `--no-open`, start the build as the
+app does: `--exit-on-eof`, with the harness holding the server’s stdin open, since a
+closed stdin stops it.
+An emulated link (`--network`) does not change which: the emulation is in the browser,
+and the server sees a loopback peer either way.
+`run.py record` reads `startup_script_transfer_kb` as the remote path sends it whatever
+the server sent the page; see the note beside it in `performance-budgets.toml`.
+
 It also splits what the startup scripts cost, from the load’s trace: when their last
 byte arrived, their parse on a worker while they streamed in, their compile and
 evaluation on the main thread, and the main thread’s busy time to the first tree row.
@@ -1175,6 +1668,122 @@ that set `startup_script_transfer_kb` this way, with its samples; at 27ea216c th
 commands gave its 225,531-byte and 261,266-byte builds.
 [The eager startup-script cost](../../docs/project/research/research-2026-11-12-eager-startup-script-cost.md)
 is its write-up.
+
+### Server Time over a Landing
+
+`server-time.mjs` reports the server’s own time over one landing, by phase.
+It starts the named build’s `metab` on a tree, `--no-open` with the verbose request log
+on and any arguments after `--`, waits for the inventory, and loads one address in
+headless Chrome through the transition harness’s launcher (`launchBrowser` in
+`transitions-recorder.mjs`):
+
+```shell
+node explorations/performance-loop/server-time.mjs --metab "$CONTROL/.venv/bin/metab" \
+  --tree "$CORPUS" --path /view/docs/design-system.md --out .bench/server-time/control.json
+# The same build started as the macOS app starts it, for a client on this machine:
+node explorations/performance-loop/server-time.mjs --metab "$CANDIDATE/.venv/bin/metab" \
+  --tree "$CORPUS" --path /view/docs/design-system.md --out .bench/server-time/app.json \
+  -- --exit-on-eof
+node explorations/performance-loop/server-time.mjs --summarize .bench/server-time/control.json
+```
+
+A run loads the address once in a fresh profile on a fresh server, then reloads it, each
+window ending when the load event has fired and the network has been quiet for 750 ms.
+That first landing is a cold reading: the app runs one server per folder, and a browser
+keeps every stamped asset, so each asset usually reaches a server once per process.
+`--warmup N` loads the address N times first, unrecorded; the record and its table say
+“warm server”, and a warm reading is never read as a cold one.
+
+For every request the server answered in a window it reports, by route family, over the
+landing’s assets (`/static`, `/plugin-static`, `/kpress-static`), and over the assets
+requested before `DOMContentLoaded`, as the startup budgets’ probe selects them:
+
+- **`busy`, the server’s wall-clock time**: the union of the requests’ spans, from
+  arrival to the end of the body, which is the time at least one request was open.
+  It says how long a landing kept the server answering.
+  It is not CPU time, and not the time the event loop was held: a render in a worker
+  thread counts in full while the loop is free for everything else.
+- **Each phase’s total** of `metabrowser.server_timing` (`read`, `render`, `git`,
+  `encode`, and any other a route names): the wall-clock time spent in it, taken on the
+  request’s path around the work, so a phase around a thread includes the wait for a
+  pool thread (the module’s docstring states the convention).
+  It attributes the busy time.
+  It is not CPU time either: a change that moves work between the event loop and a
+  thread, as H115 (a) moves compression, changes what a phase’s span holds as well as
+  how long it is.
+- **`server CPU`**, on each window’s title line: the server process’s user and system
+  CPU time over the window, from `/proc` on Linux and from `ps` elsewhere, to the
+  hundredth of a second on macOS. It is the process’s own time, not its Git children’s.
+  A change that moves work off the event loop is read here and in `busy` together.
+- **`latency`, the summed latency**: every request’s time to its last byte, added up.
+  Requests run side by side on one event loop, so each counts the others’ work again
+  while it waits; it measures contention, and decides nothing on its own.
+  `other` is the summed latency less the phases.
+
+Each window reads the log from where the last read ended, whole lines only, so a line
+being written is read whole by the next window.
+A row that arrived before the window began is left out of it and counted on its title
+line: a background request still open when the window began, or a straggler of the
+window before, whose whole span would otherwise count here.
+A warm-up’s rows are read and dropped before the measured landing, and each warm-up’s
+settling is kept in the record; one that did not settle is said above the tables.
+
+The end of a body comes from the request log’s `end_ms`, because `Server-Timing` is sent
+before a body and holds only what was done by then; the headers the browser saw are
+summed beside it as that start-of-response view, counting only the responses the server
+sent in the window, since a cached answer keeps the header it was stored with.
+`end_ms` is taken when the application returns, so it includes a route’s background
+tasks and the wait for the client to drain the body.
+On loopback the second grows with the bytes sent, which counts against an uncompressed
+answer. The Pulls catalog’s timer-driven work is its own family, `background`, and
+`foreground` is the total without it; a landing does not wait for it.
+A build from before `end_ms` logs the end of a body only to the millisecond; the table
+says how many rows that is.
+
+Then, with the page closed, it fetches the landing’s assets again one at a time in the
+order the browser asked for them, with Chrome’s `Accept-Encoding`, and reports their
+busy time. That is a warm serial reading: the server has answered each asset once
+already, so a build that holds assets in memory (H115) is measured holding them.
+
+**Which delivery the start produced.** The record names what the start asked for and
+what it got: the serial pass’s encodings, and the line a build that has one prints after
+its address, `Compression: off for loopback clients of this machine`. A start given
+`--exit-on-eof` whose serial answers were gzipped, as one is from an SSH session, a
+Codespace, or a Dev Container, is labelled `NOT THE APP'S START` above the tables: it
+measured the compressed path.
+Each window also says how many bytes its assets crossed the wire as and decoded to.
+
+**Isolating H115’s two halves.** The default start, `--no-open`, compresses for every
+client, as `metab --remote`’s far server does.
+So the encoded asset store, H115 (a), is read as the branch against the control, both
+started that way; leaving loopback answers uncompressed, H115 (b), is read as the branch
+started `-- --exit-on-eof` against the branch started as it is.
+With `--exit-on-eof` the instrument holds the server’s stdin open for as long as it
+runs, as the app does, since a closed stdin stops that server.
+Which harness measures (a) cold or warm matters as much as the start:
+
+- **Cold**, each asset read and compressed once by the landing that asked for it:
+  `run.py serve`, which starts a fresh server on an unused port for each sample, and
+  `server-time.mjs --warmup 0`, its default.
+- **Warm**, the store holding every asset, which is the shared-server case the app
+  rarely meets: `transitions.mjs`, whose measured pass follows an unrecorded one on the
+  same server, `server-time.mjs --warmup 1` or more, and the serial pass.
+
+exp-095 judges (a) on the cold regime and reports the warm one as the shared-server
+case; its protocol is in the load-time plan,
+[The exp-095 Protocol for H115](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#the-exp-095-protocol-for-h115).
+The record also keeps the build’s provenance, Chrome’s version, the load average before
+and after, and the server’s resident memory once the inventory is complete and again at
+the end, with the difference, which is what the landings left held.
+This is revision 3 of the record (`server-time/3`); `--summarize` reads a revision 2
+record as it was taken, without its CPU times, first memory reading, or rows left out.
+
+It is untimed by design: one landing, no pairs, no comparison.
+A round that judges a change runs it under its own protocol on both builds, back to
+back. Its logic is tested browserless by `tests/test_server_time_instrument.py`, which
+also parses the line the server writes.
+The served tree should be one the GitHub plugin has no remote for, or the run reaches
+GitHub with the user’s `gh`; put `tests/no-real-gh` first on `PATH` to be sure.
 
 ### WKWebView Probe
 
@@ -1510,6 +2119,10 @@ Anything the shell defers to idle is unmeasurable in that state, and two runs of
 same code will disagree depending on how long each waited.
 Request counts and transferred bytes do not care; scheduling does.
 Record which one a finding depends on.
+The same holds when debugging: in an agent’s hidden browser pane,
+`requestAnimationFrame` stalls and the viewport resizes, which looks like scroll and
+paint bugs that are not there.
+Reproduce a suspected one in headless Chrome before treating it as real.
 
 The normal browser path starts a visible Chrome profile, evaluates [probe.js](probe.js),
 and records the result:
@@ -1636,7 +2249,7 @@ total.
 | `fetch_network_errors`, `fetch_aborts`, `fetch_http_4xx`, `fetch_http_5xx` | Exact whole-window fetch outcomes outside the detail ring | Keeps a failed click from looking like a merely slow one. Rejected non-abort requests and 5xx responses are hard gates; cancellation and expected-not-found semantics remain visible targets |
 | `fetches_in_flight`, `fetches_in_flight_max`, `fetches_in_flight_max_by_key` | Application fetches unresolved at capture, the measurement-window maximum, and maxima grouped by request class | Prevents a faster server-completion marker from cutting the browser measurement off, and exposes request fanout even when every request eventually settles |
 | `script_transfer_kb`, `style_transfer_kb`, `image_transfer_kb`, `api_transfer_kb`, `largest_resource_kb` | Transfer split by requested resource path; Resource Timing classifies preloaded JavaScript as a `link` initiator and its later script tag reuses that response | Makes an asset or API trade visible without omitting the preloaded shell or charging it to CSS |
-| `startup_script_requests`, `startup_script_transfer_kb`, `startup_script_last_response_ms`, `startup_script_duration_max_ms`, `startup_scripts_slowest`, `startup_scripts_latest` | Count, transfer, tail, worst duration, and bounded path-only attribution for non-vendor scripts started before `DOMContentLoaded`; attributed rows split response wait, server work, and download time | Catches an eager plugin or feature tier added to every page even when noisy paint timings obscure the waterfall, and distinguishes handler work from queueing or transfer |
+| `startup_script_requests`, `startup_script_transfer_kb`, `startup_script_last_response_ms`, `startup_script_duration_max_ms`, `startup_scripts_slowest`, `startup_scripts_latest` | Count, transfer, tail, worst duration, and bounded path-only attribution for non-vendor scripts started before `DOMContentLoaded`; attributed rows split response wait, server work, and download time. The transfer is the scripts as the remote path sends them, gzipped, which `record` reads again from the server, because a local server sends a loopback browser its scripts uncompressed; the browser’s own figure is kept as `startup_script_loopback_transfer_kb` | Catches an eager plugin or feature tier added to every page even when noisy paint timings obscure the waterfall, and distinguishes handler work from queueing or transfer |
 | `startup_style_server_ms_max`, `startup_style_wait_ms_max`, `startup_style_last_response_ms`, `startup_styles_slowest` | Worst server work, wait, response tail, and bounded path-only attribution for active stylesheet links requested before `DOMContentLoaded` | Hard-gates a cold server-side import on the render-blocking path and distinguishes it from request queueing or transfer |
 | `shell_tools_missing`, `file_catalog_incomplete`, `plugin_view_containers`, `plugin_view_nonempty` | Application-adapter readiness, final data authority, and selected-view facts after settle | Prevents an asset-tier improvement from passing by silently losing deferred controls, stopping at a partial search catalog, or omitting the requested renderer |
 | `js_heap_mb`, `js_heap_after_gc_mb` | Chromium’s optional natural used heap and the trusted driver’s controlled post-GC retained heap | The first is an in-session endurance signal; the second makes side-by-side retention comparisons robust to different GC timing |
@@ -1730,9 +2343,12 @@ later round is judged and deserves its own change:
   effect *harder* to confirm — exp-003 is the worked example, 342–413 at n=3 widening to
   342–561 at n=6 for the same effect.
   A fixed-percentile band or a rank test is stable in n.
-- **There is no measured noise floor** (`mb-ot8o`). An A/A control — the same build
-  under two labels — would measure the harness’s own resolution, so “the ranges do not
-  overlap” is judged against a known floor instead of an assumed one.
+- **The load-time probes have no measured noise floor** (`mb-ot8o`). An A/A control —
+  the same build under two labels — would measure the harness’s own resolution, so “the
+  ranges do not overlap” is judged against a known floor instead of an assumed one.
+  The transition scenario has one: `compare --aa` splits one condition’s runs, and
+  exp-058’s split is its reference.
+  `run.py` has none.
 - **A metric that cannot come out false is not a metric.** `skeleton_complete` asked
   whether each region was present, sized and non-empty *at probe time* — which is after
   settle — and returned true on all ten runs ever recorded, including every one carrying
@@ -1753,19 +2369,55 @@ later round is judged and deserves its own change:
 A candidate is accepted when all of these hold:
 
 - the median of the metric the hypothesis named moved in the predicted direction,
-- the two ranges do not overlap, at three or more runs per condition,
+- the two ranges do not overlap, at three or more runs per condition, and for a time or
+  frame count, two or more back-to-back pairs are beyond the tolerance (ranges apart
+  with every pair within the tolerance is not a result),
 - nothing else in the table moved the wrong way without being accounted for, and
 - the complexity is worth it.
 
 The first three are arithmetic.
 The fourth is a judgment and gets written as one.
 
+**Which tool applies the pair rule.** Only `judge()` in `transitions-stats.mjs` applies
+it, for the transition scenario’s `compare` and for `wkprobe-stats.mjs`: it computes
+each pair’s ratio and judges at 1.3x unless the protocol registers another
+`--tolerance`. `run.py compare` and `probe-server` compute no pair ratios, and
+`startup_pairs.py summarize --ratios` prints them but judges nothing.
+A round on those tools registers, in its protocol, the tolerance it judges at (careful
+or rough cut, as
+[Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release)
+defines them) and the script that applies the rule.
+
+**What the third clause sees, and what accounts for a result.** The table is the one the
+hypothesis’s own record declared: its deciding metrics and guards on its transitions.
+A wrong-way result there is accounted for in only two ways:
+
+- by a rule that record declared before it measured, such as exp-085’s E1 to E3 or
+  exp-087’s later-frame test;
+- by that record’s own account of the same metric, on the same transition, moving the
+  same way.
+
+An account never carries to a transition its record saw unchanged.
+Where a protocol can be read two ways, the reading that accounts for less governs.
+exp-079’s Deviation section is the worked example.
+
+**Who judges what.** The operator who runs a round computes clauses 1 to 3 with the
+analysis the protocol registered, mechanically, and reports the facts clause 4 needs:
+the diff size, the mechanism, and the failure modes from the record.
+The coordinator, the agent or person who owns the campaign, writes clause 4, one
+judgment per hypothesis, in the record.
+A round with several hypotheses keeps one schema decision, so its body carries a
+per-hypothesis verdict table.
+
 **Size n to the effect you are hunting.** Three runs per condition resolves a 5x effect;
 it does not resolve a 40% one — exp-003’s candidate band read as 342-413 at n=3 and
-widened to 342-561 at n=6. For an expected effect under 2x, interleave conditions (stash
-and restore the change between runs, the way exp-003’s drift check did) and take at
-least five runs per side, or use `probe-server`, which gets a dozen samples per run for
-free.
+widened to 342-561 at n=6. For an expected effect under 2x, measure each condition from
+its own clean, content-identified build, alternate them in back-to-back pairs, and take
+at least five runs per side, or use `probe-server`, which gets a dozen samples per run
+for free. A one-frame difference does not resolve at six pairs: frames are quantized, so
+a view that lands one frame later in some runs needs exp-087’s later-frame test
+([exp-087-analyze.mjs](experiments/exp-087-analyze.mjs)), a Fisher test on how often
+each side lands later, declared before the round.
 
 Two rules about honesty, both learned the expensive way:
 
