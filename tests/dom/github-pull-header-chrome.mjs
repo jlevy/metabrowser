@@ -1408,8 +1408,7 @@ async function main() {
               check(
                 `${where}: the Diff summary's tooltip is its whole words only while cut short`,
                 moves.cut
-                  ? moves.tip ===
-                      "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"
+                  ? moves.tip === "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"
                   : moves.tip === null,
                 JSON.stringify({ cut: moves.cut, tip: moves.tip }),
               );
