@@ -1754,20 +1754,27 @@ stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a g
 label, a colorless or malformed one to the neutral chip, and every chip to the neutral
 chip’s box.
 
-**A chip never waits for its record to have its color.** A record or a core cached
-before label colors names its labels alone, and the catalog vouches for such a record as
-current until its pull request changes, so it is never read again.
-The repository’s whole label set is cached once, beside its pull requests, and kept
-fresh as the native stack snapshot is; the pull envelope carries the set’s entry for
-each label its record or core names without a color, and the chip takes its color and
-description from it, so the header is colored on first paint whenever the set is cached.
+**A chip is colored on first paint once its repository’s label set is cached.** A record
+or a core cached before label colors names its labels alone.
+Such a record is fetched again once, but only after its page has painted it, and a core
+in that shape is drawn until its record arrives.
+The repository’s whole label set is cached beside its pull requests; the pull envelope
+carries the set’s entry for each label its record or core names without a color, and the
+chip takes its color and description from it.
 A label with its own color keeps it.
-A label the set does not hold, one deleted on GitHub, stays the neutral chip and asks
-for the set again once a freshness window; while the set is read the page polls fast, so
-the color lands at once.
-Its arrival moves no chip and no row, which the same Chrome check holds; it also holds
-that a record of bare names, with the set cached, paints every chip as the record’s own
-colors do.
+
+The first view of such a page after an upgrade, before the set is cached, draws the
+chips neutral and asks for the set at once.
+The page polls fast while the set is read, and each chip takes its color when the set is
+cached. A label the set does not hold, one deleted or renamed on GitHub, stays the
+neutral chip, since no read of the set can color it; a later visit asks again, and the
+set is read at most once in its age.
+
+A color’s arrival moves no chip and no row, which the same Chrome check holds; it also
+holds that a record of bare names, with the set cached, paints every chip as the
+record’s own colors do.
+`tests/dom/github-pull-labels-behavior.js` holds the ask, the fast poll, and a repaint
+that changes only the chips’ colors and tooltips.
 
 ## The Pulls Tab
 

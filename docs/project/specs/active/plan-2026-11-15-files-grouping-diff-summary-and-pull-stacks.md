@@ -721,9 +721,11 @@ the Changes tab.
 ### Phase 21: Label Color Cache (pull request 21)
 
 - [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
-  refreshed on its age and on a name it does not hold, and a chip takes its color and
-  description from it whenever its record lacks them; a `metab` route and golden, and a
-  Chrome check of a bare-names record’s chip colored on first paint.
+  read on demand by a job of its own when a page shows a label named alone that the set
+  lacks, at most once in its age, and a chip takes its color and description from it
+  whenever its record lacks them; a `metab` route and golden, a browserless session of
+  the page’s ask and fast poll, and a Chrome check of a bare-names record’s chip colored
+  on first paint.
 
 ## Testing Strategy
 

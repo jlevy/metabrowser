@@ -33,10 +33,10 @@ All notable changes to Metabrowser are documented here.
   A label’s description, where it has one, is its chip’s tooltip.
   A label GitHub gave no usable color keeps the plain chip.
   Each repository’s whole label set, its names, colors, and descriptions, is cached
-  beside its pull requests and across restarts and kept fresh with its list of pull
-  requests, so labels are colored as the page first paints, also on a pull request
-  cached before this release, whose record names its labels alone; that record is not
-  fetched again for them.
+  beside its pull requests and across restarts, so labels are colored as the page first
+  paints, also on a pull request cached before this release, whose record names its
+  labels alone. The set is read when a page shows such a label and the set lacks it, at
+  most once in five minutes, and never by a read or with the list of pull requests.
   A repository’s cached list of pull requests reads its rows again once, keeping the
   rows it holds meanwhile.
   `metab --api` answers each label as its name, color, and description rather than its

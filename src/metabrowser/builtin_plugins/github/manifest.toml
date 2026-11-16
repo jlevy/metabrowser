@@ -86,7 +86,8 @@ sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_refresh_handler"
 methods = ["POST"]
 
 # The repository's whole label set, cached, which colors a label a record names alone.
-# Reads never contact GitHub; a refresh, or the list's and a pull request's, asks for it.
+# Reads never contact GitHub. Only labels-refresh asks for it, which a pull request's page
+# sends when it shows a label named alone that its envelope has no entry for.
 [[data_hook]]
 route = "labels"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:labels_handler"
