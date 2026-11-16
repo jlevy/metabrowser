@@ -53,6 +53,9 @@ links to the document that covers each in depth.
   and window titles, the icon and release pipeline adapted from a sister app, warm
   folder switching, host mode and the agent front door, and the app-managed runtime,
   tracked under epic `mb-1apq`
+- [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md) —
+  Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
+  the checks of a downloaded copy, with the owner-only steps, tracked under `mb-hl2i`
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md)
   — retained surfaces, fixed boxes at first paint, prediction behind admission control,
   and a shorter landing chain, each a measured performance-loop round, tracked under
