@@ -577,7 +577,8 @@ async function repeatedPathChecks(mountDiffView, twoFiles) {
 /**
  * A long change set's tree draws the rows in the window's view of it and a window past it,
  * and moves that window as the page scrolls, as the Pulls tab's tree does: the tree has no
- * scroll of its own (mb-hi4l).
+ * scroll of its own (mb-hi4l). A scroll of a box that does not hold the tree draws nothing,
+ * and disposal removes the listeners on the document and the window.
  */
 async function windowedSummaryChecks(repoRoot) {
   const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
@@ -588,20 +589,27 @@ async function windowedSummaryChecks(repoRoot) {
   global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
   const element = global.Element;
   global.Element = FakeElement;
+  const node = global.Node;
+  global.Node = FakeElement;
   let frame = null;
+  // Every listener the tree adds outside itself, with the signal that removes it.
+  const signals = [];
   global.window = {
     requestAnimationFrame(callback) {
       frame = callback;
       return 1;
     },
     cancelAnimationFrame() {},
-    addEventListener() {},
+    addEventListener(type, _handler, options) {
+      signals.push({ on: `window ${type}`, signal: options?.signal });
+    },
     innerHeight: 480,
   };
   // The page's scrolls, which the tree hears on the document in their capture phase.
   const scrolls = [];
   const listen = global.document.addEventListener;
   global.document.addEventListener = (type, handler, options) => {
+    signals.push({ on: `document ${type}`, signal: options?.signal });
     if (type === "scroll") {
       scrolls.push({ handler, capture: options?.capture === true });
     }
@@ -645,8 +653,15 @@ async function windowedSummaryChecks(repoRoot) {
     );
     const list = tree.body.children[0];
     list.box = { top: -12000, bottom: -12000 + 1201 * 24 };
+    // A box beside the tree, a Split diff's code or the navigation pane, scrolls: the
+    // window's view of the tree cannot have moved, so no frame is asked for.
+    frame = null;
     for (const { handler } of scrolls) {
-      handler({});
+      handler({ target: new FakeElement("div") });
+    }
+    check("a scroll of a box that does not hold the tree draws nothing", frame === null);
+    for (const { handler } of scrolls) {
+      handler({ target: global.document });
     }
     frame?.();
     const ids = tree.body.find("diff-summary-row").map((row) => row.dataset.id);
@@ -662,7 +677,13 @@ async function windowedSummaryChecks(repoRoot) {
     check("a press on a file jumps the diff to it", jumps.at(-1) === "pkg/file-0500.py");
     tree.dispose();
     check("a disposed tree leaves the document", tree.body.parentNode === null);
+    check(
+      "disposal removes its listeners on the document and the window",
+      signals.length === 2 && signals.every(({ signal }) => signal?.aborted === true),
+      JSON.stringify(signals.map(({ on, signal }) => [on, signal?.aborted ?? null])),
+    );
   } finally {
+    global.Node = node;
     global.document.addEventListener = listen;
     global.document.createElement = createElement;
     global.getComputedStyle = computed;

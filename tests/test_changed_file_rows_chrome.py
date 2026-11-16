@@ -40,6 +40,7 @@ skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import socket
@@ -241,7 +242,10 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     # and scrolled to its middle, where every row in view is drawn.
     assert opened["drawn"] == opened["body"]["rowCount"], opened
     long_open = measured["long"]["open"]
-    window_rows = 900 // int(opened["rowHeight"]) + 2 * overscan + 1
+    # The rows a view of the page's height can show part of, the overscan each way, and the
+    # row that takes Tab; the view is the page's, which new-headless Chrome draws shorter than
+    # the window it was asked for.
+    window_rows = math.ceil(long_open["viewHeight"] / long_open["rowHeight"]) + 1 + 2 * overscan + 1
     assert long_open["body"]["rowCount"] > 600, long_open["body"]
     assert 0 < long_open["drawn"] <= window_rows, long_open["drawn"]
     scrolled = measured["long"]["scrolled"]

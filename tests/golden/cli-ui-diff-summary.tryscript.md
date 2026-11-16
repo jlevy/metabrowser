@@ -28,8 +28,8 @@ sums leave out, for each side when the sides differ.
 A path a patch lists more than once, as a file that became a symlink or a commit series
 repeats it, is one row with both changes’ counts and a status for what happened to it,
 so the root’s counts are the header’s totals.
-A long tree has in the document only the rows in its box’s view, 40 more each way, and
-the row that takes Tab.
+A long tree has in the document only the rows in the window’s view of it, 40 more each
+way, and the row that takes Tab.
 A path is its author’s text, so a control, format, or invisible character in it, such as
 a right-to-left override or a zero-width space, shows as U+FFFD by the server’s display
 rule (`displayPath`), while the path itself stays the row’s identity.
