@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import pytest
 
-from metabrowser.inventory_engine.contract import TreeGroupFilter
+from metabrowser.inventory_engine.contract import MAX_TREE_GROUPS, TreeGroupFilter
 from metabrowser.settings import RECENT_WINDOW_SECONDS
 from metabrowser.tree_groups import (
+    GROUP_BY_VALUES,
     AgeBand,
     age_band,
     groups_for,
@@ -120,10 +121,18 @@ def test_each_group_reaches_the_provider_as_its_own_fields() -> None:
         TreeGroupFilter(key="docs", type_group="docs"),
         TreeGroupFilter(key="code", type_group="code"),
     ]
-    for group in groups_for("age"):
-        band = age_band(group, 0)
-        assert inventory_group_filter(group) == TreeGroupFilter(
-            key=group.id,
-            band_within_seconds=band.within_seconds,
-            older_than_seconds=band.older_than_seconds,
-        )
+    assert [inventory_group_filter(group) for group in groups_for("age")] == [
+        TreeGroupFilter(key="live", band_within_seconds=90),
+        TreeGroupFilter(key="1h", band_within_seconds=HOUR, older_than_seconds=90),
+        TreeGroupFilter(key="24h", band_within_seconds=DAY, older_than_seconds=HOUR),
+        TreeGroupFilter(key="7d", band_within_seconds=7 * DAY, older_than_seconds=DAY),
+        TreeGroupFilter(key="30d", band_within_seconds=30 * DAY, older_than_seconds=7 * DAY),
+        TreeGroupFilter(key="older", older_than_seconds=30 * DAY),
+    ]
+
+
+def test_every_grouping_fits_one_grouped_read() -> None:
+    """`MAX_TREE_GROUPS` is set from what Group by sends, with headroom, and its cost
+    measured there (inventory_engine/contract.py): every grouping fits it."""
+
+    assert all(len(groups_for(by)) <= MAX_TREE_GROUPS for by in GROUP_BY_VALUES)

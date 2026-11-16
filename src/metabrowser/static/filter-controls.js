@@ -496,10 +496,12 @@
 
   /**
    * Keep the joined groups under a navigation toolbar's `root` fitted to their lines, and
-   * return what stops it. A group is fitted at once, again when its text changes (a
-   * mutation, before the browser paints it), and again when the row or a chip changes
-   * size: a pane dragged narrower, a font set or face arriving. A size change is fitted in
-   * the next frame, not in the ResizeObserver's own callback: a layout changed there
+   * return what stops it. A group is fitted at once, again when its text changes or its
+   * toolbar is shown (a mutation, before the browser paints it), and again when the row or
+   * a chip changes size: a pane dragged narrower, a font set or face arriving. A hidden
+   * toolbar has no line to fit, so one shown again after its pane crossed the break would
+   * otherwise draw its stale layout until the size change's frame. A size change is fitted
+   * in the next frame, not in the ResizeObserver's own callback: a layout changed there
    * resizes the panel under the toolbar, which other observers watch, and the browser
    * reports that as a ResizeObserver loop error. So a drag across the break draws the
    * outgoing layout for one frame, and never both in turn.
@@ -508,10 +510,10 @@
    */
   function keepJoinedGroupsFitted(root) {
     const view = root.ownerDocument?.defaultView;
+    const toolbar = typeof root.closest === "function" ? root.closest("[data-nav-toolbar]") : null;
     if (
       !view ||
-      typeof root.closest !== "function" ||
-      root.closest("[data-nav-toolbar]") === null ||
+      toolbar === null ||
       typeof view.ResizeObserver !== "function" ||
       typeof view.MutationObserver !== "function"
     ) {
@@ -565,7 +567,17 @@
       watchSizes();
       fit();
     });
-    mutations.observe(root, { childList: true, characterData: true, subtree: true });
+    const text = { childList: true, characterData: true, subtree: true };
+    // The toolbar shown: the main tabs show the one in front by its `hidden` attribute. An
+    // observer holds one set of options per node, and a second `observe` of the node
+    // replaces the first, so a row that is its own toolbar, as the Files bar is, takes both.
+    const shown = { attributes: true, attributeFilter: ["hidden"] };
+    if (toolbar === root) {
+      mutations.observe(root, { ...text, ...shown });
+    } else {
+      mutations.observe(root, text);
+      mutations.observe(toolbar, shown);
+    }
     watchSizes();
     fit();
     return () => {
@@ -756,7 +768,9 @@
   /**
    * Wire one container. `onChange(key, value, select)` fires for group
    * segments, `onToggle(key, nextPressed)` for standalone chips, and
-   * `onClear()` for the clear affordance. Returns a disposer, because
+   * `onClear()` for the clear affordance, and `onMenuFocus(key, value)` when the arrow
+   * keys, Home, or End move focus to a dropdown row (its value, or null for the any-row),
+   * so a consumer can act on the row a reader rests on. Returns a disposer, because
    * every listener the shell installs needs a way back out.
    *
    * @param {Element} root
@@ -764,6 +778,7 @@
    *          onToggle?: (key: string, pressed: boolean) => void,
    *          onMenuToggle?: (key: string, open: boolean) => void,
    *          onMenuPick?: (key: string, value: string | null) => void,
+   *          onMenuFocus?: (key: string, value: string | null) => void,
    *          onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void,
    *          onClear?: () => void}} handlers
    */
@@ -931,11 +946,17 @@
           return;
         }
         ev.preventDefault();
-        moveFocus(
+        const row = moveFocus(
           Array.prototype.slice.call(panel.querySelectorAll(".chip-menu-item")),
           target.closest(".chip-menu-item"),
           key,
         );
+        if (row && opts.onMenuFocus) {
+          opts.onMenuFocus(
+            row.getAttribute("data-chip-key") || "",
+            row.hasAttribute("data-chip-any") ? null : row.getAttribute("data-chip-value") || "",
+          );
+        }
         return;
       }
       // On a dropdown's trigger, Up and Down open it, as Enter and Space do through the

@@ -2243,7 +2243,13 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
     # Its box is its line, so its text is the rhythm from the events beside it (mb-w7rt).
     assert "min-height" not in commit and commit["padding"].startswith("0 ")
-    assert github[".github-pull-body"]["gap"] == "var(--github-pull-rhythm)"
+    # The rhythm is the Conversation's, and only its events carry it: the body keeps the
+    # page's gap, as the Files and Checks tabs and a section or note below an event do, and
+    # each event stands the rest of the rhythm below whatever is before it.
+    assert github[".github-pull-body"]["gap"] == "var(--github-pull-gap)"
+    assert github[".github-pull-body > * + .github-pull-event"] == {
+        "margin-block-start": "calc(var(--github-pull-rhythm) - var(--github-pull-gap))"
+    }
     # Under Review comments the rhythm is between its cards only: its heading sits at the
     # section's gap over the first, as every section's heading does (mb-xlla).
     assert ".github-pull-threads" not in github
@@ -2613,6 +2619,7 @@ _FACE_ROOTS = {
     ":root": {
         "--font-sans": "var(--app-sans-clean)",
         "--prose-sans-font": "var(--app-sans-clean)",
+        "--kpress-host-font-mono": "var(--app-mono)",
         "--kpress-host-font-size-base": "var(--document-body-font-size)",
     },
     'html[data-app-font="system"]': {
