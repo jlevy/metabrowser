@@ -178,6 +178,43 @@ const CHROME = `(() => {
   };
 })()`;
 
+// In the page, in *theme*: the ink of every part of the Diff summary's header, against the
+// tokens it is drawn from, each read from a probe that takes the token (mb-vb51). Each
+// status's letter takes its status's ink (`.file-change-status`, `--git-status-*`), each
+// dot and comma the muted punctuation (`.summary-punctuation`, `--muted`), and the file
+// count and its words the line's own ink (`--text`).
+const PAINT = `async (theme) => {
+  document.documentElement.dataset.theme = theme;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const header = document.querySelector(".diff-summary");
+  const ink = (node) => getComputedStyle(node).color;
+  const token = (name) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(" + name + ")";
+    header.parentElement.append(probe);
+    const color = ink(probe);
+    probe.remove();
+    return color;
+  };
+  const tokens = {};
+  for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified", "--git-status-renamed"]) {
+    tokens[name] = token(name);
+  }
+  const files = header.querySelector(".diff-summary-files");
+  const painted = {
+    theme,
+    tokens,
+    words: files ? ink(files) : null,
+    numbers: [...header.querySelectorAll(".summary-number")].map((node) => [node.textContent, ink(node)]),
+    letters: [...header.querySelectorAll(".file-change-status")].map((node) => [node.textContent, node.dataset.fileStatus, ink(node)]),
+    marks: [...header.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node)]),
+    text: header.textContent,
+    label: header.getAttribute("aria-label"),
+  };
+  delete document.documentElement.dataset.theme;
+  return painted;
+}`;
+
 /** Open *patch*, then its Diff summary, and read it once its travel is over. */
 async function openSummary(browser, patch) {
   await browser.send("Page.navigate", { url: `${base}/view/${patch}` });
@@ -318,6 +355,11 @@ try {
   );
   await browser.evaluate(frames);
   result.commit = await browser.evaluate(CHROME);
+  // The header's inks, in each theme: its letters, its marks, and its words.
+  result.commit.paint = [];
+  for (const theme of ["light", "dark"]) {
+    result.commit.paint.push(await browser.evaluate(`(${PAINT})(${JSON.stringify(theme)})`));
+  }
   phase("commit");
   result.errors = errors;
 } finally {

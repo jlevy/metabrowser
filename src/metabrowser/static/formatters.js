@@ -149,31 +149,74 @@
     return `<span class="${TITLE_PREFIX_CLASS}">${escaped(split.prefix)}</span>${escaped(split.rest)}`;
   }
 
-  // A count summary's numbers are bold and its words keep the line's weight
-  // (docs/design-system.md, "Count Summaries Bold Their Numbers"). Every count summary the
-  // shell paints comes in one shape of parts: the words as strings, and each number, the
-  // whole figure with its marks, sign, "+", or unit, as `{number}`. "12,797 files" is
-  // `[{number: "12,797"}, " files"]`, and its text is the parts joined.
+  // A count summary's numbers are bold, its punctuation muted, its status letters in their
+  // statuses' ink, and its words keep the line's ink and weight (docs/design-system.md,
+  // "Count Summaries Bold Their Numbers"). Every count summary the shell paints comes in one
+  // shape of parts: the words as strings; each number, the whole figure with its marks,
+  // sign, "+", or unit, as `{number}`; a list's comma as `{punctuation}`; the " · " dot
+  // between a line's groups as `{separator}`; and a file change status as `{status,
+  // letter}`. "12,797 files" is `[{number: "12,797"}, " files"]`, and its text is the parts
+  // joined.
   /** The one class that sets a count summary's number's weight (static/styles.css). */
   const SUMMARY_NUMBER_CLASS = "summary-number";
+  /** The one class that mutes a count summary's punctuation (static/styles.css). */
+  const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";
+  /** The file change status primitive, which inks a letter by its status (static/styles.css). */
+  const FILE_CHANGE_STATUS_CLASS = "file-change-status";
 
   /**
-   * A count summary's nodes: each number in a `span.summary-number`, the words as text. A
-   * caller puts them in one inline element: in a flex line, each would be an item of its
-   * own, parted by the line's gap and read as runs of their own.
+   * One part as the element that paints it, its class, its text, and its attributes, or
+   * null for words, which are text.
+   * @param {MetabrowserCountPart} part
+   * @returns {{className: string, text: string, attributes: Array<[string, string]>} | null}
+   */
+  function countPartPaint(part) {
+    if (typeof part === "string") {
+      return null;
+    }
+    if ("number" in part) {
+      return { className: SUMMARY_NUMBER_CLASS, text: part.number, attributes: [] };
+    }
+    if ("status" in part) {
+      return {
+        className: FILE_CHANGE_STATUS_CLASS,
+        text: part.letter,
+        attributes: [["data-file-status", part.status]],
+      };
+    }
+    if ("separator" in part) {
+      // Hidden, as a heading tally's dot is: the line's words carry its meaning.
+      return {
+        className: SUMMARY_PUNCTUATION_CLASS,
+        text: part.separator,
+        attributes: [["aria-hidden", "true"]],
+      };
+    }
+    return { className: SUMMARY_PUNCTUATION_CLASS, text: part.punctuation, attributes: [] };
+  }
+
+  /**
+   * A count summary's nodes: each number in a `span.summary-number`, each mark in a
+   * `span.summary-punctuation`, each status's letter in a `span.file-change-status`, and the
+   * words as text. A caller puts them in one inline element: in a flex line, each would be
+   * an item of its own, parted by the line's gap and read as runs of their own.
    * @param {Document} doc
    * @param {MetabrowserCountParts} parts
    * @returns {Array<Node | string>}
    */
   function countPartsNodes(doc, parts) {
     return parts.map((part) => {
-      if (typeof part === "string") {
-        return part;
+      const paint = countPartPaint(part);
+      if (paint === null) {
+        return /** @type {string} */ (part);
       }
-      const number = doc.createElement("span");
-      number.className = SUMMARY_NUMBER_CLASS;
-      number.textContent = part.number;
-      return number;
+      const span = doc.createElement("span");
+      span.className = paint.className;
+      for (const [name, value] of paint.attributes) {
+        span.setAttribute(name, value);
+      }
+      span.textContent = paint.text;
+      return span;
     });
   }
 
@@ -184,11 +227,16 @@
    */
   function countPartsHtml(parts) {
     return parts
-      .map((part) =>
-        typeof part === "string"
-          ? escaped(part)
-          : `<span class="${SUMMARY_NUMBER_CLASS}">${escaped(part.number)}</span>`,
-      )
+      .map((part) => {
+        const paint = countPartPaint(part);
+        if (paint === null) {
+          return escaped(/** @type {string} */ (part));
+        }
+        const attributes = paint.attributes
+          .map(([name, value]) => ` ${name}="${escaped(value)}"`)
+          .join("");
+        return `<span class="${paint.className}"${attributes}>${escaped(paint.text)}</span>`;
+      })
       .join("");
   }
 

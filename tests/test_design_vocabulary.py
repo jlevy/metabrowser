@@ -2208,7 +2208,7 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
                 assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "static/formatters.js": "number.className = SUMMARY_NUMBER_CLASS;",
+        "static/formatters.js": "return { className: SUMMARY_NUMBER_CLASS, text: part.number",
         "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
@@ -2221,6 +2221,69 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
         assert painted in source, path
     formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
     assert 'const SUMMARY_NUMBER_CLASS = "summary-number";' in formatters
+
+
+# What paints a count summary's punctuation in `.summary-punctuation`: the shell's one painter
+# of count parts, the Diff summary's, and a pull request's Checks summary's dots.
+_PUNCTUATION_PAINTERS = {
+    "static/formatters.js": (
+        'const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";',
+        'const FILE_CHANGE_STATUS_CLASS = "file-change-status";',
+        '[["aria-hidden", "true"]]',
+    ),
+    "builtin_plugins/diff/diff-view.js": (
+        'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
+        'el("span", "summary-punctuation", part.separator)',
+        'dot.setAttribute("aria-hidden", "true");',
+        'el("span", "summary-punctuation", part.punctuation)',
+        'el("span", "file-change-status", part.letter)',
+        "letter.dataset.fileStatus = part.status;",
+    ),
+    "builtin_plugins/github/pull-page.js": (
+        'h("span", { class: "summary-punctuation", "aria-hidden": "true" }, ["·"])',
+    ),
+}
+
+
+def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -> None:
+    """A count summary's separators and list punctuation are muted, and a status letter takes
+    its status's ink ("Count Summaries Bold Their Numbers"; mb-vb51).
+
+    One shell class, `.summary-punctuation`, sets the muted ink and nothing else, and no
+    stylesheet restyles it; a status letter in a count summary is the shell's status
+    primitive, `.file-change-status`, whose inks `test_file_status_ink_is_shared_and_legible`
+    holds. The Diff summary's model writes its statuses as letters and its commas as
+    punctuation (`describeChanges`), and its words for a screen reader. The painters below
+    paint them, a separator hidden from assistive technology as a heading tally's dot is.
+    tests/dom/diff-view-behavior.js holds the Diff summary's classes on its header and its
+    fallback line, and tests/test_changed_file_rows_chrome.py reads their inks in Chrome in
+    both themes.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "`.summary-punctuation`" in doc
+    assert "test_count_summaries_mute_their_punctuation_and_ink_their_status_letters" in doc
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".summary-punctuation"] == {"color": "var(--muted)"}
+    for sheet in _stylesheets():
+        for selector, _ in _rules_of(sheet):
+            assert selector == ".summary-punctuation" or "summary-punctuation" not in selector, (
+                sheet,
+                selector,
+            )
+    for path, painted in _PUNCTUATION_PAINTERS.items():
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        for text in painted:
+            assert text in source, (path, text)
+    tree = (STATIC / "changed-files-tree.js").read_text(encoding="utf-8")
+    assert '...(at === 0 ? [] : [{ punctuation: "," }, " "]),' in tree
+    assert "{ status: entry.status, letter: entry.letter }," in tree
+    assert 'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",' in (
+        tree
+    )
+    # The Diff summary's breakdown is in its line's ink: only its marks are muted.
+    diff_css = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
+    assert ".metabrowser-diff-host .diff-summary-breakdown" not in diff_css
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:

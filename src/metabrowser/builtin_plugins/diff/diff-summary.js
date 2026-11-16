@@ -1,8 +1,8 @@
 // The Diff summary's tree: a multi-file diff's changed files, by folder, under its header.
 //
 // A multi-file diff opens with its Diff summary, collapsed: the header diff-view.js draws in
-// the toolbar ("35 changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423"), which is
-// the disclosure toggle. Opening it the first time imports this module and mounts the tree,
+// the toolbar ("35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"), which is the disclosure
+// toggle. Opening it the first time imports this module and mounts the tree,
 // so nothing of the tree exists until a reader asks for it; the header's hover or focus asks
 // for the module first, since a press follows either by far longer than a local import.
 //

@@ -96,10 +96,12 @@
   width: var(--tree-icon-slot);
 }
 
-.metabrowser-diff-host .diff-summary-breakdown {
-  color: var(--muted);
-}
-
+/* The header's groups, "19 files changed", "10 A, 5 D, 4 M", and "+1,234 −567", are items
+   of its line, in the line's ink, with the shell's muted dot (`.summary-punctuation`, the
+   count summaries' punctuation) an item between each two, so the line's gap spaces the dot
+   on both sides, as the change stats' gap spaces their pair. The statuses' letters take
+   their statuses' ink from the shell's status primitive (`.file-change-status`), and their
+   commas the same muted punctuation (mb-vb51). */
 .metabrowser-diff-host .diff-summary-stats {
   display: inline-flex;
   gap: 6px;

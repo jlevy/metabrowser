@@ -366,8 +366,8 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     const said = header.reads();
     check(
       "the header says what the change set holds, in the shell's number format",
-      said.includes("2 changed files") &&
-        said.includes("(1 added, 1 modified)") &&
+      said.includes("2 files changed") &&
+        said.includes("1 A, 1 M") &&
         said.includes("+1,201") &&
         said.includes("−1"),
       said,
@@ -378,14 +378,45 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     check(
       "the header's counts, and only its counts, are bold numbers",
       JSON.stringify(numbers) === JSON.stringify(["2", "1", "1"]) &&
-        header.find("diff-summary-files")[0]?.children[1]?.reads() === " changed files" &&
+        header.find("diff-summary-files")[0]?.children[1]?.reads() === " files changed" &&
         header.find("diff-stat-add")[0]?.reads() === "+1,201",
       JSON.stringify(numbers),
     );
+    // Each status is its rows' letter in the shell's status primitive, which inks it by its
+    // status; the dots between the groups and the comma between the statuses are the
+    // shell's muted punctuation, the dots hidden from a screen reader (mb-vb51).
+    const letters = header
+      .find("file-change-status")
+      .map((letter) => `${letter.reads()} ${letter.dataset.fileStatus}`);
+    const groups = header.children
+      .filter((child) => typeof child === "object" && child.className !== "diff-summary-chevron")
+      .map((child) =>
+        child.classList.contains("summary-punctuation")
+          ? `${child.reads()} ${child.getAttribute("aria-hidden")}`
+          : child.className,
+      );
+    const commas = header
+      .find("diff-summary-breakdown")[0]
+      ?.find("summary-punctuation")
+      .map((mark) => `${mark.reads()} ${mark.getAttribute("aria-hidden")}`);
     check(
-      "the header names it all for a screen reader",
+      "the header's statuses are letters in their statuses' ink, its marks muted punctuation",
+      JSON.stringify(letters) === JSON.stringify(["A added", "M modified"]) &&
+        JSON.stringify(groups) ===
+          JSON.stringify([
+            "diff-summary-files",
+            "· true",
+            "diff-summary-breakdown",
+            "· true",
+            "diff-summary-stats",
+          ]) &&
+        JSON.stringify(commas) === JSON.stringify([", null"]),
+      JSON.stringify({ letters, groups, commas }),
+    );
+    check(
+      "the header names it all for a screen reader, in words",
       header.getAttribute("aria-label") ===
-        "2 changed files: 1 added, 1 modified; 1,201 lines added, 1 deleted",
+        "2 files changed: 1 added, 1 modified; 1,201 lines added, 1 deleted",
       header.getAttribute("aria-label") ?? "",
     );
     check(
@@ -1340,12 +1371,13 @@ async function main() {
   };
   mountDiffView(many, twoFiles);
   // A change set's totals are its Diff summary's header, drawn on the shared changed-files
-  // tree. Without the tree, the totals stand as the line main drew, in the shell's number
-  // format, with no toggle: only the tree of files is lost (A3 of review A on #448).
+  // tree. Without the tree, the totals stand as a line, the header without its statuses, in
+  // the shell's number format, with no toggle: only the statuses and the tree of files are
+  // lost (A3 of review A on #448), and the muted dot still sets the totals apart (mb-vb51).
   const plain = many.find("diff-summary")[0];
   check(
     "a change set without the shared tree keeps its totals line",
-    plain?.reads().includes("2 changed files") &&
+    plain?.reads().includes("2 files changed") &&
       plain.reads().includes("+1") &&
       plain.reads().includes("\u22121") &&
       plain.find("diff-summary-toggle").length === 0 &&
@@ -1356,6 +1388,14 @@ async function main() {
     "the totals line's file count is a bold number, as the Diff summary's is",
     JSON.stringify(plain?.find("summary-number").map((number) => number.reads())) ===
       JSON.stringify(["2"]),
+  );
+  const plainMarks = plain
+    ?.find("summary-punctuation")
+    .map((mark) => `${mark.reads()} ${mark.getAttribute("aria-hidden")}`);
+  check(
+    "the totals line sets its totals apart with the Diff summary's muted, hidden dot",
+    JSON.stringify(plainMarks) === JSON.stringify(["· true"]),
+    JSON.stringify(plainMarks),
   );
   const hosted = new FakeElement("div");
   mountDiffView(hosted, twoFiles, undefined, { showSummary: false, changedFiles: sharedTree });
@@ -1406,7 +1446,7 @@ async function main() {
     "a page draws a Diff summary on its own from the document",
     slot.children.length === 1 &&
       drawn.classList.contains("diff-summary-toggle") &&
-      drawn.reads().includes("2 changed files"),
+      drawn.reads().includes("2 files changed"),
     drawn?.reads() ?? "",
   );
   standalone.dispose();

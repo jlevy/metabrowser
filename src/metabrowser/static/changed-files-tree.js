@@ -66,13 +66,15 @@
   });
 
   /**
-   * What a change set's header calls each status, in the order it lists them: added,
-   * removed, modified, and renamed first, as the reader asked, then the rest in this order,
-   * then any status this does not know, by name.
+   * What a change set's header calls each status in words, in the order it lists them:
+   * added, deleted, modified, and renamed first, as the reader asked, then the rest in this
+   * order, then any status this does not know, by name. The header shows each status by its
+   * letter, the badge its rows carry, and says these words to a screen reader, as a row
+   * says its status (`STATUS_LABELS`).
    */
   const STATUS_WORDS = Object.freeze({
     added: "added",
-    removed: "removed",
+    removed: "deleted",
     modified: "modified",
     renamed: "renamed",
     copied: "copied",
@@ -611,10 +613,10 @@
 
   /**
    * How many files have each status, in the header's order, leaving out the statuses no
-   * file has.
+   * file has: each with its word, and its letter, the badge its rows carry.
    *
    * @param {Iterable<string>} statuses One per file.
-   * @returns {Array<{status: string, count: number, word: string}>}
+   * @returns {Array<{status: string, count: number, word: string, letter: string}>}
    */
   function statusBreakdown(statuses) {
     /** @type {Map<string, number>} */
@@ -630,20 +632,47 @@
       status,
       count: counts.get(status) ?? 0,
       word: STATUS_WORDS[/** @type {keyof typeof STATUS_WORDS} */ (status)] ?? status,
+      letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",
     }));
+  }
+
+  /**
+   * A count summary's parts as the text they read: each number, letter, and mark as it is
+   * written.
+   *
+   * @param {MetabrowserCountParts} parts
+   */
+  function countText(parts) {
+    return parts
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : "number" in part
+            ? part.number
+            : "letter" in part
+              ? part.letter
+              : "separator" in part
+                ? part.separator
+                : part.punctuation,
+      )
+      .join("");
   }
 
   /**
    * What a change set's header says, in its parts: the file count, which statuses make it
    * up, and its line totals, each written with *formatCount*, the shell's number format.
    *
-   * `filesParts` is "35 changed files" and `breakdownParts` "2 added, 3 removed, 30
-   * modified", or nothing for no files, each in a count summary's parts, so a header paints
-   * the numbers bold and the words regular (docs/design-system.md, "Count Summaries Bold
-   * Their Numbers"); `additions` and `deletions` are "+1,234" and "−3,423", with "?" for a
-   * total the change set does not know; `estimated` is whether the totals are not exact,
-   * which the header says as "(estimated)"; `text` is the whole line as it reads; and
-   * `label` is what a screen reader is told, with the signs said as words.
+   * `filesParts` is "35 files changed" and `breakdownParts` "2 A, 3 D, 30 M", or nothing for
+   * no files, each in a count summary's parts, so a header paints each number bold, each
+   * status's letter in its status's ink, the commas between them muted, and the words in the
+   * line's own (docs/design-system.md, "Count Summaries Bold Their Numbers"). A status is its
+   * rows' letter. The header sets its groups apart with a muted " · ": the files, the
+   * statuses, and the line totals. `additions` and `deletions` are "+1,234" and "−3,423",
+   * with "?" for a total the change set does not know; `estimated` is whether the totals are
+   * not exact, which the header says as "(estimated)"; `text` is the whole line as it reads,
+   * "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"; and `label` is what a screen reader
+   * is told, in words, the statuses' and the signs' alike: "35 files changed: 2 added, 3
+   * deleted, 30 modified; 1,234 lines added, 3,423 deleted".
    *
    * @param {{files: number, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {Iterable<string>} statuses One per file listed.
@@ -654,31 +683,33 @@
     /** @type {MetabrowserCountParts} */
     const filesParts = [
       { number: formatCount(totals.files) },
-      ` changed ${totals.files === 1 ? "file" : "files"}`,
+      ` ${totals.files === 1 ? "file" : "files"} changed`,
     ];
+    const entries = statusBreakdown(statuses);
+    // "2 A, 3 D": each status's count and letter, the commas between them a list's
+    // punctuation.
     /** @type {MetabrowserCountParts} */
-    const breakdownParts = statusBreakdown(statuses).flatMap((entry, at) => [
-      ...(at === 0 ? [] : [", "]),
+    const breakdownParts = entries.flatMap((entry, at) => [
+      ...(at === 0 ? [] : [{ punctuation: "," }, " "]),
       { number: formatCount(entry.count) },
-      ` ${entry.word}`,
+      " ",
+      { status: entry.status, letter: entry.letter },
     ]);
-    /** @param {MetabrowserCountParts} parts */
-    const written = (parts) =>
-      parts.map((part) => (typeof part === "string" ? part : part.number)).join("");
-    const files = written(filesParts);
-    const breakdown = written(breakdownParts);
+    const files = countText(filesParts);
+    const breakdown = countText(breakdownParts);
     const added = totals.additions === null ? "?" : formatCount(totals.additions);
     const deleted = totals.deletions === null ? "?" : formatCount(totals.deletions);
     const additions = `+${added}`;
     const deletions = `${MINUS}${deleted}`;
     const estimated = !totals.exact;
-    const said = breakdown === "" ? files : `${files} (${breakdown})`;
-    const text = `${said}  ${additions} ${deletions}${estimated ? " (estimated)" : ""}`;
+    const groups = [files, ...(breakdown === "" ? [] : [breakdown]), `${additions} ${deletions}`];
+    const text = `${groups.join(" · ")}${estimated ? " (estimated)" : ""}`;
     const lines =
       totals.additions === null && totals.deletions === null
         ? "line counts unknown"
         : `${added} ${totals.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
-    const named = breakdown === "" ? files : `${files}: ${breakdown}`;
+    const words = entries.map((entry) => `${formatCount(entry.count)} ${entry.word}`).join(", ");
+    const named = words === "" ? files : `${files}: ${words}`;
     const label = `${named}; ${lines}${estimated ? ", estimated" : ""}`;
     return { filesParts, breakdownParts, additions, deletions, estimated, text, label };
   }

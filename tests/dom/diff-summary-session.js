@@ -15,8 +15,8 @@
 // written as the rows write it (`changeStats`); a key's step names the key, what it did,
 // the row that takes Tab after it, and a jump's path. The manifests are built here, each file
 // as a comparison's manifest lists it, since what is under test is what the summary makes of
-// any manifest: the header the reader asked for, "35 changed files (2 added, 3 removed, 30
-// modified)  +1,234 −3,423", one of every change kind a comparison can hold, binary files that
+// any manifest: the header the reader asked for, "35 files changed · 2 A, 3 D, 30 M · +1,234
+// −3,423", one of every change kind a comparison can hold, binary files that
 // carry no counts, a change set whose totals are not exact, a change set of no files, and
 // patches that list a path more than once.
 
@@ -83,9 +83,39 @@ let rowOf = () => {
 let diffModel = null;
 
 /**
+ * A count summary's parts as they are painted: a bold number between asterisks, a status's
+ * letter with its status in braces, in the status's ink, and a muted mark in angle quotes.
+ */
+function painted(parts) {
+  return parts
+    .map((part) =>
+      typeof part === "string"
+        ? part
+        : "number" in part
+          ? `*${part.number}*`
+          : "status" in part
+            ? `${part.letter}{${part.status}}`
+            : `‹${part.punctuation ?? part.separator}›`,
+    )
+    .join("");
+}
+
+/** A count summary's parts as the text they read. */
+function written(parts) {
+  return parts
+    .map((part) =>
+      typeof part === "string"
+        ? part
+        : (part.number ?? part.letter ?? part.punctuation ?? part.separator),
+    )
+    .join("");
+}
+
+/**
  * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. `numbers` are
  * the counts it paints bold, each apart from its words (docs/design-system.md, "Count
- * Summaries Bold Their Numbers"): the file count, then each status's.
+ * Summaries Bold Their Numbers"): the file count, then each status's. `parts` are its file
+ * count's and its statuses' parts as `painted` writes them.
  */
 function header(_model, manifest) {
   const { said } = diffModel.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
@@ -94,8 +124,9 @@ function header(_model, manifest) {
     label: said.label,
     estimated: said.estimated,
     numbers: [...said.filesParts, ...said.breakdownParts].flatMap((part) =>
-      typeof part === "string" ? [] : [part.number],
+      typeof part === "object" && "number" in part ? [part.number] : [],
     ),
+    parts: { files: painted(said.filesParts), statuses: painted(said.breakdownParts) },
   };
 }
 
@@ -168,6 +199,10 @@ async function main() {
   stories["one status, one file of it"] = header(
     model,
     manifestOf([change("modified", "a.txt", 1, 1), change("modified", "b/c.txt", 1, 0)]),
+  );
+  stories["one file, renamed"] = header(
+    model,
+    manifestOf([change("renamed", "src/app/views/main.py", 5, 2, "src/app/main.py")]),
   );
   stories["no files"] = header(model, manifestOf([]));
 
@@ -369,20 +404,44 @@ async function main() {
       return row.path === (entry.new ?? entry.old).path;
     }),
     "a closed tree's rows are the top level": compact.rows().every((row) => row.depth === 0),
+    // The text sets the groups apart with " · ", and the label says each status in words, as
+    // the breakdown lists them, where the text has its letter.
     "the header's parts read as its text and its label": [exampleManifest, kindsManifest].every(
       (manifest) => {
         const { said } = model.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
-        const written = (parts) =>
-          parts.map((part) => (typeof part === "string" ? part : part.number)).join("");
         const files = written(said.filesParts);
         const breakdown = written(said.breakdownParts);
+        const entries = shared.statusBreakdown(manifest.files.map((file) => rowOf(file).status));
+        const words = entries.map((entry) => `${entry.count} ${entry.word}`).join(", ");
+        const letters = entries.map((entry) => `${entry.count} ${entry.letter}`).join(", ");
         return (
-          breakdown !== "" &&
-          said.text.startsWith(`${files} (${breakdown})  `) &&
-          said.label.startsWith(`${files}: ${breakdown}; `)
+          breakdown === letters &&
+          said.text.startsWith(`${files} · ${breakdown} · ${said.additions} ${said.deletions}`) &&
+          said.label.startsWith(`${files}: ${words}; `)
         );
       },
     ),
+    // Each status's letter is the one its rows carry, and its comma is a list's punctuation.
+    "each status is its rows' letter, and the commas are punctuation": (() => {
+      const { said } = model.diffSummaryOf(
+        kindsManifest.totals,
+        kindsManifest.files,
+        shared,
+        formatCount,
+      );
+      const letters = said.breakdownParts.filter(
+        (part) => typeof part === "object" && "status" in part,
+      );
+      const marks = said.breakdownParts.filter(
+        (part) => typeof part === "object" && "punctuation" in part,
+      );
+      return (
+        letters.length === 7 &&
+        letters.every((part) => part.letter === shared.STATUS_BADGES[part.status]) &&
+        marks.length === letters.length - 1 &&
+        marks.every((part) => part.punctuation === ",")
+      );
+    })(),
   };
   for (const [name, holds] of Object.entries(invariants)) {
     if (holds !== true) {

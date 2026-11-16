@@ -5298,14 +5298,21 @@ export function mountPullPage(container, ctx, mb) {
           : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
       );
     } else if (summary !== null) {
-      // "3 success · 1 failure": a count summary, its numbers bold (docs/design-system.md,
-      // "Count Summaries Bold Their Numbers").
+      // "3 success · 1 failure": a count summary, its numbers bold and its dots the shell's
+      // muted punctuation, hidden from a screen reader as a heading tally's dot is
+      // (docs/design-system.md, "Count Summaries Bold Their Numbers").
       checksSection.append(
         h(
           "p",
           { class: "github-pull-quiet" },
           Object.entries(summary.counts).flatMap(([tone, count], at) => [
-            ...(at === 0 ? [] : [" · "]),
+            ...(at === 0
+              ? []
+              : [
+                  " ",
+                  h("span", { class: "summary-punctuation", "aria-hidden": "true" }, ["·"]),
+                  " ",
+                ]),
             h("span", { class: "summary-number" }, [String(count)]),
             ` ${tone}`,
           ]),

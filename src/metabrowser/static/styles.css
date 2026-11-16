@@ -6475,7 +6475,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
-/* A number in a count summary, "8 changed files (8 modified)", "15,458 files (324.1 MB)",
+/* A number in a count summary, "8 files changed · 8 M", "15,458 files (324.1 MB)",
    "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
    line's weight, so the counts read at a glance. It sets the weight alone: the number
    keeps its line's ink, muted in a muted half, and its size. Every count summary in the
@@ -6484,6 +6484,16 @@ pre.code-block.metabrowser-source-lines > code {
    Summaries Bold Their Numbers"; mb-roa9). */
 .summary-number {
   font-weight: var(--count-numeral-weight);
+}
+
+/* A count summary's punctuation: the " · " that sets its groups apart and the comma
+   between a list's entries, as in the Diff summary's "19 files changed · 10 A, 5 D, 4 M ·
+   +1,234 −567". Muted, so the numbers, the status letters, and the words read and the marks
+   recede; it sets the ink alone, so a mark keeps its line's size and weight. Every count
+   summary puts each of its marks in one (formatters.js, countPartsHtml and countPartsNodes;
+   docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-vb51). */
+.summary-punctuation {
+  color: var(--muted);
 }
 
 /* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",

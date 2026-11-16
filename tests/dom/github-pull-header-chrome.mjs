@@ -302,8 +302,8 @@ const MEASURE = `async (name, change, tab, width) => {
   });
   // The pull request's Diff summary arrives with its comparison, in the header's last row,
   // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
-  // on a change set whose breakdown names three statuses, "35 changed files (2 added,
-  // 3 removed, 30 modified) +1,234 −3,423": it moves nothing, keeps its row's height, and
+  // on a change set whose breakdown names three statuses, "35 files changed · 2 A, 3 D, 30 M
+  // · +1,234 −3,423": it moves nothing, keeps its row's height, and
   // starts on the header's content edge.
   let summaryMoves = null;
   if (change.stackChip) {
@@ -614,7 +614,7 @@ const RECORDS = [
 // mountDiffSummary, as the plugin's summary draws it. The row holds the shell's pending
 // placeholder, `.tally-pending`, after the quiet period, and the summary takes its place
 // moving nothing; a read that fails leaves the row empty, at its height.
-const SUMMARY_WAIT = `async (width, theme, outcome) => {
+const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
   const diff = (window.__diff ??= await import("/diff/diff-view.js"));
@@ -631,7 +631,10 @@ const SUMMARY_WAIT = `async (width, theme, outcome) => {
   const read = new Promise((resolve, reject) => {
     answer = { resolve, reject };
   });
-  const kinds = [...Array(2).fill("added"), ...Array(3).fill("deleted"), ...Array(30).fill("modified")];
+  // The change set: by default, the reader's three statuses; *change* names others, as
+  // [[kind, files], ...] and its line totals.
+  const statuses = change?.kinds ?? [["added", 2], ["deleted", 3], ["modified", 30]];
+  const kinds = statuses.flatMap(([kind, many]) => Array(many).fill(kind));
   const files = kinds.map((kind, at) => ({
     kind,
     ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
@@ -639,7 +642,8 @@ const SUMMARY_WAIT = `async (width, theme, outcome) => {
     additions: 30,
     deletions: 90,
   }));
-  const comparison = { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } };
+  const lines = change?.lines ?? [1234, 3423];
+  const comparison = { manifest: { totals: { files: kinds.length, additions: lines[0], deletions: lines[1], exact: true }, files } };
   const view = {
     prefetch: () => read,
     summary: async (slot, ctx) =>
@@ -736,6 +740,9 @@ const SUMMARY_WAIT = `async (width, theme, outcome) => {
     toggleLeft: summary ? round(box(summary).left - contentLeft) : null,
     chevronLeft: chevron ? round(box(chevron).left - contentLeft) : null,
     wordsLeft: words ? round(box(words).left - contentLeft) : null,
+    width: summary ? round(box(summary).width) : null,
+    em: summary ? round(parseFloat(getComputedStyle(summary).fontSize)) : null,
+    label: summary ? summary.getAttribute("aria-label") : null,
     textRight: (() => {
       if (!summary) return null;
       const range = document.createRange();
@@ -747,6 +754,14 @@ const SUMMARY_WAIT = `async (width, theme, outcome) => {
   delete document.documentElement.dataset.theme;
   return { waiting, arrived };
 }`;
+// Change sets of one status, from the shortest summary to a longer one, which the pending
+// placeholder is sized from (`.github-pull-summary-pending` in github/styles.css; mb-vb51).
+const ONE_STATUS = [
+  { kinds: [["modified", 1]], lines: [3, 1] },
+  { kinds: [["modified", 8]], lines: [120, 30] },
+];
+// The placeholder's width in em of its type, as its rule sets it, `min(100%, 14.5em)`.
+const PENDING_EM = 14.5;
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
 // the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
@@ -1428,7 +1443,7 @@ async function main() {
               waiting.left !== null &&
                 Math.abs(waiting.left) <= 0.5 &&
                 Math.abs(waiting.centre) <= 0.5 &&
-                Math.abs(waiting.width - 17 * waiting.em) <= 0.5 &&
+                Math.abs(waiting.width - PENDING_EM * waiting.em) <= 0.5 &&
                 Math.abs(waiting.height - 0.85 * waiting.em) <= 0.5 &&
                 Math.abs(waiting.row - 24) <= 0.5,
               JSON.stringify(waiting),
@@ -1460,6 +1475,43 @@ async function main() {
         process.stderr.write(
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );
+        // The placeholder is as wide as a summary of one status, "1 file changed · 1 M · +3
+        // −1" to "8 files changed · 8 M · +120 −30", as each arrives in the row: it ends no
+        // sooner than the shortest one's text and no later than the longest one's header,
+        // from the row's start, in em of the header's type, in both themes (mb-vb51).
+        const sizes = [];
+        for (const theme of ["light", "dark"]) {
+          const arrivals = [];
+          for (const change of ONE_STATUS) {
+            arrivals.push(
+              await browser.evaluate(
+                `(${SUMMARY_WAIT})(560, ${JSON.stringify(theme)}, "arrives", ${JSON.stringify(change)})`,
+              ),
+            );
+          }
+          const em = (value, of) => Math.round((value / of) * 100) / 100;
+          const block = em(arrivals[0].waiting.width, arrivals[0].waiting.em);
+          const ends = arrivals.map(({ arrived }) => ({
+            label: arrived.label,
+            text: em(arrived.textRight, arrived.em),
+            header: em(arrived.toggleLeft + arrived.width, arrived.em),
+          }));
+          check(
+            `${theme}: the pending placeholder is as wide as a summary of one status`,
+            ends.length === ONE_STATUS.length &&
+              block >= Math.min(...ends.map((end) => end.text)) &&
+              block <= Math.max(...ends.map((end) => end.header)),
+            JSON.stringify({ block, ends }),
+          );
+          const three = summaryWaits.find(({ where }) => where.startsWith(theme))?.arrived;
+          sizes.push({
+            theme,
+            block,
+            ends,
+            three: three ? em(three.textRight, three.em) : null,
+          });
+        }
+        process.stderr.write(`summary-widths: ${JSON.stringify(sizes)}\n`);
         lap("the Diff summary's wait");
       }
       if (runs("labels")) {

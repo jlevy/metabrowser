@@ -3494,16 +3494,33 @@ declare global {
     | MetabrowserChangedFilesFileRow;
 
   /**
-   * A count summary in its parts, one shape for every count summary: the words as strings,
-   * and each number as `{number}`, which is painted bold. "35 changed files" is
-   * `[{number: "35"}, " changed files"]`, and its text is the parts joined.
+   * One part of a count summary (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers"): words as a string, in the line's ink and weight; a number as `{number}`,
+   * painted bold (`.summary-number`); a list's punctuation, the comma between its entries,
+   * as `{punctuation}`, and the " · " dot that sets a line's groups apart as `{separator}`,
+   * both painted muted (`.summary-punctuation`), the separator hidden from assistive
+   * technology; and a file change status as `{status, letter}`, its letter painted in the
+   * status's ink (`.file-change-status`).
    */
-  type MetabrowserCountParts = ReadonlyArray<string | { readonly number: string }>;
+  type MetabrowserCountPart =
+    | string
+    | { readonly number: string }
+    | { readonly punctuation: string }
+    | { readonly separator: string }
+    | { readonly status: string; readonly letter: string };
+
+  /**
+   * A count summary in its parts, one shape for every count summary. "35 files changed" is
+   * `[{number: "35"}, " files changed"]`, "2 A, 3 D" is `[{number: "2"}, " ", {status:
+   * "added", letter: "A"}, {punctuation: ","}, " ", {number: "3"}, " ", {status: "removed",
+   * letter: "D"}]`, and its text is the parts joined.
+   */
+  type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
 
   type MetabrowserChangedFilesSummary = {
-    /** "35 changed files", in its parts. */
+    /** "35 files changed", in its parts. */
     filesParts: MetabrowserCountParts;
-    /** "2 added, 3 removed, 30 modified", in its parts; none for no files. */
+    /** "2 A, 3 D, 30 M", in its parts; none for no files. */
     breakdownParts: MetabrowserCountParts;
     additions: string;
     deletions: string;
@@ -3545,7 +3562,7 @@ declare global {
     ): MetabrowserChangedFilesExpansion;
     statusBreakdown(
       statuses: Iterable<string>,
-    ): Array<{ status: string; count: number; word: string }>;
+    ): Array<{ status: string; count: number; word: string; letter: string }>;
     toggleFolder(
       expansion: MetabrowserChangedFilesExpansion,
       row: { ids: ReadonlyArray<string>; expanded: boolean },

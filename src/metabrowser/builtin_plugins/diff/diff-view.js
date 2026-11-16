@@ -1389,10 +1389,46 @@ function countFormatter(api) {
 let summaryIds = 0;
 
 /**
- * A count summary's parts, "35 changed files", as a span of *className*: each number in
- * the shell's `.summary-number`, bold, and the words in the line's own weight
- * (docs/design-system.md, "Count Summaries Bold Their Numbers"). Its text is the phrase as
- * it reads, so the accessible name is unchanged.
+ * The dot that sets the Diff summary's groups apart, the files, the statuses, and the line
+ * totals, as a count summary's part: muted, and hidden from a screen reader, which is told
+ * the header's words.
+ */
+const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });
+
+/**
+ * One part of a count summary, painted as the shell paints it (formatters.js,
+ * `countPartsNodes`; docs/design-system.md, "Count Summaries Bold Their Numbers"): a number
+ * in the shell's `.summary-number`, bold; a comma or a separator in `.summary-punctuation`,
+ * muted, the separator hidden from assistive technology; a status as its letter in the
+ * status primitive, `.file-change-status`, in the status's ink; and words as text, in the
+ * line's ink and weight.
+ *
+ * @param {MetabrowserCountPart} part
+ * @returns {HTMLElement | string}
+ */
+function countPart(part) {
+  if (typeof part === "string") {
+    return part;
+  }
+  if ("number" in part) {
+    return el("span", "summary-number", part.number);
+  }
+  if ("status" in part) {
+    const letter = el("span", "file-change-status", part.letter);
+    letter.dataset.fileStatus = part.status;
+    return letter;
+  }
+  if ("separator" in part) {
+    const dot = el("span", "summary-punctuation", part.separator);
+    dot.setAttribute("aria-hidden", "true");
+    return dot;
+  }
+  return el("span", "summary-punctuation", part.punctuation);
+}
+
+/**
+ * A count summary's parts, "35 files changed", as a span of *className*. Its text is the
+ * phrase as it reads, so the accessible name is unchanged.
  *
  * @param {string} className
  * @param {MetabrowserCountParts} parts
@@ -1400,22 +1436,20 @@ let summaryIds = 0;
  */
 function countSummary(className, parts) {
   const span = el("span", className);
-  span.append(
-    ...parts.map((part) =>
-      typeof part === "string" ? part : el("span", "summary-number", part.number),
-    ),
-  );
+  span.append(...parts.map(countPart));
   return span;
 }
 
 /**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
- * changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423", and is the disclosure
- * toggle of its files as a tree by folder. It starts collapsed, and the tree is not mounted,
- * or its module imported, until the header is first opened; hovering or focusing the header
- * asks for the module first. Its words are the shared model's (`describeChanges`), from the
- * manifest's totals and the kinds of the files it lists. A change set of no files has
- * nothing to open, so its header is a line.
+ * files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and is the disclosure toggle of its files
+ * as a tree by folder. Each status is its rows' letter, in the status's ink, and the dots
+ * between the groups and the commas are muted. It starts collapsed, and the tree is not
+ * mounted, or its module imported, until the header is first opened; hovering or focusing
+ * the header asks for the module first. Its words are the shared model's
+ * (`describeChanges`), from the manifest's totals and the kinds of the files it lists, and
+ * its accessible name says them in words, "35 files changed: 2 added, 3 deleted, 30
+ * modified; …". A change set of no files has nothing to open, so its header is a line.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
@@ -1426,16 +1460,21 @@ function countSummary(className, parts) {
 function renderDiffSummary(totals, files, view, model) {
   const formatCount = countFormatter(view.api);
   const { rows, said } = diffSummaryOf(totals, files, model, formatCount);
+  // The groups, each an item of the header's line, with a dot between each two.
+  /** @type {Array<HTMLElement | string>} */
   const parts = [countSummary("diff-summary-files", said.filesParts)];
   if (said.breakdownParts.length > 0) {
-    parts.push(countSummary("diff-summary-breakdown", ["(", ...said.breakdownParts, ")"]));
+    parts.push(
+      countPart(SUMMARY_SEPARATOR),
+      countSummary("diff-summary-breakdown", said.breakdownParts),
+    );
   }
   const stats = el("span", "diff-summary-stats");
   stats.append(
     el("span", "diff-stat-add", said.additions),
     el("span", "diff-stat-del", said.deletions),
   );
-  parts.push(stats);
+  parts.push(countPart(SUMMARY_SEPARATOR), stats);
   if (said.estimated) {
     parts.push(el("span", "diff-summary-note", "(estimated)"));
   }
@@ -1564,7 +1603,8 @@ function renderDiffSummary(totals, files, view, model) {
 
 /**
  * A change set's Diff summary, or, where the shared changed-files tree did not load, its
- * totals on their own, as they always were: only the tree of files is lost.
+ * totals on their own, "41 files changed · +6,526 −555": only the statuses, which the tree's
+ * model names, and the tree of files are lost.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
@@ -1582,7 +1622,11 @@ function summaryOrTotals(totals, files, view) {
     el("span", "diff-stat-add", said.additions),
     el("span", "diff-stat-del", said.deletions),
   );
-  line.append(countSummary("diff-summary-files", said.filesParts), stats);
+  line.append(
+    countSummary("diff-summary-files", said.filesParts),
+    countPart(SUMMARY_SEPARATOR),
+    stats,
+  );
   if (said.estimated) {
     line.append(el("span", "diff-summary-note", "(estimated)"));
   }

@@ -185,7 +185,7 @@ const MEASURE = `async (widths) => {
     body: "Its counts are the Diff summary's header.\\nAnd its tree is the commit's files.",
     files: [],
   };
-  // The change set the commit's diff reads: 35 files, 2 added, 3 removed, 30 modified.
+  // The change set the commit's diff reads: 35 files, 2 added, 3 deleted, 30 modified.
   const kinds = [...Array(2).fill("added"), ...Array(3).fill("deleted"), ...Array(30).fill("modified")];
   const files = kinds.map((kind, at) => ({
     kind,
@@ -329,8 +329,8 @@ async function main() {
         }
         check(
           `${where}: the Diff summary's header says the commit's counts`,
-          at.text?.includes("35 changed files") &&
-            at.text.includes("2 added, 3 removed, 30 modified") &&
+          at.text?.includes("35 files changed") &&
+            at.text.includes("2 A, 3 D, 30 M") &&
             at.text.includes("+1,234") &&
             at.text.includes("−3,423"),
           String(at.text),
