@@ -34,7 +34,11 @@ reports for a response's headers.
 shell: 20 requests and 176,984 bytes from the probe, 20 and 176,984 from this check,
 script for script. ``tests/test_check_startup_scripts.py`` holds the two halves of that:
 the compressed size computed here is the body the running application sends, and the
-probe's own selection and rounding give this check's count and kilobytes.
+probe's own selection and rounding give this check's count and kilobytes. A server
+started for local use sends a loopback browser its scripts uncompressed (H115,
+``metabrowser.delivery``), so there the browser's own figure is their decoded size;
+``run.py record`` then reads the gate's number as this check does, from the scripts the
+page requested, and a test holds the two equal.
 
 **The shells it does not gate.** The budget is calibrated on a folder's page. Two other
 shells carry one startup script more, and the summary reports each beside the budget
@@ -55,7 +59,6 @@ Loading Tiers" in ``docs/development.md``.
 from __future__ import annotations
 
 import asyncio
-import gzip
 import json
 import shutil
 import subprocess
@@ -259,12 +262,24 @@ def _gzip_settings() -> tuple[int, int]:
 
 
 def sent_body_bytes(content: bytes) -> int:
-    """How many bytes the application sends for *content* to a client that accepts gzip."""
+    """How many bytes the application sends for *content* to a client that accepts gzip.
+
+    One computation, :func:`metabrowser.delivery.sent_size`, which ``run.py record`` and
+    the asset store use too; the middleware's own settings are checked against it, so a
+    middleware that compressed at another level or floor stops the check rather than
+    being measured as if it did not (review A of #455, A8).
+    """
+
+    from metabrowser import delivery
 
     level, minimum_size = _gzip_settings()
-    if len(content) < minimum_size:
-        return len(content)
-    return len(gzip.compress(content, compresslevel=level))
+    if (level, minimum_size) != (delivery.GZIP_LEVEL, delivery.GZIP_MINIMUM_SIZE):
+        raise SystemExit(
+            f"the gzip middleware compresses at level {level} above {minimum_size} bytes, "
+            f"but metabrowser.delivery says level {delivery.GZIP_LEVEL} above "
+            f"{delivery.GZIP_MINIMUM_SIZE}; they must agree"
+        )
+    return delivery.sent_size(content)
 
 
 def measure_paths(url_paths: list[str]) -> list[StartupScript]:
