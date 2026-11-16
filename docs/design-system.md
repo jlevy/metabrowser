@@ -520,9 +520,9 @@ One token sets the weight, `--count-numeral-weight` in the shell’s stylesheet,
 [pull request’s number](#pull-request-numbers).
 Every count’s numeral takes it, a count summary’s `.summary-number` and a
 [heading’s tally](#heading-tallies), `.heading-tally-figure`, and none borrows
-`--pull-number-weight`, which only a pull request’s number takes.
-`.summary-number` in `static/styles.css` sets that weight alone: the number keeps its
-line’s size and ink, muted in a muted half or note.
+`--pull-number-weight`, which a pull request’s number, and a stack’s position read with
+it, take. `.summary-number` in `static/styles.css` sets that weight alone: the number
+keeps its line’s size and ink, muted in a muted half or note.
 A number is the whole figure: its grouping and decimal marks, a sign, a lower bound’s
 “+”, and a size’s unit, “394.6 MB”. Parentheses, separators, and words stay regular, and
 an age keeps the [age primitive](#age), which has a weight of its own.
@@ -569,7 +569,8 @@ keeps it.
 
 | Count summary | Where its numbers are painted |
 | --- | --- |
-| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status letters and its muted dots and commas; its line totals are the inline change stats, bold already |
+| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status letters and its muted dots and commas, and through `listedNote` for a list cut short, “(2,000 listed)”; its line totals are the inline change stats, bold already |
+| A commit’s totals line, in its Diff summary’s place until the commit’s diff draws the summary there, and where it is not drawn | `renderCommitTotals` in `static/git-panel.js`, through `changeSummary`, `countPartsHtml`, and `changeLineHtml`, in the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
 | The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
 | The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `_renderFilteredTally` in `static/app.js` in one span of its line |
 | The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
@@ -1581,12 +1582,14 @@ record names waits until the reader takes it.
 A core whose read prepares no comparison, or that no read is running for, has nothing on
 its way, and only Changes asks for its comparison.
 A read that draws no summary, because it failed or its comparison is not a valid
-document, leaves the place empty until a read of the same comparison starts again, a
-Retry among them, so a placeholder never outlives its wait and every wait has one.
+document, leaves the place empty until a read of the same comparison starts again: at
+the page’s next paint, such as a switch of tab or a poll that repaints it, or a Retry,
+so a placeholder never outlives its wait and every wait has one.
 A summary already drawn stays while a newer comparison is read
-([Refreshing Content](#refreshing-content)). A pull request’s header shows it on every
-tab. A commit’s page never shows it: the shell stages that page out of sight until its
-diff has drawn the summary, so its place does not wait in view.
+([Refreshing Content](#refreshing-content)), and the newer one’s summary replaces it in
+one step. A pull request’s header shows it on every tab.
+A commit’s page never shows it: the shell stages that page out of sight until its diff
+has drawn the summary, so its place does not wait in view.
 Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 203 by 11.89
 px (14.5 em of the header’s 14 px type; 188.5 by 11.05 px at the 13 px it had before),
 at the row’s start and centred on its line, the row is 24 px before and after the
@@ -1689,14 +1692,17 @@ path, and the file bar the row goes to shows it the same way
 the rows, and the keys, and the paint’s measurement is in the views, models, and routes
 map (`diff.summary-paint`).
 
-A pull request’s page reads its comparison once while Metabrowser is open, not once a
-visit: what it reads is kept for the document (`createComparisonKeep` in
+A pull request’s page reads its comparison once for the page’s session, until a reload,
+not once a visit: what it reads is kept for the document (`createComparisonKeep` in
 `builtin_plugins/github/comparison-prefetch.js`), keyed by the comparison’s route, which
 names both commits, so a pull request opened again draws its Diff summary in the paint
 that shows its record, with no request, no wait for the browser to be idle, and no
 placeholder, and its Changes mounts from the same answer.
 That holds whichever tab read it first: a page opened on Changes reads through the keep
-too. A record whose head or base moved names another route, which is read anew.
+too, and draws the summary from what its diff read.
+The summary is drawn once for each comparison and kept across the page’s tabs.
+A page opened out of sight reads a comparison the document does not hold once it is
+shown. A record whose head or base moved names another route, which is read anew.
 The keep is bounded (`KEPT_COMPARISON_CHARS`): a comparison it no longer holds, or one
 too large to keep, is read as before, once the browser is idle, from the browser’s
 cache. The first screen’s rendered Markdown is the page’s own to ask for, apart from the
@@ -1910,18 +1916,13 @@ The row is held at `--ui-row-height` from first paint, holding the
 [pending placeholder](#diff-summary) while the comparison is read, and the summary’s
 header is one line, its breakdown cut short at its end, so the summary that arrives
 moves nothing; opened, its tree pushes the tabs down, as the reader asked.
-On every tab but Changes the page reads the comparison once it is idle, as it would for
-Changes, and once it is shown, for a page opened out of sight; on Changes it draws the
-summary from what the diff read.
-It is drawn once for each comparison it shows and kept across tabs.
-A newer comparison’s summary replaces it in one step; a read of the newer comparison
-that fails empties the row, at its height, rather than leave the older comparison’s
-counts there as the newer one’s, and the next paint reads it again.
-Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first paint;
-a summary of “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” arriving moved no row
-and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut short at
-320 px with the whole header as its tooltip; the row starts on the header’s content
-edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
+How the page reads the comparison the row is drawn from, what the row holds while it
+waits, and what a read that fails leaves there are the [Diff Summary](#diff-summary)’s
+rules. Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first
+paint; a summary of “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” arriving moved
+no row and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut
+short at 320 px with the whole header as its tooltip; the row starts on the header’s
+content edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
 The row adds its 24 px and one 6 px gap to the header.
 `tests/dom/github-pull-header-chrome.mjs` holds the measurement, and
 `tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
@@ -2334,14 +2335,14 @@ The tab also has ready, behind the reader, the comparison of each pull request i
 likely to open next, so its page draws the [Diff summary](#diff-summary) at once: the
 open pull request, the two rows the pointer or focus last rested on, the open pull
 request’s neighbours in its stacks, which Control-N and Control-P reach, and the rows
-above and below it, at most `WARM_COMPARISONS` an ask (`createComparisonWarmer` in
-`builtin_plugins/github/comparison-prefetch.js`). They are read one at a time when the
-browser is idle and only once no page is reading one, each a record from the cache and a
-comparison from the repository store, with no GitHub request and no rendered Markdown,
-at most `WARM_PER_HOUR` an hour, each counted before its record is read.
-A comparison already kept or on its way is not asked for again, and no outcome is looked
-up again within the record’s freshness window: a record that names no comparison, a
-refusal, and an answer too large to keep included.
+above and below the one that takes Tab, at most `WARM_COMPARISONS` an ask
+(`createComparisonWarmer` in `builtin_plugins/github/comparison-prefetch.js`). They are
+read one at a time when the browser is idle and only once no page is reading one, each a
+record from the cache and a comparison from the repository store, with no GitHub request
+and no rendered Markdown, at most `WARM_PER_HOUR` an hour, each counted before its
+record is read. A comparison already kept or on its way is not asked for again, and no
+outcome is looked up again within the record’s freshness window: a record that names no
+comparison, a refusal, and an answer too large to keep included.
 The tab warms only while it is shown, visible, and online; hidden, parked, or offline,
 it empties the queue.
 A warm’s record read is not a view, so it adds nothing to the records the server’s
@@ -4475,14 +4476,28 @@ moved.
 
 Pointer hover may open supplementary tooltip detail.
 Pointer leave or any focus transition dismisses it, and focus alone never opens or
-retains it. The focus a press on the folder’s name gives it is the click itself, not a
-transition, so it leaves the name’s tooltip as the pointer has it ([Home](#home)). A
-view’s `mb.tooltip.hide()` takes away a tooltip of its own content, never one in the
-nav’s header, which no view draws.
-This contract applies to delegated `data-tip-text` tooltips and rich navigation tooltips
-such as Git commit summaries.
+retains it. This contract applies to delegated `data-tip-text` tooltips and rich
+navigation tooltips such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
+
+**Two focuses are not transitions**, and leave the tooltip as the pointer has it
+(`hideTooltipOnFocus` in `static/app.js`):
+
+- The focus a press on the folder’s name gives it is the click itself ([Home](#home)).
+- Focus put back where it was.
+  A rebuild that replaces the focused control focuses its replacement, as the Files
+  filter bar does when new tallies arrive.
+  When the element that last had focus has left the document, and no key or pointer
+  press of the reader’s has come since, the focus that follows is that repair (mb-alff).
+  A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
+  Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
+  gives is focus moving and puts the tooltip away.
+  The repair still puts away a tooltip whose own anchor the rebuild removed, since that
+  tooltip would never hear the pointer leave.
+  Before this rule, the filter bar’s rebuild put away a tree row’s tooltip, waiting or
+  shown, under a pointer that had not moved, and nothing brought the tooltip back until
+  the pointer left the row.
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -4511,6 +4526,35 @@ and small, that is the only question the tooltip exists to answer.
 no room below, and clamps to the viewport.
 Calling `show` again with the same anchor is how a surface says “still here”: it cancels
 a pending hide and leaves the tooltip exactly where it is.
+
+### A Surface Puts Away Only Its Own Tooltip
+
+**A surface that repaints or is disposed puts away the tooltip it showed, and no
+other.** `mb.tooltip.hide(within)` hides the tooltip when its anchor is `within` or
+inside it, whether the tooltip is up or still waiting out its delay.
+It also hides a tooltip whose anchor has left the document: that tooltip belongs to no
+surface on the page and would never hear the pointer leave, so a view’s `hide(root)` at
+disposal still puts its own away after its markup is gone.
+A tooltip shown with no anchor is inside no element, so only a bare `hide()` puts it
+away. `MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
+Without `within`, `hide()` puts away whatever tooltip there is, which is what a pointer
+leaving a surface means, but one in the nav’s header: the header is the shell’s chrome,
+which no view draws, so a view’s hide never takes the folder’s name’s tooltip
+([Home](#home)).
+
+The page has one tooltip, so a surface that calls `hide()` to clear its own puts away
+another surface’s too.
+The folder view’s totals drew again whenever the folder’s sums arrived, and each draw
+called `hide()`. A reader hovering a Files tree row then saw the row’s tooltip vanish,
+or never appear, when the folder view beside it updated (mb-alff).
+The folder view’s totals and treemap and the Commits history hide within their own
+element when they repaint or are disposed.
+`tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
+`tests/dom/files-tab-chrome.mjs` checks it in Chrome on a tree row while the totals
+redraw and the filter bar rebuilds.
+`tests/dom/folder-totals-view-behavior.js`, `tests/dom/folder-plugin-behavior.js`,
+`tests/dom/treemap-not-indexed-session.js` and `tests/dom/git-panel-behavior.js` check
+that each of those surfaces passes its own element.
 
 ### Shared Overlay Lifecycle
 

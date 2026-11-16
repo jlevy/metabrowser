@@ -2303,7 +2303,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
-    sdk()?.tooltip?.hide();
+    // The history's tooltip, and no other surface's: a rebuild of the panel must not take
+    // a Files row's from under the pointer (mb-alff).
+    sdk()?.tooltip?.hide(panelElement());
     hoverRevision = null;
   }
 

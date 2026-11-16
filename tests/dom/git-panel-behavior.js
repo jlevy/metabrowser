@@ -547,6 +547,13 @@ const comparisonFetches = [];
 const shownTooltips = [];
 const measuredLabels = [];
 let tooltipHideCount = 0;
+// What each hide was given. The panel puts away only its own tooltip, so a rebuild or a
+// claimed preview never takes a Files row's from under the pointer (mb-alff).
+const tooltipHidesWithin = [];
+/** Whether every hide since `since` was given the panel itself, the `#tab-git` stand-in. */
+const hidWithinPanel = (since) =>
+  tooltipHidesWithin.length > since &&
+  tooltipHidesWithin.slice(since).every((within) => within === document.getElementById("tab-git"));
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -554,8 +561,9 @@ sandbox.metabrowser = {
   delegateOwnerAttribute: () => ' data-mb-owner="page-owner"',
   tooltip: {
     show: (html, anchor) => shownTooltips.push({ html, anchor }),
-    hide: () => {
+    hide: (within) => {
       tooltipHideCount += 1;
+      tooltipHidesWithin.push(within);
     },
   },
   ensureAsset: async () => {},
@@ -1802,6 +1810,10 @@ async function run() {
       "tooltip lifecycle: pointer leave dismisses despite keyboard focus",
       tooltipHideCount > hidesBeforePointerLeave,
     );
+    assertTrue(
+      "tooltip lifecycle: pointer leave hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforePointerLeave),
+    );
 
     let resolveDelayedTooltip;
     responses.set(
@@ -1822,6 +1834,10 @@ async function run() {
       "tooltip lifecycle: keyboard selection dismisses immediately",
       tooltipHideCount > hidesBeforeKeyboardSelection,
     );
+    assertTrue(
+      "tooltip lifecycle: keyboard selection hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforeKeyboardSelection),
+    );
     resolveDelayedTooltip({
       is_repo: true,
       commit: commit(SHA_F, [], "tooltip-only commit"),
@@ -1838,6 +1854,10 @@ async function run() {
     );
     rows[2]._hovered = false;
     assertTrue("tooltip lifecycle: dismissal remains observable", tooltipHideCount > hidesBefore);
+    assertTrue(
+      "tooltip lifecycle: every dismissal hides only the panel's own tooltip",
+      hidWithinPanel(hidesBefore),
+    );
   }
 
   // ── Selection and stale-response handling ──────────────────
@@ -1992,6 +2012,7 @@ async function run() {
     rows[0].dispatch("keydown", j);
     rows[0]._hovered = false;
     assertTrue("keyboard: j dismisses the hover tooltip", tooltipHideCount > hidesBeforeJ);
+    assertTrue("keyboard: j hides only the panel's own tooltip", hidWithinPanel(hidesBeforeJ));
     assertTrue("keyboard: repeated j is handled", j.defaultPrevented);
     assertTrue("keyboard: j focuses the next commit", document.activeElement === rows[1]);
     assertEqual("keyboard: j opens the next commit", internals.stateForTests().selectedId, SHA_B);
