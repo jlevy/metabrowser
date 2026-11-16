@@ -117,7 +117,7 @@ function markdownLayer(comparison) {
 /**
  * Ask the server for the first screen's projections while the reader is still on another
  * tab, one at a time, so Changes finds them computed. The answers are the server's to
- * keep; a page leaving stops the rest.
+ * keep; *signal* is the page's, so a page leaving stops the rest.
  *
  * @param {NonNullable<ReturnType<typeof markdownLayer>>} markdown
  * @param {unknown} payload
@@ -485,23 +485,31 @@ mb.registerView("diff", "diff", {
    * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
    * because this request's address is the one `render` would ask.
    *
-   * A comparison that names a rendered route also has its first screen's Markdown
-   * projections asked for, after the comparison answers and without holding it back.
+   * The comparison alone: a page that keeps the answer for later pages shares its request,
+   * so the first screen's Markdown is asked for apart from it (`prefetchMarkdown`).
    *
    * @param {Comparison} comparison
    * @param {AbortSignal} [signal]
    * @returns {Promise<unknown>}
    */
-  prefetch: (comparison, signal) => {
-    const options = signal === undefined ? undefined : { signal };
-    const answer = fetchComparison(comparisonKey(comparison), options);
+  prefetch: (comparison, signal) =>
+    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
+  /**
+   * The first screen's Markdown projections of a comparison a page shows, asked for while
+   * the reader is still on another tab, for the comparison *raw* is the answer to. Nothing
+   * for a comparison that names no rendered route. *signal* is the page's, so a page
+   * leaving stops the rest.
+   *
+   * @param {Comparison} comparison
+   * @param {unknown} raw
+   * @param {AbortSignal} signal
+   * @returns {Promise<void>}
+   */
+  prefetchMarkdown: async (comparison, raw, signal) => {
     const markdown = markdownLayer(comparison);
-    return markdown === null
-      ? answer
-      : answer.then((payload) => {
-          void prefetchMarkdown(markdown, payload, signal);
-          return payload;
-        });
+    if (markdown !== null && !signal.aborted) {
+      await prefetchMarkdown(markdown, raw, signal);
+    }
   },
   /**
    * A comparison's Diff summary on its own, at the top of a page that keeps it while its diff

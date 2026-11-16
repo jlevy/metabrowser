@@ -284,18 +284,30 @@ names the pull request, both commits, the build, and the store, so a kept answer
 for as long as a record names that route, and a record whose head or base moved names
 another one. A visit to a comparison the keep holds draws its Diff summary in the paint
 that shows the record, and its Changes mounts from the same answer, with no request.
-A request on its way is shared: a second page or the Pulls tab joins it, and it is
-abandoned only when every asker has gone.
-It is bounded at `KEPT_COMPARISON_CHARS`, 16 MiB of JSON characters, with a quarter for
-one answer, least recently used first, and sized in a task after the one that hands the
+A page opened on Changes reads through the keep as well, so its next visit is drawn from
+it too. A request on its way is shared: a second page, a mount, or the Pulls tab joins
+it, and it is abandoned only when every asker has gone.
+The keep reads the comparison alone; the first screen’s rendered Markdown is the page’s
+own to ask for, under the page’s own signal, since a shared request outlives any one
+asker (`prefetchMarkdown` on the diff view).
+It is bounded at `KEPT_COMPARISON_CHARS` of JSON characters, with a quarter for one
+answer, least recently used first, and sized in a task after the one that hands the
 answer on, as the Commits panel’s is; the measurement is beside the constant.
-Past it the browser’s cache answers, without the server.
+A comparison past the bound, evicted or too large to keep, is read as before: once the
+browser is idle, and answered by the browser’s cache without the server.
 The Pulls tab warms it for the pull requests a reader opens next
 (`createComparisonWarmer`), one at a time when the browser is idle, with a cache read of
 the record and a comparison from the store, no GitHub call, within `WARM_COMPARISONS` an
-ask and `WARM_PER_HOUR`. `tests/dom/github-pull-prefetch-session.js` holds the keep and
-the warmer, and `tests/dom/github-pulls-files-prefetch-behavior.js` which pull requests
-the Pulls tab names.
+ask and `WARM_PER_HOUR`, which counts each warm before its record is read.
+Each outcome holds for the record’s freshness window, the envelope’s `fresh_for_s`, so a
+record that names no comparison, a refusal, and an answer too large to keep are read
+once rather than on every ask.
+A warm’s record read carries `warm=1`, so the server does not count it among the records
+a reader viewed, which a prefetch’s `changed` refreshes.
+`tests/dom/github-pull-prefetch-session.js` holds the keep and the warmer,
+`tests/dom/github-pulls-files-prefetch-behavior.js` which pull requests the Pulls tab
+names, and `test_a_warm_read_answers_the_record_and_is_not_a_view` in
+`tests/test_github_pull_manifests.py` the flag.
 
 ## Paths are bytes
 

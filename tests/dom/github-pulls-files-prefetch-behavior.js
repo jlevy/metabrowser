@@ -608,7 +608,8 @@ const stories = {
   // of it already on its way. A row the pointer or focus rests on comes next, the two newest
   // rests ahead of the neighbours. Once the stacks are known, the open pull request's
   // neighbours in its stack follow the rests, base side last: the members a Control-N or
-  // Control-P reaches. A hidden panel names nothing.
+  // Control-P reaches. A panel hidden, parked, or offline asks for nothing, which empties the
+  // warmer's queue, and a hidden one names nothing more.
   async comparisons({ panel, inView }, facts) {
     const { createStackIndex } = await import(
       pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-stacks.js")).href
@@ -647,12 +648,24 @@ const stories = {
       inView[15],
       inView[12],
     ]);
-    const before = seen.warmAsks.length;
-    controller.setShown(false);
-    controller.peek(inView[10]);
-    await seen.advance(0);
-    facts.warmAsksWhileHidden = seen.warmAsks.length - before;
-    assert.equal(facts.warmAsksWhileHidden, 0);
+    // Hidden, parked, or offline, the panel empties the warmer's queue with an empty ask, and
+    // a hidden one names nothing more.
+    const stops = {};
+    for (const [why, stop] of [
+      ["hidden", () => controller.setShown(false)],
+      ["parked", () => controller.pause()],
+      ["offline", () => controller.onOffline()],
+    ]) {
+      const before = seen.warmAsks.length;
+      stop();
+      if (why === "hidden") {
+        controller.peek(inView[10]);
+      }
+      await seen.advance(0);
+      stops[why] = seen.warmAsks.slice(before);
+    }
+    facts.warmStops = stops;
+    assert.deepEqual(facts.warmStops, { hidden: [[]], parked: [[]], offline: [[]] });
     controller.dispose();
   },
 

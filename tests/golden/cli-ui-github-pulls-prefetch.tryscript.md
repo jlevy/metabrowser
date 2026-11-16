@@ -146,10 +146,12 @@ checked again when that answer comes, so a walk, a metadata read, or a hold that
 meanwhile keeps it from being sent.
 
 The panel also names to the page’s comparison warmer the pull requests whose comparison
-to have ready before they are opened (mb-neg9): the two rows the pointer or focus last
+to have ready before they are opened (mb-neg9): the open pull request first, so its page
+joins a warm of it already on its way, then the two rows the pointer or focus last
 rested on, newest first, then the open pull request’s neighbours in its stacks, then the
-anchored row’s neighbours in the list, never the open one, and nothing while it is
-hidden.
+anchored row’s neighbours in the list.
+Hidden, parked, or offline, it asks for nothing, which empties the warmer’s queue, and a
+hidden panel names nothing more.
 
 This browserless session runs the production panel and file-tree controllers on a
 virtual clock against a stand-in server whose GitHub list takes 1.5 s.
@@ -275,7 +277,17 @@ $ node tests/dom/github-pulls-files-prefetch-behavior.js
       94
     ]
   },
-  "warmAsksWhileHidden": 0,
+  "warmStops": {
+    "hidden": [
+      []
+    ],
+    "parked": [
+      []
+    ],
+    "offline": [
+      []
+    ]
+  },
   "admissionHeld": {
     "asks": 0
   },

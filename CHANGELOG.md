@@ -20,14 +20,17 @@ All notable changes to Metabrowser are documented here.
   and [Diff Summary](docs/design-system.md#diff-summary).
 
 - A pull request you have opened before shows its Diff summary at once when you open it
-  again, and its Changes opens with no wait: what a page reads of a comparison is kept
-  while Metabrowser is open, instead of being read again, once the browser was idle, on
-  every visit. A pull request whose head or base moved is read anew.
+  again, and its Changes opens with no wait, whether you first opened it on Conversation
+  or on Changes: what a page reads of a comparison is kept while Metabrowser is open,
+  instead of being read again, once the browser was idle, on every visit.
+  A pull request whose head or base moved is read anew.
+  What is kept is bounded, and a comparison past the bound, or one too large to keep, is
+  read as before, once the browser is idle, from the browser’s cache.
   The Pulls tab also reads ahead, behind you, the comparisons of the pull requests you
   are likely to open next: the open one, the rows the pointer or focus rests on, the
   open pull request’s neighbours in its stacks, and the rows above and below it, from
-  the local repository cache with no GitHub request.
-  See [Diff Summary](docs/design-system.md#diff-summary).
+  the local repository cache with no GitHub request, and only while the tab is shown and
+  you are online. See [Diff Summary](docs/design-system.md#diff-summary).
 
 - The folder’s name at the top of the navigation is Home, and `0` and Shift-0 go there
   too: the folder’s home view exactly as a fresh load of it shows it.

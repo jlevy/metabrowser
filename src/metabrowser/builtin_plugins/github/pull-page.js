@@ -34,7 +34,11 @@
 // stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
-import { createComparisonPrefetch, diffComparisonLoader } from "./comparison-prefetch.js";
+import {
+  comparisonKey,
+  createComparisonPrefetch,
+  diffComparisonLoader,
+} from "./comparison-prefetch.js";
 import {
   createStackIndex,
   memberRoute,
@@ -5542,14 +5546,19 @@ export function mountPullPage(container, ctx, mb) {
     // holds the summary's placeholder, and one that failed leaves its row empty (mb-onr2). A
     // comparison the document keeps is handed over in the paint that shows its record, so the
     // summary is drawn in that paint once the diff's view is registered, as it is after any
-    // first read (mb-neg9).
+    // first read (mb-neg9). Its first screen's Markdown is this page's own to ask for, once it
+    // is idle.
     reading: (comparison) => summaryReading(comparison),
     loaded(comparison, payload) {
       if (mb.getRegisteredView("diff", "diff")) {
         showSummary(comparison, payload);
+        askMarkdown(comparison, payload);
       } else {
         void mb.ensureKindAssets("diff").then(
-          () => showSummary(comparison, payload),
+          () => {
+            showSummary(comparison, payload);
+            askMarkdown(comparison, payload);
+          },
           () => summaryUnavailable(comparison),
         );
       }
@@ -5612,10 +5621,52 @@ export function mountPullPage(container, ctx, mb) {
    * read of it starts again (mb-pb35, mb-onr2).
    */
   let summaryFailed = "";
+  /** The comparison whose first screen's Markdown this page asked for, and how to stop it. */
+  let markdownAsked = { key: "", controller: /** @type {AbortController | null} */ (null) };
 
-  /** @param {{left: string, right: string, route?: string}} comparison */
-  const comparisonKey = (comparison) =>
-    comparison.route ?? `${comparison.left}...${comparison.right}`;
+  /**
+   * Ask, once the browser is idle, for the first screen's rendered Markdown of *comparison*,
+   * whose answer is *raw*, so Changes finds it computed. It is asked apart from the
+   * comparison, which the document keeps for later pages and whose request outlives this
+   * one, under a controller of this page's: a page that goes, or a newer comparison, stops
+   * the rest. A comparison with no rendered route asks for nothing.
+   *
+   * @param {{left: string, right: string, route?: string, rendered_route?: string}} comparison
+   * @param {unknown} raw
+   */
+  function askMarkdown(comparison, raw) {
+    const key = comparisonKey(comparison);
+    if (
+      listening.signal.aborted ||
+      comparison.rendered_route === undefined ||
+      markdownAsked.key === key
+    ) {
+      return;
+    }
+    markdownAsked.controller?.abort();
+    const controller = new AbortController();
+    markdownAsked = { key, controller };
+    const cancel = mb.whenIdle(
+      () => {
+        const view =
+          /** @type {{prefetchMarkdown?: (comparison: object, raw: unknown, signal: AbortSignal) => Promise<void>} | null} */ (
+            mb.getRegisteredView("diff", "diff")
+          );
+        if (!controller.signal.aborted && typeof view?.prefetchMarkdown === "function") {
+          const asked = {
+            left: comparison.left,
+            right: comparison.right,
+            base_policy: "merge_base",
+            ...(comparison.route === undefined ? {} : { route: comparison.route }),
+            rendered_route: comparison.rendered_route,
+          };
+          void view.prefetchMarkdown(asked, raw, controller.signal).catch(() => {});
+        }
+      },
+      { timeout: PREFETCH_IDLE_TIMEOUT_MS },
+    );
+    controller.signal.addEventListener("abort", () => cancel(), { once: true });
+  }
 
   /**
    * The Diff summary's row while no summary is drawn in it (mb-onr2). It waits on the read in
@@ -6752,6 +6803,7 @@ export function mountPullPage(container, ctx, mb) {
     place?.dispose();
     controller.dispose();
     prefetch.dispose();
+    markdownAsked.controller?.abort();
     summaryShown.handle?.dispose();
     summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
     stacks.dispose();

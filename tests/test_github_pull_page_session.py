@@ -571,7 +571,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # shell's pending placeholder while a comparison is on its way and while it is read,
         # on Changes the mounted diff's, and nothing once a read draws none, until a read of
         # it starts again (mb-onr2); a pull request opened again in the document is drawn
-        # from the kept comparison as it mounts (mb-neg9).
+        # from the kept comparison as it mounts, one first read on Changes too (mb-neg9).
         "headerSummary": [
             "Conversation, the comparison not yet read: the pending placeholder",
             "the comparison read: the summary",
@@ -580,6 +580,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Checks, the comparison read: the summary",
             "the same pull request again in this document, before any idle: the summary",
             "opened on Changes, from what its diff read: the summary",
+            "opened again on Conversation after Changes, before any idle: the summary",
             "a read that will fail, not yet answered: the pending placeholder",
             "the read fails: nothing",
             "a repaint after it failed: nothing",

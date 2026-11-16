@@ -1,5 +1,5 @@
 // A pull request's comparison, read on every tab but Changes before Changes asks for it, and
-// kept while the page lives.
+// kept for the document.
 //
 // The page knows the comparison the moment the record arrives. Its header's Diff summary is
 // drawn from what is read here, on Conversation and Checks (mb-pb35), and the reader's next
@@ -33,11 +33,20 @@
 // (docs/development.md, "Idle Work"): with a real press and none, 253 to 256 ms. A kept
 // comparison is drawn in the paint that shows its record, with no request, no wait, and no
 // parse: 13 to 20 ms after the click, 57 to 73 ms at four times slower CPU, and 16 to 19 ms
-// with no `requestIdleCallback`, the record's own read and paint.
+// with no `requestIdleCallback`, the record's own read and paint. Measured again after
+// review, at a load average of 19 to 47: 16 to 27 ms, 46 to 63 ms, and 16 to 23 ms, where
+// the old page at that load took 32 to 36 ms with a real press and 255 to 259 ms with no
+// `requestIdleCallback`.
 //
-// The Pulls tab warms the keep for the pull requests a reader opens next
-// (`createComparisonWarmer`): the rows the pointer or focus rested on, the open pull
-// request's neighbours in its stacks, and its neighbours in the list.
+// A page opened on Changes reads through the keep too (`take`), so the next visit to that
+// pull request is drawn from it like any other. The Pulls tab warms the keep for the pull
+// requests a reader opens next (`createComparisonWarmer`): the rows the pointer or focus
+// rested on, the open pull request's neighbours in its stacks, and its neighbours in the
+// list.
+//
+// What the keep reads is the comparison alone. A request in it is shared and outlives any
+// one asker, so the first screen's rendered Markdown, which a page leaving must stop, is the
+// page's own to ask for, with its own signal (`prefetchMarkdown` on the diff view).
 
 /**
  * @typedef {{left: string, right: string, route?: string, rendered_route?: string}} ComparisonEnds
@@ -291,7 +300,8 @@ export const documentComparisons = createComparisonKeep();
 /**
  * How the GitHub plugin reads a comparison: through the diff plugin's `prefetch`, which
  * spells the address, so the request `mountDiff` would make is this one, byte for byte, and
- * the browser's cache answers a Back from it.
+ * the browser's cache answers a Back from it. The comparison alone: what it reads goes in
+ * the keep, whose request outlives its askers, so no Markdown projection rides on it.
  *
  * @param {{ensureKindAssets(kind: string): Promise<unknown>, getRegisteredView(kind: string, name: string): unknown}} mb
  * @returns {(comparison: ComparisonEnds, signal: AbortSignal) => Promise<unknown>}
@@ -313,9 +323,6 @@ export function diffComparisonLoader(mb) {
         right: comparison.right,
         base_policy: "merge_base",
         ...(comparison.route === undefined ? {} : { route: comparison.route }),
-        ...(comparison.rendered_route === undefined
-          ? {}
-          : { rendered_route: comparison.rendered_route }),
       },
       signal,
     );
@@ -387,19 +394,26 @@ export function createComparisonPrefetch(deps) {
     );
   }
 
+  /**
+   * *entry*'s read of *comparison* through the keep: the kept answer, the request on its way,
+   * or a request of its own, which every other asker can join. It ends for this page when
+   * *entry*'s controller aborts.
+   *
+   * @param {PrefetchEntry} entry
+   * @param {ComparisonEnds} comparison
+   */
+  function readThrough(entry, comparison) {
+    entry.controller ??= new AbortController();
+    return keep.read(entry.key, (signal) => deps.load(comparison, signal), entry.controller.signal);
+  }
+
   /** @param {PrefetchEntry} entry @param {ComparisonEnds} comparison */
   function start(entry, comparison) {
     if (disposed || current !== entry) {
       return;
     }
     deps.warm();
-    const controller = new AbortController();
-    entry.controller = controller;
-    follow(
-      entry,
-      comparison,
-      keep.read(entry.key, (signal) => deps.load(comparison, signal), controller.signal),
-    );
+    follow(entry, comparison, readThrough(entry, comparison));
   }
 
   return Object.freeze({
@@ -434,15 +448,21 @@ export function createComparisonPrefetch(deps) {
         return;
       }
       release();
+      // The entry's controller is its from the start, so whatever it joins, here or once a
+      // mount takes it while it waits for idle, it leaves when the page goes.
       /** @type {PrefetchEntry} */
-      const entry = { key, phase: "waiting", handle: null, controller: null, payload: null };
+      const entry = {
+        key,
+        phase: "waiting",
+        handle: null,
+        controller: new AbortController(),
+        payload: null,
+      };
       current = entry;
-      const controller = new AbortController();
-      const joined = keep.join(key, controller.signal);
+      const joined = keep.join(key, entry.controller?.signal);
       if (joined !== undefined) {
         // Another page, or the Pulls tab, is reading it: no request of this page's own.
         deps.warm();
-        entry.controller = controller;
         follow(entry, comparison, joined);
         // Its read is on its way, for the page's Diff summary to wait on (mb-onr2).
         deps.reading?.(comparison);
@@ -455,7 +475,9 @@ export function createComparisonPrefetch(deps) {
     },
     /**
      * The reader asked: the payload if there is one, here or kept, waiting for a request on
-     * its way, or undefined, and the diff asks for itself, and says so itself if that fails.
+     * its way; otherwise the comparison is read now, through the keep, so the next visit is
+     * drawn from it. Undefined when that read fails, and the diff asks for itself, and says
+     * why itself.
      *
      * @param {ComparisonEnds} comparison
      * @returns {Promise<unknown>}
@@ -467,18 +489,17 @@ export function createComparisonPrefetch(deps) {
       }
       if (current?.key !== key) {
         release();
-        const controller = new AbortController();
-        current = { key, phase: "taken", handle: null, controller, payload: null };
-        const joined = keep.join(key, controller.signal);
-        return joined === undefined ? Promise.resolve(undefined) : joined.catch(() => undefined);
-      }
-      if (current.phase === "waiting") {
+        current = {
+          key,
+          phase: "taken",
+          handle: null,
+          controller: new AbortController(),
+          payload: null,
+        };
+      } else if (current.phase === "waiting") {
         deps.cancel(current.handle);
       }
-      const payload =
-        current.payload ??
-        keep.join(key, current.controller?.signal)?.catch(() => undefined) ??
-        Promise.resolve(undefined);
+      const payload = current.payload ?? readThrough(current, comparison).catch(() => undefined);
       current.phase = "taken";
       current.payload = null;
       return payload;
@@ -504,37 +525,49 @@ export function createComparisonPrefetch(deps) {
 // pull request's neighbours in its stacks, then its neighbours in the list. Past the first
 // few the ask changes before the lane reaches them.
 export const WARM_COMPARISONS = 5;
-// Comparisons the lane asks the server for in an hour. Each is a record read from the cache
-// and a comparison from the repository store, local Git with no network and no GitHub call:
-// measured 2026-11-16 on the GitHub stand-in at a load average of 9 to 12, a record read was
-// 3 to 6 KB and 2 to 35 ms of server time, and a first comparison of 26 to 121 files 10 to
-// 25 KB gzipped, 169 to 676 KB of JSON, 76 to 354 ms of server time, and five Git processes;
-// a repeat ran none. Over this repository's 192 merged pull requests a first answer took
-// 115 ms at the median and 345 ms at the most, 12 KB gzipped at the median and 112 KB at the
-// most. So this is at most about 14 s of server time an hour at the median, and the answers
-// stay in the keep and in the server's own (`MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`).
+// Warms the lane starts in an hour, each counted before its record is read. A warm is a
+// record read from the cache and, when the keep has neither its comparison nor a request for
+// it on its way, that comparison from the repository store, local Git with no network and no
+// GitHub call; it asks for no rendered Markdown (`diffComparisonLoader`). Measured 2026-11-16
+// on the GitHub stand-in at a load average of 9 to 12, a record read was 3 to 6 KB and 2 to
+// 35 ms of server time, and a first comparison of 26 to 121 files 10 to 25 KB gzipped, 169
+// to 676 KB of JSON, 76 to 354 ms of server time, and five Git processes; a repeat ran none.
+// Over this repository's 192 merged pull requests a first answer took 115 ms at the median
+// and 345 ms at the most, 12 KB gzipped at the median and 112 KB at the most. So an hour's
+// cap is about 14 s of comparison time at the median and 41 s at the most, and at most 4 s
+// of record reads, and the answers stay in the keep and in the server's own
+// (`MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`).
 export const WARM_PER_HOUR = 120;
-// How long a pull request's comparison, once found, is not looked up again for a warm: the
-// record's own freshness window, 60 s, past which its head may have moved.
-export const WARM_RECHECK_MS = 60_000;
-// The pull requests whose comparison key the lane remembers, oldest out first.
+// The pull requests whose last outcome the lane remembers, oldest out first.
 const WARM_FOUND = 64;
 // The recent outcomes a snapshot reports.
 const WARM_RECENT = 8;
 const HOUR_MS = 3_600_000;
 
 /**
+ * A pull request's record as a warm reads it: the comparison it names, or null, and how long
+ * it holds, the envelope's `fresh_for_s`, past which its head may have moved.
+ *
+ * @typedef {{comparison: ComparisonEnds | null, freshForMs: number}} WarmRecord
+ */
+
+/**
  * The Pulls tab's warming of the keep: one pull request at a time, each when the browser is
  * idle, the record read from the cache and its comparison asked for only when the keep has
  * neither it nor a request on its way, and only once no other request is on its way, so a
- * page's own read never shares the server with a warm. An ask replaces the queue. The one being read goes on:
- * the server computes a comparison it was asked for whether or not the asker stays, so what
- * stopping it would save is the answer, and that is what the row just left, or just
- * clicked, may want next.
+ * page's own read never shares the server with a warm. An ask replaces the queue. The one
+ * being read goes on: the server computes a comparison it was asked for whether or not the
+ * asker stays, so what stopping it would save is the answer, and that is what the row just
+ * left, or just clicked, may want next.
+ *
+ * Every outcome holds for its record's freshness window, and a pull request is not read
+ * again while it does: a comparison kept or warmed, while the keep still has it, a record
+ * that names none, a refusal, an answer too large to keep, and a read that failed, which
+ * holds for the window the last record gave.
  *
  * @param {{
  *   keep?: ComparisonKeep,
- *   read(number: number, signal: AbortSignal): Promise<ComparisonEnds | null>,
+ *   read(number: number, signal: AbortSignal): Promise<WarmRecord>,
  *   load(comparison: ComparisonEnds, signal: AbortSignal): Promise<unknown>,
  *   schedule(callback: () => void): unknown,
  *   cancel(handle: unknown): void,
@@ -550,10 +583,17 @@ export function createComparisonWarmer(deps) {
   let handle = null;
   /** @type {{number: number, controller: AbortController} | null} */
   let running = null;
-  /** When each comparison this lane asked for was sent, for the hourly cap. @type {number[]} */
+  /** When each warm this lane started was started, for the hourly cap. @type {number[]} */
   let sent = [];
-  /** Each pull request's comparison key as last read, and when. @type {Map<number, {key: string, at: number}>} */
+  /**
+   * Each pull request's last outcome: its comparison's key, if its record named one, when,
+   * for how long it holds, and whether it left the answer in the keep.
+   *
+   * @type {Map<number, {key: string | null, at: number, holdsMs: number, inKeep: boolean}>}
+   */
   const found = new Map();
+  /** The freshness window the last record read gave, which a failed read holds for. */
+  let windowMs = 0;
   /** @type {string[]} */
   const recent = [];
   let disposed = false;
@@ -563,6 +603,27 @@ export function createComparisonWarmer(deps) {
     recent.push(`${number}: ${outcome}`);
     if (recent.length > WARM_RECENT) {
       recent.shift();
+    }
+  }
+
+  /**
+   * *number*'s warm ended in *outcome*, which holds for the window.
+   *
+   * @param {number} number
+   * @param {string | null} key
+   * @param {string} outcome
+   */
+  function settle(number, key, outcome) {
+    note(number, outcome);
+    found.delete(number);
+    found.set(number, {
+      key,
+      at: deps.now(),
+      holdsMs: windowMs,
+      inKeep: outcome === "kept" || outcome === "warmed",
+    });
+    if (found.size > WARM_FOUND) {
+      found.delete(/** @type {number} */ (found.keys().next().value));
     }
   }
 
@@ -582,10 +643,19 @@ export function createComparisonWarmer(deps) {
     });
   }
 
-  /** Whether *number*'s comparison was found kept or on its way within the recheck window. */
-  function settled(/** @type {number} */ number) {
+  /**
+   * Whether *number*'s last outcome still holds: within its window and, for one that left
+   * its answer in the keep, while the keep has it.
+   *
+   * @param {number} number
+   */
+  function settled(number) {
     const seen = found.get(number);
-    return seen !== undefined && deps.now() - seen.at < WARM_RECHECK_MS && keep.has(seen.key);
+    return (
+      seen !== undefined &&
+      deps.now() - seen.at < seen.holdsMs &&
+      (!seen.inKeep || (seen.key !== null && keep.has(seen.key)))
+    );
   }
 
   /** @param {number} number */
@@ -597,25 +667,33 @@ export function createComparisonWarmer(deps) {
       next();
       return;
     }
+    // Counted before the record is read, so a lane the cap holds reads nothing more.
+    const now = deps.now();
+    sent = sent.filter((at) => now - at < HOUR_MS);
+    if (sent.length >= WARM_PER_HOUR) {
+      note(number, "hourly cap");
+      queue = [];
+      return;
+    }
+    sent.push(now);
     const controller = new AbortController();
     running = { number, controller };
+    /** @type {string | null} */
+    let key = null;
     try {
-      const comparison = await deps.read(number, controller.signal);
+      const record = await deps.read(number, controller.signal);
       if (controller.signal.aborted) {
         return;
       }
+      windowMs = record.freshForMs;
+      const comparison = record.comparison;
       if (comparison === null) {
-        note(number, "no comparison");
+        settle(number, null, "no comparison");
         return;
       }
-      const key = comparisonKey(comparison);
-      found.delete(number);
-      found.set(number, { key, at: deps.now() });
-      if (found.size > WARM_FOUND) {
-        found.delete(/** @type {number} */ (found.keys().next().value));
-      }
+      key = comparisonKey(comparison);
       if (keep.has(key)) {
-        note(number, "kept");
+        settle(number, key, "kept");
         return;
       }
       // Behind the reader: a comparison a page is reading, the open pull request's, goes
@@ -625,21 +703,20 @@ export function createComparisonWarmer(deps) {
         return;
       }
       if (keep.has(key)) {
-        note(number, "kept");
+        settle(number, key, "kept");
         return;
       }
-      const now = deps.now();
-      sent = sent.filter((at) => now - at < HOUR_MS);
-      if (sent.length >= WARM_PER_HOUR) {
-        note(number, "hourly cap");
-        queue = [];
-        return;
-      }
-      sent.push(now);
       await keep.read(key, (signal) => deps.load(comparison, signal), controller.signal);
-      note(number, "warmed");
+      // The keep measures an answer in a task after the one that hands it on, and declines
+      // one too large to keep.
+      await keep.quiet();
+      settle(number, key, keep.has(key) ? "warmed" : "not kept");
     } catch {
-      note(number, controller.signal.aborted ? "cancelled" : "failed");
+      if (controller.signal.aborted) {
+        note(number, "cancelled");
+      } else {
+        settle(number, key, "failed");
+      }
     } finally {
       if (running?.controller === controller) {
         running = null;
@@ -651,6 +728,7 @@ export function createComparisonWarmer(deps) {
   return Object.freeze({
     /**
      * The pull requests to warm, most likely first. Only the first `WARM_COMPARISONS` count.
+     * An empty ask empties the queue, as a panel that is hidden or offline asks.
      *
      * @param {number[]} numbers
      */

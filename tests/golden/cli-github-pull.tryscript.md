@@ -758,6 +758,56 @@ Error: /api/plugin/github/pull?number=07 returned HTTP 400
 ? 1
 ```
 
+The Pulls tab reads a record marked `warm=1` to have its comparison ready before the
+reader opens it (mb-neg9). It is answered as any read is.
+The server leaves it out of the pull requests it last answered, which a prefetch’s
+`changed` refreshes after a scan, because the reader has not opened it;
+`tests/test_github_pull_manifests.py` holds that.
+`warm` takes only `1`.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=14&warm=1'
+api: /api/plugin/github/pull?number=14&warm=1
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 14,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": null,
+  "verified_at": null,
+  "verified_by": null,
+  "head_moved": false,
+  "checks_pending": false,
+  "record_revision": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
+  "record": null,
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=14&warm=0'
+api: /api/plugin/github/pull?number=14&warm=0
+status: 400
+{
+  "error": "\"warm\" is 1",
+  "code": "invalid_request"
+}
+Error: /api/plugin/github/pull?number=14&warm=0 returned HTTP 400
+? 1
+```
+
 A folder is no GitHub repository, so it has none to answer for: every route says so, and
 the page does.
 

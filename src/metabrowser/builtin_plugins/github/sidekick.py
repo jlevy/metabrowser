@@ -137,6 +137,9 @@ async def pull_handler(request: Request) -> Response:
     ``fetched_at``, and the verdict's time, which a ``304`` carries in
     ``x-metabrowser-verified``. A matching ``wait_full_after`` revision may hold the cache read
     briefly until its already-running selected refresh settles or revokes the preview.
+    ``warm=1`` marks a read the Pulls tab sends to warm a comparison ahead of a click, which
+    is not a view: it is answered the same, and is left out of the numbers a prefetch's
+    ``changed`` adds (``pull_prefetch.note_viewed``).
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (
@@ -158,6 +161,9 @@ async def pull_handler(request: Request) -> Response:
     wait_after = request.query_params.get("wait_full_after")
     if wait_after is not None and re.fullmatch(r"[0-9a-f]{64}", wait_after) is None:
         return _invalid_request('"wait_full_after" is a core preview revision')
+    warm = request.query_params.get("warm")
+    if warm not in (None, "1"):
+        return _invalid_request('"warm" is 1')
     claimed_pin = request.headers.get(PIN_HEADER) if wait_after is not None else None
     pinned_subject = None
     if claimed_pin is not None:
@@ -201,10 +207,11 @@ async def pull_handler(request: Request) -> Response:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
         )
-    if view.host is not None:
+    if view.host is not None and warm is None:
         from metabrowser.builtin_plugins.github.pull_prefetch import note_viewed
 
-        # What a prefetch's ``changed`` adds: the numbers this server answered last.
+        # What a prefetch's ``changed`` adds: the numbers this server answered last, for a
+        # reader. A warm reads a record the reader has not opened.
         note_viewed(view.host.pulls, number)
     comparison = (envelope.get("record") or {}).get("comparison")
     if view.host is not None and isinstance(comparison, dict):

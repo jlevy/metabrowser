@@ -156,10 +156,25 @@ type MetabrowserViewSpec = {
       right: string;
       base_policy: "direct" | "merge_base";
       route?: string;
-      rendered_route?: string;
     },
     signal?: AbortSignal,
   ) => Promise<unknown>;
+  /**
+   * The first screen's rendered Markdown of a comparison *raw* answers, asked for ahead of
+   * the view, apart from `prefetch`, under the asking page's *signal*. The diff view has one;
+   * a comparison that names no rendered route asks for nothing.
+   */
+  prefetchMarkdown?: (
+    comparison: {
+      left: string;
+      right: string;
+      base_policy: "direct" | "merge_base";
+      route?: string;
+      rendered_route?: string;
+    },
+    raw: unknown,
+    signal: AbortSignal,
+  ) => Promise<void>;
   /**
    * A comparison's Diff summary on its own, drawn in *slot* from what `prefetch` or `render`
    * read, for a page that keeps it at its top while the view comes and goes, as a pull
