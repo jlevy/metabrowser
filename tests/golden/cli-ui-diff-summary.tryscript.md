@@ -40,8 +40,8 @@ a folder, and only Enter, Space, or a press on a file jumps the diff to it, sinc
 tree sits above the files a jump scrolls to.
 `invariants` are relations the session holds: the breakdown counts each file once, each
 folder’s counts are the sums of its files’, the root’s are the manifest’s totals, every
-file row names a path the diff finds it by, and the header’s counted parts read as its
-words.
+file row names a path the diff finds it by, and the header’s parts, joined, read as its
+text and its accessible name.
 
 ```console
 $ node tests/dom/diff-summary-session.js
@@ -349,7 +349,7 @@ $ node tests/dom/diff-summary-session.js
     "the root's lines are the manifest's totals": true,
     "every file row jumps to a path the diff finds it by": true,
     "a closed tree's rows are the top level": true,
-    "the header's counted parts read as its words": true
+    "the header's parts read as its text and its label": true
   }
 }
 ? 0

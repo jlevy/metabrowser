@@ -12,10 +12,10 @@ the Pulls count share (`docs/design-system.md`, “Navigation Metadata Line”),
 markup and words are `treeSummaryHtml` in `static/navigation.js`, written with the
 shell’s own text helpers.
 
-This browserless session runs the real `static/navigation.js` with `esc`,
-`formatCountParts`, and `formatSize` extracted verbatim from `static/app.js`, the
-helpers the shell hands it, over the real `static/formatters.js`, whose `formatBytes`
-writes every size the shell shows.
+This browserless session runs the real `static/navigation.js` with `formatCountParts`
+and `formatSize` extracted verbatim from `static/app.js`, the helpers the shell hands
+it, over the real `static/formatters.js`, whose `formatBytes` writes every size the
+shell shows and whose `countPartsHtml` paints every count summary’s numbers bold.
 For each state the line paints in, it records the line’s classes, how it reads, how many
 figures are still pending, the figures it paints bold (`numbers`), what it says in the
 line’s own weight (`regular`), and its markup.

@@ -400,9 +400,10 @@
   --pull-number-weight: var(--weight-bold);
   /* A count's numeral in a count summary, "8" of "8 changed files": bold, while the
      words around it keep their line's weight, so the counts read at a glance. Every
-     count numeral takes this token, `.summary-number` among them, and not
-     --pull-number-weight, which is a pull request's number's (docs/design-system.md,
-     "Count Summaries Bold Their Numbers"; mb-roa9). */
+     count numeral takes this token, `.summary-number`, `.git-commit-file-status`, and
+     `.heading-tally-figure`, and not --pull-number-weight, which is a pull request's
+     number's (docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-roa9;
+     test_count_summaries_bold_their_numbers_through_one_token). */
   --count-numeral-weight: var(--weight-bold);
 
   /* All-caps label style (shared by tabs, table headers, stat labels,
@@ -3761,8 +3762,7 @@ a.tab-btn {
    (`.nav-toolbar-row`). Measured in headless Chrome on 2026-11-15, "5 commits begun
    3mo ago" is one line from 179 px (the narrowest pane) in the default font set and
    from 186 px in the system set, and "123,456 commits begun 12mo ago", its count bold
-   (`.summary-number`; mb-roa9), from 214 and 242 px, where it was 211 and 238 px with
-   its count regular. */
+   (`.summary-number`; mb-roa9), from 214 and 242 px. */
 .nav-toolbar > .nav-metadata {
   flex: 1 1 auto;
   min-width: 0;
@@ -6479,8 +6479,9 @@ pre.code-block.metabrowser-source-lines > code {
    "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
    line's weight, so the counts read at a glance. It sets the weight alone: the number
    keeps its line's ink, muted in a muted half, and its size. Every count summary in the
-   shell and the built-in plugins puts each of its numbers in one (docs/design-system.md,
-   "Count Summaries Bold Their Numbers"; mb-roa9). */
+   shell and the built-in plugins puts each of its numbers in one, inline with its words
+   (formatters.js, countPartsHtml and countPartsNodes; docs/design-system.md, "Count
+   Summaries Bold Their Numbers"; mb-roa9). */
 .summary-number {
   font-weight: var(--count-numeral-weight);
 }
@@ -6704,10 +6705,12 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--body-font-size);
 }
 
+/* "28 M": a count summary's number, at a count's numeral weight (docs/design-system.md,
+   "Count Summaries Bold Their Numbers"), with its status letter, the status primitive. */
 .git-commit-file-status {
   color: var(--text);
   font-variant-numeric: var(--tabular-numerals);
-  font-weight: var(--weight-bold);
+  font-weight: var(--count-numeral-weight);
   white-space: nowrap;
 }
 

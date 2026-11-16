@@ -637,17 +637,13 @@
    * What a change set's header says, in its parts: the file count, which statuses make it
    * up, and its line totals, each written with *formatCount*, the shell's number format.
    *
-   * `files` is "35 changed files"; `breakdown` is "2 added, 3 removed, 30 modified", or ""
-   * for no files; `additions` and `deletions` are "+1,234" and "−3,423", with "?" for a
+   * `filesParts` is "35 changed files" and `breakdownParts` "2 added, 3 removed, 30
+   * modified", or nothing for no files, each in a count summary's parts, so a header paints
+   * the numbers bold and the words regular (docs/design-system.md, "Count Summaries Bold
+   * Their Numbers"); `additions` and `deletions` are "+1,234" and "−3,423", with "?" for a
    * total the change set does not know; `estimated` is whether the totals are not exact,
    * which the header says as "(estimated)"; `text` is the whole line as it reads; and
    * `label` is what a screen reader is told, with the signs said as words.
-   *
-   * `fileCount` and `statusCounts` are `files` and `breakdown` in their counted parts, each
-   * number apart from its words, so a header paints the numbers bold and the words regular
-   * (docs/design-system.md, "Count Summaries Bold Their Numbers"): `files` is
-   * `fileCount.count` and `fileCount.words` with a space between, and `breakdown` is each
-   * status count so written, joined by ", ".
    *
    * @param {{files: number, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {Iterable<string>} statuses One per file listed.
@@ -655,16 +651,22 @@
    * @returns {MetabrowserChangedFilesSummary}
    */
   function describeChanges(totals, statuses, formatCount) {
-    const fileCount = {
-      count: formatCount(totals.files),
-      words: `changed ${totals.files === 1 ? "file" : "files"}`,
-    };
-    const statusCounts = statusBreakdown(statuses).map((entry) => ({
-      count: formatCount(entry.count),
-      words: entry.word,
-    }));
-    const files = `${fileCount.count} ${fileCount.words}`;
-    const breakdown = statusCounts.map((entry) => `${entry.count} ${entry.words}`).join(", ");
+    /** @type {MetabrowserCountParts} */
+    const filesParts = [
+      { number: formatCount(totals.files) },
+      ` changed ${totals.files === 1 ? "file" : "files"}`,
+    ];
+    /** @type {MetabrowserCountParts} */
+    const breakdownParts = statusBreakdown(statuses).flatMap((entry, at) => [
+      ...(at === 0 ? [] : [", "]),
+      { number: formatCount(entry.count) },
+      ` ${entry.word}`,
+    ]);
+    /** @param {MetabrowserCountParts} parts */
+    const written = (parts) =>
+      parts.map((part) => (typeof part === "string" ? part : part.number)).join("");
+    const files = written(filesParts);
+    const breakdown = written(breakdownParts);
     const added = totals.additions === null ? "?" : formatCount(totals.additions);
     const deleted = totals.deletions === null ? "?" : formatCount(totals.deletions);
     const additions = `+${added}`;
@@ -678,17 +680,7 @@
         : `${added} ${totals.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
     const named = breakdown === "" ? files : `${files}: ${breakdown}`;
     const label = `${named}; ${lines}${estimated ? ", estimated" : ""}`;
-    return {
-      files,
-      breakdown,
-      fileCount,
-      statusCounts,
-      additions,
-      deletions,
-      estimated,
-      text,
-      label,
-    };
+    return { filesParts, breakdownParts, additions, deletions, estimated, text, label };
   }
 
   /**

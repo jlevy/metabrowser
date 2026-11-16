@@ -93,7 +93,9 @@ function header(_model, manifest) {
     text: said.text,
     label: said.label,
     estimated: said.estimated,
-    numbers: [said.fileCount.count, ...said.statusCounts.map((entry) => entry.count)],
+    numbers: [...said.filesParts, ...said.breakdownParts].flatMap((part) =>
+      typeof part === "string" ? [] : [part.number],
+    ),
   };
 }
 
@@ -367,13 +369,17 @@ async function main() {
       return row.path === (entry.new ?? entry.old).path;
     }),
     "a closed tree's rows are the top level": compact.rows().every((row) => row.depth === 0),
-    "the header's counted parts read as its words": [exampleManifest, kindsManifest].every(
+    "the header's parts read as its text and its label": [exampleManifest, kindsManifest].every(
       (manifest) => {
         const { said } = model.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
-        const written = (entry) => `${entry.count} ${entry.words}`;
+        const written = (parts) =>
+          parts.map((part) => (typeof part === "string" ? part : part.number)).join("");
+        const files = written(said.filesParts);
+        const breakdown = written(said.breakdownParts);
         return (
-          written(said.fileCount) === said.files &&
-          said.statusCounts.map(written).join(", ") === said.breakdown
+          breakdown !== "" &&
+          said.text.startsWith(`${files} (${breakdown})  `) &&
+          said.label.startsWith(`${files}: ${breakdown}; `)
         );
       },
     ),

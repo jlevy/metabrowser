@@ -1928,10 +1928,12 @@
     countSpan.className = "git-history-summary-count";
     // The number bold and its word in the line's weight, as every count summary reads
     // (docs/design-system.md, "Count Summaries Bold Their Numbers").
-    const number = document.createElement("span");
-    number.className = "summary-number";
-    number.textContent = count.toLocaleString();
-    countSpan.replaceChildren(number, ` ${count === 1 ? "commit" : "commits"}`);
+    countSpan.replaceChildren(
+      ...window.MetabrowserFormatters.countPartsNodes(document, [
+        { number: count.toLocaleString() },
+        count === 1 ? " commit" : " commits",
+      ]),
+    );
     const firstCommitAt = state.summary.firstCommitAt;
     const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
     if (!firstAge || firstCommitAt === null) {
@@ -2603,10 +2605,12 @@
       html += '<div class="git-commit-files">';
       html += '<div class="git-commit-files-summary">';
       // A count summary of the list under it: its number bold (docs/design-system.md,
-      // "Count Summaries Bold Their Numbers").
-      html += `<span class="summary-number">${external.length}</span> file${
-        external.length === 1 ? "" : "s"
-      } outside this folder`;
+      // "Count Summaries Bold Their Numbers"), and the count and its words one item of the
+      // flex line, so its gap does not part them.
+      html += `<span>${window.MetabrowserFormatters.countPartsHtml([
+        { number: String(external.length) },
+        ` file${external.length === 1 ? "" : "s"} outside this folder`,
+      ])}</span>`;
       html += "</div>";
       html += external.map(renderFileRow).join("");
       html += "</div>";

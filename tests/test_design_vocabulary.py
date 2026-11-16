@@ -2124,16 +2124,53 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert shell[number]["font-weight"] == "var(--pull-number-weight)", number
 
 
+# A count's numeral and a pull request's number are both bold, each through a token of its
+# own, so the two may part (docs/design-system.md, "Count Summaries Bold Their Numbers" and
+# "Pull Request Numbers"): the selectors that take each.
+_COUNT_NUMERALS = frozenset({".summary-number", ".git-commit-file-status", ".heading-tally-figure"})
+_PULL_NUMBERS = frozenset(
+    {
+        ".github-pull-number",
+        ".github-pulls-number",
+        ".github-pull-stack-member-number",
+        ".github-pull-stack-position",
+        ".github-pull-stack-member-position",
+        ".search-palette-pull-number",
+        ".source-ref-selector-pull-number",
+    }
+)
+# A class a source gives a count summary's number beside `.summary-number`, as the Pulls
+# count's `.github-pulls-total`.
+_SUMMARY_NUMBER_CLASSES = re.compile(
+    r"""class(?:Name)?\s*[:=]\s*["']([^"']*\bsummary-number\b[^"']*)["']"""
+)
+
+
+def _token_uses(token: str) -> set[tuple[str, str]]:
+    """(selector, property) for every declaration in every stylesheet that reads *token*."""
+
+    return {
+        (selector, name)
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        for name, value in declarations.items()
+        if f"var({token})" in value
+    }
+
+
 def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     """A count summary's numbers are bold, its words regular ("Count Summaries Bold Their
     Numbers"; mb-roa9).
 
-    One token, `--count-numeral-weight`, sets a count's numeral's weight, and one shell
-    class, `.summary-number`, takes it and nothing else, so a number keeps its line's ink
-    and size; no stylesheet restyles it. Each surface that paints a count summary puts its
-    numbers in it: the browserless sessions named in the design system hold the markup,
-    and tests/test_changed_file_rows_chrome.py reads 700 for the numbers and 400 for the
-    words in Chrome.
+    One token, `--count-numeral-weight`, sets a count's numeral's weight: every count
+    numeral's rule reads it, and nothing else does; `--pull-number-weight` is read by the
+    pull request numbers' rules alone. One shell class, `.summary-number`, takes the token
+    and nothing else, so a number keeps its line's ink and size, and no stylesheet restyles
+    it, by its own class or by a class a source gives it beside that one. Each surface that
+    paints a count summary puts its numbers in it: the browserless sessions named in the
+    design system hold the markup, and tests/test_changed_file_rows_chrome.py and
+    tests/test_nav_metadata_chrome.py read 700 for the numbers and 400 for the words in
+    Chrome.
     """
 
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
@@ -2141,25 +2178,49 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert shell_css.count("--count-numeral-weight:") == 1
     assert "--count-numeral-weight: var(--weight-bold);" in shell_css
+    assert _token_uses("--count-numeral-weight") == {
+        (numeral, "font-weight") for numeral in _COUNT_NUMERALS
+    }
+    assert _token_uses("--pull-number-weight") == {
+        (number, "font-weight") for number in _PULL_NUMBERS
+    }
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".summary-number"] == {"font-weight": "var(--count-numeral-weight)"}
-    for sheet in [STATIC / "styles.css", *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/styles.css")]:
-        for selector, _declarations in _rules_of(sheet):
+    beside = {
+        f".{name}"
+        for source in _browser_sources()
+        for found in _SUMMARY_NUMBER_CLASSES.finditer(source.read_text(encoding="utf-8"))
+        for name in found.group(1).split()
+        if name != "summary-number"
+    }
+    assert beside == {".github-pulls-total"}, beside
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
             assert selector == ".summary-number" or "summary-number" not in selector, (
                 sheet,
                 selector,
             )
+            for name in beside:
+                if re.search(re.escape(name) + r"(?![\w-])", selector):
+                    assert "font-weight" not in declarations, (sheet, selector)
+            # The Checks summary's numbers are spans in a quiet paragraph; nothing styles a
+            # paragraph's descendants' weight there.
+            if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
+                assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "builtin_plugins/diff/diff-view.js": 'el("span", "summary-number", entry.count)',
-        "static/navigation.js": '<span class="summary-number">',
-        "static/app.js": 'number.className = "summary-number";',
-        "static/git-panel.js": 'number.className = "summary-number";',
+        "static/formatters.js": "number.className = SUMMARY_NUMBER_CLASS;",
+        "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
+        "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
+        "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
+        "builtin_plugins/diff/diff-view.js": 'el("span", "summary-number", part.number)',
         "builtin_plugins/github/pulls-panel.js": '{ class: "github-pulls-total summary-number" }',
         "builtin_plugins/github/pull-page.js": 'h("span", { class: "summary-number" }',
     }
     for path, painted in painters.items():
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         assert painted in source, path
+    formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
+    assert 'const SUMMARY_NUMBER_CLASS = "summary-number";' in formatters
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:

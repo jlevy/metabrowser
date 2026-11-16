@@ -59,6 +59,7 @@ const LIFTED = [
   "sizeClass",
   "isPendingNumber",
   "parseTipNumber",
+  "formatCountParts",
   "formatCount",
   "formatTimestamp",
   "formatExactSize",

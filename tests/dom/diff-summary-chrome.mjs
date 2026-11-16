@@ -139,10 +139,14 @@ const CHROME = `(() => {
         continue;
       }
       const parent = node.parentElement;
+      const number = parent.classList.contains("summary-number");
       found.push({
         text: node.textContent,
         weight: getComputedStyle(parent).fontWeight,
-        number: parent.classList.contains("summary-number"),
+        number,
+        // What holds a bold number: inline with its words, never a flex or grid line, where
+        // it would be an item of its own.
+        within: number ? getComputedStyle(parent.parentElement).display : null,
         own: parent.closest(".diff-summary-stats, .git-history-summary-age") !== null,
       });
     }

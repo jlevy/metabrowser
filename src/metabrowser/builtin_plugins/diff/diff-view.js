@@ -1389,31 +1389,22 @@ function countFormatter(api) {
 let summaryIds = 0;
 
 /**
- * A count summary's counted words, "35 changed files", as a span of *className*: the
- * number in the shell's `.summary-number`, bold, and the words after it in the line's own
- * weight (docs/design-system.md, "Count Summaries Bold Their Numbers"). Its text is the
- * phrase as it reads, so the accessible name is unchanged.
+ * A count summary's parts, "35 changed files", as a span of *className*: each number in
+ * the shell's `.summary-number`, bold, and the words in the line's own weight
+ * (docs/design-system.md, "Count Summaries Bold Their Numbers"). Its text is the phrase as
+ * it reads, so the accessible name is unchanged.
  *
  * @param {string} className
- * @param {ReadonlyArray<{count: string, words: string}>} counted
- * @param {{open?: string, close?: string}} [around] Text before the first and after the last.
+ * @param {MetabrowserCountParts} parts
  * @returns {HTMLElement}
  */
-function countedWords(className, counted, around = {}) {
+function countSummary(className, parts) {
   const span = el("span", className);
-  /** @type {Array<Node | string>} */
-  const parts = [];
-  counted.forEach((entry, at) => {
-    const lead = at === 0 ? (around.open ?? "") : ", ";
-    if (lead !== "") {
-      parts.push(lead);
-    }
-    parts.push(el("span", "summary-number", entry.count), ` ${entry.words}`);
-  });
-  if (around.close) {
-    parts.push(around.close);
-  }
-  span.append(...parts);
+  span.append(
+    ...parts.map((part) =>
+      typeof part === "string" ? part : el("span", "summary-number", part.number),
+    ),
+  );
   return span;
 }
 
@@ -1435,11 +1426,9 @@ function countedWords(className, counted, around = {}) {
 function renderDiffSummary(totals, files, view, model) {
   const formatCount = countFormatter(view.api);
   const { rows, said } = diffSummaryOf(totals, files, model, formatCount);
-  const parts = [countedWords("diff-summary-files", [said.fileCount])];
-  if (said.statusCounts.length > 0) {
-    parts.push(
-      countedWords("diff-summary-breakdown", said.statusCounts, { open: "(", close: ")" }),
-    );
+  const parts = [countSummary("diff-summary-files", said.filesParts)];
+  if (said.breakdownParts.length > 0) {
+    parts.push(countSummary("diff-summary-breakdown", ["(", ...said.breakdownParts, ")"]));
   }
   const stats = el("span", "diff-summary-stats");
   stats.append(
@@ -1593,7 +1582,7 @@ function summaryOrTotals(totals, files, view) {
     el("span", "diff-stat-add", said.additions),
     el("span", "diff-stat-del", said.deletions),
   );
-  line.append(countedWords("diff-summary-files", [said.fileCount]), stats);
+  line.append(countSummary("diff-summary-files", said.filesParts), stats);
   if (said.estimated) {
     line.append(el("span", "diff-summary-note", "(estimated)"));
   }

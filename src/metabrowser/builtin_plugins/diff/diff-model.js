@@ -414,8 +414,9 @@ export function diffSummaryOf(totals, files, model, formatCount) {
 /**
  * A change set's totals as one line, for a diff whose shared changed-files tree did not
  * load: what main's toolbar said, "41 changed files +6,526 −555", in the shell's number
- * format, with "(estimated)" for totals that are not exact. `fileCount` is `files` in its
- * counted parts, its number bold where it is painted, as the Diff summary's is. Pure.
+ * format, with "(estimated)" for totals that are not exact. `filesParts` is "41 changed
+ * files" in a count summary's parts, its number bold where it is painted, as the Diff
+ * summary's is. Pure.
  *
  * @param {Record<string, unknown>} totals
  * @param {(count: number) => string} formatCount
@@ -424,13 +425,9 @@ export function plainTotals(totals, formatCount) {
   const files = Number(totals.files);
   /** @param {unknown} value */
   const count = (value) => (typeof value === "number" ? formatCount(value) : "?");
-  const fileCount = {
-    count: formatCount(files),
-    words: `changed ${files === 1 ? "file" : "files"}`,
-  };
   return {
-    files: `${fileCount.count} ${fileCount.words}`,
-    fileCount,
+    /** @type {MetabrowserCountParts} */
+    filesParts: [{ number: formatCount(files) }, ` changed ${files === 1 ? "file" : "files"}`],
     additions: `+${count(totals.additions)}`,
     deletions: `\u2212${count(totals.deletions)}`,
     estimated: totals.exact !== true,

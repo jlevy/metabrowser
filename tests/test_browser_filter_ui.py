@@ -885,7 +885,11 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     assert "totalMatching: recentTotalMatching" in block
     assert "totalMatchingExact: recentTotalMatchingExact" in block
     assert "truncated: recentTruncated" in block
-    assert block.count("paintCountParts(") == 2
+    # The remark is one span in the line, which a repaint replaces, so the line's flex gap
+    # does not part its words and numbers.
+    assert "window.MetabrowserFormatters.countPartsNodes(document, parts)" in block
+    assert "existing.replaceChildren(remark);" in block
+    assert "line.append(remark);" in block
 
     # Removing the last filter clears the line through the shared tally helper.
     assert "existing.remove();" in block

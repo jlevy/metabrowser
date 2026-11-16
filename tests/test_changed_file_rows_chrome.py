@@ -227,9 +227,10 @@ BOLD, REGULAR = "700", "400"
 def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str]:
     """What breaks the count-summary rule in one line's runs of text, as Chrome computes them.
 
-    Every number is a bold number, `.summary-number`, at `--weight-bold`; every other run, a
-    word, a parenthesis, or a separator, is at the line's regular weight; a change stat or
-    an age keeps the weight of its own primitive.
+    Every number is a bold number, `.summary-number`, at `--weight-bold`, inline with its
+    words rather than an item of a flex line, which would part them by its gap; every other
+    run, a word, a parenthesis, or a separator, is at the line's regular weight; a change
+    stat or an age keeps the weight of its own primitive.
     """
 
     if not runs:
@@ -241,6 +242,8 @@ def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str
         if run["number"]:
             if run["weight"] != BOLD:
                 broken.append(f"{where}: number {run['text']!r} at {run['weight']}")
+            if re.search(r"flex|grid", run["within"]):
+                broken.append(f"{where}: number {run['text']!r} is an item of a {run['within']}")
         elif re.search(r"\d", run["text"]):
             broken.append(f"{where}: {run['text']!r} holds a number outside a bold number")
         elif run["weight"] != REGULAR:

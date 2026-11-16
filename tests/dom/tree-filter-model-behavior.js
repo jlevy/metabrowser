@@ -226,9 +226,16 @@ assertEqual(
   2,
 );
 
+// The Recent remark as it reads: its parts joined, as a screen reader hears the line.
+const tallyText = (count, recent) =>
+  model
+    .filteredTallyParts(count, recent)
+    .map((part) => (typeof part === "string" ? part : part.number))
+    .join("");
+
 assertEqual(
   "an exact untruncated Recent tally names the visible count",
-  model.recentFilteredTallyText(1, {
+  tallyText(1, {
     totalMatching: 1,
     totalMatchingExact: true,
     truncated: false,
@@ -237,7 +244,7 @@ assertEqual(
 );
 assertEqual(
   "a deep invalidation marks an originally untruncated Recent tally as a lower bound",
-  model.recentFilteredTallyText(1, {
+  tallyText(1, {
     totalMatching: 1,
     totalMatchingExact: false,
     truncated: false,
@@ -246,7 +253,7 @@ assertEqual(
 );
 assertEqual(
   "an empty non-exact Recent tally still discloses uncertainty",
-  model.recentFilteredTallyText(0, {
+  tallyText(0, {
     totalMatching: 0,
     totalMatchingExact: false,
     truncated: false,
@@ -255,7 +262,7 @@ assertEqual(
 );
 assertEqual(
   "a truncated exact Recent tally names its provider total",
-  model.recentFilteredTallyText(5, {
+  tallyText(5, {
     totalMatching: 12,
     totalMatchingExact: true,
     truncated: true,
@@ -264,7 +271,7 @@ assertEqual(
 );
 assertEqual(
   "a truncated non-exact Recent tally marks the provider total as a lower bound",
-  model.recentFilteredTallyText(5, {
+  tallyText(5, {
     totalMatching: 12,
     totalMatchingExact: false,
     truncated: true,
@@ -477,7 +484,7 @@ assertEqual(
     prefixHelper: typeof model.removeRecentEntriesByPrefix,
     recompute: typeof model.createRecentRecomputeScheduler,
     replacementHelper: typeof model.recentReplacementNeedsBackfill,
-    tally: typeof model.recentFilteredTallyText,
+    tally: typeof model.filteredTallyParts,
     unseenHelper: typeof model.recentUnseenBeforeMayMatch,
   },
   {

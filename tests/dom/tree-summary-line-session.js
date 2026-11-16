@@ -4,10 +4,11 @@
 // docs/design-system.md, "Navigation Metadata Line"). Its markup and words are
 // navigation.js's `treeSummaryHtml`, written with the shell's own text helpers, and its
 // two figures are patched live by `treeSummaryCountHtml` and `treeSummarySizeHtml` as the
-// walker's root aggregate changes. This runs the real navigation.js with `esc`,
-// `formatCount`, and `formatSize` extracted verbatim from app.js, the helpers app.js
-// hands it, over the real formatters.js, whose `formatBytes` writes every size the
-// shell shows (tests/dom/byte-sizes-session.js), and records the line for each state: before any count, counted before the
+// walker's root aggregate changes. This runs the real navigation.js with
+// `formatCountParts` and `formatSize` extracted verbatim from app.js, the helpers app.js
+// hands it, over the real formatters.js, whose `formatBytes` writes every size the shell
+// shows (tests/dom/byte-sizes-session.js) and whose `countPartsHtml` paints every count
+// summary's numbers bold, and records the line for each state: before any count, counted before the
 // split arrives, a Git pin with no sizes, the split with and without ignored files, an
 // empty folder, and each live figure. Where the line sits is layout, measured in Chrome
 // by tests/test_nav_metadata_chrome.py.
@@ -36,11 +37,11 @@ for (const script of ["formatters.js", "navigation.js"]) {
   const file = path.join(staticDir, script);
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
 }
-vm.runInContext(["esc", "formatSize", "formatCountParts"].map(appFunction).join("\n"), context, {
+vm.runInContext(["formatSize", "formatCountParts"].map(appFunction).join("\n"), context, {
   filename: "app-text-helpers.js",
 });
 const route = context.MetabrowserNavigationRoute;
-const format = vm.runInContext("({ esc, formatCountParts, formatSize })", context);
+const format = vm.runInContext("({ formatCountParts, formatSize })", context);
 
 /** A count summary's bold number (`.summary-number`), and the figure in it. */
 const NUMBER = /<span class="summary-number">([^<]*)<\/span>/g;

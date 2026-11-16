@@ -1150,7 +1150,7 @@
    *
    * @param {number} count
    * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean} | null} recent
-   * @returns {Array<string | {number: string}>}
+   * @returns {MetabrowserCountParts}
    */
   function filteredTallyParts(count, recent) {
     if (recent !== null && !recent.totalMatchingExact && !recent.truncated) {
@@ -1168,18 +1168,6 @@
     }
     parts.push(".");
     return parts;
-  }
-
-  /**
-   * The filtered Recent tally as it reads: `filteredTallyParts`, joined.
-   *
-   * @param {number} count
-   * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean}} options
-   */
-  function recentFilteredTallyText(count, options) {
-    return filteredTallyParts(count, options)
-      .map((part) => (typeof part === "string" ? part : part.number))
-      .join("");
   }
 
   /**
@@ -1847,7 +1835,6 @@
     recentFilterCursor,
     recentFilterTransition,
     filteredTallyParts,
-    recentFilteredTallyText,
     recentRepairDisposition,
     recentRequestDisposition,
     recentRequestKey,

@@ -110,6 +110,15 @@ const BAND = `(() => {
     return {
       cls: el.className,
       text: el.textContent.replace(/\\s+/g, " ").trim(),
+      // What the line reads as laid out: each item of the flex line is a run of its own.
+      innerText: el.innerText,
+      // A count summary's numbers, each with its weight and the display of what holds it
+      // ("Count Summaries Bold Their Numbers"): inline in one item, never an item itself.
+      numbers: [...el.querySelectorAll(".summary-number")].map((number) => ({
+        text: number.textContent,
+        weight: getComputedStyle(number).fontWeight,
+        within: getComputedStyle(number.parentElement).display,
+      })),
       note: el.classList.contains("nav-metadata-note"),
       fontSize: cs.fontSize,
       fontWeight: cs.fontWeight,
@@ -384,6 +393,18 @@ for (const [width, measured] of [
       if (line.textLeft !== null) {
         check(`${where}: inset`, near(line.textLeft, reference.textLeft), `${line.textLeft}`);
       }
+      // A count summary's number is bold, and inline in one item of the line with its
+      // words: as an item of its own, the line's gap would part it from them, and it
+      // would read as a run of its own (docs/design-system.md, "Count Summaries Bold Their
+      // Numbers").
+      for (const number of line.numbers) {
+        check(`${where}: ${number.text} is bold`, number.weight === "700", number.weight);
+        check(
+          `${where}: ${number.text} is inline in its item`,
+          !/flex|grid/.test(number.within),
+          number.within,
+        );
+      }
       // A pending tally sits where its figures will: across the middle of the line box,
       // where the text's own middle is, not at its top.
       for (const middle of line.shimmers) {
@@ -402,6 +423,33 @@ for (const [width, measured] of [
   }
 }
 check("a remark is muted", notes.length > 0 && notes[0].color !== reference?.color);
+// The filter's remark is one item of its line: its number bold and inline with its words,
+// so it reads as one run, its spaces where they are written (mb-roa9).
+for (const [width, measured] of [
+  ["default", bands],
+  ["wide", wide],
+]) {
+  const remark = measured["files filtered"]?.lines.find((line) =>
+    line.cls.split(" ").includes("tree-summary-filtered"),
+  );
+  check(
+    `files filtered (${width}): the remark's one number`,
+    JSON.stringify(remark?.numbers.map((number) => number.text)) === JSON.stringify(["2"]),
+    JSON.stringify(remark?.numbers),
+  );
+  check(
+    `files filtered (${width}): the remark reads as one run`,
+    remark?.innerText === remark?.text && remark?.text === "Filtered to 2 files.",
+    JSON.stringify(remark?.innerText),
+  );
+  // The Pulls count's number is bold, as every count summary's, and its words regular.
+  const count = measured["pulls updated"]?.lines[0];
+  check(
+    `pulls updated (${width}): the count's one number is bold`,
+    count?.numbers.length === 1 && count.numbers[0].weight === "700",
+    JSON.stringify(count?.numbers),
+  );
+}
 // The pending tallies of Files and Commits sit alike in their lines.
 const shimmerOf = (name) => bands[name]?.lines[0].shimmers[0];
 check(

@@ -334,9 +334,8 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 
 /** The shell's text helpers the Files totals are written with (app.js). */
 type MetabrowserTreeSummaryFormat = {
-  esc(value: unknown): string;
-  /** A count of files as a count summary paints it: "12,797" and "files", apart. */
-  formatCountParts(n: number): MetabrowserCountedWords;
+  /** A count of files as a count summary paints it, "12,797 files" in its parts. */
+  formatCountParts(n: number): MetabrowserCountParts;
   formatSize(bytes: number): string;
 };
 
@@ -405,11 +404,11 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   ): string;
   treeSummaryCountHtml(
     files: number | null | undefined,
-    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatCountParts">,
+    format: Pick<MetabrowserTreeSummaryFormat, "formatCountParts">,
   ): string;
   treeSummarySizeHtml(
     bytes: number | null | undefined,
-    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatSize">,
+    format: Pick<MetabrowserTreeSummaryFormat, "formatSize">,
   ): string;
   createController(options: {
     apply(
@@ -517,6 +516,10 @@ type MetabrowserFormatterRuntime = Readonly<{
   ): { label: string; className: string };
   ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
+  /** A count summary as markup, each number in `span.summary-number`, the words escaped. */
+  countPartsHtml(parts: MetabrowserCountParts): string;
+  /** A count summary as nodes, each number in `span.summary-number`, the words as text. */
+  countPartsNodes(doc: Document, parts: MetabrowserCountParts): Array<Node | string>;
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
@@ -1822,15 +1825,7 @@ type MetabrowserTreeFilterModel = {
       totalMatchingExact: boolean;
       truncated: boolean;
     } | null,
-  ): Array<string | { number: string }>;
-  recentFilteredTallyText(
-    count: number,
-    options: {
-      totalMatching: number;
-      totalMatchingExact: boolean;
-      truncated: boolean;
-    },
-  ): string;
+  ): MetabrowserCountParts;
   recentRequestDisposition(
     active: MetabrowserRecentRequest | null,
     request: MetabrowserRecentRequest,
@@ -3498,14 +3493,18 @@ declare global {
     | MetabrowserChangedFilesFolderRow
     | MetabrowserChangedFilesFileRow;
 
-  /** A count and the words after it, "35" and "changed files", painted apart. */
-  type MetabrowserCountedWords = { count: string; words: string };
+  /**
+   * A count summary in its parts, one shape for every count summary: the words as strings,
+   * and each number as `{number}`, which is painted bold. "35 changed files" is
+   * `[{number: "35"}, " changed files"]`, and its text is the parts joined.
+   */
+  type MetabrowserCountParts = ReadonlyArray<string | { readonly number: string }>;
 
   type MetabrowserChangedFilesSummary = {
-    files: string;
-    breakdown: string;
-    fileCount: MetabrowserCountedWords;
-    statusCounts: MetabrowserCountedWords[];
+    /** "35 changed files", in its parts. */
+    filesParts: MetabrowserCountParts;
+    /** "2 added, 3 removed, 30 modified", in its parts; none for no files. */
+    breakdownParts: MetabrowserCountParts;
     additions: string;
     deletions: string;
     estimated: boolean;

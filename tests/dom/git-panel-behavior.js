@@ -1076,7 +1076,7 @@ async function run() {
   assertContains(
     "detail: the count of files outside the folder is a bold number",
     previewHtml,
-    '<div class="git-commit-files-summary"><span class="summary-number">1</span> file outside this folder</div>',
+    '<div class="git-commit-files-summary"><span><span class="summary-number">1</span> file outside this folder</span></div>',
   );
   assertContains("detail: lists the outside file", previewHtml, "outside.js");
   assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");

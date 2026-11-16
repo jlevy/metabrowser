@@ -207,14 +207,16 @@ function parseTipNumber(value) {
   var n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
-function formatCount(n) {
-  return `${(n || 0).toLocaleString()} ${n === 1 ? "file" : "files"}`;
-}
-// `formatCount` in its two parts, "12,797" and "files", for a count summary, which paints
-// the number bold and the word in the line's weight (docs/design-system.md, "Count
-// Summaries Bold Their Numbers").
+// A count of files, "12,797 files", in a count summary's parts, which paint the number bold
+// and the word in the line's weight (docs/design-system.md, "Count Summaries Bold Their
+// Numbers"). `formatCount` is the parts joined.
 function formatCountParts(n) {
-  return { count: (n || 0).toLocaleString(), words: n === 1 ? "file" : "files" };
+  return [{ number: (n || 0).toLocaleString() }, n === 1 ? " file" : " files"];
+}
+function formatCount(n) {
+  return formatCountParts(n)
+    .map((part) => (typeof part === "string" ? part : part.number))
+    .join("");
 }
 function countClass(n) {
   return window.MetabrowserFormatters.countClass(Number(n) || 0);
@@ -1864,7 +1866,7 @@ function openedSectionFolders() {
 // tests/dom/tree-summary-line-session.js runs exactly what paints.
 // A function, not a constant: the shell can paint a tally before this line has run.
 function treeSummaryFormat() {
-  return { esc, formatCountParts, formatSize };
+  return { formatCountParts, formatSize };
 }
 function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
   return window.MetabrowserNavigationRoute.treeSummaryHtml(
@@ -6024,23 +6026,6 @@ function _applyTreeSourceFilters(panel, state) {
   renderSelectionOutsideFilterNote();
 }
 
-// A count summary's parts in *element*: the words as text and each number in the
-// shell's `.summary-number`, bold (docs/design-system.md, "Count Summaries Bold Their
-// Numbers"). Its text is the parts joined, as a screen reader reads it.
-function paintCountParts(element, parts) {
-  element.replaceChildren(
-    ...parts.map((part) => {
-      if (typeof part === "string") {
-        return part;
-      }
-      var number = document.createElement("span");
-      number.className = "summary-number";
-      number.textContent = part.number;
-      return number;
-    }),
-  );
-}
-
 // How many files the filter is actually showing, as a second line
 // under the tally. Rendered whenever anything is filtered, not only
 // when a response was capped: "how many am I looking at" is the
@@ -6070,15 +6055,20 @@ function _renderFilteredTally(panel, state, count) {
         }
       : null,
   );
+  // The remark is one item of the line, its words and numbers in one span: painted
+  // straight into the flex line, each would be an item of its own, parted by the line's
+  // gap and read as runs of their own.
+  var remark = document.createElement("span");
+  remark.append(...window.MetabrowserFormatters.countPartsNodes(document, parts));
   if (existing) {
-    paintCountParts(existing, parts);
+    existing.replaceChildren(remark);
     return;
   }
   var summary = panel.querySelector(".tree-summary");
   var line = document.createElement("div");
   line.className = "tree-summary-filtered nav-metadata nav-metadata-note";
   line.setAttribute("role", "status");
-  paintCountParts(line, parts);
+  line.append(remark);
   if (summary) {
     summary.insertAdjacentElement("afterend", line);
   } else {
