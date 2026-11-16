@@ -355,20 +355,12 @@
       // so a panel that is not Files would otherwise keep a bar of file
       // filters on screen above content they cannot filter. The bar is the
       // Files tab's toolbar in one slot every tab fills with its own, at one
-      // height, so the panel below starts at one y on every tab.
+      // height while each is one line, so the panel below starts at one y on
+      // every tab. A toolbar its pane is too narrow for wraps instead of
+      // scrolling (docs/design-system.md, "Navigation Toolbars Wrap").
       for (const toolbar of document.querySelectorAll("[data-nav-toolbar]")) {
         const slot = /** @type {HTMLElement} */ (toolbar);
-        const returning = slot.hidden && slot.dataset.navToolbar === panelId;
         slot.hidden = slot.dataset.navToolbar !== panelId;
-        // A toolbar a narrow pane scrolled comes back at its start, with its chosen
-        // filter, the roving tab stop of its chips, in view: it came back scrolled, with
-        // the filter off the edge.
-        if (returning && slot.scrollLeft > 0) {
-          slot.scrollLeft = 0;
-          slot
-            .querySelector('[tabindex="0"]')
-            ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-        }
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;

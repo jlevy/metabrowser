@@ -2298,8 +2298,9 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
 }>;
 
 /**
- * One key, or Control with `n` or `p` (`control: true`): a binding states no other
- * modifier policy, and Shift never changes a key.
+ * One key, or Control with a letter of `CONTROL_CHORD_KEYS` (`control: true`), registered
+ * only where `controlReachesPage()`: a binding states no other modifier policy, and Shift
+ * never changes a key.
  */
 type MetabrowserShortcutBinding = Readonly<{
   control?: true;
@@ -2404,6 +2405,8 @@ type MetabrowserShortcutRegistry = Readonly<{
   ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   dispose(): void;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
@@ -2437,7 +2440,7 @@ type MetabrowserShortcutRegistry = Readonly<{
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
-  /** The letters a binding may hold with Control: `n` and `p`. */
+  /** The letters a binding may hold with Control (`control: true`). */
   CONTROL_CHORD_KEYS: ReadonlyArray<string>;
   GROUP_DEFINITIONS: Readonly<
     Record<string, Readonly<{ context: string; label: string; order: number }>>
@@ -2454,6 +2457,8 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
   ): void;
   appendKey(document: Document, container: HTMLElement, key: string): HTMLElement;
   bindingSignature(binding: MetabrowserShortcutBinding): string;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   create(options?: { document?: Document }): MetabrowserShortcutRegistry;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,

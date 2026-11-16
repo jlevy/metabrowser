@@ -400,7 +400,9 @@ async def comparison_at(
             path=revision,
         )
 
-    source = GitDiffSource(context.command_location())
+    # A comparison this request lists prints its patch in the same run when the two fit, and
+    # the hydration below answers from it (H116). A caller's own loader lists without it.
+    source = GitDiffSource(context.command_location(), patch_with_listing=manifest_loader is None)
 
     async def listed() -> ResolvedManifest:
         if manifest_loader is not None and kept_key is not None:

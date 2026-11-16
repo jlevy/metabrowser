@@ -7,13 +7,15 @@ All notable changes to Metabrowser are documented here.
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one
-  that repeats an element’s own text shows only while that text is cut short.
+  that repeats an element’s own text shows only while that text is cut short, as does a
+  top-level changed file’s, which is its name.
   “Load more” and a changed-files folder whose sums are whole no longer repeat their own
   words in a tooltip, and neither do a “Show ignored” check, the treemap’s parent
   button, or a merge’s arrow.
   A crumb’s tooltip is its own name, shown only when the crumb is cut short, rather than
   the path the trail already shows, and a Files tree row’s tooltip leaves out the size
-  or count its row shows, keeping the exact date.
+  or count its row shows exactly, keeping the exact date and the exact bytes of a size
+  its row rounds.
 
 - In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
   lines instead of cutting off what does not fit.
@@ -43,12 +45,12 @@ All notable changes to Metabrowser are documented here.
   See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
 
 - Walking a pull request’s stack is now Control-N, to the next member toward the stack’s
-  top, and Control-P, to the previous one toward its base, so `N` and `P` alone are
-  free. Help and the Shift strip write them `⌃N` and `⌃P` on a Mac and `Ctrl+N` and
-  `Ctrl+P` elsewhere. A text field keeps both, since macOS moves its caret with them, and
-  AltGr with `N` or `P` still types its character.
-  On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
-  the stack. For plugin authors, a manifest view may now take `N` as its key.
+  top, and Control-P, to the previous one toward its base, on macOS and iOS, so `N` and
+  `P` alone are free. Help and the Shift strip write them `⌃N` and `⌃P`, and holding one
+  walks once. A text field keeps both, since macOS moves its caret with them.
+  On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
+  Help lists neither and the stack menu walks the stack there.
+  For plugin authors, a manifest view may now take `N` as its key.
   See [Control Chords](docs/design-system.md#control-chords).
 
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
@@ -198,6 +200,51 @@ All notable changes to Metabrowser are documented here.
   `filterControls.fitOpenMenus(root)` fits one rendered open another way
   ([Groups in a Menu](docs/design-system.md#groups-in-a-menu),
   [Menu Height](docs/design-system.md#menu-height)).
+
+- Code keeps one monospace face for the life of a window, and code in a Markdown
+  document matches it.
+  Highlighted source, diffs, JSON and YAML, and log payloads changed face once any
+  Markdown file had been opened, and Markdown code never matched them: on a Mac with
+  Microsoft Office, Chrome and Arc drew source in Consolas and Markdown code in Menlo,
+  and the macOS app drew source in Menlo and Markdown code in SF Mono.
+  Both now read one stack, which draws SF Mono in the macOS app and Safari, and Menlo in
+  Chrome and Arc unless you installed SF Mono.
+  The cause also changed printing: once a document had been shown, a printout took
+  KPress’s 0.7 in page margin instead of Metabrowser’s 0.65 in, which now always holds.
+  Plugin authors: `--font-sans` and `--font-mono` keep the shell’s values after a KPress
+  document renders, and the document’s code draws in the same stack as `--font-mono`.
+
+- The macOS app’s window is no longer sent gzipped answers, and the application’s own
+  scripts, stylesheets, and fonts are compressed once rather than on every request.
+  Compressing cost the server time on every answer, on the thread every request waits
+  for, to save bytes that never left the machine.
+  Only the server the app starts stops compressing: `metab` on a loopback address with
+  `--exit-on-eof`, outside an SSH session, a Codespace, or a Dev Container.
+  It then answers a loopback client uncompressed, unless the request carries a proxy’s
+  or a CDN’s forwarding header, and its banner says
+  `Compression: off for loopback clients of this machine`. Any other program that starts
+  `metab` that way, for the flag’s stop, gets the same.
+  Every other server compresses as before, `metab ./notes` opening a browser and the
+  server `--remote` starts included, so a remote host of any release still sends gzip
+  through the tunnel, and nothing new is passed to it.
+  An asset at the address the page names is kept in memory, up to 16 MiB, read and
+  compressed once, and sent with a `Content-Length` where a streamed answer had none;
+  its bytes and other headers are unchanged.
+
+- `Server-Timing` counts the Git processes a request started, in its `git` entry’s
+  description: `git;dur=41.2;desc="2 processes"`.
+
+- A page of a commit or a comparison no longer shows some of its renamed files as
+  unreadable when the whole patch is at most 256 KiB. When Git paired a page’s files
+  differently on their own than in the whole comparison, as on the first page of a
+  commit of more than 50 files, the page named them “could not be read from the produced
+  diff”; their changes now show, as the file list describes them, in a commit’s page and
+  in a pull request’s Files changed alike.
+  Past 256 KiB of patch such files are still named unreadable.
+
+- A folder whose Git configuration sets `color.diff` or `color.ui` to `always` now shows
+  a commit’s changes. Git wrote color codes around every line of the patch, and every
+  file was named “could not be read from the produced diff”.
 
 - A Markdown file in a pull request’s Changes now reads in your reading font, serif
   unless you chose Sans, as the same file does in its Document view.

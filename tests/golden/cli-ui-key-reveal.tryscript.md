@@ -1174,9 +1174,10 @@ $ node tests/dom/key-reveal-session.js gestures
 registered while the registry is down, Pulls drawn before Git discovery and the tab
 order Files, Pulls, Commits, the Preview tab’s `V` with Control-P left to the stack, `P`
 opening the Pulls tab, a pull request in and outside a stack, where Control-N and
-Control-P walk it, a chord ends a reveal, and `N` alone and AltGr’s Control-Alt walk
-nothing, a mirror’s pin with its branch switcher, Group by numbered 1 and its one filter
-2, and Help’s one positional row for the numbers.
+Control-P walk it on a Mac, the session’s navigator and where alone they are bound, a
+chord ends a reveal, and `N` alone and AltGr’s Control-Alt walk nothing, a mirror’s pin
+with its branch switcher, Group by numbered 1 and its one filter 2, and Help’s one
+positional row for the numbers.
 
 ```console
 $ node tests/dom/key-reveal-session.js tabs
@@ -1550,8 +1551,8 @@ $ node tests/dom/key-reveal-session.js tabs
         ["F","main-tabs.files","Files tab"],
         ["P","main-tabs.pulls","Pulls tab"],
         ["H","main-tabs.git","Commits tab"],
-        ["Ctrl+N","pulls.stack.top",null],
-        ["Ctrl+P","pulls.stack.base",null]
+        ["⌃N","pulls.stack.top",null],
+        ["⌃P","pulls.stack.base",null]
       ],
       "numbers": [],
       "badges": [
@@ -1561,7 +1562,7 @@ $ node tests/dom/key-reveal-session.js tabs
       ],
       "strip": {
         "surface": "reveal",
-        "items": ["? Help","T or / Quick Search","F Files","P Pulls","H Commits","Ctrl+N or Ctrl+P Stack"]
+        "items": ["? Help","T or / Quick Search","F Files","P Pulls","H Commits","⌃N or ⌃P Stack"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"]
     },
@@ -1575,8 +1576,8 @@ $ node tests/dom/key-reveal-session.js tabs
         ["F","main-tabs.files","Files tab"],
         ["P","main-tabs.pulls","Pulls tab"],
         ["H","main-tabs.git","Commits tab"],
-        ["Ctrl+N","pulls.stack.top",null],
-        ["Ctrl+P","pulls.stack.base",null]
+        ["⌃N","pulls.stack.top",null],
+        ["⌃P","pulls.stack.base",null]
       ],
       "numbers": [],
       "badges": [],
@@ -1601,8 +1602,8 @@ $ node tests/dom/key-reveal-session.js tabs
         ["F","main-tabs.files","Files tab"],
         ["P","main-tabs.pulls","Pulls tab"],
         ["H","main-tabs.git","Commits tab"],
-        ["Ctrl+N","pulls.stack.top",null],
-        ["Ctrl+P","pulls.stack.base",null]
+        ["⌃N","pulls.stack.top",null],
+        ["⌃P","pulls.stack.base",null]
       ],
       "numbers": [],
       "badges": [],
@@ -1627,8 +1628,8 @@ $ node tests/dom/key-reveal-session.js tabs
         ["F","main-tabs.files","Files tab"],
         ["P","main-tabs.pulls","Pulls tab"],
         ["H","main-tabs.git","Commits tab"],
-        ["Ctrl+N","pulls.stack.top",null],
-        ["Ctrl+P","pulls.stack.base",null]
+        ["⌃N","pulls.stack.top",null],
+        ["⌃P","pulls.stack.base",null]
       ],
       "numbers": [],
       "badges": [],
@@ -1705,6 +1706,10 @@ $ node tests/dom/key-reveal-session.js tabs
           "range": true,
           "action": "Numbered links and actions"
         }
+      ],
+      "menus": [
+        ["N","No grouping","Choose No grouping in the Group by menu."],
+        ["T","By file type","Choose By file type in the Group by menu."]
       ]
     }
   ],
@@ -1720,8 +1725,8 @@ Every chord is left to the browser and the platform, so Command-R reloads wherev
 is: on the page, on a tree row, in Quick Search’s field, in Help, in an open filter
 menu, and in Group by’s open menu, whose rows have letters.
 The registry’s two Control chords, Control-N and Control-P, are the exception on a pull
-request in a stack, where they walk the stack and are the only chords taken; Quick
-Search’s field keeps them there too.
+request in a stack on a Mac, the session’s navigator, where they walk the stack and are
+the only chords taken; Quick Search’s field keeps them there too.
 In each place the session presses every letter, digit, and named key with Command,
 Shift-Command, Control, and Option, and fails if a chord other than those is taken, runs
 a command, or moves focus.

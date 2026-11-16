@@ -205,11 +205,12 @@ def test_the_session_runs_on_the_recording() -> None:
     assert ["V", "view-tabs.v", "Preview tab"] in preview["keys"]
     assert preview["controlP"] is False
     # On a pull request in a stack, Control-N and Control-P walk it (mb-lnqj): listed on
-    # the strip as the platform writes them, here with no navigator; a chord ends the
-    # reveal and still walks; the letters alone and AltGr's Control-Alt walk nothing.
+    # the strip as a Mac writes them, the session's navigator, and the only platform kind
+    # that binds them; a chord ends the reveal and still walks; the letters alone and
+    # AltGr's Control-Alt walk nothing.
     listed = by_name["a pull request in a stack lists Control-N or Control-P on the strip"]
-    assert "Ctrl+N or Ctrl+P Stack" in listed["strip"]["items"]
-    assert ["Ctrl+N", "pulls.stack.top", None] in listed["keys"]
+    assert "⌃N or ⌃P Stack" in listed["strip"]["items"]
+    assert ["⌃N", "pulls.stack.top", None] in listed["keys"]
     shifted = by_name["Control-N with Shift held walks the stack and ends the reveal"]
     assert shifted["pressed"] == {"key": "Control-n", "handled": True}
     assert shifted["did"] == ["moved toward the stack's top"]
@@ -243,6 +244,8 @@ def test_the_session_runs_on_the_recording() -> None:
     assert positional["numbers"] == ["Group by", "File type"]
     assert ["1", "Group by"] in positional["badges"]
     assert ["2", "File type"] in positional["badges"]
+    # A pin has no By age, so Group by registers N and T only, as app.js does.
+    assert [key for key, _action, _description in positional["menus"]] == ["N", "T"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
     for chord in (
         "a capital typed within the threshold never reveals",
