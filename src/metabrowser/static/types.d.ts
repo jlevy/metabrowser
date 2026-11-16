@@ -126,6 +126,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
   fileLeft(): boolean;
   fileRight(): boolean;
   activateFile(): boolean;
+  /**
+   * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it,
+   * from the rows it holds and with no read. A view without it keeps what it shows.
+   */
+  home?(): void;
   dispose(): void;
 }>;
 
@@ -1384,6 +1389,8 @@ type MetabrowserSdk = {
     set(name: string, value: unknown): boolean;
   };
   tooltip: {
+    /** Take away the tooltip shown, one of the view's own; a tooltip anchored in the
+     *  nav's header, the shell's chrome, which no view draws, stays. */
     hide(): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip
      *  holds still once shown; see docs/design-system.md. */
@@ -3328,6 +3335,12 @@ declare global {
      * scroll it into view unless *scroll* is `keep` (main-tabs.js, `reveal`).
      */
     reveal?: ((how: MetabrowserRevealHow) => unknown) | null;
+    /**
+     * Home (main-tabs.js, `goHome`): put the panel back as a fresh load of `/view/` draws
+     * it, from what it holds and with no read. A panel that keeps nothing across a switch
+     * to it, as Commits, which lands on its newest commit every time, has none.
+     */
+    home?: (() => void) | null;
   };
 
   /** How the reader reached what the address names (main-tabs.js, `REVEAL_ROUTES`). */
@@ -3350,6 +3363,8 @@ declare global {
     isPullAddress(pathname: string): boolean;
     /** The reader's own open of the served root, `/view/`, drawn again at its default view. */
     openHome(): Promise<unknown>;
+    /** The Files tab as a fresh load draws it: the Files panel's `home` (app.js, `resetFilesTab`). */
+    resetFiles(): void;
     restore(): Promise<unknown>;
     /** Reveal the file the address names in the Files tree: the Files panel's `reveal`. */
     revealFile(how: MetabrowserRevealHow): Promise<unknown>;

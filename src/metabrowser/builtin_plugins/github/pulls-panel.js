@@ -2898,6 +2898,27 @@ export function createPullsController(deps, options = {}) {
       deps.markCurrent(previous, number);
       showCurrent(number);
     },
+    /**
+     * Home (static/main-tabs.js, `goHome`): the rows as a fresh load of `/view/` draws them,
+     * from the rows held and with no read. Every stack opens, and the Tab stop goes to the
+     * first row as no reader chose it. The address Home opens names no pull request, which
+     * `setCurrent` hears next and which keeps that row.
+     */
+    home() {
+      if (disposed) {
+        return;
+      }
+      closedStacks.clear();
+      anchorChosen = false;
+      groupingInputs += 1;
+      render();
+      const first = grouping().keys[0] ?? null;
+      if (first !== anchor) {
+        const previous = anchor;
+        anchor = first;
+        deps.markAnchor(previous, first, false);
+      }
+    },
     move,
     /** The key that was walking was let go: open what it stopped on. */
     released() {
@@ -4706,6 +4727,21 @@ export function mountPullsPanel(container, ctx, mb) {
     fileLeft: () => focused()?.left() ?? false,
     fileRight: () => focused()?.right() ?? false,
     activateFile: () => focused()?.activateAnchor() ?? false,
+    /**
+     * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it.
+     * Every row's changed files close, whoever opened them, with no read, and the rows go
+     * back to every stack open and the Tab stop on the first. The lists of changed files
+     * already read stay held, as the rows do, so a row opened again opens at once, with
+     * the folders in it as the reader left them.
+     */
+    home() {
+      for (const key of Object.keys(expansion.snapshot())) {
+        const number = Number(key);
+        expansion.collapse(number);
+        setExpanded(number, false);
+      }
+      controller.home();
+    },
     dispose() {
       windowDisposed = true;
       cancelCoreSample();

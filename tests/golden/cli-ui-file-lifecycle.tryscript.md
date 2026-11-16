@@ -171,14 +171,19 @@ close, and its tree is drawn again from the server’s answer, as a change of fi
 first paint draws it, so the folders the reader opened close.
 Every tab forgets where it was: Pulls, after home from a pull request’s Changes tab with
 its list scrolled, opens its list at the top.
-Home pushes one entry, none when the address is already `/view/`, and Back returns to
-the tab the reader left.
+Every panel then puts back what a fresh load draws in it, by its own `home`: the Files
+tab’s is the reset above, and `panelsHomed` names the others that ran, here a stand-in
+for the Pulls tab’s, whose list github-pulls-stack-groups-session.js resets.
+Home pushes one entry, none when Files already shows the root at `/view/`, and Back
+returns to the tab the reader left.
 A modified or middle click is left to the browser and draws nothing.
 `drawn` is what the pane drew and `filesDrawn` what the Files tab was asked to draw;
 app.js’s `onFilterStateChange`, which a change of filter reaches, is stood in for.
-Before the tab controller has loaded, Files in front opens the root with the tree at its
-top, on the root already shown too; a pull request’s page fetches the controller first,
-and a later open wins.
+A tree drawn for Home names the folders it opens, by app.js’s `homeTreeExpansion`: none
+on a folder’s page, which paints the root’s rows itself, and the planner’s on a pin’s,
+whose budget is the viewport’s. Before the tab controller has loaded, Files in front
+opens the root with the tree at its top, on the root already shown too; a pull request’s
+page fetches the controller first, and a later open wins.
 Opening a path again after it failed, or after a Git commit replaced it, loads it again,
 while re-opening a path the pane already shows only delivers its fragment.
 The inventory stream’s `onopen` retries only a selection that failed as unreachable, and
@@ -626,7 +631,10 @@ $ node tests/dom/preview-pane-state-session.js
           "menu": null
         },
         "filesDrawn": [
-          "the filter bar and the tree, for the default filters, drawn as a fresh load of /view/ draws it"
+          "the filter bar and the tree, for the default filters, drawn as a fresh load of /view/ draws it: no folder open on a folder's page, the planner's folders on a pin's"
+        ],
+        "panelsHomed": [
+          "pulls"
         ]
       },
       "Back from home": {
@@ -671,7 +679,10 @@ $ node tests/dom/preview-pane-state-session.js
           "menu": null
         },
         "filesDrawn": [
-          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it: no folder open on a folder's page, the planner's folders on a pin's"
+        ],
+        "panelsHomed": [
+          "pulls"
         ]
       },
       "Pulls": {
@@ -706,7 +717,10 @@ $ node tests/dom/preview-pane-state-session.js
           "menu": null
         },
         "filesDrawn": [
-          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it: no folder open on a folder's page, the planner's folders on a pin's"
+        ],
+        "panelsHomed": [
+          "pulls"
         ]
       },
       "home on the root it shows, at its Source view": {
@@ -733,7 +747,10 @@ $ node tests/dom/preview-pane-state-session.js
           "menu": null
         },
         "filesDrawn": [
-          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it: no folder open on a folder's page, the planner's folders on a pin's"
+        ],
+        "panelsHomed": [
+          "pulls"
         ]
       },
       "a pull request's Changes tab": {
@@ -768,7 +785,10 @@ $ node tests/dom/preview-pane-state-session.js
           "menu": null
         },
         "filesDrawn": [
-          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it: no folder open on a folder's page, the planner's folders on a pin's"
+        ],
+        "panelsHomed": [
+          "pulls"
         ]
       },
       "Pulls, after home": {

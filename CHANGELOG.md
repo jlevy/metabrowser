@@ -7,16 +7,20 @@ All notable changes to Metabrowser are documented here.
 - The folder’s name at the top of the navigation is Home, and `0` and Shift-0 go there
   too: the folder’s home view exactly as a fresh load of it shows it.
   From any tab, Files comes to the front and the folder is drawn at Overview, and every
-  tab goes back to its first: Pulls opens its list next, and a pull request opened from
-  it opens on Conversation, rather than returning to the tab you left.
-  Filters and Group by return to their defaults, the filter drawer closes, and the tree
-  closes the folders you opened.
-  It happens in the page, without a reload: what the page has loaded stays, and only the
-  tree and the folder’s own view ask the server again, as a change of filter and a
-  return to Files do. The name now hugs its text and takes a link’s hover and focus
-  treatment, and screen readers call it “Home:” and the name.
-  Its tooltip shows only details, the full path, counts, and age, without the line that
-  said it goes home, and a click no longer hides it.
+  tab goes back to its first: Pulls opens its list next, with every stack open, no pull
+  request’s changed files open, and `P` focusing its first row, and a pull request
+  opened from it opens on Conversation, rather than returning to the tab you left.
+  Filters and Group by return to their defaults, the filter drawer closes, and the tree,
+  scrolled to the top, closes the folders you opened.
+  It happens in the page: the name no longer reloads the page, which from the Commits
+  tab with no commit selected came back to Commits.
+  What the page has loaded stays, and only the tree and the folder’s own view ask the
+  server again, as a change of filter and a return to Files do.
+  Back returns to where you were, and a Command-click or middle click still opens the
+  folder in a new tab.
+  The name now hugs its text and takes a link’s hover and focus treatment, and screen
+  readers call it “Home:” and the name.
+  Its tooltip shows only details: the full path, counts, and age.
   Help, the Shift reveal, and the keymap list `0`. See
   [Home](docs/design-system.md#home).
 
@@ -631,13 +635,6 @@ All notable changes to Metabrowser are documented here.
   A link or address that names a commit still opens that commit.
   The page you were reading stays on screen until the commit is ready, and a repository
   with no commits says “No commits yet.”
-
-- The folder’s name at the top of the navigation goes home from any tab: clicking it, or
-  pressing Enter on it, shows the Files tab at the served root, with the tree scrolled
-  to the top. It no longer reloads the page, which from the Commits tab with no commit
-  selected came back to Commits.
-  Back returns to where you were, and a Command-click or middle click still opens the
-  root in a new tab. Screen readers announce that it goes home, and so does its tooltip.
 
 - A selected commit’s summary, and the tooltip over a history row, show the commit’s
   branches and tags, with the same kinds, trunk, and HEAD marks as its row.

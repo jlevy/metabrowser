@@ -27,6 +27,9 @@ pull requests is in one, the list stays flat; there is no option.
 A stack’s row is a row of the tree, as a folder is: J and K stop on it and open nothing,
 Enter opens or closes it, Right opens it or goes to its first pull request, and Left
 closes it, or from a pull request in it goes to it.
+Home, the folder’s name or `0`, puts the list back as a fresh load draws it, from the
+rows it holds and with no request: every stack open, no pull request’s changed files
+open, and the Tab stop on the first row.
 
 Each step’s `rows` are what a reader sees: a stack’s row with its label, place, and
 accessible name, and no count, since its pull requests are the rows under it; its pull
@@ -243,6 +246,45 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "tabStop": 7
     },
     {
+      "step": "the reader closes the stack and walks past it",
+      "grouped": true,
+      "rows": [
+        "▸ Stack #286 [1/100] · Stack #286, 3 pull requests",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "marks": [
+        "focus Stack #286",
+        "focus #106"
+      ],
+      "opened": [
+        106
+      ],
+      "closed": [
+        286
+      ],
+      "tabStop": 106
+    },
+    {
+      "step": "Home: every stack open, and the Tab stop on the first row",
+      "grouped": true,
+      "rows": [
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
+        "    #8 3/3 [1/3]",
+        "    #7 2/3 [2/3]",
+        "    #6 1/3 [3/3]",
+        "#106 [2/100]",
+        "#105 [3/100]",
+        "…",
+        "#5 [100/100]"
+      ],
+      "closed": [],
+      "tabStop": -286,
+      "requests": 0
+    },
+    {
       "step": "Open: #8 is closed, so Stack #286 holds 2 of its 3",
       "grouped": true,
       "rows": [
@@ -419,6 +461,41 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       },
       {
         "step": "a press on the stack's row opens it",
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
+          "#8 · treeitem · level 2 · 1/3 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ]
+      },
+      {
+        "step": "Right, Right: #8 opens, and then its files",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
+          "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop",
+          "#7 · treeitem · level 2 · 2/3 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false"
+        ],
+        "opened": [
+          8
+        ]
+      },
+      {
+        "step": "J past the stack, then Space on its row closes it",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded false · Tab stop"
+        ],
+        "opened": [
+          106
+        ]
+      },
+      {
+        "step": "Home: every stack open, no files open, the Tab stop on the first row",
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
           "#8 · treeitem · level 2 · 1/3 · expanded false",

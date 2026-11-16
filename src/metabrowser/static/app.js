@@ -242,9 +242,13 @@ function countHtml(n, extraClass) {
  * address of controls instead — see headerAddressHtml.
  */
 function pathBaseHtml(path) {
+  return `<span class="path"><span class="path-base">${esc(pathBaseName(path))}</span></span>`;
+}
+
+/** The name `pathBaseHtml` shows: the last component of `path`, or all of it at a root. */
+function pathBaseName(path) {
   var trimmed = String(path == null ? "" : path).replace(/\/+$/, "");
-  var base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
-  return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
+  return trimmed.slice(trimmed.lastIndexOf("/") + 1) || trimmed;
 }
 
 /**
@@ -258,10 +262,11 @@ function renderServedRootHeading(pathEl, root) {
     return;
   }
   // Home draws the tree again, and with it this; rewriting the same name under a pointer
-  // resting on it would replace the nodes it is over for nothing.
-  var html = pathBaseHtml(root);
-  if (pathEl.innerHTML !== html) {
-    pathEl.innerHTML = html;
+  // resting on it would replace the nodes it is over for nothing. The name's text is
+  // compared, not markup: `esc` writes a quote as an entity, and the element's own
+  // serialization does not, so a name with one never compared equal.
+  if (pathEl.textContent !== pathBaseName(root)) {
+    pathEl.innerHTML = pathBaseHtml(root);
   }
 }
 
@@ -2045,10 +2050,25 @@ var _filteredTreeTotals = null;
 // The tally row alone, so the recency source can reuse it verbatim.
 var _lastTreeSummaryHtml = "";
 
+/**
+ * The folders the Files tree opens when it is drawn for Home (*asHome*), as a fresh load of
+ * `/view/` opens them: none on a page that paints the root's rows itself
+ * (*firstPaintInlinesTree*, a folder's), and on a pin's page, which has no such rows, the
+ * planner's, as any other draw. `undefined` leaves the choice to the planner
+ * (renderTreeNodes), whose budget is the viewport's.
+ *
+ * @param {boolean} asHome
+ * @param {boolean} firstPaintInlinesTree
+ * @returns {{defaultExpandedPaths: Set<string>} | undefined}
+ */
+function homeTreeExpansion(asHome, firstPaintInlinesTree) {
+  return asHome && firstPaintInlinesTree ? { defaultExpandedPaths: new Set() } : undefined;
+}
+
 // Paint #tab-files from that cache. Returns false when nothing has
 // been fetched yet, so the caller can fall back to loadTree(). Drawn for Home
-// (`asHome`), the tree opens the folders a fresh load of `/view/` opens: none, where
-// the page paints the root's rows itself, and else the planner's.
+// (`asHome`), the tree opens the folders a fresh load of `/view/` opens
+// (homeTreeExpansion).
 /** @param {boolean} [asHome] */
 function renderFilesFromTree(asHome = false) {
   if (!_lastTreeRender) {
@@ -2063,8 +2083,7 @@ function renderFilesFromTree(asHome = false) {
       pendingTreePageId = 0;
       var filesPanel = document.getElementById("tab-files");
       if (filesPanel) {
-        var expansion =
-          asHome && _firstPaintInlinesTree ? { defaultExpandedPaths: new Set() } : undefined;
+        var expansion = homeTreeExpansion(asHome, _firstPaintInlinesTree);
         filesPanel.innerHTML =
           snapshot.chromeHtml + renderTreeNodes(snapshot.tree, true, expansion);
       }
@@ -4685,6 +4704,7 @@ function attachMainTabs() {
       isGitHistoryLanding,
       isPullAddress,
       openHome: openHomeRoot,
+      resetFiles: resetFilesTab,
       restore: () => navigationController.restore(),
       revealFile: (how) => revealFileRow(addressedFilePath(), how),
       scrollShadow: () => navScrollShadowUpdate?.(),
@@ -4722,18 +4742,18 @@ function onHomeHeadingClick(event) {
 
 /**
  * Home: the served folder's home view, exactly as a fresh load of `/view/` shows it
- * (docs/design-system.md, "Home"). The Files tab is drawn as a page that has just loaded
- * draws it (`resetFilesTab`), and the tab controller's `home` makes every tab forget where
- * it was and opens the root at its default view (`openHomeRoot`).
+ * (docs/design-system.md, "Home"). The tab controller's `home` makes every tab forget where
+ * it was, has every panel put back what a fresh load draws in it, the Files tab by
+ * `resetFilesTab`, and opens the root at its default view (`openHomeRoot`).
  *
  * Before the tab controller has loaded, the server's tab is in front: Files, unless the
- * page opened on a pull request's address, and no tab has a place to forget. With Files in
- * front this does what the controller's `home` does, the tree at its top and the root
- * drawn again, even on the root already shown. Only a pull request's page waits for the
- * controller, and a later choice of the reader's cancels it, as a tab click does.
+ * page opened on a pull request's address, and no other panel has mounted. With Files in
+ * front this does what the controller's `home` does, the Files tab reset, the tree at its
+ * top, and the root drawn again, even on the root already shown. Only a pull request's
+ * page waits for the controller, and a later choice of the reader's cancels it, as a tab
+ * click does.
  */
 function goHome() {
-  resetFilesTab();
   if (mainTabs) {
     void mainTabs.home().catch((error) => {
       console.error("Could not go home", error);
@@ -4744,6 +4764,7 @@ function goHome() {
     queryHtml(".nav-tab-bar")?.querySelector(".tab-btn.active") ?? null
   );
   if ((front?.dataset.tab ?? "files") === "files") {
+    resetFilesTab();
     const scroller = document.getElementById("tree-content");
     if (scroller) {
       scroller.scrollTop = 0;

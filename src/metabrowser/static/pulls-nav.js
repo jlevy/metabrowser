@@ -67,7 +67,7 @@
    *   location(): {pathname: string, search: string},
    *   pushHref(href: string): void,
    *   activeTab(): string | null,
-   *   registerPanel(panel: {id: string, label: string, focusRow: () => boolean, onFirstShow: null, onShow: () => void, onHide: () => void, reveal: (how: {scroll: "nearest" | "keep"}) => void}): void,
+   *   registerPanel(panel: {id: string, label: string, focusRow: () => boolean, onFirstShow: null, onShow: () => void, onHide: () => void, reveal: (how: {scroll: "nearest" | "keep"}) => void, home: () => void}): void,
    *   activate(panelId: string): void,
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
@@ -292,6 +292,19 @@
       routeChanged(how.scroll === "keep" ? { preserveScroll: true } : { reveal: true });
     }
 
+    /**
+     * The Pulls panel's Home (main-tabs.js, `goHome`): the mounted list puts back what a
+     * fresh load draws, from the rows it holds. A list not mounted yet draws that already.
+     * What the address decides follows the addresses (`routeChanged`): the current pull
+     * request the `/view/` Home opens, and the filter the list's address the tab's next
+     * open lands on.
+     */
+    function home() {
+      if (!disposed) {
+        handle?.home?.();
+      }
+    }
+
     /** The active PR renderer may offer stack navigation; custom renderers need not.
      * @returns {MetabrowserPublicPullStackNavigation | null}
      */
@@ -323,6 +336,7 @@
           onShow,
           onHide,
           reveal,
+          home,
         });
         const { pathname, search } = deps.location();
         lastPlace = place(pathname, search);

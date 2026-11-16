@@ -850,13 +850,14 @@ part of the same metadata lines”.
   front with the root drawn again at its default view, every tab’s destination and
   scroll forgotten, so Pulls opens its list and a pull request from it opens on
   Conversation, and the Files tab’s filters, Group by, drawer, and open folders a fresh
-  load’s; the Pulls list’s closed stacks and opened file lists are kept.
+  load’s, and the Pulls list’s stacks, opened file lists, and Tab stop too: each panel
+  resets its own part by a `home` the tab controller calls, with no request.
   The name hugs its text with a crumb’s hover and focus ring and is named “Home:” and
   its text; its tooltip shows details only, and a click neither shows nor hides it.
   `0` is reserved, bound on the name, and listed in Help, the Shift reveal, and the
-  keymap; the digit-row match covers `Digit0`. Run browserlessly in the preview pane and
-  key reveal sessions and their goldens, and in headless Chrome by
-  `tests/test_folder_home_chrome.py`, which fails on the old code.
+  keymap; the digit-row match covers `Digit0`. Run browserlessly in the preview pane,
+  key reveal, Pulls host, and Pulls stack groups sessions and their goldens, and in
+  headless Chrome by `tests/test_folder_home_chrome.py`, which fails on the old code.
 
 ## Testing Strategy
 

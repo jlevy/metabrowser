@@ -923,10 +923,14 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     # keeps the ref and commit the server rendered; tests/dom/source-kind-session.js
     # runs both branches.
     heading_start = js.index("function renderServedRootHeading(pathEl, root)")
-    heading = js[heading_start : heading_start + 500]
-    assert "var html = pathBaseHtml(root);" in heading
-    # Home draws the tree again: the same name is not written again under the pointer.
-    assert "if (pathEl.innerHTML !== html) {\n    pathEl.innerHTML = html;" in heading
+    heading = js[heading_start : heading_start + 700]
+    # Home draws the tree again: the same name is not written again under the pointer. The
+    # name's text is compared, so a name with a quote, which the markup escapes and the
+    # element's serialization does not, is the same name too (source-kind-session.js).
+    assert (
+        "if (pathEl.textContent !== pathBaseName(root)) {\n"
+        "    pathEl.innerHTML = pathBaseHtml(root);"
+    ) in heading
     tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
     assert (

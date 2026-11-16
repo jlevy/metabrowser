@@ -3563,25 +3563,31 @@ Home resets everything a fresh load decides:
   drawer closes with no menu open.
   The tree is drawn again from the server’s answer, with the folders a first paint opens
   and no row selected, at the top of its panel.
+- **The Pulls list.** Every stack opens, every pull request’s changed files close, and
+  the Tab stop goes back to the first row, so `P` focuses it there.
+  The list is drawn from the rows it holds, with no request.
+
+Each panel resets its own part: the tab controller calls every registered panel’s `home`
+(`static/main-tabs.js`, `goHome`), so a panel added later says what a fresh load draws
+in it rather than relying on Home to know.
+Commits has none: a switch to it always lands on its newest commit at its top.
 
 Home keeps what a fresh load would only fetch again, or keeps itself:
 
-- **The caches.** Files, folders’ rows, pull request records, and the history already
-  read stay in memory.
+- **The caches.** Files, folders’ rows, pull request records, pull requests’ changed
+  files, and the history already read stay in memory.
   This is why Home stays in the page rather than reloading it: a reload draws the same
   page from nothing, and the next open would wait on the network.
+  A pull request’s changed files the list has read open at once when its row is opened
+  again, with the folders in them as the reader left them.
   Home asks the server again only for what it draws: the tree, as a change of filter
   does, and the root’s view, as a return to Files does.
   `tests/test_folder_home_chrome.py` prints each request and its time.
 - **Preferences.** The theme, the fonts, the text width, a folder overview’s rollup
   choices, and the diff layout are kept across a reload too.
 - **History.** Home is the reader’s own open of `/view/`. It pushes one entry, none when
-  the address is already `/view/`, so Back returns to where the reader was, and a pull
-  request’s page writes its place into its entry first.
-- **The Pulls list’s disclosures.** A stack the reader closed, or a pull request whose
-  changed files the reader opened under its row, stays so: the list stays mounted, so
-  Pulls opens on its rows at once.
-  A fresh load starts with every stack open.
+  Files already shows the root at `/view/`, so Back returns to where the reader was, and
+  a pull request’s page writes its place into its entry first.
 
 The name reads as a link home.
 Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
@@ -3604,13 +3610,17 @@ has it: shown while the pointer rests on the name, and gone when it leaves.
 
 `0` runs the name’s own click path, from anywhere a shell letter works, and never in a
 text field ([Keyboard Shortcuts](#keyboard-shortcuts)). `static/main-tabs.js` (`goHome`)
-makes every tab forget its place, and `app.js` (`goHome`, `resetFilesTab`,
-`openHomeRoot`) resets the Files tab and draws the root.
+makes every tab forget its place and calls each panel’s `home`; `app.js` (`goHome`,
+`resetFilesTab`, `homeTreeExpansion`, `openHomeRoot`) resets the Files tab and draws the
+root, and `builtin_plugins/github/pulls-panel.js` (`home`) resets the Pulls list.
 `tests/dom/preview-pane-state-session.js` (`goingHome`), pinned by
-`cli-ui-file-lifecycle.tryscript.md`, runs that on the production code.
+`cli-ui-file-lifecycle.tryscript.md`, and
+`tests/dom/github-pulls-stack-groups-session.js`, pinned by
+`cli-ui-github-pulls-stack-groups.tryscript.md`, run that on the production code.
 `tests/test_folder_home_chrome.py` checks in headless Chrome that a click, `0`, and
 Shift-0 leave exactly what a fresh load of `/view/` shows, from a pull request’s Changes
-tab, a file’s Source view, Commits, and the root at Treemap.
+tab, the Pulls list with its Tab stop moved and a row’s changed files open, a file’s
+Source view, Commits, and the root at Treemap.
 It also checks that the pane never blanks on the way, that the tooltip survives the
 click, and that the name is called “Home: <folder>”.
 

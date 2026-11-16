@@ -15,8 +15,11 @@
 // that record again: a click on the name from a pull request's Changes tab, `0` from a
 // file's Source view with the Files tab grouped, filtered, opened, and scrolled, Shift-0
 // from Commits, and `0` on the root itself showing another view. After Home, Pulls opens
-// its list rather than the pull request it last showed. The name's tooltip neither appears
-// nor goes because of a click, and the name is called "Home: <folder>".
+// its list rather than the pull request it last showed, and `0` from a Pulls list whose
+// Tab stop `J` moved and whose row's changed files Right opened leaves it as a fresh load
+// draws it: `P` then focuses the first row, with no stack closed and no files open. The
+// name's tooltip neither appears nor goes because of a click, and the name is called
+// "Home: <folder>".
 //
 // Each step writes `phase <name> <ms since start>` to stderr, and `measure <name> <json>`
 // for what Home cost: its time to the root's view, and any frame the pane was blank.
@@ -70,6 +73,26 @@ const STATE = `(() => {
       .map((row) => row.dataset.path).sort(),
     selected: [...document.querySelectorAll("#tab-files .tree-item.selected")]
       .map((row) => row.dataset.path),
+  };
+})()`;
+
+// In the page: what the Pulls list decides that a fresh load draws, as a reader sees it,
+// each row named as it reads: its stacks closed, the pull requests whose changed files are
+// open, the row that takes Tab, and the row with focus.
+const PULLS = `(() => {
+  const rows = [...document.querySelectorAll("#tab-pulls .github-pulls-row")];
+  const name = (row) =>
+    !row ? null : row.dataset.stack ? "Stack #" + row.dataset.stack : "#" + row.dataset.number;
+  return {
+    first: name(rows[0]),
+    closedStacks: rows
+      .filter((row) => row.dataset.stack && row.getAttribute("aria-expanded") === "false")
+      .map(name),
+    filesOpen: rows
+      .filter((row) => !row.dataset.stack && row.getAttribute("aria-expanded") === "true")
+      .map(name),
+    tabStop: name(rows.find((row) => row.getAttribute("tabindex") === "0")),
+    focused: name(document.activeElement?.closest?.(".github-pulls-row")),
   };
 })()`;
 
@@ -151,6 +174,11 @@ try {
   };
   const ZERO = { code: "Digit0", keyCode: 48, text: "0" };
   const SHIFT_ZERO = { code: "Digit0", keyCode: 48, modifiers: 8, text: ")" };
+  const P_KEY = { code: "KeyP", keyCode: 80, text: "p" };
+  const J_KEY = { code: "KeyJ", keyCode: 74, text: "j" };
+  const RIGHT = { code: "ArrowRight", keyCode: 39 };
+  const PULL_ROWS = `document.querySelectorAll("#tab-pulls .github-pulls-row").length > 1`;
+  const ROW_FOCUSED = `document.activeElement?.matches?.("#tab-pulls .github-pulls-row") === true`;
   const pointer = (type, at) =>
     send("Input.dispatchMouseEvent", {
       type,
@@ -329,6 +357,25 @@ try {
     JSON.stringify(badge),
   );
 
+  // What a fresh load's Pulls list shows, before any route has worked on it: no stack
+  // closed, no pull request's changed files open, and `P` focusing the first row.
+  await evaluate(`document.querySelector('.nav-tab-bar .tab-btn[data-tab="pulls"]').click()`);
+  await waitFor(PULL_ROWS, "a fresh load's Pulls rows");
+  await evaluate("document.activeElement?.blur?.()");
+  await press("p", P_KEY);
+  await waitFor(ROW_FOCUSED, "P focuses a row of a fresh load's Pulls");
+  const freshPulls = await evaluate(PULLS);
+  measure("fresh Pulls", freshPulls);
+  check(
+    "a fresh load's Pulls: P focuses the first row, and nothing is closed or open",
+    freshPulls.first !== null &&
+      freshPulls.focused === freshPulls.first &&
+      freshPulls.tabStop === freshPulls.first &&
+      freshPulls.closedStacks.length === 0 &&
+      freshPulls.filesOpen.length === 0,
+    JSON.stringify(freshPulls),
+  );
+
   // ── 1. A click on the name, from a pull request's Changes tab ─
   await load(`${base}/pull/7/files`);
   await waitFor(
@@ -388,6 +435,49 @@ try {
   await frames();
   const pulls = await evaluate("location.pathname + location.search");
   check("after Home, Pulls opens its list", pulls === "/pulls", pulls);
+
+  // ── 1b. `0` from the Pulls list, its rows worked on ───────────
+  // The reader walks the list with `J`, which moves the Tab stop and opens the next pull
+  // request, and opens that one's changed files with Right. Home then leaves the list as
+  // a fresh load draws it, so `P` afterwards focuses the first row, with no files open.
+  await waitFor(PULL_ROWS, "the Pulls rows");
+  await evaluate("document.activeElement?.blur?.()");
+  await press("p", P_KEY);
+  await waitFor(ROW_FOCUSED, "P focuses a Pulls row");
+  await press("j", J_KEY);
+  await waitFor(`location.pathname.startsWith("/pull/")`, "J opens the next pull request");
+  await press("ArrowRight", RIGHT);
+  await waitFor(
+    `[...document.querySelectorAll("#tab-pulls .github-pulls-row")].some((row) => !row.dataset.stack && row.getAttribute("aria-expanded") === "true")`,
+    "Right opens its changed files",
+  );
+  const workedPulls = await evaluate(PULLS);
+  measure("worked-on Pulls", workedPulls);
+  check(
+    "the Pulls list is worked on before Home: the Tab stop moved, and files are open",
+    workedPulls.tabStop !== freshPulls.first && workedPulls.filesOpen.length > 0,
+    JSON.stringify(workedPulls),
+  );
+  await shot("pulls-worked-on");
+  await evaluate("document.activeElement?.blur?.()");
+  await press("0", ZERO);
+  await isFresh("0 from the Pulls list worked on", fresh);
+  await press("p", P_KEY);
+  await waitFor(
+    `location.pathname === "/pulls" && ${ROW_FOCUSED}`,
+    "P after Home opens the list and focuses a row",
+  );
+  const homedPulls = await evaluate(PULLS);
+  measure("Pulls after Home", homedPulls);
+  for (const field of ["closedStacks", "filesOpen", "tabStop", "focused"]) {
+    check(
+      `after Home, Pulls: ${field} is a fresh load's`,
+      JSON.stringify(homedPulls[field]) === JSON.stringify(freshPulls[field]),
+      `${JSON.stringify(homedPulls[field])}, fresh ${JSON.stringify(freshPulls[field])}`,
+    );
+  }
+  await shot("pulls-after-home");
+  phase("0 from the Pulls list");
 
   // A click that comes before the tooltip's delay does not cancel it: the pointer resting
   // on the name shows it, as it would without the click.
@@ -480,6 +570,8 @@ try {
   phase("Shift-0 from Commits");
 
   // ── 4. `0` on the root it shows, at another view ──────────────
+  // A route whose precondition fails is a failure, not a route skipped.
+  check("the root has a second view", views.length > 1, JSON.stringify(views));
   if (views.length > 1) {
     const other = views.find((label) => label !== fresh.view);
     await evaluate(
@@ -497,16 +589,16 @@ try {
     phase("0 on the root");
   }
 
-  // A text field keeps its 0.
-  await evaluate(`(() => {
-    const field = document.getElementById("doc-max-chars-input");
-    document.getElementById("settings-btn").click();
-    field.focus();
-  })()`);
+  // A text field keeps its 0: the settings menu's text width, with Commits in front. The
+  // menu opens after the tab's click, which a click outside it closes, and a field in a
+  // closed menu takes no focus.
   await evaluate(`document.querySelector('.nav-tab-bar .tab-btn[data-tab="git"]').click()`);
   await waitFor(`location.pathname.startsWith("/commit/")`, "Commits again");
+  await evaluate(`document.getElementById("settings-btn").click()`);
+  await frames();
   await evaluate(`document.getElementById("doc-max-chars-input").focus()`);
   const fieldFocused = await evaluate(`document.activeElement?.id === "doc-max-chars-input"`);
+  check("the settings field takes focus", fieldFocused);
   if (fieldFocused) {
     await press("0", ZERO);
     await sleep(300);

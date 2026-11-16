@@ -103,6 +103,7 @@ function createShell(
           log.push("view told: open the row with focus");
           return true;
         },
+        home: () => log.push("view told: home"),
         dispose: () => log.push("view disposed"),
       };
     },
@@ -281,7 +282,18 @@ async function run() {
   page.shell.address = new URL("/pull/7", "http://x");
   host.routeChanged();
   log.push({ "history lands on a pull request from Files": page.take() });
+  // Home (main-tabs.js, `goHome`) calls the panel's own `home`, which the mounted view
+  // answers; the address Home then opens moves the current pull request.
+  page.shell.panel.home();
+  page.shell.address = new URL("/view/", "http://x");
+  host.routeChanged();
+  log.push({
+    "Home: the panel's home tells the view, and /view/ names no pull request": page.take(),
+  });
   host.dispose();
+  page.take();
+  page.shell.panel.home();
+  log.push({ "Home after the page went: nothing": page.take() });
 
   // The list's filters are places of their own: Back from one to another shows the list, though
   // Files was chosen by hand at the first, and so does Back from a filter the panel chose.

@@ -106,6 +106,7 @@
         onShow: () => deps.filesShown(),
         onHide: () => deps.filesHidden(),
         reveal: (how) => deps.revealFile(how),
+        home: () => deps.resetFiles(),
       },
     ];
     /** @type {Set<string>} */
@@ -478,11 +479,13 @@
      * has just loaded knows nowhere: Files and Pulls their destinations, and every panel
      * its scroll, so Files shows the top of its panel, Pulls next opens its list, a pull
      * request opened from it opens on Conversation, and Commits lands on its newest commit
-     * as it always does. The shell then opens the root at its default view.
+     * as it always does. Every panel then puts back what a fresh load draws in it, by its
+     * own `home`: Files its filters and tree, and Pulls its stacks, its rows' changed
+     * files, and its Tab stop. The shell then opens the root at its default view.
      *
      * It is the reader's own open of `/view/`, so it pushes one history entry, none when
-     * the address is already `/view/`, and Back returns to where the reader was: a pull
-     * request's page writes its place into its entry first.
+     * Files already shows the root at `/view/`, and Back returns to where the reader was:
+     * a pull request's page writes its place into its entry first.
      *
      * @returns {Promise<unknown>}
      */
@@ -491,6 +494,9 @@
       gitOpenPending = false;
       mainTabDestinations.clear();
       navPanelScroll.clear();
+      for (const panel of navPanels) {
+        panel.home?.();
+      }
       // The panels share one scroller, and the switch to Files keeps the offset of the
       // panel it leaves: at its top, that panel keeps none of the reader's either.
       const scroller = document.getElementById("tree-content");
