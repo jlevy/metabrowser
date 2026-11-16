@@ -110,7 +110,13 @@ const PROBE = `(() => {
   const sample = () => {
     const panel = document.getElementById("tab-files");
     const rows = panel ? [...panel.querySelectorAll(".tree-item")].slice(0, 12) : [];
-    if (panel && rows.length > 0) {
+    // First paint is the first frame with rows under a filled filter bar. In a pane too
+    // narrow for it the bar, which the shell ships one line tall, wraps to two as
+    // filter-controls.js fills it, the toolbar exemption of docs/design-system.md,
+    // "Regions Keep Their Boxes" (H52 would server-render it): measured at 180 px, the
+    // rows sometimes painted a frame before the bar filled and then moved 30 px with it.
+    const filled = document.querySelectorAll("#nav-filter-bar .chip").length > 0;
+    if (panel && rows.length > 0 && filled) {
       const boxes = { bar: box(document.getElementById("nav-filter-bar")) };
       panel.querySelectorAll(".nav-metadata").forEach((line, i) => { boxes["line " + i] = box(line); });
       rows.forEach((row, i) => { boxes["row " + i] = box(row); });
@@ -276,10 +282,8 @@ async function main() {
           line: last.boxes["line 0"],
         },
         moved: movement(page.frames),
-        // The shifts after the frame that first shows rows. One in that frame is the move into
-        // first paint: in the narrowest pane the filter bar, which the shell ships one line
-        // tall and filter-controls.js fills, wraps to two before any row is drawn
-        // (docs/design-system.md, "Regions Keep Their Boxes"), and the rows paint under it.
+        // The shifts after first paint. One in that frame is the move into it: in the
+        // narrowest pane, the filter bar's wrap as it is filled (above).
         shift: sumShifts(page.shifts.filter((s) => first && s.at > first.at + FRAME_MS)),
         before: sumShifts(page.shifts.filter((s) => !first || s.at <= first.at + FRAME_MS)),
         shifts: page.shifts,
