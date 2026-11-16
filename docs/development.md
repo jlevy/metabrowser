@@ -365,20 +365,13 @@ uncached index response and versioned asset URLs.
 An already-open tab keeps its loaded JavaScript until it reloads, so reload tabs after
 replacing a local server build; that reload boundary is not a separately versioned
 client contract. `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the
-plugin manifest, and the built-in plugin interfaces are therefore internal contracts,
-except the part of the CLI and `/api/*` the macOS app uses.
+plugin manifest, and the built-in plugin interfaces are therefore internal contracts.
 
-**The macOS app is installed separately.** It runs the `metab` the user installed, as
-`metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, and reads
-`GET /api/identity` to name its windows.
-It refuses a `metab` older than `MetabRequirement.minimumRelease` but has no ceiling, so
-an app already installed runs every later `metab`, and a renamed flag or a reshaped
-route breaks it.
-Change those four flags or that route only together with a floor bump in
-the same commit and a `CHANGELOG.md` note, and say in the note that the app must be
-updated too;
-[the version floor](project/architecture/arch-macos-app.md#the-version-floor) describes
-the check.
+**The macOS app is internal too.** It runs the installed `metab` with the flags in
+`ServerSupervisor` and reads `GET /api/identity`, and Metabrowser keeps no compatibility
+with an older app: change a flag or the route and the app in the same commit, and raise
+`MetabRequirement.minimumRelease` when the app needs the newer `metab`
+([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
 
 **The one external artifact** is an exported File Rollup Format packet, which leaves the
 repository for another implementation.
@@ -410,8 +403,7 @@ These are this repository’s answers to the template in
 | --- | --- | --- |
 | Internal code | DO NOT MAINTAIN | One repository, one artifact |
 | Library APIs | DO NOT MAINTAIN | `window.metabrowser` ships with the shell that uses it |
-| Server APIs | DO NOT MAINTAIN, except `GET /api/identity` | The co-shipped client consumes `/api/*`; the macOS app also reads `GET /api/identity` (next row) |
-| The macOS app’s CLI and route | VERSION + FAIL FAST | The separately installed app passes `--no-open`, `--exit-on-eof`, `--host`, and `--port` and reads `GET /api/identity`; it refuses a `metab` below `MetabRequirement.minimumRelease`, so these change only with a floor bump and a `CHANGELOG.md` note |
+| Server APIs and the CLI | DO NOT MAINTAIN | `/api/*` and the flags are consumed only by the shell and the macOS app, both built from this repository; the app’s version floor refuses a `metab` too old for it |
 | Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
 | File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
 | Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |
@@ -419,8 +411,7 @@ These are this repository’s answers to the template in
 
 Raise it with the maintainers if a change needs a different answer, and revisit the
 table when the deciding question’s answer changes: a first external plugin author, a
-published format, or another client that ships separately from `metab`, as the macOS app
-does.
+published format, or a client outside this repository.
 
 ## Python
 

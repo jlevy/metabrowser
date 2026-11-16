@@ -207,28 +207,30 @@ document paths named in `src/` and `apps/`, so a move that breaks one fails the 
 ### Target Document Map
 
 Size targets guide the rewrite; no check enforces them.
+The targets were revised on 2026-11-16 to fit the documents as built, after the reviews’
+cuts, where a document holds one subject and needs the room.
 A guide that needs more than its target is a sign that it covers two subjects.
 
 | Document | Audience | Target lines | Subject |
 | --- | --- | --- | --- |
-| `README.md` | Everyone | 150 | The thesis, the icon, quick start, and the map |
-| `docs/installation.md` | Users | 200 | Install and upgrade `metab`, the app, and the skill; tool requirements; release-bound status |
+| `README.md` | Everyone | 200 | The thesis, the icon, quick start, and the map |
+| `docs/installation.md` | Users | 250 | Install and upgrade `metab`, the app, and the skill; tool requirements; release-bound status |
 | `docs/browsing-files.md` (new) | Users | 250 | The Files tab: tree, Overview, Treemap, Recent, and filters; reading Markdown, data, code, logs, images, and HTML; live updates and log tailing; Quick Search for files; remote hosts |
 | `docs/browsing-history.md` (new) | Users | 150 | The Commits tab, commit pages, diffs of any range, and `--diff` |
 | `docs/reviewing-pull-requests.md` | Users | 300 | The Pulls tab and pull-request pages |
 | `docs/working-with-agents.md` (new) | Users | 150 | The skill; an agent showing you a page; agent-log timelines; `--api` and `--show` for agents |
-| `docs/macos-app.md` (new) | Users | 150 | Using the app: windows, tabs, recents, restore, drops, settings, and choosing a `metab` |
+| `docs/macos-app.md` (new) | Users | 200 | Using the app: windows, tabs, recents, restore, drops, settings, and choosing a `metab` |
 | `docs/keyboard-shortcuts.md` (new) | Users | 100 | The shortcut reference, pinned to the keymap registry by `tests/test_keymap.py` |
-| `docs/command-line.md` | Users and scripts | 450 | Every mode, every option, configuration, and environment variables |
-| `docs/scale-benchmark.md` (new) | Everyone | 60 | What the baseline benchmark measures, how to run it, and its results |
-| `docs/plugins.md` | Plugin authors | 800 | Manifest, SDK, data hooks, packaging, and the security boundary |
-| `skills/metabrowser/SKILL.md` | Agents | 160 | Adds commits, `--diff`, live logs, and handing the user any page |
-| `SECURITY.md` | Everyone | 70 | Reporting, the served-root boundary, and trust settings, linking the trust model |
-| `CONTRIBUTING.md` | Contributors | 50 | Matches `AGENTS.md` on internal contracts |
-| `TODO.md` | Everyone | 200 | Current release state; no replacement history |
-| `docs/development.md` | Contributors | 500 | Setup, commands, the gate, conventions, docs, tbd, pull requests, troubleshooting |
+| `docs/command-line.md` | Users and scripts | 600 | Every mode, every option, configuration, and environment variables |
+| `docs/scale-benchmark.md` (new) | Everyone | 100 | What the baseline benchmark measures, how to run it, and its results |
+| `docs/plugins.md` | Plugin authors | 950 | Manifest, SDK, data hooks, packaging, and the security boundary |
+| `skills/metabrowser/SKILL.md` | Agents | 200 | Adds commits, `--diff`, live logs, and handing the user any page |
+| `SECURITY.md` | Everyone | 100 | Reporting, the served-root boundary, and trust settings, linking the trust model |
+| `CONTRIBUTING.md` | Contributors | 100 | Matches `AGENTS.md` on internal contracts |
+| `TODO.md` | Everyone | 250 | Current release state; no replacement history |
+| `docs/development.md` | Contributors | 650 | Setup, commands, the gate, conventions, docs, tbd, pull requests, troubleshooting |
 | `docs/e2e-testing.md` | Contributors | 420 | Test layers, tiers, skips, and measuring the suite |
-| `docs/design-system.md` | Designers and implementers | 2,800 | Tokens, color, type, components, and interaction design, with one keyboard section |
+| `docs/design-system.md` | Designers and implementers | 4,000 | Tokens, color, type, components, and interaction design, with one keyboard section |
 | `docs/publishing.md` | Maintainers | 190 | Unchanged |
 | `apps/macos/README.md` | App developers | 450 | Build, test, and release the app |
 | Architecture documents | Architecture readers | See below | One per layer |
@@ -378,29 +380,29 @@ across `docs/architecture.md`, `docs/project/architecture/`, and four standards 
   as 60,000 whose constant is 400,000. Each goes into the description of the bead that
   owns its document.
 
-**Target structure:** about 4,700 lines.
+**Target structure:** about 4,700 lines at first, and about 5,300 as built.
 All architecture documents live in `docs/project/architecture/` except the entry point
 and the four standards, which stay in `docs/`.
 
 | Document | Subject | Target lines | From |
 | --- | --- | --- | --- |
 | `docs/architecture.md` | The thesis, the layers with their module paths, a reading order, and a link to every architecture document | 250 | Itself, less folder composition, URL and Markdown detail, and filtering |
-| `arch-cli.md` | Modes, the serve lifecycle, in-process `--api` dispatch, remote tunnels, and process exit | 200 | New; `docs/command-line.md` |
-| `arch-server-and-content.md` | Request flow, safe paths, validators, and the content-trust model | 300 | `docs/architecture.md`, `arch-state-and-delivery.md`, `SECURITY.md` |
+| `arch-cli.md` | Modes, the serve lifecycle, in-process `--api` dispatch, remote tunnels, and process exit | 250 | New; `docs/command-line.md` |
+| `arch-server-and-content.md` | Request flow, safe paths, validators, and the content-trust model | 400 | `docs/architecture.md`, `arch-state-and-delivery.md`, `SECURITY.md` |
 | `arch-views-models-routes.md` | Kinds, views, formats, and the route index | 250 | Its first 176 lines; route contracts go to their layer documents |
 | `arch-parity-registry.md` | The two tables `devtools/check_parity.py` reads, and nothing else | Tables | `arch-views-models-routes.md` |
-| `arch-inventory-provider.md` | The engine-independent contract: queries, lifecycle, the cap, and change feeds | 300 | Itself, `docs/engine-performance-model.md` |
-| `arch-inventory-engine-python.md` | The only engine-specific document: walker, concurrency, watcher backend, and unit costs | 200 | `arch-python-inventory-cost.md`, `arch-state-and-delivery.md`, `arch-inventory-provider.md` |
+| `arch-inventory-provider.md` | The engine-independent contract: queries, lifecycle, the cap, and change feeds | 500 | Itself, `docs/engine-performance-model.md` |
+| `arch-inventory-engine-python.md` | The only engine-specific document: walker, concurrency, watcher backend, and unit costs | 300 | `arch-python-inventory-cost.md`, `arch-state-and-delivery.md`, `arch-inventory-provider.md` |
 | `arch-live-delivery.md` | From the provider’s change feed to the browser’s stores: events, recovery, and invariants | 300 | `arch-state-and-delivery.md`, `docs/architecture.md` |
-| `arch-git.md` | The process boundary, history sessions, graph checkpoints, and commit detail | 300 | `arch-git-and-comparison-sources.md` |
+| `arch-git.md` | The process boundary, history sessions, graph checkpoints, and commit detail | 400 | `arch-git-and-comparison-sources.md` |
 | `arch-source-sessions-and-pins.md` | Subjects, capabilities, path projection, and the pin guard | 250 | The repository and Git documents |
-| `arch-diff-pipeline.md` | Sources, hydration, caches, and Markdown projection | 200 | `file-diff-format/`, the Git document, `docs/large-content-rendering.md` |
-| `arch-repository-cache.md` | Layout, identity, record contracts, locks, and sweep | 250 | The repository document |
-| `arch-mirror-acquisition-and-refresh.md` | Transports, credentials, the lending checkout, and refresh cadence | 300 | The repository document |
-| `arch-github-pull-requests.md` | Records, the catalog, files, checks, stacks, and routes | 350 | The repository document, `arch-views-models-routes.md` |
+| `arch-diff-pipeline.md` | Sources, hydration, caches, and Markdown projection | 300 | `file-diff-format/`, the Git document, `docs/large-content-rendering.md` |
+| `arch-repository-cache.md` | Layout, identity, record contracts, locks, and sweep | 350 | The repository document |
+| `arch-mirror-acquisition-and-refresh.md` | Transports, credentials, the lending checkout, and refresh cadence | 450 | The repository document |
+| `arch-github-pull-requests.md` | Records, the catalog, files, checks, stacks, and routes | 450 | The repository document, `arch-views-models-routes.md` |
 | `arch-plugin-system.md` | Manifests, discovery, classification, the SDK gate, containers, and how to add a file type | 300 | New; `arch-nav-containers.md` |
-| `arch-browser-shell.md` | Shell modules, stores, lifecycle, and asset loading tiers | 250 | New; `docs/development.md`, `docs/plugins.md` |
-| `arch-macos-app.md` | Server supervision, windows and tabs, restore, and WebKit differences | 250 | `apps/macos/README.md`, `docs/large-content-rendering.md` |
+| `arch-browser-shell.md` | Shell modules, stores, lifecycle, and asset loading tiers | 350 | New; `docs/development.md`, `docs/plugins.md` |
+| `arch-macos-app.md` | Server supervision, windows and tabs, restore, and WebKit differences | 350 | `apps/macos/README.md`, `docs/large-content-rendering.md` |
 | `file-diff-format/`, `file-rollup-format/` | Format specifications | As now | The rollup palette moves to the design system |
 | `docs/large-content-rendering.md`, `docs/web-performance-framework.md`, `docs/realtime-debugging.md`, `docs/engine-performance-model.md` | Contributor standards | 250, 200, 120, 80 | Benchmark method moves to `docs/development.md`; the WebKit gate log to the app document; the limits table names its constants without restating their values |
 
