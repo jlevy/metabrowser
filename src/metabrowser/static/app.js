@@ -352,8 +352,11 @@ function headerAddressHtml(path, isFile) {
     var last = i === segments.length - 1;
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    // One name, as the crumb's tip and its text, so the two cannot drift apart: the tip
+    // shows only while that text is cut short (`tipAddsInformation`).
+    var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
     );
   }
   return (
@@ -3131,7 +3134,9 @@ function tipAnchorIsCut(anchor) {
 /**
  * Whether a tip says something its anchor does not already show (docs/design-system.md,
  * "Tooltips Add Information"). A tip that is the anchor's own text says nothing while
- * that text is whole, so it shows only while the text is cut short; any other tip, such
+ * that text is whole, so it shows only while the text is cut short. So does a tip that is
+ * the text of a box inside the anchor, as a changed file's row holds its name beside its
+ * status letter and counts: it shows only while that box is cut short. Any other tip, such
  * as a glyph's name or an exact time, shows.
  *
  * @param {HTMLElement} anchor
@@ -3141,7 +3146,25 @@ function tipAddsInformation(anchor) {
   if (tip === "") {
     return false;
   }
-  return tip !== tipComparable(anchor.textContent) || tipAnchorIsCut(anchor);
+  var text = tipComparable(anchor.textContent);
+  if (tip === text) {
+    return tipAnchorIsCut(anchor);
+  }
+  // A box's text is part of its anchor's, so a tip the anchor's text does not hold is no
+  // box's text, and nothing inside need be read.
+  if (!text.includes(tip)) {
+    return true;
+  }
+  var repeated = false;
+  for (var box of anchor.querySelectorAll("*")) {
+    if (box instanceof HTMLElement && tipComparable(box.textContent) === tip) {
+      if (tipAnchorIsCut(box)) {
+        return true;
+      }
+      repeated = true;
+    }
+  }
+  return !repeated;
 }
 
 /** @param {Event} e */
@@ -3282,30 +3305,30 @@ treePane.addEventListener(
     }
     var d = item.dataset;
     // The tooltip gives what the row does not show (docs/design-system.md,
-    // "Tooltips Add Information"): the exact date, and a folder's other total.
-    // The row shows the name, a file's size, and a folder's size or file count,
-    // whichever its chip holds, so the tooltip leaves those out.
+    // "Tooltips Add Information"): the exact date, a folder's other total, and
+    // the exact size behind one its chip rounds. The row shows the name, and a
+    // size or file count, whichever its chip holds, so the tooltip leaves out the
+    // name and what the chip shows exactly: a count, and a size under 1,024
+    // bytes, which formatBytes writes in whole bytes ("512 B").
     var includeName = false;
     var chip = item.querySelector(".tree-item-size");
     var shows = chip === null ? null : chip.classList.contains("count") ? "count" : "size";
+    var size = parseTipNumber(d.tipSize);
+    var chipRoundsSize = typeof size === "number" && size >= 1024;
+    var tipSize = shows === "size" && !chipRoundsSize ? undefined : size;
     var html;
     if (d.tipType === "dir") {
       html = folderTooltipHtml(
         d.tipName,
         shows === "count" ? undefined : parseTipNumber(d.tipFiles),
-        shows === "size" ? undefined : parseTipNumber(d.tipSize),
+        tipSize,
         parseTipNumber(d.tipMtime),
         includeName,
       );
     } else if (d.tipType === "symlink") {
       html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
-      html = fileTooltipHtml(
-        d.tipName,
-        shows === "size" ? undefined : parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-        includeName,
-      );
+      html = fileTooltipHtml(d.tipName, tipSize, parseTipNumber(d.tipMtime), includeName);
     }
     if (html) {
       showTooltip(html, item);

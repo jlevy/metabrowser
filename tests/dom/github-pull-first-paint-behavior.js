@@ -294,6 +294,8 @@ async function heldTabKeys(page) {
     console,
     document: globalThis.document,
     HTMLElement: LiveElement,
+    // A Mac's: the stack's Control chords are bound only where Control reaches the page.
+    navigator: { platform: "MacIntel" },
     METABROWSER_SETTINGS: {
       RESERVED_SHELL_KEYS: Object.fromEntries([..."fphtjkuw123456789"].map((key) => [key, null])),
     },
@@ -329,7 +331,7 @@ async function heldTabKeys(page) {
   );
   // The Pulls tab shows the page, so it is active, and its Control-N and Control-P are the
   // production pair, walking this page's stack (pulls-nav.js reaches the page through
-  // `hasStack`). Plain N is no longer the stack's, so it opens nothing.
+  // `hasStack`). N alone opens nothing.
   handle.activate();
   const unregisterStackKeys = shell.MetabrowserPullsNav.registerKeys(
     {

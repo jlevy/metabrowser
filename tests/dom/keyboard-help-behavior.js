@@ -496,8 +496,8 @@ check(
 
 // While Shift reveals the keys, a second layer lists the live `reveal` surface,
 // reminders only, every binding of a coalesced item; the resting strip stays as it is.
-// The stack keys are Control chords, written as a platform without the ⌃ glyph writes
-// them, since this sandbox has no navigator.
+// The stack keys are Control chords, bound on a Mac and written as it writes them.
+sandbox.navigator = { platform: "MacIntel" };
 const stackKeys = [
   ["n", "test.stack.top", 10],
   ["p", "test.stack.base", 20],
@@ -513,6 +513,7 @@ const stackKeys = [
     surfaces: { help: "always", reveal: "always" },
   }),
 );
+delete sandbox.navigator;
 const restingButtons = hintHost.querySelectorAll("button");
 let stripBeforeReveal = stripReconciles;
 shortcuts.register({
@@ -545,7 +546,7 @@ check(
   ) ===
     JSON.stringify([
       ["SPAN", ["?"], "Help"],
-      ["SPAN", ["Ctrl+N", "Ctrl+P"], "Stack"],
+      ["SPAN", ["⌃N", "⌃P"], "Stack"],
     ]),
   JSON.stringify(
     revealLayer?.children.map((item) => [
@@ -621,8 +622,9 @@ check(
 treeNavigator.dispose();
 treeShortcuts.dispose();
 
-// A Control chord in Help is one keycap, written as the platform writes it: ⌃N on macOS
-// (mb-lnqj). Its row names the key in the keycap's text, as a single key's does.
+// A Control chord in Help is one keycap, ⌃N, as macOS writes it (mb-lnqj). A screen
+// reader may name ⌃ by its Unicode name, so the row speaks the chord as its phrase,
+// "Control N", with the keycap hidden from assistive technology, as alternatives are.
 sandbox.navigator = { platform: "MacIntel" };
 const chordShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
 chordShortcuts.register({
@@ -654,10 +656,14 @@ const chordRendered = {
   keys: chordBinding?.querySelectorAll("kbd").map((element) => element.textContent),
   separators: chordBinding?.querySelectorAll(".shortcut-binding-separator").length,
   spoken: chordBinding?.querySelector(".visually-hidden")?.textContent ?? null,
+  hidden: chordBinding
+    ?.querySelectorAll("kbd")
+    .map((element) => element.getAttribute("aria-hidden")),
 };
 check(
-  "Help lists a Control chord as one keycap, ⌃N on macOS",
-  JSON.stringify(chordRendered) === JSON.stringify({ keys: ["⌃N"], separators: 0, spoken: null }),
+  "Help lists a Control chord as one keycap, ⌃N, spoken Control N with the glyph hidden",
+  JSON.stringify(chordRendered) ===
+    JSON.stringify({ keys: ["⌃N"], separators: 0, spoken: "Control N", hidden: ["true"] }),
   JSON.stringify(chordRendered),
 );
 chordShortcuts.dispose();

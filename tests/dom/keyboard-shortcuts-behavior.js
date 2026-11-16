@@ -269,7 +269,6 @@ for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
 // ── Control chords (mb-lnqj) ────────────────────────────────────
 // Control is the one modifier a binding declares, `control: true`, and only with N or P,
 // next and previous (docs/design-system.md, "Control Chords").
-equal("the Control chord letters", Array.from(shortcuts.CONTROL_CHORD_KEYS), ["n", "p"]);
 equal(
   "a Control chord normalizes its letter and keeps its Control",
   [
@@ -298,17 +297,33 @@ check(
     shortcuts.bindingSignature({ key: "n" }) === "n",
 );
 const controlN = { control: true, key: "n" };
-// The platform decides how a chord is written; this sandbox starts with no navigator.
-const writtenChord = () => {
-  const described = shortcuts.describeBindings([controlN, { control: true, key: "p" }]);
-  return [described.visible, described.spoken, described.ariaKeyshortcuts];
+const describedChords = shortcuts.describeBindings([controlN, { control: true, key: "p" }]);
+equal(
+  "a chord is written as macOS and iOS write it, the only platforms that bind one",
+  [describedChords.visible, describedChords.spoken, describedChords.ariaKeyshortcuts],
+  [["⌃N", "⌃P"], "Control N or Control P", "Control+N Control+P"],
+);
+// The platform decides whether Control reaches the page, and only there may a command
+// bind a chord: elsewhere Control is the browser's command key, and the registry refuses
+// one. This sandbox starts with no navigator.
+const chordRegistration = () => {
+  const probe = shortcuts.create({ document: new FakeDocument() });
+  try {
+    probe.register(command({ bindings: [controlN], group: "pull-stack", id: "test.chord.probe" }));
+    return "bound";
+  } catch (error) {
+    return error?.name === "TypeError" ? "refused" : String(error);
+  } finally {
+    probe.dispose();
+  }
 };
-const written = {};
+const platforms = {};
 for (const [platform, navigator] of [
   ["no navigator", undefined],
   ["macOS", { platform: "MacIntel" }],
   ["macOS, by its client hints", { platform: "", userAgentData: { platform: "macOS" } }],
   ["an iPad", { platform: "iPad" }],
+  ["an iPhone", { platform: "iPhone" }],
   ["Windows", { platform: "Win32" }],
   ["Linux", { platform: "Linux x86_64" }],
   [
@@ -317,19 +332,20 @@ for (const [platform, navigator] of [
   ],
 ]) {
   sandbox.navigator = navigator;
-  written[platform] = writtenChord();
+  platforms[platform] = [shortcuts.controlReachesPage(), chordRegistration()];
 }
 delete sandbox.navigator;
-const glyph = [["⌃N", "⌃P"], "Control N or Control P", "Control+N Control+P"];
-const ctrl = [["Ctrl+N", "Ctrl+P"], "Control N or Control P", "Control+N Control+P"];
-equal("each platform writes Control its own way", written, {
-  "no navigator": ctrl,
-  macOS: glyph,
-  "macOS, by its client hints": glyph,
-  "an iPad": glyph,
-  Windows: ctrl,
-  Linux: ctrl,
-  "Windows, by its client hints": ctrl,
+const reaches = [true, "bound"];
+const browsers = [false, "refused"];
+equal("a chord is bound only where Control reaches the page", platforms, {
+  "no navigator": browsers,
+  macOS: reaches,
+  "macOS, by its client hints": reaches,
+  "an iPad": reaches,
+  "an iPhone": reaches,
+  Windows: browsers,
+  Linux: browsers,
+  "Windows, by its client hints": browsers,
 });
 for (const [label, values, matches] of [
   ["Control-N", { ctrlKey: true }, true],
@@ -808,7 +824,8 @@ closeLayoutHelp();
 
 // A Control chord is another key than its letter (mb-lnqj): a global Control-N and a
 // plugin N register together, each runs on its own key, the chord holds no N above the
-// plugin scope, and AltGr runs neither.
+// plugin scope, and AltGr runs neither. On a Mac, where a chord is bound.
+sandbox.navigator = { platform: "MacIntel" };
 layouts.register(
   command({
     bindings: [{ control: true, key: "n" }],
@@ -875,10 +892,11 @@ typed(
 );
 const chordHelp = layouts.present("test.chord.next").bindings;
 equal(
-  "Help writes the chord as the platform does, here with no navigator",
+  "Help writes the chord as a Mac does",
   [chordHelp.visible, chordHelp.spoken, chordHelp.ariaKeyshortcuts],
-  [["Ctrl+N"], "Control N", "Control+N"],
+  [["⌃N"], "Control N", "Control+N"],
 );
+delete sandbox.navigator;
 layouts.dispose();
 
 // A batch coalesces the publications it contains into one, at its outermost end.
@@ -1500,6 +1518,74 @@ batched.dispose();
   );
   closeAgain();
   menuRegistry.dispose();
+}
+
+// A view tab may hold a menu's letter, since only the shell's letters are reserved. While
+// the open menu's A is live and Shift is held, A reaches the row, so only the row is
+// badged A, and the tab's badge returns when the menu closes.
+{
+  const { FakeDocument, element, keyEvent } = require("./key-reveal-dom.js");
+  const tree = new FakeDocument();
+  const badgeRegistry = shortcuts.create({ document: tree });
+  const chose = [];
+  const viewTab = element(tree, "button", { class: "tab-btn", "data-tab": "age" }, "Ages");
+  const row = element(tree, "button", { class: "menu-row", "data-menu-key": "a" }, "By age");
+  tree.body.append(viewTab, row);
+  badgeRegistry.register(
+    command({
+      bindings: [{ key: "a" }],
+      copy: { action: "Ages", description: "Show the Ages view.", hint: "Ages" },
+      group: "view-tabs",
+      handler: () => chose.push("Ages") > 0,
+      id: "view-tabs.a",
+      scope: "view-tabs",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  badgeRegistry.register(
+    command({
+      bindings: [{ key: "a" }],
+      copy: {
+        action: "By age",
+        description: "Choose By age in the Group by menu.",
+        hint: "By age",
+      },
+      group: "menus",
+      handler: () => chose.push("By age") > 0,
+      id: "menu.group.a",
+      scope: "menu:group",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  badgeRegistry.attachTarget("view-tabs.a", viewTab);
+  badgeRegistry.attachTarget("menu.group.a", row);
+  const badgeOn = (target) => target.querySelector(".kbd-badge")?.textContent ?? null;
+  const pressA = () => tree.dispatchEvent(keyEvent("keydown", "a", { target: tree.body }));
+  badgeRegistry.setRevealed(true);
+  equal(
+    "with the menu closed the view tab is badged A",
+    [badgeOn(viewTab), badgeOn(row)],
+    ["A", null],
+  );
+  const closeMenu = badgeRegistry.activateScope("menu:group");
+  equal(
+    "while the menu's A is live, only its row is badged A",
+    [badgeOn(viewTab), badgeOn(row)],
+    [null, "A"],
+  );
+  pressA();
+  closeMenu();
+  equal(
+    "once the menu closes the view tab is badged A again",
+    [badgeOn(viewTab), badgeOn(row)],
+    ["A", null],
+  );
+  pressA();
+  equal("A reaches the row while the menu is open, the tab after", chose, ["By age", "Ages"]);
+  badgeRegistry.setRevealed(false);
+  badgeRegistry.dispose();
 }
 
 if (failures.length > 0) {

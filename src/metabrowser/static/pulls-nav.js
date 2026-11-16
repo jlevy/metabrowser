@@ -399,43 +399,51 @@
   function registerKeys(nav, shortcuts) {
     /** @param {Record<string, unknown>} context */
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
+    // Control-N and Control-P, next and previous as in Emacs and the macOS text system,
+    // walk the stack, so N stays free and P opens the Pulls tab. They are global, so a
+    // focused Pulls row keeps J and K, and Shift changes neither pair; a text field keeps
+    // them. They are bound only where Control reaches the page, macOS and iOS: elsewhere
+    // Ctrl+N and Ctrl+P are the browser's, a new window and Print, and the stack menu
+    // walks the stack (docs/design-system.md, "Control Chords"). A held chord walks once
+    // and its repeats are consumed, so none falls through to the browser.
+    const stackKeys = shortcuts.controlReachesPage()
+      ? [
+          shortcuts.register({
+            bindings: [{ key: "n", control: true }],
+            available: () => nav.hasStack(),
+            copy: {
+              action: "Next in stack",
+              description: "Open the next pull request toward the top of the stack.",
+              hint: "Stack",
+            },
+            group: "pull-stack",
+            handler: (context) => repeating(context) === true || nav.moveStack(1),
+            id: "pulls.stack.top",
+            order: 10,
+            repeat: true,
+            scope: "global",
+            surfaces: { help: "always", reveal: "always" },
+          }),
+          shortcuts.register({
+            bindings: [{ key: "p", control: true }],
+            available: () => nav.hasStack(),
+            copy: {
+              action: "Previous in stack",
+              description: "Open the previous pull request toward the stack base.",
+              hint: "Stack",
+            },
+            group: "pull-stack",
+            handler: (context) => repeating(context) === true || nav.moveStack(-1),
+            id: "pulls.stack.base",
+            order: 20,
+            repeat: true,
+            scope: "global",
+            surfaces: { help: "always", reveal: "always" },
+          }),
+        ]
+      : [];
     return [
-      // Control-N and Control-P, next and previous as in Emacs and the macOS text system,
-      // walk the stack, so N stays free and P opens the Pulls tab. They are global, so a
-      // focused Pulls row keeps J and K, and Shift changes neither pair; a text field keeps
-      // them (docs/design-system.md, "Control Chords").
-      shortcuts.register({
-        bindings: [{ key: "n", control: true }],
-        available: () => nav.hasStack(),
-        copy: {
-          action: "Next in stack",
-          description: "Open the next pull request toward the top of the stack.",
-          hint: "Stack",
-        },
-        group: "pull-stack",
-        handler: () => nav.moveStack(1),
-        id: "pulls.stack.top",
-        order: 10,
-        repeat: false,
-        scope: "global",
-        surfaces: { help: "always", reveal: "always" },
-      }),
-      shortcuts.register({
-        bindings: [{ key: "p", control: true }],
-        available: () => nav.hasStack(),
-        copy: {
-          action: "Previous in stack",
-          description: "Open the previous pull request toward the stack base.",
-          hint: "Stack",
-        },
-        group: "pull-stack",
-        handler: () => nav.moveStack(-1),
-        id: "pulls.stack.base",
-        order: 20,
-        repeat: false,
-        scope: "global",
-        surfaces: { help: "always", reveal: "always" },
-      }),
+      ...stackKeys,
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
