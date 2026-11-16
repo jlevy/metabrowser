@@ -244,10 +244,12 @@ const MEASURE = `async (name, change, tab, width) => {
   // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
   // on a change set whose breakdown names three statuses, "35 changed files (2 added,
   // 3 removed, 30 modified) +1,234 −3,423": it moves nothing, keeps its row's height, and
-  // starts on the header's content edge.
+  // starts on the header's content edge. While its breakdown is cut short, its header's
+  // tooltip is its whole words, and while it is whole there is none (A7 of review A on #470).
+  // It is measured on every tab, by a flag of its own (A11 of review A on #470).
   let summaryMoves = null;
-  if (change.stackChip) {
-    const slot = header.querySelector(".github-pull-summary");
+  const slot = header.querySelector(".github-pull-summary");
+  if (change.summary && slot !== null) {
     const before = places();
     const rowBefore = Math.round(box(slot).height * 100) / 100;
     const diff = (window.__diff ??= await import("/diff/diff-view.js"));
@@ -274,6 +276,8 @@ const MEASURE = `async (name, change, tab, width) => {
     const rows = (shape) => JSON.stringify({ rows: shape.rows, tabBar: shape.tabBar });
     const headerLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
     const toggle = slot.querySelector(".diff-summary");
+    const breakdown = slot.querySelector(".diff-summary-breakdown");
+    toggle?.dispatchEvent(new Event("pointerenter"));
     summaryMoves = {
       moved: rows(before) === rows(after) ? null : { before, after },
       rowBefore,
@@ -281,6 +285,8 @@ const MEASURE = `async (name, change, tab, width) => {
       toggleHeight: toggle ? Math.round(box(toggle).height * 100) / 100 : null,
       left: Math.round((box(slot).left - headerLeft) * 100) / 100,
       text: toggle?.textContent ?? null,
+      cut: breakdown !== null && breakdown.scrollWidth > breakdown.clientWidth,
+      tip: toggle?.dataset.tipText ?? null,
     };
     summary.dispose();
   }
@@ -976,11 +982,16 @@ async function main() {
           for (const tab of TABS) {
             // The author's row is the same on every tab, so its stack chip arrives on one: one
             // stack, and two for the records with an avatar, the longest rows.
-            const measured = tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change;
+            // The Diff summary is the header's last row on every tab, so it is measured on each.
+            const measured = {
+              ...(tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change),
+              summary: true,
+            };
             const shape = await browser.evaluate(
               `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(measured)}, ${JSON.stringify(tab)}, ${width})`,
             );
             const where = `${width} px, ${label} ${tab || "conversation"}`;
+            check(`${where}: the Diff summary is measured`, shape.summaryMoves !== null);
             if (shape.mergeShown !== null) {
               check(
                 `${where}: the merge's chips and arrow show whole on their line`,
@@ -1007,6 +1018,21 @@ async function main() {
                 Math.abs(moves.left) <= 0.5,
                 JSON.stringify(moves),
               );
+              check(
+                `${where}: the Diff summary's tooltip is its whole words only while cut short`,
+                moves.cut
+                  ? moves.tip ===
+                      "35 changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423"
+                  : moves.tip === null,
+                JSON.stringify({ cut: moves.cut, tip: moves.tip }),
+              );
+              if (width === 320) {
+                check(
+                  `${where}: at the narrowest width the breakdown is cut short`,
+                  moves.cut,
+                  JSON.stringify(moves),
+                );
+              }
             }
             if (shape.chipMoves !== null) {
               check(
