@@ -134,8 +134,9 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
-  // A pull request's two lines (mb-lkkt): the number's line and the age, then the chevron,
-  // the icon, and the title to the row's end. Each row's parts, from its content box.
+  // A pull request's two lines (mb-lkkt, mb-3cbf): the chevron, the icon, the number's line,
+  // and the age, then the title alone, from the text column to the row's end. Each row's
+  // parts, from its content box.
   const lines = Object.fromEntries(
     [10, 9, 106].map((number) => {
       const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
@@ -161,12 +162,20 @@ const LIST = `(() => {
         // The number's line starts in the title's column; the age ends at the row's end.
         metaFromTitle: round(meta.left - title.left),
         ageToEnd: round(end - age.right),
-        // The title runs from its column to the row's end.
+        // The title runs from the text column, after the two glyph slots, to the row's end.
         titleToEnd: round(end - title.right),
         titleFromInset: round(title.left - inset),
-        // The chevron and the icon are on the title's line.
-        withTitle: [toggle, icon].every((box) => box.top >= title.top - 4 && box.bottom <= title.bottom + 4),
+        textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
+        // The chevron and the icon are on the number's line, inside its box, above the title.
+        withNumber: [toggle, icon].every((box) => box.top >= meta.top - 0.5 && box.bottom <= meta.bottom + 0.5 && box.bottom <= title.top + 0.5),
+        // How far each glyph's middle is from the number's line's middle, and from the title's.
+        toggleOffNumber: round((toggle.top + toggle.bottom) / 2 - (meta.top + meta.bottom) / 2),
+        iconOffNumber: round((icon.top + icon.bottom) / 2 - (meta.top + meta.bottom) / 2),
+        toggleOffTitle: round((toggle.top + toggle.bottom) / 2 - (title.top + title.bottom) / 2),
+        toggleFromInset: round(toggle.left - inset),
+        iconFromInset: round(icon.left - inset),
         numberLeft: round(numberBox.left - meta.left),
+        titleWidth: round(title.width),
         height: round(r.height),
       }];
     }),
@@ -453,9 +462,12 @@ try {
     // Its place on the title line once cut a member's title to 65 px at the default pane,
     // where a first-level row's had 176 (mb-dzsi, measured before the change).
     // The number's line first and the title under it, to the row's end (mb-lkkt): at the
-    // default pane a member's title had 170 px, beside its age, and has 208.
+    // default pane a member's title had 170 px, beside its age, and has 208. The chevron and
+    // the icon lead the number's line (mb-3cbf): on the title's line their middles sat 19.5 px
+    // below its middle, and the title, after them, started in the text column it starts in
+    // alone.
     check(
-      "a pull request's first line is its number's line and its age, its second the chevron, the icon, and the title to the row's end",
+      "a pull request's first line is the chevron, the icon, its number's line, and its age, its second the title alone, from the text column to the row's end",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
@@ -464,7 +476,11 @@ try {
           Math.abs(row.metaFromTitle) < 0.5 &&
           Math.abs(row.ageToEnd) < 0.5 &&
           Math.abs(row.titleToEnd) < 0.5 &&
-          row.withTitle &&
+          Math.abs(row.titleFromInset - row.textColumn) < 0.5 &&
+          row.withNumber &&
+          Math.abs(row.toggleOffNumber) < 0.5 &&
+          Math.abs(row.iconOffNumber) < 0.5 &&
+          row.toggleFromInset === 0 &&
           row.height === list.titleRoom.flatRow
         );
       }) &&
@@ -624,10 +640,15 @@ try {
       const member = document.querySelector('a.github-pulls-row[data-number="7"]');
       const file = document.querySelector('.github-pulls-item[data-number="7"] :is(.github-pull-file-row, .github-pull-folder-row)');
       const start = (row) => parseFloat(getComputedStyle(row).paddingLeft) + row.getBoundingClientRect().left;
+      // The file row's leading glyph, a folder's chevron or a file's change letter, from the
+      // pull request's chevron, which leads its number's line (mb-3cbf).
+      const chevron = member.querySelector(".github-pulls-toggle").getBoundingClientRect();
       return {
         expanded: member.getAttribute("aria-expanded"),
         level: file.getAttribute("aria-level"),
         indent: Math.round(start(file) - start(member)),
+        fromChevron: Math.round((file.firstElementChild.getBoundingClientRect().left - chevron.left) * 100) / 100,
+        belowRow: Math.round((file.getBoundingClientRect().top - member.getBoundingClientRect().bottom) * 100) / 100,
       };
     })()`);
     await press("ArrowLeft");
@@ -643,6 +664,7 @@ try {
       files.expanded === "true" &&
         files.level === "3" &&
         files.indent === Math.round(list.treeIndent) &&
+        near(files.fromChevron, list.treeIndent) &&
         JSON.stringify(files.afterLeft) === JSON.stringify(["false", "7"]) &&
         files.afterSecondLeft === "stack 286",
       JSON.stringify(files),

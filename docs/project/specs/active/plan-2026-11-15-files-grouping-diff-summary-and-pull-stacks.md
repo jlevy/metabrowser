@@ -61,8 +61,9 @@ They land as one native GitHub stack of twenty-two pull requests on `main`:
 18. **Consistency in docs:** what the same review found in the design system, the user
     docs, this plan, and the CHANGELOG, whose Unreleased block then reads as one change
     from 0.12.0 (`mb-vg55`).
-19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
-    age, and its second the whole title to the pane’s edge (`mb-lkkt`).
+19. **Pulls rows:** a Pulls row’s first line is its chevron, state icon, stack place,
+    number, author, and age, and its second the whole title alone to the pane’s edge
+    (`mb-lkkt`, `mb-3cbf`).
 20. **Diff summary at the top:** a commit’s page and a pull request’s page each show one
     Diff summary, collapsed, at the page’s top, whose header is the counts of files and
     lines, in place of a commit’s stats block and of the summary in Changes (`mb-pb35`).
@@ -740,6 +741,12 @@ tally of its pull requests, since it is obvious.
   every width, its author giving way first and its place after; measured in Chrome from
   420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
   stylesheet’s tests.
+- [ ] `mb-3cbf`: the chevron and the state icon lead the first line, in their 14 px
+  slots and centered on the number’s line, and the title is alone on the second, from
+  the text column to the row’s end; the row stays 43 px, the stack row’s and members’
+  chevrons and an open pull request’s files keep their columns; measured in the same
+  Chrome tests, whose check of the glyphs’ line fails on the layout that put them on the
+  title’s line.
 
 ### Phase 20: Diff Summary at the Top (pull request 20)
 

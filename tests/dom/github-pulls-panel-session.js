@@ -1231,8 +1231,9 @@ async function paintStory(panel, selection = false) {
     const id = child(line, "github-pulls-id");
     const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    // The title's line is the title and its age; a stack member's place is on the muted
-    // line, before the number, so the title has the room (mb-dzsi).
+    // The stylesheet lays the row out as two lines (mb-lkkt, mb-3cbf): the chevron, the
+    // icon, the number's line, where a stack member's place comes before the number
+    // (mb-dzsi), and the age; then the title alone, so it has the room.
     // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
     const order = row(hostile)
       .childNodes.filter((node) => typeof node.className === "string")
