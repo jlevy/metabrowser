@@ -579,3 +579,39 @@ def test_trusted_kpress_render_drops_a_label_that_could_click_a_shell_control(
     assert "<label" not in body["html"]
     assert "for=" not in body["html"]
     assert "Print" in body["html"]
+
+
+def test_sanitizer_diagnostics_stay_out_of_the_reader_diagnostics(tmp_path: Path) -> None:
+    """A removed `<script>` is the safe outcome, not a fault in the document.
+
+    The render keeps what KPress's sanitizer removed apart, in `sanitizer_diagnostics`,
+    so the reader's Diagnostics disclosure shows only faults the author can fix, such as
+    a broken anchor.
+    """
+
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text(
+        "# T\n\nSee [nowhere](#missing).\n\n<script>alert(1)</script>\n"
+        '<a href="javascript:alert(1)">x</a>\n'
+    )
+    response = TestClient(server.app).get(
+        "/api/kpress/render", params={"path": "doc.md", "view": "rendered"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert "<script" not in body["html"]
+    assert "javascript:" not in body["html"]
+    assert [item["type"] for item in body["diagnostics"]] == ["broken_anchor"]
+    assert {item["type"] for item in body["sanitizer_diagnostics"]} == {
+        "html_sanitized_tag",
+        "html_sanitized_attribute",
+    }
+
+
+def test_sanitizer_diagnostic_membership() -> None:
+    assert kpress_adapter.is_sanitizer_diagnostic({"type": "html_sanitized"})
+    assert kpress_adapter.is_sanitizer_diagnostic({"type": "html_sanitized_tag"})
+    assert kpress_adapter.is_sanitizer_diagnostic({"type": "html_sanitized_attribute"})
+    assert not kpress_adapter.is_sanitizer_diagnostic({"type": "broken_anchor"})
+    assert not kpress_adapter.is_sanitizer_diagnostic({"type": "frontmatter_error"})
+    assert not kpress_adapter.is_sanitizer_diagnostic("html_sanitized")

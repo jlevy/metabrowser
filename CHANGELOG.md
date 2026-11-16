@@ -23,6 +23,19 @@ All notable changes to Metabrowser are documented here.
   See [Page Headers](docs/design-system.md#page-headers) and
   [Actor Identity](docs/design-system.md#actor-identity).
 
+- A rendered document no longer shows a Diagnostics disclosure because KPress’s
+  sanitizer removed raw HTML from it.
+  The disclosure appeared above every document ending in the guideline footer comment,
+  above the README for its centered icon block, and above a document whose `<script>`
+  was removed, which GitHub also removes silently.
+  Faults the author can fix, such as a broken anchor or unparseable front matter, still
+  show. For plugin authors and `--api` readers, `/api/kpress/render` now answers what the
+  sanitizer removed in `sanitizer_diagnostics`, apart from `diagnostics`.
+
+- KPress moves to 0.3.6. A README’s `<p align="center">` icon block renders centered, as
+  on GitHub, and a stripped comment or a non-breaking space no longer counts as
+  sanitized HTML.
+
 - A pull request you have opened before shows its Diff summary at once when you open it
   again, and its Changes opens with no wait, whether you first opened it on Conversation
   or on Changes: what a page reads of a comparison is kept while Metabrowser is open,
