@@ -209,7 +209,14 @@ document paths named in `src/` and `apps/`, so a move that breaks one fails the 
 Size targets guide the rewrite; no check enforces them.
 The targets were revised on 2026-11-16 to fit the documents as built, after the reviews’
 cuts, where a document holds one subject and needs the room.
-A guide that needs more than its target is a sign that it covers two subjects.
+Four were raised again on 2026-11-16, when merging main brought in the rules stack #446
+added: the design system’s Home, Titles, Navigation Reveals the Item, Tooltips Add
+Information, Count Summaries Bold Their Numbers, Label Colors, Heading Tallies, and Keys
+in a Menu; Keys in a Menu in `docs/keyboard-shortcuts.md`; Home, stack groups, and the
+header’s Diff summary in `docs/reviewing-pull-requests.md`; and the comparison keep and
+label sets in `arch-github-pull-requests.md`. The design system’s measurements that came
+with them moved to `explorations/performance-loop/design-rule-measurements.md`. A guide
+that needs more than its target is a sign that it covers two subjects.
 
 | Document | Audience | Target lines | Subject |
 | --- | --- | --- | --- |
@@ -217,10 +224,10 @@ A guide that needs more than its target is a sign that it covers two subjects.
 | `docs/installation.md` | Users | 250 | Install and upgrade `metab`, the app, and the skill; tool requirements; release-bound status |
 | `docs/browsing-files.md` (new) | Users | 250 | The Files tab: tree, Overview, Treemap, Recent, and filters; reading Markdown, data, code, logs, images, and HTML; live updates and log tailing; Quick Search for files; remote hosts |
 | `docs/browsing-history.md` (new) | Users | 150 | The Commits tab, commit pages, diffs of any range, and `--diff` |
-| `docs/reviewing-pull-requests.md` | Users | 300 | The Pulls tab and pull-request pages |
+| `docs/reviewing-pull-requests.md` | Users | 350 | The Pulls tab and pull-request pages |
 | `docs/working-with-agents.md` (new) | Users | 150 | The skill; an agent showing you a page; agent-log timelines; `--api` and `--show` for agents |
 | `docs/macos-app.md` (new) | Users | 200 | Using the app: windows, tabs, recents, restore, drops, settings, and choosing a `metab` |
-| `docs/keyboard-shortcuts.md` (new) | Users | 100 | The shortcut reference, pinned to the keymap registry by `tests/test_keymap.py` |
+| `docs/keyboard-shortcuts.md` (new) | Users | 120 | The shortcut reference, pinned to the keymap registry by `tests/test_keymap.py` |
 | `docs/command-line.md` | Users and scripts | 600 | Every mode, every option, configuration, and environment variables |
 | `docs/scale-benchmark.md` (new) | Everyone | 100 | What the baseline benchmark measures, how to run it, and its results |
 | `docs/plugins.md` | Plugin authors | 950 | Manifest, SDK, data hooks, packaging, and the security boundary |
@@ -230,7 +237,7 @@ A guide that needs more than its target is a sign that it covers two subjects.
 | `TODO.md` | Everyone | 250 | Current release state; no replacement history |
 | `docs/development.md` | Contributors | 650 | Setup, commands, the gate, conventions, docs, tbd, pull requests, troubleshooting |
 | `docs/e2e-testing.md` | Contributors | 420 | Test layers, tiers, skips, and measuring the suite |
-| `docs/design-system.md` | Designers and implementers | 4,000 | Tokens, color, type, components, and interaction design, with one keyboard section |
+| `docs/design-system.md` | Designers and implementers | 4,850 | Tokens, color, type, components, and interaction design, with one keyboard section |
 | `docs/publishing.md` | Maintainers | 190 | Unchanged |
 | `apps/macos/README.md` | App developers | 450 | Build, test, and release the app |
 | Architecture documents | Architecture readers | See below | One per layer |
@@ -380,7 +387,7 @@ across `docs/architecture.md`, `docs/project/architecture/`, and four standards 
   as 60,000 whose constant is 400,000. Each goes into the description of the bead that
   owns its document.
 
-**Target structure:** about 4,700 lines at first, and about 5,300 as built.
+**Target structure:** about 4,700 lines at first, and about 5,450 as built.
 All architecture documents live in `docs/project/architecture/` except the entry point
 and the four standards, which stay in `docs/`.
 
@@ -399,7 +406,7 @@ and the four standards, which stay in `docs/`.
 | `arch-diff-pipeline.md` | Sources, hydration, caches, and Markdown projection | 300 | `file-diff-format/`, the Git document, `docs/large-content-rendering.md` |
 | `arch-repository-cache.md` | Layout, identity, record contracts, locks, and sweep | 350 | The repository document |
 | `arch-mirror-acquisition-and-refresh.md` | Transports, credentials, the lending checkout, and refresh cadence | 450 | The repository document |
-| `arch-github-pull-requests.md` | Records, the catalog, files, checks, stacks, and routes | 450 | The repository document, `arch-views-models-routes.md` |
+| `arch-github-pull-requests.md` | Records, the catalog, files, checks, stacks, and routes | 550 | The repository document, `arch-views-models-routes.md` |
 | `arch-plugin-system.md` | Manifests, discovery, classification, the SDK gate, containers, and how to add a file type | 300 | New; `arch-nav-containers.md` |
 | `arch-browser-shell.md` | Shell modules, stores, lifecycle, and asset loading tiers | 350 | New; `docs/development.md`, `docs/plugins.md` |
 | `arch-macos-app.md` | Server supervision, windows and tabs, restore, and WebKit differences | 350 | `apps/macos/README.md`, `docs/large-content-rendering.md` |

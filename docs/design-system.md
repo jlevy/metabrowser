@@ -995,15 +995,14 @@ as a diff’s line is where its tree did not load, “35 changed files +1,234 �
 failed comparison says so in the diff’s place.
 A detail with no count of files leaves the place empty, and it takes no room.
 The commit hands the diff its own totals, which the server counts over the whole commit
-before it caps the list of files, and for a list cut short at the comparison’s bound of
-2,000 files the summary’s header says those ([Diff Summary](#diff-summary)). Measured in
-Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16 px over the
-description, its place on the subject’s edge and its toggle hung 4 px into the gutter,
-as every Diff summary’s is; its header is one 24 px row at 560 px and wider and wraps to
-two lines at 420 px and three at 320 px, all before the page is shown; opened, its tree
-is under it and above the description; with no diff the totals line is one row under the
-identity; and an empty place takes no room.
-`tests/test_git_commit_summary_chrome.py` holds it.
+before it caps the list of files, and for a list cut short at the comparison’s bound
+(`MAX_MANIFEST_FILES` in `diff/adapters/git.py`) the summary’s header says those
+([Diff Summary](#diff-summary)). The summary’s place is on the subject’s edge with its
+toggle hung into the gutter, as every Diff summary’s is; its header wraps in a narrow
+pane before the page is shown; opened, its tree is under it and above the description;
+and with no diff the totals line is one row under the identity.
+`tests/test_git_commit_summary_chrome.py` holds it, and its measurements are in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#git-commit-summary).
 The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
 sits below the identity metadata.
 Its first row reports exact file-status families with Git’s letters and ends in “file”
@@ -1283,17 +1282,17 @@ A summary already drawn stays while a newer comparison is read
 ([Refreshing Content](#refreshing-content)). A pull request’s header shows it on every
 tab. A commit’s page never shows it: the shell stages that page out of sight until its
 diff has drawn the summary, so its place does not wait in view.
-Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 221 by 11.05
-px, at the row’s start and centred on its line, the row is 24 px before and after the
-summary arrives, and the tab bar under it does not move.
-`tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds that, and
-`tests/dom/github-pull-page-mount-behavior.js` which of them the row holds in each
-state. Its header is one row-like disclosure toggle that leads with the registry’s
-chevron in the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2 added, 3
-removed, 30 modified) +1,234 −3,423”. The breakdown lists only the statuses some file
-has, in one order (added, removed, modified, renamed, then copied, type changed,
-unmerged, and any other), in `--muted`; numbers use the shell’s number format and are
-bold, the file count’s and each status’s, with the words regular
+The row keeps its height from the placeholder to the summary, and the tab bar under it
+does not move: `tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds
+that, and `tests/dom/github-pull-page-mount-behavior.js` which of the two the row holds
+in each state; the block’s measured size is in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#diff-summary).
+Its header is one row-like disclosure toggle that leads with the registry’s chevron in
+the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2 added, 3 removed, 30
+modified) +1,234 −3,423”. The breakdown lists only the statuses some file has, in one
+order (added, removed, modified, renamed, then copied, type changed, unmerged, and any
+other), in `--muted`; numbers use the shell’s number format and are bold, the file
+count’s and each status’s, with the words regular
 ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)); the totals
 are the [inline change stats](#inline-change-stats); and “(estimated)” follows totals
 that are not exact. Its accessible name says the same in words.
@@ -1337,16 +1336,13 @@ toolbar, under a commit’s identity, and in a pull request’s header.
 The rows give back where the header starts, `--diff-summary-header-inset`, the toolbar’s
 padding in a diff and nothing at a page’s top, less its pull to the left,
 `--diff-summary-toggle-pull`, which lets its hover ground reach past its chevron.
-Before, a diff’s toolbar started the first level 4 px in from the header.
 Opened, the tree sits under its header, below the toolbar in a diff, as tall as its
 rows, in the page’s flow, with no scroll bar of its own: the page scrolls past it.
-It has no bound on its length beyond the comparison’s, at most 2,000 files, and the
+It has no bound on its length beyond the comparison’s (`MAX_MANIFEST_FILES`), and the
 document holds only the rows in the window’s view of it and `SUMMARY_ROWS_OVERSCAN` more
-each way, as the Pulls tab’s tree does.
-On synthetic patches of 106, 600, and 2,000 files (3,197, 23,237, and 54,965 px tall) in
-Chrome the rows showed 8 to 57 ms after a press, the document held at most 116 rows, and
-scrolling the page through the tree kept its frames; the numbers are beside the constant
-in `diff-summary.js`. Nothing of it is mounted until the header first opens it.
+each way, as the Pulls tab’s tree does, so a tree at that bound shows its rows soon
+after a press and scrolls with the page frame by frame; the measurement is beside the
+constant in `diff-summary.js`. Nothing of it is mounted until the header first opens it.
 The keys are a tree’s: the arrows move one tab stop, Right and Left open, close, and
 step into or out of a folder, and Home and End go to the ends.
 Only Enter, Space, or a press on a file jumps the diff to that file, because the tree
@@ -1375,24 +1371,17 @@ placeholder, and its Changes mounts from the same answer.
 That holds whichever tab read it first: a page opened on Changes reads through the keep
 too. A record whose head or base moved names another route, which is read anew.
 The keep is bounded (`KEPT_COMPARISON_CHARS`): a comparison it no longer holds, or one
-too large to keep, is read as before, once the browser is idle, from the browser’s
-cache. The first screen’s rendered Markdown is the page’s own to ask for, apart from the
+too large to keep, is read once the browser is idle, from the browser’s cache.
+The first screen’s rendered Markdown is the page’s own to ask for, apart from the
 comparison, so a page that goes stops it.
 The Pulls tab reads ahead the comparisons of the pull requests a reader is likely to
 open next ([The Pulls Tab](#the-pulls-tab)), so a first visit to one of them draws it at
-once too. Before, every visit read the comparison again once the browser was idle, and a
-page is not idle while it draws its record: measured in headless Chrome 152 on the
-GitHub stand-in at a load average of 9 to 12, moving between pull requests of 26 to 121
-files from the Pulls tab, a revisit’s summary arrived 22 to 50 ms after the click, and
-175 to 238 ms at four times slower CPU, most of it the wait for idle; with no
-`requestIdleCallback`, as the app’s WebKit has none, the wait is for 250 ms with no
-input after a press ([Idle Work](project/architecture/arch-browser-shell.md#idle-work)),
-and a revisit’s arrived 253 to 256 ms after it.
-Now a revisit’s summary arrives with its record, measured again after review at a load
-average of 19 to 47: 16 to 27 ms after the click, 46 to 63 ms at four times slower CPU,
-and 16 to 23 ms with no `requestIdleCallback`, a pull request first opened on Changes
-included; and a first visit to a row the pointer rested on for 250 ms, 9 to 12 ms after
-the click, where it was 283 to 343 ms.
+once too. A read that waits for the browser to be idle arrives late, because a page is
+not idle while it draws its record, and in the app’s WebKit, which has no
+`requestIdleCallback`, the wait is the quiet after a press
+([Idle Work](project/architecture/arch-browser-shell.md#idle-work)). The timings that
+set this are beside `createComparisonKeep` and in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#diff-summary).
 `tests/dom/github-pull-prefetch-session.js` holds that a second visit sends no request,
 and the `summary-wait` part of `tests/test_github_pull_header_chrome.py` that a
 revisit’s summary is in the frame that paints its record.
@@ -1547,7 +1536,7 @@ and its gap away in the paint that lands it, the one paint that changes the head
 the body together. A record’s labels come with it or its core, and a label’s color and
 tooltip, which the repository’s label set may bring later, change no chip’s box.
 A refreshed record that gains a pull request’s first label, or loses its last, adds or
-takes away the row and its gap on a loaded page, and the tab bar moves 26 px; only
+takes away the row and its gap on a loaded page, and the tab bar moves with them; only
 GitHub changing the labels does that, so the header follows it rather than hold an empty
 row for every pull request.
 A page mounted with no record in hand, as a direct load or a reload mounts it, keeps its
@@ -1559,16 +1548,13 @@ conversation’s first paint then waits for its description (`DESCRIPTION_HOLD_M
 header waits with it, and the page stays unseen until that paint, as the body does.
 So the one move left on a cold page is a slow read of a pull request with no labels:
 past the quiet period the cold page shows, rows held, rather than a blank pane, and the
-record that lands later takes the labels row and its gap away, moving the tab bar up 26
-px. A pull request with labels lands moving nothing.
+record that lands later takes the labels row and its gap away, moving the tab bar up by
+their height. A pull request with labels lands moving nothing.
 A Pulls open whose read answers within its wait hands the page its record, and a
 retained navigation keeps the page out of sight until it has one, so neither shows a
-cold page. Measured in Chrome 152 at 560, 420, and 360 px in both themes, every row is 6
-px under the one before it and the freshness line is 18 px, the row of ages’ height; the
-header is 229 px with no labels and 255 px with labels or while its record is on its
-way. Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px
-labels row stood between it and the row of ages, 32 px under that row, and the header
-was 263 px in every state.
+cold page. The header’s rows are one gap apart (`.github-pull-header`), whatever its
+state
+([measurements](../explorations/performance-loop/design-rule-measurements.md#the-pull-request-header)).
 A cold landing measured in place, read by read, is recorded beside `.github-pull-cold`
 in `builtin_plugins/github/styles.css`, and `tests/test_github_pull_header_chrome.py`’s
 `cold-landing` part holds it.
@@ -1585,14 +1571,11 @@ It is drawn once for each comparison it shows and kept across tabs.
 A newer comparison’s summary replaces it in one step; a read of the newer comparison
 that fails empties the row, at its height, rather than leave the older comparison’s
 counts there as the newer one’s, and the next paint reads it again.
-Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first paint;
-a summary of “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving
-moved no row and not the tab bar, and kept its row’s 24 px on one line, its breakdown
-cut short at 320 px with the whole header as its tooltip; the row starts on the header’s
-content edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
-The row adds its 24 px and one 6 px gap to the header.
-`tests/dom/github-pull-header-chrome.mjs` holds the measurement, and
-`tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
+The row starts on the header’s content edge, and its toggle hangs into the gutter, as
+every Diff summary’s does; a breakdown cut short carries the whole header in its
+tooltip. `tests/dom/github-pull-header-chrome.mjs` holds its geometry
+([measurements](../explorations/performance-loop/design-rule-measurements.md#the-pull-request-header)),
+and `tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
 disposal. A tab switch or a poll builds again only the header’s parts whose inputs
 changed: the title, the badge, the author, the branch chips, the row of ages, the
 labels, and each status control are kept while what they show is the same, so a repaint
@@ -1736,9 +1719,8 @@ a commit. It is said the way a card head says a comment:
   12 px between cards read as crowded.
   The rhythm is the Conversation’s alone, the space above each of its events, whatever
   stands before it. The Files and Checks tabs keep `--github-pull-gap` (12 px) between
-  their notices and what they show, and a section or note below an event keeps that gap
-  and its own margin, so Review comments stands 28 px below a card, as it did before the
-  rhythm.
+  their notices and what they show, and a section or note below an event, such as Review
+  comments, keeps that gap and its own margin.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
   center of the card heads’ avatars and their empty slots.
@@ -1781,7 +1763,7 @@ Its measurements in Chrome and the app’s WebKit are in
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall; a bordered `.btn` made the line 26 px against the row of ages’ 18 |
+| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall, where a bordered `.btn` is taller than the row of ages |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
@@ -3052,9 +3034,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
   A newer choice, a filter change, or No grouping cancels the load on its way at once,
   and its answer is never painted.
   Pressing a grouping’s row asks for that grouping ahead of the choice, and so does
-  resting on it with the arrow keys for 300 ms (`GROUPS_PREFETCH_DWELL_MS` in `app.js`,
-  where its reasoning is); a row the keys pass over on the way to another asks for
-  nothing, since the server runs one grouped pass at a time and a pass for that row
+  resting on it with the arrow keys for the dwell `GROUPS_PREFETCH_DWELL_MS` sets in
+  `app.js`, where its reasoning is; a row the keys pass over on the way to another asks
+  for nothing, since the server runs one grouped pass at a time and a pass for that row
   would hold up the one chosen.
   Opening the menu asks for nothing, since a reader chooses at most one grouping and
   often none. A file change keeps an answer asked for ahead rather than dropping it: the

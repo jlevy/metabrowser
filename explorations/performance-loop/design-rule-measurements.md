@@ -146,6 +146,71 @@ With an SVG added to the first screen, whose answer is revalidated, and an image
 another origin at a scheme-relative address, each of 5 returns in WKWebView asked for
 neither and had both complete in their first frame, as Chrome did for the SVG.
 
+## Git Commit Summary
+
+For [Git Commit Summary](../../docs/design-system.md#git-commit-summary), recorded on
+2026-11-15, when the Diff summary took the place of the commit’s change counts: measured
+in Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16 px over
+the description, its place on the subject’s edge and its toggle hung 4 px into the
+gutter; its header is one 24 px row at 560 px and wider and wraps to two lines at 420 px
+and three at 320 px, all before the page is shown; opened, its tree is under it and
+above the description; with no diff the totals line is one row under the identity; and
+an empty place takes no room.
+
+## Diff Summary
+
+For [Diff Summary](../../docs/design-system.md#diff-summary).
+
+### Its First Level
+
+Recorded on 2026-11-15, when the tree’s first level moved one indentation step in from
+its header: before, a diff’s toolbar started the first level 4 px in from the header.
+
+### The Pending Placeholder
+
+Recorded on 2026-11-16, when a pull request header’s Diff summary row took the pending
+placeholder: measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is
+221 by 11.05 px, at the row’s start and centred on its line, the row is 24 px before and
+after the summary arrives, and the tab bar under it does not move.
+
+### A Kept Comparison
+
+Recorded on 2026-11-16, when a pull request’s page began keeping the comparisons it read
+for the document (`createComparisonKeep`, whose comment has the same readings).
+Before, every visit read the comparison again once the browser was idle, and a page is
+not idle while it draws its record: measured in headless Chrome 152 on the GitHub
+stand-in at a load average of 9 to 12, moving between pull requests of 26 to 121 files
+from the Pulls tab, a revisit’s summary arrived 22 to 50 ms after the click, and 175 to
+238 ms at four times slower CPU, most of it the wait for idle; with no
+`requestIdleCallback`, where the wait is for 250 ms with no input after a press, a
+revisit’s arrived 253 to 256 ms after it.
+With the keep, measured again after review at a load average of 19 to 47, a revisit’s
+summary arrived with its record: 16 to 27 ms after the click, 46 to 63 ms at four times
+slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull request first opened
+on Changes included; and a first visit to a row the pointer rested on for 250 ms, 9 to
+12 ms after the click, where it was 283 to 343 ms.
+
+## The Pull Request Header
+
+For [Layout](../../docs/design-system.md#layout), on the pull request page.
+
+Recorded on 2026-11-15, when the header’s last row became the Diff summary: measured in
+Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first paint; a summary
+of “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving moved no
+row and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut short
+at 320 px with the whole header as its tooltip; the row starts on the header’s content
+edge, and its toggle hangs 4 px into the gutter.
+The row adds its 24 px and one 6 px gap to the header.
+
+Recorded on 2026-11-16, when the freshness line became a metadata line and the empty
+labels row went: measured in Chrome 152 at 560, 420, and 360 px in both themes, every
+row is 6 px under the one before it and the freshness line is 18 px, the row of ages’
+height; the header is 229 px with no labels and 255 px with labels or while its record
+is on its way, so a labels row that comes or goes moves the tab bar 26 px.
+Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px labels
+row stood between it and the row of ages, 32 px under that row, and the header was 263
+px in every state.
+
 ## Pull Request Stacks and the Timeline
 
 Recorded on 2026-11-15, when the files-grouping and pull-stacks stack landed.
