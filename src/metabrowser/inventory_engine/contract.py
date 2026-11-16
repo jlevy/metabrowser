@@ -97,9 +97,14 @@ from metabrowser.wire_models import NavigationTallies, RollupResult
 MAX_CHANGE_PATHS = 1_024
 MAX_COMMAND_PATHS = 1_024
 MAX_QUERIES_PER_READ = 1_024
-# A Group by grouping is a handful of groups (metabrowser/tree_groups.py); the bound keeps
-# one grouped read's first pages within `MAX_TREE_GROUPS * max_rows` rows.
-MAX_TREE_GROUPS = 32
+# Group by sends at most six groups (metabrowser/tree_groups.py); eight leaves headroom.
+# A grouped pass costs about the number of groups times the leaves each keeps, and
+# `max_work` charges it once, for the entries visited, so the bound is on groups. On
+# 260,000 files in 111,500 folders, one warm pass at the provider took 0.36-0.55 s and a
+# 46-55 MB peak for Group by's six groups or eight bands that partition mtimes; eight
+# nested windows, each keeping most leaves, 0.87-0.97 s and 88 MB; and 32 nested windows,
+# the bound before, 4.2-4.4 s and 377 MB (measured 2026-11-15).
+MAX_TREE_GROUPS = 8
 # Bound host-side materialization even when a provider returns endlessly advancing cursors.
 MAX_ASSEMBLED_PAGES = 4_096
 MAX_ASSEMBLED_ROWS = 1_000_000
