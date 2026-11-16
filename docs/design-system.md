@@ -3175,6 +3175,10 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
   and the tab bar between its tabs.
+  A segmented group in the cluster layout (below) is the one exception: it is one
+  control drawn over several lines, and what follows it starts a line of its own.
+  So where the Pulls Show group is the cluster, Reload takes a line under it even where
+  it would fit beside the cluster’s last chip.
 - **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
   and `--nav-toolbar-gap` apart.
   That is also the gap between controls along a line and above the first line and below
@@ -3191,8 +3195,9 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   layout until it can ([Groups Or Dropdowns](#groups-or-dropdowns)). Whether it fits is
   measured on a copy in the joined layout, so the answer at one width is the same
   whichever layout the group shows, and the two cannot alternate near the break.
-  A change to its text is fitted before it paints, and a change of size in the next
-  frame, which a drag across the break shows for one frame.
+  A change to its text, or its toolbar shown again on its tab, is fitted before it
+  paints, and a change of size in the next frame, which a drag across the break shows
+  for one frame.
 - **Keys.** Wrapping keeps the controls’ order, so reading the lines top to bottom meets
   them in their Tab order, and their keyboard numbers stay theirs.
 
@@ -3215,10 +3220,11 @@ cluster below. At the narrowest pane, 179 px, with a filter set, the Files row i
 lines: Group by, then Show ignored, then Clear and the chevron.
 The measurements are beside the rules in `styles.css`. `tests/dom/nav-toolbar-wrap.mjs`
 holds a toolbar to this rule at every width from 179 to 420 px, in both font sets:
-`tests/test_files_tab_chrome.py` the Files row in every Group by and filter state, with
-its numbers, Tab order, and drawer at the narrowest;
-`tests/test_github_pulls_stacks_chrome.py` the Pulls filters with three- and four-digit
-tallies, and the Show group’s two layouts, its observers, and their disposal; and
+`tests/test_files_tab_chrome.py` the Files row in four Group by and filter states, no
+filter and a size filter under each Group by value, with its numbers, Tab order, and
+drawer at the narrowest; `tests/test_github_pulls_stacks_chrome.py` the Pulls filters
+with three- and four-digit tallies, and the Show group’s two layouts, its observers, the
+tab shown again after the pane narrowed behind it, and their disposal; and
 `tests/test_nav_metadata_chrome.py` the Commits tally and the tab bar.
 `tests/dom/filter-controls-behavior.js` holds the fit and its observers’ lifecycle
 without a browser.
@@ -3784,16 +3790,22 @@ The new catalog row still appears with its regular controls and selection behavi
 ### Regions Keep Their Boxes
 
 Every region’s box is decided by the first paint and does not depend on data that
-arrives later. Chrome that comes and goes moved more than content did: the filter bar 37
-px on every main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px,
-the Commits tab 78 px on every landing.
+arrives later, except a navigation toolbar in a pane too narrow for it (below).
+Chrome that comes and goes moved more than content did: the filter bar 37 px on every
+main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px, the Commits
+tab 78 px on every landing.
 So a region keeps its slot while its content is absent, and holds the height it will
 have: one toolbar slot at the top of the navigation that every main tab fills with its
-own toolbar at one height (the Files filters, the Commits tally, the Pulls filters), the
-Commits tab from the server at a repository’s root, a scrollbar gutter on the tree and
-the preview pane, the shortcut strip’s row, a view tab bar in every file, the print
-button’s and a run badge’s widths, the Pulls tab’s status and connection lines and its
-age column, and the pull request header’s rows.
+own toolbar at one height while each is one line (the Files filters, the Commits tally,
+the Pulls filters), the Commits tab from the server at a repository’s root, a scrollbar
+gutter on the tree and the preview pane, the shortcut strip’s row, a view tab bar in
+every file, the print button’s and a run badge’s widths, the Pulls tab’s status and
+connection lines and its age column, and the pull request header’s rows.
+In a pane too narrow for a toolbar’s controls the toolbar wraps instead of cutting them
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)), and the slot is as tall as the
+lines of the toolbar in front.
+There a tab switch can move the panel under the slot, and the Commits slot gains a line
+when its tally lands, if the tally is wider than the pane.
 Heights are in line units, or struts of the controls a row holds, never pixels measured
 in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
 is its data’s and arrives a moment after the rest, as the File Overview’s first rollup

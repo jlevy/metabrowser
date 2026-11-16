@@ -737,10 +737,13 @@ assertEqual(
     constructor(callback) {
       this.callback = callback;
       this.watching = false;
+      /** @type {Array<[unknown, unknown]>} */
+      this.targets = [];
       observers.mutation = this;
     }
-    observe() {
+    observe(target, options) {
       this.watching = true;
+      this.targets.push([target, options]);
     }
     takeRecords() {
       return [];
@@ -796,11 +799,23 @@ assertEqual(
     [{ resize: null, mutation: null }, 0],
   );
 
-  const root = rootIn({});
+  const toolbar = {};
+  const root = rootIn(toolbar);
   const dispose = fc.bind(root, {});
   assertEqual("bound in a toolbar, the groups are fitted at once", fitted, 1);
   assertEqual("the row is watched for its size", observers.resize.targets.has(root), true);
   assertEqual("and for changes to its text", observers.mutation.watching, true);
+  assertEqual(
+    "and its toolbar for being shown, so a stale layout is fitted before it paints",
+    observers.mutation.targets.map(([target, options]) => [
+      target === root ? "row" : target === toolbar ? "toolbar" : "other",
+      options,
+    ]),
+    [
+      ["row", { childList: true, characterData: true, subtree: true }],
+      ["toolbar", { attributes: true, attributeFilter: ["hidden"] }],
+    ],
+  );
   observers.resize.callback([]);
   observers.resize.callback([]);
   assertEqual(
@@ -823,6 +838,28 @@ assertEqual(
   observers.mutation.callback([]);
   runFrames();
   assertEqual("after the disposer nothing fires", [fitted, frames.size], [3, 0]);
+
+  // A row that is its own toolbar, as the Files bar is, is one node to observe, and a
+  // second `observe` of a node replaces the first's options: it takes both in one.
+  const own = rootIn(null);
+  own.closest = (selector) => (selector === "[data-nav-toolbar]" ? own : null);
+  fc.bind(own, {})();
+  assertEqual(
+    "a row that is its own toolbar is watched for its text and for being shown at once",
+    observers.mutation.targets.map(([target, options]) => [target === own, options]),
+    [
+      [
+        true,
+        {
+          childList: true,
+          characterData: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["hidden"],
+        },
+      ],
+    ],
+  );
 }
 
 if (failures.length > 0) {
