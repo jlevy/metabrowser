@@ -573,22 +573,24 @@ Optional failure retains known metadata without changing core PR/catalog outcome
 See
 [optional native stack metadata](arch-repository-sources-and-provider-mirrors.md#optional-native-stack-metadata).
 
-`GET github/stack-change?number=<stack>` sums one native stack’s combined change, its
-top pull request’s head against the stack’s base branch, from their merge base, for the
-brief change line its Pulls heading shows (mb-9ekj). The right end is the top’s cached
-record’s comparison `head`; the left end is the merge base of that head and the stack’s
-`base_ref` as the store mirrors it, read as an open pull request’s comparison reads its
-base branch but with no fetch to fall back on; the members are the stack snapshot’s. It
-never asks GitHub or fetches.
-It runs Git to find the merge base on every answer, and to list a comparison only when
-it has not summed it, a manifest with no patch, whose sums it keeps by the merge base,
-the head, the store, and the build (`pull_stack_change.py`). Its envelope has `state`
-(`current` or `absent`), `reason` (`not_github`, `no_store`, `not_stacked`,
-`not_cached`, `no_comparison`, `no_base_branch`, `too_large`, or `unavailable`),
-`number`, `bottom`, `top`, `base`, the merge base, `head`, `files`, `additions`,
-`deletions`, `exact`, and `statuses`, each a pull request’s status word and its count.
-It has no window: the Pulls tab reads a stack again when its members or its top’s head,
-as the catalog’s rows report it, change (`stack-lines.js`). It names nothing but
+`GET github/stack-change?number=<stack>` answers one native stack’s combined change for
+the brief change line its Pulls heading shows (mb-9ekj): its members’ own changes
+accumulated. A stack is the pull requests it is made of, merged or open, so the route
+reads the stack snapshot’s members and each member’s cached list of changed files, the
+one `GET github/pull-files` serves, and accumulates them bottom first through
+`pull_change_sums.py`: every file once, followed across a rename, with a status composed
+from what the members did to it, and every member’s lines summed.
+It never asks GitHub, fetches, or runs Git.
+It keeps what the lists accumulate to by each list file’s inode, modification time, and
+size, so a repeat stats them and parses none, and refuses before reading lists that
+together pass `MAX_STACK_LIST_BYTES` (`pull_stack_change.py`). Its envelope has `state`
+(`current` or `absent`), `reason` (`not_github`, `not_stacked`, `not_cached` for a
+member whose list is missing or still filling, or `too_large` for a list that stops
+short or lists past the bound), `number`, `pulls`, the members accumulated, `revision`,
+a digest of the answer’s content, `files`, `additions`, `deletions`, `exact`, and
+`statuses`, each a pull request’s status word and its count.
+It has no window: the Pulls tab reads a stack again when its members or any member’s
+head, as the catalog’s rows report it, change (`stack-lines.js`). It names nothing but
 `number`. Its tag is the envelope’s, as every GitHub route’s is, for a client that holds
 one, `--api` among them; the Pulls tab sends none, and reads a `304` as its last answer
 holding.

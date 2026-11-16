@@ -7,13 +7,12 @@ env:
 # Golden Test: A Stack Heading’s Brief Change Line
 
 Each “Stack #N” heading in the Pulls tab shows its stack’s brief change line beside its
-label, “Stack #286 · 1 A, 1 M · +5 −0”: the stack’s combined change, its top pull
-request’s head against the stack’s base branch, from where they meet, which the server
-sums in the repository store (`GET stack-change`). This browserless session runs the
-production code that decides what each heading shows,
-`builtin_plugins/github/stack-lines.js`, on the server’s own answers, the stack changes
-`tests/test_github_stack_change.py` records and the list and stack snapshot the
-stack-groups session replays.
+label, “Stack #286 · 1 A, 1 M · +5 −0”: the stack’s combined change, its members’ own
+changed files accumulated, each file once and their lines summed, which the server does
+from the cache (`GET stack-change`). This browserless session runs the production code
+that decides what each heading shows, `builtin_plugins/github/stack-lines.js`, on the
+server’s own answers, the stack changes `tests/test_github_stack_change.py` records and
+the list and stack snapshot the stack-groups session replays.
 
 `lane` drives the lane alone, with the browser’s idle time, its clock, and when each
 read is answered in the session’s hands.
@@ -26,22 +25,22 @@ A heading waits only for its own stack’s read, not for one queued behind anoth
 stack whose answer had no line, or whose read failed, does not wait again.
 A line once read is drawn in the paint that draws its heading again, and in a Pulls tab
 mounted again in the document, with no request, from the document’s comparison keep,
-where it is kept under the stack’s two commits.
-A stack is read once for its members and its top’s head as the list’s rows report them:
-an hour on with nothing changed, nothing is read; when its top moves it is read again,
+where it is kept under its stack and its revision.
+A stack is read once for its members and their heads as the list’s rows report them: an
+hour on with nothing changed, nothing is read; when any member moves it is read again,
 and the line it had stays shown meanwhile, and stays shown when that read fails.
 A failed read is asked again a minute on, and a 304 says the last answer holds.
-A server with no GitHub repository, and one whose repository has no store attached,
-refuse every stack at once, and the lane asks one stack a minute on; once the lines’ own
-hourly cap is spent no heading waits for a read that will not come.
+A server with no GitHub repository refuses every stack at once, and the lane asks one
+stack a minute on; once the lines’ own hourly cap is spent no heading waits for a read
+that will not come.
 
 `heading` mounts the panel over a stand-in for the DOM with the SDK’s own painters and
 prints each stack’s heading as drawn: first with no read sent and nothing waiting; then
 #290’s read on its way, its heading holding the shell’s pending placeholder and its name
 saying the change is pending, while #286’s, queued, holds none; then #290’s unavailable,
-its top pull request not cached, and #286’s read on its way; and last #286’s line
-arrived, drawn through the SDK’s one component for it (`said`). Its accessible name says
-the line in words after the label.
+a member’s list not cached, and #286’s read on its way; and last #286’s line arrived,
+drawn through the SDK’s one component for it (`said`). Its accessible name says the line
+in words after the label.
 The placeholder is one node across paints, the label stays the node it was, and the line
 drawn is the component’s nodes, part for part.
 
@@ -113,7 +112,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
       }
     },
     {
-      "step": "#290's answer: its top is not cached, so its heading shows nothing",
+      "step": "#290's answer: a member's list is not cached, so its heading shows nothing",
       "shows": {
         "Stack #286": "shown 2 files, +5 −0",
         "Stack #290": "none"
@@ -182,7 +181,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
       }
     },
     {
-      "step": "#286's top moves: it is read again, and its line stays shown meanwhile",
+      "step": "#286's bottom moves: it is read again, and its line stays shown meanwhile",
       "shows": {
         "Stack #286": "shown 2 files, +5 −0",
         "Stack #290": "none"
@@ -336,7 +335,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
       }
     },
     {
-      "step": "#290's top moves: its first read under the new identity waits",
+      "step": "a member of #290 moves: its first read under the new identity waits",
       "shows": {
         "Stack #286": "shown 2 files, +5 −0",
         "Stack #290": "waiting"
@@ -450,69 +449,6 @@ $ node tests/dom/github-pulls-stack-lines-session.js
       }
     },
     {
-      "step": "a repository with no store attached: one refusal, and no other stack is read",
-      "shows": {
-        "Stack #286": "none",
-        "Stack #290": "none"
-      },
-      "asked": [
-        "GET /api/plugin/github/stack-change?number=286"
-      ],
-      "repainted": [
-        286,
-        286
-      ],
-      "lane": {
-        "queue": [],
-        "running": null,
-        "sentThisHour": 1,
-        "refusedAll": "no_store",
-        "recent": [
-          "Stack #286: no_store"
-        ]
-      }
-    },
-    {
-      "step": "a repository with no store attached, drawn again within the minute: nothing is read",
-      "shows": {
-        "Stack #286": "none",
-        "Stack #290": "none"
-      },
-      "asked": [],
-      "lane": {
-        "queue": [],
-        "running": null,
-        "sentThisHour": 1,
-        "refusedAll": "no_store",
-        "recent": [
-          "Stack #286: no_store"
-        ]
-      }
-    },
-    {
-      "step": "a repository with no store attached, a minute on: one read, and no heading waits",
-      "shows": {
-        "Stack #286": "none",
-        "Stack #290": "none"
-      },
-      "asked": [
-        "GET /api/plugin/github/stack-change?number=286"
-      ],
-      "repainted": [
-        286
-      ],
-      "lane": {
-        "queue": [],
-        "running": null,
-        "sentThisHour": 2,
-        "refusedAll": "no_store",
-        "recent": [
-          "Stack #286: no_store",
-          "Stack #286: no_store"
-        ]
-      }
-    },
-    {
       "step": "the lines' hourly cap is spent: nothing is read, and no heading waits",
       "shows": {
         "Stack #286": "none",
@@ -595,7 +531,7 @@ $ node tests/dom/github-pulls-stack-lines-session.js
         ]
       },
       {
-        "step": "#290's top is not cached, so it shows nothing; #286's read is sent, and it waits",
+        "step": "#290 has a member with no list, so it shows nothing; #286's read is sent, and it waits",
         "headings": {
           "Stack #290": {
             "heading": [

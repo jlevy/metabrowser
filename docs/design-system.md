@@ -2491,25 +2491,27 @@ toolbar, the Show group and Reload, has 23 px to spare.
   stack’s row passed over, and the first pull requests drawn.
 - **Change line.** A stack’s row shows the stack’s combined change as its
   [brief change line](#brief-change-line), after its label and a muted dot: “Stack #286
-  · 10 A, 5 D, 4 M · +1,234 −567”. The change is the top pull request’s head against the
-  stack’s base branch, from their merge base, as one pull request from the top into the
-  stack’s base would compare them; the server sums it in the repository store from the
-  top’s cached record and the base branch the store mirrors (`GET stack-change`), so a
-  file two layers change counts once and the base branch’s own changes are not the
-  stack’s. It never asks GitHub or fetches.
+  · 10 A, 5 D, 4 M · +1,234 −567”. A stack is the accumulation of its pull requests,
+  merged or open, so its change is theirs: each member’s own changed files, the list its
+  expanded row shows, bottom first, every file once with a status composed from what the
+  members did to it (removed if the last one removed it, else added if the first one
+  added it, else renamed or modified), and every member’s lines summed
+  (`pull_change_sums.py`, which a pull request’s own row line reads too).
+  The server accumulates them from the cache (`GET stack-change`); it never asks GitHub,
+  fetches, or runs Git.
   It is read for the stacks the list draws, one at a time when the browser is idle, once
-  for a stack’s members and its top’s head as the list’s rows report them, so a stack is
-  read again when its top moves or its members change and never on a timer, within the
-  lines’ own hourly cap, apart from the comparison warms’; it is kept for the document
-  under the stack’s two commits, so a heading drawn again has it in its first paint, and
-  a line stays shown while its stack is read again and when that read fails
-  (`builtin_plugins/github/stack-lines.js`). While its stack’s read is on its way, the
-  heading holds the shell’s pending placeholder where the line will be, after the quiet
-  period, and its accessible name says “change pending”, in the filter chips’ words; a
-  heading whose read is queued behind another’s does not wait.
-  A stack whose change cannot be had, its top not cached, its base branch not mirrored,
-  or no store to compare in, shows neither, and does not wait again until its members or
-  its top’s head change, so its heading never pulses and goes blank twice.
+  for a stack’s members and each member’s head as the list’s rows report them, so a
+  stack is read again when any member moves or the members change and never on a timer,
+  within the lines’ own hourly cap, apart from the comparison warms’; it is kept for the
+  document under its stack and its revision, so a heading drawn again has it in its
+  first paint, and a line stays shown while its stack is read again and when that read
+  fails (`builtin_plugins/github/stack-lines.js`). While its stack’s read is on its way,
+  the heading holds the shell’s pending placeholder where the line will be, after the
+  quiet period, and its accessible name says “change pending”, in the filter chips’
+  words; a heading whose read is queued behind another’s does not wait.
+  A stack whose change cannot be had, a member whose changed files are not cached, shows
+  neither, and does not wait again until its members or their heads change, so its
+  heading never pulses and goes blank twice.
   The row stays one line at every pane width: the label is never cut for the line, the
   line’s statuses are cut short first, as the pull request header’s are, its totals stay
   whole, and where even its dot and totals have no room the whole line goes.

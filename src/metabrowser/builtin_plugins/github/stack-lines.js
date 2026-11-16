@@ -1,11 +1,12 @@
 // A native stack's brief change line, on its heading in the Pulls column (mb-9ekj):
 // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567".
 //
-// What it says is the stack's combined change, its top pull request's head against the
-// stack's base branch, from their merge base, which the server sums in the repository store
-// from the top's cached record and the base branch the store mirrors (`GET stack-change`,
-// pull_stack_change.py). Summing each pull request's own counts would count twice a file two
-// layers change, and a layer's record can start from a base the stack has since moved past.
+// What it says is the stack's combined change: a stack is the accumulation of its pull
+// requests, merged or open, so its change is theirs, each member's own changed files, the
+// list its expanded row shows, accumulated bottom first, every file once with a status
+// composed from what the members did to it, and every member's lines summed, which the
+// server does from the cache (`GET stack-change`, pull_stack_change.py). Summing each pull
+// request's own file counts would count twice a file two layers change.
 // The line is the shell's one component for a change set said in brief (docs/design-system.md,
 // "Brief Change Line"), built and painted through the SDK, `metabrowser.changeLine` and
 // `metabrowser.changeLineNodes`; nothing here paints its parts.
@@ -15,21 +16,21 @@
 // - Only for the stacks whose rows the list draws, its rows in view and the window's overscan,
 //   one at a time, each when the browser is idle, and only once no comparison is being read,
 //   so a page's own read goes first (`keep.quiet`), as the comparison warmer's are.
-// - Once for each stack's identity (`stackLineIdentity`): its members and its top's head as
-//   the catalog's rows report it. What the answer depends on moves when one of those does,
-//   so a stack is read again when the list's rows say its top moved or its members changed,
-//   and never on a timer (review of #484, A2). A read that failed is asked again a minute on.
+// - Once for each stack's identity (`stackLineIdentity`): its members and each member's head
+//   as the catalog's rows report it. Any member's change moves the accumulation, and a
+//   member's change moves its head, so a stack is read again when the list's rows say a
+//   member moved or the members changed, and never on a timer (review of #484, A2). A read
+//   that failed is asked again a minute on; a stack with a member whose list is not cached
+//   is not, until its identity changes.
 // - Within the lines' own hourly cap (`STACK_LINES_PER_HOUR`), apart from the comparison
 //   warmer's (`WARM_PER_HOUR`), so the lines never take the warms' share. A read is the stack
-//   snapshot and the top's record from the cache, the base branch's commit and its merge
-//   base with the top's head from the store, and, the first time a merge base and a head are
-//   asked for together, their comparison listed in the store, a manifest with no patch; no
-//   GitHub call and no fetch.
-// - An answer was 318 to 430 bytes of JSON. It is kept in the document's comparison keep
-//   under its two commits (`stackChangeKey`), and which answer is each stack's is kept for
-//   the document too (`documentStackLines`), so a heading drawn again, scrolled back into
-//   view or in a Pulls tab mounted again, has its line in the paint that draws it, with no
-//   request. A line stays shown until a newer answer replaces it: while its stack is read
+//   snapshot and each member's list of changed files from the cache; no GitHub call, no
+//   fetch, and no Git.
+// - An answer is a few hundred bytes of JSON. It is kept in the document's comparison keep
+//   under its stack and its revision (`stackChangeKey`), and which answer is each stack's is
+//   kept for the document too (`documentStackLines`), so a heading drawn again, scrolled
+//   back into view or in a Pulls tab mounted again, has its line in the paint that draws it,
+//   with no request. A line stays shown until a newer answer replaces it: while its stack is read
 //   again, and when that read fails.
 //
 // A heading waits for its line in the shell's pending placeholder only while the read of its
@@ -49,14 +50,14 @@ export const STACK_CHANGE_ROUTE = "/api/plugin/github/stack-change";
 // (`FRESHNESS_WINDOW_S`), so a failure that lasts costs one read a minute a stack at most.
 export const STACK_LINE_RETRY_MS = 60_000;
 // The reads the lines start in an hour, each counted as it starts; the comparison warmer
-// counts its own (`WARM_PER_HOUR`). A read whose sums are kept ran 4 Git processes, 5 where
-// the merge base is neither end, and took 60 to 232 ms of server time; one that lists its
-// comparison first ran 2 or 3 more and 30 to 308 ms more (measured 2026-11-16 on this
-// repository's 19 stacks at a load average of 30 to 35, pull_stack_change.py). The list
-// draws every one of those 19 stacks, so a first visit reads 19, and the rest of an hour's
-// reads are stacks whose top moved, and failed reads asked again. So the cap is at most
-// about 32 s of local Git an hour at that load, and the hour's reads of a Pulls tab left
-// open with nothing changing are none.
+// counts its own (`WARM_PER_HOUR`). A read runs no Git: it stats each member's list and,
+// when one changed since the server last accumulated them, parses them all, 6 to 16 ms for
+// #446's 16 cached lists and at most about 210 ms within `MAX_STACK_LIST_BYTES`, a repeat
+// 0.2 ms (measured 2026-11-16 at a load average of 26 to 38, pull_stack_change.py). The
+// list draws every one of this repository's 19 stacks, so a first visit reads 19, and the
+// rest of an hour's reads are stacks whose member moved, and failed reads asked again. So
+// the cap is at most about 13 s of local parsing an hour, and the hour's reads of a Pulls
+// tab left open with nothing changing are none.
 export const STACK_LINES_PER_HOUR = 60;
 // The stacks whose last outcome the document remembers, oldest out first: more stacks than
 // any repository's list draws at once. This repository has 19. Measured 2026-11-16 in Node
@@ -66,7 +67,7 @@ const REMEMBERED_STACKS = 256;
 // The recent outcomes a snapshot reports.
 const RECENT = 8;
 // Refusals that hold for every stack of the server, not one: no stack's change can be had.
-const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
+const SERVER_REFUSALS = new Set(["not_github"]);
 
 /**
  * What `GET stack-change` answers (pull_stack_change.py, `StackChangeEnvelope`).
@@ -75,10 +76,8 @@ const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
  *   state: "absent" | "current",
  *   reason: string | null,
  *   number: number,
- *   bottom: number | null,
- *   top: number | null,
- *   base: string | null,
- *   head: string | null,
+ *   pulls: number[],
+ *   revision: string | null,
  *   files: number | null,
  *   additions: number | null,
  *   deletions: number | null,
@@ -86,9 +85,10 @@ const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
  *   statuses: {status: string, count: number}[],
  * }} StackChange
  *
- * A stack as the list draws it: its number, its members bottom first, and its top's head as
- * the catalog's row reports it, or null where the list holds no row of it.
- * @typedef {{number: number, pulls: number[], head: string | null}} StackMembers
+ * A stack as the list draws it: its number, its members bottom first, and each member's
+ * head as the catalog's row reports it, in the members' order, or null where the list holds
+ * no row of it.
+ * @typedef {{number: number, pulls: number[], heads: (string | null)[]}} StackMembers
  *
  * What a stack's heading shows now: its line, its pending placeholder, or nothing.
  * @typedef {{phase: "shown", change: StackChange} | {phase: "waiting"} | {phase: "none"}} StackLineState
@@ -98,10 +98,11 @@ const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
  * @typedef {{identity: string, key: string | null, retryAt: number | null, reason: string | null}} StackLineOutcome
  */
 
-/** The keep's key for a stack's change: the two commits it runs between.
- * @param {string} base @param {string} head
+/** The keep's key for a stack's change: its stack and the answer's revision, which names its
+ * content.
+ * @param {number} number @param {string} revision
  */
-export const stackChangeKey = (base, head) => `stack-change:${base}...${head}`;
+export const stackChangeKey = (number, revision) => `stack-change:${number}:${revision}`;
 
 /** A stack of a repository, whatever its members, as the document remembers its outcome.
  * @param {string | null} source @param {number} number
@@ -109,12 +110,14 @@ export const stackChangeKey = (base, head) => `stack-change:${base}...${head}`;
 const stackKey = (source, number) => `${source ?? ""}#${number}`;
 
 /** What a stack's answer depends on that the list knows: its repository, its number, its
- * members, and its top's head, so a stack whose members change or whose top moves is asked
- * for again.
+ * members, and each member's head, so a stack whose members change or any of whose members
+ * moves is asked for again.
  * @param {string | null} source @param {StackMembers} stack
  */
 export const stackLineIdentity = (source, stack) =>
-  `${stackKey(source, stack.number)}:${stack.pulls.join(",")}@${stack.head ?? "-"}`;
+  `${stackKey(source, stack.number)}:${stack.pulls
+    .map((number, at) => `${number}@${stack.heads[at] ?? "-"}`)
+    .join(",")}`;
 
 /** @param {unknown} value @returns {value is StackChange} */
 export function isStackChange(value) {
@@ -138,7 +141,8 @@ export function isStackChange(value) {
     ) &&
     count(body.additions) &&
     count(body.deletions) &&
-    (body.state === "absent" || (typeof body.base === "string" && typeof body.head === "string"))
+    Array.isArray(body.pulls) &&
+    (body.state === "absent" || typeof body.revision === "string")
   );
 }
 
@@ -339,8 +343,8 @@ export function createStackLines(deps) {
         note(item.number, "unchanged");
       } else if (answer.status !== 200 || !isStackChange(body) || body.number !== item.number) {
         failed(item, seen, `failed ${answer.status}`);
-      } else if (body.state === "current" && body.base !== null && body.head !== null) {
-        const key = stackChangeKey(body.base, body.head);
+      } else if (body.state === "current" && body.revision !== null) {
+        const key = stackChangeKey(body.number, body.revision);
         keep.put(key, body);
         index.set(item.stack, { identity: item.identity, key, retryAt: null, reason: null });
         note(item.number, keep.has(key) ? "shown" : "not kept");

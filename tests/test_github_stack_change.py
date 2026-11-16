@@ -1,17 +1,16 @@
-"""A native stack's combined change: its top's head against its base branch (mb-9ekj).
+"""A native stack's combined change: its members' own changes, accumulated (mb-9ekj).
 
-The Pulls tab's stack heading says it as a brief change line, so the route that sums it is
-held here to the comparison it names, to its cache, and to every refusal it answers. The
-stand-in's pull request 7 is the stack's bottom, and its top, 11, is one commit on 7's head
-that changes the same two files again: summing the two layers' own counts would say four
-files where the stack changes two. The stack's base is the stand-in's default branch,
-``topic``, which the store mirrors; its change runs from where the top's head meets it.
+The Pulls tab's stack heading says it as a brief change line, so the route that accumulates
+it is held here to the rule it composes each file's status by, to its cache, and to every
+refusal it answers. A stack's members are its pull requests, and each member's change is
+its cached list of changed files, the one its expanded row shows: the stand-in's pull
+request 7 adds ``docs/new.md`` and edits ``src/app.txt``, and 11, above it, edits both again,
+so summing the two layers' own counts would say four files where the stack changes two.
 """
 
 from __future__ import annotations
 
 import asyncio
-import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -19,16 +18,16 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser.builtin_plugins.github import pull_route, pull_stack_change
-from metabrowser.builtin_plugins.github.pull_list import ListedRepository
-from metabrowser.builtin_plugins.github.pull_record import (
-    Comparison,
-    PullRecord,
-    PullRefreshStamp,
-    read_pull_record,
-    write_pull_record,
+from metabrowser.builtin_plugins.github import pull_change_sums, pull_list, pull_stack_change
+from metabrowser.builtin_plugins.github.pull_list import (
+    PULL_FILES_SCHEMA,
+    FilePageMark,
+    ListedRepository,
+    PullFileList,
+    PullFileRow,
+    write_pull_files,
 )
-from metabrowser.builtin_plugins.github.pull_route import PullHost
+from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.pull_stacks import (
     NativeStack,
     StackPage,
@@ -36,10 +35,8 @@ from metabrowser.builtin_plugins.github.pull_stacks import (
     publish_stacks,
     read_stacks,
 )
-from metabrowser.builtin_plugins.github.served_pull import ServedPulls
-from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.git import process as git_process
-from tests.github_pull_fixture import DEFAULT_BRANCH, git_env
+from tests.github_pull_fixture import DEFAULT_BRANCH
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
 from tests.test_github_pulls import stand as stand
@@ -52,9 +49,7 @@ def _repository(stand: _Stand) -> ListedRepository:
     return ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
 
 
-def _publish(
-    stand: _Stand, *stacks: tuple[int, tuple[int, ...]], base_ref: str = DEFAULT_BRANCH
-) -> None:
+def _publish(stand: _Stand, *stacks: tuple[int, tuple[int, ...]]) -> None:
     repository = _repository(stand)
     snapshot = StackSnapshot(
         source=repository.source,
@@ -66,7 +61,7 @@ def _publish(
                 etag=None,
                 has_next=False,
                 stacks=tuple(
-                    NativeStack(number=number, base_ref=base_ref, open=True, pulls=pulls)
+                    NativeStack(number=number, base_ref=DEFAULT_BRANCH, open=True, pulls=pulls)
                     for number, pulls in stacks
                 ),
             ),
@@ -76,136 +71,87 @@ def _publish(
     assert publish_stacks(repository, read_stacks(repository), snapshot, stamp)
 
 
-def _commit_on(
-    stand: _Stand, parent: str, files: dict[str, str], ref: str = "refs/test/stack-top"
-) -> str:
-    """One commit on *parent* in the store, as a fetch of a newer layer would leave it."""
-
-    stream = f"commit {ref}\n"
-    stream += "committer Origin <origin@example.invalid> 1789000000 +0000\n"
-    stream += f"data 9\nstack top\nfrom {parent}\n"
-    for name, body in files.items():
-        stream += f"M 100644 inline {name}\ndata {len(body.encode())}\n{body}\n"
-    git_dir = stand.published.git_dir
-    subprocess.run(
-        ["git", "--git-dir", str(git_dir), "fast-import", "--quiet"],
-        check=True,
-        capture_output=True,
-        input=stream.encode(),
-        env=git_env(stand.tmp_path),
+def _row(
+    path: str,
+    status: pull_list.FileStatus,
+    additions: int | None,
+    deletions: int | None = 0,
+    previous: str | None = None,
+) -> PullFileRow:
+    return PullFileRow(
+        path=path, previous_path=previous, status=status, additions=additions, deletions=deletions
     )
-    return subprocess.run(
-        ["git", "--git-dir", str(git_dir), "rev-parse", ref],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=git_env(stand.tmp_path),
-    ).stdout.strip()
 
 
-def _layer(stand: _Stand, bottom: PullRecord, number: int, base: str, head: str) -> PullRecord:
-    """A record of the layer *number* above *bottom*: its comparison runs *base* to *head*."""
+def _listed(number: int, *rows: PullFileRow, truncated: bool = False) -> PullFileList:
+    """Pull request *number*'s list as its local comparison's refresh writes it."""
 
-    record = bottom.model_copy(
-        update={
-            "number": number,
-            "pull": bottom.pull.model_copy(update={"number": number}),
-            "comparison": Comparison(base=base, head=head, base_commit=base, base_from="base_sha"),
-        }
+    return PullFileList(
+        schema_version=PULL_FILES_SCHEMA,
+        source="https://github.com/octo/demo",
+        number=number,
+        listed_from="comparison",
+        generation=f"{number:032x}",
+        fetched_at=STAMP,
+        reader=None,
+        head=f"{number:040x}",
+        base="f" * 40,
+        pages=0,
+        last_page=None,
+        complete=True,
+        capped=False,
+        truncated=truncated,
+        marks=(),
+        rows=rows,
     )
-    return write_pull_record(stand.published.home, stand.published.slug, record)
+
+
+def _from_github(
+    number: int, *rows: PullFileRow, complete: bool = True, capped: bool = False
+) -> PullFileList:
+    """Pull request *number*'s list as GitHub's refresh writes it, one page."""
+
+    return PullFileList(
+        schema_version=PULL_FILES_SCHEMA,
+        source="https://github.com/octo/demo",
+        number=number,
+        listed_from="github",
+        generation=f"{number:032x}",
+        fetched_at=STAMP,
+        reader="gh:octo-reader",
+        head=f"{number:040x}",
+        base_ref=DEFAULT_BRANCH,
+        pages=1,
+        last_page=2 if not complete else 1,
+        complete=complete,
+        capped=capped,
+        truncated=False,
+        marks=(FilePageMark(etag=None, rows=len(rows), places=len(rows), truncated=False),),
+        rows=rows,
+    )
+
+
+def _cache(stand: _Stand, listed: PullFileList) -> None:
+    write_pull_files(stand.published.home, stand.published.slug, listed)
 
 
 @pytest.fixture
-def stacked(pinned_pull: tuple[_Stand, TestClient]) -> Iterator[tuple[_Stand, TestClient, str]]:
-    """Pull request 7, and 11 on its head, a stack #286 of the two, bottom first."""
+def stacked(pinned_pull: tuple[_Stand, TestClient]) -> Iterator[tuple[_Stand, TestClient]]:
+    """Pull requests 7 and 11's lists cached, and stacks #286 of the two, #300 of 7 alone,
+    and #400 of 7 and 12, whose list nothing has fetched."""
 
     stand, client = pinned_pull
-    bottom = stand.record(7)
-    assert isinstance(bottom, PullRecord) and bottom.comparison is not None
-    fork_head = stand.origin["fork_head"]
-    assert bottom.comparison.head == fork_head
-    top = _commit_on(
-        stand, fork_head, {"src/app.txt": "one\ntwo\nthree\n", "docs/new.md": "# New\n\nMore.\n"}
+    _cache(stand, _listed(7, _row("docs/new.md", "added", 1), _row("src/app.txt", "modified", 1)))
+    _cache(
+        stand, _listed(11, _row("docs/new.md", "modified", 2), _row("src/app.txt", "modified", 1))
     )
-    _layer(stand, bottom, 11, fork_head, top)
     _publish(stand, (286, (7, 11)), (300, (7,)), (400, (7, 12)))
     # What fetching pull request 7 asked of GitHub; from here on nothing may.
     stand.calls()
-    yield stand, client, top
+    yield stand, client
 
 
-def _git(stand: _Stand, *args: str) -> str:
-    return subprocess.run(
-        ["git", "--git-dir", str(stand.published.git_dir), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=git_env(stand.tmp_path),
-    ).stdout
-
-
-def test_a_stacks_change_is_its_tops_head_against_its_base_branch(
-    stacked: tuple[_Stand, TestClient, str],
-) -> None:
-    stand, client, top = stacked
-    bottom = stand.record(7)
-    assert isinstance(bottom, PullRecord) and bottom.comparison is not None
-    # Where the top's head meets the base branch the store mirrors.
-    meets = _git(stand, "merge-base", f"refs/remotes/origin/{DEFAULT_BRANCH}", top).strip()
-    assert meets == bottom.comparison.base
-    response = client.get(ROUTE, params={"number": 286})
-    assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
-    body = response.json()
-    assert body == {
-        "state": "current",
-        "reason": None,
-        "number": 286,
-        "bottom": 7,
-        "top": 11,
-        "base": meets,
-        "head": top,
-        "files": 2,
-        "additions": 5,
-        "deletions": 0,
-        "exact": True,
-        "statuses": [{"status": "added", "count": 1}, {"status": "modified", "count": 1}],
-    }
-    # Git's own count of the same comparison, from the merge base.
-    stat = _git(stand, "diff", "--numstat", f"{bottom.comparison.base}...{top}")
-    assert sorted(line.split("\t")[2] for line in stat.splitlines()) == [
-        "docs/new.md",
-        "src/app.txt",
-    ]
-    assert sum(int(line.split("\t")[0]) for line in stat.splitlines()) == body["additions"]
-    # Each layer's own change touches both files: summing them would say four files.
-    for base, head in (
-        (bottom.comparison.base, stand.origin["fork_head"]),
-        (stand.origin["fork_head"], top),
-    ):
-        assert len(_git(stand, "diff", "--name-only", f"{base}...{head}").split()) == 2
-    # A stack of one pull request is that pull request's own comparison.
-    alone = client.get(ROUTE, params={"number": 300}).json()
-    assert (alone["base"], alone["head"]) == (bottom.comparison.base, bottom.comparison.head)
-    assert alone["statuses"] == [
-        {"status": "added", "count": 1},
-        {"status": "modified", "count": 1},
-    ]
-    assert stand.calls() == [], "a stack change asked GitHub"
-
-
-def _listings(spawned: list[tuple[str, ...]]) -> list[tuple[str, ...]]:
-    """The Git processes that listed a comparison, of those *spawned*."""
-
-    return [args for args in spawned if "diff" in args]
-
-
-def test_a_stacks_change_is_summed_once_and_validated(
-    stacked: tuple[_Stand, TestClient, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    stand, client, _top = stacked
-    monkeypatch.setattr(pull_stack_change, "_KEPT", type(pull_stack_change._KEPT)())  # pyright: ignore[reportPrivateUsage]
+def _no_git(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
     spawned: list[tuple[str, ...]] = []
     real = git_process.spawn_git_process
 
@@ -214,114 +160,157 @@ def test_a_stacks_change_is_summed_once_and_validated(
         return await real(args, **kwargs)
 
     monkeypatch.setattr(git_process, "spawn_git_process", counted)
+    return spawned
+
+
+def test_a_stacks_change_is_its_members_changes_accumulated(
+    stacked: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand, client = stacked
+    spawned = _no_git(monkeypatch)
+    response = client.get(ROUTE, params={"number": 286})
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    body = response.json()
+    revision = body.pop("revision")
+    assert isinstance(revision, str) and len(revision) == 32
+    # Each file once: 7 added docs/new.md and 11 edited it, so it is added; both edited
+    # src/app.txt. The lines are each layer's own, summed.
+    assert body == {
+        "state": "current",
+        "reason": None,
+        "number": 286,
+        "pulls": [7, 11],
+        "files": 2,
+        "additions": 5,
+        "deletions": 0,
+        "exact": True,
+        "statuses": [{"status": "added", "count": 1}, {"status": "modified", "count": 1}],
+    }
+    # A stack of one pull request is that pull request's own list.
+    alone = client.get(ROUTE, params={"number": 300}).json()
+    assert (alone["pulls"], alone["files"], alone["additions"]) == ([7], 2, 2)
+    assert alone["statuses"] == [
+        {"status": "added", "count": 1},
+        {"status": "modified", "count": 1},
+    ]
+    assert spawned == [], f"a stack change ran Git: {spawned}"
+    assert stand.calls() == [], "a stack change asked GitHub"
+
+
+def test_each_file_counts_once_with_its_composed_status() -> None:
+    """The rule the module states, file by file, with the layers bottom first."""
+
+    sums = pull_change_sums.accumulate(
+        [
+            _listed(
+                1,
+                _row("added-then-edited", "added", 3),
+                _row("edited-then-removed", "modified", 1, 1),
+                _row("added-then-removed", "added", 2),
+                _row("old-name", "modified", 1),
+                _row("added-then-moved", "added", 4),
+                _row("removed-then-added", "removed", 0, 5),
+                _row("edited-twice", "modified", 1, 1),
+                _row("binary", "modified", None, None),
+            ),
+            _listed(
+                2,
+                _row("added-then-edited", "modified", 1, 1),
+                _row("edited-then-removed", "removed", 0, 9),
+                _row("added-then-removed", "removed", 0, 2),
+                _row("new-name", "renamed", 0, 0, previous="old-name"),
+                _row("moved-there", "renamed", 1, 0, previous="added-then-moved"),
+                _row("removed-then-added", "added", 6),
+                _row("edited-twice", "modified", 2, 0),
+            ),
+        ]
+    )
+    # A rename carries the file to its new path: old-name and added-then-moved are gone.
+    assert sums.files == 8
+    assert dict(sums.statuses) == {
+        # added-then-edited, moved-there (added, then renamed)
+        "added": 2,
+        # edited-then-removed, added-then-removed
+        "removed": 2,
+        # new-name
+        "renamed": 1,
+        # removed-then-added, edited-twice, binary
+        "modified": 3,
+    }
+    # Each layer's own lines, summed: the first layer's 12 and 7, the second's 10 and 12.
+    assert (sums.additions, sums.deletions) == (12 + 10, 7 + 12)
+    # The binary file's list has no line counts, so the totals are not exact.
+    assert sums.exact is False
+    assert not sums.short
+    # A list that stops short makes the accumulation short.
+    assert pull_change_sums.accumulate([_from_github(1, _row("a", "added", 1), capped=True)]).short
+
+
+def test_a_stacks_change_is_accumulated_once_and_validated(
+    stacked: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand, client = stacked
+    monkeypatch.setattr(pull_stack_change, "_KEPT", type(pull_stack_change._KEPT)())  # pyright: ignore[reportPrivateUsage]
+    parsed: list[int] = []
+    real = pull_list.read_pull_files
+
+    def counted(home: Path, slug: str, number: int, **kwargs: Any) -> Any:
+        parsed.append(number)
+        return real(home, slug, number, **kwargs)
+
+    monkeypatch.setattr(pull_list, "read_pull_files", counted)
     first = client.get(ROUTE, params={"number": 286})
-    assert first.status_code == 200 and _listings(spawned), "a first stack change listed nothing"
-    spawned.clear()
+    assert first.status_code == 200 and parsed == [7, 11]
+    parsed.clear()
     again = client.get(ROUTE, params={"number": 286})
     assert again.content == first.content
-    # The left end is found again, in the store, and the sums are kept: nothing is listed.
-    assert spawned and _listings(spawned) == [], f"a repeated stack change listed: {spawned}"
+    assert parsed == [], "a repeated stack change read its lists again"
     assert again.headers["etag"] == first.headers["etag"]
     unchanged = client.get(
         ROUTE, params={"number": 286}, headers={"if-none-match": first.headers["etag"]}
     )
     assert unchanged.status_code == 304 and unchanged.content == b""
-    assert _listings(spawned) == []
-    # A base branch that moves on, and leaves the merge base where it was, lists nothing.
-    meets = first.json()["base"]
-    moved_base = _commit_on(
-        stand, stand.origin["topic"], {"src/other.txt": "elsewhere\n"}, "refs/test/base-moves"
-    )
-    _git(stand, "update-ref", f"refs/remotes/origin/{DEFAULT_BRANCH}", moved_base)
-    spawned.clear()
-    assert client.get(ROUTE, params={"number": 286}).json()["base"] == meets
-    assert _listings(spawned) == [], "a base branch that moved past the merge base relisted"
-    # A layer whose head moves names another comparison, which is summed afresh.
-    bottom = stand.record(7)
-    assert isinstance(bottom, PullRecord) and bottom.comparison is not None
-    _layer(stand, bottom, 11, stand.origin["fork_head"], stand.origin["fork_earlier"])
+    # A member whose list is refreshed names another accumulation, which is read afresh.
+    _cache(stand, _listed(11, _row("src/app.txt", "removed", 0, 3)))
     moved = client.get(ROUTE, params={"number": 286}).json()
-    assert moved["head"] == stand.origin["fork_earlier"] and _listings(spawned)
+    assert parsed == [7, 11]
+    assert moved["statuses"] == [{"status": "added", "count": 1}, {"status": "removed", "count": 1}]
+    assert moved["revision"] != first.json()["revision"]
     assert client.get(ROUTE, params={"number": 286, "extra": "1"}).status_code == 400
     assert client.get(ROUTE).status_code == 400
     assert client.get(ROUTE, params={"number": "x"}).status_code == 400
 
 
 def test_a_stack_whose_change_cannot_be_had_says_why(
-    stacked: tuple[_Stand, TestClient, str],
+    stacked: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    stand, client, _top = stacked
+    stand, client = stacked
 
     def reason(number: int) -> Any:
         body = client.get(ROUTE, params={"number": number}).json()
         assert body["state"] == "absent" and body["statuses"] == [] and body["files"] is None
+        assert body["pulls"] == [] and body["revision"] is None
         return body["reason"]
 
     assert reason(999) == "not_stacked"
-    # Pull request 12, the top, has no record.
+    # Pull request 12 has no list.
     assert reason(400) == "not_cached"
-    # A base branch the store does not mirror, and one that is no branch name at all.
-    for base_ref in ("gone", "no..name"):
-        _publish(stand, (286, (7, 11)), base_ref=base_ref)
-        assert reason(286) == "no_base_branch"
-    _publish(stand, (286, (7, 11)))
-    top = read_pull_record(stand.published.home, stand.published.slug, 11)
-    assert isinstance(top, PullRecord)
-    write_pull_record(
-        stand.published.home, stand.published.slug, top.model_copy(update={"comparison": None})
-    )
-    assert reason(286) == "no_comparison"
-    # Ends the store cannot compare: a commit it does not have.
-    _layer(stand, top, 11, "a" * 40, "b" * 40)
-    assert reason(286) == "unavailable"
+    # Its list is filling: GitHub's next page is not read yet.
+    _cache(stand, _from_github(12, _row("docs/more.md", "added", 1), complete=False))
+    assert reason(400) == "not_cached"
+    # Whole, it is accumulated.
+    _cache(stand, _from_github(12, _row("docs/more.md", "added", 1)))
+    assert client.get(ROUTE, params={"number": 400}).json()["files"] == 3
+    # GitHub's most for one pull request, or a list that left a file out, is short.
+    _cache(stand, _from_github(12, _row("docs/more.md", "added", 1), capped=True))
+    assert reason(400) == "too_large"
+    _cache(stand, _listed(12, _row("docs/more.md", "added", 1), truncated=True))
+    assert reason(400) == "too_large"
+    # And so are members' lists that together pass the bound, before any is read.
+    monkeypatch.setattr(pull_stack_change, "MAX_STACK_LIST_BYTES", 100)
+    assert reason(286) == "too_large"
     assert stand.calls() == [], "a stack change asked GitHub"
-
-
-def test_a_stack_of_one_open_pull_request_is_summed_from_its_kept_comparison(
-    stacked: tuple[_Stand, TestClient, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A stack of one pull request has that pull request's own comparison, which the
-    comparison route keeps once a page has read it: it is summed from that, listing nothing
-    (review of #484, A6)."""
-
-    stand, client, _top = stacked
-    monkeypatch.setattr(pull_stack_change, "_KEPT", type(pull_stack_change._KEPT)())  # pyright: ignore[reportPrivateUsage]
-    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
-    assert client.get(route).status_code == 200
-    stand.calls()
-
-    async def forbidden(_source: GitDiffSource, _resolved: Any) -> Any:
-        raise AssertionError("a kept comparison was listed again")
-
-    monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
-    alone = client.get(ROUTE, params={"number": 300}).json()
-    assert alone["state"] == "current", alone
-    assert alone["statuses"] == [
-        {"status": "added", "count": 1},
-        {"status": "modified", "count": 1},
-    ]
-    assert stand.calls() == [], "a stack change asked GitHub"
-
-
-def test_a_stack_change_with_no_store_is_no_store(
-    stacked: tuple[_Stand, TestClient, str],
-) -> None:
-    """A repository listed before its store is attached, as a served checkout's can be, has
-    no store to compare in (review of #484, A7)."""
-
-    stand, _client, _top = stacked
-    body = asyncio.run(pull_stack_change.stack_change(_listed_host(stand), _repository(stand), 286))
-    assert (body["state"], body["reason"]) == ("absent", "no_store")
-    assert stand.calls() == [], "a stack change asked GitHub"
-
-
-def _listed_host(stand: _Stand) -> PullHost:
-    """The stand's pull requests as a server has them before their store is attached."""
-
-    def never(_number: int) -> Any:
-        raise AssertionError("a stack change started a refresh")
-
-    return PullHost(ServedPulls(_repository(stand)), running=lambda _number: False, start=never)
 
 
 def test_a_stack_change_without_a_github_repository_is_not_github(tmp_path: Path) -> None:
@@ -332,40 +321,7 @@ def test_a_stack_change_without_a_github_repository_is_not_github(tmp_path: Path
         response = client.get(ROUTE, params={"number": 286})
     assert response.status_code == 200
     assert response.json()["reason"] == "not_github"
-
-
-def test_a_stack_change_too_large_to_sum_is_not_summed(
-    stacked: tuple[_Stand, TestClient, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _stand, client, _top = stacked
-    monkeypatch.setattr(pull_stack_change, "_KEPT", type(pull_stack_change._KEPT)())  # pyright: ignore[reportPrivateUsage]
-    from metabrowser.diff.adapters import git as adapter
-
-    monkeypatch.setattr(adapter, "MAX_MANIFEST_FILES", 1)
-    body = client.get(ROUTE, params={"number": 286}).json()
-    assert (body["state"], body["reason"]) == ("absent", "too_large")
-
-
-def test_a_stack_change_past_the_git_read_cap_is_too_large_and_kept(
-    stacked: tuple[_Stand, TestClient, str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A listing past ``GIT_SUBPROCESS_MAX_BYTES`` is more files than a manifest holds: it
-    is ``too_large``, as a listing past ``MAX_MANIFEST_FILES`` is, and kept, so it is not
-    listed again (review of #484, A8)."""
-
-    _stand, client, _top = stacked
-    monkeypatch.setattr(pull_stack_change, "_KEPT", type(pull_stack_change._KEPT)())  # pyright: ignore[reportPrivateUsage]
-    listed: list[object] = []
-
-    async def overflowing(_source: GitDiffSource, resolved: Any) -> Any:
-        listed.append(resolved)
-        raise git_process.GitOutputTooLargeError("git diff listed more than 1 bytes on stdout")
-
-    monkeypatch.setattr(GitDiffSource, "manifest", overflowing)
-    for _ in range(2):
-        body = client.get(ROUTE, params={"number": 286}).json()
-        assert (body["state"], body["reason"]) == ("absent", "too_large"), body
-    assert len(listed) == 1, "a listing past the read cap was not kept"
+    assert asyncio.run(pull_stack_change.stack_change(None, 286))["reason"] == "not_github"
 
 
 RECORDING = "github-stack-change-responses.json"
@@ -380,22 +336,21 @@ def _recorded(response: Any) -> dict[str, Any]:
 
 
 def test_recording_stack_change_answers_real_routes(
-    stacked: tuple[_Stand, TestClient, str], monkeypatch: pytest.MonkeyPatch
+    stacked: tuple[_Stand, TestClient],
 ) -> None:
     """``tests/dom/github-pulls-stack-lines-session.js`` replays what the route answers.
 
     The stacks are numbered as the recorded stack snapshot's shared answer numbers them
     (``github-stacks-responses.json``), #286 and #290, so the session's headings and its
-    answers name the same stacks: #286's change is the chain above, and #290's top has no
-    record. A server with no GitHub repository refuses every stack, and so does one whose
-    repository has no store attached.
+    answers name the same stacks: #286's change is the two layers above, and #290 has a
+    member with no list. A server with no GitHub repository refuses every stack.
     """
 
     from metabrowser import server
     from metabrowser.mirror_refresh import serve_mirror
     from tests.golden_harness import check_recording
 
-    stand, client, _top = stacked
+    stand, client = stacked
     _publish(stand, (286, (7, 11)), (290, (7, 12)))
     recorded = {
         "current": _recorded(client.get(ROUTE, params={"number": 286})),
@@ -404,12 +359,6 @@ def test_recording_stack_change_answers_real_routes(
     }
     assert recorded["current"]["body"]["state"] == "current"
     assert recorded["not_cached"]["body"]["reason"] == "not_cached"
-    # The repository listed with no store attached, as a served checkout's is before its
-    # store is acquired.
-    with monkeypatch.context() as listed_only:
-        listed_only.setattr(pull_route, "pull_host", lambda _app: _listed_host(stand))
-        recorded["no_store"] = _recorded(client.get(ROUTE, params={"number": 286}))
-    assert recorded["no_store"]["body"]["reason"] == "no_store"
     server._set_root_dir(stand.tmp_path / "plain")  # pyright: ignore[reportPrivateUsage]
     (stand.tmp_path / "plain").mkdir()
     serve_mirror(None)

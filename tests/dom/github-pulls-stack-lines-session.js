@@ -2,12 +2,12 @@
 // through the production code.
 //
 // builtin_plugins/github/stack-lines.js decides what a stack's heading shows of its change
-// line, its combined change, the top's head against the base branch, which the server sums
+// line, its combined change, its members' own changes accumulated, which the server sums
 // (`GET stack-change`): the shell's pending placeholder while the read of its stack is on
 // its way, the line once it is, and nothing where it cannot be had. It reads the stacks the
 // list draws, one at a time when the browser is idle, once for each stack's members and
-// top's head, within the lines' own hourly cap, and keeps each answer in the document's
-// comparison keep under the stack's two commits. Its answers are the server's: the stack
+// their heads, within the lines' own hourly cap, and keeps each answer in the document's
+// comparison keep under its stack and its revision. Its answers are the server's: the stack
 // changes in tests/fixtures/github-stack-change-responses.json, which
 // tests/test_github_stack_change.py records from the real route, and the lists and stack
 // snapshot the stack-groups session replays.
@@ -101,16 +101,20 @@ async function laneStory(lines, prefetch) {
     now: () => now,
     changed: (number) => repaints.push(number),
   });
-  // Each stack as the list draws it: its members, and its top's head from the recorded rows.
+  // Each stack as the list draws it: its members, and each one's head from the recorded rows.
   const heads = new Map(listed.rows.map((row) => [row.number, row.head_oid ?? null]));
   let shared = stacks.shared.body.stacks.map(({ number, pulls }) => ({
     number,
     pulls,
-    head: heads.get(pulls[pulls.length - 1]) ?? null,
+    heads: pulls.map((member) => heads.get(member) ?? null),
   }));
-  /** The list with stack *number*'s top at *head*. */
-  const moved = (number, head) => {
-    shared = shared.map((stack) => (stack.number === number ? { ...stack, head } : stack));
+  /** The list with stack *number*'s member at *at*, its top unless named, moved to *head*. */
+  const moved = (number, head, at = -1) => {
+    shared = shared.map((stack) =>
+      stack.number === number
+        ? { ...stack, heads: stack.heads.with(at < 0 ? stack.heads.length + at : at, head) }
+        : stack,
+    );
   };
   let lane = createStackLines(deps());
   const steps = [];
@@ -167,10 +171,10 @@ async function laneStory(lines, prefetch) {
     await answer();
     await idleOnce();
   });
-  await step("#290's answer: its top is not cached, so its heading shows nothing", answer);
+  await step("#290's answer: a member's list is not cached, so its heading shows nothing", answer);
   const kept = changes.current.body;
-  const key = stackChangeKey(kept.base, kept.head);
-  assert.deepEqual(keep.snapshot().kept, [key], "the change is kept under its two commits");
+  const key = stackChangeKey(kept.number, kept.revision);
+  assert.deepEqual(keep.snapshot().kept, [key], "the change is kept under its stack and revision");
   await step("drawn again: the line in the paint that draws it, and nothing is read", () =>
     lane.want(shared, SOURCE),
   );
@@ -188,11 +192,15 @@ async function laneStory(lines, prefetch) {
     lane.want(shared, SOURCE),
   );
   assert.equal(idle.length, 0, "an answer is not read again on a timer");
-  moved(286, MOVED);
-  await step("#286's top moves: it is read again, and its line stays shown meanwhile", async () => {
-    lane.want(shared, SOURCE);
-    await idleOnce();
-  });
+  // Any member's change moves the accumulation: here the bottom's.
+  moved(286, MOVED, 0);
+  await step(
+    "#286's bottom moves: it is read again, and its line stays shown meanwhile",
+    async () => {
+      lane.want(shared, SOURCE);
+      await idleOnce();
+    },
+  );
   await step("its answer arrives: the line it names", answer);
   moved(286, MOVED_AGAIN);
   answers = (number) => (number === 286 ? new Error("connection dropped") : answerFor(number));
@@ -230,16 +238,13 @@ async function laneStory(lines, prefetch) {
     },
   );
   moved(290, MOVED);
-  await step("#290's top moves: its first read under the new identity waits", async () => {
+  await step("a member of #290 moves: its first read under the new identity waits", async () => {
     lane.want(shared, SOURCE);
     await idleOnce();
   });
   await step("still not cached: nothing, and no wait again", answer);
   // A server that refuses every stack: one answer says so, and the lane asks a minute on.
-  for (const [refusal, what] of [
-    ["not_github", "a server with no repository"],
-    ["no_store", "a repository with no store attached"],
-  ]) {
+  for (const [refusal, what] of [["not_github", "a server with no repository"]]) {
     keep.clear();
     index.clear();
     lane.dispose();
@@ -500,7 +505,7 @@ async function headingStory() {
     await release();
     await idleOnce();
     steps.push({
-      step: "#290's top is not cached, so it shows nothing; #286's read is sent, and it waits",
+      step: "#290 has a member with no list, so it shows nothing; #286's read is sent, and it waits",
       headings: headings(),
       requests: requests.splice(0),
     });

@@ -967,30 +967,34 @@ it, and ideally cached it up front”.
 
 - [ ] `mb-9ekj`: each “Stack #N” heading in the Pulls tab shows its stack’s brief change
   line, “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”, drawn through the SDK’s one
-  component. The numbers are the stack’s combined change, the top pull request’s head
-  against the stack’s base branch, from their merge base, which a new cache-only route,
-  `GET stack-change`, sums in the repository store from the top’s cached record and the
-  base branch the store mirrors, and keeps by the merge base and the head; summing each
-  layer’s own counts would count a file twice that two layers change.
-  Measured on this repository’s 19 stacks: 3 Git processes and 52 to 298 ms for a first
-  listing, none and under 1 ms for a repeat, 318 to 430 bytes an answer; finding the
-  left end runs 4 or 5 Git processes on every answer, 60 to 232 ms at a load average of
-  30 to 35. The line is read for the stacks the list draws, when the browser is idle,
-  once for each stack’s members and its top’s head, within the lines’ own hourly cap,
-  and kept in the document’s comparison keep; the heading holds the pending placeholder
-  only while its stack’s read is on its way, its name saying the change is pending, and
-  shows nothing for a stack whose change cannot be had.
-  Review A’s round: the left end is the stack’s base branch as the store mirrors it, not
-  the bottom’s record, whose base could be older than the base the top sits on, so the
-  line counted the base branch’s own changes (A1); the lines are read again when a
-  stack’s identity changes, not every five minutes against the warms’ hourly cap, which
-  with ten or more stacks drawn they spent (A2); a failed read keeps the line it had
-  (A3); a stack with no line never waits again (A4); and `no_store` and a listing past
-  Git’s read cap are tested and answered (A7, A8). Pinned by the route’s server test and
-  CLI golden, the stack lines session and golden, and in headless Chrome from 420 px to
-  180 px in both themes, where nothing moves when the line arrives, the row stays one
-  line, and the line’s statuses give way first and the whole line goes where its totals
-  have no room.
+  component. The numbers are the stack’s combined change, the accumulation of its
+  members’ own changed files, merged or open: each member’s cached list, the one its
+  expanded row shows, every file once with a composed status and every member’s lines
+  summed (`pull_change_sums.py`), which a new cache-only route, `GET stack-change`,
+  accumulates with no GitHub call, no fetch, and no Git, and keeps by each member’s list
+  file; summing each layer’s own file counts would count a file twice that two layers
+  change. Measured on GitHub’s lists of #446’s 28 members and #218’s 46: 754 and 1,925
+  files summed per pull request, 263 and 672 accumulated.
+  #446’s 16 cached lists read and accumulate in 6 to 16 ms, a repeat in 0.2 ms.
+  The line is read for the stacks the list draws, when the browser is idle, once for
+  each stack’s members and their heads, within the lines’ own hourly cap, and kept in
+  the document’s comparison keep; the heading holds the pending placeholder only while
+  its stack’s read is on its way, its name saying the change is pending, and shows
+  nothing for a stack whose change cannot be had.
+  Review A’s round: the stack’s change no longer starts at the bottom’s record, whose
+  base could be older than the base the top sits on, so the line counted the base
+  branch’s own changes (A1); asked what a merged stack shows, the owner decided “A stack
+  should simply be an accumulation of PRs, so it makes no sense to hide the diff.
+  The stack historically is the set of PRs it consists of,” so the change is the
+  members’ own, accumulated.
+  The lines are read again when a stack’s identity changes, not every five minutes
+  against the warms’ hourly cap, which with ten or more stacks drawn they spent (A2); a
+  failed read keeps the line it had (A3); a stack with no line never waits again (A4);
+  and a list that stops short is answered `too_large` and kept (A8). Pinned by the
+  route’s server test and CLI golden, the stack lines session and golden, and in
+  headless Chrome from 420 px to 180 px in both themes, where nothing moves when the
+  line arrives, the row stays one line, and the line’s statuses give way first and the
+  whole line goes where its totals have no room.
 
 ## Testing Strategy
 

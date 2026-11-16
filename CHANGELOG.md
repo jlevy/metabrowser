@@ -6,16 +6,17 @@ All notable changes to Metabrowser are documented here.
 
 - Each “Stack #N” heading in the Pulls tab shows what the whole stack changes, in the
   brief change line the Diff summary uses: “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”.
-  The numbers compare the top pull request’s head with the stack’s base branch, from
-  where the two meet, so a file that several layers change counts once, and what the
-  base branch itself changed since a layer was fetched is not counted as the stack’s.
-  They are summed from the local repository cache with no GitHub request, for the stacks
-  in view, when the browser is idle, and read again only when a stack’s top pull request
+  A stack is the pull requests it is made of, merged or open, so the numbers are theirs
+  accumulated: each pull request’s own changed files, the list its row shows when
+  opened, every file counted once, and every pull request’s added and deleted lines
+  summed. A file one layer adds and another edits counts once, as added.
+  They are read from the local cache with no GitHub request, for the stacks in view,
+  when the browser is idle, and read again only when one of a stack’s pull requests
   moves or its members change; a gray placeholder holds the line’s place while it is
-  read, and a screen reader hears that the change is pending, and a stack whose top pull
-  request has not been fetched, or whose base branch the cache does not mirror, shows no
-  line. In a narrow Pulls column the line’s file statuses are cut short first, and the
-  whole line goes where its totals do not fit, so the heading stays one line.
+  read, and a screen reader hears that the change is pending.
+  A stack with a pull request whose changed files have not been fetched shows no line.
+  In a narrow Pulls column the line’s file statuses are cut short first, and the whole
+  line goes where its totals do not fit, so the heading stays one line.
   Screen readers hear the line in words after the stack’s name.
   A new cache-only route, `/api/plugin/github/stack-change`, answers a stack’s combined
   change. See [Stacks](docs/design-system.md#stack-groups-in-the-pulls-tab).

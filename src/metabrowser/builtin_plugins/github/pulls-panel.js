@@ -290,7 +290,7 @@ export function describeRow(row) {
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
     meta: `#${row.number} · ${author}`,
     // The head commit the catalog reported, which a stack's change line is read again for
-    // when its top's moves (stack-lines.js); it is not shown.
+    // when a member's moves (stack-lines.js); it is not shown.
     head: typeof row.head_oid === "string" ? row.head_oid : null,
   };
 }
@@ -3917,15 +3917,15 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A stack as its change line is read for it: its members, and its top's head as the list's
-   * row of it reports it, or null where the list holds none (stack-lines.js).
+   * A stack as its change line is read for it: its members, and each one's head as the
+   * list's row of it reports it, or null where the list holds none (stack-lines.js).
    *
    * @param {import("./pull-stacks.js").NativeStack} stack
    * @returns {import("./stack-lines.js").StackMembers}
    */
   function stackMembers(stack) {
-    const top = stack.pulls[stack.pulls.length - 1];
-    return { number: stack.number, pulls: stack.pulls, head: rowHeads.get(top) ?? null };
+    const heads = stack.pulls.map((number) => rowHeads.get(number) ?? null);
+    return { number: stack.number, pulls: stack.pulls, heads };
   }
 
   /**
@@ -3937,7 +3937,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * rows under it ("Heading Tallies"), and its accessible name says how many. While its
    * stack's read is on its way the heading holds the shell's pending placeholder where the
    * line will be, and its name says the change is pending; a stack whose change cannot be
-   * had shows neither, and does not wait again until its members or its top's head change.
+   * had shows neither, and does not wait again until its members or their heads change.
    * A row of the tree that opens and closes, as a folder is; it opens no page, so it is not a
    * link.
    *
@@ -3979,7 +3979,7 @@ export function mountPullsPanel(container, ctx, mb) {
     const line = stackLineState(group.stack);
     const shownLine =
       line.phase === "shown"
-        ? `${line.change.base}...${line.change.head}:${changedFilesModel === null ? 0 : 1}`
+        ? `${line.change.revision}:${changedFilesModel === null ? 0 : 1}`
         : line.phase;
     const key = JSON.stringify([group.label, group.hint, group.expanded, shownLine]);
     if (entry.key !== key) {
@@ -4713,7 +4713,7 @@ export function mountPullsPanel(container, ctx, mb) {
         });
   // Each stack heading's brief change line, the stack's combined change (stack-lines.js):
   // read for the stacks the list draws, when the browser is idle, once for each stack's
-  // members and top's head, within the lines' own hourly cap, and drawn through the SDK's one
+  // members and their heads, within the lines' own hourly cap, and drawn through the SDK's one
   // component for it. An SDK without `whenIdle` or the component has no lines, and its
   // headings no placeholders.
   stackLines =

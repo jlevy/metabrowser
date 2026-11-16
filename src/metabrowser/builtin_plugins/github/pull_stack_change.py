@@ -1,53 +1,48 @@
 """A native stack's combined change, which its heading in the Pulls tab says in brief.
 
-A stack's change is what the whole stack changes: its top pull request's head compared with
-the stack's base branch, from their merge base, which is the Changes one pull request from
-the top into the stack's base would have. Summing each pull request's counts would count
-twice a file two layers change, and every line one layer writes and the next rewrites. The
-left end is the base branch as the repository store mirrors it
-(``refs/remotes/origin/<base_ref>``), not any layer's record, so the change leaves out what
-the base branch itself changed since a layer's record was fetched, a bottom that merged
-among it (review of #484, A1). The right end is the top's cached record's comparison
-``head``, the commit the top's page shows; membership, bottom first, and the base branch's
-name are the stack snapshot's (:mod:`.pull_stacks`).
+A stack is the accumulation of its pull requests, so its change is theirs accumulated: each
+member's own changed files, the list its expanded row in the Pulls tab shows
+(:mod:`.pull_files_route`), taken bottom first, every file once, with its line counts summed.
+It is never a comparison against the stack's base branch, which would say nothing for a
+stack whose pull requests have merged, and nothing for the history of one that has not
+(the owner's decision on review A of #484, A1: "The stack historically is the set of PRs
+it consists of").
 
-A read never asks GitHub and never fetches. It reads the snapshot and the top's record,
-then finds in the store the base branch's commit and its merge base with the top's head.
-The first time a merge base and a head are asked for together, it lists their comparison,
-a manifest with no patch (``git diff --raw`` and ``--numstat``, copies found, as a pull
-request's own). What that comparison sums to, how many files have each status and its line
-totals, is kept by the merge base, the head, the store and the build, so a base branch that
-moves on and leaves the merge base where it was lists nothing again. A comparison the
-comparison route keeps, a stack of one open pull request's, is summed from what that route
-keeps; a stack's own manifest is not kept, so it takes no place from the comparisons a page
-opens.
+**One file, once.** The lists are accumulated by :mod:`.pull_change_sums`, the rule a pull
+request's own row line reads too: a file is followed by its path and across a rename, its
+status is composed from what the members did to it (``removed`` if the last one removed it,
+else ``added`` if the first one added it, else ``renamed`` if one renamed it, else
+``modified``), and its lines are each member's summed, as each layer's own counts are what
+that layer wrote.
 
-Measured 2026-11-16 with ``comparison_sums`` on this repository's own 19 stacks, of 2 to 46
-pull requests, in a full clone at a load average of 11 to 16, twice each: a first listing
-ran 3 Git processes, 4 for one whose renames were looked for again, and took 52 to 298 ms;
-a repeat ran none and took under 1 ms; an answer was 318 to 430 bytes of JSON. Summed per
-pull request, as GitHub counts each, #446's 28 layers would have said 754 files where the
-stack changes 263, and #218's 46 said 1,925 where it changes 596. Finding the left end
-(``stack_ends``) runs Git on every answer, first or repeat: measured 2026-11-16 on the same
-19 tops in a full clone at a load average of 30 to 35, on a case-insensitive filesystem,
-where ``base_branch_usable`` lists the mirrored refs, it ran 4 Git processes, 5 where the
-merge base is neither end, and took 60 to 232 ms.
+**What it reads.** The stack snapshot (:mod:`.pull_stacks`) for the members, and each
+member's cached list of changed files, GitHub's or the one listed from the local
+comparison, whichever its refresh last wrote, as the Pulls tab shows it, stale or current.
+A read never asks GitHub, never fetches, and runs no Git. Measured 2026-11-16 on this
+repository's cache: of the 173 pull requests its 19 stacks hold, 15 had a list of changed
+files and 10 a record, so the lists are the change sets more often held, and reading one
+runs no Git where a record's comparison is listed in the store first. What the lists
+accumulate to is kept by each member's list file (its inode, modification time and size),
+so asking again stats the lists and parses none. Measured the same day at a load average of
+26 to 38: #446's 16 cached lists, 391 rows in 56 KB, were read and parsed in 6 to 16 ms and
+accumulated in under 0.4 ms, and a repeat stats the 16 in 0.2 ms.
+
+Measured 2026-11-16 on GitHub's own lists of each member: summed per pull request, as
+GitHub counts each, #446's 28 layers say 754 files and #218's 46 say 1,925; accumulated, a
+file several layers touch counted once and its lines summed, they are 263 and 672, of which
+#218's 77 are files a later layer removed.
 
 The answer is ``current``, with the sums, or ``absent``, with a ``reason``: ``not_github``,
-no GitHub repository; ``no_store``, no repository store to compare in; ``not_stacked``, no
-stack of that number in the snapshot; ``not_cached``, the top's record is not cached;
-``no_comparison``, the top's record names no comparison, since its commits are not in the
-store; ``no_base_branch``, the store mirrors no branch of the stack's base name, or none it
-can compare from (``base_branch_usable``); ``too_large``, the comparison lists more files
-than a manifest holds (``MAX_MANIFEST_FILES``) or more than Git's read cap, so its sums
-would be short; ``unavailable``, the store could not compare the two, as for a missing
-object or a shallow history that cannot say where they meet. Only an answer and
-``too_large`` are kept: a refusal is asked again, since a fetch can answer it.
-
-An answer has no window of its own. It changes when the stack's members, the top's record,
-or the merge base do, and the Pulls tab asks again when the catalog says a member or the
-top's head changed (``stack-lines.js``). Its entity tag is the envelope's, as every GitHub
-route's is, for a client that holds one, ``--api`` among them; the Pulls tab sends none.
+no GitHub repository; ``not_stacked``, no stack of that number in the snapshot;
+``not_cached``, a member's list is not cached, or is still filling, until a refresh
+publishes it whole; ``too_large``, a member's list is short, GitHub's most for a pull
+request (``MAX_PULL_FILES``) or with a file left out, or the members' lists together pass
+``MAX_STACK_LIST_BYTES``, so the sums would be short. Only an answer and ``too_large`` are
+kept. An answer has no window of its own: the Pulls tab asks again when the catalog says a
+member's head moved or the members changed (``stack-lines.js``). ``revision`` names the
+answer's content, which the Pulls tab keeps it under. Its entity tag is the envelope's, as
+every GitHub route's is, for a client that holds one, ``--api`` among them; the Pulls tab
+sends none.
 """
 
 from __future__ import annotations
@@ -55,47 +50,41 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections import Counter
-from dataclasses import dataclass
+import os
+import stat
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
+from typing import TYPE_CHECKING, Final, Literal, TypedDict
 from weakref import WeakKeyDictionary
 
+from metabrowser.builtin_plugins.github.pull_change_sums import ChangeSums, accumulate
 from metabrowser.builtin_plugins.github.pull_stacks import read_stacks
-from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
+from metabrowser.cache.paths import source_pull_files
+from metabrowser.http_caching import BUILD_TAG, build_scoped_etag
 from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
-    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
-    from metabrowser.builtin_plugins.github.pull_route import PullHost
-    from metabrowser.builtin_plugins.github.pull_stacks import NativeStack
-    from metabrowser.builtin_plugins.github.served_pull import ServedPulls
-    from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.git.process import GitLocation
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository, PullFileList
 
 STACK_CHANGE_ROUTE: Final = "/api/plugin/github/stack-change"
-# The sums kept, least recently used out first. Measured 2026-11-16 with tracemalloc, 256
-# of them, each with four statuses and its key, held 191 KB, 747 bytes each. This repository
-# has 19 stacks, and a stack whose top moves names a new head, so this keeps every stack's
+# The accumulations kept, least recently used out first. Measured 2026-11-16 with
+# tracemalloc, 256 sums, each with four statuses and its key, held 191 KB, 747 bytes each; a
+# key now names each member's list, about 60 bytes a member more. This repository has 19
+# stacks, and a member whose list is refreshed names a new key, so this keeps every stack's
 # current sums and a few hundred older ones.
 MAX_KEPT_STACK_CHANGES: Final = 256
+# The members' lists read for one answer, together, in bytes as cached, checked on their
+# stamps before any is read. Measured 2026-11-16 at a load average of 36, a list of 3,000
+# rows parsed at 13 ms a megabyte (536 KB in 7 ms), and #446's 16 cached lists are 56 KB, so
+# this bounds an answer's parsing, off the event loop, at about 210 ms, two of the largest
+# lists a pull request can have (``MAX_PULL_FILES_BYTES``).
+MAX_STACK_LIST_BYTES: Final = 16 * 1024 * 1024
 
-type StackChangeAbsence = Literal[
-    "not_github",
-    "no_store",
-    "not_stacked",
-    "not_cached",
-    "no_comparison",
-    "no_base_branch",
-    "too_large",
-    "unavailable",
-]
+type StackChangeAbsence = Literal["not_github", "not_stacked", "not_cached", "too_large"]
+type _Stamp = tuple[int, int, int]
 
 
 class StatusCount(TypedDict):
-    """How many of the comparison's files have one status, in a pull request's words."""
+    """How many of the accumulated files have one status, in a pull request's words."""
 
     status: str
     count: int
@@ -107,10 +96,9 @@ class StackChangeEnvelope(TypedDict):
     state: Literal["absent", "current"]
     reason: StackChangeAbsence | None
     number: int
-    bottom: int | None
-    top: int | None
-    base: str | None
-    head: str | None
+    # The members accumulated, bottom first, for an answer with sums.
+    pulls: list[int]
+    revision: str | None
     files: int | None
     additions: int | None
     deletions: int | None
@@ -118,44 +106,13 @@ class StackChangeEnvelope(TypedDict):
     statuses: list[StatusCount]
 
 
-@dataclass(frozen=True, slots=True)
-class StackEnds:
-    """A stack's bottom and top pull requests, and the commits its change runs between:
-    the merge base of its base branch and its top's head, and that head."""
-
-    bottom: int
-    top: int
-    base: str
-    head: str
-
-
-@dataclass(frozen=True, slots=True)
-class ComparisonSums:
-    """What one comparison sums to: its files by status and its line totals.
-
-    ``truncated`` says the listing stopped at its bound, so the rest are not known.
-    """
-
-    files: int
-    additions: int | None
-    deletions: int | None
-    exact: bool
-    statuses: tuple[tuple[str, int], ...]
-    truncated: bool
-
-
-# A listing past Git's read cap: more files than any manifest holds, so its sums are short.
-_TOO_LARGE: Final = ComparisonSums(
-    files=0, additions=None, deletions=None, exact=False, statuses=(), truncated=True
-)
-
 _KEPT: WeakKeyDictionary[
-    asyncio.AbstractEventLoop, LoadingCache[tuple[str, ...], ComparisonSums]
+    asyncio.AbstractEventLoop, LoadingCache[tuple[object, ...], ChangeSums]
 ] = WeakKeyDictionary()
 _KEPT_LOCK: Final = Lock()
 
 
-def _kept() -> LoadingCache[tuple[str, ...], ComparisonSums]:
+def _kept() -> LoadingCache[tuple[object, ...], ChangeSums]:
     loop = asyncio.get_running_loop()
     with _KEPT_LOCK:
         kept = _KEPT.get(loop)
@@ -164,17 +121,13 @@ def _kept() -> LoadingCache[tuple[str, ...], ComparisonSums]:
         return kept
 
 
-def absent(
-    number: int, reason: StackChangeAbsence, ends: StackEnds | None = None
-) -> StackChangeEnvelope:
+def absent(number: int, reason: StackChangeAbsence) -> StackChangeEnvelope:
     return StackChangeEnvelope(
         state="absent",
         reason=reason,
         number=number,
-        bottom=None if ends is None else ends.bottom,
-        top=None if ends is None else ends.top,
-        base=None if ends is None else ends.base,
-        head=None if ends is None else ends.head,
+        pulls=[],
+        revision=None,
         files=None,
         additions=None,
         deletions=None,
@@ -183,18 +136,21 @@ def absent(
     )
 
 
-def stack_top(
-    repository: ListedRepository, served: ServedPulls, number: int
-) -> tuple[NativeStack, str] | StackChangeAbsence:
-    """Stack *number* and its top's head, from the snapshot and the top's cached record.
-    Blocking and bounded.
+def _list_stamp(repository: ListedRepository, number: int) -> _Stamp | None:
+    try:
+        status = os.lstat(repository.home / source_pull_files(repository.slug, number))
+    except OSError:
+        return None
+    if not stat.S_ISREG(status.st_mode):
+        return None
+    return status.st_ino, status.st_mtime_ns, status.st_size
 
-    The snapshot is read within its own bound (``MAX_STACK_BYTES``) and the record within
-    the record's, through the pull route's parse cache.
-    """
 
-    from metabrowser.builtin_plugins.github.pull_record import PullRecord
-    from metabrowser.builtin_plugins.github.pull_route import cached_pull_record
+def stack_lists(
+    repository: ListedRepository, number: int
+) -> tuple[tuple[int, ...], tuple[_Stamp, ...]] | StackChangeAbsence:
+    """Stack *number*'s members, bottom first, and the stamp of each one's cached list.
+    Blocking; one bounded snapshot read and a stat a member."""
 
     cache = read_stacks(repository)
     snapshot = cache.snapshot if cache is not None else None
@@ -208,138 +164,82 @@ def stack_top(
     )
     if stack is None:
         return "not_stacked"
-    record, _dumped, _revision = cached_pull_record(served.home, served.slug, stack.pulls[-1])
-    if not isinstance(record, PullRecord):
-        return "not_cached"
-    if record.comparison is None:
-        return "no_comparison"
-    return stack, record.comparison.head
+    stamps: list[_Stamp] = []
+    for member in stack.pulls:
+        stamp = _list_stamp(repository, member)
+        if stamp is None:
+            return "not_cached"
+        stamps.append(stamp)
+    if sum(stamp[2] for stamp in stamps) > MAX_STACK_LIST_BYTES:
+        return "too_large"
+    return stack.pulls, tuple(stamps)
 
 
-async def stack_ends(
-    published: PublishedSource, stack: NativeStack, head: str
-) -> StackEnds | StackChangeAbsence:
-    """Where *stack*'s change runs: from the merge base of its base branch, as the store
-    mirrors it, and its top's *head*, to that head.
+def _read_and_accumulate(
+    repository: ListedRepository, members: tuple[int, ...]
+) -> ChangeSums | StackChangeAbsence:
+    """Read each member's list and accumulate them. Blocking; run it off the event loop.
 
-    The base branch is read as an open pull request's comparison reads it
-    (``comparison_endpoints``), without the fetch that falls back to: a branch the store
-    does not mirror, or one it lists under another spelling, is ``no_base_branch``. Runs Git
-    in the store, under its read policy, and never fetches.
+    Each list is read within its own bound (``MAX_PULL_FILES_BYTES``), and all of them
+    within ``MAX_STACK_LIST_BYTES``, which :func:`stack_lists` checked on their stamps.
     """
 
-    from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
-    from metabrowser.cache.pull_refs import base_branch_usable, ref_commit
-    from metabrowser.git.process import GitError, repository_store_target
-    from metabrowser.git.shallow import merge_base_answer
+    from metabrowser.builtin_plugins.github.pull_list import read_pull_files
 
-    try:
-        if not await base_branch_usable(published, stack.base_ref):
-            return "no_base_branch"
-        base_commit = await ref_commit(published, BRANCH_MIRROR_PREFIX + stack.base_ref)
-        if base_commit is None:
-            return "no_base_branch"
-        answer = await merge_base_answer(
-            repository_store_target(git_dir=published.git_dir), base_commit, head
-        )
-    except GitError:
-        return "unavailable"
-    if answer.merge_base is None or not answer.certain:
-        return "unavailable"
-    return StackEnds(stack.pulls[0], stack.pulls[-1], answer.merge_base, head)
+    lists: list[PullFileList] = []
+    for member in members:
+        listed = read_pull_files(repository.home, repository.slug, member)
+        if isinstance(listed, str) or not listed.complete:
+            return "not_cached"
+        lists.append(listed)
+    return accumulate(lists)
 
 
-async def comparison_sums(git_dir: Path, base: str, head: str) -> ComparisonSums:
-    """What the merge-base comparison of *base* and *head* in the store sums to.
+class _NotWhole(Exception):
+    """A member's list could not be read whole, which is not kept."""
 
-    Kept by the comparison's own key and the build, and computed once however many ask
-    together. Raises the adapter's ``DiffSourceError`` or ``GitError`` for a refusal.
-    """
-
-    from metabrowser.builtin_plugins.diff.sidekick import comparison_cache_key
-    from metabrowser.git.process import GitLocation, repository_store_target
-
-    location = GitLocation.revision(repository_store_target(git_dir=git_dir), head)
-    intent = {"left": base, "right": head, "base_policy": "merge_base"}
-    key = comparison_cache_key(location, intent, store_tag(git_dir))
-    if key is None:
-        raise ValueError("a stack's ends are two full commit IDs in a store")
-    return await _kept().get((BUILD_TAG, *key), lambda: _sum(location, intent, key))
+    def __init__(self, reason: StackChangeAbsence) -> None:
+        super().__init__(reason)
+        self.reason: StackChangeAbsence = reason
 
 
-async def _sum(
-    location: GitLocation, intent: dict[str, Any], key: tuple[str, ...]
-) -> ComparisonSums:
-    from metabrowser.builtin_plugins.diff.sidekick import kept_comparison_manifest
-    from metabrowser.builtin_plugins.github.pull_files_refresh import KIND_STATUS
-    from metabrowser.diff.adapters.git import GitDiffSource
-    from metabrowser.git.process import GitOutputTooLargeError
+async def stack_change(repository: ListedRepository | None, number: int) -> StackChangeEnvelope:
+    """Stack *number*'s change, or why there is none. Runs no GitHub call and no Git."""
 
-    kept = kept_comparison_manifest(key)
-    if kept is not None:
-        manifest = kept.manifest
-    else:
-        source = GitDiffSource(location)
-        try:
-            manifest = await source.manifest(await source.resolve(intent))
-        except GitOutputTooLargeError:
-            # Answered and kept as a listing past ``MAX_MANIFEST_FILES`` is, so it is not
-            # listed again (review of #484, A8).
-            return _TOO_LARGE
-    # Each file's status in a pull request's words, as its list of changed files says it.
-    counts = Counter(KIND_STATUS[change.kind.value] for change in manifest.files)
-    totals = manifest.totals
-    return ComparisonSums(
-        files=totals.files,
-        additions=totals.additions,
-        deletions=totals.deletions,
-        exact=totals.exact,
-        statuses=tuple(sorted(counts.items())),
-        truncated=manifest.truncated,
-    )
-
-
-async def stack_change(
-    host: PullHost | None, repository: ListedRepository | None, number: int
-) -> StackChangeEnvelope:
-    """Stack *number*'s change, or why there is none. Runs no GitHub call."""
-
-    from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.diff.adapters.base import DiffSourceError
-    from metabrowser.git.process import GitError
-
-    if host is None or repository is None:
+    if repository is None:
         return absent(number, "not_github")
-    served = host.pulls
-    published = served.published
-    if not isinstance(published, PublishedSource):
-        return absent(number, "no_store")
-    found = await asyncio.to_thread(stack_top, repository, served, number)
+    found = await asyncio.to_thread(stack_lists, repository, number)
     if isinstance(found, str):
         return absent(number, found)
-    stack, head = found
-    ends = await stack_ends(published, stack, head)
-    if isinstance(ends, str):
-        return absent(number, ends)
+    members, stamps = found
+    key = (BUILD_TAG, str(repository.home), repository.slug, members, stamps)
+
+    async def load() -> ChangeSums:
+        summed = await asyncio.to_thread(_read_and_accumulate, repository, members)
+        if isinstance(summed, str):
+            raise _NotWhole(summed)
+        return summed
+
     try:
-        sums = await comparison_sums(published.git_dir, ends.base, ends.head)
-    except (DiffSourceError, GitError):
-        return absent(number, "unavailable", ends)
-    if sums.truncated:
-        return absent(number, "too_large", ends)
+        sums = await _kept().get(key, load)
+    except _NotWhole as exc:
+        return absent(number, exc.reason)
+    if sums.short:
+        return absent(number, "too_large")
+    statuses = [StatusCount(status=status, count=count) for status, count in sums.statuses]
+    content = [members, sums.files, sums.additions, sums.deletions, sums.exact, sums.statuses]
+    revision = hashlib.sha256(json.dumps(content).encode()).hexdigest()[:32]
     return StackChangeEnvelope(
         state="current",
         reason=None,
         number=number,
-        bottom=ends.bottom,
-        top=ends.top,
-        base=ends.base,
-        head=ends.head,
+        pulls=list(members),
+        revision=revision,
         files=sums.files,
         additions=sums.additions,
         deletions=sums.deletions,
         exact=sums.exact,
-        statuses=[StatusCount(status=status, count=count) for status, count in sums.statuses],
+        statuses=statuses,
     )
 
 
@@ -350,13 +250,10 @@ def envelope_etag(envelope: StackChangeEnvelope) -> str:
 
 __all__ = [
     "MAX_KEPT_STACK_CHANGES",
+    "MAX_STACK_LIST_BYTES",
     "STACK_CHANGE_ROUTE",
-    "ComparisonSums",
     "StackChangeEnvelope",
-    "StackEnds",
-    "comparison_sums",
     "envelope_etag",
     "stack_change",
-    "stack_ends",
-    "stack_top",
+    "stack_lists",
 ]
