@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
     from metabrowser.builtin_plugins.github.pull_cores import CoreRequest
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
-    from metabrowser.builtin_plugins.github.pull_route import PullView
+    from metabrowser.builtin_plugins.github.pull_route import PullEnvelope, PullView
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
 
 # The answer changes as the record ages and as a refresh replaces it.
@@ -92,6 +92,15 @@ def _without_store(envelope: Any) -> bool:
     return isinstance(unavailable, dict) and unavailable.get("comparison") == "no_store"
 
 
+def _drop_core_preview(envelope: PullEnvelope) -> None:
+    """Drop a revoked core preview, and the label entries and fast poll it alone asked for."""
+
+    envelope["core_preview"] = None
+    if envelope["record"] is None:
+        envelope["repository_labels"] = []
+        envelope["labels_pending"] = False
+
+
 async def _preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
     """Finish revocation checks on the loop after bounded disk validation."""
     from metabrowser.builtin_plugins.github.pull_route import (
@@ -128,10 +137,12 @@ async def pull_handler(request: Request) -> Response:
     ``fetched_at``, and the verdict's time, which a ``304`` carries in
     ``x-metabrowser-verified``. A matching ``wait_full_after`` revision may hold the cache read
     briefly until its already-running selected refresh settles or revokes the preview.
+    ``warm=1`` marks a read the Pulls tab sends to warm a comparison ahead of a click, which
+    is not a view: it is answered the same, and is left out of the numbers a prefetch's
+    ``changed`` adds (``pull_prefetch.note_viewed``).
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (
-        PullEnvelope,
         PullRequestError,
         envelope_etag,
         note_full_record,
@@ -150,6 +161,9 @@ async def pull_handler(request: Request) -> Response:
     wait_after = request.query_params.get("wait_full_after")
     if wait_after is not None and re.fullmatch(r"[0-9a-f]{64}", wait_after) is None:
         return _invalid_request('"wait_full_after" is a core preview revision')
+    warm = request.query_params.get("warm")
+    if warm not in (None, "1"):
+        return _invalid_request('"warm" is 1')
     claimed_pin = request.headers.get(PIN_HEADER) if wait_after is not None else None
     pinned_subject = None
     if claimed_pin is not None:
@@ -186,17 +200,18 @@ async def pull_handler(request: Request) -> Response:
         if waited or kept.core_preview is not preview:
             view, stamp, envelope, freshness = await snapshot()
     if not await _preview_current(view, envelope["core_preview"]):
-        envelope["core_preview"] = None
+        _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
         )
-    if view.host is not None:
+    if view.host is not None and warm is None:
         from metabrowser.builtin_plugins.github.pull_prefetch import note_viewed
 
-        # What a prefetch's ``changed`` adds: the numbers this server answered last.
+        # What a prefetch's ``changed`` adds: the numbers this server answered last, for a
+        # reader. A warm reads a record the reader has not opened.
         note_viewed(view.host.pulls, number)
     comparison = (envelope.get("record") or {}).get("comparison")
     if view.host is not None and isinstance(comparison, dict):
@@ -430,7 +445,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope, freshness = await asyncio.to_thread(pull_answer, view)
     if not await _preview_current(view, envelope["core_preview"]):
-        envelope["core_preview"] = None
+        _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
@@ -788,6 +803,64 @@ async def stacks_refresh_handler(request: Request) -> Response:
     )
 
 
+async def labels_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/labels`` — the repository's cached label set, cache only."""
+
+    from metabrowser.builtin_plugins.github.pull_labels_route import (
+        envelope_etag,
+        label_envelope,
+        label_view,
+    )
+
+    if request.query_params:
+        return _invalid_request("a label set has no query parameters")
+    await _resolve(request)
+    envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def labels_refresh_handler(request: Request) -> Response:
+    """``POST /api/plugin/github/labels-refresh`` — start or join the label set's refresh.
+
+    The body may name only a boolean ``retry``, a reader's own ask past the set's age.
+    ``202`` started or joined the job, ``200`` says it was ``not_due``.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_labels import refresh_wanted
+    from metabrowser.builtin_plugins.github.pull_labels_route import (
+        LABELS_ROUTE,
+        label_envelope,
+        label_view,
+        start_refresh,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    retry = body.get("retry", False)
+    if set(body) - {"retry"} or not isinstance(retry, bool):
+        return _invalid_request('a label refresh accepts only optional boolean "retry"')
+    await _resolve(request)
+    view = label_view(request.app)
+    if view.repository is None or view.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
+    started = start_refresh(view, retry=retry, wanted=wanted)
+    envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
+    return JSONResponse(
+        {"refresh": started, "labels": dict(envelope), "status_route": LABELS_ROUTE},
+        status_code=200 if started == "not_due" else 202,
+        headers=_NO_STORE,
+    )
+
+
 async def cache_clear_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/cache-clear`` — discard the served repository's GitHub cache.
 
@@ -927,5 +1000,7 @@ __all__ = [
     "pulls_prefetch_handler",
     "stacks_handler",
     "stacks_refresh_handler",
+    "labels_handler",
+    "labels_refresh_handler",
     "pulls_refresh_handler",
 ]

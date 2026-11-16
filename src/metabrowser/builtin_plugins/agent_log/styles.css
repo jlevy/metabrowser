@@ -61,7 +61,7 @@
 .log-stat-value {
   font-size: var(--body-font-size);
   font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 
 .agent-log-filter-bar {

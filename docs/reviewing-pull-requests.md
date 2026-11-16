@@ -125,11 +125,20 @@ follow its instructions and choose **Reload**. See
 
 ## Native Stack Navigation
 
-With the optional [gh-stack extension](installation.md#git-and-github-setup), a list row
-shows a Layers icon and position, such as **5/23**, when native GitHub metadata names
-its membership. The PR page uses the same position as a menu trigger.
-Open it for the stack number and members ordered from stack top to base, with each
-member’s title, ordinal, and PR number.
+With the optional [gh-stack extension](installation.md#git-and-github-setup), the Pulls
+list groups each native GitHub stack’s PRs under a **Stack #N** row, open by default,
+with the stack’s PRs under it from the stack’s top to its base and the PRs in no stack
+after the stacks. A stack’s row opens and closes like a folder.
+Each member row’s first line shows its place before its number, such as **1/6 · #455 ·
+jlevy**, and its second line the title.
+A PR in two stacks sits under the first, and its place names the other stack by its
+number, such as **3/4 · ⧉300 2/2**. Until the stacks are known, or when they cannot be
+read, the list stays flat.
+
+On the PR page, the stack button at the right end of the author’s row shows a Layers
+icon and the same position; a PR in two stacks has a button for each, which names its
+stack, such as **⧉300 2/2**. Open it for the stack number and members ordered from stack
+top to base, with each member’s title, ordinal, and PR number.
 Titles come from the matching local catalog; a missing title falls back to the PR
 number. On macOS, press Control-N for the next member toward the stack’s top and
 Control-P for the previous one toward its base; Shift makes no difference.
@@ -177,12 +186,21 @@ The `Serving` line prints the address.
 A GitHub `/pull/123/commits` URL opens **Conversation**, where commit summaries appear
 with the discussion.
 
+To start over, click the folder’s name at the top of the navigation, or press `0`. That
+is Home: the folder’s home view as a fresh load shows it, with every tab at its first.
+**Pulls** then opens its list, and a pull request you open from it opens on
+**Conversation**, whichever tab you last read ([Home](design-system.md#home)).
+
 ## What the Page Shows
 
-The header has the title, state, branches, labels, and dates.
+The header has the title and its PR number; the author’s sentence, such as “jlevy wants
+to merge 2 commits”, with the stack button, if any, at its end; the head and base
+branches on a line of their own, head → base; the state badge before the dates; and the
+labels. Each label is in the color GitHub gives it, as github.com draws it in either
+theme, and hovering one shows its description when it has one.
 PR numbers use bold dark text, usernames use bold normal text ink at the surface’s
-normal size, and branch names use smaller ref chips, consistently with the Pulls list
-and Git history. Hover or focus a copyable branch chip to reveal its copy control; it
+normal size, and branch names use ref chips slightly smaller than the text around them,
+as in Git history. Hover or focus a copyable branch chip to reveal its copy control; it
 copies the full branch name.
 The author’s small circular avatar appears beside the username when available.
 Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; condensed

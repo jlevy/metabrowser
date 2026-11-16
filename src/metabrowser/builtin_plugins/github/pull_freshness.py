@@ -9,9 +9,10 @@ in one transaction, and only when the catalog's ``source`` and ``reader`` are th
   whatever the scan's age, or equal with another head. ``head_moved`` says the row names
   another head commit.
 - **current**: the row is not changed, the scan that published it ran within the window,
-  or the next one is running and the last ran within :data:`SCAN_GRACE_S` past it, and the
-  record is closed or was read within the window. ``verified_at`` is then the newer of that
-  scan's ``fetched_at`` and the record's, and ``verified_by`` is ``catalog``.
+  or the next one is running and the last ran within :data:`SCAN_GRACE_S` past it, the
+  record is of this build's ``PULL_RECORD_PROJECTION``, and it is closed or was read
+  within the window. ``verified_at`` is then the newer of that scan's ``fetched_at`` and
+  the record's, and ``verified_by`` is ``catalog``.
 - **checks**: the same, for an open pull request read longer ago than the window. The
   catalog vouches for its conversation and head, and the record is stale for what
   ``updated_at`` does not track: check runs, commit statuses, and ``mergeable``, which a
@@ -30,6 +31,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final, Literal
 
+from metabrowser.builtin_plugins.github.pull_record import PULL_RECORD_PROJECTION
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 if TYPE_CHECKING:
@@ -135,7 +137,11 @@ def record_freshness(
         age = now - _parse(catalog.fetched_at)
         window = timedelta(seconds=window_s)
         recent = age <= window or (scanning and age <= window + timedelta(seconds=SCAN_GRACE_S))
-        if recent:
+        # A record an earlier projection wrote lacks what this one reads, its labels'
+        # colors among them, and the row cannot say so. The catalog still reports a change,
+        # but vouches for no such record: the clock decides, and a refresh past the window
+        # rewrites it at this projection, once.
+        if recent and record.projection_version >= PULL_RECORD_PROJECTION:
             verified = max(record.fetched_at, catalog.fetched_at)
             if record.pull.state == "open" and now - _parse(record.fetched_at) > window:
                 # The conversation and head are as GitHub has them; checks, statuses, and

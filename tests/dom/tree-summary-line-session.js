@@ -4,10 +4,11 @@
 // docs/design-system.md, "Navigation Metadata Line"). Its markup and words are
 // navigation.js's `treeSummaryHtml`, written with the shell's own text helpers, and its
 // two figures are patched live by `treeSummaryCountHtml` and `treeSummarySizeHtml` as the
-// walker's root aggregate changes. This runs the real navigation.js with `esc`,
-// `formatCount`, and `formatSize` extracted verbatim from app.js, the helpers app.js
-// hands it, over the real formatters.js, whose `formatBytes` writes every size the
-// shell shows (tests/dom/byte-sizes-session.js), and records the line for each state: before any count, counted before the
+// walker's root aggregate changes. This runs the real navigation.js with
+// `formatCountParts` and `formatSize` extracted verbatim from app.js, the helpers app.js
+// hands it, over the real formatters.js, whose `formatBytes` writes every size the shell
+// shows (tests/dom/byte-sizes-session.js) and whose `countPartsHtml` paints every count
+// summary's numbers bold, and records the line for each state: before any count, counted before the
 // split arrives, a Git pin with no sizes, the split with and without ignored files, an
 // empty folder, and each live figure. Where the line sits is layout, measured in Chrome
 // by tests/test_nav_metadata_chrome.py.
@@ -36,18 +37,29 @@ for (const script of ["formatters.js", "navigation.js"]) {
   const file = path.join(staticDir, script);
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
 }
-vm.runInContext(["esc", "formatSize", "formatCount"].map(appFunction).join("\n"), context, {
+vm.runInContext(["formatSize", "formatCountParts"].map(appFunction).join("\n"), context, {
   filename: "app-text-helpers.js",
 });
 const route = context.MetabrowserNavigationRoute;
-const format = vm.runInContext("({ esc, formatCount, formatSize })", context);
+const format = vm.runInContext("({ formatCountParts, formatSize })", context);
 
-/** How the line reads: its text, with the space each item boundary puts between items. */
-function reads(html) {
+/** A count summary's bold number (`.summary-number`), and the figure in it. */
+const NUMBER = /<span class="summary-number">([^<]*)<\/span>/g;
+
+/** Text with its tags taken out, each leaving the space an item boundary puts there. */
+function untagged(html) {
   return html
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * How the line reads: its text, with the space each item boundary puts between items. A
+ * bold number is inline in its item, so it reads as the figure it holds.
+ */
+function reads(html) {
+  return untagged(html.replace(NUMBER, "$1"));
 }
 
 /** @param {string} html */
@@ -57,6 +69,10 @@ function line(html) {
     classes,
     reads: reads(html),
     pending: (html.match(/tally-pending/g) ?? []).length,
+    // The figures it paints bold (docs/design-system.md, "Count Summaries Bold Their
+    // Numbers"), and what it says in the line's weight, which holds no figure.
+    numbers: [...html.matchAll(NUMBER)].map((found) => found[1]),
+    regular: untagged(html.replace(NUMBER, " ")),
     html,
   };
 }
@@ -128,6 +144,20 @@ check(
     states["the split, with ignored files"].reads.startsWith("12,797 files (394.6 MB)"),
 );
 check("a Git pin states no size", states["a Git pin, which has no sizes"].reads === "4 files");
+// Every figure is a bold number, with its unit, and no word is.
+for (const [name, state] of Object.entries(states)) {
+  check(`${name}: every figure is a bold number`, !/\d/.test(state.regular));
+}
+check(
+  "the split's figures are its bold numbers",
+  JSON.stringify(states["the split, with ignored files"].numbers) ===
+    JSON.stringify(["12,797", "394.6 MB", "248,189", "9.4 GB"]),
+);
+check(
+  "a live figure is a bold number",
+  live["count known"] === '<span class="summary-number">1</span> file' &&
+    live["size known"] === '(<span class="summary-number">1.5 KB</span>)',
+);
 
 if (failures.length > 0) {
   process.stderr.write(`tree summary line: ${failures.join("; ")}\n`);

@@ -7,8 +7,8 @@
 //                      point: the renderer only ever sees documents the
 //                      conformance corpus vouches for.
 
-import { validateDocument } from "./diff-model.js";
-import { mountDiffView, setChangeLoader } from "./diff-view.js";
+import { validateDocument, validateManifest } from "./diff-model.js";
+import { mountDiffSummary, mountDiffView, setChangeLoader } from "./diff-view.js";
 
 const mb = window.metabrowser;
 if (!mb) {
@@ -117,7 +117,7 @@ function markdownLayer(comparison) {
 /**
  * Ask the server for the first screen's projections while the reader is still on another
  * tab, one at a time, so Changes finds them computed. The answers are the server's to
- * keep; a page leaving stops the rest.
+ * keep; *signal* is the page's, so a page leaving stops the rest.
  *
  * @param {NonNullable<ReturnType<typeof markdownLayer>>} markdown
  * @param {unknown} payload
@@ -365,8 +365,7 @@ mb.registerView("diff", "diff", {
     const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
     const markdown = markdownLayer(ctx.comparison);
-    // A commit's view gives the commit's own totals (`showSummary` below) and draws no summary,
-    // but its file bars show paths by the tree's display rule too.
+    // The tree the Diff summary is drawn on, whose display rule the file bars show paths by.
     const summaryTree = changedFilesTree();
     let payload;
     try {
@@ -453,11 +452,18 @@ mb.registerView("diff", "diff", {
       markdown !== null &&
       markdownViews !== null &&
       files.some((file) => markdownViews.supportsMarkdownChange(file));
-    // A commit comparison already carries these totals beside its revision,
-    // author, and age. Direct diff documents and two-endpoint comparisons own
-    // their aggregate summary.
+    ctx.onDocument?.(result.document);
+    // A commit's page and a pull request's keep the Diff summary at their own top
+    // (mb-pb35): a commit's asks for it there (`summaryHost`), and a pull request's draws it
+    // itself and asks for none (`summary: false`). Direct diff documents and other
+    // comparisons lead their toolbar with it.
+    const summaryHost = ctx.summaryHost ?? null;
     return mountDiffView(container, result.document, mb, {
-      showSummary: !ctx.revision,
+      showSummary: ctx.summary !== false && (summaryHost !== null || !ctx.revision),
+      summaryHost,
+      // The commit's own totals, which the summary says where the list is cut short (A3 of
+      // review A on #470).
+      ...(ctx.summaryTotals === undefined ? {} : { summaryTotals: ctx.summaryTotals }),
       changedFiles,
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       viewFile,
@@ -479,22 +485,52 @@ mb.registerView("diff", "diff", {
    * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
    * because this request's address is the one `render` would ask.
    *
-   * A comparison that names a rendered route also has its first screen's Markdown
-   * projections asked for, after the comparison answers and without holding it back.
+   * The comparison alone: a page that keeps the answer for later pages shares its request,
+   * so the first screen's Markdown is asked for apart from it (`prefetchMarkdown`).
    *
    * @param {Comparison} comparison
    * @param {AbortSignal} [signal]
    * @returns {Promise<unknown>}
    */
-  prefetch: (comparison, signal) => {
-    const options = signal === undefined ? undefined : { signal };
-    const answer = fetchComparison(comparisonKey(comparison), options);
+  prefetch: (comparison, signal) =>
+    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
+  /**
+   * The first screen's Markdown projections of a comparison a page shows, asked for while
+   * the reader is still on another tab, for the comparison *raw* is the answer to. Nothing
+   * for a comparison that names no rendered route. *signal* is the page's, so a page
+   * leaving stops the rest.
+   *
+   * @param {Comparison} comparison
+   * @param {unknown} raw
+   * @param {AbortSignal} signal
+   * @returns {Promise<void>}
+   */
+  prefetchMarkdown: async (comparison, raw, signal) => {
     const markdown = markdownLayer(comparison);
-    return markdown === null
-      ? answer
-      : answer.then((payload) => {
-          void prefetchMarkdown(markdown, payload, signal);
-          return payload;
-        });
+    if (markdown !== null && !signal.aborted) {
+      await prefetchMarkdown(markdown, raw, signal);
+    }
+  },
+  /**
+   * A comparison's Diff summary on its own, at the top of a page that keeps it while its diff
+   * comes and goes: a pull request's page, on every tab (mb-pb35). *raw* is the comparison
+   * `prefetch` or `render` read, of which only the manifest is read and validated; a file the
+   * summary opens goes to *openFile*. Null for a comparison whose manifest is not valid, which
+   * draws nothing.
+   *
+   * @param {HTMLElement} slot
+   * @param {{raw: unknown, openFile: (path: string) => void}} ctx
+   * @returns {Promise<{dispose: () => void} | null>}
+   */
+  summary: async (slot, ctx) => {
+    const result = validateManifest(ctx.raw);
+    if (!result.ok) {
+      return null;
+    }
+    const changedFiles = await changedFilesTree();
+    return mountDiffSummary(slot, { manifest: result.manifest }, mb, {
+      changedFiles,
+      openFile: ctx.openFile,
+    });
   },
 });

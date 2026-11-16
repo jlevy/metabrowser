@@ -87,8 +87,13 @@ class LaidOutElement {
     };
   }
 
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
   append(...nodes) {
-    for (const node of nodes) {
+    for (const given of nodes) {
+      const node = typeof given === "string" ? new LaidOutElement("#text") : given;
+      if (typeof given === "string") {
+        node.textContent = given;
+      }
       node.remove();
       node.parentNode = this;
       this.children.push(node);

@@ -1231,8 +1231,9 @@ async function paintStory(panel, selection = false) {
     const id = child(line, "github-pulls-id");
     const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    // The title's line is the title and its age; a stack member's place is on the muted
-    // line, before the number, so the title has the room (mb-dzsi).
+    // The stylesheet lays the row out as two lines (mb-lkkt, mb-3cbf): the chevron, the
+    // icon, the number's line, where a stack member's place comes before the number
+    // (mb-dzsi), and the age; then the title alone, so it has the room.
     // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
     const order = row(hostile)
       .childNodes.filter((node) => typeof node.className === "string")
@@ -1281,12 +1282,15 @@ async function paintStory(panel, selection = false) {
     );
     const total = status.firstElementChild;
     // The count is the shell's metadata line, set as the Files and Commits totals are: the
-    // number in the line's regular weight, and the repository name in its text role.
+    // number bold, as every count summary's (docs/design-system.md, "Count Summaries Bold
+    // Their Numbers"), the words in the line's weight, and the repository name in its text
+    // role.
     assert(
       status.classList.contains("nav-metadata") &&
         total.childNodes[0].localName === "span" &&
+        total.childNodes[0].classList.contains("summary-number") &&
         total.childNodes[0].textContent === "102",
-      "the exact repository number keeps the line's weight",
+      "the exact repository number is a count summary's bold number",
     );
     assert(
       total.childNodes[1].nodeName === "#text" &&
@@ -1294,7 +1298,7 @@ async function paintStory(panel, selection = false) {
         total.childNodes[2].localName === "strong" &&
         total.childNodes[2].classList.contains("repository-name") &&
         total.childNodes[2].textContent === "octo/demo",
-      "only the repository name is bold in the label",
+      "the words keep the line's weight, and the repository name is bold in its role",
     );
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
@@ -1310,6 +1314,12 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
+      // The stylesheet draws the number's line first and the title under it (mb-lkkt); the
+      // DOM keeps the title the row's first text. This reads the text, not the accessible
+      // name, which gives the state icon's label first and then the title.
+      "its text leads with its title": row(shown)
+        .textContent.trim()
+        .startsWith(row(shown).childNodes[2].textContent),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
       "Right opens its cached changed files": filesRead,
       "they hang under it as a group it owns": shown.childNodes.map(described),

@@ -16,14 +16,18 @@
 // `createSummaryTree` is every decision without a DOM: which folders are open, the rows a
 // reader sees, the row that takes Tab, and what a key or a press does; activating a file
 // jumps the diff to it. tests/dom/diff-summary-session.js runs it from the command line.
-// `mountSummaryTree` is the paint: the nav panel's tree rows adapted to the page, in a box
-// of its own that scrolls, drawn a window at a time as the Pulls tab's tree is.
+// `mountSummaryTree` is the paint: the nav panel's tree rows adapted to the page, on the
+// same rows, the shell's `.changed-file-row` class set (static/styles.css). Open, the tree
+// has no scroll bar of its own: it is as tall as its rows and grows in the page's flow, and
+// it draws only the rows in the window's view of it, and the overscan, as the Pulls tab's
+// tree draws the rows in the panel's view (see SUMMARY_ROWS_OVERSCAN).
 //
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
 // or a press on a file jumps; on a folder they toggle it. A host with an address for a file
-// takes the jump (diff-view.js `openFile`): a pull request's Changes opens
-// `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and the diff follows its address.
+// takes the jump (diff-view.js `openFile`): a pull request's page, whose header holds the
+// summary on every tab, opens `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and
+// its diff follows the address.
 //
 // A path is text whoever made the change wrote: it is painted with textContent and reaches
 // no class, style, or markup, and what is painted is its display, the server's rule
@@ -32,14 +36,16 @@
 //
 // Measured 2026-11-15 in headless Chrome 152 at 1280×900, medians of 7 loads, on this
 // repository's pull request #260 as a patch (596 files, 649 rows) and on a synthetic patch of
-// 2,000 files four folders deep (3,221 rows), at a load average of 12 to 39: the header
-// paints in the frame the first file bar does, no later than the count line it replaced;
-// a press after a hover drew 61 rows in 4.9 and 12.2 ms of script and showed them 16.4 and
-// 46.8 ms after the press (at most 19 and 65.7), with no long task; a press with no hover,
-// which imports this module itself, took 15.7 to 16.9 and 39.4 to 43.1 ms; a folder three
-// and four levels deep closed and opened in 9.4 to 26.3 ms. No spinner is drawn: nothing
-// waits long enough to need one. diff.summary-paint in
-// docs/project/architecture/arch-views-models-routes.md records the run.
+// 2,000 files four folders deep (3,221 rows), at a load average of 12 to 39, while the opened
+// tree still scrolled in a box at most 60vh tall, so the rows drawn are that box's view and
+// the overscan (SUMMARY_ROWS_OVERSCAN gives the window's): the header paints in the frame
+// the first file bar does, no later than the count line it replaced; a press after a hover
+// drew 61 rows in 4.9 and 12.2 ms of script and showed them 16.4 and 46.8 ms after the
+// press (at most 19 and 65.7), with no long task; a press with no hover, which imports this
+// module itself, took 15.7 to 16.9 and 39.4 to 43.1 ms; a folder three and four levels deep
+// closed and opened in 9.4 to 26.3 ms. No spinner is drawn: nothing waits long enough to
+// need one. diff.summary-paint in docs/project/architecture/arch-views-models-routes.md
+// records the run.
 
 /**
  * Folders start open up to this many files, as the Pulls tab's do (`AUTO_EXPAND_FILES` in
@@ -50,7 +56,22 @@
  */
 export const SUMMARY_AUTO_EXPAND_FILES = 3000;
 
-/** Rows drawn past the box's view each way, as the Pulls tab's tree draws them. */
+/**
+ * Rows drawn past the window's view of the tree each way, as the Pulls tab's tree draws them.
+ *
+ * An open tree has no bound on its length of its own and no scroll bar: it is as tall as its
+ * rows, one --ui-row-height each, in the page's flow, and the document holds only the rows in
+ * the window's view and this many each way. Its length is bounded by the comparison's, at
+ * most 2,000 files (`MAX_MANIFEST_FILES`), a few thousand rows, tens of thousands of pixels,
+ * where a browser lays out 33,554,428 (docs/large-content-rendering.md). Measured 2026-11-15
+ * in headless Chrome 152 at 1280×900, at a load average of 16, five loads each, a press after
+ * a hover, on synthetic patches of 106 files (133 rows, 3,197 px), 600 files (968 rows,
+ * 23,237 px), and 2,000 files four folders deep (2,290 rows, 54,965 px): the rows showed 8.4
+ * to 16.3, 16.2 to 19.8, and 48.3 to 57.4 ms after the press; the document held at most 116
+ * rows; scrolling the page through the whole tree, 400 px and two frames a step, took the
+ * two frames, 33.3 ms, at the median, and at most 33.9, 40.6, and 63.3 ms, one frame late;
+ * and no task ran long.
+ */
 export const SUMMARY_ROWS_OVERSCAN = 40;
 
 /**
@@ -206,9 +227,12 @@ export function createSummaryTree(tree, files, options = {}) {
   });
 }
 
+/** An `overflow` that makes a box cut what is inside it from view. */
+const CLIPS = /^(?:auto|scroll|hidden|clip|overlay)$/;
+
 /**
  * Which rows of a windowed tree are in the document, in their order: those *range* holds,
- * the rows in the box's view and its overscan (`windowRange` of the shared tree), and the
+ * the rows in the window's view and its overscan (`windowRange` of the shared tree), and the
  * row that takes Tab wherever it is, so focus never leaves with a scroll. Pure.
  *
  * @param {{start: number, end: number}} range
@@ -299,7 +323,7 @@ export function mountSummaryTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "diff-summary-row-stats", "aria-hidden": "true" }, [
+          h("span", { class: "changed-file-stats", "aria-hidden": "true" }, [
             h("span", { class: "diff-stat-add" }, [stats.additions]),
             h("span", { class: "diff-stat-del" }, [stats.deletions]),
           ]),
@@ -308,13 +332,13 @@ export function mountSummaryTree(host) {
 
   /** @param {SummaryRow} row @returns {Node[]} */
   function partsOf(row) {
-    const name = h("span", { class: "diff-summary-row-name" }, [row.name]);
+    const name = h("span", { class: "changed-file-name" }, [row.name]);
     if (row.kind === "folder") {
       const chevron = host.chevron();
       return [
         h(
           "span",
-          { class: "diff-summary-row-toggle", "aria-hidden": "true" },
+          { class: "changed-file-toggle", "aria-hidden": "true" },
           chevron === null ? [] : [chevron],
         ),
         name,
@@ -324,7 +348,7 @@ export function mountSummaryTree(host) {
     const badge = h(
       "span",
       {
-        class: "tree-container-badge diff-summary-row-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },
@@ -350,14 +374,14 @@ export function mountSummaryTree(host) {
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
-      // The tooltip says what the folder's sums leave out, as its accessible name does, and
-      // nothing when they leave nothing out: its name is on the row (docs/design-system.md,
-      // "Tooltips Add Information").
+      // The tooltip says what the folder's sums leave out, the counts alone, as its
+      // accessible name does, and nothing when they leave nothing out: its name is on the row
+      // already (docs/design-system.md, "Tooltips Add Information").
       const missing = host.tree.missingCounts(row, host.formatCount);
       if (missing === "") {
         delete element.dataset.tipText;
       } else {
-        element.dataset.tipText = `${row.name}, ${missing}`;
+        element.dataset.tipText = missing;
       }
     } else {
       element.dataset.tipText =
@@ -372,8 +396,8 @@ export function mountSummaryTree(host) {
       {
         class:
           row.kind === "folder"
-            ? "diff-summary-row diff-summary-folder disclosure-toggle"
-            : "diff-summary-row diff-summary-file",
+            ? "changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"
+            : "changed-file-row diff-summary-row diff-summary-file",
         role: "treeitem",
       },
       partsOf(row),
@@ -383,7 +407,29 @@ export function mountSummaryTree(host) {
     return { element, content: contentOf(row) };
   }
 
-  /** Draw the rows in the box's view, and the anchor's, in order; leave the rest out. */
+  /**
+   * The part of the window the tree can be seen through, in client coordinates: the window,
+   * cut by every box above the tree that scrolls or clips, such as the pane the page scrolls.
+   * @returns {{top: number, bottom: number}}
+   */
+  function viewOf() {
+    let top = 0;
+    let bottom =
+      typeof window.innerHeight === "number" ? window.innerHeight : Number.POSITIVE_INFINITY;
+    for (let node = body.parentElement; node; node = node.parentElement) {
+      if (CLIPS.test(getComputedStyle(node).overflowY ?? "")) {
+        const box = node.getBoundingClientRect();
+        top = Math.max(top, box.top);
+        bottom = Math.min(bottom, box.bottom);
+      }
+    }
+    return { top, bottom };
+  }
+
+  /** The window last drawn, so a scroll that moves no row draws nothing again. */
+  let drawnWindow = "";
+
+  /** Draw the rows in the window's view, and the anchor's, in order; leave the rest out. */
   function paintWindow() {
     if (disposed || !open) {
       return;
@@ -394,7 +440,7 @@ export function mountSummaryTree(host) {
     if (height <= 0) {
       return;
     }
-    const view = body.getBoundingClientRect();
+    const view = viewOf();
     const { start, end } = host.tree.windowRange({
       count: rows.length,
       rowHeight: height,
@@ -404,7 +450,13 @@ export function mountSummaryTree(host) {
       overscan: SUMMARY_ROWS_OVERSCAN,
     });
     const anchor = model.anchor();
-    const wanted = rowsToDraw({ start, end }, anchor === null ? undefined : model.indexOf(anchor));
+    const anchorAt = anchor === null ? undefined : model.indexOf(anchor);
+    const shown = `${model.version()} ${start} ${end} ${anchorAt}`;
+    if (shown === drawnWindow) {
+      return;
+    }
+    drawnWindow = shown;
+    const wanted = rowsToDraw({ start, end }, anchorAt);
     const keep = new Set(wanted.map((at) => rows[at].id));
     for (const [id, entry] of drawn) {
       if (!keep.has(id)) {
@@ -435,7 +487,7 @@ export function mountSummaryTree(host) {
     drawnVersion = model.version();
   }
 
-  /** Focus the row that takes Tab, drawn, and in the box's view. */
+  /** Focus the row that takes Tab, drawn, and in the window's view. */
   function focusAnchor() {
     const anchor = model.anchor();
     const element = anchor === null ? null : (drawn.get(anchor)?.element ?? null);
@@ -517,7 +569,19 @@ export function mountSummaryTree(host) {
       });
     }
   };
-  body.addEventListener("scroll", onScroll, { passive: true, signal });
+  // The tree has no scroll of its own: the window's view of it moves when the page, or any
+  // box above it, scrolls, which a listener on the document hears in its capture phase, and
+  // when the window or the tree changes size. A scroll of a box that does not hold the tree,
+  // a Split diff's code or the navigation pane, cannot move that view, so it draws nothing.
+  /** @param {Event} event */
+  const onPageScroll = (event) => {
+    const target = event.target;
+    if (target === document || (target instanceof Node && target.contains(body))) {
+      onScroll();
+    }
+  };
+  document.addEventListener("scroll", onPageScroll, { capture: true, passive: true, signal });
+  window.addEventListener("resize", onScroll, { passive: true, signal });
   const sized = typeof ResizeObserver === "function" ? new ResizeObserver(onScroll) : null;
   sized?.observe(body);
 
@@ -525,7 +589,7 @@ export function mountSummaryTree(host) {
     body,
     model,
     /**
-     * Open or close the box. It opens at its height in one travel, its first rows drawn
+     * Open or close the tree. It opens at its height in one travel, its first rows drawn
      * before it does, and closing keeps what it drew.
      *
      * @param {boolean} next

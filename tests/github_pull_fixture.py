@@ -428,7 +428,8 @@ def pull_bodies(origin: Origin) -> dict[int, dict[str, Any]]:
         mergeable=None,
         title="spam",
         body=None,
-        labels=[{"name": "invalid"}],
+        # GitHub's default "invalid" label, with no description, so its chip has no tooltip.
+        labels=[{"name": "invalid", "color": "e4e669", "description": None}],
         user=None,
         closed_at="2026-09-16T19:00:00Z",
         html_url=f"{CANONICAL}/pull/9",
@@ -775,7 +776,7 @@ def list_item(pull: Mapping[str, Any]) -> dict[str, Any]:
         for key, value in item.items()
         if key == "url" or (key.endswith("_url") and key != "review_comment_url")
     }
-    labels = [{**item["labels"][0], "name": label["name"]} for label in pull["labels"]]
+    labels = [{**item["labels"][0], **label} for label in pull["labels"]]
     copied = (
         "number",
         "state",
@@ -1086,12 +1087,42 @@ def seed_catalog(
     return state
 
 
+def label_entries() -> dict[str, Any]:
+    """The repository's label set, one page: GitHub's three labels the stand-in's pulls use.
+
+    Each is the recorded list item's label, with its own name, color, and description.
+    """
+
+    template = recorded_responses()["list_item"]["labels"][0]
+    labels = [
+        template,
+        {
+            **template,
+            "id": 3581582504,
+            "name": "invalid",
+            "url": "https://api.github.com/repos/octo/demo/labels/invalid",
+            "color": "e4e669",
+            "description": None,
+        },
+        {
+            **template,
+            "id": 3581582505,
+            "name": "bug",
+            "url": "https://api.github.com/repos/octo/demo/labels/bug",
+            "color": "d73a4a",
+            "description": "Something isn't working",
+        },
+    ]
+    path = "repos/octo/demo/labels?per_page=100&page=1"
+    return {path: ok(path, labels)}
+
+
 def scenario(origin: Origin) -> dict[str, Any]:
     """Signed in as :data:`READER`, answering every read of pull requests 7 to 10."""
 
     lists = list_entries(origin)
     items = [*lists[list_page("all")]["body"], *lists[list_page("all", 2)]["body"]]
-    answers = {**api_entries(origin), **lists, **catalog_entries(items)}
+    answers = {**api_entries(origin), **lists, **catalog_entries(items), **label_entries()}
     return {"auth": account(), "api": answers, "api_failure": None}
 
 

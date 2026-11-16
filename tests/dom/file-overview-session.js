@@ -764,7 +764,7 @@ const rollupError = (status) =>
     // The file list says the same of a capped index. Its count helper writes the noun, and
     // the route may not name the limit.
     const noteHtml = vm.runInNewContext(
-      `${["formatCount", "treeTruncationNoteHtml"].map(lift).join("\n")}
+      `${["formatCountParts", "formatCount", "treeTruncationNoteHtml"].map(lift).join("\n")}
        treeTruncationNoteHtml;`,
     );
     const note = (maxFiles) => noteHtml(maxFiles).replace(/<[^>]*>/g, "");

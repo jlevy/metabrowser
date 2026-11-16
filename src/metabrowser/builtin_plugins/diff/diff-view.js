@@ -1389,26 +1389,96 @@ function countFormatter(api) {
 let summaryIds = 0;
 
 /**
+ * A count summary's parts, "35 changed files", as a span of *className*: each number in
+ * the shell's `.summary-number`, bold, and the words in the line's own weight
+ * (docs/design-system.md, "Count Summaries Bold Their Numbers"). Its text is the phrase as
+ * it reads, so the accessible name is unchanged.
+ *
+ * @param {string} className
+ * @param {MetabrowserCountParts} parts
+ * @returns {HTMLElement}
+ */
+function countSummary(className, parts) {
+  const span = el("span", className);
+  span.append(
+    ...parts.map((part) =>
+      typeof part === "string" ? part : el("span", "summary-number", part.number),
+    ),
+  );
+  return span;
+}
+
+/**
+ * What a Diff summary reads of what it heads: a diff's view (`summaryOwnerOf`), or a page that
+ * draws the summary on its own (`mountDiffSummary`). *jump* goes to a changed file, through
+ * the host's address where it has one, or in the diff.
+ *
+ * @typedef {object} SummaryOwner
+ * @property {DiffViewApi | undefined} api
+ * @property {boolean} disposed
+ * @property {MetabrowserChangedFilesTree | null} changedFiles
+ * @property {(path: string) => void} jump
+ */
+
+/**
+ * The whole change set's totals, where its list stopped at its bound and the page knows more
+ * than the list does, as a commit's page does from the commit's own stats.
+ *
+ * @typedef {{files: number, additions: number | null, deletions: number | null, exact: boolean}} WholeTotals
+ */
+
+/**
+ * A diff's view as its Diff summary reads it.
+ *
+ * @param {MountedDiffState} view
+ * @returns {SummaryOwner}
+ */
+function summaryOwnerOf(view) {
+  return {
+    api: view.api,
+    get disposed() {
+      return view.disposed;
+    },
+    changedFiles: view.changedFiles,
+    jump(path) {
+      if (view.openFile !== null) {
+        view.openFile(path);
+      } else {
+        jumpToFirstFile(view, path);
+      }
+    },
+  };
+}
+
+/**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
  * changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423", and is the disclosure
  * toggle of its files as a tree by folder. It starts collapsed, and the tree is not mounted,
  * or its module imported, until the header is first opened; hovering or focusing the header
  * asks for the module first. Its words are the shared model's (`describeChanges`), from the
- * manifest's totals and the kinds of the files it lists. A change set of no files has
- * nothing to open, so its header is a line.
+ * manifest's totals and the kinds of the files it lists, or, for a list cut short, the
+ * whole change set's totals (*whole*) and how many files it lists. A change set of no files
+ * has nothing to open, so its header is a line. A header whose host cuts its breakdown short,
+ * as a pull request's header does to keep one line, has its whole words as its tooltip while
+ * it is cut.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
- * @param {MountedDiffState} view
+ * @param {SummaryOwner} view
  * @param {MetabrowserChangedFilesTree} model
+ * @param {WholeTotals | null} [whole]
  * @returns {{element: HTMLElement, dispose: () => void}}
  */
-function renderDiffSummary(totals, files, view, model) {
+function renderDiffSummary(totals, files, view, model, whole = null) {
   const formatCount = countFormatter(view.api);
-  const { rows, said } = diffSummaryOf(totals, files, model, formatCount);
-  const parts = [el("span", "diff-summary-files", said.files)];
-  if (said.breakdown !== "") {
-    parts.push(el("span", "diff-summary-breakdown", `(${said.breakdown})`));
+  const { rows, said, listed } = diffSummaryOf(totals, files, model, formatCount, whole);
+  const parts = [countSummary("diff-summary-files", said.filesParts)];
+  const breakdown =
+    said.breakdownParts.length === 0
+      ? null
+      : countSummary("diff-summary-breakdown", ["(", ...said.breakdownParts, ")"]);
+  if (breakdown !== null) {
+    parts.push(breakdown);
   }
   const stats = el("span", "diff-summary-stats");
   stats.append(
@@ -1418,6 +1488,9 @@ function renderDiffSummary(totals, files, view, model) {
   parts.push(stats);
   if (said.estimated) {
     parts.push(el("span", "diff-summary-note", "(estimated)"));
+  }
+  if (listed !== null) {
+    parts.push(el("span", "diff-summary-note", `(${listed} listed)`));
   }
   if (rows.length === 0) {
     const line = el("div", "diff-summary");
@@ -1460,7 +1533,23 @@ function renderDiffSummary(totals, files, view, model) {
   };
   const listening = new AbortController();
   const { signal } = listening;
-  toggle.addEventListener("pointerenter", () => void load().catch(() => {}), { signal });
+  toggle.addEventListener(
+    "pointerenter",
+    () => {
+      void load().catch(() => {});
+      // The whole of a breakdown cut short (docs/design-system.md, "Tooltips Add
+      // Information"), and nothing while it is whole; a press that failed keeps its own.
+      if (toggle.getAttribute("aria-disabled") === "true") {
+        return;
+      }
+      if (breakdown !== null && breakdown.scrollWidth > breakdown.clientWidth) {
+        toggle.dataset.tipText = said.text;
+      } else {
+        delete toggle.dataset.tipText;
+      }
+    },
+    { signal },
+  );
   toggle.addEventListener("focus", () => void load().catch(() => {}), { signal });
   toggle.addEventListener(
     "click",
@@ -1502,20 +1591,16 @@ function renderDiffSummary(totals, files, view, model) {
                 return box.firstElementChild;
               },
               // A file opens at its own address where the host has one, as a pull request's
-              // Changes does (`/pull/<n>/files/<path>`), and the address shows it; elsewhere
+              // page does (`/pull/<n>/files/<path>`), and the address shows it; elsewhere
               // the diff goes to it in place.
-              jump: (path) => {
-                if (view.openFile !== null) {
-                  view.openFile(path);
-                } else {
-                  jumpToFirstFile(view, path);
-                }
-              },
+              jump: (path) => view.jump(path),
             }),
           { file_count: rows.length },
         );
         toggle.setAttribute("aria-controls", id);
-        toggle.closest(".diff-toolbar")?.after(tree.body);
+        // Under the toolbar in a diff; under the header itself where a page places the
+        // summary at its top (mb-pb35).
+        (toggle.closest(".diff-toolbar") ?? toggle).after(tree.body);
       }
       const open = !tree.isOpen();
       const shown = tree;
@@ -1541,37 +1626,92 @@ function renderDiffSummary(totals, files, view, model) {
 }
 
 /**
+ * A change set's Diff summary, or, where the shared changed-files tree did not load, its
+ * totals on their own, as they always were: only the tree of files is lost.
+ *
+ * @param {Record<string, unknown>} totals
+ * @param {Record<string, unknown>[]} files
+ * @param {SummaryOwner} view
+ * @param {WholeTotals | null} [whole]
+ * @returns {{element: HTMLElement, dispose: () => void}}
+ */
+function summaryOrTotals(totals, files, view, whole = null) {
+  if (view.changedFiles !== null) {
+    return renderDiffSummary(totals, files, view, view.changedFiles, whole);
+  }
+  const formatCount = countFormatter(view.api);
+  const said = plainTotals(whole ?? totals, formatCount);
+  const line = el("div", "diff-summary");
+  const stats = el("span", "diff-summary-stats");
+  stats.append(
+    el("span", "diff-stat-add", said.additions),
+    el("span", "diff-stat-del", said.deletions),
+  );
+  line.append(countSummary("diff-summary-files", said.filesParts), stats);
+  if (said.estimated) {
+    line.append(el("span", "diff-summary-note", "(estimated)"));
+  }
+  if (whole !== null) {
+    line.append(el("span", "diff-summary-note", `(${formatCount(files.length)} listed)`));
+  }
+  return { element: line, dispose: () => {} };
+}
+
+/**
+ * The whole change set's totals a page gave the diff, for a list cut short at its bound, or
+ * null: a list that is whole says its own totals, and a page's totals that are not counts
+ * are not said (A3 of review A on #470).
+ *
+ * @param {{truncated?: unknown}} manifest
+ * @param {unknown} given
+ * @returns {WholeTotals | null}
+ */
+function wholeTotalsOf(manifest, given) {
+  if (manifest.truncated !== true || given === null || typeof given !== "object") {
+    return null;
+  }
+  const totals = /** @type {Record<string, unknown>} */ (given);
+  /** @param {unknown} value */
+  const count = (value) => Number.isInteger(value) && Number(value) >= 0;
+  /** @param {unknown} value */
+  const lines = (value) => (count(value) ? Number(value) : null);
+  if (!count(totals.files)) {
+    return null;
+  }
+  return {
+    files: Number(totals.files),
+    additions: lines(totals.additions),
+    deletions: lines(totals.deletions),
+    exact: totals.exact === true,
+  };
+}
+
+/**
  * The layout control is always present in the shell. A multi-file diff's toolbar leads with
- * its Diff summary; single-file views avoid repeating their file bar.
+ * its Diff summary; single-file views avoid repeating their file bar. A page that places the
+ * summary at its own top passes the place (*summaryHost*), as a commit's page does
+ * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
+ * change set's totals, and the toolbar holds the layout control alone. *whole* is the
+ * change set's whole totals, where its list was cut short and the page knows them
+ * (`wholeTotalsOf`).
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
+ * @param {HTMLElement | null} [summaryHost]
+ * @param {WholeTotals | null} [whole]
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, files, view, showSummary) {
+function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null, whole = null) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
   let disposeSummary = null;
-  if (showSummary && Number(totals.files) !== 1) {
-    if (view.changedFiles === null) {
-      // The shared tree did not load: the totals stand on their own, as they always did, and
-      // only the tree of files is lost.
-      const said = plainTotals(totals, countFormatter(view.api));
-      const line = el("div", "diff-summary");
-      const stats = el("span", "diff-summary-stats");
-      stats.append(
-        el("span", "diff-stat-add", said.additions),
-        el("span", "diff-stat-del", said.deletions),
-      );
-      line.append(el("span", "diff-summary-files", said.files), stats);
-      if (said.estimated) {
-        line.append(el("span", "diff-summary-note", "(estimated)"));
-      }
-      toolbar.append(line);
+  if (showSummary && (summaryHost !== null || Number(totals.files) !== 1)) {
+    const summary = summaryOrTotals(totals, files, summaryOwnerOf(view), whole);
+    disposeSummary = summary.dispose;
+    if (summaryHost !== null) {
+      summaryHost.replaceChildren(summary.element);
     } else {
-      const summary = renderDiffSummary(totals, files, view, view.changedFiles);
-      disposeSummary = summary.dispose;
       toolbar.append(summary.element);
     }
   }
@@ -2831,6 +2971,41 @@ function measureInContainer(root, container) {
 }
 
 /**
+ * A change set's Diff summary on its own, for a page that keeps it at its top while its diff
+ * comes and goes, as a pull request's page does on every tab (mb-pb35). The header and its
+ * tree are the diff's own (`renderDiffSummary`), from the document's manifest, which is all
+ * it reads; a file it opens goes to *openFile*.
+ *
+ * @param {HTMLElement} slot Where the summary is drawn; its children are replaced.
+ * @param {{manifest: unknown}} document_ A ChangeSetDocument whose manifest is validated
+ *   (`validateManifest`).
+ * @param {DiffViewApi | undefined} api
+ * @param {{changedFiles: MetabrowserChangedFilesTree | null, openFile: (path: string) => void}} options
+ * @returns {{dispose: () => void}}
+ */
+export function mountDiffSummary(slot, document_, api, options) {
+  const manifest =
+    /** @type {{files: Record<string, unknown>[], totals: Record<string, unknown>}} */ (
+      document_.manifest
+    );
+  /** @type {SummaryOwner} */
+  const owner = {
+    api,
+    disposed: false,
+    changedFiles: options.changedFiles,
+    jump: options.openFile,
+  };
+  const summary = summaryOrTotals(manifest.totals, manifest.files, owner);
+  slot.replaceChildren(summary.element);
+  return {
+    dispose() {
+      owner.disposed = true;
+      summary.dispose();
+    },
+  };
+}
+
+/**
  * Mount a validated ChangeSetDocument.
  *
  * @param {HTMLElement} container
@@ -2838,6 +3013,8 @@ function measureInContainer(root, container) {
  * @param {DiffViewApi} [api]
  * @param {{
  *   showSummary?: boolean,
+ *   summaryHost?: HTMLElement | null,
+ *   summaryTotals?: unknown,
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
@@ -2853,7 +3030,10 @@ function measureInContainer(root, container) {
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
  *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
  *   it a multi-file diff has no summary. *openFile* is the host's way to a changed file's own
- *   address, which the summary's file rows take where the host has one.
+ *   address, which the summary's file rows take where the host has one. *summaryHost* is
+ *   where a page that places the summary at its own top wants it drawn (mb-pb35).
+ *   *summaryTotals* are the change set's whole totals, which its summary says where the list
+ *   is cut short at its bound, as a commit's page knows them (A3 of review A on #470).
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -2960,6 +3140,8 @@ export function mountDiffView(container, document_, api, options = {}) {
     manifest.files,
     view,
     options.showSummary !== false,
+    options.summaryHost ?? null,
+    wholeTotalsOf(manifest, options.summaryTotals ?? null),
   );
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.

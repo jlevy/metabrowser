@@ -692,7 +692,7 @@ def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
     js = _read_app_js()
     helper_start = js.index("function _updateDeferredTreePageEntry(container, entry)")
     helper_block = js[helper_start : helper_start + 1000]
-    assert "_deferredTreePageForContainer(container)" in helper_block
+    assert "_deferredTreePageForContainer(container, entry.path)" in helper_block
     assert "node.path === entry.path" in helper_block
     assert "deferred.page.nodes[index]" in helper_block
     assert "current.type !== entry.type" in helper_block
@@ -928,7 +928,14 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     # keeps the ref and commit the server rendered; tests/dom/source-kind-session.js
     # runs both branches.
     heading_start = js.index("function renderServedRootHeading(pathEl, root)")
-    assert "pathEl.innerHTML = pathBaseHtml(root)" in js[heading_start : heading_start + 400]
+    heading = js[heading_start : heading_start + 700]
+    # Home draws the tree again: the same name is not written again under the pointer. The
+    # name's text is compared, so a name with a quote, which the markup escapes and the
+    # element's serialization does not, is the same name too (source-kind-session.js).
+    assert (
+        "if (pathEl.textContent !== pathBaseName(root)) {\n"
+        "    pathEl.innerHTML = pathBaseHtml(root);"
+    ) in heading
     tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
     assert (

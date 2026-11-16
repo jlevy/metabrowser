@@ -44,17 +44,20 @@ def test_diff_view_projects_the_model() -> None:
 def test_the_comparison_address_is_spelled_by_the_diff_plugin_alone() -> None:
     """The browser's cache is keyed by the address, so the pull-request page's prefetch and
     the diff's own request must be one spelling (review of #284, A3): the github plugin
-    asks the registered diff view for the request and names no comparison parameter."""
+    asks the registered diff view for the request and names no comparison parameter. The
+    page and the Pulls tab's warmer both read through `diffComparisonLoader` (mb-neg9)."""
     plugins = REPO_ROOT / "src/metabrowser/builtin_plugins"
     diff = (plugins / "diff/index.js").read_text(encoding="utf-8")
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
+    panel = (plugins / "github/pulls-panel.js").read_text(encoding="utf-8")
     prefetch = (plugins / "github/comparison-prefetch.js").read_text(encoding="utf-8")
     assert "prefetch: (comparison, signal) =>" in diff
     assert "function fetchComparison(" in diff
     assert diff.count("fetchComparison(comparisonKey(comparison)") == 1
     assert "? await (ctx.raw" in diff
-    assert 'getRegisteredView("diff", "diff")' in page and ".prefetch(" in page
-    for source in (page, prefetch):
+    assert 'getRegisteredView("diff", "diff")' in prefetch and ".prefetch(" in prefetch
+    assert "load: diffComparisonLoader(mb)" in page and "load: diffComparisonLoader(mb)" in panel
+    for source in (page, panel, prefetch):
         assert 'fetchPluginData("diff"' not in source
         assert "build:" not in source and "store:" not in source and "BUILD_TAG" not in source
 

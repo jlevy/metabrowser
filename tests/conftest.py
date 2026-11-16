@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -221,6 +222,25 @@ def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[repo
     gh_budget.forget()
     yield
     gh_budget.forget()
+
+
+@pytest.fixture(autouse=True)
+def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no parsed label set and no unwritten outcome, as a new process.
+
+    ``pull_labels`` keeps both per process, by home and source, and the fixtures share one
+    source, so a set one test parsed or a refusal it remembered would reach the next. A
+    process that never imported it holds neither, and is not made to import it here.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_labels")
+        if loaded is not None:
+            loaded.forget()
+
+    forget()
+    yield
+    forget()
 
 
 @pytest.fixture(autouse=True)

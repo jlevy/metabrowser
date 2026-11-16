@@ -12,11 +12,18 @@ answer becomes sections in its order, how a folder inside a section opens under 
 section’s group, which filters Clear and the chevron’s badge each count (Show ignored,
 on the row beside Group by, counts for Clear only), that Clear resets Show ignored and
 keeps the grouping, which band a file’s age falls in, and that a malformed answer is
-refused. It also pins the shell’s Group by decisions, held as pure functions: each
-section’s share of the first paint’s rows, the order a revealed row is looked for in,
-the reopen plan after a refresh, and the prefetch’s keep, abort, take, and clear.
-The answer it paints is read from `tests/golden/cli-api-tree-groups.tryscript.md`, its
-first one.
+refused. It also pins the shell’s Group by decisions, held in the model: each section’s
+share of the first paint’s rows, the order a revealed row is looked for in, the reopen
+plan after a refresh, which grouping a pressed row asks for ahead, the prefetch’s keep,
+drop, abort, and take, how a file change makes its answers stale without dropping them
+or restarting one still on its way, that the keyboard asks only for a row it rests on (a
+row passed over asks for nothing, and the next key, a choice, or the menu closing
+cancels the wait), which loads wait for first sections on their way and what the wait
+says, and the loads’ lifecycle: a refresh during a first load runs once after it, a
+newer choice aborts the load and its answer never paints, a stale prefetch paints and
+then refreshes once, and the wait for first sections ends on a paint, a failure, or a
+cancel. The answer it paints is read from
+`tests/golden/cli-api-tree-groups.tryscript.md`, its first one.
 
 ```console
 $ node tests/dom/files-group-by-session.js
@@ -183,75 +190,321 @@ $ node tests/dom/files-group-by-session.js
       "src/lib"
     ]
   },
+  "loads": {
+    "a refresh, while the first sections are on their way": "after",
+    "a refresh, while a refresh is on its way": "start",
+    "another grouping, while the first sections are on their way": "start",
+    "a refresh of another grouping": "start",
+    "a choice, with nothing on its way": "start",
+    "a refresh, with nothing on its way": "start"
+  },
+  "regroupingStatus": {
+    "age": "Grouping by age…",
+    "type": "Grouping by file type…"
+  },
+  "prefetchFor": {
+    "No grouping, ungrouped": null,
+    "By age, ungrouped": "/api/tree?group_by=age&depth=2",
+    "By file type, grouped by type": null,
+    "By age, grouped by type, under a filter": "/api/tree?group_by=age&types=.md&depth=2"
+  },
   "prefetch": [
     {
-      "step": "open the menu",
+      "step": "press By age",
       "started": [
-        "age",
+        "age"
+      ],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "press it again",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "press By file type",
+      "started": [
         "type"
       ],
       "aborted": [],
-      "kept": 2
+      "kept": 2,
+      "resting": false
     },
     {
-      "step": "open it again",
+      "step": "choose By age",
       "started": [],
       "aborted": [],
-      "kept": 2
+      "kept": 1,
+      "resting": false,
+      "took": true,
+      "stale": false
     },
     {
-      "step": "open it while grouped by type",
+      "step": "choose By age again",
       "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false,
+      "took": false
+    },
+    {
+      "step": "press By file type after the TTL",
+      "started": [
+        "type"
+      ],
       "aborted": [
         "type"
       ],
-      "kept": 1
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "a file changes",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "press By file type while its stale answer is on its way",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "choose By file type",
+      "started": [],
+      "aborted": [],
+      "kept": 0,
+      "resting": false,
+      "took": true,
+      "stale": true
+    },
+    {
+      "step": "press By age, and its answer comes",
+      "started": [
+        "age"
+      ],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "a file changes again",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "press By age again",
+      "started": [
+        "age"
+      ],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
     },
     {
       "step": "choose By age",
       "started": [],
       "aborted": [],
       "kept": 0,
-      "took": true
+      "resting": false,
+      "took": true,
+      "stale": false
     },
     {
-      "step": "choose By age again",
+      "step": "press By file type",
+      "started": [
+        "type"
+      ],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "press By age under a .md filter",
+      "started": [
+        "age under .md"
+      ],
+      "aborted": [
+        "type"
+      ],
+      "kept": 1,
+      "resting": false
+    }
+  ],
+  "keyboardPrefetch": [
+    {
+      "step": "↓ to By age",
       "started": [],
       "aborted": [],
       "kept": 0,
-      "took": false
+      "resting": true
     },
     {
-      "step": "open the menu",
+      "step": "↓ to By file type before the dwell passes",
+      "started": [],
+      "aborted": [],
+      "kept": 0,
+      "resting": true
+    },
+    {
+      "step": "the dwell passes",
       "started": [
-        "age",
         "type"
       ],
       "aborted": [],
-      "kept": 2
+      "kept": 1,
+      "resting": false
     },
     {
-      "step": "open it after the TTL",
-      "started": [
-        "age",
-        "type"
-      ],
-      "aborted": [
-        "age",
-        "type"
-      ],
-      "kept": 2
-    },
-    {
-      "step": "a file changes",
+      "step": "↑ to By age",
       "started": [],
-      "aborted": [
-        "age",
-        "type"
+      "aborted": [],
+      "kept": 1,
+      "resting": true
+    },
+    {
+      "step": "Escape closes the menu",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "the dwell would have passed",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "↓ to By age, then ↓ to No grouping",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "the dwell passes on No grouping",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "↓ to By age",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": true
+    },
+    {
+      "step": "Enter chooses it before the dwell passes",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false,
+      "took": false
+    },
+    {
+      "step": "the dwell would have passed",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "↓ to By age, and focus leaves the menu",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": true
+    },
+    {
+      "step": "the dwell passes",
+      "started": [],
+      "aborted": [],
+      "kept": 1,
+      "resting": false
+    },
+    {
+      "step": "↓ to By age, and the pointer presses it",
+      "started": [
+        "age"
       ],
-      "kept": 0
+      "aborted": [],
+      "kept": 2,
+      "resting": false
     }
   ],
+  "groupedLoads": {
+    "a refresh during a first load waits, then runs once": [
+      "wait for type",
+      "ask type",
+      "a refresh: true",
+      "another: true",
+      "paint type",
+      "wait ends",
+      "refresh",
+      "wait for type (refresh)",
+      "ask type (refresh)",
+      "paint type",
+      "wait ends"
+    ],
+    "a newer choice aborts the load, and its answer never paints": [
+      "wait for type",
+      "ask type",
+      "abort type",
+      "wait ends",
+      "wait for age",
+      "ask age",
+      "drop type",
+      "paint age",
+      "wait ends"
+    ],
+    "a stale prefetch paints, then refreshes once": [
+      "wait for type",
+      "ask type",
+      "paint type",
+      "wait ends",
+      "refresh",
+      "wait for type (refresh)",
+      "ask type (refresh)",
+      "paint type",
+      "wait ends"
+    ],
+    "settled resolves on paint, on failure, and on cancel": [
+      "wait for type",
+      "ask type",
+      "paint type",
+      "wait ends",
+      "settled (painted)",
+      "wait for type",
+      "ask type",
+      "fail type",
+      "wait ends",
+      "settled (failed)",
+      "wait for type",
+      "ask type",
+      "abort type",
+      "wait ends",
+      "settled (cancelled)",
+      "drop type",
+      "wait for type (refresh)",
+      "ask type (refresh)",
+      "settled (a refresh paints no new sections)",
+      "paint type",
+      "wait ends"
+    ]
+  },
   "uncounted": {
     "key": "type:docs",
     "id": "docs",

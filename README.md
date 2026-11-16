@@ -121,9 +121,10 @@ read Markdown docs.
   commands while you work in the file tree.
   Every shortcut is a single key but Control-N and Control-P, which walk a pull
   request’s stack on macOS, and Shift never changes what a key does: `F`, `P`, and `H`
-  open Files, Pulls, and Commits, and holding Shift shows each key on the control it
-  reaches. See [keyboard shortcuts](docs/design-system.md#keyboard-shortcuts) for the
-  full scheme.
+  open Files, Pulls, and Commits, `0` goes home, as a click on the folder’s name does,
+  and holding Shift shows each key on the control it reaches.
+  See [keyboard shortcuts](docs/design-system.md#keyboard-shortcuts) for the full
+  scheme.
 
 - **Accessible file-tree navigation.** Move through the tree with the arrow keys or J
   and K, jump with Home and End, and activate folders, files, or pagination with Enter
