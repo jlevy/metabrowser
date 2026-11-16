@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import click
+from watchfiles import DefaultFilter
 
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
@@ -50,6 +51,11 @@ AGENT_LOG_MANIFEST = SRC / "builtin_plugins" / "agent_log" / "manifest.toml"
 # What a guide calls each JSONL adapter. A new adapter fails here until it has a name, so
 # that the guides can be told about it.
 AGENT_NAMES = {"claude": "Claude Code", "gemini": "Gemini CLI", "pi": "Pi", "codex": "Codex"}
+
+# The examples docs/browsing-files.md gives of directories the watcher does not observe.
+# They come from `watchfiles.DefaultFilter`, which `run_watcher` leaves in place; a
+# watchfiles release that drops one, or a filter of our own, fails here.
+UNWATCHED_EXAMPLES = ("node_modules", ".venv", "__pycache__")
 
 _NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
 
@@ -143,6 +149,12 @@ def stated_values() -> list[Stated]:
             "the watched extensions",
             r"whose names end in\s+((?:`\.\w+`(?:,?\s+(?:or\s+)?)?)+)",
             (_series([f"`{ext}`" for ext in sorted(BROWSER_TRACKABLE_EXTS)], "or"),),
+        ),
+        Stated(
+            "docs/browsing-files.md",
+            "the directories the watcher skips",
+            r"the file watcher skips, such as\s+`([^`]+)`, `([^`]+)`, or `([^`]+)`",
+            tuple(name for name in UNWATCHED_EXAMPLES if name in DefaultFilter.ignore_dirs),
         ),
         Stated(
             "docs/browsing-files.md",
@@ -305,6 +317,17 @@ def test_every_jsonl_adapter_has_a_name_the_guides_can_use() -> None:
     assert _manifest_adapters() <= _BUILTIN_ADAPTERS
     unnamed = sorted(_BUILTIN_ADAPTERS - AGENT_NAMES.keys())
     assert not unnamed, f"name {unnamed} in AGENT_NAMES, then say which guides list it"
+
+
+def test_the_watcher_keeps_the_filter_the_guide_describes() -> None:
+    """`watchfiles.awatch` applies `DefaultFilter` only when it is given no filter."""
+
+    source = (SRC / "watch_backends.py").read_text(encoding="utf-8")
+    assert "awatch(" in source
+    assert "watch_filter" not in source, (
+        "run_watcher now passes its own watch_filter: update UNWATCHED_EXAMPLES and the "
+        "unwatched directories in docs/browsing-files.md"
+    )
 
 
 def test_the_app_guides_say_whether_its_minimum_is_released() -> None:

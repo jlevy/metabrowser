@@ -188,8 +188,11 @@ and **Run ended** when the tail closes because the file was removed or replaced.
 
 1. Check that the file is inside the served folder and that no filter hides it,
    including Show ignored turned off for a gitignored file.
-2. Reload the page.
-3. If the server log says it is refreshing slow browser connections after a queue
+2. Check whether the file is under a tool directory the file watcher skips, such as
+   `node_modules`, `.venv`, or `__pycache__`. The tree can list those files, but a
+   change to one does not update the page live.
+3. Reload the page.
+4. If the server log says it is refreshing slow browser connections after a queue
    overflow, a burst of changes outran the page, which then reconnects and catches up
    from a fresh snapshot.
    If that repeats, report it with the size of the tree and its filesystem.
