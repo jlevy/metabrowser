@@ -3,14 +3,18 @@ type: is
 id: is-01m7jp04rw41ezxmwymds6e41m
 title: "Hover cards show change counts in the summary's style: '10 A, 5 D, 4 M · +1,234 −567' with bold numbers, status-colored letters, muted punctuation"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-16T17:20:41.243Z
-updated_at: 2026-11-16T17:32:09.287Z
+updated_at: 2026-11-16T20:05:15.822Z
+closed_at: 2026-11-16T20:05:15.821Z
+close_reason: "Done in #479 (56829857d, 27bcd2180): the commit hover card draws the brief change line in the summary's style; merges with #479."
+resolution: null
+duplicate_of: null
 ---
 From #479: the hover card lists M, A, D order and tints the added and deleted counts with status inks, unlike the Diff summary's '10 A, 5 D, 4 M'. Ask the owner whether it should match.
 
