@@ -172,7 +172,7 @@ it:
 | 12 | `claude/conversation-rhythm` | `mb-w7rt`, `mb-novh` | On pull request 11; respaces and reheads the Conversation that pull requests 6 and 7 leave, on the page as pull request 11 leaves its tips |
 | 13 | `claude/title-prefix-weight` | `mb-z57p` | On pull request 12; draws the titles of the Pulls rows, the pull request page, and its Conversation that pull requests 5, 6, 11, and 12 change |
 | 14 | `claude/reveal-on-navigate` | `mb-6y0g` | On pull request 13; reveals items in the Files tree pull request 2 groups and the Pulls stack groups pull request 5 adds, and notes beside the Pulls rows pull requests 11 and 13 change |
-| 15 | `claude/github-label-colors` | `mb-9qob` | On pull request 14; colors the labels of the pull request header whose title pull request 13 draws, and stores their colors in the Pulls catalog’s rows and their descriptions in the records |
+| 15 | `claude/github-label-colors` | `mb-9qob` | On pull request 14; colors the labels of the pull request header whose title pull request 13 draws, and stores their colors and descriptions in the records |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -385,29 +385,32 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 ### Label Colors
 
 - GitHub gives each label a `color`, six hex digits, and a `description`, in REST and
-  GraphQL alike. The selected pull request’s core asks for both, the pull request’s REST
-  read already had them, and the catalog’s page asks for the color alone.
-  A color that is not six hex digits is kept as none, and its chip is neutral.
+  GraphQL alike. The selected pull request’s core asks for both, and the pull request’s
+  REST read already had them; the catalog’s page asks for each label’s name alone, as
+  before. A color that is not six hex digits is kept as none, and its chip is neutral.
 - The page sets github.com’s `--label-*` properties on the chip and `github/styles.css`
   states github.com’s formula once, in both themes; the rule and why it is written in
   `rgb()` and `hsl()` are in “Label Colors” in `docs/design-system.md`. The constants
   and the rounding were read from github.com’s stylesheets and rendered labels on
   2026-11-15.
-- A record keeps each label as its name, color, and description, and a catalog row as
-  its name and color: no row draws labels, and the header’s tooltips come from the
-  record or its core, never from a row (decided in review of `mb-9qob`, 2026-11-15). A
-  record raises `PULL_RECORD_PROJECTION` to 2 and the catalog `CATALOG_PROJECTION` to 3,
-  so what an earlier build cached is still shown, its labels neutral, until its next
-  refresh asks for it in full (a record) or the one ALL rescan rewrites it (a row).
-  Both read a label an earlier projection named alone as one without a color.
-- Colors cost little and descriptions a lot, measured on 2026-11-15 on the catalog’s
-  page of the 100 newest pull requests.
+- A record keeps each label as its name, color, and description, and a catalog row its
+  name alone: no row draws labels, and the header’s colors and tooltips come from the
+  record or its core, never from a row (decided in review of `mb-9qob`, 2026-11-15, and
+  in review A of #465). A record raises `PULL_RECORD_PROJECTION` to 2 and reads a label
+  an earlier projection named alone as one without a color, so what an earlier build
+  cached is still shown, its labels neutral, until a refresh reads it in full.
+  The catalog vouches for no record of an earlier projection, closed or open
+  (`record_freshness` in `pull_freshness.py`), so opening one past its freshness window
+  refreshes it, once. A core cached before label colors, which has no projection, is
+  drawn neutral until its record arrives.
+- Colors in rows were measured and left out.
+  On 2026-11-15, on the catalog’s page of the 100 newest pull requests,
   kubernetes/kubernetes’s (981 labels) went from 84,678 to 101,355 bytes with colors,
   where descriptions too made it 174,997, and its average stored row from 646 to 901
-  bytes, where descriptions too made it 1,637. cli/cli’s (105 labels) went from 63,097
-  to 64,882 bytes, and its row from 518 to 545. Every page stays at a GraphQL cost of 1.
-  A row with every text at its bound is 11,079 bytes, inside the catalog’s 32 KiB row
-  limit.
+  bytes; cli/cli’s (105 labels) went from 63,097 to 64,882 bytes.
+  Every page stayed at a GraphQL cost of 1. Nothing reads a row’s colors, and storing
+  them would have raised `CATALOG_PROJECTION`, which rescans every cached catalog in
+  full and prepares every cached core again.
 
 ### Narrow Toolbars
 
@@ -480,8 +483,8 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   `pull-files`, a commit’s diff totals, and the stack envelope.
   Any new field arrives with its route’s golden.
 - **Labels** in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`
-  become objects of name, color, and description, and in `/api/plugin/github/pulls` of
-  name and color, which those routes’ goldens print.
+  become objects of name, color, and description, which those routes’ goldens print;
+  `/api/plugin/github/pulls` keeps each label’s name alone.
 
 ## Implementation Plan
 
@@ -581,12 +584,14 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 
 ### Phase 15: Label Colors (pull request 15)
 
-- [ ] `mb-9qob`: every query that reads labels asks for their color, and a pull
-  request’s for their description too; the record keeps both and the catalog’s rows the
-  color, each under a raised projection; the chips are painted by github.com’s formula
-  in both themes at our chip’s size, with a label’s description as its tooltip; the
-  routes’ goldens print them; and a Chrome check holds a light, a dark, a very pale, and
-  a colorless label to the formula and to github.com’s own computed colors.
+- [ ] `mb-9qob`: a pull request’s queries ask for each label’s color and description;
+  the record keeps both under a raised projection, and the catalog vouches for no record
+  of an earlier one, which a refresh reads in full; the catalog’s rows keep names alone;
+  the chips are painted by github.com’s formula in both themes at our chip’s size, with
+  a label’s description as its tooltip; the routes’ goldens print them; and a Chrome
+  check holds a pale, a dark, a very pale, a white, an indigo, and a gray label to the
+  formula and to github.com’s own computed colors, and a colorless and a malformed one
+  to the neutral chip.
 
 ## Testing Strategy
 

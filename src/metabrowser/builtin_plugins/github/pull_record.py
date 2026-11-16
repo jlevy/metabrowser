@@ -21,7 +21,6 @@ import os
 import re
 import shutil
 import stat
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -57,8 +56,10 @@ log = logging.getLogger(__name__)
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
 # 1 added each actor's avatar; 2 each label's color and description (:class:`PullLabel`).
-# A record of an earlier projection is still shown, and its next refresh asks GitHub for
-# every part again, without the ETags that would let a 304 keep what it lacks.
+# A record of an earlier projection is still shown, but the catalog never vouches for it
+# (:func:`.pull_freshness.record_freshness`), so it is refreshed once its window has
+# passed, closed or open, and that refresh asks GitHub for every part again, without the
+# ETags that would let a 304 keep what it lacks.
 PULL_RECORD_PROJECTION: Final = 2
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
@@ -141,26 +142,22 @@ def label_description(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-def bare_labels(*fields: str) -> Callable[[object], object]:
-    """A reader of labels an earlier projection wrote as bare names, each given *fields*.
+def bare_labels(value: object) -> object:
+    """Labels an earlier projection wrote as bare names, each read as one without a color.
 
-    A record of projection 1 or earlier and a catalog row of projection 2 or earlier, what
-    Metabrowser 0.12.0 and the builds since wrote, hold a label as its name. Each reads as
-    a label whose *fields*, its color and, in a record, its description, are ``None``, so
-    it is drawn neutral until the projection's upgrade rewrites it. Anything else is left
-    for the model to validate.
+    A record of projection 1 or earlier, and a core (:mod:`.pull_core_cache`), which has no
+    projection, written by Metabrowser 0.12.0 or a build since, hold a label as its name.
+    Each reads as a label whose color and description are ``None``, so it is drawn neutral
+    until a refresh rewrites it. Anything else is left for the model to validate.
     """
 
-    def read(value: object) -> object:
-        if not isinstance(value, list | tuple):
-            return value
-        items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
-        return [
-            {"name": item, **dict.fromkeys(fields)} if isinstance(item, str) else item
-            for item in items
-        ]
-
-    return read
+    if not isinstance(value, list | tuple):
+        return value
+    items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
+    return [
+        {"name": item, "color": None, "description": None} if isinstance(item, str) else item
+        for item in items
+    ]
 
 
 class PullLabel(_Model):
@@ -207,9 +204,9 @@ class PullRequest(_Model):
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
-    labels: Annotated[
-        tuple[PullLabel, ...], BeforeValidator(bare_labels("color", "description"))
-    ] = Field(max_length=MAX_LABELS)
+    labels: Annotated[tuple[PullLabel, ...], BeforeValidator(bare_labels)] = Field(
+        max_length=MAX_LABELS
+    )
     author: Login | None
     author_avatar_url: AvatarUrl = None
     created_at: Timestamp
