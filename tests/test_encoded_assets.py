@@ -23,6 +23,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
+from starlette.types import Message, Scope
 
 from metabrowser import (
     asset_stamps,
@@ -320,7 +321,7 @@ def test_an_asset_given_its_bytes_reads_nothing_and_has_them_as_its_body(
 async def _asgi_get(path: str, headers: dict[str, str]) -> tuple[int | None, dict[str, str], bytes]:
     """GET *path* from ``server.app`` as a client elsewhere: status, headers, raw body."""
     route, _, query = path.partition("?")
-    scope = {
+    scope: Scope = {
         "type": "http",
         "asgi": {"version": "3.0"},
         "http_version": "1.1",
@@ -339,7 +340,7 @@ async def _asgi_get(path: str, headers: dict[str, str]) -> tuple[int | None, dic
     }
     asked = False
 
-    async def receive() -> dict[str, object]:
+    async def receive() -> Message:
         nonlocal asked
         if not asked:
             asked = True
@@ -351,7 +352,7 @@ async def _asgi_get(path: str, headers: dict[str, str]) -> tuple[int | None, dic
     sent_headers: dict[str, str] = {}
     body = bytearray()
 
-    async def send(message: dict[str, object]) -> None:
+    async def send(message: Message) -> None:
         nonlocal status
         if message["type"] == "http.response.start":
             status = cast("int", message["status"])
@@ -373,7 +374,7 @@ def _gated_reads(
     reads: list[str] = []
     started = threading.Event()
     release = threading.Event()
-    original = asset_stamps.file_loader
+    original = encoded_assets.file_loader  # what asset_stamps imported
 
     def gated(path: Path, digest: str, digest_of: Callable[[bytes], str]) -> Callable[[], bytes]:
         load = original(path, digest, digest_of)
