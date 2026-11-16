@@ -321,6 +321,28 @@ function failures() {
 
 // ── Shell scenarios: the real app.js wiring ───────────────────
 
+/**
+ * How a tree drawn for Home is drawn: as a fresh load of /view/ draws it, with the folders
+ * app.js's `homeTreeExpansion` opens on each kind of page, a folder's, which paints the
+ * root's rows itself, and a pin's, which does not and leaves them to the planner.
+ */
+function homeTreeDraw(sandbox) {
+  const opens = (expansion) =>
+    expansion === undefined
+      ? "the planner's folders"
+      : expansion.defaultExpandedPaths.size === 0
+        ? "no folder"
+        : [...expansion.defaultExpandedPaths].join(", ");
+  return (
+    "drawn as a fresh load of /view/ draws it: " +
+    `${opens(sandbox.homeTreeExpansion(true, true))} open on a folder's page, ` +
+    `${opens(sandbox.homeTreeExpansion(true, false))} on a pin's`
+  );
+}
+const HOME_TREE_DRAW =
+  "drawn as a fresh load of /view/ draws it: no folder open on a folder's page, " +
+  "the planner's folders on a pin's";
+
 /** One app.js declaration, bounded by its closing line at column zero. */
 function appDeclaration(pattern, label) {
   const match = appSource.match(pattern);
@@ -357,6 +379,7 @@ const SHELL_FUNCTIONS = [
   "goHome",
   "openHomeRoot",
   "resetFilesTab",
+  "homeTreeExpansion",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
   "selectFile",
@@ -375,6 +398,7 @@ const SHELL_FUNCTIONS = [
   "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
+  "revealPullAddress",
   "applyPullHistoryLanding",
   "addressedView",
   "addressedFilePath",
@@ -550,7 +574,6 @@ function createShell(pathname, network, options = {}) {
   );
   /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
   const slotToolbar = (toolbar) => {
-    toolbar.querySelector ??= () => null;
     const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
     if (toolbar.dataset.navToolbar !== "files") {
       elements.set(id, toolbar);
@@ -804,7 +827,7 @@ function createShell(pathname, network, options = {}) {
     loadTree: async (treeOptions = {}) => {
       filesDrawn.push(
         treeOptions.asHome
-          ? "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+          ? `the tree, from the server's answer, ${homeTreeDraw(sandbox)}`
           : "the tree, from the server's answer",
       );
       return true;
@@ -971,8 +994,6 @@ function createShell(pathname, network, options = {}) {
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
     /** The toolbars in the navigation's slot, shown or not. */
     toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
-    /** @param {string} name One toolbar in the slot. */
-    toolbar: (name) => toolbars.find((toolbar) => toolbar.dataset.navToolbar === name),
     /** The toolbars shown in the navigation's slot: exactly the active tab's. */
     toolbarsShown: () =>
       toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
@@ -1046,7 +1067,7 @@ async function mainTabShortcuts() {
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
   // F for Files, P for Pulls, H for commit History ("Keyboard Shortcuts" in
-  // docs/design-system.md). A digit no longer names a main tab, nor R the Pulls tab (mb-6rfu).
+  // docs/design-system.md). A digit names no main tab, and neither does R (mb-6rfu).
   assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
   assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
   assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
@@ -1130,12 +1151,24 @@ async function goingHome() {
         changed.length === 0
           ? "the default filters"
           : changed.map((key) => `${key} ${JSON.stringify(state[key])}`).join(", ")
-      }${asHome ? ", drawn as a fresh load of /view/ draws it" : ""}`,
+      }${asHome ? `, ${homeTreeDraw(sandbox)}` : ""}`,
     );
   });
   const older = "b".repeat(40);
   sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
   sandbox.MetabrowserPullsNav = { routeChanged() {} };
+  // The Pulls tab's host registers its panel with a `home` of its own (pulls-nav.js), run
+  // by github-pulls-stack-groups-session.js. Here a stand-in records each call, so a step
+  // shows the tab controller ran every panel's reset; the Files panel's is resetFilesTab,
+  // whose drawing `filesDrawn` shows. Commits keeps nothing across a switch, and has none.
+  /** @type {string[]} */
+  const panelsHomed = [];
+  sandbox.mainTabs.register({
+    id: "pulls",
+    label: "Pulls",
+    onFirstShow: null,
+    home: () => panelsHomed.push("pulls"),
+  });
   sandbox.MetabrowserGitPanel = {
     cancelPending() {},
     // The panel's own listener, after the shell's: a commit's address shows the commit.
@@ -1180,6 +1213,7 @@ async function goingHome() {
   };
   async function home(fields) {
     shell.filesDrawn.length = 0;
+    panelsHomed.length = 0;
     const renders = shell.renderedViews.length;
     const kept = shell.clickHome(fields);
     await settle();
@@ -1190,6 +1224,7 @@ async function goingHome() {
       drawn: shell.renderedViews.slice(renders),
       files: filesTab(),
       filesDrawn: shell.filesDrawn.slice(),
+      panelsHomed: panelsHomed.slice(),
     };
   }
 
@@ -1217,8 +1252,9 @@ async function goingHome() {
   assert.equal(steps["home from Commits"].scroll, 0, "Files starts from the top");
   assert.equal(steps["home from Commits"].pushes, commits.pushes + 1, "home pushes one entry");
   assert.deepEqual(steps["home from Commits"].files, freshFiles, "the Files tab is a fresh load's");
+  assert.deepEqual(steps["home from Commits"].panelsHomed, ["pulls"], "every panel's home runs");
   assert.deepEqual(steps["home from Commits"].filesDrawn, [
-    "the filter bar and the tree, for the default filters, drawn as a fresh load of /view/ draws it",
+    `the filter bar and the tree, for the default filters, ${HOME_TREE_DRAW}`,
   ]);
 
   shell.pop(commits.address, commits.state);
@@ -1255,9 +1291,7 @@ async function goingHome() {
   assert.equal(rootShown.scroll, 0);
   assert.equal(rootShown.view, "default view", "the root is drawn again at its default view");
   assert.deepEqual(rootShown.drawn, [": default view"]);
-  assert.deepEqual(rootShown.filesDrawn, [
-    "the tree, from the server's answer, drawn as a fresh load of /view/ draws it",
-  ]);
+  assert.deepEqual(rootShown.filesDrawn, [`the tree, from the server's answer, ${HOME_TREE_DRAW}`]);
 
   // A pull request's Changes tab, its list scrolled: Home, then Pulls, opens the list at
   // its top, as a fresh load's Pulls does, not the pull request at the tab the reader left.
@@ -1288,9 +1322,17 @@ async function goingHome() {
   ]) {
     const after = await home(fields);
     modified[name] = after.kept ? "kept by the page" : "left to the browser";
-    const { kept: _kept, view: _view, drawn, files: _files, filesDrawn, ...where } = after;
+    const {
+      kept: _kept,
+      view: _view,
+      drawn,
+      files: _files,
+      filesDrawn,
+      panelsHomed: homed,
+      ...where
+    } = after;
     assert.deepEqual(where, before, name);
-    assert.deepEqual([drawn, filesDrawn], [[], []], `${name} draws nothing`);
+    assert.deepEqual([drawn, filesDrawn, homed], [[], [], []], `${name} draws nothing`);
   }
   steps["a click the browser keeps"] = modified;
 
@@ -1647,14 +1689,6 @@ async function independentMainTabs() {
     slots,
     { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
     "each tab shows its own toolbar, and only it",
-  );
-  // A toolbar a narrow pane scrolled comes back at its start.
-  slotted.toolbar("pulls").scrollLeft = 97;
-  slotted.sandbox.mainTabs.activate("pulls");
-  assert.equal(
-    slotted.toolbar("pulls").scrollLeft,
-    0,
-    "a scrolled toolbar comes back at its start",
   );
   const pullsLanding = createShell("/pulls", read, { pulls: true });
   assert.deepEqual(

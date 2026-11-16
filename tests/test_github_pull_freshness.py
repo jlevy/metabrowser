@@ -54,12 +54,13 @@ def _record(
     runs: tuple[str, ...] = ("completed",),
     status: str | None = None,
     reader: str = READER,
+    projection: int = PULL_RECORD_PROJECTION,
 ) -> PullRecord:
     side: dict[str, Any] = {"ref": "topic", "sha": "c" * 40, "repository": "octo/demo"}
     return PullRecord.model_validate(
         {
             "schema_version": PULL_RECORD_SCHEMA,
-            "projection_version": PULL_RECORD_PROJECTION,
+            "projection_version": projection,
             "source": SOURCE,
             "number": 7,
             "fetched_at": _stamp(fetched),
@@ -255,6 +256,44 @@ def test_the_clock_decides_without_a_usable_recent_scan(
     assert verdict.verdict == "unverified" and verdict.verified_by == "fetch"
     assert verdict.verified_at == record.fetched_at
     assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
+
+
+def test_a_record_of_an_earlier_projection_is_never_vouched_for_so_it_is_refreshed_once(
+    tmp_path: Path,
+) -> None:
+    """Review A1 of #465: an older build's record lacks what this one reads.
+
+    A closed record of an earlier projection, which names its labels alone, read a month
+    ago, with a catalog scanned twenty seconds ago and its row unchanged: the catalog says
+    nothing of it, so the clock decides, and it is stale and due once a window, until a
+    refresh rewrites it at this projection. A change GitHub made is still due at once, and
+    a record read within the window is current by the clock.
+    """
+
+    earlier = PULL_RECORD_PROJECTION - 1
+    record = _record(state="closed", fetched=NOW - timedelta(days=30), projection=earlier)
+    verdict = record_freshness(record, _catalog(), _row(), now=NOW)
+    assert (verdict.verdict, verdict.verified_by) == ("unverified", "fetch")
+    assert verdict.verified_at == record.fetched_at
+    assert pull_state(record, now=NOW, freshness=verdict) == ("stale", None)
+    # The same record at this projection is one the catalog vouches for.
+    vouched = _record(state="closed", fetched=NOW - timedelta(days=30))
+    assert record_freshness(vouched, _catalog(), _row(), now=NOW).verdict == "current"
+    held = _held(record, tmp_path)
+    held.saw_record(record.fetched_at, freshness=verdict)
+    assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    # Tried once, whether or not it succeeded, it waits a window.
+    held._last_attempt = NOW - timedelta(seconds=10)  # pyright: ignore[reportPrivateUsage]
+    assert not held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+    # An open one is read in full too, not for its checks alone.
+    opened = _record(fetched=NOW - timedelta(days=30), projection=earlier)
+    assert record_freshness(opened, _catalog(), _row(), now=NOW).verdict == "unverified"
+    newer = _row(updated=NOW - timedelta(minutes=1))
+    assert record_freshness(record, _catalog(), newer, now=NOW).verdict == "changed"
+    young = _record(state="closed", fetched=NOW - timedelta(seconds=10), projection=earlier)
+    clock = record_freshness(young, _catalog(), _row(), now=NOW)
+    assert clock.verdict == "unverified"
+    assert pull_state(young, now=NOW, freshness=clock) == ("current", None)
 
 
 def test_another_readers_newer_row_says_nothing() -> None:

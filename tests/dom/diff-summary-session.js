@@ -112,13 +112,20 @@ function written(parts) {
 }
 
 /**
- * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. `numbers` are
- * the counts it paints bold, each apart from its words (docs/design-system.md, "Count
- * Summaries Bold Their Numbers"): the file count, then each status's. `parts` are its file
- * count's and its statuses' parts as `painted` writes them.
+ * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes, with the page's
+ * whole totals (*whole*) where the list is cut short. `numbers` are the counts it paints bold,
+ * each apart from its words (docs/design-system.md, "Count Summaries Bold Their Numbers"): the
+ * file count, then each status's. `parts` are its file count's and its statuses' parts as
+ * `painted` writes them.
  */
-function header(_model, manifest) {
-  const { said } = diffModel.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
+function header(_model, manifest, whole = null) {
+  const { said, listed } = diffModel.diffSummaryOf(
+    manifest.totals,
+    manifest.files,
+    shared,
+    formatCount,
+    whole,
+  );
   return {
     text: said.text,
     label: said.label,
@@ -127,6 +134,7 @@ function header(_model, manifest) {
       typeof part === "object" && "number" in part ? [part.number] : [],
     ),
     parts: { files: painted(said.filesParts), statuses: painted(said.breakdownParts) },
+    ...(listed === null ? {} : { listed }),
   };
 }
 
@@ -205,6 +213,14 @@ async function main() {
     manifestOf([change("renamed", "src/app/views/main.py", 5, 2, "src/app/main.py")]),
   );
   stories["no files"] = header(model, manifestOf([]));
+  // A list cut short at its bound, on a page that knows the whole change set's totals, as a
+  // commit's page does from the commit's own stats: those, with no breakdown of the files
+  // listed alone, and how many are listed (A3 of review A on #470).
+  stories["a list cut short, with the page's whole totals"] = header(
+    model,
+    { ...kindsManifest, truncated: true, cursor: "manifest-cap" },
+    { files: 5000, additions: 152340, deletions: 30211, exact: true },
+  );
 
   // The tree as it opens: every folder open, a chain of single folders as one row, and each
   // folder with the counts of its files rolled up, the binary ones left out and counted.

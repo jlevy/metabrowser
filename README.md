@@ -120,9 +120,9 @@ read Markdown docs.
   A persistent hint strip keeps Help and Quick Search discoverable and adds contextual
   commands while you work in the file tree.
   Every shortcut is a single key but Control-N and Control-P, which walk a pull
-  request’s stack, and Shift never changes what a key does: `F`, `P`, and `H` open
-  Files, Pulls, and Commits, `0` goes home, as a click on the folder’s name does, and
-  holding Shift shows each key on the control it reaches.
+  request’s stack on macOS, and Shift never changes what a key does: `F`, `P`, and `H`
+  open Files, Pulls, and Commits, `0` goes home, as a click on the folder’s name does,
+  and holding Shift shows each key on the control it reaches.
   See [keyboard shortcuts](docs/design-system.md#keyboard-shortcuts) for the full
   scheme.
 

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import stat
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from metabrowser.git import process as git_process
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     BATCH_OBJECT_POLICY,
@@ -16,6 +19,8 @@ from metabrowser.git.process import (
     STORE_READ_POLICY,
     GitCommandError,
     GitLocation,
+    GitOutputCutError,
+    GitOutputTooLargeError,
     GitProcessPolicy,
     UnsupportedGitVersionError,
     acquisition_allowed,
@@ -345,3 +350,105 @@ def test_run_git_at_reads_a_filesystem_location(tmp_path: Path) -> None:
     )
     oid = asyncio.run(run_git_at(["rev-parse", "HEAD"], GitLocation.filesystem(repo)))
     assert len(oid.strip()) == 40
+
+
+# ── A run that stops once it has printed enough (H116) ─────────────────
+
+
+def _blob_repo(tmp_path: Path, size: int) -> tuple[Path, str, bytes]:
+    repo = tmp_path / "blob"
+    repo.mkdir()
+    asyncio.run(run_git(["init", "-q", "-b", "main"], cwd=repo))
+    body = b"".join(b"%08d of a long blob\n" % line for line in range(size // 20))
+    (repo / "big.txt").write_bytes(body)
+    oid = asyncio.run(run_git(["hash-object", "-w", "big.txt"], cwd=repo)).decode().strip()
+    return repo, oid, body
+
+
+class _Signals:
+    """The signals the runner sends, by name, and still sent."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.sent: list[int] = []
+        real = git_process._signal
+
+        def spy(proc: asyncio.subprocess.Process, signum: int) -> None:
+            if proc.returncode is None:
+                self.sent.append(signum)
+            real(proc, signum)
+
+        monkeypatch.setattr(git_process, "_signal", spy)
+
+
+def _after(count: int) -> Callable[[bytes], bool]:
+    seen = 0
+
+    def enough(chunk: bytes) -> bool:
+        nonlocal seen
+        seen += len(chunk)
+        return seen >= count
+
+    return enough
+
+
+def test_a_run_that_has_printed_enough_is_stopped_with_what_it_printed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SIGTERM, which Git answers by removing its lock files, and the read that ended it
+    kept; the cap is the other bound, and a run given a stop is stopped there too."""
+    repo, oid, body = _blob_repo(tmp_path, 4 * 1024 * 1024)
+    signals = _Signals(monkeypatch)
+    with pytest.raises(GitOutputCutError) as cut:
+        asyncio.run(run_git(["cat-file", "blob", oid], cwd=repo, stop_when=_after(100 * 1024)))
+    assert signals.sent[:1] == [signal.SIGTERM]
+    assert 100 * 1024 <= len(cut.value.prefix) < len(body)
+    assert body.startswith(cut.value.prefix)
+    with pytest.raises(GitOutputTooLargeError) as over:
+        asyncio.run(
+            run_git(
+                ["cat-file", "blob", oid],
+                cwd=repo,
+                max_bytes=64 * 1024,
+                stop_when=lambda _chunk: False,
+            )
+        )
+    assert not isinstance(over.value, GitOutputCutError)
+
+
+def test_a_stopped_run_that_outlives_the_grace_is_killed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Git that does not exit on the first signal, made here by sending one it ignores,
+    and asked for one large blob a thousand times, so it is still printing."""
+    repo, oid, _body = _blob_repo(tmp_path, 1024 * 1024)
+    signals = _Signals(monkeypatch)
+    monkeypatch.setattr(git_process, "_STOP_SIGNAL", signal.SIGCONT)
+    monkeypatch.setattr(git_process, "_STOP_GRACE_S", 0.05)
+    with pytest.raises(GitOutputCutError):
+        asyncio.run(
+            run_git(
+                ["cat-file", "--batch"],
+                cwd=repo,
+                stdin_bytes=(oid + "\n").encode() * 1000,
+                stop_when=_after(64 * 1024),
+            )
+        )
+    assert signals.sent == [signal.SIGCONT, signal.SIGKILL]
+
+
+def test_a_run_not_asked_to_stop_drains_and_sends_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, oid, _body = _blob_repo(tmp_path, 1024 * 1024)
+    signals = _Signals(monkeypatch)
+    with pytest.raises(GitOutputTooLargeError) as over:
+        asyncio.run(run_git(["cat-file", "blob", oid], cwd=repo, max_bytes=64 * 1024))
+    assert not isinstance(over.value, GitOutputCutError)
+    assert signals.sent == []
+
+
+def test_a_run_that_never_says_enough_answers_as_any_run(tmp_path: Path) -> None:
+    repo, oid, body = _blob_repo(tmp_path, 64 * 1024)
+    for stop_when in (None, lambda _chunk: False):
+        out = asyncio.run(run_git(["cat-file", "blob", oid], cwd=repo, stop_when=stop_when))
+        assert out == body

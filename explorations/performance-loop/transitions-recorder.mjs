@@ -1,5 +1,5 @@
 // In-page recorder and trusted-input driver for the transition-navigation/v1 scenario
-// (revision 5).
+// (the revision is SCENARIO_REVISION in transitions-stats.mjs).
 //
 // Measurement only: it drives the unmodified product over the Chrome DevTools Protocol
 // with trusted input and observes it from inside the page. Every in-page time is on the
@@ -194,11 +194,15 @@ function recorderMain(config) {
     },
     { durationThreshold: 16 },
   );
-  for (const type of ["pointerdown", "mousedown", "click", "keydown", "popstate"]) {
+  // `pointerover` is kept for a hover-click's realized dwell (revision 6), with a fourth
+  // field, 1 when its target is inside the element the hover-click armed (`hoverTarget`).
+  for (const type of ["pointerover", "pointerdown", "mousedown", "click", "keydown", "popstate"]) {
     window.addEventListener(
       type,
       (e) => {
-        R.inputs.push([type, e.timeStamp, e.isTrusted]);
+        const onTarget =
+          type === "pointerover" && R.hoverTarget && e.target?.closest?.(R.hoverTarget) ? 1 : 0;
+        R.inputs.push([type, e.timeStamp, e.isTrusted, onTarget]);
         if (R.inputAt === null && R.startEvents?.includes(type)) {
           R.inputAt = e.timeStamp;
         }
@@ -226,6 +230,12 @@ function recorderMain(config) {
       ? e.checkVisibility({ opacityProperty: true, visibilityProperty: true })
       : e.getClientRects().length > 0;
   };
+  // An element that clips its descendants to its box: overflow other than visible, or
+  // paint containment (`contain: paint`, `content`, or `strict`; revision 6).
+  const clips = (cs) =>
+    cs.overflowX !== "visible" ||
+    cs.overflowY !== "visible" ||
+    /paint|content|strict/.test(cs.contain);
   // A viewport rectangle that survives the viewport and every clipping ancestor of `from`
   // (a collapsed tree group is height 0 with overflow hidden), with no ancestor at zero
   // opacity or display none in between (the inert preview stage).
@@ -245,7 +255,7 @@ function recorderMain(config) {
       if (cs.display === "none" || Number.parseFloat(cs.opacity) <= 0.01) {
         return false;
       }
-      if (cs.overflowX !== "visible" || cs.overflowY !== "visible") {
+      if (clips(cs)) {
         const ar = a.getBoundingClientRect();
         left = Math.max(left, ar.left);
         top = Math.max(top, ar.top);
@@ -319,69 +329,421 @@ function recorderMain(config) {
     return r.width >= 16 && r.height >= 16;
   };
   const range = document.createRange();
-  const textShown = (node) => {
-    const parent = node.parentElement;
-    if (!parent || !rendered(parent)) {
-      return false;
-    }
-    range.selectNodeContents(node);
-    for (const r of range.getClientRects()) {
-      if (r.width > 0 && r.height > 0 && clipped(parent, r)) {
-        return true;
+  // A text node's own boxes, one of them on screen; its parent is already known rendered.
+  // Only the slice's non-blank parts are measured: each run of lines that holds a non-space
+  // character, trimmed to its first and last one, so a stretch of blank lines on screen
+  // after text that is not is not content (revision 6).
+  // At most TEXT_RUNS runs of a slice are measured, each with one range. A run is at least
+  // a line of text and the blank line after it, so 32 runs are at least 64 lines, more than
+  // the 900 px viewport holds at a 14 px line height: a slice whose first 32 runs are not on
+  // screen has its screen after them. Such a slice is not measured further (`R.textCapped`),
+  // and the walk sends the search on to the hit test, which measures from the line the
+  // caret lands on. The cap has not been timed on its own; transitions-search-cost.mjs
+  // times whole calls.
+  const TEXT_RUNS = 32;
+  const textRuns = (text, start, end) => {
+    const runs = [];
+    let a = -1;
+    let b = -1;
+    for (let i = start; i < end; i++) {
+      const ch = text.charCodeAt(i);
+      if (ch === 10) {
+        if (a >= 0) {
+          // A line break closes the run when the next line is blank.
+          let j = i + 1;
+          while (j < end && text.charCodeAt(j) !== 10 && /\s/.test(text[j])) {
+            j += 1;
+          }
+          if (j >= end || text.charCodeAt(j) === 10) {
+            runs.push([a, b + 1]);
+            a = -1;
+            if (runs.length === TEXT_RUNS) {
+              runs.capped = HAS_TEXT.test(text.slice(j, end));
+              return runs;
+            }
+          }
+        }
+      } else if (!/\s/.test(text[i])) {
+        if (a < 0) {
+          a = i;
+        }
+        b = i;
       }
     }
+    if (a >= 0) {
+      runs.push([a, b + 1]);
+    }
+    return runs;
+  };
+  // `R.lastSearch.chars` counts the characters a search measured, for the tests.
+  const sliceShown = (node, parent, start, end) => {
+    const runs = textRuns(node.nodeValue, start, end);
+    for (const [a, b] of runs) {
+      R.searchChars += b - a;
+      range.setStart(node, a);
+      range.setEnd(node, b);
+      for (const r of range.getClientRects()) {
+        if (r.width > 0 && r.height > 0 && clipped(parent, r)) {
+          return true;
+        }
+      }
+    }
+    if (runs.capped) {
+      R.textCapped = true;
+    }
     return false;
+  };
+  // A long text node, such as a plain source view's single node of thousands of lines, is
+  // not measured whole: its boxes cost in proportion to its lines (3 ms for the corpus's
+  // app.js line-number gutter of 41,000 characters in one node, in every frame of that
+  // view), and so does any range inside it. Revision 6 measures LONG_TEXT characters of a
+  // node: from its start in the walk, and from the start of the line the caret landed on
+  // (`near`) in the hit test. A long node whose start is not shown sends the walk's search
+  // on to the hit test.
+  const LONG_TEXT = 2000;
+  const isLong = (node) => node.nodeValue.length > LONG_TEXT;
+  const textBoxShown = (node, parent, near = null) => {
+    const len = node.nodeValue.length;
+    const from = near === null ? 0 : node.nodeValue.lastIndexOf("\n", near - 1) + 1;
+    return sliceShown(node, parent, from, Math.min(len, from + LONG_TEXT));
+  };
+  const textShown = (node, near = null) => {
+    const parent = node.parentElement;
+    return !!parent && rendered(parent) && textBoxShown(node, parent, near);
   };
   // Visible, laid-out content: text on screen outside a placeholder, prompt, or
-  // screen-reader-only label, or media that has loaded. Stops at the first hit and looks
-  // at no more than 400 candidate text nodes, so a large document costs a few steps.
-  // The walk skips, without counting them, the subtrees of a placeholder, a prompt, or a
-  // screen-reader-only label, of an element with no box, and of an element wholly outside
-  // the viewport, so a view that hides or scrolls away its first lines still finds the
-  // ones on screen. The cap counts only the text nodes it tests.
-  const NOT_CONTENT = `${PLACEHOLDER}, .sr-only, ${EMPTY}`;
+  // screen-reader-only label, or media that has loaded. A root that is, or is inside, a
+  // placeholder, prompt, or label has none.
+  //
+  // The search walks the root's subtree in document order and stops at the first hit. It
+  // passes over, without entering, the subtree of a placeholder, a prompt, or a label; of
+  // an element with display none, content-visibility hidden, or zero opacity, none of whose
+  // descendants can show; and of an element whose box is empty and clips its overflow (a
+  // collapsed block). Revision 6: a box-less element (an inline whose only child is
+  // positioned) and a zero-size one that does not clip (a windowed list's anchor) are
+  // entered, so their descendants are tested by their own boxes. An element wholly outside
+  // the viewport is passed over unless its scrollable overflow, which holds the content
+  // and the positioned descendants laid out outside its box, reaches the viewport.
+  // Text under a hidden parent (visibility hidden, zero opacity) is not measured.
+  //
+  // Revision 6 bounds the walk by the nodes it visits, entered or not (SEARCH_VISITS), and
+  // by the text nodes whose boxes it measures (SEARCH_TEXTS), so a long document of short
+  // lines scrolled to its end costs the search what its top does. The bound is the
+  // search's alone: the rest of a frame's read (its state's prompt and placeholder queries,
+  // the regions' selectors, the alert query) still traverses the view, and a text node
+  // costs up to LONG_TEXT characters, so neither a read nor a search over long text nodes
+  // costs what a short view does (README, **How content is found**). When the walk reaches
+  // a bound, or passed over an element on its own box and found nothing, a hit test of
+  // points across the area where the root can paint looks at what is on screen there,
+  // whatever its ancestors' boxes (`hitSearch`). Each frame's read records its own cost
+  // (README, "Transition Navigation Scenario").
+  // The line-number gutter of a source view is not the file's content, so a view whose
+  // gutter is painted and whose code is not shows none of the file.
+  const NOT_CONTENT = `${PLACEHOLDER}, .sr-only, .visually-hidden, .source-line-numbers, ${EMPTY}`;
+  const MEDIA_TAGS = new Set(["img", "canvas", "iframe", "video", "svg"]);
+  // The bounds were set from the cost of a call on synthetic documents of 2,000 to 40,000
+  // lines in headless Chrome, measured with transitions-search-cost.mjs beside this file:
+  // README, "Transition Navigation Scenario", **How content is found**.
+  const SEARCH_VISITS = 1500;
+  const SEARCH_TEXTS = 400;
+  const HIT_POINTS = 60;
+  // The hit test's bound is counted in work, so the same page gives the same answer on a
+  // busy machine as on a quiet one. Each point is charged what a hit test passes on its
+  // way to it: the child nodes of every element from the one the point lands on up to the
+  // root, and one per HIT_CHARS_PER_NODE characters of the text among that element's first
+  // HIT_CHILDREN children. No point starts once a call's charge reaches HIT_WORK; the first
+  // always runs. In headless Chrome at a load average of about 20, a point over the blank
+  // space past a flat list of 40,000 lines (charged 40,002) took 1.2 ms for its
+  // elementFromPoint and 0.2 ms for its caret lookup, and one in a <pre> of a single
+  // 40,000-line text node of about 340,000 characters 1.2 and 0.3 ms. HIT_WORK stops
+  // either after its second point, about 3 ms there, and a blank screen past 10,000 lines
+  // after its eighth, and lets one past 40,000 lines in sections of 50 try all 60 points
+  // (README, **How content is found**, where transitions-search-cost.mjs prints each
+  // call's points and work). A call that stops here marks its frame's read
+  // `searchTruncated`; its time is only reported, in the read's cost.
+  const HIT_WORK = 80000;
+  const HIT_CHARS_PER_NODE = 8;
+  // Rows tried first, in px below the paint area's top and below the root's own top when
+  // that is inside the area: where a view's content starts.
+  const HIT_TOP_ROWS_PX = [8, 28];
+  const HIT_COLUMNS = [0.02, 0.5, 0.25, 0.75];
+  // An element a point lands on, and each ancestor up to the root, is tested by the text
+  // among its first HIT_CHILDREN children (elements and blank text count toward the 32).
+  // That covers more than a screen of one-line children; text past them is found through
+  // the caret lookup at the point, which lands on the text nearest it. Each child holds up
+  // to LONG_TEXT measured characters, so an ancestor can cost up to 64,000; the limit has
+  // not been timed on its own.
+  const HIT_CHILDREN = 32;
+  const HAS_TEXT = /\S/;
   const outside = (r) =>
     r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth;
-  const contentFilter = {
-    acceptNode(node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        return node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+  // How the walk treats an element: 0 passes over its subtree, 1 enters it, and 2 passes
+  // over it on its own box, which a descendant painted elsewhere (fixed, translated) can
+  // escape, so the hit test looks again.
+  // An element wholly outside the viewport is decided on its box and its scrollable
+  // overflow alone, without reading its style, so passing over a long document's
+  // off-screen lines costs what revision 5 did per line.
+  const enter = (el) => {
+    if (el.matches(NOT_CONTENT)) {
+      return 0;
+    }
+    const r = el.getBoundingClientRect();
+    const sized = r.width > 0 && r.height > 0;
+    if (sized && outside(r)) {
+      const w = Math.max(r.width, el.scrollWidth);
+      const h = Math.max(r.height, el.scrollHeight);
+      if (outside({ left: r.left, top: r.top, right: r.left + w, bottom: r.top + h })) {
+        return 2;
       }
-      if (node.matches(NOT_CONTENT)) {
-        return NodeFilter.FILTER_REJECT;
-      }
-      if (node.getClientRects().length === 0) {
-        return getComputedStyle(node).display === "contents"
-          ? NodeFilter.FILTER_SKIP
-          : NodeFilter.FILTER_REJECT;
-      }
-      return outside(node.getBoundingClientRect())
-        ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_SKIP;
-    },
+    }
+    const cs = getComputedStyle(el);
+    if (
+      cs.display === "none" ||
+      cs.contentVisibility === "hidden" ||
+      Number.parseFloat(cs.opacity) <= 0.01
+    ) {
+      return 0;
+    }
+    if (sized) {
+      return outside(r) && clips(cs) ? 2 : 1;
+    }
+    // No box, or an empty one: `display: contents`, an inline whose only child is
+    // positioned, a windowed list's zero-height anchor. Its descendants are tested by
+    // their own boxes, unless it clips them away (overflow or paint containment).
+    return clips(cs) && el.getClientRects().length > 0 ? 0 : 1;
   };
-  const hasUseful = (root) => {
-    if (!root || !rendered(root)) {
+  const walk = (root, s) => {
+    let n = root.firstChild;
+    while (n !== null) {
+      if (s.visits >= SEARCH_VISITS || s.texts >= SEARCH_TEXTS) {
+        s.bounded = true;
+        return false;
+      }
+      s.visits += 1;
+      let into = false;
+      if (n.nodeType === 1) {
+        const e = enter(n);
+        if (e === 2) {
+          s.pruned = true;
+        }
+        into = e === 1;
+        if (into && MEDIA_TAGS.has(n.localName) && mediaShown(n)) {
+          return true;
+        }
+      } else if (n.nodeType === 3 && HAS_TEXT.test(n.nodeValue)) {
+        const parent = n.parentElement;
+        if (parent && rendered(parent)) {
+          s.texts += 1;
+          R.textCapped = false;
+          if (textBoxShown(n, parent)) {
+            return true;
+          }
+          if (isLong(n) || R.textCapped) {
+            s.pruned = true;
+          }
+        }
+      }
+      if (into && n.firstChild) {
+        n = n.firstChild;
+        continue;
+      }
+      while (n !== root && n.nextSibling === null) {
+        n = n.parentNode;
+      }
+      if (n === root) {
+        return false;
+      }
+      n = n.nextSibling;
+    }
+    return false;
+  };
+  // The area where a root's content can paint: the viewport, cut by the root and every
+  // ancestor that clips its overflow.
+  const paintArea = (root) => {
+    let left = 0;
+    let top = 0;
+    let right = innerWidth;
+    let bottom = innerHeight;
+    for (let a = root; a && a !== document.documentElement; a = a.parentElement) {
+      if (clips(getComputedStyle(a))) {
+        const ar = a.getBoundingClientRect();
+        left = Math.max(left, ar.left);
+        top = Math.max(top, ar.top);
+        right = Math.min(right, ar.right);
+        bottom = Math.min(bottom, ar.bottom);
+      }
+      if (right - left < 1 || bottom - top < 1) {
+        return null;
+      }
+    }
+    return { left, top, right, bottom };
+  };
+  // Row positions across a paint area after the top rows, coarse to fine: the middle, then
+  // the quarters, the eighths, and the sixteenths, each level from its outer rows inward
+  // (the lowest, the highest, the next lowest, and so on), so that a level the point cap
+  // cuts short still spans the area down to its bottom eighth.
+  const HIT_ROWS = (() => {
+    const rows = [];
+    for (let d = 2; rows.length < HIT_POINTS / HIT_COLUMNS.length; d *= 2) {
+      for (let lo = 1, hi = d - 1; lo <= hi; lo += 2, hi -= 2) {
+        rows.push(hi / d);
+        if (lo !== hi) {
+          rows.push(lo / d);
+        }
+      }
+    }
+    return rows;
+  })();
+  // What a point costs the hit test, in HIT_WORK's units (above).
+  const hitCharge = (top, root) => {
+    let w = 1;
+    for (let el = top; el && el !== root.parentElement; el = el.parentElement) {
+      w += el.childNodes.length;
+    }
+    let k = 0;
+    for (let c = top.firstChild; c !== null && k < HIT_CHILDREN; c = c.nextSibling) {
+      k += 1;
+      if (c.nodeType === 3) {
+        w += Math.ceil(c.nodeValue.length / HIT_CHARS_PER_NODE);
+      }
+    }
+    return w;
+  };
+  // What is on screen at up to HIT_POINTS points across the root's paint area, within
+  // HIT_WORK: the top rows of the area and of the root first, then as many rows, coarse to
+  // fine, as the points left fill, at HIT_COLUMNS across. A point whose topmost element is
+  // outside the root (an overlay) does not show the root. Otherwise that element and its
+  // ancestors up to the root, outside a placeholder, prompt, or label, are tested as media
+  // and by the text among their first HIT_CHILDREN children. A hit test passes over
+  // elements with `pointer-events: none`, and content smaller than the grid can fall
+  // between its points. Each point costs a walk of the siblings it lands among, so a blank
+  // screen over a long flat list costs the most (README).
+  const hitSearch = (root, s) => {
+    const area = paintArea(root);
+    if (!area) {
       return false;
     }
-    const walker = document.createTreeWalker(
-      root,
-      NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-      contentFilter,
+    const seen = new Set();
+    const width = area.right - area.left;
+    const height = area.bottom - area.top;
+    const rootTop = root.getBoundingClientRect().top;
+    const firstRows = [
+      ...HIT_TOP_ROWS_PX.map((px) => area.top + px),
+      ...(rootTop > area.top + HIT_TOP_ROWS_PX[0] && rootTop < area.bottom
+        ? HIT_TOP_ROWS_PX.map((px) => rootTop + px)
+        : []),
+    ];
+    const fill = HIT_ROWS.slice(0, HIT_POINTS / HIT_COLUMNS.length - firstRows.length);
+    const rows = [...firstRows, ...fill.map((f) => area.top + height * f)].filter(
+      (y) => y < area.bottom,
     );
-    let candidates = 0;
-    for (let node = walker.nextNode(); node && candidates < 400; node = walker.nextNode()) {
-      candidates += 1;
-      if (textShown(node)) {
-        return true;
-      }
-    }
-    for (const el of root.querySelectorAll("img, canvas, iframe, video, svg")) {
-      if (mediaShown(el)) {
-        return true;
+    for (const y of rows) {
+      for (const f of HIT_COLUMNS) {
+        if (s.points >= HIT_POINTS) {
+          return false;
+        }
+        if (s.points > 0 && s.work >= HIT_WORK) {
+          s.truncated = true;
+          R.searchTruncated = true;
+          return false;
+        }
+        s.points += 1;
+        const x = area.left + Math.max(2, width * f);
+        const top = document.elementFromPoint(x, y);
+        if (!top || !root.contains(top)) {
+          s.work += 1;
+          continue;
+        }
+        s.work += hitCharge(top, root);
+        // The first time a topmost element is met, the text the caret lands on at that
+        // point: it sees text under `pointer-events: none` and the text nearest the point
+        // in that element, so a lone line between rows is found.
+        if (!seen.has(top)) {
+          const caret = document.caretPositionFromPoint?.(x, y);
+          const node = caret?.offsetNode;
+          if (
+            node?.nodeType === 3 &&
+            root.contains(node) &&
+            !node.parentElement?.closest(NOT_CONTENT) &&
+            HAS_TEXT.test(node.nodeValue) &&
+            textShown(node, caret.offset)
+          ) {
+            return true;
+          }
+        }
+        for (let el = top; el && el !== root.parentElement; el = el.parentElement) {
+          if (seen.has(el)) {
+            continue;
+          }
+          seen.add(el);
+          if (el.closest(NOT_CONTENT)) {
+            continue;
+          }
+          if (MEDIA_TAGS.has(el.localName)) {
+            if (mediaShown(el)) {
+              return true;
+            }
+            continue;
+          }
+          let k = 0;
+          for (let c = el.firstChild; c !== null && k < HIT_CHILDREN; c = c.nextSibling) {
+            k += 1;
+            if (c.nodeType === 3 && HAS_TEXT.test(c.nodeValue) && textShown(c)) {
+              return true;
+            }
+          }
+        }
       }
     }
     return false;
+  };
+  R.searchChars = 0;
+  const search = (root) => {
+    const s = {
+      visits: 0,
+      texts: 0,
+      pruned: false,
+      bounded: false,
+      points: 0,
+      work: 0,
+      truncated: false,
+      chars: 0,
+    };
+    R.lastSearch = s;
+    const before = R.searchChars;
+    try {
+      return searchRoot(root, s);
+    } finally {
+      s.chars = R.searchChars - before;
+    }
+  };
+  const searchRoot = (root, s) => {
+    // A root hidden by its own content-visibility, whose descendants are skipped, has none
+    // (checkVisibility answers only for the descendants).
+    if (
+      !root ||
+      root.closest(NOT_CONTENT) ||
+      !rendered(root) ||
+      getComputedStyle(root).contentVisibility === "hidden"
+    ) {
+      return false;
+    }
+    if (walk(root, s)) {
+      return true;
+    }
+    return (s.bounded || s.pruned) && hitSearch(root, s);
+  };
+  // Within one frame's read nothing can change the page, so a root asked about twice (by
+  // the frame's state and by the ready predicate) is searched once.
+  const hasUseful = (root) => {
+    const cache = R.readCache;
+    if (!cache || !root) {
+      return search(root);
+    }
+    if (!cache.has(root)) {
+      cache.set(root, search(root));
+    }
+    return cache.get(root);
   };
   R.hasUseful = hasUseful;
   R.hasPlaceholder = (root) => placeholders(root).length > 0;
@@ -447,23 +809,93 @@ function recorderMain(config) {
   };
   R.state = state;
 
+  // Whether a box is on screen (`scroll` false), or could be brought there by scrolling
+  // (`scroll` true): it survives every ancestor that clips it, each cut to its client box,
+  // and then the viewport. With `scroll`, a scroll container takes the box on each axis
+  // it scrolls when the box lies within all it can scroll to, and projects it onto its
+  // client box there, so a tree row below the fold of `#tree-content` survives the
+  // panes around it that clip without scrolling; the document is taken to its own
+  // scrollable area the same way. An ancestor that clips to an empty area (a block
+  // collapsed to height 0) hides the box, and so does a position nothing scrolls to (a
+  // surface parked at left: -10000px). On each axis where the box has extent the overlap
+  // must be positive, so a box that only touches an edge (parked at left: 100%) is
+  // hidden. Revision 6.
+  const reachable = (from, r, scroll) => {
+    const span = [
+      [r.left, r.right, r.width > 0],
+      [r.top, r.bottom, r.height > 0],
+    ];
+    // Cut axis k to [lo, hi]; false when nothing of the box is left on it.
+    const cut = (k, lo, hi) => {
+      span[k][0] = Math.max(span[k][0], lo);
+      span[k][1] = Math.min(span[k][1], hi);
+      return span[k][2] ? span[k][1] > span[k][0] : span[k][1] >= span[k][0];
+    };
+    for (let a = from; a && a !== document.documentElement; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (!clips(cs)) {
+        continue;
+      }
+      if (a.clientWidth === 0 || a.clientHeight === 0) {
+        return false;
+      }
+      const ar = a.getBoundingClientRect();
+      const axes = [
+        [ar.left + a.clientLeft, a.clientWidth, a.scrollLeft, a.scrollWidth, cs.overflowX],
+        [ar.top + a.clientTop, a.clientHeight, a.scrollTop, a.scrollHeight, cs.overflowY],
+      ];
+      for (const [k, [c0, size, offset, extent, overflow]] of axes.entries()) {
+        if (scroll && /auto|scroll/.test(overflow)) {
+          if (!cut(k, c0 - offset, c0 - offset + extent)) {
+            return false;
+          }
+          span[k][0] = c0;
+          span[k][1] = c0 + size;
+        } else if (!cut(k, c0, c0 + size)) {
+          return false;
+        }
+      }
+    }
+    if (!scroll) {
+      return cut(0, 0, innerWidth) && cut(1, 0, innerHeight);
+    }
+    const page = document.scrollingElement ?? document.documentElement;
+    return (
+      cut(0, -scrollX, page.scrollWidth - scrollX) && cut(1, -scrollY, page.scrollHeight - scrollY)
+    );
+  };
   // A box is [x, y, w, h], and a region with `identity` also carries that attribute.
-  // A region is the first rendered element its selector matches, so a surface kept
-  // mounted but hidden ahead of the one on screen is not taken for it.
-  const box = (spec) => {
+  // A region is the first rendered element its selector matches whose box is on screen,
+  // or failing one, the first whose box could be scrolled there, so a surface kept
+  // mounted but hidden ahead of the one on screen (by display, visibility, opacity,
+  // content-visibility, a collapsed clipping ancestor, or a parked position) is not taken
+  // for it, and a tree row below the fold is still the row (revision 6).
+  // Among those a scroll could bring on screen, the element that was the region in the
+  // previous read comes first while it still can, so a shown surface scrolled out of its
+  // pane stays the region rather than a retained one parked further down the pane. It is
+  // held weakly, so a surface the page removed is not kept alive for the memory reading.
+  R.regionEls = {};
+  const box = (spec, name) => {
     let el = null;
     let r = null;
-    for (const candidate of document.querySelectorAll(spec.selector)) {
-      const cr = candidate.getBoundingClientRect();
-      if ((cr.width > 0 || cr.height > 0) && rendered(candidate)) {
-        el = candidate;
-        r = cr;
+    const candidates = [...document.querySelectorAll(spec.selector)]
+      .map((c) => [c, c.getBoundingClientRect()])
+      .filter(([c, cr]) => (cr.width > 0 || cr.height > 0) && rendered(c));
+    const before = R.regionEls[name]?.deref();
+    for (const scroll of [false, true]) {
+      const hit =
+        (scroll &&
+          candidates.find(([c, cr]) => c === before && reachable(c.parentElement, cr, true))) ||
+        candidates.find(([c, cr]) => reachable(c.parentElement, cr, scroll));
+      if (hit) {
+        [el, r] = hit;
         break;
       }
     }
     if (!el) {
       return null;
     }
+    R.regionEls[name] = new WeakRef(el);
     let sx = 0;
     let sy = 0;
     if (spec.scroller) {
@@ -487,16 +919,17 @@ function recorderMain(config) {
   R.snapshotRegions = () => {
     const out = {};
     for (const [name, spec] of Object.entries(R.regions)) {
-      out[name] = box(spec);
+      out[name] = box(spec, name);
     }
     R.lastBox = { ...out };
     return out;
   };
-  const trackRegions = (t) => {
+  // An entry is [frame time, region, box, 1 when that frame's read saw the input].
+  const trackRegions = (t, seen) => {
     for (const [name, spec] of Object.entries(R.regions)) {
-      const b = box(spec);
+      const b = box(spec, name);
       if (!sameBox(b, R.lastBox[name])) {
-        R.regionLog.push([t, name, b]);
+        R.regionLog.push([t, name, b, seen ? 1 : 0]);
         R.lastBox[name] = b;
       }
     }
@@ -558,19 +991,33 @@ function recorderMain(config) {
   // event that starts the transition reached the page before the read, so its state
   // includes whatever the input's handlers did, and the read itself is after the input;
   // a predicate that holds in an earlier frame is recorded as `readyBeforeInput`.
+  // A frame is logged as [begin time, state, read time, the read's own cost in ms, 1 when
+  // the read saw the input, 1 when a content search in it stopped at its hit-test bound]:
+  // the fifth places it in its transition's window or before it, whatever Chrome stamped
+  // its begin time (`inWindow`, revision 6).
   const read = (frame) => {
+    R.readCache = new Map();
+    R.searchTruncated = false;
+    try {
+      readFrame(frame);
+    } finally {
+      R.readCache = null;
+    }
+  };
+  const readFrame = (frame) => {
     frame.readNow = performance.now();
+    const inputSeen = R.inputAt !== null;
     let code;
     try {
       code = state();
     } catch (_error) {
       code = "X";
     }
-    R.frames.push([frame.t, code, round1(frame.readNow)]);
-    trackRegions(frame.t);
+    const entry = [frame.t, code, round1(frame.readNow), null, inputSeen ? 1 : 0, 0];
+    R.frames.push(entry);
+    trackRegions(frame.t, inputSeen);
     checkAlerts(frame.t);
     trackList(frame.t);
-    const inputSeen = R.inputAt !== null;
     if (inputSeen) {
       trackMilestones(frame.t, frame.readNow);
     }
@@ -588,14 +1035,22 @@ function recorderMain(config) {
         R.readyRead = frame.readNow;
       }
     }
+    // The page is not cross-origin isolated, so its clock resolves 0.1 ms.
+    entry[3] = round1(performance.now() - frame.readNow);
+    entry[5] = R.searchTruncated ? 1 : 0;
   };
   const tick = (t) => {
     R.frameCount += 1;
-    // A frame whose observation never arrived is recorded without a state.
+    // A frame whose observation never arrived is recorded without a state. Its read would
+    // have come before this tick: when the input has still not reached the page, that read
+    // was before the input (0), and when the read before it saw the input, it was after it
+    // (1); otherwise it is placed by its begin time (`inWindow`).
     const missed = R.pending;
     if (missed && missed.readNow === null) {
       missed.observer?.disconnect();
-      R.frames.push([missed.t, null, null]);
+      const before = R.frames[R.frames.length - 1];
+      const seen = R.inputAt === null ? 0 : before?.[4] === 1 ? 1 : null;
+      R.frames.push([missed.t, null, null, null, seen, 0]);
     }
     if (R.readyAt !== null && R.readyNext === null && t > R.readyAt) {
       R.readyNext = t;
@@ -1081,6 +1536,10 @@ export async function launchBrowser({
     const kindOf = (sid) => (sid === page.sessionId ? "page" : workers.has(sid) ? "worker" : null);
     const connection = conn;
     conn.listeners.add((method, params, sid) => {
+      if (method === "Target.detachedFromTarget") {
+        workers.delete(params.sessionId);
+        return;
+      }
       if (method === "Target.attachedToTarget") {
         const child = connection.adopt(params.sessionId, params.targetInfo.targetId);
         workers.set(params.sessionId, params.targetInfo.type);
@@ -1157,6 +1616,7 @@ export async function launchBrowser({
       net: log.net,
       exceptions,
       consoleErrors,
+      workers,
       viewport: { width, height },
     };
   } catch (error) {
@@ -1205,12 +1665,26 @@ export function presentedAt(frameAt, readAt, loafs, interval) {
 }
 
 /**
+ * Whether a logged frame belongs to a transition's window, from its start: its read saw
+ * the input (`seen`, revision 6), whatever its begin time. Chrome stamps frames on its
+ * own clock, so the frame that draws an input can begin, by its stamp, a fraction of a
+ * millisecond before the input's own time stamp, and a frame read before the input can
+ * begin after it; placed by begin time, as revision 5 placed them, the first fell outside
+ * the window and the second inside. An entry without the flag (a frame whose read never
+ * came, logged while it could not be told which side of the input it fell) is placed by
+ * its begin time.
+ */
+export const inWindow = (t, seen, origin) => seen === 1 || (seen == null && t >= origin);
+
+/**
  * Frame accounting for one transition window, from the per-frame states.
- * `frames` are [frame time, state code or null, read time]; a null code (a frame whose
- * observation never arrived) shows what the previous frame showed and is counted as
- * uncredited. Every count covers the whole window, from the input to its end, and is
- * split at the ready frame; `emptyState` is the destination's own prompt, declared by
- * the journey, whose frames are not blank.
+ * `frames` are [frame time, state code or null, read time, read cost ms, seen, search
+ * truncated]; a null code (a frame whose observation never arrived) shows what the
+ * previous frame showed and is counted as uncredited. Every count covers the whole
+ * window, from the input's own frame to its end, and is split at the ready frame;
+ * `emptyState` is the destination's own prompt, declared by the journey, whose frames
+ * are not blank. Each entry is placed in the window or before it on its own (`inWindow`),
+ * as `regionMovement` places region boxes.
  */
 export function accountFrames({
   frames,
@@ -1223,20 +1697,30 @@ export function accountFrames({
   emptyState = false,
   initialCode = "",
 }) {
+  const before = frames.filter((f) => !inWindow(f[0], f[4], origin));
+  const window = frames.filter((f) => inWindow(f[0], f[4], origin) && f[0] <= windowEnd);
   let last = initialCode;
-  for (const f of frames) {
-    if (f[0] < origin && f[1] !== null) {
+  for (const f of before) {
+    if (f[1] !== null) {
       last = f[1];
     }
   }
   const atOrigin = last;
-  const window = frames.filter((f) => f[0] >= origin && f[0] <= windowEnd);
-  const filled = window.map((f) => {
+  // Frames read after arm and before the input whose content search stopped at its
+  // bound: the frames the ready-before-input guard read (revision 6).
+  const truncatedBeforeInput = before.filter((f) => f[5] === 1).length;
+  // A null code shows what the entry logged before it showed.
+  const inside = new Set(window);
+  const filled = [];
+  last = initialCode;
+  for (const f of frames) {
+    if (inside.has(f)) {
+      filled.push({ t: f[0], code: f[1] === null ? last : f[1], uncredited: f[1] === null });
+    }
     if (f[1] !== null) {
       last = f[1];
     }
-    return { t: f[0], code: f[1] === null ? last : f[1], uncredited: f[1] === null };
-  });
+  }
   const interval = frameInterval(frames.map((f) => f[0]));
   const isBlank = (code) =>
     !code.includes("U") && !(emptyState && code.includes("E") && !code.includes("P"));
@@ -1262,13 +1746,16 @@ export function accountFrames({
     return { before, after, total: before + after, ms: round1(ms) };
   };
   const blank = tally((f) => isBlank(f.code));
-  // Blank frames that still show the prompt that was on screen at the input, before the
-  // first change: counted as blank, and reported apart, since the reader saw the origin's
-  // prompt rather than an empty pane.
+  // Blank frames that still show the prompt that was on screen at the input, until the
+  // pane shows anything else: counted as blank, and reported apart, since the reader saw
+  // the origin's prompt rather than an empty pane. Since revision 6 only the U and E
+  // letters decide that, so a placeholder or the pending modifier appearing beside the
+  // prompt does not end the run.
   let originPromptFrames = 0;
-  if (atOrigin.includes("E") && !atOrigin.includes("U")) {
+  const shows = (code) => (code.includes("U") ? "U" : "") + (code.includes("E") ? "E" : "");
+  if (shows(atOrigin) === "E") {
     for (const f of filled) {
-      if (f.code !== atOrigin) {
+      if (shows(f.code) !== "E") {
         break;
       }
       if (isBlank(f.code)) {
@@ -1290,6 +1777,12 @@ export function accountFrames({
   }
   const steps = window.map((f, i) => (i ? f[0] - window[i - 1][0] : null)).filter((x) => x);
   steps.sort((a, b) => a - b);
+  // The recorder's own read in each frame of the window (revision 6), so a comparison can
+  // show when the instrument cost one condition more than the other.
+  const cost = (list) => list.map((f) => f[3]).filter((c) => typeof c === "number");
+  const costs = cost(window);
+  const costsToReady =
+    readyAt === null ? [] : cost(window.filter((f) => f[0] <= readyAt && f[1] !== null));
   return {
     // The ready frame's post-layout read, which is after the input by construction.
     readyMs: rel(readyRead ?? readyAt),
@@ -1309,8 +1802,48 @@ export function accountFrames({
     placeholderVisibleMs: placeholder.ms,
     navPlaceholderVisibleFrames: nav.total,
     uncreditedFrames: uncredited.total,
+    readCostMaxMs: costs.length ? round1(Math.max(...costs)) : null,
+    // Frames whose content search stopped at its hit-test bound, where on-screen content
+    // can have read as blank (revision 6): in the window, the part of them up to the ready
+    // frame, where readiness can have been found late and the window's end with it, and
+    // before the input.
+    searchTruncatedFrames: window.filter((f) => f[5] === 1).length,
+    searchTruncatedToReady:
+      readyAt === null ? 0 : window.filter((f) => f[5] === 1 && f[0] <= readyAt).length,
+    searchTruncatedBeforeInput: truncatedBeforeInput,
+    readCostToReadyMs: readyAt === null ? null : round1(costsToReady.reduce((a, c) => a + c, 0)),
     frameStates: states.slice(0, 24),
   };
+}
+
+/**
+ * The recorder's reads from the input to the frame that began at `until` (a milestone's
+ * frame), among the frames logged by then, the window's and those read while milestones
+ * were awaited after it (revision 6): the longest read, the reads summed, and how many of
+ * those frames had a content search stopped at its bound, where the milestone's
+ * predicate can have held late.
+ */
+export function readsUpTo(frames, origin, until) {
+  const reads = frames.filter(
+    (f) => f[1] !== null && inWindow(f[0], f[4], origin) && f[0] <= until,
+  );
+  const costs = reads.map((f) => f[3]).filter((c) => typeof c === "number");
+  return {
+    maxMs: costs.length ? round1(Math.max(...costs)) : null,
+    toMs: round1(costs.reduce((a, c) => a + c, 0)),
+    truncated: reads.filter((f) => f[5] === 1).length,
+  };
+}
+
+/**
+ * A hover-click's realized dwell (revision 6): from the pointer's arrival over the target,
+ * its first `pointerover` inside the element the transition armed after arm, to the press
+ * at `t0` that starts the clock. A boundary event elsewhere, such as one Chrome sends under
+ * a stationary pointer when the page replaces the element below it, is not the arrival.
+ */
+export function hoverDwellOf(inputs, t0) {
+  const over = inputs.find((i) => i[0] === "pointerover" && i[3] === 1 && i[1] <= t0);
+  return over ? round1(t0 - over[1]) : null;
 }
 
 /**
@@ -1335,11 +1868,14 @@ export function regionMovement(snapshot, log, t0, regions, windowEnd = Number.PO
     const g = group(spec.group ?? "page");
     const seq = [snapshot[name] ?? null];
     const times = [null];
-    for (const [t, n, b] of log) {
+    // A box logged by a frame in the window moves the region; one logged before is where
+    // it stood at the input (revision 6: the input's own frame is in the window, and a
+    // frame read before the input is not, whatever its begin time).
+    for (const [t, n, b, seen] of log) {
       if (n !== name || t > windowEnd) {
         continue;
       }
-      if (t >= t0 - 1) {
+      if (inWindow(t, seen, t0)) {
         seq.push(b);
         times.push(t);
       } else {
@@ -1633,6 +2169,64 @@ export function driver(browser) {
     }
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", ...k, text: undefined });
   }
+  /**
+   * Retained memory, read over the DevTools protocol after a full garbage collection
+   * (revision 6). The page's main-thread V8 heap (`Runtime.getHeapUsage`: `usedSize`, and
+   * where Chrome reports it the embedder heap, Blink's own objects, DOM nodes among them,
+   * as `embedderHeapUsedSize`), the renderer's live DOM nodes, documents, and event
+   * listeners (`Memory.getDOMCounters`: attached and detached nodes alike, so a surface
+   * kept off the document still counts), the elements attached to the document, and the
+   * V8 heaps of the page's dedicated workers, each collected first. It does not count
+   * GPU memory, decoded images, compositor tiles, layout and style objects outside the
+   * heaps, the HTTP and memory caches, or any other process. The collection is not what
+   * a reader's page does on its own, so a reading taken between two transitions changes
+   * what the later one measures; one taken after a journey's last transition changes
+   * nothing measured.
+   */
+  async function memory() {
+    const t0 = Date.now();
+    const kb = (bytes) => (typeof bytes === "number" ? Math.round(bytes / 1024) : null);
+    // The recorder's own logs since the last arm would count, and they grow with each
+    // condition's frames and DOM work; every caller has read what it needs of them.
+    await evaluate(`(() => {
+      const R = window.__tr;
+      const logs = ["frames", "regionLog", "muts", "navMuts", "shifts", "longtasks", "loafs", "events", "inputs", "alerts", "listLog"];
+      for (const k of logs) { if (R && Array.isArray(R[k])) { R[k].length = 0; } }
+      return true;
+    })()`);
+    await page.send("HeapProfiler.collectGarbage", {}, 60000);
+    const heap = await page.send("Runtime.getHeapUsage", {}, 10000);
+    const dom = await page.send("Memory.getDOMCounters", {}, 10000);
+    let workers = 0;
+    let workerHeap = 0;
+    for (const [sid, type] of browser.workers) {
+      const session = browser.conn.sessions.get(sid);
+      if (type !== "worker" || !session) {
+        continue;
+      }
+      try {
+        await session.send("HeapProfiler.collectGarbage", {}, 30000);
+        const h = await session.send("Runtime.getHeapUsage", {}, 10000);
+        workers += 1;
+        workerHeap += h.usedSize;
+      } catch (_error) {
+        // A worker that has exited holds no memory.
+      }
+    }
+    const elements = await evaluate("document.getElementsByTagName('*').length");
+    return {
+      jsHeapUsedKb: kb(heap.usedSize),
+      jsHeapTotalKb: kb(heap.totalSize),
+      embedderHeapUsedKb: kb(heap.embedderHeapUsedSize),
+      domNodes: dom.nodes,
+      documents: dom.documents,
+      listeners: dom.jsEventListeners,
+      elements,
+      workers,
+      workerHeapUsedKb: kb(workerHeap),
+      gcMs: Date.now() - t0,
+    };
+  }
   async function historyStep(delta) {
     const h = await page.send("Page.getNavigationHistory");
     const entry = h.entries[h.currentIndex + delta];
@@ -1662,6 +2256,8 @@ export function driver(browser) {
    *   `converged` and recorded as `landing`; null when the subject was never ready. A ready
    *   predicate with several branches may name the one that held first in `readyBranch`,
    *   cleared at arm and recorded as `landingAtReady`.
+   * spec.memory: true to read retained memory after the transition (`memory`), which
+   *   collects garbage and so changes what the journey's later transitions measure.
    */
   async function measure(spec) {
     const settleMs = spec.settleMs ?? 400;
@@ -1684,7 +2280,8 @@ export function driver(browser) {
           .map(([name, fn]) => `${JSON.stringify(name)}: (${fn})`)
           .join(", ")} }`
       : "null";
-    const armExtras = `R.listSpec = ${JSON.stringify(spec.list ?? null)}; R.listLog = []; R.lastList = null; R.milestoneFns = ${milestoneFns}; R.milestones = {}; R.readyBranch = null;`;
+    const hoverTarget = input.kind === "hover-click" ? input.selector : null;
+    const armExtras = `R.listSpec = ${JSON.stringify(spec.list ?? null)}; R.listLog = []; R.lastList = null; R.milestoneFns = ${milestoneFns}; R.milestones = {}; R.readyBranch = null; R.hoverTarget = ${JSON.stringify(hoverTarget)};`;
     let armScript = null;
     if (landing) {
       // Marks the outgoing document, so waiting below cannot read its recorder.
@@ -1708,7 +2305,9 @@ export function driver(browser) {
         R.readyAt = null; R.readyRead = null; R.readyNext = null; R.readyBeforeInput = null;
         R.inputAt = null; R.startEvents = ${JSON.stringify(startEvents)};
         R.readyFn = (${spec.ready});
+        R.searchTruncated = false;
         R.readyAtArm = (() => { try { return Boolean(R.readyFn()); } catch (_error) { return false; } })();
+        R.armTruncated = R.searchTruncated;
         R.dom0 = document.getElementsByTagName("*").length;
         ${armExtras}
         R.armedAt = performance.now();
@@ -1764,7 +2363,7 @@ export function driver(browser) {
         events: R.events, inputs: R.inputs, alerts: R.alerts, hiddenFrames: R.hiddenFrames,
         visibilityChanges: R.visibilityChanges, readyAt: R.readyAt, readyRead: R.readyRead,
         readyNext: R.readyNext, readyBeforeInput: R.readyBeforeInput,
-        readyAtArm: R.readyAtArm === true, inputAt: R.inputAt,
+        readyAtArm: R.readyAtArm === true, armTruncated: R.armTruncated === true, inputAt: R.inputAt,
         armedAt: R.armedAt, observers: R.observers, kept, spans, state0: R.state0 ?? "",
         dom0: R.dom0 ?? null, dom1: document.getElementsByTagName("*").length,
         w: innerWidth, h: innerHeight, vis: document.visibilityState, path: location.pathname,
@@ -1772,8 +2371,14 @@ export function driver(browser) {
       };
     })()`);
     await evaluate("window.__tr.readyFn = null; window.__tr.listSpec = null");
-    const converged =
-      raw.readyAt === null ? "never ready" : await evaluate(`(${spec.converged})()`);
+    // A converged check whose content search stopped at its bound can report content
+    // missing that is on screen; it is marked uncertain (revision 6).
+    const [converged, convergedTruncated] =
+      raw.readyAt === null
+        ? ["never ready", false]
+        : await evaluate(
+            `(() => { const R = window.__tr; R.searchTruncated = false; const v = (${spec.converged})(); return [v, R.searchTruncated === true]; })()`,
+          );
     const landingSeen =
       spec.landing && raw.readyAt !== null ? await evaluate(`(${spec.landing})()`) : null;
     const net = browser.net.slice(netMark);
@@ -1808,7 +2413,10 @@ export function driver(browser) {
     if (!reached || raw.readyAt === null) {
       refusals.push(["converged", `not ready within ${timeoutMs} ms`]);
     } else if (converged !== "") {
-      refusals.push(["converged", String(converged)]);
+      refusals.push([
+        "converged",
+        `${converged}${convergedTruncated ? " (uncertain: the content search stopped at its bound)" : ""}`,
+      ]);
     }
     if (viewport0.vis !== "visible" || raw.vis !== "visible" || raw.hiddenFrames > 0) {
       refusals.push([
@@ -1824,12 +2432,20 @@ export function driver(browser) {
     const windowEnd = raw.readyNext === null ? lastFrame : raw.readyNext + settleMs;
     const gesture = raw.inputs.filter((i) => startEvents?.includes(i[0]) && i[1] >= origin);
     const inputSpanMs = gesture.length > 1 ? round1(gesture[gesture.length - 1][1] - origin) : 0;
+    // A hover-click's realized dwell (`hoverDwellOf`), which the page's own hover intent
+    // sees, not the requested `hoverMs`.
+    const hoverDwellMs =
+      input.kind === "hover-click" && t0 !== null ? hoverDwellOf(raw.inputs, t0) : undefined;
 
     // Milestones are waited for after the window above has closed, so every other field
     // keeps the window it had before milestones existed. One that never arrives is null,
     // and is named in `milestonesMissing`.
+    // The frames read while they were awaited are read too, for each milestone's reads up
+    // to it and the content searches stopped at their bound there (revision 6).
     let milestones;
     let milestonesMissing;
+    let milestoneReads;
+    let searchTruncatedAfterWindow;
     let extraWaitMs = 0;
     if (spec.milestones) {
       const names = Object.keys(spec.milestones);
@@ -1842,7 +2458,15 @@ export function driver(browser) {
       extraWaitMs = Date.now() - w0;
       const got = await evaluate("window.__tr.milestones");
       const loafsNow = await evaluate("window.__tr.loafs");
+      const later = await evaluate(`window.__tr.frames.slice(${raw.frames.length})`);
       await evaluate("window.__tr.milestoneFns = null");
+      const read = [...raw.frames, ...later];
+      milestoneReads = Object.fromEntries(
+        names.map((n) => [n, got[n] ? readsUpTo(read, origin, got[n][0]) : null]),
+      );
+      searchTruncatedAfterWindow = read.filter(
+        (f) => f[5] === 1 && f[0] > windowEnd && inWindow(f[0], f[4], origin),
+      ).length;
       const interval = frameInterval(raw.frames.map((f) => f[0]));
       milestones = Object.fromEntries(
         names.map((n) => {
@@ -1871,6 +2495,9 @@ export function driver(browser) {
         }
       }
     }
+    // Retained memory after this transition, when the round asked for it: read last, after
+    // every other field, since its garbage collection changes what follows (`memory`).
+    const retained = spec.memory ? await memory() : undefined;
     const frameAccount = accountFrames({
       frames: raw.frames,
       origin,
@@ -1937,6 +2564,14 @@ export function driver(browser) {
       refusals,
       ...(spec.landing ? { landing: landingSeen, landingAtReady: raw.readyBranch } : {}),
       ...frameAccount,
+      // The ready-before-input guard read the arm check and the frames before the input;
+      // when a content search in any of them stopped at its bound, a false "not ready"
+      // there can have hidden a subject shown before the input (revision 6).
+      searchTruncatedBeforeInput:
+        frameAccount.searchTruncatedBeforeInput + (raw.armTruncated ? 1 : 0),
+      readyBeforeInputUncertain:
+        frameAccount.searchTruncatedBeforeInput > 0 || raw.armTruncated === true,
+      convergedUncertain: convergedTruncated === true,
       // DOM work after the subject was shown, reported apart from readiness: when the
       // preview, and the navigation panels, last changed inside the window; 0 when they
       // did not change at all.
@@ -1953,12 +2588,15 @@ export function driver(browser) {
       ),
       regions: movement.regions,
       inputSpanMs,
+      hoverDwellMs,
       readyAfterLastInputMs:
         frameAccount.paintedReadyMs === null
           ? null
           : round1(frameAccount.paintedReadyMs - inputSpanMs),
       milestones,
       milestonesMissing,
+      milestoneReads,
+      searchTruncatedAfterWindow,
       extraWaitMs,
       list: spec.list ? listChanges(raw.listLog, origin) : undefined,
       shifts: {
@@ -2039,6 +2677,7 @@ export function driver(browser) {
       ),
       spans: raw.spans,
       dom: { start: raw.dom0, end: raw.dom1 },
+      memory: retained,
       route: raw.path,
       exceptions,
       consoleErrors,
@@ -2060,5 +2699,6 @@ export function driver(browser) {
     park,
     navigate,
     measure,
+    memory,
   };
 }

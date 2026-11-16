@@ -60,6 +60,7 @@ const PRODUCTION_MODULES = [
 const LIFTED = [
   "esc",
   "pathBaseHtml",
+  "pathBaseName",
   "isGitRevisionSource",
   "renderServedRootHeading",
   "rootTallyFromTopLevel",
@@ -270,6 +271,26 @@ function observe(kind) {
   // The tree's first load settles the heading, as the shell does.
   const heading = { innerHTML: servedHeading };
   sandbox.renderServedRootHeading(heading, root);
+  // Home settles it again over the same name, which is not written again: not over a
+  // name with a quote either, which `esc` writes as an entity and a browser serializes as
+  // itself. The stand-in reads back as an element does: its text, and markup that escapes
+  // only `&`, `<`, and `>` in text.
+  for (const name of [root ?? "", '/srv/o\'checkout "q"']) {
+    const text = sandbox.pathBaseName(name);
+    let writes = 0;
+    const shown = {
+      textContent: text,
+      get innerHTML() {
+        const markup = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return `<span class="path"><span class="path-base">${markup}</span></span>`;
+      },
+      set innerHTML(_markup) {
+        writes += 1;
+      },
+    };
+    sandbox.renderServedRootHeading(shown, name);
+    assert(writes === 0, `${kind}: the heading ${JSON.stringify(text)} was written again`);
+  }
 
   sandbox.renderNavFilterBar();
   const navFilterControls = chipKeys(navFilterBar.innerHTML);

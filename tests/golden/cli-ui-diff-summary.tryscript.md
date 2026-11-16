@@ -26,6 +26,9 @@ Bold Their Numbers”). `parts` are the file count’s and the statuses’ parts
 painted: a bold number between asterisks, a status’s letter with its status in braces,
 which the letter is inked by, and a muted mark in angle quotes; the header paints a
 muted dot between its groups.
+A list cut short at its bound, on a page that knows the whole change set’s totals, as a
+commit’s page does, says those, with no breakdown of the listed files alone, and how
+many files are listed.
 A screen reader is told the same in words, each status by its name.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
@@ -156,6 +159,19 @@ $ node tests/dom/diff-summary-session.js
         "files": "*0* files changed",
         "statuses": ""
       }
+    },
+    "a list cut short, with the page's whole totals": {
+      "text": "5,000 files changed · +152,340 −30,211 (11 listed)",
+      "label": "5,000 files changed; 152,340 lines added, 30,211 deleted; 11 listed",
+      "estimated": false,
+      "numbers": [
+        "5,000"
+      ],
+      "parts": {
+        "files": "*5,000* files changed",
+        "statuses": ""
+      },
+      "listed": "11"
     },
     "the tree as it opens": [
       "v assets/ (2; 2 files without line counts)",

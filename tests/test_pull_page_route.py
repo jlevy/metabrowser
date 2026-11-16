@@ -286,7 +286,13 @@ def test_a_later_margin_is_the_one_read() -> None:
 
 
 def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:
-    rules = _style_rules()
+    text = STYLES_CSS.read_text(encoding="utf-8")
+    # An animation's keyframes are named in one space for every stylesheet, so the page's are
+    # its own by name; their `from` and `to` are steps, not selectors.
+    keyframes = r"@keyframes\s+([\w-]+)\s*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}"
+    names = re.findall(keyframes, text)
+    assert all(name.startswith("github-pull-") for name in names), names
+    rules = _rules_of(re.sub(keyframes, "", text))
     # A state's color tokens, in the two blocks a theme's tokens are declared in. Each names
     # only those, so it styles nothing itself.
     themes = (":root", '[data-theme="dark"]')

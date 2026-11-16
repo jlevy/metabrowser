@@ -27,6 +27,15 @@ type MetabrowserRenderContext = {
    *  diff draws none, as a pull request's page does (docs/design-system.md, "Diff Summary"). */
   summaryHost?: HTMLElement;
   summary?: false;
+  /** The change set's whole totals, where the page knows more than the comparison's list,
+   *  as a commit's page does from the commit's own stats: the diff's summary says them, and
+   *  how many files are listed, when that list is cut short at its bound. */
+  summaryTotals?: {
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    exact: boolean;
+  };
   /** Told the validated comparison a view mounts, so a page that draws its Diff summary
    *  itself has the comparison's files however the diff came by them. */
   onDocument?: (document: Record<string, unknown>) => void;
@@ -100,11 +109,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
     number: number | null,
     file?: string | null,
     /**
-     * *preserveScroll* keeps the list where the reader left it; *reveal* shows the pull
-     * request again when the address names the one already current (docs/design-system.md,
-     * "Navigation Reveals the Item").
+     * *preserveScroll* keeps the list where the reader left it; *again* shows the pull
+     * request again when the address names the one already current, for an open of the
+     * pull request shown (docs/design-system.md, "Navigation Reveals the Item").
      */
-    options?: { preserveScroll?: boolean; reveal?: boolean },
+    options?: { preserveScroll?: boolean; again?: boolean },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
@@ -126,6 +135,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
   fileLeft(): boolean;
   fileRight(): boolean;
   activateFile(): boolean;
+  /**
+   * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it,
+   * from the rows it holds and with no read. A view without it keeps what it shows.
+   */
+  home?(): void;
   dispose(): void;
 }>;
 
@@ -956,6 +970,7 @@ type MetabrowserFilterState = {
 type MetabrowserFilterHandlers = {
   onChange?: (key: string, value: string, select: string) => void;
   onClear?: () => void;
+  onMenuFocus?: (key: string, value: string | null) => void;
   onMenuPick?: (key: string, value: string | null) => void;
   onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void;
   onMenuToggle?: (key: string, open: boolean) => void;
@@ -1384,6 +1399,8 @@ type MetabrowserSdk = {
     set(name: string, value: unknown): boolean;
   };
   tooltip: {
+    /** Take away the tooltip shown, one of the view's own; a tooltip anchored in the
+     *  nav's header, the shell's chrome, which no view draws, stays. */
     hide(): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip
      *  holds still once shown; see docs/design-system.md. */
@@ -1645,15 +1662,39 @@ type MetabrowserRecentContinuity = {
   settleRequest(request: MetabrowserRecentRequest): "commit" | "refetch" | "superseded";
 };
 
+type MetabrowserGroupedLoad = {
+  current(): boolean;
+  first: boolean;
+  key: string;
+  refreshAfter(): void;
+  signal: AbortSignal;
+};
+
 type MetabrowserTreeFilterModel = {
   GROUP_BY_VALUES: ReadonlyArray<string>;
   ageGroupFor(ageSeconds: number, windows: Record<string, number | null>): string;
+  createGroupedLoads(deps: {
+    pending(load: { first: boolean; key: string } | null): void;
+    refresh(): void;
+    run(load: MetabrowserGroupedLoad): Promise<boolean>;
+  }): {
+    cancel(): void;
+    inFlight(): { first: boolean; key: string } | null;
+    load(key: string, options?: { painted?: boolean; refresh?: boolean }): Promise<boolean>;
+    settled(): Promise<void>;
+  };
   createGroupsPrefetch(deps: {
+    clearTimer(timer: unknown): void;
+    dwellMs: number;
     now(): number;
+    setTimer(callback: () => void, ms: number): unknown;
     start(url: string): { abort(): void; answer: Promise<unknown> };
     ttlMs: number;
   }): {
+    cancelRest(): void;
     markChanged(): void;
+    rest(url: string | null, stillThere?: () => boolean): void;
+    resting(): boolean;
     size(): number;
     take(url: string): { abort(): void; answer: Promise<unknown>; stale: boolean } | null;
     want(url: string): void;
@@ -2335,8 +2376,9 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
 }>;
 
 /**
- * One key, or Control with `n` or `p` (`control: true`): a binding states no other
- * modifier policy, and Shift never changes a key.
+ * One key, or Control with a letter of `CONTROL_CHORD_KEYS` (`control: true`), registered
+ * only where `controlReachesPage()`: a binding states no other modifier policy, and Shift
+ * never changes a key.
  */
 type MetabrowserShortcutBinding = Readonly<{
   control?: true;
@@ -2441,6 +2483,8 @@ type MetabrowserShortcutRegistry = Readonly<{
   ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   dispose(): void;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
@@ -2474,7 +2518,7 @@ type MetabrowserShortcutRegistry = Readonly<{
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
-  /** The letters a binding may hold with Control: `n` and `p`. */
+  /** The letters a binding may hold with Control (`control: true`). */
   CONTROL_CHORD_KEYS: ReadonlyArray<string>;
   GROUP_DEFINITIONS: Readonly<
     Record<string, Readonly<{ context: string; label: string; order: number }>>
@@ -2491,6 +2535,8 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
   ): void;
   appendKey(document: Document, container: HTMLElement, key: string): HTMLElement;
   bindingSignature(binding: MetabrowserShortcutBinding): string;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   create(options?: { document?: Document }): MetabrowserShortcutRegistry;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
@@ -3328,6 +3374,12 @@ declare global {
      * scroll it into view unless *scroll* is `keep` (main-tabs.js, `reveal`).
      */
     reveal?: ((how: MetabrowserRevealHow) => unknown) | null;
+    /**
+     * Home (main-tabs.js, `goHome`): put the panel back as a fresh load of `/view/` draws
+     * it, from what it holds and with no read. A panel that keeps nothing across a switch
+     * to it, as Commits, which lands on its newest commit every time, has none.
+     */
+    home?: (() => void) | null;
   };
 
   /** How the reader reached what the address names (main-tabs.js, `REVEAL_ROUTES`). */
@@ -3335,6 +3387,12 @@ declare global {
   type MetabrowserRevealHow = {
     scroll: "nearest" | "keep";
     isCurrent: () => boolean;
+    /**
+     * The reader opened the item already shown again (main-tabs.js, `reveal`): the call's
+     * own intent, which no state keeps. Files reveals a file on every call, so only Pulls
+     * reads it, to reveal the pull request the address already names.
+     */
+    again: boolean;
   };
 
   type MetabrowserMainTabsDeps = {
@@ -3350,6 +3408,8 @@ declare global {
     isPullAddress(pathname: string): boolean;
     /** The reader's own open of the served root, `/view/`, drawn again at its default view. */
     openHome(): Promise<unknown>;
+    /** The Files tab as a fresh load draws it: the Files panel's `home` (app.js, `resetFilesTab`). */
+    resetFiles(): void;
     restore(): Promise<unknown>;
     /** Reveal the file the address names in the Files tree: the Files panel's `reveal`. */
     revealFile(how: MetabrowserRevealHow): Promise<unknown>;
@@ -3371,7 +3431,10 @@ declare global {
     remember(): void;
     remove(id: string): void;
     /** Show what the address names in its tab: switch to it and reveal the item there. */
-    reveal(route: MetabrowserRevealRoute, how?: { isCurrent?: () => boolean }): Promise<void>;
+    reveal(
+      route: MetabrowserRevealRoute,
+      how?: { isCurrent?: () => boolean; again?: boolean },
+    ): Promise<void>;
   };
 
   type MetabrowserPreviewClaim = number;
@@ -3404,6 +3467,7 @@ declare global {
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
   type MetabrowserPublicTreeSection = MetabrowserTreeSection;
+  type MetabrowserPublicGroupedLoad = MetabrowserGroupedLoad;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
   type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
   type MetabrowserPublicShortcutCommand = MetabrowserShortcutCommand;

@@ -106,6 +106,7 @@
         onShow: () => deps.filesShown(),
         onHide: () => deps.filesHidden(),
         reveal: (how) => deps.revealFile(how),
+        home: () => deps.resetFiles(),
       },
     ];
     /** @type {Set<string>} */
@@ -440,20 +441,12 @@
       // so a panel that is not Files would otherwise keep a bar of file
       // filters on screen above content they cannot filter. The bar is the
       // Files tab's toolbar in one slot every tab fills with its own, at one
-      // height, so the panel below starts at one y on every tab.
+      // height while each is one line, so the panel below starts at one y on
+      // every tab. A toolbar its pane is too narrow for wraps instead of
+      // scrolling (docs/design-system.md, "Navigation Toolbars Wrap").
       for (const toolbar of document.querySelectorAll("[data-nav-toolbar]")) {
         const slot = /** @type {HTMLElement} */ (toolbar);
-        const returning = slot.hidden && slot.dataset.navToolbar === panelId;
         slot.hidden = slot.dataset.navToolbar !== panelId;
-        // A toolbar a narrow pane scrolled comes back at its start, with its chosen
-        // filter, the roving tab stop of its chips, in view: it came back scrolled, with
-        // the filter off the edge.
-        if (returning && slot.scrollLeft > 0) {
-          slot.scrollLeft = 0;
-          slot
-            .querySelector('[tabindex="0"]')
-            ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-        }
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;
@@ -478,11 +471,13 @@
      * has just loaded knows nowhere: Files and Pulls their destinations, and every panel
      * its scroll, so Files shows the top of its panel, Pulls next opens its list, a pull
      * request opened from it opens on Conversation, and Commits lands on its newest commit
-     * as it always does. The shell then opens the root at its default view.
+     * as it always does. Every panel then puts back what a fresh load draws in it, by its
+     * own `home`: Files its filters and tree, and Pulls its stacks, its rows' changed
+     * files, and its Tab stop. The shell then opens the root at its default view.
      *
      * It is the reader's own open of `/view/`, so it pushes one history entry, none when
-     * the address is already `/view/`, and Back returns to where the reader was: a pull
-     * request's page writes its place into its entry first.
+     * Files already shows the root at `/view/`, and Back returns to where the reader was:
+     * a pull request's page writes its place into its entry first.
      *
      * @returns {Promise<unknown>}
      */
@@ -491,6 +486,9 @@
       gitOpenPending = false;
       mainTabDestinations.clear();
       navPanelScroll.clear();
+      for (const panel of navPanels) {
+        panel.home?.();
+      }
       // The panels share one scroller, and the switch to Files keeps the offset of the
       // panel it leaves: at its top, that panel keeps none of the reader's either.
       const scroller = document.getElementById("tree-content");
@@ -504,12 +502,17 @@
      * Show what the address names in the navigation pane, by the one rule (`revealPlan`):
      * bring its tab to the front and have that tab's panel reveal it. Every route to an
      * item comes here: a file's landing (app.js, applyNavigationTarget), a pull request's
-     * open and its rows' skim (app.js, pullPageHostDeps), and Quick Search. A commit's
+     * open and its rows' skim (app.js, revealPullAddress), and Quick Search. A commit's
      * address is the Git panel's own landing (git-panel.js, restoreCommitLanding), which
      * pages its history before it can reveal the row.
      *
+     * *again* says the reader opened the item already shown again, as Quick Search for the
+     * file or pull request shown does. It belongs to this call, and nothing keeps it: the
+     * panel reveals the item although the address names what it already shows, where a
+     * step within that item reveals nothing.
+     *
      * @param {MetabrowserRevealRoute} route
-     * @param {{isCurrent?: () => boolean}} [how]
+     * @param {{isCurrent?: () => boolean, again?: boolean}} [how]
      * @returns {Promise<void>}
      */
     async function revealAtAddress(route, how = {}) {
@@ -529,7 +532,11 @@
       if (!plan.reveal || !panel?.reveal) {
         return;
       }
-      await panel.reveal({ scroll: plan.scroll, isCurrent: how.isCurrent ?? (() => true) });
+      await panel.reveal({
+        scroll: plan.scroll,
+        isCurrent: how.isCurrent ?? (() => true),
+        again: how.again === true,
+      });
     }
 
     function onHistory() {
