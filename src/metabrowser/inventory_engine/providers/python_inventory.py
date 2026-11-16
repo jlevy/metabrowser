@@ -745,8 +745,8 @@ class _ChildRows(Mapping[str, tuple[FsEntry, ...]]):
     when it is first read.
 
     A tree read lists a few levels under one folder, so sorting every folder's children up
-    front sorted the whole index to list a few hundred rows: on a 380,000-entry folder that
-    was 87,000 sorts per read, repeated per group while Group by read each group alone.
+    front would sort the whole index to list a few hundred rows: 87,000 sorts per read on a
+    380,000-entry folder.
     """
 
     __slots__ = ("_sorted", "_unsorted")
@@ -2479,9 +2479,9 @@ class _PythonInventoryStore:
 
         Each leaf is tested against the shared filter once and classified into its type
         group once; a group then only compares that group id and the leaf's mtime with
-        its band. Asking for each group as its own filtered tree repeated the whole pass
-        per group: on 100,000 files File type took 0.62-0.69 s for its six groups, and on
-        a 380,000-entry folder 4.0-4.5 s, where this takes 92-96 ms and 0.42-0.48 s
+        its band. Asking for each group as its own filtered tree would repeat the whole
+        pass per group: on 100,000 files File type's six groups take 0.62-0.69 s that way
+        and 92-96 ms this way, and on a 380,000-entry folder 4.0-4.5 s against 0.42-0.48 s
         (measured in process, warm, 2026-11-15; `docs/design-system.md`, "Grouping the
         Files Tree", has the rest).
         """
