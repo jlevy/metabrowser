@@ -11,8 +11,9 @@
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
 menu, a rule for tooltips, the Conversation’s rhythm and headings, a rule for commit and
 pull request titles, navigation that reveals the item, label colors, Group by’s speed on
-a large folder, and a design-system consistency pass over all of them, from the same
-day. They land as one native GitHub stack of eighteen pull requests on `main`:
+a large folder, a design-system consistency pass over all of them, and a Pulls row’s two
+lines, from the same day.
+They land as one native GitHub stack of nineteen pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -59,6 +60,8 @@ day. They land as one native GitHub stack of eighteen pull requests on `main`:
 18. **Consistency in docs:** what the same review found in the design system, the user
     docs, this plan, and the CHANGELOG, whose Unreleased block then reads as one change
     from 0.12.0 (`mb-vg55`).
+19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
+    age, and its second the whole title to the pane’s edge (`mb-lkkt`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -666,6 +669,14 @@ against 5 ms for the ungrouped tree.
   describe the stack as pull request 17 leaves it, each rule stated once with links from
   the other sections, and with no bead IDs in the design system.
 
+### Phase 19: Pulls Rows (pull request 19)
+
+- [ ] `mb-lkkt`: the number’s line first, “1/4 · #113 · jlevy” with the age at the row’s
+  end, then the title under the age to the row’s end; the number’s line one line at
+  every width, its author giving way first and its place after; measured in Chrome from
+  420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
+  stylesheet’s tests.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -691,7 +702,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 18 merges.
+This plan moves to `docs/project/specs/done/` when pull request 19 merges.
 
 ## Open Questions
 

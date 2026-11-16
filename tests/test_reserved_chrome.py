@@ -400,7 +400,8 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # The title takes its line but the age: a stack member's place is on the muted line.
+    # The number's line and the age share the first line, and the title runs under the age to
+    # the row's end on the second (mb-lkkt).
     # The chevron and the icon are each the tree's one icon slot (mb-hmv7).
     assert (
         " ".join(columns.group(1).split())
@@ -419,7 +420,8 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
     #455 · author" (mb-dzsi). Its column on the title line, between the title and the age
     (review E1 on #370), took the title's room; the place now arrives with the row's move
     under its stack's row, so it moves nothing that had not moved. The title's line is the
-    title and its age. github-pulls-stacks-chrome.mjs measures the title's room, and
+    title, which since mb-lkkt has a line of its own under the number's.
+    github-pulls-stacks-chrome.mjs measures the title's room, and
     github-pulls-panel-session.js pins the built row's order."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
@@ -439,3 +441,31 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
     )
     assert ".github-pulls-row > .github-pulls-stack" not in css
     assert "grid-column: 4;" in _rule(css, ".github-pulls-row > .github-pulls-age")
+
+
+def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() -> None:
+    """A pull request's row is two lines (mb-lkkt): the number's line, "1/4 · #113 · jlevy",
+    with the age at the row's end, then the chevron, the state icon, and the title, which
+    runs under the age to the row's end. The number's line is one line, so the row is always
+    two: the author leaves it whole onto a clipped second line rather than growing the row.
+    The DOM keeps the title first, so the row's accessible name leads with it.
+    github-pulls-stacks-chrome.mjs and github-pull-header-chrome.mjs measure it."""
+
+    panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
+    assert "[toggle, icon, title, updated, meta]," in panel, "the title leads the name"
+    css = _github_css()
+    meta = _rule(css, ".github-pulls-meta")
+    for declaration in ("grid-row: 1;", "grid-column: 3;", "height: 1lh;", "overflow: clip;"):
+        assert declaration in meta, declaration
+    age = _rule(css, ".github-pulls-row > .github-pulls-age")
+    assert "grid-row: 1;" in age and "grid-column: 4;" in age and "justify-self: end;" in age
+    title = _rule(css, ".github-pulls-row > .github-pulls-title")
+    assert "grid-row: 2;" in title and "grid-column: 3 / -1;" in title
+    for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 2)):
+        rule = _rule(css, f".github-pulls-row:not(.github-pulls-stack-row) > .{part}")
+        assert "grid-row: 2;" in rule and f"grid-column: {column};" in rule, part
+    # The number's line and the age share a baseline.
+    assert (
+        ".github-pulls-row > :is(.github-pulls-meta, .github-pulls-title, .github-pulls-age)"
+        in (css)
+    )

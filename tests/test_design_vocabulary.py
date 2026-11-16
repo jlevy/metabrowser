@@ -2161,12 +2161,15 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's muted line names no branches (the pull request's page does) and wraps
-    # rather than clips: the author carries its separator, a break falls at its floor, and
-    # a separator that starts a line lies in the one-separator offset the row clips.
+    # The Pulls tab's number's line names no branches (the pull request's page does) and is
+    # one line (mb-lkkt): the author carries its separator, a break falls at its floor onto a
+    # second line its box clips, one line of the number's type tall, and a separator that
+    # starts a line lies in the one-separator offset the box clips.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"]) == ("0", "hidden")
+    assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
+    assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
+    assert github[".github-pulls-by"]["font-size"] == "var(--ui-small-font-size)"
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")

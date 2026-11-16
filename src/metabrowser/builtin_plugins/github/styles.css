@@ -844,18 +844,18 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* Two lines and one target: the chevron, the state icon, the title, and the age on the
-   first, and the muted line under the title. A row is a container, so its chevron leads in
-   the slot a folder's takes, as its icon does (`--tree-icon-slot`, docs/design-system.md,
-   "Container Rows"). The row centers
-   its boxes and its text opts in to the first line's baseline (docs/design-system.md, "Row
-   Text Shares a Baseline"); the muted line is alone on its own, with no baseline to share. */
-/* The age has a column of one width, so an age that grows a digit does not move the title's
-   cut. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
+/* Two lines and one target (mb-lkkt): the number's line first, a stack member's place, the
+   number, and the author, "1/4 · #N · jlevy", with the age at the row's end; then the
+   chevron, the state icon, and the title, which runs to the row's end, under the age, and
+   is cut there. A row is a container, so its chevron leads in the slot a folder's takes,
+   as its icon does (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). The row
+   centers its boxes; on the first line the number's line and the age share a baseline
+   (docs/design-system.md, "Row Text Shares a Baseline"), and the title is alone on its.
+   The DOM keeps the title first, so the row's accessible name leads with it. */
+/* The age has a column of one width, so an age that grows a digit does not move the number's
+   line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
-   engine. The title takes the rest of its line: a stack member's place in its stack, which
-   had a column of its own between the title and the age, is on the muted line, before the
-   number (`.github-pulls-place`, mb-dzsi), so the title has that room. */
+   engine. */
 .github-pulls-row {
   display: grid;
   grid-template-columns: var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch;
@@ -886,7 +886,7 @@
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
-.github-pulls-row > :is(.github-pulls-title, .github-pulls-age) {
+.github-pulls-row > :is(.github-pulls-meta, .github-pulls-title, .github-pulls-age) {
   align-self: baseline;
 }
 .github-pulls-row > .github-pulls-age {
@@ -919,20 +919,26 @@
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-/* The muted line: the number and the author. A row names no branches: the pull request's
-   page does, and the row's room goes to its title (docs/design-system.md, "The Pulls
-   Tab"). It wraps rather than clips: the author starts with its separator and may move to
-   the next line, and the line is laid out as wide as the row plus one separator, starting
-   one separator to the left, so that the separator of a part that starts a line falls
-   outside the row and is clipped. The number makes up that offset. A line breaks at the
-   author's floor, and above it the author grows toward its full width, its name ending in
-   an ellipsis. */
+/* The number's line: a stack member's place, the number, and the author, before the age. A
+   row names no branches: the pull request's page does, and the row's room goes to its title
+   (docs/design-system.md, "The Pulls Tab"). It is one line, so a row is always two
+   (mb-lkkt). Its parts give way in order: the author's name ends in an ellipsis down to its
+   floor, its avatar and a little of the name; past that the author, with the separator
+   before it, leaves the line whole, onto a second line that the box clips; and the place,
+   alone on the line with the number, ends in an ellipsis, the number whole after it
+   (`.github-pulls-id`). The line is laid out as wide as its box plus one separator,
+   starting one separator to the left, so that the separator of a part that starts a line
+   falls outside the box and is clipped; the number makes up that offset. Its box is one
+   line of the number's type tall, `1lh` at the number's size, and the author keeps the
+   smaller type it had. */
 .github-pulls-meta {
-  grid-column: 3 / -1;
+  grid-row: 1;
+  grid-column: 3;
   min-width: 0;
-  overflow: hidden;
+  height: 1lh;
+  overflow: clip;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .github-pulls-line {
   --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
@@ -978,11 +984,6 @@
 .github-pulls-place[hidden] {
   display: none;
 }
-/* The title line's places: the title, and the age (above). */
-.github-pulls-row > .github-pulls-title {
-  grid-row: 1;
-  grid-column: 3;
-}
 /* The registry's chevron, at the tree's 12px glyph in the tree's icon slot; `.collapsed` and
    `.expanded` on the row turn it, as they turn a folder's (a changed folder's is the shell's
    `.changed-file-toggle`). */
@@ -992,6 +993,20 @@
   align-items: center;
   justify-content: center;
   width: var(--tree-icon-slot);
+}
+/* The title's line: the chevron, the state icon, and the title, which runs under the age to
+   the row's end. A stack's row is one line, its own (`.github-pulls-stack-row`). */
+.github-pulls-row:not(.github-pulls-stack-row) > .github-pulls-toggle {
+  grid-row: 2;
+  grid-column: 1;
+}
+.github-pulls-row:not(.github-pulls-stack-row) > .github-pull-state-icon {
+  grid-row: 2;
+  grid-column: 2;
+}
+.github-pulls-row > .github-pulls-title {
+  grid-row: 2;
+  grid-column: 3 / -1;
 }
 
 /* A pull request's changed files, under its row: the Files tree's row contract, drawn a window
@@ -1329,6 +1344,7 @@
   display: flex;
   flex: 1 1 0;
   align-items: baseline;
+  font-size: var(--ui-small-font-size);
   min-width: calc(var(--github-pulls-sep) + 1.75em);
   max-width: max-content;
   overflow: hidden;

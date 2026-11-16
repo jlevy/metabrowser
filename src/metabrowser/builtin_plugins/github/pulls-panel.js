@@ -3573,18 +3573,20 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The muted line: a stack member's place (`paintPlace`), the number, and the author. A
-   * row names no branches: the page does, and the row's room goes to its title
-   * (docs/design-system.md, "The Pulls Tab"). The title's line holds only the title and its
-   * age, so a member's place, which once had a column there, gives the title that room.
+   * The number's line, a row's first: a stack member's place (`paintPlace`), the number,
+   * and the author, with the age at the row's end; the title has the second line to itself,
+   * to the row's end (github/styles.css, `.github-pulls-row`). A row names no branches: the
+   * page does, and the row's room goes to its title (docs/design-system.md, "The Pulls
+   * Tab"). The title comes first in the row's DOM, so its accessible name leads with it.
    *
    * @param {PullRow} row
    * @param {HTMLElement} place The row's place, kept across the line built again.
    */
   function rowMeta(row, place) {
-    // A line that wraps (github/styles.css, `.github-pulls-line`): the author carries the
-    // separator before it, so it moves to the next line whole, and a separator that starts
-    // a line is clipped. The place and the number are one part, which never breaks.
+    // One line (github/styles.css, `.github-pulls-meta`): the author carries the separator
+    // before it, so past its floor it leaves the line whole, onto a second line its box
+    // clips, and a separator that starts a line is clipped. The place and the number are
+    // one part, which never breaks.
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-line" }, [

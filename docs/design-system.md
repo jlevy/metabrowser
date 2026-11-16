@@ -707,7 +707,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
-| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
+| Pull request row, in [the Pulls tab](#the-pulls-tab) | The number’s line and the age, on the first line; the title, alone on the second | Chevron, state icon |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
@@ -1226,7 +1226,7 @@ surface that shows a merge calls `mergeRefs`.
 `test_merges_read_source_to_target_in_one_notation` in `tests/test_design_vocabulary.py`
 holds that the page calls it head first, draws no ref chip of its own, and never writes
 `←`, that a Pulls row does not call it, the arrow’s name, direction, floor, and tokens,
-and the rules by which a Pulls row’s metadata line wraps.
+and the rules by which a Pulls row’s number’s line gives way.
 The page’s session holds the order, the arrow’s name, and the literal refs it draws.
 
 ### File Change Status
@@ -1741,22 +1741,28 @@ A conventional-commit prefix that starts it is regular ([Titles](#titles)). A ro
 menu item is a link, so the title sets its own ink and weight, and no visited, hover,
 focus, selected, or current state changes them.
 A pull request’s number is bold wherever it names the pull request
-([Pull Request Numbers](#pull-request-numbers)). The metadata line gives the PR number
+([Pull Request Numbers](#pull-request-numbers)). The number’s line gives the PR number
 normal row size and text ink.
 Usernames use the same small metadata size and bold normal text ink; the repository
 summary above the list is the [navigation metadata line](#navigation-metadata-line).
 A row names no branches: the pull request’s page names them, head → base, as
 [Merge Direction](#merge-direction) sets them, and the row’s room goes to its title.
-A stack member’s place in its stack comes first on the metadata line, before its number,
-“1/6 · #455 · jlevy”, as [Stacks](#stacks) sets it; a place too wide for its line is cut
-short with an ellipsis, the number whole after it.
-The Pulls column has no tooltips
-([Tooltips Add Information](#tooltips-add-information)). The title’s line holds only the
-title and the age, so a member’s title has the room a first-level row’s has, less its
-one indent: 166 px at the default 299 px pane.
-Stack membership comes from one shared repository snapshot, indexed once by PR number;
-rows make no stack requests, and enrichment updates retain the row and any focused
-changed-file tree.
+A row’s first line is its number’s line: a stack member’s place in its stack, as
+[Stacks](#stacks) sets it, the number, and the author, “1/4 · #113 · jlevy”, with the
+age at the row’s end.
+A row not in a stack starts at its number.
+The number’s line is one line, so a row is always two, and its parts give way in order:
+the author’s name ends in an ellipsis, down to its avatar and a little of the name; past
+that the author, with its separator, leaves the line whole; and a place too wide for
+what is left is cut short with an ellipsis, the number whole after it.
+The author is on the pull request’s page, and the age never gives way.
+The second line is the title, with the chevron and the state icon before it, running
+under the age to the row’s end and cut there with an ellipsis, so a member’s title has
+the room a first-level row’s has, less its one indent: 208 px at the default 299 px
+pane, where beside the age it had 170. The Pulls column has no tooltips
+([Tooltips Add Information](#tooltips-add-information)). Stack membership comes from one
+shared repository snapshot, indexed once by PR number; rows make no stack requests, and
+enrichment updates retain the row and any focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1831,7 +1837,7 @@ that shows a number takes it:
 | Surface | Class |
 | --- | --- |
 | The pull request page’s title | `.github-pull-number`, after the title |
-| A Pulls row | `.github-pulls-number`, on the metadata line |
+| A Pulls row | `.github-pulls-number`, on the number’s line |
 | A stack menu’s member | `.github-pull-stack-member-number` |
 | A Quick Search result | `.search-palette-pull-number` |
 | The ref selector, on a pull request’s head | `.source-ref-selector-pull-number`, after “Pull request:” |
@@ -1896,11 +1902,11 @@ holds the one helper and the one rule in source.
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears |
-| Updated time | `metabrowser.formatAge`; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the second line, from the title’s column under the age to the row’s end, cut there with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears |
+| Updated time | `metabrowser.formatAge`, at the first line’s end, on the number’s baseline; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
-| Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
-| Stack place | `.github-pulls-place`, before the number on the metadata line and at its size, “1/6 · #455”, with what it shows set in [Stacks](#stacks); on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
+| Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then leaves the number’s line whole |
+| Stack place | `.github-pulls-place`, before the number on the number’s line and at its size, “1/6 · #455”, with what it shows set in [Stacks](#stacks); on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
@@ -1909,9 +1915,11 @@ holds the one helper and the one rule in source.
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
 | Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
 
-A row is two lines and one target, because a pane is narrower than its parts: the state
-icon and the title with the age beside it, sharing a baseline, then the metadata line
-under them: a stack member’s place, the number, and the author.
+A row is two lines and one target, because a pane is narrower than its parts: first the
+number’s line, a stack member’s place, the number, and the author, with the age at the
+row’s end on its baseline; then the chevron, the state icon, and the title, which runs
+under the age to the row’s end.
+The title comes first in the link’s text, so the row’s accessible name leads with it.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
 text is text: GitHub’s users write it, and none of it reaches markup or a style.
 

@@ -1310,6 +1310,11 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
+      // The stylesheet draws the number's line first and the title under it (mb-lkkt); the
+      // DOM keeps the title first, so the row's accessible name, its text, leads with it.
+      "its text leads with its title": row(shown)
+        .textContent.trim()
+        .startsWith(row(shown).childNodes[2].textContent),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
       "Right opens its cached changed files": filesRead,
       "they hang under it as a group it owns": shown.childNodes.map(described),
