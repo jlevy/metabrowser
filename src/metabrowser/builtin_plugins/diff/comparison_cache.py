@@ -170,13 +170,6 @@ class ComparisonCache:
         """Whether this process computed the comparison, so a validator of it can be trusted."""
         return key in self._manifests
 
-    def kept_manifest(self, key: tuple[str, ...]) -> ResolvedManifest | None:
-        """The kept manifest, marked most recently used, or ``None``. Starts nothing."""
-        kept = self._manifests.get(key)
-        if kept is not None:
-            self._manifests.move_to_end(key)
-        return kept
-
     def body(self, key: tuple[str, ...]) -> bytes | None:
         """One encoded answer, or None."""
         kept = self._bodies.get(key)
