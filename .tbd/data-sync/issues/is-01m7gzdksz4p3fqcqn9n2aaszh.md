@@ -3,15 +3,19 @@ type: is
 id: is-01m7gzdksz4p3fqcqn9n2aaszh
 title: "Diff summary: expands with no scroll bar, indented on the nested rows' step"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-16T01:26:50.942Z
-updated_at: 2026-11-16T01:26:50.942Z
+updated_at: 2026-11-16T01:27:42.603Z
+started_at: 2026-11-16T01:27:42.602Z
 ---
 The user's request (2026-11-15), verbatim:
 
