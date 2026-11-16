@@ -122,6 +122,31 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+/* The pull request's Diff summary, the header's last row (mb-pb35): the diff plugin's header
+   and tree (`.diff-summary`, builtin_plugins/diff/styles.css), above the tabs and on every one.
+   The row is held at the header's one line, a summary's row height, from first paint, and the
+   header stays on that line, its breakdown cut short rather than wrapping, so the summary
+   arriving with the comparison moves nothing. The tree opens under it, at the row's width. */
+.github-pull-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: var(--ui-row-height);
+}
+.github-pull-header .github-pull-summary > .diff-summary {
+  flex-wrap: nowrap;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.github-pull-header .github-pull-summary .diff-summary-breakdown {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-summary > .diff-summary-body {
+  align-self: stretch;
+}
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
    widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
    closed. One line in every state: the badge's box and the ages' line are both 18 px in
@@ -1044,7 +1069,7 @@
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
 /* A row the comparison does not hold: it is listed, and the diff has nothing to show of it. */
-.changed-file-row.github-pull-file-muted {
+.github-pull-file-muted.changed-file-row {
   color: var(--muted);
 }
 /* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
@@ -1228,7 +1253,7 @@
    edge, hovered or not. A menu row has no border to color, so the bar is drawn inset and
    moves nothing. Focus on it shows as on every member, by the header's link ring
    (`.github-pull-header a:focus-visible`). */
-.menu-item.github-pull-stack-member[aria-current="page"] {
+.github-pull-stack-member.menu-item[aria-current="page"] {
   background: var(--highlight-bg);
   box-shadow: inset 2px 0 0 var(--highlight-bar);
 }

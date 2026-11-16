@@ -505,7 +505,9 @@ status: 200
       "comparison": "base_uncertain"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```

@@ -22,6 +22,7 @@
  * @typedef {{
  *   load(comparison: ComparisonEnds, signal: AbortSignal): Promise<unknown>,
  *   warm(): void,
+ *   loaded?(comparison: ComparisonEnds, payload: unknown): void,
  *   schedule(callback: () => void): unknown,
  *   cancel(handle: unknown): void,
  *   isVisible(): boolean,
@@ -83,6 +84,10 @@ export function createComparisonPrefetch(deps) {
       (payload) => {
         if (entry.phase === "fetching") {
           entry.phase = "held";
+        }
+        // What was read, for the page's Diff summary, taken or not (mb-pb35).
+        if (current === entry && !disposed) {
+          deps.loaded?.(comparison, payload);
         }
         return payload;
       },

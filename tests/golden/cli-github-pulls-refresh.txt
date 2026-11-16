@@ -103,6 +103,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200
 gh api graphql catalog state=open cursor=open-300
@@ -1159,7 +1160,9 @@ status: 200
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
     "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
-  }
+  },
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -1238,7 +1241,9 @@ status: 200
     "comparison_state": "not_started",
     "observed_at": "2026-09-17T12:01:01Z",
     "revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4"
-  }
+  },
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -1341,7 +1346,7 @@ exit: 0
 api: /api/plugin/github/cache-clear
 status: 200
 {
-  "cleared": 4,
+  "cleared": 5,
   "source": "https://github.com/octo/demo"
 }
 --- stderr ---
@@ -1450,6 +1455,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
+gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=open cursor=open-100
 gh api graphql catalog state=open cursor=open-200
 gh api graphql catalog state=open cursor=open-300

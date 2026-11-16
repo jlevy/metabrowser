@@ -203,7 +203,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -274,7 +276,9 @@ status: 202
     "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": "<RECORD 7>",
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=7"
 }
@@ -305,7 +309,9 @@ status: 200
   "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request
@@ -363,7 +369,9 @@ status: 200
   "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request
@@ -411,7 +419,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -442,7 +452,9 @@ status: 200
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -475,7 +487,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -576,7 +590,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -620,7 +636,9 @@ status: 200
     "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE>",
     "record": "<RECORD 10>",
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -825,7 +843,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request
@@ -965,7 +985,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request
@@ -1076,7 +1098,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request
@@ -1113,7 +1137,9 @@ status: 200
   "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
   "record": "<RECORD 7>",
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request

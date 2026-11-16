@@ -25,11 +25,12 @@ from metabrowser.builtin_plugins.github import (
     gh_budget,
     gh_lists,
     pull_catalog,
+    pull_labels,
     pull_list,
     pull_list_refresh,
     pull_list_route,
 )
-from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError
+from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
@@ -89,6 +90,7 @@ from tests.github_pull_fixture import (
     catalog_entries,
     generated_item,
     install_fake_gh,
+    label_entries,
     next_link,
     ok,
     seed_catalog,
@@ -143,8 +145,17 @@ def _provider(
         calls.append(key)
         return entries[key]["body"]["data"]
 
+    async def labels(path: str, **_kwargs: Any) -> GhResponse:
+        # The repository's label set, which the job asks for once it has published a page
+        # (pull_labels); it is not one of the catalog's calls.
+        answer = label_entries()[path]
+        return GhResponse(
+            200, {"etag": answer["headers"]["Etag"]}, json.dumps(answer["body"]).encode()
+        )
+
     monkeypatch.setattr(pull_list_refresh, "active_account", active)
     monkeypatch.setattr(pull_list_refresh, "gh_graphql", graphql)
+    monkeypatch.setattr(pull_labels, "gh_api", labels)
     return calls
 
 
@@ -418,7 +429,11 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
         json.loads(line)["args"]
         for line in (tmp_path / "fake-gh-log.jsonl").read_text().splitlines()
     ]
-    assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
+    api = [args for args in log if args[0] == "api"]
+    # The catalog's page, then, once it is published, the repository's label set, its
+    # one REST page (pull_labels).
+    assert [args[:2] for args in api] == [["api", "graphql"], ["api", "--hostname"]]
+    assert api[1][-1] == "repos/octo/demo/labels?per_page=100&page=1"
     assert any("avatar_url:avatarUrl(size:40)" in arg for args in log for arg in args)
     assert not list((repository.home / "repository-stores").iterdir())
 

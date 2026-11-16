@@ -11,9 +11,10 @@
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
 menu, a rule for tooltips, the Conversation’s rhythm and headings, a rule for commit and
 pull request titles, navigation that reveals the item, label colors, Group by’s speed on
-a large folder, a design-system consistency pass over all of them, and a Pulls row’s two
-lines, from the same day.
-They land as one native GitHub stack of nineteen pull requests on `main`:
+a large folder, a design-system consistency pass over all of them, a Pulls row’s two
+lines, one Diff summary at a page’s top, a cached label set, and a Diff summary that
+opens in the page’s flow, from the same day.
+They land as one native GitHub stack of twenty-two pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -62,6 +63,14 @@ They land as one native GitHub stack of nineteen pull requests on `main`:
     from 0.12.0 (`mb-vg55`).
 19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
     age, and its second the whole title to the pane’s edge (`mb-lkkt`).
+20. **Diff summary at the top:** a commit’s page and a pull request’s page each show one
+    Diff summary, collapsed, at the page’s top, whose header is the counts of files and
+    lines, in place of a commit’s stats block and of the summary in Changes (`mb-pb35`).
+21. **Label color cache:** each repository’s whole label set is cached, so a label a
+    record cached before label colors names alone is colored on first paint (`mb-varu`).
+22. **Diff summary in the flow:** an opened Diff summary has no scroll bar of its own
+    and grows in the page’s flow, drawing the rows in view, and its tree steps in from
+    its header one `--tree-indent` a level, as nested rows do elsewhere (`mb-hi4l`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -196,6 +205,10 @@ it:
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
+| 19 | `claude/pulls-rows-two-lines` | `mb-lkkt` | On pull request 18; lays a Pulls row out on two lines |
+| 20 | `claude/diff-summary-top` | `mb-pb35` | On pull request 19; moves the Diff summary to the top of the commit and pull request pages, under the header whose rows pull requests 13 and 19 change |
+| 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
+| 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -519,6 +532,42 @@ against 5 ms for the ungrouped tree.
   dropped the prefetch, each refresh during the load discarded it and began again, and
   the two prefetches the open menu ran at once each took twice as long as one.
 
+### Diff Summary at the Top
+
+The owner’s report of 2026-11-15: a commit showed its counts twice, once as `M`, `A`,
+and `D` file counts with line totals, and once in its diff; the counts belong in the
+toggleable summary, at the top of both the commit page and the pull request page, not in
+the Changes tab.
+
+- **One summary, one wording:** each page has one Diff summary, whose header’s words are
+  the shared model’s (`describeChanges`); the commit summary’s change stats remain only
+  in the hover summary, which has no diff.
+- **Placement:** a commit’s diff draws its summary in the commit summary’s place
+  (`summaryHost`), for one file too; a pull request’s page draws its own as the header’s
+  last row on every tab, through the diff view’s `summary`, from the comparison the
+  prefetch reads or Changes read, and its Changes diff draws none (`summary: false`).
+- **Nothing moves:** the row is held at a row’s height from first paint and the
+  summary’s header is one line, cut short at its end; measured in Chrome 152 from 980 to
+  320 px, the summary arriving moved no row and not the tab bar.
+
+### Diff Summary in the Flow
+
+The owner’s request of 2026-11-15: “We should also drop the scroll bar when it expands
+and make sure that when it expands, it’s indented consistently the correct amount, just
+like the nested indentations.”
+
+- **No scroll bar:** an opened tree is as tall as its rows, in the page’s flow, and
+  clips only while it travels open; it draws the rows in the window’s view of it and
+  `SUMMARY_ROWS_OVERSCAN` more each way, and hears the page’s scrolls.
+- **No new bound:** its length is bounded by the comparison’s 2,000 files; measured in
+  Chrome on synthetic patches of 106, 600, and 2,000 files, the rows showed 8 to 57 ms
+  after a press, the document held at most 116 rows, and scrolling kept its frames.
+- **One step a level:** the first level starts one `--tree-indent` in from the header,
+  its chevron from the header’s chevron and its name from the header’s words, and each
+  level one more, in a diff’s toolbar, under a commit’s identity, and in a pull
+  request’s header; the rows give back the header’s inset and pull
+  (`--diff-summary-header-inset`, `--diff-summary-toggle-pull`).
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -677,6 +726,29 @@ against 5 ms for the ungrouped tree.
   420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
   stylesheet’s tests.
 
+### Phase 20: Diff Summary at the Top (pull request 20)
+
+- [ ] `mb-pb35`: one Diff summary at the top of the commit page and of the pull request
+  page, on every tab; the commit page’s stats block removed; the pull request header’s
+  last row held from first paint and measured in Chrome to move nothing; pinned in the
+  diff view, git panel, pull page mount, and prefetch sessions, the prefetch golden, the
+  header Chrome test, and the design vocabulary.
+
+### Phase 21: Label Color Cache (pull request 21)
+
+- [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
+  refreshed on its age and on a name it does not hold, and a chip takes its color and
+  description from it whenever its record lacks them; a `metab` route and golden, and a
+  Chrome check of a bare-names record’s chip colored on first paint.
+
+### Phase 22: Diff Summary in the Flow (pull request 22)
+
+- [ ] `mb-hi4l`: an opened Diff summary with no scroll bar of its own, in the page’s
+  flow, drawn a window at a time against the page’s scroll, measured on 106, 600, and
+  2,000 files; its tree one `--tree-indent` a level in from its header in a patch’s
+  toolbar, a commit’s page, and a pull request’s header; pinned in the changed-file
+  rows, commit summary, and header Chrome tests and the diff view session.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -702,7 +774,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 19 merges.
+This plan moves to `docs/project/specs/done/` when pull request 22 merges.
 
 ## Open Questions
 
@@ -723,8 +795,8 @@ This plan moves to `docs/project/specs/done/` when pull request 19 merges.
   `mb-spqw`, follow-ups on the Group by menu; `mb-8mpo`, the tooltips; `mb-w7rt` and
   `mb-novh`, the Conversation’s rhythm and headings; `mb-z57p`, the title prefixes;
   `mb-6y0g`; `mb-9qob`, the label colors; `mb-navs` and `mb-75l5`, Group by’s speed and
-  feedback on a large folder; and `mb-r5jr`, the consistency pass, with `mb-xlla` and
-  `mb-vg55`.
+  feedback on a large folder; `mb-r5jr`, the consistency pass, with `mb-xlla` and
+  `mb-vg55`; and `mb-hi4l`, the Diff summary in the page’s flow.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

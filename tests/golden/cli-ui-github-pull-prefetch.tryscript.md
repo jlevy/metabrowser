@@ -29,7 +29,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "comparison": "aaaa...bbbb",
       "holding": false,
       "requests": [],
-      "assetsWarmed": 0
+      "assetsWarmed": 0,
+      "summarized": []
     },
     {
       "step": "idle: one request, and the diff's assets",
@@ -39,7 +40,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": []
     },
     {
       "step": "the answer arrives and is held",
@@ -49,7 +51,10 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ]
     },
     {
       "step": "the reader clicks Files changed: it is handed over",
@@ -60,6 +65,9 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
       "handed": {
         "document": "first"
       }
@@ -73,6 +81,9 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
       "handed": null
     },
     {
@@ -83,7 +94,10 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ]
     },
     {
       "step": "a click while the request is on its way waits for that request",
@@ -93,7 +107,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": []
     },
     {
       "step": "it arrives",
@@ -104,6 +119,9 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
       "handed": {
         "document": "first"
       }
@@ -115,6 +133,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "holding": false,
       "requests": [],
       "assetsWarmed": 0,
+      "summarized": [],
       "handed": null
     },
     {
@@ -124,6 +143,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "holding": false,
       "requests": [],
       "assetsWarmed": 0,
+      "summarized": [],
       "handed": null
     },
     {
@@ -134,7 +154,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb (cancelled)"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": []
     },
     {
       "step": "the new comparison is fetched",
@@ -145,7 +166,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb (cancelled)",
         "cccc"
       ],
-      "assetsWarmed": 2
+      "assetsWarmed": 2,
+      "summarized": []
     },
     {
       "step": "a mount is waiting on the old request: it is not cancelled",
@@ -155,7 +177,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": []
     },
     {
       "step": "a refused request is not retried and not an error: the diff asks and says why",
@@ -166,6 +189,7 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
+      "summarized": [],
       "handed": null
     },
     {
@@ -174,7 +198,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "comparison": null,
       "holding": false,
       "requests": [],
-      "assetsWarmed": 0
+      "assetsWarmed": 0,
+      "summarized": []
     },
     {
       "step": "the same page once it is shown",
@@ -184,7 +209,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": []
     },
     {
       "step": "the page goes: its request is cancelled and nothing is held",
@@ -194,7 +220,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [
         "bbbb (cancelled)"
       ],
-      "assetsWarmed": 1
+      "assetsWarmed": 1,
+      "summarized": []
     },
     {
       "step": "the same endpoints at a changed route fetch again",
@@ -205,7 +232,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb (cancelled)",
         "bbbb"
       ],
-      "assetsWarmed": 2
+      "assetsWarmed": 2,
+      "summarized": []
     }
   ]
 }

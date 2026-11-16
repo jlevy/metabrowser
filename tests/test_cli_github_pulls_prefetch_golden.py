@@ -253,8 +253,13 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     delta = session.run(CANONICAL, "--api", PULLS_REFRESH, body={})
     assert delta.exit_code == 0, delta.stderr
     calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
-    # One scan of what changed: one account check and one GraphQL page.
-    assert calls == ["gh auth status", "gh api graphql catalog state=updated cursor=start"]
+    # One scan of what changed: one account check and one GraphQL page, then the label set,
+    # due again, asked for with its page's ETag (pull_labels).
+    assert calls == [
+        "gh auth status",
+        "gh api graphql catalog state=updated cursor=start",
+        "gh api repos/octo/demo/labels?per_page=100&page=1 (If-None-Match)",
+    ]
     vouched = session.run(CANONICAL, "--api", f"{PULL}?number=8").payload()
     assert (vouched["state"], vouched["verified_by"], vouched["verified_at"]) == (
         "current",

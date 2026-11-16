@@ -10,6 +10,17 @@ All notable changes to Metabrowser are documented here.
   each folder’s rows one step further, as nested rows do in the Files tree and the Pulls
   tab.
 
+- A commit’s page and a pull request’s page each have one Diff summary, collapsed, at
+  the top of the page, and the counts of files and lines are its header.
+  On a commit’s page it sits under the commit’s identity, in place of the `M`, `A`, and
+  `D` file counts and the line totals, and it is there for a commit of one file too.
+  On a pull request’s page it is the header’s last row on every tab, not in Changes, and
+  a press on a file in it opens Changes at that file from any tab.
+  The row is there from the first paint, so the summary arriving moves nothing and the
+  tab bar stays where it was; the header is one 24 px row and a 6 px gap taller.
+  The hover summary of a commit in the history keeps its two rows of counts.
+  See [Diff Summary](docs/design-system.md#diff-summary).
+
 - A Pulls row now reads its number’s line first, a stack member’s place, the number, and
   the author, as “1/4 · #113 · jlevy”, with the age at the row’s end, and then the title
   on a line of its own, running to the pane’s edge and cut there with an ellipsis.
@@ -26,12 +37,18 @@ All notable changes to Metabrowser are documented here.
   dark one, with GitHub’s text and border colors, at the chip’s same size.
   A label’s description, where it has one, is its chip’s tooltip.
   A label GitHub gave no usable color keeps the plain chip.
-  A pull request cached before this release shows its labels plain until its next
-  refresh, which fetches it in full once, and a repository’s cached list of pull
-  requests reads its rows again once, keeping the rows it holds meanwhile.
+  Each repository’s whole label set, its names, colors, and descriptions, is cached
+  beside its pull requests and across restarts and kept fresh with its list of pull
+  requests, so labels are colored as the page first paints, also on a pull request
+  cached before this release, whose record names its labels alone; that record is not
+  fetched again for them.
+  A repository’s cached list of pull requests reads its rows again once, keeping the
+  rows it holds meanwhile.
   `metab --api` answers each label as its name, color, and description rather than its
   name alone in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`,
-  and as its name and color in `/api/plugin/github/pulls`. See
+  and as its name and color in `/api/plugin/github/pulls`; `/api/plugin/github/labels`
+  reads the cached label set, `/api/plugin/github/labels-refresh` asks GitHub for it,
+  and the pull envelope adds `repository_labels` and `labels_pending`. See
   [Label Colors](docs/design-system.md#label-colors).
 
 - Going to a file, a pull request, or a commit now shows it in the navigation pane by

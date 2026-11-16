@@ -721,6 +721,7 @@ async function main() {
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
   const {
     composeTextRuns,
+    mountDiffSummary,
     mountDiffView: mountDiffViewImpl,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
@@ -1336,6 +1337,44 @@ async function main() {
     "one-file documents have no Diff summary",
     singleSummarized.find("diff-summary").length === 0,
   );
+  // A page that keeps the Diff summary at its own top (mb-pb35): a commit's page hands the
+  // diff the place (`summaryHost`), where the summary is drawn, for one file too, and the
+  // toolbar holds no summary; a pull request's page draws it on its own
+  // (`mountDiffSummary`) from the document it read, and its diff draws none.
+  const placed = new FakeElement("div");
+  const place = new FakeElement("div");
+  mountDiffView(placed, twoFiles, undefined, { changedFiles: sharedTree, summaryHost: place });
+  check(
+    "a page's place holds the Diff summary its diff draws",
+    place.find("diff-summary-toggle").length === 1 && placed.find("diff-summary").length === 0,
+  );
+  const placedOne = new FakeElement("div");
+  const placeOne = new FakeElement("div");
+  mountDiffView(placedOne, byName.get("modified-with-heading"), undefined, {
+    changedFiles: sharedTree,
+    summaryHost: placeOne,
+  });
+  check(
+    "a page's place holds one file's Diff summary too",
+    placeOne.find("diff-summary-toggle").length === 1 &&
+      placedOne.find("diff-summary").length === 0,
+  );
+  const slot = new FakeElement("div");
+  const standalone = mountDiffSummary(
+    slot,
+    twoFiles,
+    { formatInteger: (count) => String(count) },
+    { changedFiles: sharedTree, openFile() {} },
+  );
+  const drawn = slot.children[0];
+  check(
+    "a page draws a Diff summary on its own from the document",
+    slot.children.length === 1 &&
+      drawn.classList.contains("diff-summary-toggle") &&
+      drawn.text().includes("2 changed files"),
+    drawn?.text() ?? "",
+  );
+  standalone.dispose();
   await diffSummaryChecks(mountDiffView, twoFiles);
   await repeatedPathChecks(mountDiffView, twoFiles);
   await windowedSummaryChecks(repoRoot);

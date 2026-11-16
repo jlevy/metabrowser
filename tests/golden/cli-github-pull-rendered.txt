@@ -227,7 +227,9 @@ status: 202
       },
       "unavailable": {}
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=7"
 }
@@ -408,7 +410,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request

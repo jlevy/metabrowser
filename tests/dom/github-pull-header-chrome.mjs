@@ -41,6 +41,7 @@ import { launchChrome } from "./chrome-session.mjs";
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
 const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
+const DIFF = path.join(root, "src/metabrowser/builtin_plugins/diff");
 const FIXTURES = path.join(root, "tests/fixtures/github-pull-page-responses.json");
 const LABEL_COLORS = path.join(root, "tests/fixtures/github-label-colors.json");
 const KPRESS = process.env.KPRESS_STATIC ? path.resolve(process.env.KPRESS_STATIC) : null;
@@ -68,10 +69,12 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull heade
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/github/styles.css">
+<link rel="stylesheet" href="/diff/styles.css">
 <script>
   window.METABROWSER_SETTINGS = { SYNTAX_HIGHLIGHT_MAX_BYTES: 524288, SYNTAX_LANGUAGE_BY_BASENAME: {}, SYNTAX_LANGUAGE_BY_EXTENSION: {} };
   window.MetabrowserIcons = { copy: '<svg data-icon="copy"></svg>' };
 </script>
+<script src="/static/changed-files-tree.js"></script>
 ${SDK.map((name) => `<script src="/static/${name}"></script>`).join("\n")}
 </head><body><div id="preview-pane" class="preview-pane"></div></body></html>`;
 
@@ -96,6 +99,8 @@ function serve() {
       file = path.join(STATIC, url.pathname.slice(8));
     } else if (url.pathname.startsWith("/github/")) {
       file = path.join(GITHUB, url.pathname.slice(8));
+    } else if (url.pathname.startsWith("/diff/")) {
+      file = path.join(DIFF, url.pathname.slice(6));
     } else if (KPRESS && url.pathname.startsWith("/kpress/")) {
       file = path.join(KPRESS, url.pathname.slice(8));
     }
@@ -110,6 +115,52 @@ function serve() {
   });
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
+
+// In the page: a change set five folders deep, and a function that opens the Diff summary
+// drawn in a place and reads where its header and every row of its tree start, once its
+// travel is over (docs/design-system.md, "Diff Summary": the tree's first level starts one
+// --tree-indent in from the header, and each level one more).
+const NESTED_SUMMARY = `(() => {
+  const paths = ["top.py", "a/f.py", "a/b/f.py", "a/b/c/f.py", "a/b/c/d/f.py", "a/b/c/d/g.py"];
+  const files = paths.map((path) => ({ kind: "modified", old: { path }, new: { path }, additions: 1, deletions: 0 }));
+  return { manifest: { totals: { files: paths.length, additions: paths.length, deletions: 0, exact: true }, files } };
+})()`;
+const SUMMARY_INDENT = `async (place) => {
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const toggle = place.querySelector(".diff-summary-toggle");
+  toggle.click();
+  const deadline = performance.now() + 10000;
+  const open = () => {
+    const body = place.querySelector(".diff-summary-body");
+    return body && !body.classList.contains("diff-summary-body-collapsed") && body.querySelector('[role="treeitem"]');
+  };
+  while (!open() && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await frames();
+  const left = (node) => Math.round(node.getBoundingClientRect().left * 100) / 100;
+  return {
+    step: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
+    chevron: left(toggle.querySelector(".diff-summary-chevron")),
+    words: left(toggle.querySelector(".diff-summary-files")),
+    rows: [...place.querySelectorAll('.diff-summary-body [role="treeitem"]')].map((row) => ({
+      id: row.dataset.id,
+      level: Number(row.getAttribute("aria-level")),
+      lead: left(row.children[0]),
+      name: left(row.children[1]),
+    })),
+  };
+}`;
+/** The rows of a measured tree that do not start one step per level in from its header. */
+const offStep = (indent) =>
+  indent === null
+    ? ["not measured"]
+    : indent.rows.filter(
+        (row) =>
+          Math.abs(row.lead - indent.chevron - indent.step * row.level) > 0.5 ||
+          Math.abs(row.name - indent.words - indent.step * row.level) > 0.5,
+      );
 
 // In the page: mount one record on one tab in a pane of one width and read the header's
 // rows. The page's API is the one github-pull-page-mount-behavior.js mounts with, its ref
@@ -145,6 +196,7 @@ const MEASURE = `async (name, change, tab, width) => {
   // Labels of each color the label part checks, in the theme it names.
   if (change.labels && body.record) {
     body.record.pull.labels = change.labels;
+    body.repository_labels = change.repositoryLabels ?? [];
   }
   if (change.theme) {
     document.documentElement.dataset.theme = change.theme;
@@ -235,6 +287,63 @@ const MEASURE = `async (name, change, tab, width) => {
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
     tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
   });
+  // The pull request's Diff summary arrives with its comparison, in the header's last row,
+  // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
+  // on a change set whose breakdown names three statuses, "35 changed files (2 added,
+  // 3 removed, 30 modified) +1,234 −3,423": it moves nothing, keeps its row's height, and
+  // starts on the header's content edge.
+  let summaryMoves = null;
+  if (change.stackChip) {
+    const slot = header.querySelector(".github-pull-summary");
+    const before = places();
+    const rowBefore = Math.round(box(slot).height * 100) / 100;
+    const diff = (window.__diff ??= await import("/diff/diff-view.js"));
+    const kinds = [
+      ...Array(2).fill("added"),
+      ...Array(3).fill("deleted"),
+      ...Array(30).fill("modified"),
+    ];
+    const files = kinds.map((kind, at) => ({
+      kind,
+      ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+      ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
+      additions: 30,
+      deletions: 90,
+    }));
+    const summary = diff.mountDiffSummary(
+      slot,
+      { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } },
+      mb,
+      { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} },
+    );
+    await frames();
+    const after = places();
+    const rows = (shape) => JSON.stringify({ rows: shape.rows, tabBar: shape.tabBar });
+    const headerLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+    const toggle = slot.querySelector(".diff-summary");
+    summaryMoves = {
+      moved: rows(before) === rows(after) ? null : { before, after },
+      rowBefore,
+      rowAfter: Math.round(box(slot).height * 100) / 100,
+      toggleHeight: toggle ? Math.round(box(toggle).height * 100) / 100 : null,
+      left: Math.round((box(slot).left - headerLeft) * 100) / 100,
+      text: toggle?.textContent ?? null,
+    };
+    summary.dispose();
+    // Once a width: a change set five folders deep, opened in the header's last row, where
+    // the tree steps in from its header one level at a time (mb-hi4l).
+    window.__summaryIndentWidths ??= new Set();
+    if (!window.__summaryIndentWidths.has(width)) {
+      window.__summaryIndentWidths.add(width);
+      const nested = diff.mountDiffSummary(slot, ${NESTED_SUMMARY}, mb, {
+        changedFiles: window.MetabrowserChangedFilesTree,
+        openFile() {},
+      });
+      await frames();
+      summaryMoves.indent = await (${SUMMARY_INDENT})(slot);
+      nested.dispose();
+    }
+  }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
   // the right end of the author's row (mb-cf0l): one stack, "2/3", or two, "4/4" and "2/2".
   // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
@@ -382,6 +491,7 @@ const MEASURE = `async (name, change, tab, width) => {
     offers: header.querySelectorAll(".github-pull-offer").length,
     mergeShown,
     chipMoves,
+    summaryMoves,
     // How far any of the header's content ends past its content box, where it is not
     // clipped by a box that cuts it short, and which element it is; and the pane's own
     // sideways scroll.
@@ -921,6 +1031,34 @@ async function main() {
                 String(shape.mergeShown),
               );
             }
+            if (shape.summaryMoves !== null) {
+              const moves = shape.summaryMoves;
+              check(
+                `${where}: the Diff summary arriving moves nothing in the header`,
+                moves.moved === null,
+                JSON.stringify(moves.moved),
+              );
+              check(
+                `${where}: the Diff summary keeps its row's height, on one line`,
+                Math.abs(moves.rowBefore - moves.rowAfter) <= 0.5 &&
+                  moves.toggleHeight !== null &&
+                  moves.toggleHeight <= moves.rowBefore + 0.5,
+                JSON.stringify(moves),
+              );
+              check(
+                `${where}: the Diff summary starts on the header's content edge`,
+                Math.abs(moves.left) <= 0.5,
+                JSON.stringify(moves),
+              );
+              if (moves.indent !== undefined) {
+                check(
+                  `${where}: the Diff summary's tree steps in from its header one level at a time`,
+                  offStep(moves.indent).length === 0 &&
+                    new Set(moves.indent.rows.map((row) => row.level)).size === 5,
+                  JSON.stringify(moves.indent),
+                );
+              }
+            }
             if (shape.chipMoves !== null) {
               check(
                 `${where}: a late stack chip moves nothing in the header`,
@@ -1116,6 +1254,46 @@ async function main() {
               colored: places(shape),
               rows: [bare.rows, shape.rows],
             }),
+          );
+          // The same labels named alone, with the repository's cached set in the envelope, as
+          // a page first paints a record cached before label colors once the set is cached
+          // (mb-varu): every chip is colored and titled as the record's own colors draw it.
+          const known = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({
+              labels: LABEL_CASES.map(({ name }) => ({ name, color: null, description: null })),
+              repositoryLabels: LABEL_CASES.filter(({ color }) =>
+                /^[0-9a-fA-F]{6}$/.test(color ?? ""),
+              ).map(({ name, color, description }) => ({ name, color, description })),
+              theme,
+            })}, "", 980)`,
+          );
+          // A label the set holds is drawn as its own color draws it; one it does not hold, or
+          // holds without six hex digits, stays the neutral chip, with no tooltip.
+          const held = new Set(
+            LABEL_CASES.filter(({ color }) => /^[0-9a-fA-F]{6}$/.test(color ?? "")).map(
+              ({ name }) => name,
+            ),
+          );
+          const paint = (measured) =>
+            measured.labels
+              .filter((chip) => held.has(chip.name))
+              .map((chip) => [
+                chip.name,
+                chip.color,
+                chip.properties,
+                chip.tip,
+                chip.background,
+                chip.text,
+                chip.border,
+              ]);
+          check(
+            `${theme}: a label named alone takes the repository's color and tooltip on first paint`,
+            JSON.stringify(paint(known)) === JSON.stringify(paint(shape)) &&
+              paint(known).length === held.size &&
+              known.labels
+                .filter((chip) => !held.has(chip.name))
+                .every((chip) => chip.color === null && chip.tip === null),
+            JSON.stringify({ known: paint(known), own: paint(shape) }),
           );
           check(
             `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,

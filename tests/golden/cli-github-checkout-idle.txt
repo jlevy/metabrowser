@@ -26,7 +26,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -124,7 +126,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -237,7 +241,9 @@ status: 200
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -273,7 +279,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -401,7 +409,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -514,7 +524,9 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -615,7 +627,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -751,7 +765,9 @@ status: 200
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -889,6 +905,8 @@ status: 202
       }
     },
     "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false,
     "preparing_comparison": true
   },
   "status_route": "/api/plugin/github/pull?number=9"
@@ -1020,7 +1038,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -1158,7 +1178,9 @@ status: 200
       },
       "unavailable": {}
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -1299,7 +1321,9 @@ status: 202
       },
       "unavailable": {}
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -1430,7 +1454,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---

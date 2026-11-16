@@ -1011,14 +1011,29 @@ The selected commit begins with one `.git-commit-summary` component rendered by
 1. subject;
 2. metadata containing an identity group with the short revision and refs, followed by
    author and age;
-3. `.git-commit-change-stats`, with one file-status row and one line-total row; and
+3. the commit’s changes: in the full summary its [Diff summary](#diff-summary), in
+   `.git-commit-diff-summary`, where the commit’s diff draws it, and in the compact one
+   `.git-commit-change-stats`; and
 4. the commit description, when present.
 
 The identity group shows the commit’s refs as the Git history row does, with the same
 kinds, trunk, and HEAD marks ([Branch Chips](#branch-chips)). The full summary makes the
 revision copyable; the compact summary keeps the familiar copy glyph noninteractive.
 
-The change-stats child sits below the identity metadata.
+The Diff summary is the commit page’s one statement of its changes, as on a pull
+request’s page, with the same header and words, collapsed until it is opened.
+The diff draws it in the summary’s place before the page is shown, so it is there at
+first paint, and it is there for a commit of one file too.
+Where the diff is not drawn, as when the diff plugin is absent or the comparison fails,
+the place is empty and takes no room; a failed comparison says so in the diff’s place.
+Measured in Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16
+px over the description, its place on the subject’s edge and its toggle hung 4 px into
+the gutter, as every Diff summary’s is; its header is one 24 px row at 560 px and wider
+and wraps to two lines at 420 px and three at 320 px, all before the page is shown;
+opened, its tree is under it and above the description; and an empty place takes no
+room. `tests/test_git_commit_summary_chrome.py` holds it.
+The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
+sits below the identity metadata.
 Its first row reports exact file-status families with Git’s letters and ends in “file”
 or “files.” Its second row reports line additions and deletions and ends in “line” or
 “lines.” `M` contains modified, renamed, and type-changed files; `A` contains added and
@@ -1063,9 +1078,9 @@ tooltip before navigation.
 The component owns commit identity and message only.
 The comparison, files outside the served root, and truncation notice are siblings under
 `.git-commit-view`, because they describe the rendered change rather than the commit
-summary. A revision-hosted comparison has no [Diff summary](#diff-summary), so the
-mounted view has one set of totals; a pull request’s Changes and a patch file open with
-theirs.
+summary. A revision-hosted comparison draws its [Diff summary](#diff-summary) in the
+summary’s place, at the page’s top, not in its toolbar, so the page has one set of
+totals; a patch file opens with its own in its toolbar.
 
 Do not assemble commit-summary fragments in `renderCommitDetail` or add a second root.
 `tests/test_design_vocabulary.py::test_git_commit_summary_is_one_component` maintains
@@ -1270,22 +1285,27 @@ Kind letters reuse the same mapping — added is `--status-success`, deleted is
 
 ### Diff Summary
 
-A diff of more than one file opens with its Diff summary, in the toolbar beside the
-layout control, and it starts collapsed.
-Its header is one row-like disclosure toggle that leads with the registry’s chevron in
-the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2 added, 3 removed, 30
-modified) +1,234 −3,423”. The breakdown lists only the statuses some file has, in one
-order (added, removed, modified, renamed, then copied, type changed, unmerged, and any
-other), in `--muted`; numbers use the shell’s number format; the totals are the
-[inline change stats](#inline-change-stats); and “(estimated)” follows totals that are
-not exact. Its accessible name says the same in words.
+A change set has one Diff summary, and it starts collapsed.
+A page with a header of its own holds it at its top, on every tab, so the counts are not
+inside the changes: a commit’s page under the commit’s identity, in its
+[commit summary](#git-commit-summary), where the commit’s diff draws it (`summaryHost`),
+for one file too; and a pull request’s page as its header’s last row
+([Layout](#layout)), which the page draws from the comparison it reads, through the diff
+view’s `summary`, while its Changes diff draws none (`summary: false`). Elsewhere, as in
+a patch file, a diff of more than one file opens with it in the toolbar beside the
+layout control. Its header is one row-like disclosure toggle that leads with the
+registry’s chevron in the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2
+added, 3 removed, 30 modified) +1,234 −3,423”. The breakdown lists only the statuses
+some file has, in one order (added, removed, modified, renamed, then copied, type
+changed, unmerged, and any other), in `--muted`; numbers use the shell’s number format;
+the totals are the [inline change stats](#inline-change-stats); and “(estimated)”
+follows totals that are not exact.
+Its accessible name says the same in words.
 A change set of no files has nothing to open, so its header is a line.
 Where the shared tree did not load, the header is the line main drew, “N changed files
 +A −D” in the shell’s number format, with no toggle; and a header whose tree did not
 load when pressed is marked `aria-disabled`, with a tooltip saying a press tries again,
 until a press loads it.
-A commit’s view has no Diff summary: its [commit summary](#git-commit-summary) carries
-the totals.
 
 Opened, it shows the change set’s files as a tree by folder, the
 [Pulls tab’s tree](#the-pulls-tab) adapted to the page and drawn on the same model
@@ -1308,12 +1328,14 @@ changes’ counts, and goes to the first of its sections.
 The header is the tree’s root, so the tree’s first level starts one indentation step,
 `--tree-indent`, in from it, its chevron from the header’s chevron and its name from the
 header’s words, and each level one step more, as a folder’s rows start one step in from
-the folder in the Files tree and the Pulls tab’s. The rows give back the header’s pull
-left of the toolbar’s edge, `--diff-summary-toggle-pull`, which lets its hover ground
-reach past its chevron.
-Before, the first level started 4 px in from the header.
-Opened, the tree sits under the toolbar as tall as its rows, in the page’s flow, with no
-scroll bar of its own: the page scrolls past it to the files.
+the folder in the Files tree and the Pulls tab’s, wherever the summary is: in a diff’s
+toolbar, under a commit’s identity, and in a pull request’s header.
+The rows give back where the header starts, `--diff-summary-header-inset`, the toolbar’s
+padding in a diff and nothing at a page’s top, less its pull to the left,
+`--diff-summary-toggle-pull`, which lets its hover ground reach past its chevron.
+Before, a diff’s toolbar started the first level 4 px in from the header.
+Opened, the tree sits under its header, below the toolbar in a diff, as tall as its
+rows, in the page’s flow, with no scroll bar of its own: the page scrolls past it.
 It has no bound on its length beyond the comparison’s, at most 2,000 files, and the
 document holds only the rows in the window’s view of it and `SUMMARY_ROWS_OVERSCAN` more
 each way, as the Pulls tab’s tree does.
@@ -1325,16 +1347,16 @@ The keys are a tree’s: the arrows move one tab stop, Right and Left open, clos
 step into or out of a folder, and Home and End go to the ends.
 Only Enter, Space, or a press on a file jumps the diff to that file, because the tree
 sits above the files and a jump on every step would scroll it away.
-On a pull request’s Changes the jump goes through the file’s address,
-`/pull/<n>/files/<path>`, the route a press on it in the Pulls tab takes, so the address
-names it and Back returns; a patch file has no address for a place in its diff, so there
-the diff moves in place and the address stays the file’s. A path is its author’s text: a
-row shows it by the server’s display rule, with a control, format, or invisible
-character, such as a right-to-left override or a zero-width space, as U+FFFD, as the
-Pulls tab shows the same path, and the file bar the row goes to shows it the same way
-([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the words,
-the rows, and the keys, and the paint’s measurement is in the views, models, and routes
-map (`diff.summary-paint`).
+On a pull request’s page the jump goes through the file’s address,
+`/pull/<n>/files/<path>`, the route a press on it in the Pulls tab takes, from any tab,
+so the address names it and Back returns; a patch file has no address for a place in its
+diff, so there the diff moves in place and the address stays the file’s. A path is its
+author’s text: a row shows it by the server’s display rule, with a control, format, or
+invisible character, such as a right-to-left override or a zero-width space, as U+FFFD,
+as the Pulls tab shows the same path, and the file bar the row goes to shows it the same
+way ([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the
+words, the rows, and the keys, and the paint’s measurement is in the views, models, and
+routes map (`diff.summary-paint`).
 
 ### Diff File Bar
 
@@ -1461,6 +1483,21 @@ status row is one line that ends in Refresh’s slot, held hidden on a tab with 
 refresh, its text and then its offers’ sentences cut short, never their controls, and a
 rate limit’s hold on the line too; and a cold page keeps every row, empty, at its
 height. Only a failure, which says what to do, wraps the status row.
+The header’s last row is the pull request’s [Diff summary](#diff-summary), on every tab,
+so its counts are at the page’s top and not inside Changes.
+The row is held at `--ui-row-height` from first paint, empty until the comparison is
+read, and the summary’s header is one line, its breakdown cut short at its end, so the
+summary that arrives moves nothing; opened, its tree pushes the tabs down, as the reader
+asked. On every tab but Changes the page reads the comparison once it is idle, as it
+would for Changes; on Changes it draws the summary from what the diff read.
+It is drawn once for each comparison it shows and kept across tabs.
+Measured in Chrome 152 at 980 to 320 px, the row is 24 px from first paint; a summary of
+“35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving moved no row
+and not the tab bar, and kept its row’s 24 px on one line; the row starts on the
+header’s content edge, and its toggle hangs 4 px into the gutter, as every Diff
+summary’s does. The row adds its 24 px and one 6 px gap to the header.
+`tests/dom/github-pull-header-chrome.mjs` holds the measurement, and
+`tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, and disposal.
 A tab switch or a poll builds again only the header’s parts whose inputs changed: the
 title, the badge, the author, the branch chips, the row of ages, the labels, and each
 status control are kept while what they show is the same, so a repaint that leaves a
@@ -1730,9 +1767,22 @@ set on 112 colors of six public repositories’ labels.
 ground, text, and border in both themes to the formula and to what github.com’s own
 stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a gray
 label, a colorless or malformed one to the neutral chip, and every chip to the neutral
-chip’s box. A label a core cached before label colors names alone is drawn neutral
-without a tooltip until the record arrives, and the same check holds that its colors and
-tooltip arriving move no chip and no row.
+chip’s box.
+
+**A chip never waits for its record to have its color.** A record or a core cached
+before label colors names its labels alone, and the catalog vouches for such a record as
+current until its pull request changes, so it is never read again.
+The repository’s whole label set is cached once, beside its pull requests, and kept
+fresh as the native stack snapshot is; the pull envelope carries the set’s entry for
+each label its record or core names without a color, and the chip takes its color and
+description from it, so the header is colored on first paint whenever the set is cached.
+A label with its own color keeps it.
+A label the set does not hold, one deleted on GitHub, stays the neutral chip and asks
+for the set again once a freshness window; while the set is read the page polls fast, so
+the color lands at once.
+Its arrival moves no chip and no row, which the same Chrome check holds; it also holds
+that a record of bare names, with the set cached, paints every chip as the record’s own
+colors do.
 
 ## The Pulls Tab
 

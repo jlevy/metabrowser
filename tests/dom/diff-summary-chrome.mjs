@@ -15,7 +15,9 @@
 // and is as tall as its rows, in the page's flow; that on a long change set only the rows in
 // the window's view of the tree and its overscan are in the document, as the page scrolls;
 // that the header starts collapsed with no tree; and that the keys and the focus ring are
-// the tree's.
+// the tree's. This is the summary in a patch's toolbar; under a commit's identity and in a
+// pull request's header, tests/dom/git-commit-summary-chrome.mjs and
+// tests/dom/github-pull-header-chrome.mjs measure its indentation.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";

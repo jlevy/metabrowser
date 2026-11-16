@@ -120,7 +120,7 @@ const ROWS = `(() => {
   const DEPTH = {
     pulls: "calc(var(--github-pulls-indent, 0px) + var(--github-pull-file-depth, 1) * var(--tree-indent))",
     summary:
-      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) - var(--diff-summary-toggle-pull))",
+      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) + var(--diff-summary-header-inset) - var(--diff-summary-toggle-pull) - var(--pane-header-padding-x))",
   };
   const indentOf = (row, tree) => {
     const probe = document.createElement("span");

@@ -2,8 +2,9 @@
 //
 // builtin_plugins/github/comparison-prefetch.js loads whole. A scripted page asks it what the
 // pull-request page asks: `want` on every paint of the Conversation tab, `take` when a diff
-// mounts, `dispose` when the page goes. Each step prints what it has sent, what it holds, and
-// what a mount would be handed. It asserts, and so prints nothing for, that a poll changes
+// mounts, `dispose` when the page goes. Each step prints what it has sent, what it holds, what
+// a mount would be handed, and which answers it has told the page of, for the page's Diff
+// summary (`summarized`, mb-pb35). It asserts, and so prints nothing for, that a poll changes
 // nothing and that a disposed prefetch does nothing.
 
 const path = require("node:path");
@@ -31,6 +32,7 @@ async function main() {
     const requests = [];
     const scheduled = [];
     let warmed = 0;
+    const summarized = [];
     const state = { visible };
     const prefetch = createComparisonPrefetch({
       load(comparison, signal) {
@@ -47,6 +49,9 @@ async function main() {
       },
       warm() {
         warmed += 1;
+      },
+      loaded(comparison) {
+        summarized.push(comparison.right);
       },
       schedule(callback) {
         const handle = { callback, cancelled: false };
@@ -76,6 +81,7 @@ async function main() {
             (request) => `${request.comparison}${request.signal.aborted ? " (cancelled)" : ""}`,
           ),
           assetsWarmed: warmed,
+          summarized: [...summarized],
         };
       },
     };

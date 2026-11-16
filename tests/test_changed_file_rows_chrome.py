@@ -22,7 +22,9 @@ patch five folders deep and on one of 600 files, and this holds (mb-hi4l):
 
 - the tree's first level starts one indentation step, ``--tree-indent``, in from the header,
   its chevron from the header's chevron and its name from the header's words, and each level
-  one step more, at every depth to five;
+  one step more, at every depth to five, in a patch's toolbar (the commit page's and the pull
+  request header's are held by ``tests/test_git_commit_summary_chrome.py`` and
+  ``tests/test_github_pull_header_chrome.py``);
 - opened, the tree has no scroll bar and no scroll of its own: it is as tall as its rows, in
   the page's flow;
 - on 600 files only the window's view of the tree and the overscan are in the document, at
