@@ -301,7 +301,7 @@ export function mountSummaryTree(host) {
     return stats === null
       ? []
       : [
-          h("span", { class: "changed-file-stats diff-summary-row-stats", "aria-hidden": "true" }, [
+          h("span", { class: "changed-file-stats", "aria-hidden": "true" }, [
             h("span", { class: "diff-stat-add" }, [stats.additions]),
             h("span", { class: "diff-stat-del" }, [stats.deletions]),
           ]),
@@ -310,13 +310,13 @@ export function mountSummaryTree(host) {
 
   /** @param {SummaryRow} row @returns {Node[]} */
   function partsOf(row) {
-    const name = h("span", { class: "changed-file-name diff-summary-row-name" }, [row.name]);
+    const name = h("span", { class: "changed-file-name" }, [row.name]);
     if (row.kind === "folder") {
       const chevron = host.chevron();
       return [
         h(
           "span",
-          { class: "changed-file-toggle diff-summary-row-toggle", "aria-hidden": "true" },
+          { class: "changed-file-toggle", "aria-hidden": "true" },
           chevron === null ? [] : [chevron],
         ),
         name,
@@ -326,7 +326,7 @@ export function mountSummaryTree(host) {
     const badge = h(
       "span",
       {
-        class: "tree-container-badge diff-summary-row-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },

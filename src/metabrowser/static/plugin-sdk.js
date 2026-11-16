@@ -1024,6 +1024,25 @@
     return pending;
   }
 
+  /**
+   * Whether the page itself links `url` as a stylesheet: a `<link>` the page was served
+   * with, not one this loader appended (those carry data-kpress-asset and are tracked in
+   * the loaded and loading sets).
+   * @param {string} url
+   * @returns {boolean}
+   */
+  function _pageLinksStylesheet(url) {
+    const doc = global.document;
+    if (typeof doc.querySelectorAll !== "function") {
+      return false;
+    }
+    const wanted = new URL(url, doc.baseURI).href;
+    const links = /** @type {NodeListOf<HTMLLinkElement>} */ (
+      doc.querySelectorAll('link[rel~="stylesheet"]:not([data-kpress-asset])')
+    );
+    return Array.from(links).some((link) => link.href === wanted);
+  }
+
   /** @param {string} url @returns {Promise<void>} */
   function _loadStylesheet(url) {
     if (!url || !global.document) {
@@ -1032,6 +1051,14 @@
     const parent = _headOrBody();
     if (!parent || typeof global.document.createElement !== "function") {
       return Promise.resolve();
+    }
+    // A sheet the page already links is loaded, and a second link would move its rules
+    // later in the cascade. The shell's <head> links KPress's style-tokens.css before
+    // static/styles.css, so the shell's :root tokens outrank KPress's same-named ones
+    // (--font-sans, --font-mono, --kpress-print-page-margin). Linked again after
+    // styles.css, KPress's would win from the first rendered document on.
+    if (!_loadedKpressAssets.has(url) && _pageLinksStylesheet(url)) {
+      _loadedKpressAssets.add(url);
     }
     return _loadKpressAssetOnce(
       url,

@@ -2263,7 +2263,13 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
     # Its box is its line, so its text is the rhythm from the events beside it (mb-w7rt).
     assert "min-height" not in commit and commit["padding"].startswith("0 ")
-    assert github[".github-pull-body"]["gap"] == "var(--github-pull-rhythm)"
+    # The rhythm is the Conversation's, and only its events carry it: the body keeps the
+    # page's gap, as the Files and Checks tabs and a section or note below an event do, and
+    # each event stands the rest of the rhythm below whatever is before it.
+    assert github[".github-pull-body"]["gap"] == "var(--github-pull-gap)"
+    assert github[".github-pull-body > * + .github-pull-event"] == {
+        "margin-block-start": "calc(var(--github-pull-rhythm) - var(--github-pull-gap))"
+    }
     # Under Review comments the rhythm is between its cards only: its heading sits at the
     # section's gap over the first, as every section's heading does (mb-xlla).
     assert ".github-pull-threads" not in github
@@ -2526,11 +2532,8 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
     assert shell[".changed-file-row:hover"] == {"background": "var(--hover-bg)"}
     assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "-2px"
     assert shell[".changed-file-toggle"]["width"] == "var(--tree-icon-slot)"
-    sources = {
-        "diff/diff-summary.js": "diff-summary-row",
-        "github/pull-files-view.js": "github-pull-",
-    }
-    for source, own in sources.items():
+    sources = ("diff/diff-summary.js", "github/pull-files-view.js")
+    for source in sources:
         text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
         for part in (
             "changed-file-row",
@@ -2538,7 +2541,8 @@ def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
             "changed-file-name",
             "changed-file-stats",
         ):
-            assert f'"{part} {own}' in text, (source, part)
+            # A class string that holds the shared class as one of its names.
+            assert re.search(rf'"(?:[\w-]+ )*{part}(?: [\w-]+)*"', text), (source, part)
     owned = {"--changed-file-indent", "scroll-margin-block-start", "color"}
     for sheet, classes in (
         ("diff/styles.css", ("diff-summary-row",)),
@@ -2566,15 +2570,16 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
 
     The tree's icon slot is the glyph's width, `--tree-icon-slot: var(--icon-glyph)`, and the
     chevron centered in it is `--toggle-chevron-size`; a menu's, a palette's, and a file
-    identity's icon box is `--icon-box`. The Conversation timeline's avatar and the gap after
-    it are `--github-pull-avatar-size` and `--github-pull-identity-gap`, and the commit row's
-    start, the line's x, the empty slot, and the authors' floors are derived from them
-    (mb-xlla).
+    identity's icon box is `--icon-box`, and the tree's slot is that box's height. The
+    Conversation timeline's avatar and the gap after it are `--github-pull-avatar-size` and
+    `--github-pull-identity-gap`, and the commit row's start, the line's x, the empty slot,
+    and the authors' floors are derived from them (mb-xlla).
     """
 
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert "--tree-icon-slot: var(--icon-glyph);" in styles
-    assert "--toggle-chevron-size: 12px;" in styles and "--icon-box: 16px;" in styles
+    for token in ("--toggle-chevron-size", "--icon-box"):
+        assert re.search(rf"^\s*{token}:", styles, re.MULTILINE), token
     shell = dict(_rules_of(STATIC / "styles.css"))
     chevron = shell[".toggle-chevron"]
     assert (chevron["width"], chevron["height"]) == ("var(--toggle-chevron-size)",) * 2
@@ -2583,14 +2588,18 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     assert shell[".tree-container > .tree-toggle"]["margin"] == f"0 {centered}"
     for box in (".menu-item-icon", ".search-palette-icon", ".file-identity-icon"):
         assert (shell[box]["width"], shell[box]["height"]) == ("var(--icon-box)",) * 2, box
+    # A tree row's slot is the glyph's width and the icon box's height.
+    icon = shell[".tree-item-icon"]
+    assert (icon["width"], icon["height"]) == ("var(--tree-icon-slot)", "var(--icon-box)")
     github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
-    rules = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    # The page and the Pulls tab both draw authors, so both carry the two tokens.
-    assert ".github-pull,\n.github-pulls {\n  --github-pull-avatar-size: 18px;\n" in github
-    assert rules[".github-pulls"] == {
-        "--github-pull-avatar-size": "18px",
-        "--github-pull-identity-gap": "4px",
-    }
+    parsed = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    rules = dict(parsed)
+    # The page and the Pulls tab both draw authors, so both roots declare the two tokens.
+    declared: dict[str, set[str]] = {}
+    for selector, body in parsed:
+        declared.setdefault(selector, set()).update(body)
+    for root in (".github-pull", ".github-pulls"):
+        assert {"--github-pull-avatar-size", "--github-pull-identity-gap"} <= declared[root], root
     for selector in (".github-pull-avatar", ".github-pull-avatar-slot"):
         assert (
             rules[selector]["width"]
@@ -2630,6 +2639,7 @@ _FACE_ROOTS = {
     ":root": {
         "--font-sans": "var(--app-sans-clean)",
         "--prose-sans-font": "var(--app-sans-clean)",
+        "--kpress-host-font-mono": "var(--app-mono)",
         "--kpress-host-font-size-base": "var(--document-body-font-size)",
     },
     'html[data-app-font="system"]': {

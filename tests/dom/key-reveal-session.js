@@ -215,6 +215,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     removeEventListener: (type, listener, options) =>
       browserWindow.removeEventListener(type, listener, options),
     setTimeout: (callback, delayMs) => clock.schedule(callback, delayMs),
+    // A Mac's navigator: the stack's Control chords are bound only where Control reaches
+    // the page (static/keyboard-shortcuts.js, `controlReachesPage`), and
+    // pulls-nav-session.js shows Windows and Linux binding none.
+    navigator: { platform: "MacIntel" },
   };
   context.window = context;
   context.globalThis = context;
@@ -486,7 +490,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
    * renderNavFilterBar: Group by on the row and, in the open drawer, the two filter
    * dropdowns, from the production filter controls, so the triggers, panels, and checked
    * rows the filter numbers reach are that module's markup. A pin has no modified-within
-   * filter. The options are a stand-in for the tallies.
+   * filter and no By age, as filterGroupOptions leaves out. The options are a stand-in
+   * for the tallies.
    */
   function renderFilters() {
     const controls = context.metabrowser.filterControls;
@@ -529,7 +534,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       options: [
         { key: "a", label: "By age", value: "age" },
         { key: "t", label: "By file type", value: "type" },
-      ],
+      ].filter((option) => !pin || option.value !== "age"),
       select: "one",
       value: groupBy,
     });
@@ -776,9 +781,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
           if (/^[A-Z]$/.test(label)) {
             shellCommands.add(`${label.toLowerCase()} ${id}: ${copy.action}`);
           }
-          // A Control chord, as a platform without the ⌃ glyph writes it: this session's
-          // window has no navigator.
-          const chord = /^Ctrl\+([A-Z])$/.exec(label);
+          // A Control chord, written as a Mac writes it.
+          const chord = /^⌃([A-Z])$/.exec(label);
           if (chord) {
             shellKeys.add(`control-${chord[1].toLowerCase()}`);
             shellCommands.add(`control-${chord[1].toLowerCase()} ${id}: ${copy.action}`);
@@ -1673,8 +1677,7 @@ const PARTS = {
       }),
     );
 
-    // P is the Pulls tab (mb-6rfu), freed when the stack's walk moved to Control-N and
-    // Control-P.
+    // P is the Pulls tab (mb-6rfu); the stack's walk is Control-N and Control-P.
     const toPulls = hosted.press("p");
     await settle();
     steps.push(
@@ -1759,6 +1762,9 @@ const PARTS = {
     steps.push(
       pinned.record("Help lists the numbers once, as positional", {
         helpDigits: pinned.helpDigits(),
+        // A pin has no By age, so Group by's letters are N and T (app.js,
+        // filterGroupOptions).
+        menus: pinned.helpGroup("menus"),
       }),
     );
     pinned.shiftUp();
