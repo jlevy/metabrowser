@@ -119,6 +119,14 @@ const LAYOUT = `(() => {
   };
 })()`;
 
+// The Commits tally, named by its place: the one metadata line that stands in a toolbar's
+// slot (static/styles.css, `.nav-toolbar > .nav-metadata`). Its own classes begin with a
+// word that tests/test_git_hook_environment.py, reading this file's child_process, takes
+// for a script that starts Git.
+const COMMITS_TALLY = ".nav-toolbar > .nav-metadata";
+// An age, by the age primitive's tier classes (docs/design-system.md, "Age").
+const AGE = ".age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old";
+
 // In the page: the diff's toolbar against the first file card, and each count summary's runs
 // of text, each with its computed weight and whether it is a bold number (`.summary-number`),
 // a change stat, or an age, which carry weights of their own.
@@ -147,7 +155,7 @@ const CHROME = `(() => {
         // What holds a bold number: inline with its words, never a flex or grid line, where
         // it would be an item of its own.
         within: number ? getComputedStyle(parent.parentElement).display : null,
-        own: parent.closest(".diff-summary-stats, .git-history-summary-age") !== null,
+        own: parent.closest(".diff-summary-stats, ${AGE}") !== null,
       });
     }
     return found;
@@ -165,7 +173,7 @@ const CHROME = `(() => {
     counts: {
       summary: runs(".diff-summary"),
       files: runs(".tree-summary.nav-metadata"),
-      commits: runs(".git-history-summary"),
+      commits: runs("${COMMITS_TALLY}"),
     },
   };
 })()`;
@@ -305,7 +313,7 @@ try {
   // alone, and the Commits tally beside it, once counted.
   await browser.send("Page.navigate", { url: `${base}/commit/${commit}` });
   await browser.waitFor(
-    `document.querySelector(".metabrowser-diff-host .diff-file") !== null && document.querySelector(".diff-summary-toggle") !== null && document.querySelector(".git-history-summary-count") !== null && document.querySelector(".git-history-summary .tally-pending") === null`,
+    `document.querySelector(".metabrowser-diff-host .diff-file") !== null && document.querySelector(".diff-summary-toggle") !== null && document.querySelector("${COMMITS_TALLY} .summary-number") !== null && document.querySelector("${COMMITS_TALLY} .tally-pending") === null`,
     30000,
   );
   await browser.evaluate(frames);
