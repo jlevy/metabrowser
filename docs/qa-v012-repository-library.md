@@ -1750,6 +1750,18 @@ address.
    no `/kpress-static/` script, and no iframe.
    Application-owned author avatars may request the fixed
    `avatars.githubusercontent.com` host.
+10. A record cached before label colors.
+    Stop the server, and in pull request 7’s record, `sources/*/pulls/7.json` in the
+    home under `"${QA_PR}"`, set `projection_version` to `1` and `pull.labels` to
+    `["enhancement", "deleted-on-github"]`, the names alone, as a 0.12.0 build cached
+    it. Serve 7 again with the browser’s network panel open.
+    The chips are neutral at first, the page sends one
+    `POST /api/plugin/github/labels-refresh`, and within a few seconds `enhancement`
+    turns indigo with its tooltip, while `deleted-on-github` stays neutral and nothing
+    in the header moves.
+    Stop the server, write the record’s labels as names alone again (its own refresh has
+    rewritten it), and serve 7 once more: `enhancement` is indigo with its tooltip on
+    first paint, and the page sends no `labels-refresh` for it.
 
 **Pass:** every step as described; no console errors.
 Only application-owned avatars may load from `avatars.githubusercontent.com`; check and

@@ -451,8 +451,12 @@ visible. After the active renderer and optional `ready` promise settle, the shel
 transfers the staged content and its disposal ownership into the preview atomically.
 Renderers must scope DOM access and event ownership to the supplied container; the
 temporary stage is deliberately not an independently interactive or accessible view.
-Initial rendering must not move focus.
-Focus changes belong to user interaction after the view is installed.
+The built-in diff view has one exception: a host that passes `summaryHost` in the render
+context, as a commit’s page does for the place under its commit summary, has the diff
+draw its Diff summary in that element, outside the container.
+The host owns the element, and the diff’s `dispose()` releases the summary’s listeners
+and state ([Diff Summary](design-system.md#diff-summary)). Initial rendering must not
+move focus. Focus changes belong to user interaction after the view is installed.
 If navigation disposes the view before its direct or declared readiness settles, the
 shell immediately invokes the staged disposer, disposes a late handle when it arrives,
 and does not let that mount regain ownership.
@@ -570,6 +574,23 @@ window when its trigger opens it and when the window resizes; a view that render
 open another way calls `filterControls.fitOpenMenus(root)` after rendering.
 See [Groups in a Menu](design-system.md#groups-in-a-menu) and
 [Menu Height](design-system.md#menu-height).
+
+`filterControls.bind` also moves focus with a dropdown.
+Every way its trigger opens the menu (a click, Enter, Space, `↓`, or `↑`) focuses the
+checked row, or else the first.
+Escape, a second click on the trigger, or a choice that closes the menu gives focus back
+to the trigger. An Escape that a surface above has already handled, as Quick Search and
+Help do, leaves the menu open.
+A view that opens a menu from its own state focuses it with
+`filterControls.focusMenu(root, key)`. A view that rebuilds the markup it bound calls
+`filterControls.keepFocus(root)` before the rebuild and the function it returns after,
+so focus goes back to the control that had it, or to the trigger of a menu the rebuild
+closed. `filterControls.activateMenuRow(row)` chooses a row as a click on it does.
+A row’s `key` option, and the menu’s `anyKey`, name the letter that chooses that row
+while the menu is open and has focus, as a `data-menu-key` attribute on the row.
+Only the shell reads that attribute, and only in the Files filter bar, so in a plugin’s
+menu the letter does nothing yet.
+See [Keys in a Menu](design-system.md#keys-in-a-menu).
 
 A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
 gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row

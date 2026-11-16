@@ -34,6 +34,22 @@ function transferKb(list) {
   return Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
 }
 
+// The addresses of those scripts, path and query, which `run.py record` reads again from
+// the measured server to give `startup_script_transfer_kb` as the remote path sends them:
+// a server started for local use sends a loopback browser its scripts uncompressed. Only
+// the ones whose body crossed the wire, which transferred something and had a body: one
+// its cache answered transferred nothing, though Chrome still reports its full
+// `encodedBodySize`, and a 304 transferred its 300 bytes of headers and no body. The
+// transfer above counts each of those as no more than it moved (review C of #455, C1).
+function startupScriptPaths(list) {
+  return list
+    .filter((r) => (r.transferSize || 0) > 0 && (r.encodedBodySize || 0) > 0)
+    .map((r) => {
+      const url = new URL(r.name);
+      return url.pathname + url.search;
+    });
+}
+
 (async () => {
   const origin = performance.timeOrigin;
   // Freeze the navigation-time profile before this adapter runs its own
@@ -603,6 +619,7 @@ function transferKb(list) {
     script_transfer_kb: kb(scripts),
     startup_script_requests: startupScripts.length,
     startup_script_transfer_kb: kb(startupScripts),
+    startup_script_paths: startupScriptPaths(startupScripts),
     startup_script_last_response_ms: startupScripts.length
       ? Math.round(Math.max(...startupScripts.map((resource) => resource.responseEnd || 0)))
       : null,

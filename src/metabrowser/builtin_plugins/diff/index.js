@@ -7,7 +7,7 @@
 //                      point: the renderer only ever sees documents the
 //                      conformance corpus vouches for.
 
-import { validateDocument } from "./diff-model.js";
+import { validateDocument, validateManifest } from "./diff-model.js";
 import { mountDiffSummary, mountDiffView, setChangeLoader } from "./diff-view.js";
 
 const mb = window.metabrowser;
@@ -461,6 +461,9 @@ mb.registerView("diff", "diff", {
     return mountDiffView(container, result.document, mb, {
       showSummary: ctx.summary !== false && (summaryHost !== null || !ctx.revision),
       summaryHost,
+      // The commit's own totals, which the summary says where the list is cut short (A3 of
+      // review A on #470).
+      ...(ctx.summaryTotals === undefined ? {} : { summaryTotals: ctx.summaryTotals }),
       changedFiles,
       ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       viewFile,
@@ -503,19 +506,23 @@ mb.registerView("diff", "diff", {
   /**
    * A comparison's Diff summary on its own, at the top of a page that keeps it while its diff
    * comes and goes: a pull request's page, on every tab (mb-pb35). *raw* is the comparison
-   * `prefetch` or `render` read; a file the summary opens goes to *openFile*. Null for a
-   * comparison that is not a valid document, which draws nothing.
+   * `prefetch` or `render` read, of which only the manifest is read and validated; a file the
+   * summary opens goes to *openFile*. Null for a comparison whose manifest is not valid, which
+   * draws nothing.
    *
    * @param {HTMLElement} slot
    * @param {{raw: unknown, openFile: (path: string) => void}} ctx
    * @returns {Promise<{dispose: () => void} | null>}
    */
   summary: async (slot, ctx) => {
-    const result = validateDocument(ctx.raw);
+    const result = validateManifest(ctx.raw);
     if (!result.ok) {
       return null;
     }
     const changedFiles = await changedFilesTree();
-    return mountDiffSummary(slot, result.document, mb, { changedFiles, openFile: ctx.openFile });
+    return mountDiffSummary(slot, { manifest: result.manifest }, mb, {
+      changedFiles,
+      openFile: ctx.openFile,
+    });
   },
 });

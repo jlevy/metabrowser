@@ -1,13 +1,17 @@
 """A pull request's Conversation timeline, laid out and painted by headless Chrome.
 
-A commit row is set in a card head's type and sits in its row as a card head's text sits
-in its card, a run of commits stands at least as far from the cards around it as one
-commit's glyphs stand from the next's, and one line joins every two adjacent events, with a node on it at each
-commit (docs/design-system.md, "The Pull Request Page", "Conversation Timeline"). Sizes
-resolved through the cascade, boxes, and what is painted where are layout and paint,
-which no browserless DOM computes, so ``tests/dom/github-pull-timeline-chrome.mjs`` mounts
-the production page module on a recorded record in a real engine and reads them, in both
-places the page puts commits.
+A commit row is set in a card head's type and its box is its line; every two consecutive
+events are ``--github-pull-rhythm`` apart, a card by its border and a commit by its glyphs,
+and a section below an event keeps the page's gap and its own margin; every heading is the
+author, a plain verb, and the age, with a boxed chip after the age only for a review state
+the verb does not say; and one line joins every two adjacent events, with a node on it at
+each commit (docs/design-system.md, "The Pull Request Page", "Conversation Timeline").
+Sizes resolved through the cascade, boxes, glyphs, a chip's computed border, and what is
+painted where are layout and paint, which no browserless DOM computes, so
+``tests/dom/github-pull-timeline-chrome.mjs`` mounts the production page module on a
+recorded record in a real engine and reads them, in both places the page puts commits.
+Which chip each review state gets is the model's, pinned browserlessly in
+``tests/dom/github-pull-timeline-session.js``.
 
 Before the timeline line, in Chrome 152 on a Mac: a commit row was set at 12 px against a
 card head's 14 px, its glyphs sat 13 px below the event above where a card head's sat 16,

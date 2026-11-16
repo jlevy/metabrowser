@@ -1009,8 +1009,7 @@ def catalog_entries(
                         "headRepository": {"nameWithOwner": head["full_name"]} if head else None,
                         "labels": {
                             "nodes": [
-                                {"name": label["name"], "color": label.get("color")}
-                                for label in item.get("labels", [])[:100]
+                                {"name": label["name"]} for label in item.get("labels", [])[:100]
                             ],
                             "pageInfo": {"hasNextPage": len(item.get("labels", [])) > 100},
                         },
