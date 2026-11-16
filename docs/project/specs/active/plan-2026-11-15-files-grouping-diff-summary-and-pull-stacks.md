@@ -951,6 +951,17 @@ it, and ideally cached it up front”.
   in the Diff summary’s words and paint (`mb-khm6`); each dot is one item with the group
   before it, so a wrap breaks after it; a line without a name says a comma in each dot’s
   place; and “(estimated)” is muted.
+  `mb-9ekj`, its component half: the brief change line, “10 A, 5 D, 4 M · +1,234 −567”,
+  is one component, `.change-line`, which formatters.js’s `changeLine` builds and
+  `changeLineNodes` and `changeLineHtml` paint, and the SDK exposes as
+  `metabrowser.changeLine` and `metabrowser.changeLineNodes`, two additive methods; the
+  Diff summary’s header and fallback line, a commit’s hover card, and a commit page’s
+  totals line draw it, pinned in `tests/dom/count-parts-session.js` and its golden.
+  Its use in the Pulls tab’s stack headings is not in this pull request.
+  Review B’s round: the commit page’s header and hover card are swept 1 px apart, with a
+  control that shows the sweep can fail; the totals line writes its spaces, so it reads
+  right without the diff plugin’s stylesheet; and the startup scripts’ growth, 2,340
+  bytes compressed after the comments were cut, is recorded beside the budget.
 
 ### Phase 29: Stack Change Lines (pull request 29)
 

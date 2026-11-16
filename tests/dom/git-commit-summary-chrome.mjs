@@ -155,6 +155,12 @@ const offStep = (indent) =>
 // The pane widths the page is read at: a wide pane, the default, and a narrow one.
 const WIDTHS = [980, 760, 560, 420, 320];
 
+// Each dot's group dissolved, so the dot is an item of its line of its own, as it was before
+// A4 of review A on #479: the control that shows the sweeps below can fail.
+const DISSOLVED = `.metabrowser-diff-host .diff-summary-group, .change-line-group, .git-commit-change-group {
+  display: contents !important;
+}`;
+
 // In the page: draw a commit's page at each width, its Diff summary in its place, and read
 // where the summary's parts are; then open the summary; then draw the page with no diff.
 const MEASURE = `async (widths) => {
@@ -184,10 +190,11 @@ const MEASURE = `async (widths) => {
         startsLine: end === null || Math.abs(end.top - at.top) > 1 || end.right > at.left + 0.5,
       };
     });
-  // How many lines a line's parts take: the distinct tops of their boxes.
+  // How many lines a line's parts take: the distinct tops of their boxes, but for the text a
+  // screen reader alone is told, which is on no line.
   const lines = (line) =>
     new Set(
-      [...line.querySelectorAll("span")].flatMap((node) =>
+      [...line.querySelectorAll("span:not(.visually-hidden)")].flatMap((node) =>
         [...node.getClientRects()].map((rect) => Math.round(rect.top)),
       ),
     ).size;
@@ -256,15 +263,31 @@ const MEASURE = `async (widths) => {
     };
     handle.dispose();
   }
-  // Every width from 180 to 400 px, 4 px apart: wherever the header wraps, it breaks after a
-  // dot, never before one. A dot of its own, as an item of the line, started a line at some
-  // of these widths (A4 of review A on #479).
-  out.sweep = [];
-  for (let width = 180; width <= 400; width += 4) {
-    const { place, handle } = draw(width, true);
-    const toggle = place.querySelector(".diff-summary");
-    out.sweep.push({ width, lines: lines(toggle), starts: dots(toggle).filter((dot) => dot.startsLine).length });
-    handle.dispose();
+  // Every width from 60 to 400 px, 1 px apart: wherever the header wraps, it breaks after a
+  // dot, never before one (A4 of review A on #479). The same sweep with each dot's group
+  // dissolved, so that each dot is an item of its own again, is the control: a dot then
+  // starts a line at some of these widths, so the check can fail (B2 of review B on #479).
+  const sweepHeader = () => {
+    const swept = [];
+    for (let width = 60; width <= 400; width += 1) {
+      const { place, handle } = draw(width, true);
+      const toggle = place.querySelector(".diff-summary");
+      swept.push({ width, lines: lines(toggle), starts: dots(toggle).filter((dot) => dot.startsLine).length });
+      handle.dispose();
+    }
+    return swept;
+  };
+  const dissolved = () => {
+    const style = document.createElement("style");
+    style.textContent = ${JSON.stringify(DISSOLVED)};
+    document.head.append(style);
+    return style;
+  };
+  out.sweep = sweepHeader();
+  {
+    const style = dissolved();
+    out.sweepDissolved = sweepHeader();
+    style.remove();
   }
   // Opened: the tree under its header, above the description.
   {
@@ -305,6 +328,14 @@ const MEASURE = `async (widths) => {
     const { stage, place } = draw(760, false);
     await frames();
     const line = place.querySelector(".diff-summary");
+    // The room each side of the dot, between the file count and the dot, and the dot and the
+    // change line, and how many lines the line takes.
+    const spacing = () => {
+      const files = line.querySelector(".diff-summary-files").getBoundingClientRect();
+      const dot = line.querySelector('.summary-punctuation[aria-hidden="true"]').getBoundingClientRect();
+      const change = line.querySelector(".change-line").getBoundingClientRect();
+      return { before: round(dot.left - files.right), after: round(change.left - dot.right), lines: lines(line) };
+    };
     out.totals = {
       display: getComputedStyle(place).display,
       text: line?.textContent ?? null,
@@ -312,7 +343,14 @@ const MEASURE = `async (widths) => {
       rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")) || null,
       place: box(place),
       meta: box(stage.querySelector(".git-commit-meta")),
+      spacing: line ? spacing() : null,
     };
+    // Without the diff plugin's stylesheet, as where the plugin is absent or its assets did
+    // not load, the line still has a space each side of its dot (B3 of review B on #479).
+    const plugin = [...document.styleSheets].find((sheet) => sheet.href?.endsWith("/diff/styles.css"));
+    plugin.disabled = true;
+    out.totals.shellOnly = line ? spacing() : null;
+    plugin.disabled = false;
   }
   // A commit with no count of files: the place is empty and takes no room.
   {
@@ -373,9 +411,21 @@ const MEASURE = `async (widths) => {
       });
     }
     delete document.documentElement.dataset.theme;
-    tip.style.width = "160px";
-    await frames();
-    out.tooltip.narrow = { dots: dots(line), lines: lines(line) };
+    // Every width from 60 px to the card's own most, 360 px, 1 px apart: wherever it wraps, it
+    // breaks after a dot; and with its groups dissolved, the control, a dot starts a line at
+    // some of them (B2 of review B on #479).
+    const sweepTip = () => {
+      const swept = [];
+      for (let width = 60; width <= 360; width += 1) {
+        tip.style.width = width + "px";
+        swept.push({ width, lines: lines(line), dots: dots(line).length, starts: dots(line).filter((dot) => dot.startsLine).length });
+      }
+      return swept;
+    };
+    out.tooltip.sweep = sweepTip();
+    const style = dissolved();
+    out.tooltip.sweepDissolved = sweepTip();
+    style.remove();
   }
   pane.replaceChildren();
   return out;
@@ -462,8 +512,9 @@ async function main() {
           }),
         );
       }
-      // One row where the header fits on one line: at the default pane and wider.
-      for (const width of WIDTHS.filter((each) => each >= 560)) {
+      // One row where the header fits on one line: at 420 px and wider, as the design system
+      // says (B4 of review B on #479). Measured 2026-11-16 in Chrome, it fits from 354 px.
+      for (const width of WIDTHS.filter((each) => each >= 420)) {
         const at = measured.widths[width];
         check(
           `at ${width} px: the summary's header is one row`,
@@ -481,11 +532,18 @@ async function main() {
       );
       const sweep = measured.sweep ?? [];
       check(
-        "from 180 to 400 px, the summary's header never starts a line with its dot",
-        sweep.length === 56 &&
+        "from 60 to 400 px, the summary's header never starts a line with its dot",
+        sweep.length === 341 &&
           sweep.some((at) => at.lines >= 3) &&
           sweep.every((at) => at.starts === 0),
         JSON.stringify(sweep.filter((at) => at.starts > 0)),
+      );
+      // The control: with each dot an item of its own, the same sweep finds a dot starting
+      // a line, so the check above can fail.
+      check(
+        "with its groups dissolved, the header's sweep finds a dot starting a line",
+        (measured.sweepDissolved ?? []).some((at) => at.starts > 0),
+        JSON.stringify(measured.sweepDissolved?.length),
       );
       const opened = measured.opened;
       check(
@@ -511,12 +569,29 @@ async function main() {
       check(
         "with no diff drawn, the place says the commit's totals in one line",
         totals?.display !== "none" &&
-          totals?.text === "35 files changed\u00b7, +1,234\u22123,423" &&
+          totals?.text === "35 files changed \u00b7,  +1,234\u22123,423" &&
           totals.line !== null &&
           totals.rowHeight !== null &&
           totals.line.height <= totals.rowHeight + 0.5 &&
           totals.place.top >= totals.meta.bottom - 0.5,
         JSON.stringify(totals),
+      );
+      // Its written spaces render nowhere on the diff plugin's flex line, whose 6 px gap
+      // spaces the dot; without the plugin's stylesheet they are its spaces, so the line
+      // still reads "35 files changed \u00b7 +1,234 \u22123,423" (B3 of review B on #479).
+      check(
+        "with no diff drawn, the totals line's dot is 6 px from each side",
+        totals?.spacing?.lines === 1 &&
+          Math.abs(totals.spacing.before - 6) <= 0.5 &&
+          Math.abs(totals.spacing.after - 6) <= 0.5,
+        JSON.stringify(totals?.spacing),
+      );
+      check(
+        "without the diff plugin's stylesheet, the totals line keeps a space each side of its dot",
+        totals?.shellOnly?.lines === 1 &&
+          totals.shellOnly.before >= 2 &&
+          totals.shellOnly.after >= 2,
+        JSON.stringify(totals?.shellOnly),
       );
       const empty = measured.empty;
       check(
@@ -591,12 +666,18 @@ async function main() {
           JSON.stringify(tooltip?.paint?.[1]?.letters),
         JSON.stringify(tooltip?.paint),
       );
+      const tipSweep = tooltip?.sweep ?? [];
       check(
-        "narrowed, the hover summary wraps after a dot and starts no line with one",
-        (tooltip?.narrow?.lines ?? 0) >= 2 &&
-          tooltip.narrow.dots.length === 2 &&
-          tooltip.narrow.dots.every((dot) => !dot.startsLine),
-        JSON.stringify(tooltip?.narrow),
+        "from 60 to 360 px, the hover summary wraps and never starts a line with its dot",
+        tipSweep.length === 301 &&
+          tipSweep.some((at) => at.lines >= 3) &&
+          tipSweep.every((at) => at.dots === 2 && at.starts === 0),
+        JSON.stringify(tipSweep.filter((at) => at.dots !== 2 || at.starts > 0)),
+      );
+      check(
+        "with its groups dissolved, the hover summary's sweep finds a dot starting a line",
+        (tooltip?.sweepDissolved ?? []).some((at) => at.starts > 0),
+        JSON.stringify(tooltip?.sweepDissolved?.length),
       );
       if (process.env.MEASURE_OUT) {
         fs.writeFileSync(process.env.MEASURE_OUT, JSON.stringify(measured, null, 2));

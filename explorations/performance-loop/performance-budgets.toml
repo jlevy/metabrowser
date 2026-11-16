@@ -249,6 +249,13 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # start since H115, which sends its scripts uncompressed and unbudgeted, about 630 KB
 # (review B of #455, B10). The ceiling now rests on the two remote rows.
 # devtools/check_startup_scripts.py gives the same number from the shell on every lint.
+# Measured with it on 2026-11-16: a count summary's one painter and the brief change line
+# (formatters.js; the SDK's countPartsNodes, changeLine, and changeLineNodes; #479) took the
+# folder's shell from 220,005 bytes on main at 1dcbe93f1 to 222,345, 1,932 bytes in
+# formatters.js and 408 in plugin-sdk.js, after their comments were cut from 3,817. They are
+# startup code because the SDK's methods are synchronous and the lines drawn where the
+# changed-files tree or the diff plugin did not load call them (diff-view.js summaryOrTotals,
+# git-panel.js renderCommitTotals), so the on-demand tree bundle cannot hold them.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220

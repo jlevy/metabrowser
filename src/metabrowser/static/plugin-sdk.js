@@ -1564,20 +1564,14 @@
     return global.MetabrowserFormatters.titleNodes(global.document, title);
   }
 
-  // A count summary, for its element to hold, painted as the shell paints every count
-  // summary: each number bold, each comma and separator muted, a separator hidden from
-  // assistive technology, and each status its letter in its status's ink
-  // (docs/design-system.md, "Count Summaries Bold Their Numbers"). The nodes belong to the
-  // page's document.
+  // The shell's painters of a count summary and a brief change line, into the page's
+  // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
+  // Line").
   /** @param {MetabrowserCountParts} parts @returns {Array<Node | string>} */
   function countPartsNodes(parts) {
     return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
   }
 
-  // A brief change line, "10 A, 5 D, 4 M · +1,234 −567": a change set's statuses and line
-  // totals, the one component for one (docs/design-system.md, "Brief Change Line").
-  // `changeLine` builds it in the shell's number format, and `changeLineNodes` paints it as
-  // the shell does, into the page's document.
   /** @param {MetabrowserChangeLineInput} change @returns {MetabrowserChangeLine} */
   function changeLine(change) {
     const formatters = global.MetabrowserFormatters;
