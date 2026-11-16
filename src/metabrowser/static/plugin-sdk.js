@@ -961,9 +961,15 @@
         global.MetabrowserTooltip.show(html, anchor);
       }
     },
-    hide() {
+    /**
+     * Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     * whose anchor has left the document, and never one shown with no anchor. With none,
+     * any tooltip but one anchored in the nav's header. See docs/design-system.md, "A
+     * Surface Puts Away Only Its Own Tooltip".
+     */
+    hide(within) {
       if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.hide();
+        global.MetabrowserTooltip.hide(within);
       }
     },
   };

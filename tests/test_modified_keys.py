@@ -117,6 +117,11 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
                 "guard only keeps Command-Escape from closing the menu"
             ),
         ),
+        Listener(
+            "the reader's key ending a tooltip's focus repair, which only notes it",
+            None,
+            via=("endTooltipFocusRepair",),
+        ),
     ),
     "static/git-panel.js": (
         Listener(

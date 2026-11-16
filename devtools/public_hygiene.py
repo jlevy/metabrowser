@@ -57,6 +57,8 @@ GIT_LOCAL_ENV_FALLBACK = frozenset(
         "GIT_WORK_TREE",
     }
 )
+# The 27 characters Windows-1252 puts at bytes 0x80-0x9F, which leaves five undefined.
+_CP1252_HIGH = bytes(range(0x80, 0xA0)).decode("cp1252", errors="ignore")
 BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "private guidance path",
@@ -71,6 +73,22 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
             r"realtime-debugging\.runbook\.md|"
             r"metabrowser-plugins\.md|"
             r"(?<!/)kpress-design\.md"
+        ),
+    ),
+    # UTF-8 read as Latin-1 and written back as UTF-8, which a merge once did to
+    # six stylesheet comment lines: a U+2000-U+27FF character such as a box rule
+    # or an ellipsis becomes U+00E2 and a C1 control, a Latin-1 symbol such as
+    # the middle dot gains a U+00C2, and an accented letter becomes U+00C3 and
+    # one more. Read as Windows-1252 instead, the commoner accident, the same
+    # U+2000-U+27FF character becomes U+00E2 and one of the 27 characters that
+    # code page puts at bytes 0x80-0x9F, as a curly apostrophe becomes U+00E2,
+    # the euro sign, and the trade mark sign. The `.*` takes the rest of the
+    # line, so a line is named once.
+    (
+        "double-encoded UTF-8",
+        re.compile(
+            r"(?:\xe2[\x80-\x9f]|\xc2[\xa0-\xbf]|\xc3[\x80-\xbf]"
+            rf"|\xe2[{re.escape(_CP1252_HIGH)}]).*"
         ),
     ),
 )

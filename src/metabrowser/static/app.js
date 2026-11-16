@@ -1349,14 +1349,11 @@ function groupedSectionsSettled() {
 // breathe: it reads the choice in the link's ink on the accent ground, and only primary
 // ink breathes (docs/design-system.md, "Refreshing Content"), so the dim and the scan row
 // say what is waiting.
-var _groupingPending = false;
-
 /**
  * @param {boolean} pending
  * @param {boolean} [first] whether the load on its way paints new sections
  */
 function setGroupingPending(pending, first = false) {
-  _groupingPending = pending;
   var grouped = filesPanelUsesGroupedSource();
   document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
   renderRegrouping(
@@ -3293,17 +3290,101 @@ function hideTooltip() {
   }, TOOLTIP_FADE_OUT);
 }
 
+/**
+ * Put the tooltip away only when its anchor is `within` or inside it, whether the tooltip
+ * is up or still waiting out its delay. A surface that repaints or is disposed clears its
+ * own tooltip this way and leaves another surface's: the page has one tooltip, so a
+ * surface that hid every tooltip on each draw would take another's from under a pointer
+ * that has not moved (mb-alff, docs/design-system.md, "A Surface Puts Away Only Its Own
+ * Tooltip"). A tooltip whose anchor has left the document belongs to no surface on the
+ * page, and would never hear the mouseleave that ends it, so any surface's call puts it
+ * away, even one made after that surface removed its markup.
+ *
+ * @param {Element} within
+ */
+function hideTooltipWithin(within) {
+  if (tooltipAnchor && (!tooltipAnchor.isConnected || within.contains(tooltipAnchor))) {
+    hideTooltip();
+  }
+}
+
+/**
+ * The element whose own press is under way, when it is one whose tooltip a click must not
+ * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
+ * read and cleared by the focus that press gives it.
+ *
+ * @type {HTMLElement | null}
+ */
+var tooltipPressedAnchor = null;
+
+// The element focus was last given to, which tells focus put back from focus moved.
+/** @type {Node | null} */
+var tooltipFocusOwner = null;
+
+/**
+ * Focus moving puts a pointer's tooltip away (docs/design-system.md, "Tooltip Input
+ * Modality"). Two focuses are not focus moving, and leave it:
+ *
+ * - the focus a press on the folder's name gives it, which is the pointer's click, and
+ *   neither shows nor hides the name's tooltip ("Home");
+ * - focus put back where it was. A rebuild that replaces the focused control focuses its
+ *   replacement, as the Files filter bar's does when new tallies arrive. The element that
+ *   had focus is out of the document by then, so a focus that follows one that left the
+ *   document, with no key or press of the reader's since (endTooltipFocusRepair), is that
+ *   repair (mb-alff). A tooltip whose own anchor the rebuild removed still goes: it would
+ *   never hear the mouseleave that ends it.
+ *
+ * @param {FocusEvent} event
+ */
+function hideTooltipOnFocus(event) {
+  var pressed = tooltipPressedAnchor;
+  var previous = tooltipFocusOwner;
+  tooltipPressedAnchor = null;
+  tooltipFocusOwner = /** @type {Node | null} */ (event.target);
+  if (previous && previous.isConnected === false) {
+    if (tooltipAnchor && !tooltipAnchor.isConnected) {
+      hideTooltip();
+    }
+    return;
+  }
+  if (pressed !== null && event.target === pressed) {
+    return;
+  }
+  hideTooltip();
+}
+
+/**
+ * The reader's own key or press ends a pending repair. A rebuild that removes the focused
+ * element and focuses nothing, as pressing the Files filter bar's Clear does, leaves focus
+ * on the page with no `focusin`, so the owner stays out of the document until the next
+ * focus, and that focus, the reader's Tab or click, would pass for the repair and leave
+ * the pointer's tooltip up beside the focus ring. A rebuild the reader's key causes still
+ * counts as one, since its `keydown` comes before the removal. Letting the owner go also
+ * lets the removed subtree it holds be collected.
+ */
+function endTooltipFocusRepair() {
+  if (tooltipFocusOwner && !tooltipFocusOwner.isConnected) {
+    tooltipFocusOwner = null;
+  }
+}
+
 if (typeof window !== "undefined") {
   window.MetabrowserTooltip = {
     show: (html, anchor) => {
       showTooltip(html, anchor);
     },
-    // What a view or a panel calls, through `mb.tooltip.hide()`, to take away a tooltip of
-    // its own content as it redraws or scrolls. The nav's header is the shell's chrome,
-    // which no view draws, so its tooltips are never one a view showed: a view's hide
-    // leaves them. Home redraws the folder overview and the Commits panel, whose hides
-    // took the folder's name's tooltip away under a click (docs/design-system.md, "Home").
-    hide: () => {
+    // With an element, only a tooltip anchored in it (hideTooltipWithin). With none, what a
+    // pointer leaving a surface means: whatever tooltip there is, but the nav's header's.
+    // The header is the shell's chrome, which no view draws, so its tooltips are never one
+    // a view showed, and a view's bare hide leaves them: Home redraws the folder overview
+    // and the Commits panel, whose hides took the folder's name's tooltip away under a click
+    // (docs/design-system.md, "Home"). Anything but an element, such as the document or the
+    // event when `hide` is itself a listener, is none.
+    hide: (within) => {
+      if (within instanceof Element) {
+        hideTooltipWithin(within);
+        return;
+      }
       if (tooltipAnchor?.closest?.(".app-header")) {
         return;
       }
@@ -3426,29 +3507,15 @@ function hideTipText(e) {
 
 // mouseenter/mouseleave do not bubble, so these listen in the capture phase.
 // Any focus transition ends pointer-owned tooltip presentation without
-// creating a second visual layer around keyboard navigation.
+// creating a second visual layer around keyboard navigation; the two focuses
+// that are not one are hideTooltipOnFocus's.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
 document.addEventListener("focusin", hideTooltipOnFocus);
-
-/**
- * The element whose own press is under way, when it is one whose tooltip a click must not
- * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
- * read and cleared by the focus that press gives it.
- *
- * @type {HTMLElement | null}
- */
-var tooltipPressedAnchor = null;
-
-/** @param {FocusEvent} event */
-function hideTooltipOnFocus(event) {
-  var pressed = tooltipPressedAnchor;
-  tooltipPressedAnchor = null;
-  if (pressed !== null && event.target === pressed) {
-    return;
-  }
-  hideTooltip();
-}
+// The reader's key or press, in the capture phase so that it comes before any focus it
+// gives, ends a focus repair (endTooltipFocusRepair).
+document.addEventListener("keydown", endTooltipFocusRepair, true);
+document.addEventListener("pointerdown", endTooltipFocusRepair, true);
 // A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
 document.addEventListener("pointerup", () => {
   tooltipPressedAnchor = null;
