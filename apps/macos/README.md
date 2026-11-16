@@ -485,8 +485,7 @@ bounds the wait.
 `make macos-notarize FILE=build/Metabrowser-0.1.0-arm64.dmg` retries one
 step. `make macos-release NOTARIZE=0` rehearses every step without credentials.
 
-To publish, attach the image and its checksum to a draft release on the tag, then review
-the draft and publish it:
+To publish, attach the image and its checksum to a draft release on the tag:
 
 ```shell
 gh release create macos-v0.1.0 --draft --verify-tag --latest=false \
@@ -495,11 +494,22 @@ gh release create macos-v0.1.0 --draft --verify-tag --latest=false \
   apps/macos/build/Metabrowser-0.1.0-arm64.dmg.sha256
 ```
 
-`--latest=false` keeps the Python package’s release as the repository’s latest.
-Then copy `build/metabrowser-app.rb` to `Casks/` in a personal tap.
-Publishing the release does not publish to PyPI: `publish.yml` runs its job only for a
-`v` tag, the Python package’s. No workflow builds, signs, or drafts the release yet (see
-[Gaps to Close](#gaps-to-close)).
+Before publishing, the owner opens the draft’s image from a browser download on a Mac
+that has not run the app, and approves the image’s SHA-256 and the notes (O8 and O7 in
+the
+[publishing plan’s owner steps](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)).
+Then publish it without making it the repository’s Latest release, which stays the
+Python package’s:
+
+```shell
+gh release edit macos-v0.1.0 --draft=false --latest=false
+```
+
+0.1.0 ships without a cask (the plan’s Q5): the tap and the cask follow the alpha’s
+first round of feedback, when a release copies `build/metabrowser-app.rb` to `Casks/` in
+a personal tap. Publishing the release does not publish to PyPI: `publish.yml` runs its
+job only for a `v` tag, the Python package’s. No workflow builds, signs, or drafts the
+release yet (see [Gaps to Close](#gaps-to-close)).
 
 ### What a Downloader Experiences
 

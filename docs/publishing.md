@@ -179,10 +179,12 @@ One rule covers every app release:
 1. Record the approved, gated full commit SHA as `RELEASE_COMMIT`, as in
    [Agent-Operated Releases](#agent-operated-releases).
 
-2. Confirm the tag is absent; this must fail with a 404:
+2. Check the tag. It must be absent, which this command reports as a 404, or, on a retry
+   after a transient failure, already resolve to `RELEASE_COMMIT`, in which case skip
+   step 3. Stop if it resolves to any other commit.
 
    ```shell
-   gh api repos/jlevy/metabrowser/git/ref/tags/macos-vX.Y.Z
+   gh api repos/jlevy/metabrowser/git/ref/tags/macos-vX.Y.Z --jq .object.sha
    ```
 
 3. Create the tag at that SHA, then confirm it resolves to `RELEASE_COMMIT`:
@@ -195,10 +197,22 @@ One rule covers every app release:
 
 4. Create the draft on that tag with
    `gh release create macos-vX.Y.Z --draft --verify-tag --latest=false` and the
-   release’s assets.
+   release’s assets. For a release built by CI, the release workflow’s `draft` job runs
+   this step.
 
-Never push a tag from a clone: session git credentials are branch-scoped, and a tag made
-in a clone names whatever that clone has checked out rather than the approved SHA.
+5. After the owner checks the draft’s download and approves the image’s SHA-256 and the
+   notes, publish it without making it the Latest release, so the Python package’s
+   release stays Latest:
+
+   ```shell
+   gh release edit macos-vX.Y.Z --draft=false --latest=false
+   gh api repos/jlevy/metabrowser/releases/latest --jq .tag_name   # not macos-vX.Y.Z
+   ```
+
+   In the web UI, untick “Set as the latest release” before publishing.
+
+Never push a tag from a clone: session git credentials are branch-scoped, and the API
+call takes the approved SHA itself, so nothing local resolves it.
 Whether the agent or the owner runs these commands is open question Q8 of the
 [macOS publishing plan](project/specs/active/plan-2026-11-16-macos-app-publishing.md#open-questions).
 
@@ -230,7 +244,9 @@ ruleset that stops `v*` and `macos-v*` tags being moved or deleted.
 - If it fails for a reason that needs a change to the code or the workflow, fix it on a
   branch, rerun `make verify`, and release the next patch version from the validated
   commit. A run takes its workflow from the tagged commit, so the existing tag cannot
-  pick up the fix.
+  pick up the fix. The spent version’s GitHub release stays, with no package on PyPI
+  behind it: edit its notes, which stay editable, to say it was not published and to
+  name the replacement version.
 - The macOS app follows the same rule from the moment its `macos-v*` tag exists, which
   is before anything is signed: a transient failure, such as a notary timeout, is
   retried at the same tag, and a failure that needs a change, such as a rejected

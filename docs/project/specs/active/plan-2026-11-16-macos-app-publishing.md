@@ -36,7 +36,7 @@ verified. It records practices, not that repository’s configuration.
 
 Most of the pipeline already exists: `make macos-release` signs with the hardened
 runtime, notarizes and staples the app and the image, and checks the image
-([Building a Release](../../../apps/macos/README.md#building-a-release)). What is
+([Building a Release](../../../../apps/macos/README.md#building-a-release)). What is
 missing is narrower:
 
 - a signing setup that works on the build Mac, keeps the identity locked except during a
@@ -173,7 +173,15 @@ For each topic compared, this plan follows current practice:
   `security create-keychain` and `security unlock-keychain` prompt for the password when
   `-p` is not given, and `security import` asks for a `.p12` password in a dialog when
   `-P` is not given; `security set-keychain-settings -l -u -t SECONDS` locks a keychain
-  on sleep and after that many seconds idle (`man security`).
+  on sleep and after that many seconds idle (`man security`). Without `-A` or `-T`,
+  `security import` passes no access of its own, so the imported key gets the default
+  access, which trusts the importing tool, `/usr/bin/security`, to use and export it;
+  `-x` makes the key non-extractable, and it takes effect only when the format is not
+  forced with `-f pkcs12`, since that option selects a different import path (Apple’s
+  open-source
+  [`keychain_import.c`](https://github.com/apple-oss-distributions/Security/blob/main/SecurityTool/macOS/keychain_import.c),
+  read on 2026-11-16, and the importer code it calls, which review B of #485 traced).
+  This plan has not tested it; O1’s verification does.
 - **Hardened runtime and entitlements:** notarization requires the hardened runtime, a
   secure timestamp, a Developer ID signature on every executable, and no
   `get-task-allow`
@@ -314,24 +322,35 @@ more than instructions where they can:
   dedicated release keychain, not the login keychain.
   It stays locked except during a release the owner started, when the owner unlocks it
   at a prompt, and it locks itself after 15 minutes idle and on sleep.
-  The identity is imported with no application trusted to use it (neither `-A` nor
-  `-T`), so each signing asks, and the owner answers “Allow”, never “Always Allow”,
-  which would trust `codesign` with the key for good.
+  The identity is imported with `-x`, so its private key cannot be exported by anyone,
+  and with neither `-A` nor `-T`, so `codesign` is not trusted with it: each signing
+  asks, and the owner answers “Allow”, never “Always Allow”, which would trust
+  `codesign` with the key for good.
+  That import still trusts `/usr/bin/security` itself with the key; removing it from the
+  key’s access list in Keychain Access, which is optional, takes away that silent use.
+  A local release asks twice, once when `build-app.sh` signs the app and once when
+  `make-dmg.sh` signs the image; the dialog names the key, not the file, so a third
+  request is one to deny.
   The profile has no prompt of its own, since `notarytool` created it, so the lock is
-  its gate. The doctor reports whether the keychain is unlocked (O1, O3, `mb-qu6j`).
-- **In CI,** the `macos-release` environment’s required reviewer is the owner,
-  administrators cannot bypass it, and the owner approves its deployments only in the
-  web UI (O4). The REST API would accept an approval made with the owner’s token, so the
+  its gate. The doctor reports whether the keychain is unlocked (O1, O3, `mb-qu6j`). What
+  the import trusts rests on Apple’s source code, read for this plan, not on a test;
+  O1’s verification confirms that the key cannot be exported.
+- **In CI,** signing uses a Developer ID Application certificate of its own, so a CI
+  leak is revoked without touching the owner’s (O4). The `macos-release` environment’s
+  required reviewer is the owner, administrators cannot bypass it, and the owner
+  approves its deployments only in the web UI, after confirming that the waiting run’s
+  commit, shown on the run page, is `RELEASE_COMMIT` (O4, O7). That confirmation is the
+  control against a hostile tag: GitHub runs the workflow file of the tagged commit, so
+  a tag on another commit brings its own workflow, and the `check` job catches only
+  mistakes. The REST API would accept an approval made with the owner’s token, so the
   agent rule below is an instruction there, not a control.
-  The `check` job’s `main`-ancestry check means a hostile tag also needs a commit on
-  `main` ([Release Flow](#release-flow)).
 - **The agent rule,** in [Owner-Only Steps](#owner-only-steps): an agent never approves
   a deployment, never calls the pending-deployments endpoint, and signs or notarizes
   only during a release the owner started.
 
 Signing on the owner’s Mac from the locked keychain is therefore the lower-exposure
-path: each signing needs the owner’s answer at the Mac, and the profile works only while
-the owner has the keychain unlocked.
+path: the key cannot leave the keychain, each signing needs the owner’s answer at the
+Mac, and the profile works only while the owner has the keychain unlocked.
 That supports Q1’s answer, 0.1.0 signed locally.
 CI signing keeps one residual risk, an injected agent approving a deployment through the
 API, which the owner weighs again before the first CI release.
@@ -340,7 +359,7 @@ API, which the owner weighs again before the first CI release.
 
 | Item | Metabrowser | Current practice | Proposal |
 | --- | --- | --- | --- |
-| Developer ID Application identity | In the login keychain, not valid: G2 intermediate missing | G2-issued certificate; intermediate from Apple PKI | Owner moves it to the release keychain and installs the committed intermediate (O1); the doctor checks both (`mb-qu6j`) |
+| Developer ID Application identity | In the login keychain, not valid: G2 intermediate missing | G2-issued certificate; intermediate from Apple PKI | Owner moves it to the release keychain, non-extractable, and installs the committed intermediate (O1); the doctor checks both (`mb-qu6j`); CI gets a certificate of its own (O4) |
 | Developer ID Installer identity | None | Installer packages only | Not needed |
 | Hardened runtime, secure timestamp | Yes | Required | Keep; check the `runtime` flag and timestamp (`mb-4hwg`) |
 | Entitlements | None, enforced | Only what is needed | Keep none |
@@ -359,7 +378,7 @@ API, which the owner weighs again before the first CI release.
 | Checksums and digests | `.sha256` | Digest shown by GitHub | Keep, and compare both (`mb-xd4o`) |
 | Attestation | None | `actions/attest` | Attest a CI-built image (`mb-mww5`) |
 | Immutable release | Off | Generally available | On before 0.1.0 (O5, Q3) |
-| Release notes, Latest | Draft, not Latest | n/a | Keep; notes in the runbook (`mb-63cx`) |
+| Release notes, Latest | Draft, not Latest | n/a | Keep, and publish with `--latest=false`; notes in the runbook (`mb-63cx`) |
 | Updates | None; cask template | Cask now, Sparkle later | Recommend; owner decides (Q4, `mb-fl72`) |
 | Homebrew cask | Rendered and checked, never linted | `brew style` and `brew audit` | Lint it in CI (`mb-eoez`); the tap and cask after the alpha’s first feedback (O6, Q5) |
 | Icons | Variants enforced | n/a | Keep |
@@ -371,24 +390,27 @@ API, which the owner weighs again before the first CI release.
 
 Both paths follow one order, so the tag exists before anything is signed and the owner
 accepts a download before anything is published.
-[macOS App Releases](../../publishing.md#macos-app-releases) holds the tag rule:
+[macOS App Releases](../../../publishing.md#macos-app-releases) holds the tag rule:
 
 1. **Approve the commit.** The version change lands on `main`, and the owner approves
    `RELEASE_COMMIT`, its full SHA.
 2. **Create the tag** on GitHub at that SHA with `gh api …/git/refs`, after checking
-   that it is absent. It is never pushed from a clone.
-   A draft does not create its tag, and `gh release create --verify-tag` refuses a
-   missing one.
+   that it is absent, or, on a retry, already at `RELEASE_COMMIT`. It is never pushed
+   from a clone. A draft does not create its tag, and `gh release create --verify-tag`
+   refuses a missing one.
 3. **Go ahead with notarization:** locally, the owner unlocks the release keychain; from
-   CI, the owner approves the `macos-release` deployment in the web UI.
+   CI, the owner confirms that the waiting run’s commit is `RELEASE_COMMIT` and approves
+   the `macos-release` deployment in the web UI.
 4. **Build, sign, notarize, and draft**, as below.
 5. **Check the draft** with `make macos-check-release TAG=macos-vX.Y.Z BUILT=local` or
    `BUILT=ci`, then O8 on the draft’s download.
-6. **Approve the image’s SHA-256 and the notes, and publish** the draft.
+6. **Approve the image’s SHA-256 and the notes, and publish** the draft with
+   `gh release edit macos-vX.Y.Z --draft=false --latest=false`, so the Python package’s
+   release stays Latest; the published run of `make macos-check-release` confirms it.
 
 Once the tag exists it is permanent: a failure after step 2 that needs a change is
 released under the next version, and a transient failure is retried at the same tag
-([Failure Handling](../../publishing.md#failure-handling)).
+([Failure Handling](../../../publishing.md#failure-handling)).
 
 Local, for 0.1.0, once O1 to O3 are done:
 
@@ -398,6 +420,9 @@ Local, for 0.1.0, once O1 to O3 are done:
   run at `RELEASE_COMMIT`, builds, signs, notarizes and staples the app, packages,
   notarizes and staples the image, reads both notary logs, checks the image, and writes
   the checksum and cask.
+  It asks twice for the key, once per signing.
+  The app’s notarization wait can outlast the 15-minute lock; if it does, signing and
+  submitting the image first ask to unlock the keychain again.
   The owner locks the keychain when it finishes.
 - `gh release create macos-vX.Y.Z --draft --verify-tag --latest=false` attaches the
   image and checksum, as the app README shows.
@@ -414,8 +439,11 @@ instead of cancelling one that is signing.
 1. **`check`**, with no environment and `contents: read` only, validates the tag against
    `macos-v$(cat apps/macos/VERSION)` and that its commit is on `main`, and ends the run
    when the tag’s release already has assets.
+   It catches mistakes only: it runs from the tagged commit’s own workflow file, which a
+   hostile tag supplies.
 2. **`sign`** needs `check`, waits for the owner’s approval of the `macos-release`
-   environment in the web UI, then checks out the tag, imports the identity and the
+   environment in the web UI, given only after the owner confirms that the run’s commit
+   is `RELEASE_COMMIT`, then checks out the tag, imports the CI identity and the
    committed G2 intermediate into a temporary keychain with a random password generated
    in the job, writes the API key to a mode 0600 file, runs the signing doctor, runs
    `make macos-release`, deletes the keychain and the key (`always()`), and uploads the
@@ -424,7 +452,7 @@ instead of cancelling one that is signing.
    draft release with `--verify-tag --latest=false`. Permissions: `contents: write`,
    `id-token: write`, `attestations: write`.
 4. The owner runs or watches `make macos-check-release BUILT=ci` on the draft, which
-   also verifies the attestation, then does O8 and publishes.
+   also verifies the attestation, then does O8 and publishes as in step 6 above.
 
 Once the release workflow exists, a release built locally is the exception: its tag
 starts a run that waits at the approval, which the owner rejects, so the job ends
@@ -499,12 +527,20 @@ approves `macos-release` deployments only in the web UI ([Who Can Sign](#who-can
     make it lock on sleep and after 15 minutes idle with
     `security set-keychain-settings -l -u -t 900` on it.
   - Move the Developer ID Application identity into it: export it from the login
-    keychain as a `.p12`; import it with `security import FILE -k KEYCHAIN`, with
-    neither `-A` nor `-T`, typing the `.p12` password in the dialog; delete the identity
-    from the login keychain; and delete the `.p12`, or keep it offline as the identity’s
-    only backup.
+    keychain as a `.p12`; import it with `security import FILE -k KEYCHAIN -x`, with
+    neither `-A`, `-T`, nor `-f pkcs12` (which would skip `-x`), typing the `.p12`
+    password in the dialog; and delete the identity from the login keychain.
+  - Keep the `.p12` offline, in storage the owner controls and never in the repository
+    or a synced folder. It is required: once imported with `-x`, the key cannot be
+    exported again, so the `.p12` is its only backup, and losing both means a new
+    certificate.
+  - Optionally, remove `/usr/bin/security` from the private key’s access list in
+    Keychain Access, which takes away the silent use the import gave it.
   - Confirm `security find-identity -v -p codesigning` lists one valid identity.
-    Each signing then asks for the key: answer “Allow”, never “Always Allow”.
+    Then, with the keychain unlocked, confirm that the key cannot be exported:
+    `security export -k KEYCHAIN -t identities -f pkcs12 -P x -o /dev/null` must fail.
+  - Each signing then asks for the key, twice for a local release: answer “Allow”, never
+    “Always Allow”, and deny a request you did not expect.
   - Lock it with `security lock-keychain KEYCHAIN` whenever no release is running.
 
 - [ ] **O2. Create an App Store Connect API key** for notarization at
@@ -527,17 +563,19 @@ approves `macos-release` deployments only in the web UI ([Who Can Sign](#who-can
   ```
 
 - [ ] **O4. For CI signing, before the next release (Q1):**
-  - export the identity from the release keychain as a `.p12` with a strong password;
-  - create a second team API key, for CI only, as in O2, so each key can be revoked
-    alone;
+  - as the Account Holder, create a second Developer ID Application certificate, for CI
+    only, from a signing request made outside the release keychain, and export it as a
+    `.p12` with a strong password, so the owner’s key never leaves the release keychain
+    and each certificate can be revoked alone;
+  - create a second team API key, for CI only, as in O2, for the same reason;
   - create the `macos-release` environment with the owner as required reviewer,
     self-review allowed, “Allow administrators to bypass configured protection rules”
     turned off, and deployments limited to tags matching `macos-v*`;
-  - add environment secrets, never repository secrets, for the base64 `.p12`, its
-    password, the identity name, the CI key’s `.p8` contents, its key ID, and the issuer
-    ID;
-  - delete the exported `.p12` and the downloaded `.p8`; the `.p12` password then lives
-    only in its secret.
+  - add environment secrets, never repository secrets, for the CI certificate’s base64
+    `.p12`, its password, its identity name, the CI key’s `.p8` contents, its key ID,
+    and the issuer ID;
+  - delete the CI identity from the Mac, the exported `.p12`, and the downloaded `.p8`;
+    the `.p12` password then lives only in its secret.
 
 - [ ] **O5. Repository settings, before 0.1.0 is published (Q3):** turn on immutable
   releases, add a tag ruleset that stops `v*` and `macos-v*` tags being moved or
@@ -549,11 +587,14 @@ approves `macos-release` deployments only in the web UI ([Who Can Sign](#who-can
 
 - [ ] **O7. Approve each release,** in this order:
   1. the exact `RELEASE_COMMIT`, after which its tag is created
-     ([macOS App Releases](../../publishing.md#macos-app-releases));
+     ([macOS App Releases](../../../publishing.md#macos-app-releases));
   2. the go-ahead for its notarizations: locally, by unlocking the release keychain;
-     from CI, by approving the `macos-release` deployment in the web UI;
+     from CI, by confirming that the waiting run’s commit, shown on the run page, is
+     `RELEASE_COMMIT`, then approving the `macos-release` deployment in the web UI;
   3. O8 on the draft’s download;
-  4. the image’s SHA-256 and the notes, and then publication of the draft.
+  4. the image’s SHA-256 and the notes, and then publication of the draft, not as the
+     Latest release: `gh release edit macos-vX.Y.Z --draft=false --latest=false`, or the
+     web UI with “Set as the latest release” unticked.
 
 - [ ] **O8. Open the draft’s image** from a browser download on a Mac or VM that has not
   run the app, answer Gatekeeper’s prompt, and launch once offline, before the draft is
@@ -561,12 +602,14 @@ approves `macos-release` deployments only in the web UI ([Who Can Sign](#who-can
 
 - [ ] **O9. Renew the certificate every year.** G2 certificates last one year, so before
   expiry (the doctor warns 90 days ahead) the Account Holder creates the next Developer
-  ID Application certificate, imports it into the release keychain as in O1, and, once
-  CI signs, replaces O4’s `.p12` secrets with a fresh export.
+  ID Application certificate and imports it into the release keychain as in O1, with
+  `-x` and its `.p12` kept offline; once CI signs, the Account Holder also creates the
+  next CI certificate and replaces O4’s secrets as in O4. Neither exports from the
+  release keychain.
 
-**After a leak** of an API key or the identity: revoke the API key in App Store Connect,
-delete the environment secrets, ask Apple to revoke the certificate and the notarization
-tickets of what the leaked key signed
+**After a leak** of an API key or an identity: revoke the API key in App Store Connect,
+delete the environment secrets, ask Apple to revoke the affected certificate, the
+owner’s or CI’s, and the notarization tickets of what the leaked key signed
 ([Notarizing macOS software](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)),
 and replace what was revoked (O2 to O4, O9).
 
@@ -627,9 +670,10 @@ owner’s Mac.
   - downloads the assets with `gh release download` into a scratch folder;
   - checks `shasum -a 256 -c` and the asset digest from `gh release view --json assets`;
   - with `BUILT=ci`, requires the build provenance attestation, verified with
-    `gh attestation verify --signer-workflow jlevy/metabrowser/.github/workflows/macos-release.yml --source-ref refs/tags/macos-vX.Y.Z`;
+    `gh attestation verify FILE --repo jlevy/metabrowser --signer-workflow jlevy/metabrowser/.github/workflows/macos-release.yml --source-ref refs/tags/macos-vX.Y.Z`;
   - once the release is published, checks the immutable release with
-    `gh release verify-asset`;
+    `gh release verify-asset`, and that it is not the Latest release
+    (`gh api repos/jlevy/metabrowser/releases/latest` names another tag);
   - applies a quarantine attribute if the download has none, through
     `URLResourceKey.quarantinePropertiesKey` with a small Swift helper, labelled a
     simulation;
@@ -653,9 +697,10 @@ owner’s Mac.
   `check-setup-flows.sh` does; on a VM or a separate account it needs none of that.
 
 - [ ] **`mb-63cx` The release runbook.** `apps/macos/README.md` Building a Release: the
-  owner steps O1 to O9 and the leak step, the doctor, the checks, the test matrix
-  (fresh, upgrade, duplicate, another account, moved and not moved), the notes template,
-  and the approval record.
+  owner steps O1 to O9 and the leak step, the signing prompts a release brings (two for
+  a local release) and the lock that can lapse during the notarization wait, the doctor,
+  the checks, the test matrix (fresh, upgrade, duplicate, another account, moved and not
+  moved), the notes template, and the approval record.
   The matrix runs as part of the clean-account matrix (`mb-5fp7`), which the runbook
   links rather than repeats.
   `docs/publishing.md`: the app release in the release checklist; its tag rule and
@@ -718,9 +763,9 @@ owner’s Mac.
 
 | Step | How it is verified |
 | --- | --- |
-| O1 | `make macos-signing-check` reports the identity valid in the release keychain and absent from the login keychain, the G2 intermediate present, expiry over 90 days, and the keychain locked when no release runs |
+| O1 | `make macos-signing-check` reports the identity valid in the release keychain and absent from the login keychain, the G2 intermediate present, expiry over 90 days, and the keychain locked when no release runs; with the keychain unlocked, `security export -k KEYCHAIN -t identities -f pkcs12 -P x -o /dev/null` fails |
 | O2, O3 | The doctor with `ONLINE=1`, with the keychain unlocked, gets an answer from `notarytool history` |
-| O4 | The environment’s settings show the bypass off and the tag pattern; the first CI release’s `sign` job waits for the owner’s approval |
+| O4 | The environment’s settings show the bypass off and the tag pattern; the CI secret’s certificate is not the owner’s; the first CI release’s `sign` job waits for the owner’s approval |
 | O5 | `gh api` shows immutable releases on and the tag ruleset active |
 | `mb-qu6j` | Run on the build Mac before O1 to O3, it must report exactly the missing release keychain, the missing G2 intermediate, and the missing profile, and that report is recorded; `test-scripts.sh` feeds it recorded `security` and `openssl` output for valid, missing-intermediate, expiring, mismatched, locked, and unlocked cases |
 | `mb-4hwg` | `test-scripts.sh` checks the new readers on copies of a system binary signed ad hoc with and without `--options runtime`; CI runs the extended `check-dmg.sh` on both images; the Developer ID branch is proven by the first signed build; the zlib measurements are recorded in `make-dmg.sh` |
@@ -751,14 +796,18 @@ owner’s Mac.
 
 - **An agent acting as the owner** runs as the owner’s macOS user and uses the owner’s
   GitHub token. Locally, the locked release keychain and a prompt for each signing gate
-  it. In CI, the REST API accepts a deployment approval made with that token, so the
-  agent rule is an instruction there, not a control; a hostile tag also needs a commit
-  on `main`. Signing 0.1.0 on the owner’s Mac avoids that exposure, and the owner weighs
-  it again before the first CI release ([Who Can Sign](#who-can-sign)).
+  it, and the key cannot be exported.
+  In CI, the REST API accepts a deployment approval made with that token, so the agent
+  rule is an instruction there, not a control, and the `check` job does not stop a
+  hostile tag, which brings its own workflow; the owner’s check that the waiting run’s
+  commit is `RELEASE_COMMIT` is what does.
+  Signing 0.1.0 on the owner’s Mac avoids that exposure, and the owner weighs it again
+  before the first CI release ([Who Can Sign](#who-can-sign)).
 - **A signing key in CI** can be stolen by a compromised action or workflow change.
   The environment approval, the tag-only trigger, SHA pins, no package installs in the
-  signing job, and deleting the keychain at once bound it; signing only on the owner’s
-  Mac removes it. Notarization tickets can be revoked for versions signed by a stolen key
+  signing job, and deleting the keychain at once bound it; CI’s own certificate keeps a
+  theft from reaching the owner’s, and signing only on the owner’s Mac removes it.
+  Notarization tickets can be revoked for versions signed by a stolen key
   ([Notarizing macOS software](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)).
 - **Gatekeeper caches** what the build Mac has seen, so a local first-launch check can
   pass where a clean Mac would not; Apple DTS recommends a fresh VM for the real test.
@@ -775,7 +824,7 @@ owner’s Mac.
   the workflow runs from the tagged commit and the tag cannot be reused.
   An app tag is created before signing, so a rejected notarization or a draft that fails
   its check needs a new version as well; only a transient failure is retried at the same
-  tag ([Failure Handling](../../publishing.md#failure-handling)).
+  tag ([Failure Handling](../../../publishing.md#failure-handling)).
 - **Two notarizations per release** double the wait and count against 75 a day; Apple’s
   simplest path notarizes the DMG only, and loses the dragged-out app’s own ticket (Q7).
 - **The certificate term:** new G2 certificates last a year, so renewal is a yearly
@@ -804,7 +853,7 @@ owner’s Mac.
   With the tag ruleset, every published version and every `macos-v*` tag is permanent: a
   `publish.yml` failure that needs a code or workflow change spends its version, and so
   does an app release whose notarization or draft check fails after its tag exists
-  ([Failure Handling](../../publishing.md#failure-handling)).
+  ([Failure Handling](../../../publishing.md#failure-handling)).
 - **Q4. Updates for the alpha** (open; `mb-fl72` tracks them): recommendation: the
   Homebrew cask in a personal tap plus the release page, and an in-app “update
   available” notice from the GitHub releases API next; Sparkle 2 (2.10.1 or later, EdDSA
@@ -823,7 +872,7 @@ owner’s Mac.
   Recommendation: keep both submissions.
 - **Q8. Who creates the tag** (open): after the owner approves `RELEASE_COMMIT`, does
   the agent or the owner run the `gh api` command that creates the `macos-v*` tag
-  ([macOS App Releases](../../publishing.md#macos-app-releases))? Recommendation: the
+  ([macOS App Releases](../../../publishing.md#macos-app-releases))? Recommendation: the
   agent, as it creates the Python package’s tag; from Phase 2 that command starts the
   release workflow, whose deployment only the owner approves, in the web UI.
 
@@ -831,10 +880,10 @@ owner’s Mac.
 
 - [Native macOS app plan](plan-2026-11-10-native-macos-app.md) and its bead `mb-e9fm`
 - [macOS packaging brief](../../research/research-2026-11-08-macos-app-packaging.md)
-- [apps/macos/README.md](../../../apps/macos/README.md), Building a Release and What a
-  Downloader Experiences
-- [Publishing](../../publishing.md) and
-  [Supply-Chain Security](../../../SUPPLY-CHAIN-SECURITY.md)
+- [apps/macos/README.md](../../../../apps/macos/README.md), Building a Release and What
+  a Downloader Experiences
+- [Publishing](../../../publishing.md) and
+  [Supply-Chain Security](../../../../SUPPLY-CHAIN-SECURITY.md)
 - Apple:
   [Notarizing macOS software before distribution](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution),
   [Customizing the notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow),
