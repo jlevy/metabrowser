@@ -61,6 +61,20 @@ export const SUBJECTS = {
   skimTarget: "README.md",
   // Three folders down, all collapsed in a fresh profile.
   revealFile: "src/metabrowser/static/formatters.js",
+  // The dwell sweep (H94, revision 6): a hover of each registered length over a cold
+  // Markdown file of 23 to 32 KB, then a click. Each length has its own subject, since a
+  // second visit would not be cold, so within one build the curve also carries the
+  // subjects' differences; a round compares each length across builds. The sizes are not
+  // in step with the lengths.
+  dwell: {
+    ms: [0, 100, 200, 450],
+    files: [
+      "docs/e2e-testing.md",
+      "docs/web-performance-framework.md",
+      "docs/reviewing-pull-requests.md",
+      "docs/large-content-rendering.md",
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -246,6 +260,22 @@ const styledMarkdown = (p) => `() => {
   const links = Array.from(document.querySelectorAll('link[rel="stylesheet"][href*="/kpress-static/"]'));
   return ["/css/document.css", "/css/components.css", "/css/syntax.css"].every((n) => links.some((l) => l.href.includes(n) && l.sheet !== null));
 }`;
+// A source view's syntax highlighting complete (H101, revision 6), apart from painted
+// ready: the file is shown, every code block the shell highlights (`pre code` that is not
+// `.no-highlight`) carries highlight.js's own `hljs` mark, which it sets as it writes the
+// token markup, and the view holds a token span. A build that highlights another way must
+// set the same mark, or the milestone never arrives and compare names the gap. The cheap
+// tests run first, since the recorder evaluates this in every frame until it holds.
+const sourceHighlighted = (p) => `() => {
+  if (!(${onRoute(fileRoute(p, false))})) { return false; }
+  const pane = document.getElementById("preview-pane");
+  const a = pane && pane.dataset.renderedPath === ${J(p)} && pane.querySelector(':scope > [data-active-view="true"]');
+  if (!a) { return false; }
+  const codes = a.querySelectorAll("pre code:not(.no-highlight)");
+  if (codes.length === 0) { return false; }
+  for (const c of codes) { if (!c.classList.contains("hljs")) { return false; } }
+  return !!a.querySelector('pre code.hljs [class^="hljs-"]') && (${fileReady(p)})();
+}`;
 const onScreen = `(el) => { if (!el) { return false; } const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; }`;
 const pullHost = (n) => `(() => {
   if (!location.pathname.startsWith("/pull/${n}")) { return null; }
@@ -294,13 +324,16 @@ const commitRequest = (rev) => [
  * `options.keepGoing`, which a diagnostic run sets to see every refusal.
  * `options.newestCommit` is the head of the server's git log, the commit a switch to
  * Commits lands on in a build that selects the newest commit (null when it is unknown).
+ * `options.memoryAfter` names transitions after which retained memory is read, which
+ * changes what the journey measures after them (`--memory-after`).
  */
 function context(d, base, journey, rows, options) {
   const facts = options.facts ?? {};
   const newestCommit = options.newestCommit ?? null;
+  const memoryAfter = new Set(options.memoryAfter ?? []);
   const measure = async (spec) => {
     const load1 = options.loadavg ? options.loadavg() : null;
-    const row = await d.measure({ journey, ...spec });
+    const row = await d.measure({ journey, ...spec, memory: memoryAfter.has(spec.id) });
     row.load1 = load1;
     const landed = spec.subjectByLanding?.[row.landing];
     if (landed) {
@@ -438,6 +471,9 @@ async function files(ctx) {
   await expandFolders(ctx, SUBJECTS.filesExpand);
   await ctx.setupClick(fileRow(F.markdown_small), fileReady(F.markdown_small), "README.md");
   await sleep(1500);
+  // The large source file declares its time to highlighted (revision 6).
+  const highlighted = (k) =>
+    k === "source_large" ? { milestones: { sourceHighlighted: sourceHighlighted(F[k]) } } : {};
   const visit = (id, p, input = click(fileRow(p)), extra = {}) =>
     ctx.measure({
       id,
@@ -458,10 +494,10 @@ async function files(ctx) {
     "image",
     "binary",
   ]) {
-    await visit(`files.cold.${k}`, F[k]);
+    await visit(`files.cold.${k}`, F[k], undefined, highlighted(k));
   }
   for (const k of ["source_large", "json", "markdown_small", "markdown_large"]) {
-    await visit(`files.revisit.${k}`, F[k]);
+    await visit(`files.revisit.${k}`, F[k], undefined, highlighted(k));
   }
   await visit("files.history_back", F.markdown_small, { kind: "history", delta: -1 });
   await visit("files.history_forward", F.markdown_large, { kind: "history", delta: 1 });
@@ -928,6 +964,32 @@ async function skim(ctx) {
   });
 }
 
+// Hover dwell swept over registered lengths (H94, revision 6): for each length in
+// SUBJECTS.dwell.ms, the pointer rests on a cold file's row that long, then presses. The
+// clock starts at the press, so the dwell is the time a build has to prepare the subject
+// before it; a build that shows the subject during the hover refuses
+// (`ready_before_input`).
+async function dwell(ctx) {
+  const D = SUBJECTS.dwell;
+  await ctx.land(SUBJECTS.landing);
+  await expandFolders(ctx, ["docs"]);
+  for (const p of D.files) {
+    await ctx.requireRow(fileRow(p), p);
+  }
+  await sleep(1000);
+  for (const [i, ms] of D.ms.entries()) {
+    const p = D.files[i];
+    await ctx.measure({
+      id: `dwell.hover_click.${ms}`,
+      subject: p,
+      input: hoverClick(fileRow(p), ms),
+      ready: fileReady(p),
+      converged: fileConverged(p),
+      subjectRequest: fileRequest(p),
+    });
+  }
+}
+
 async function reveal(ctx) {
   const p = SUBJECTS.revealFile;
   await ctx.measure({
@@ -954,7 +1016,11 @@ export const JOURNEYS = {
   palette,
   skim,
   reveal,
+  dwell,
 };
+
+/** In-page milestone predicates, for the instrument's own tests. */
+export const MILESTONES = { sourceHighlighted };
 
 /** Run one journey on an open browser; transition rows are appended to `rows`. */
 export async function runJourney(name, d, base, rows, options = {}) {

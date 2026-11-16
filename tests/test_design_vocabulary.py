@@ -2380,6 +2380,7 @@ _FACE_ROOTS = {
     ":root": {
         "--font-sans": "var(--app-sans-clean)",
         "--prose-sans-font": "var(--app-sans-clean)",
+        "--kpress-host-font-mono": "var(--app-mono)",
         "--kpress-host-font-size-base": "var(--document-body-font-size)",
     },
     'html[data-app-font="system"]': {

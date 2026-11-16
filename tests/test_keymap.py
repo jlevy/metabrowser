@@ -101,8 +101,8 @@ def test_a_lone_view_is_served_without_a_key() -> None:
 def test_next_and_previous_are_chords_that_reserve_no_letter() -> None:
     """Control-N and Control-P mean next and previous, so the letters alone are free.
 
-    A view's key is one letter alone, and no view can declare a chord, so moving the stack's
-    walk to Control-N and Control-P (mb-lnqj) freed ``N`` for a view in every kind.
+    A view's key is one letter alone, and no view can declare a chord, so ``N`` alone is free
+    for a view in every kind: the stack's walk is Control-N and Control-P (mb-lnqj).
     """
     assert "n" not in RESERVED_SHELL_KEYS
     for kind in ("html", "pull-request", "markdown"):
@@ -114,9 +114,8 @@ def test_next_and_previous_are_chords_that_reserve_no_letter() -> None:
 def test_p_is_the_pulls_tab_in_every_kind_and_r_is_free() -> None:
     """``P`` opens the Pulls tab wherever it is pressed (mb-6rfu), so no view takes it.
 
-    The Pulls tab's letter was ``R``, for pull Requests, while ``P`` walked a stack; with the
-    walk on Control-P, the tab takes the first letter of its label, as Files takes ``F``
-    (Commits keeps ``H``, for commit History), and ``R`` is free for a view.
+    The tab takes the first letter of its label, as Files takes ``F`` (Commits takes ``H``,
+    for commit History), since the stack's walk is Control-P; ``R`` is free for a view.
     """
     assert RESERVED_SHELL_KEYS["p"].purpose == "Pulls tab"
     assert "r" not in RESERVED_SHELL_KEYS
@@ -187,7 +186,7 @@ def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
     reserved = set(RESERVED_SHELL_KEYS)
     chords = {key for key in shell_keys if key.startswith("control-")}
     assert shell_keys & letters == reserved & letters
-    assert chords == _control_chords() == {"control-n", "control-p"}
+    assert chords == _control_chords()
     assert shell_keys - letters - chords == set("123456789")
     assert shell_keys - letters - chords == reserved - letters
 

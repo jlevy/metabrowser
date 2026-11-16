@@ -84,7 +84,7 @@ request must prove.
 - **Stack keys** (`mb-lnqj`): next and previous in a stack move from `N` and `P` to
   Control-N and Control-P, so the letters are free.
   The registry accepts a declared Control chord, Control alone and never from a text
-  field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
+  field, written `⌃N`, and only on macOS and iOS, where Control reaches the page.
 - **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
   mechanism, as `F` opens Files and `H` Commits; `R` is freed.
 - **Narrow toolbars** (`mb-nm4z`): in a pane too narrow for one line, every navigation
@@ -357,10 +357,11 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - Control-N and Control-P are the registry’s only chords (`CONTROL_CHORD_KEYS`). A chord
   matches Control alone, so AltGr’s Control and Alt types its character, and never in a
   text field, where macOS moves the caret with it.
-- Help, the Shift strip, and badges write the chord as the platform does, read from the
-  page’s navigator. The rule, and the platform limit (Chrome on Windows and Linux keeps
-  Ctrl+N for a new window), is stated once, in “Control Chords” in
-  `docs/design-system.md`.
+- The chords are bound only where Control reaches the page, macOS and iOS, read from the
+  page’s navigator; on Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new
+  window and Print, and the stack menu walks the stack.
+  Help, the Shift strip, and badges write the chord `⌃N`. The rule is stated once, in
+  “Control Chords” in `docs/design-system.md`.
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
@@ -473,8 +474,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
   once in the design system; the app’s other tooltips audited, those that repeat visible
   text removed and the owner’s decisions on the borderline ones applied; the shell shows
-  a tip equal to its element’s text only while that text is cut short; checks in
-  `devtools/check_tooltips.py` and the Pulls, header, and Files Chrome tests.
+  a tip equal to its element’s text, or to a box’s inside it, only while that text is
+  cut short; checks in `devtools/check_tooltips.py` and its own test, and the Pulls and
+  Files Chrome tests.
 
 ### Phase 12: Conversation Rhythm and Headings (pull request 12)
 

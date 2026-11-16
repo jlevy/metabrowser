@@ -7,7 +7,8 @@
 context, and the record in it is the same list. The phases are:
 
 ``read``
-    Reading what the answer is made from: a request body, a file, its classification.
+    Reading what the answer is made from: a request body, a file, its classification, a
+    plugin's or KPress's asset.
 ``render``
     Turning a document into the answer, as KPress does.
 ``git``
@@ -20,6 +21,25 @@ A phase opened inside another one adds nothing, so a ``git`` call inside a ``rea
 not counted twice. Phases that run side by side, as ``asyncio.gather`` runs them, are
 each counted in full, so their sum can exceed the request's own time.
 
+**What a phase measures.** A phase is wall-clock time, not CPU time, and it is taken on
+the request's path around the work it names: a phase around
+``await asyncio.to_thread(...)`` includes the wait for a pool thread and for the event
+loop to resume the request, and one on the event loop, such as the gzip middleware's
+``encode``, holds the loop for its whole span. Every route times a phase this way, the
+asset store (:mod:`metabrowser.encoded_assets`) included, so one phase name means one
+quantity in every family (review B of #455, B4). Timing inside the thread instead would
+leave out the queueing a loaded pool adds, which is part of what the request waited for.
+
+**Git processes.** Beside the times, a record counts the Git processes the request
+started: :func:`git_process_started` is called by ``git/process.py`` each time a spawn
+succeeds, inside a phase or not, so the count is every process and not only those the
+``git`` time covers. The header says it in the ``git`` entry's description,
+``git;dur=41.2;desc="2 processes"``, and a request whose Git ran inside another phase
+gets a ``git`` entry with the description alone (H116). Work a request joins rather than
+starts is counted where it started: a comparison's listing that another request is already
+computing (``builtin_plugins/diff/comparison_cache.py``) is counted in that request, while it
+is open, and not in the one that waits for it, which says nothing of it.
+
 **What the header can say.** A response's headers are sent before its body, so
 ``Server-Timing`` holds ``srv``, the time to the start of the response, and the phases
 finished by then. For a JSON answer that is nearly everything: its body is serialized,
@@ -27,7 +47,11 @@ and gzip compresses it, before the headers go. A streamed body, such as a static
 is read and compressed after them, which no header can report. The request log records
 the rest: with ``METABROWSER_REQUEST_LOG=verbose``, or for a request slower than the
 slow-request threshold, a line gives the time to the end of the body, the time to the
-start of the response, and every phase's total.
+start of the response, and every phase's total. The verbose line also gives the end of
+the body as ``end_ms``, to a tenth of a millisecond, which
+``explorations/performance-loop/server-time.mjs`` reads over a page load. Both are taken
+when the application returns, so they include a response's background tasks and the
+waits for the client to drain the body, which grow with the bytes sent.
 """
 
 from __future__ import annotations
@@ -39,8 +63,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING
 
-from starlette.datastructures import Headers
 from starlette.middleware.gzip import GZipMiddleware, GZipResponder, IdentityResponder
+
+from metabrowser import delivery
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Receive, Scope, Send
@@ -55,18 +80,29 @@ class Record:
     context, record included, so a record stops taking additions when its request ends.
     """
 
-    __slots__ = ("_lock", "_open", "_totals")
+    __slots__ = ("_git_processes", "_lock", "_open", "_totals")
 
     def __init__(self) -> None:
         # Threads the request awaits add to it too.
         self._lock = threading.Lock()
         self._totals: dict[str, float] = {}
+        self._git_processes = 0
         self._open = True
 
     def add(self, name: str, ms: float) -> None:
         with self._lock:
             if self._open:
                 self._totals[name] = self._totals.get(name, 0.0) + ms
+
+    def add_git_process(self) -> None:
+        with self._lock:
+            if self._open:
+                self._git_processes += 1
+
+    def git_processes(self) -> int:
+        """How many Git processes the request started."""
+        with self._lock:
+            return self._git_processes
 
     def close(self) -> None:
         with self._lock:
@@ -115,10 +151,28 @@ def phase(name: str) -> Generator[None]:
         _OPEN.reset(opened)
 
 
+def git_process_started() -> None:
+    """Count one Git process for the request this context serves; outside one, nothing."""
+    record = _RECORD.get()
+    if record is not None:
+        record.add_git_process()
+
+
 def header_value(record: Record, srv_ms: float) -> str:
-    """The ``Server-Timing`` value: ``srv``, then each phase finished so far."""
-    metrics = [("srv", srv_ms), *record.totals()]
-    return ", ".join(f"{name};dur={ms:.1f}" for name, ms in metrics)
+    """The ``Server-Timing`` value: ``srv``, then each phase finished so far.
+
+    The ``git`` entry carries the count of Git processes started so far as its description.
+    """
+    metrics = [f"{name};dur={ms:.1f}" for name, ms in [("srv", srv_ms), *record.totals()]]
+    processes = record.git_processes()
+    if processes:
+        described = f'desc="{processes} process{"" if processes == 1 else "es"}"'
+        timed = next((i for i, text in enumerate(metrics) if text.startswith("git;")), None)
+        if timed is None:
+            metrics.append(f"git;{described}")
+        else:
+            metrics[timed] = f"{metrics[timed]};{described}"
+    return ", ".join(metrics)
 
 
 def log_value(record: Record) -> str:
@@ -139,7 +193,10 @@ class TimedGZipMiddleware(GZipMiddleware):
     93 ms for a cold landing's 3.1 MB, and ``Server-Timing`` showed none of it. The choice
     of responder is Starlette's own, copied from ``GZipMiddleware.__call__`` in Starlette
     1.3.1 so the gzip one can be the timed one; ``tests/test_server_timing.py`` fails when
-    that method changes, so an upgrade re-reads this copy.
+    that method changes, so an upgrade re-reads this copy. One test differs from
+    Starlette's: whether a request is sent gzip is :func:`metabrowser.delivery.gzip_wanted`,
+    which leaves a loopback client of a server started for local use uncompressed (H115)
+    and otherwise is Starlette's own test of ``Accept-Encoding``.
     """
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -147,7 +204,7 @@ class TimedGZipMiddleware(GZipMiddleware):
             await self.app(scope, receive, send)
             return
         responder: ASGIApp
-        if "gzip" in Headers(scope=scope).get("Accept-Encoding", ""):
+        if delivery.gzip_wanted(scope):
             responder = _TimedGZipResponder(
                 self.app, self.minimum_size, compresslevel=self.compresslevel
             )
@@ -161,6 +218,7 @@ __all__ = [
     "TimedGZipMiddleware",
     "begin",
     "end",
+    "git_process_started",
     "header_value",
     "log_value",
     "phase",
