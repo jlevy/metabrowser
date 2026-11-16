@@ -1014,7 +1014,8 @@ async function run() {
     "detail: summary holds the Diff summary's place, with the commit's totals",
     previewHtml,
     '<div class="git-commit-diff-summary metabrowser-diff-host"><div class="diff-summary">' +
-      '<span class="diff-summary-files">2 changed files</span> ' +
+      '<span class="diff-summary-files"><span class="summary-number">2</span> files changed</span> ' +
+      '<span class="summary-punctuation" aria-hidden="true">·</span> ' +
       '<span class="diff-summary-stats"><span class="diff-stat-add">+5</span> ' +
       '<span class="diff-stat-del">−1</span></span></div></div>',
   );
@@ -1120,7 +1121,7 @@ async function run() {
   assertContains(
     "detail: a truncated commit's place says the whole commit's totals",
     previewHtml,
-    '<span class="diff-summary-files">900 changed files</span>',
+    '<span class="diff-summary-files"><span class="summary-number">900</span> files changed</span>',
   );
   // A detail with no count of files has no line, and its empty place takes no room.
   await internals.renderCommitDetail({

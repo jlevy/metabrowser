@@ -417,7 +417,7 @@ async function main() {
       check(
         "with no diff drawn, the place says the commit's totals in one line",
         totals?.display !== "none" &&
-          totals?.text === "35 changed files +1,234 \u22123,423" &&
+          totals?.text === "35 files changed \u00b7 +1,234 \u22123,423" &&
           totals.line !== null &&
           totals.rowHeight !== null &&
           totals.line.height <= totals.rowHeight + 0.5 &&

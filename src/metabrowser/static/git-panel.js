@@ -377,7 +377,7 @@
   }
 
   /**
-   * The commit's totals as one line, "35 changed files +1,234 −3,423", worded as a diff's line
+   * The commit's totals as one line, "35 files changed · +1,234 −3,423", worded as a diff's line
    * is where its tree of files did not load (`plainTotals`, builtin_plugins/diff/diff-model.js):
    * what the Diff summary's place says until the commit's diff draws the summary there, and
    * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
@@ -398,8 +398,9 @@
     const count = (value) => (value === null ? "?" : format(value));
     return (
       '<div class="diff-summary">' +
-      `<span class="diff-summary-files">${escapeHtml(format(totals.files))} changed ` +
-      `${totals.files === 1 ? "file" : "files"}</span> ` +
+      `<span class="diff-summary-files"><span class="summary-number">${escapeHtml(format(totals.files))}</span> ` +
+      `${totals.files === 1 ? "file" : "files"} changed</span> ` +
+      '<span class="summary-punctuation" aria-hidden="true">·</span> ' +
       '<span class="diff-summary-stats">' +
       `<span class="diff-stat-add">+${escapeHtml(count(totals.additions))}</span> ` +
       `<span class="diff-stat-del">−${escapeHtml(count(totals.deletions))}</span>` +

@@ -1468,7 +1468,7 @@ async function main() {
   const cutHeader = cutPlace.find("diff-summary-toggle")[0];
   check(
     "a list cut short says the page's whole totals and how many it lists",
-    cutHeader?.reads().includes("5 changed files") &&
+    cutHeader?.reads().includes("5 files changed") &&
       cutHeader.reads().includes("+15") &&
       cutHeader.reads().includes("−3") &&
       cutHeader.reads().includes("(2 listed)") &&
@@ -1478,7 +1478,7 @@ async function main() {
   check(
     "and names them for a screen reader",
     cutHeader?.getAttribute("aria-label") ===
-      "5 changed files; 15 lines added, 3 deleted; 2 listed",
+      "5 files changed; 15 lines added, 3 deleted; 2 listed",
     cutHeader?.getAttribute("aria-label") ?? "",
   );
   const cutPlain = new FakeElement("div");
@@ -1488,7 +1488,7 @@ async function main() {
   });
   check(
     "a list cut short says them without the shared tree too",
-    cutPlain.reads().includes("5 changed files") && cutPlain.reads().includes("(2 listed)"),
+    cutPlain.reads().includes("5 files changed") && cutPlain.reads().includes("(2 listed)"),
     cutPlain.reads(),
   );
   const wholePlace = new FakeElement("div");
@@ -1499,7 +1499,7 @@ async function main() {
   });
   check(
     "a whole list says its own totals",
-    wholePlace.reads().includes("2 changed files") && !wholePlace.reads().includes("listed"),
+    wholePlace.reads().includes("2 files changed") && !wholePlace.reads().includes("listed"),
     wholePlace.reads(),
   );
   await diffSummaryChecks(mountDiffView, twoFiles);
@@ -1523,7 +1523,7 @@ async function main() {
   tipHeader.dispatch("pointerenter");
   check(
     "a breakdown cut short gives its header's whole words",
-    tipHeader.dataset.tipText === "2 changed files (2 modified)  +1 \u22121",
+    tipHeader.dataset.tipText === "2 files changed \u00b7 2 M \u00b7 +1 \u22121",
     tipHeader.dataset.tipText ?? "",
   );
   tipBreakdown.scrollWidth = 60;
