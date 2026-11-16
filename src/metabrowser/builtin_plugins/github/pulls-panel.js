@@ -28,6 +28,7 @@
 // from GitHub reaches a class, a style, or markup. The only markup parsed is the shell's own
 // chip group and icons.
 
+import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -38,6 +39,7 @@ import {
   h,
   isPlainClick,
   isEnvelope as isPullEnvelope,
+  pullComparison,
   REFRESH_ASK_MS,
   relativeAge,
   SLOW_POLL_MS,
@@ -46,6 +48,7 @@ import {
   createStackIndex,
   groupByStack,
   stackCaption,
+  stackMembership,
   stackRowKey,
   watchStacks,
 } from "./pull-stacks.js";
@@ -127,6 +130,13 @@ export const PEEK_MS = 60;
 // Records read ahead and not yet opened. A record is at most MAX_PULL_RECORD_BYTES, and a
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
+// How long a warm of a likely next pull request's comparison waits for the browser to be
+// free, which bounds it only for a page that is never free. Idle callbacks run in the order
+// they were asked for, and on an open the warm is asked for before the page has read its
+// record, so this timeout does not put it behind the page: what does is that the warm waits
+// for every comparison read on its way to end before it sends its own (`quiet` in
+// comparison-prefetch.js).
+const WARM_IDLE_TIMEOUT_MS = 1000;
 const FETCHING = "Fetching pull requests…";
 // Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
 // first 1,183 files of django/django#15387 made 1,503 rows; 3,000 stress files made
@@ -515,6 +525,25 @@ function isEnvelope(value) {
 }
 
 /**
+ * What the Pulls tab says of a pull request the address names that its list does not hold.
+ * A list read only part of the way, newest first, may hold an older one further down, so
+ * it says only what it has loaded (*read*: whether the list has read as far as *number*).
+ *
+ * @param {number} number
+ * @param {string} filter
+ * @param {boolean} read
+ */
+export function outsideText(number, filter, read) {
+  const label = LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (filter)];
+  if (!read) {
+    return `#${number} is not among the pull requests loaded.`;
+  }
+  return filter === "all" || label === undefined
+    ? `#${number} is not in this list.`
+    : `#${number} is not listed under ${label}.`;
+}
+
+/**
  * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard answers it
  * by reloading the page onto the commit now served, so the list says nothing of its own for it,
  * whatever order the events arrive in: a page Back restores polls before the guard's check, and
@@ -551,6 +580,7 @@ function pinChanged(response) {
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
+ *   markOutside?(text: string | null): void,
  *   open(route: {
  *     number: number,
  *     tab: string,
@@ -565,6 +595,7 @@ function pinChanged(response) {
  *   }): unknown,
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
+ *   warmComparisons?(numbers: number[]): void,
  * }} PullsDependencies
  */
 
@@ -640,6 +671,11 @@ export function createPullsController(deps, options = {}) {
   /** @type {number | null} */
   let current = options.current ?? null;
   let revealCurrent = true;
+  /**
+   * What the list says of a current pull request it does not hold (`noteOutside`).
+   * @type {string | null}
+   */
+  let outside = null;
   /** The row that takes Tab: the current one, or else the first. @type {number | null} */
   let anchor = null;
   // Whether the reader put the anchor where it is, by a key, a focus, or a press. A grouped
@@ -1448,6 +1484,7 @@ export function createPullsController(deps, options = {}) {
       painted = key;
       deps.render(next, identity, arrivals);
     }
+    noteOutside();
   }
 
   function clearTimer() {
@@ -1601,6 +1638,52 @@ export function createPullsController(deps, options = {}) {
       const previous = anchor;
       anchor = next;
       deps.markAnchor(previous, next, false);
+    }
+  }
+
+  /**
+   * Show the current pull request's row: a closed stack that holds it opens, as a file the
+   * address names opens its folders, and the row scrolls into view; a row the list has not
+   * reached yet is chased, and one it does not hold is noted (`noteOutside`).
+   *
+   * @param {number | null} number
+   */
+  function showCurrent(number) {
+    const hidden = number === null ? null : closedStackOf(number);
+    if (hidden !== null) {
+      closedStacks.delete(hidden.stack.number);
+      groupingInputs += 1;
+      render();
+    }
+    settleAnchor(true);
+    if (number !== null && held().keys.has(number)) {
+      if (revealCurrent) {
+        deps.reveal(number);
+      }
+    } else {
+      chaseCurrent();
+    }
+    noteOutside();
+  }
+
+  /**
+   * Say so when the current pull request is not in the list, rather than leave the reader
+   * looking for its row: the filter leaves it out, or All has not listed it. Only once the
+   * list has its rows, and not while a chase may still reach it.
+   */
+  function noteOutside() {
+    const list = held();
+    // The rows are newest first, and *nextAfter* is where the next window starts.
+    const unread = current !== null && list.nextAfter !== null && current < list.nextAfter;
+    const settled =
+      current !== null &&
+      list.envelope !== null &&
+      !list.keys.has(current) &&
+      !(filter === "all" && unread && list.rows.length < list.displayLimit);
+    const next = settled && current !== null ? outsideText(current, filter, !unread) : null;
+    if (next !== outside) {
+      outside = next;
+      deps.markOutside?.(next);
     }
   }
 
@@ -2021,6 +2104,84 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
+   * The anchored row's neighbours, the pull requests a key reaches next, a stack's row passed
+   * over: the rows as they are drawn and walked, grouped by stack or not.
+   *
+   * @returns {number[]}
+   */
+  function neighbours() {
+    const order = grouping();
+    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
+    /** @type {number[]} */
+    const near = [];
+    for (let index = at - 1; index >= 0; index -= 1) {
+      if (order.keys[index] > 0) {
+        near.push(order.keys[index]);
+        break;
+      }
+    }
+    const after = order.keys.slice(at + 1).find((key) => key > 0);
+    if (after !== undefined) {
+      near.push(after);
+    }
+    return near;
+  }
+
+  /**
+   * Warm the comparisons of the pull requests the reader is likely to open next, in the
+   * document's keep (comparison-prefetch.js, `createComparisonWarmer`), so a page opened on
+   * one draws its Diff summary, and its Changes, with no wait: the open pull request first,
+   * so a warm of it already on its way is its page's rather than a second request, then the
+   * rows the pointer or focus last rested on, newest first, the open pull request's
+   * neighbours in each of its stacks, which Control-N and Control-P reach, and the anchored
+   * row's neighbours in the list. Only while shown, visible, and online (`stopWarming`);
+   * each is local work, a record from the cache and a comparison from the repository store,
+   * with no GitHub call, so the budget's floor and the lane's caps do not hold it, and the
+   * warmer's own do. Its record reads are not views, so they add nothing to the records the
+   * server's lane refreshes after a scan.
+   */
+  function warmAhead() {
+    const list = held();
+    if (
+      deps.warmComparisons === undefined ||
+      !live() ||
+      !online() ||
+      list.envelope === null ||
+      list.envelope.reason === "not_github" ||
+      list.rows.length === 0
+    ) {
+      return;
+    }
+    const identity = { source: list.envelope.source, reader: list.envelope.reader };
+    const stacked =
+      current === null
+        ? []
+        : stackMembership(stackIndex, identity, current).flatMap((stack) => {
+            const at = stack.pulls.indexOf(current ?? 0);
+            return [stack.pulls[at + 1], stack.pulls[at - 1]].filter(
+              (number) => number !== undefined,
+            );
+          });
+    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    deps.warmComparisons([
+      ...new Set([
+        ...(current === null ? [] : [current]),
+        ...restedRows.filter(listed),
+        ...stacked,
+        ...neighbours(),
+      ]),
+    ]);
+  }
+
+  /**
+   * A panel that is hidden, parked, or offline warms nothing more: its queue is emptied, and
+   * only the warm being read goes on.
+   */
+  function stopWarming() {
+    deps.warmComparisons?.([]);
+  }
+
+  /**
    * Ask the server to refresh, behind the reader, what they are likely to open next: the
    * anchored row's neighbours and the top of the list, and the changed files of the rows the
    * pointer or focus last rested on, the open row, its neighbours, and the rows in view.
@@ -2055,24 +2216,9 @@ export function createPullsController(deps, options = {}) {
       };
       return true;
     }
-    // The rows as they are drawn and walked, grouped by stack or not: the anchor's
-    // neighbours are the pull requests a key reaches next, a stack's row passed over, and the
-    // top is the first pull requests drawn.
     const order = grouping();
     const pulls = order.keys.filter((key) => key > 0);
-    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
-    /** @type {number[]} */
-    const near = [];
-    for (let index = at - 1; index >= 0; index -= 1) {
-      if (order.keys[index] > 0) {
-        near.push(order.keys[index]);
-        break;
-      }
-    }
-    const after = order.keys.slice(at + 1).find((key) => key > 0);
-    if (after !== undefined) {
-      near.push(after);
-    }
+    const near = neighbours();
     const top = pulls.slice(0, PREFETCH_TOP_ROWS);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
@@ -2609,6 +2755,7 @@ export function createPullsController(deps, options = {}) {
     });
     // A row opens once the reader stops on it, a walk included, so its neighbours are next.
     prefetch(false);
+    warmAhead();
   }
 
   function cancelReads() {
@@ -2781,6 +2928,7 @@ export function createPullsController(deps, options = {}) {
         clearTimer();
         cancelReads();
         queueCores();
+        stopWarming();
         return;
       }
       if (revealCurrent && current !== null && held().keys.has(current)) {
@@ -2792,10 +2940,13 @@ export function createPullsController(deps, options = {}) {
     prepareVisible,
     /**
      * The address says which pull request's page holds the pane. Not a selection: the row
-     * only follows it, and no fetch starts.
+     * only follows it, and no fetch starts. The current number named again moves nothing,
+     * as another tab of its page or one of its changed files does, unless *again* says the
+     * reader opened the pull request shown again: then its stack opens and its row scrolls
+     * into view (docs/design-system.md, "Navigation Reveals the Item").
      *
      * @param {number | null} number
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, options = {}) {
       if (disposed) {
@@ -2805,6 +2956,10 @@ export function createPullsController(deps, options = {}) {
         revealCurrent = false;
       }
       if (number === current) {
+        if (options.again === true && number !== null) {
+          revealCurrent = true;
+          showCurrent(number);
+        }
         return;
       }
       revealCurrent = !options.preserveScroll;
@@ -2818,21 +2973,29 @@ export function createPullsController(deps, options = {}) {
       const previous = current;
       current = number;
       deps.markCurrent(previous, number);
-      // A pull request the address names in a closed stack opens the stack, as a file the
-      // address names opens its folders.
-      const hidden = number === null ? null : closedStackOf(number);
-      if (hidden !== null) {
-        closedStacks.delete(hidden.stack.number);
-        groupingInputs += 1;
-        render();
+      showCurrent(number);
+      // Back, a link, or a stack walk on the page: its neighbours are next all the same.
+      warmAhead();
+    },
+    /**
+     * Home (static/main-tabs.js, `goHome`): the rows as a fresh load of `/view/` draws them,
+     * from the rows held and with no read. Every stack opens, and the Tab stop goes to the
+     * first row as no reader chose it. The address Home opens names no pull request, which
+     * `setCurrent` hears next and which keeps that row.
+     */
+    home() {
+      if (disposed) {
+        return;
       }
-      settleAnchor(true);
-      if (number !== null && held().keys.has(number)) {
-        if (revealCurrent) {
-          deps.reveal(number);
-        }
-      } else {
-        chaseCurrent();
+      closedStacks.clear();
+      anchorChosen = false;
+      groupingInputs += 1;
+      render();
+      const first = grouping().keys[0] ?? null;
+      if (first !== anchor) {
+        const previous = anchor;
+        anchor = first;
+        deps.markAnchor(previous, first, false);
       }
     },
     move,
@@ -2907,6 +3070,7 @@ export function createPullsController(deps, options = {}) {
             PREFETCH_RESTED,
           );
           askFiles(0);
+          warmAhead();
         }
       }
     },
@@ -2921,6 +3085,8 @@ export function createPullsController(deps, options = {}) {
       if (!disposed && index !== stackIndex) {
         stackIndex = index;
         regroup();
+        // The open pull request's stack neighbours may be known only now.
+        warmAhead();
       }
     },
     setStackOpen,
@@ -2969,6 +3135,7 @@ export function createPullsController(deps, options = {}) {
     },
     onOffline() {
       cancelWarmTimer();
+      stopWarming();
       cancelCoreRetry();
       stopPrefetchWatch();
       warmRead?.abort();
@@ -2985,6 +3152,7 @@ export function createPullsController(deps, options = {}) {
       if (!visible()) {
         clearTimer();
         cancelReads();
+        stopWarming();
         return;
       }
       warmPaused = false;
@@ -2995,6 +3163,7 @@ export function createPullsController(deps, options = {}) {
       parked = true;
       clearTimer();
       cancelReads();
+      stopWarming();
     },
     resume() {
       parked = false;
@@ -3006,6 +3175,23 @@ export function createPullsController(deps, options = {}) {
       clearWalk();
       cancelReads();
       peeked.clear();
+    },
+    /**
+     * The envelope of *number*'s record as a peek read it, waiting for one on its way, or
+     * null, so a warm of its comparison does not read the record a second time.
+     *
+     * @param {number} number
+     * @returns {Promise<unknown>}
+     */
+    knownRecord(number) {
+      const had = peeked.get(number);
+      if (had !== undefined) {
+        return Promise.resolve(had.body);
+      }
+      if (reading?.number === number) {
+        return reading.done.then((answer) => answer?.body ?? null);
+      }
+      return Promise.resolve(null);
     },
     snapshot: () => ({
       filter,
@@ -3138,6 +3324,13 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionText,
     connectionHelp,
   ]);
+  // A pull request the address names that the list does not hold: a line of the band, as
+  // the Files tree's outside-filter note is, there only while it has something to say
+  // (docs/design-system.md, "Navigation Reveals the Item").
+  const outsideNote = h("p", {
+    class: "github-pulls-outside nav-metadata nav-metadata-note",
+    role: "status",
+  });
   const foot = h("div", { class: "github-pulls-foot" });
   // Below the last row held, while more are read or fetched: the nav's scan indicator, its
   // spinner and words (`.index-progress` in styles.css), after the shared quiet period.
@@ -3201,7 +3394,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * A stack's row as painted, by its row key (`stackRowKey`): its elements, and the key of
    * what it shows.
    *
-   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, count: HTMLElement, key: string}} PaintedStack
+   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, key: string}} PaintedStack
    */
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
@@ -3215,11 +3408,21 @@ export function mountPullsPanel(container, ctx, mb) {
   const gaps = new Map();
   /**
    * The row the reader is reading, its key and its distance from the scroller's top, which
-   * a paint keeps: a pull request's row or a stack's, the first one in view.
+   * a paint keeps: the row a reveal scrolled to while it holds (`revealedPlace`), and
+   * otherwise a pull request's row or a stack's, the first one in view.
    *
    * @type {{key: number, offset: number} | null}
    */
   let readingPlace = null;
+  /**
+   * Where a reveal put its row, and the scroll that put it there. Rows that arrive or regroup
+   * after the reveal, as stacks read after the list's first window do, leave the row where
+   * the reveal put it, until the list is scrolled other than by this view, as a reader
+   * scrolls it: kept as the first row in view, the row was regrouped out of view.
+   *
+   * @type {{key: number, offset: number, scrollTop: number} | null}
+   */
+  let revealedPlace = null;
   /** Whether the rows last painted were grouped by stack. */
   let paintedGrouped = false;
   /** @type {number | null} */
@@ -3503,18 +3706,22 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The muted line: a stack member's place (`paintPlace`), the number, and the author. A
-   * row names no branches: the page does, and the row's room goes to its title
-   * (docs/design-system.md, "The Pulls Tab"). The title's line holds only the title and its
-   * age, so a member's place, which once had a column there, gives the title that room.
+   * The number's line, on a row's first after the chevron and the state icon: a stack
+   * member's place (`paintPlace`), the number, and the author, with the age at the row's
+   * end; the title has the second line to itself, from the text column to the row's end
+   * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
+   * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
+   * is the row's first text, so its accessible name gives the state, from the state icon's
+   * label, and then the title, before the number's line.
    *
    * @param {PullRow} row
    * @param {HTMLElement} place The row's place, kept across the line built again.
    */
   function rowMeta(row, place) {
-    // A line that wraps (github/styles.css, `.github-pulls-line`): the author carries the
-    // separator before it, so it moves to the next line whole, and a separator that starts
-    // a line is clipped. The place and the number are one part, which never breaks.
+    // One line (github/styles.css, `.github-pulls-meta`): the author carries the separator
+    // before it, so past its floor it leaves the line whole, onto a second line its box
+    // clips, and a separator that starts a line is clipped. The place and the number are
+    // one part, which never breaks.
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-line" }, [
@@ -3675,10 +3882,11 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A stack's row: the chevron, the Layers icon, the stack's label in the label register
-   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"), and how
-   * many of its pull requests are under it. A row of the tree that opens and closes, as a
-   * folder is; it opens no page, so it is not a link.
+   * A stack's row: the chevron, the Layers icon, and the stack's label in the label register
+   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"). It
+   * draws no tally: its pull requests are the rows under it ("Heading Tallies"), and its
+   * accessible name says how many. A row of the tree that opens and closes, as a folder is;
+   * it opens no page, so it is not a link.
    *
    * @param {import("./pull-stacks.js").StackGroupRow} group
    * @returns {PaintedStack}
@@ -3687,7 +3895,6 @@ export function mountPullsPanel(container, ctx, mb) {
     let entry = paintedStacks.get(group.key);
     if (entry === undefined) {
       const label = h("span", { class: "group-heading github-pull-stack-label" });
-      const count = h("span", { class: "github-pulls-stack-count" });
       const row = h(
         "div",
         {
@@ -3702,7 +3909,6 @@ export function mountPullsPanel(container, ctx, mb) {
             stackSvg === null ? null : document.importNode(stackSvg, true),
           ]),
           label,
-          count,
         ],
       );
       row.dataset.stack = String(group.stack.number);
@@ -3710,15 +3916,14 @@ export function mountPullsPanel(container, ctx, mb) {
         row,
       ]);
       item.dataset.number = String(group.key);
-      entry = { item, row, label, count, key: "" };
+      entry = { item, row, label, key: "" };
       paintedStacks.set(group.key, entry);
       rowSizes?.observe(item);
     }
-    const key = JSON.stringify([group.label, group.count, group.hint, group.expanded]);
+    const key = JSON.stringify([group.label, group.hint, group.expanded]);
     if (entry.key !== key) {
       entry.key = key;
       entry.label.textContent = group.label;
-      entry.count.textContent = group.count;
       entry.row.setAttribute("aria-label", group.hint);
       entry.row.setAttribute("aria-expanded", String(group.expanded));
       entry.row.classList.toggle("expanded", group.expanded);
@@ -3750,6 +3955,24 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     }
     return null;
+  }
+
+  /**
+   * The place a paint keeps: a reveal's, until the list is scrolled other than by this view,
+   * and otherwise the first row in view.
+   *
+   * @returns {{key: number, offset: number} | null}
+   */
+  function keptPlace() {
+    if (
+      revealedPlace !== null &&
+      Math.abs((tab.scrollRoot?.scrollTop ?? 0) - revealedPlace.scrollTop) >= 1
+    ) {
+      revealedPlace = null;
+    }
+    return revealedPlace === null
+      ? visiblePlace()
+      : { key: revealedPlace.key, offset: revealedPlace.offset };
   }
 
   function queueWindow() {
@@ -3971,6 +4194,13 @@ export function mountPullsPanel(container, ctx, mb) {
         if (Math.abs(delta) >= 0.5) {
           tab.scrollRoot.scrollTop += delta;
         }
+        if (revealedPlace?.key === readingPlace.key) {
+          // Where the row is now: at the list's top or end, the scroll falls short of it.
+          revealedPlace.offset = item.getBoundingClientRect().top - view.top;
+        }
+      }
+      if (revealedPlace !== null) {
+        revealedPlace.scrollTop = tab.scrollRoot.scrollTop;
       }
     }
     if (focusBefore !== null && document.activeElement === document.body) {
@@ -4001,7 +4231,7 @@ export function mountPullsPanel(container, ctx, mb) {
         }
       }
     }
-    readingPlace = visiblePlace();
+    readingPlace = keptPlace();
     for (const number of painted.keys()) {
       const tree = trees.get(number);
       tree?.controller.setShown(panelShown);
@@ -4072,6 +4302,7 @@ export function mountPullsPanel(container, ctx, mb) {
       paintedRows = [];
       gaps.clear();
       readingPlace = null;
+      revealedPlace = null;
       list.replaceChildren();
       paintedVersion = -1;
       for (const { chip } of tallies) {
@@ -4080,7 +4311,9 @@ export function mountPullsPanel(container, ctx, mb) {
         chip.tabIndex = on ? 0 : -1;
       }
     }
-    if (arrivals.length > 0 && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+    // A row a reveal put in view holds its place over arrivals and a regroup, at the top too.
+    const atTop = revealedPlace === null && (tab.scrollRoot?.scrollTop ?? 0) <= 0;
+    if (arrivals.length > 0 && atTop) {
       readingPlace = null;
     }
     // Flat rows change with the list's rows; grouped rows with the grouping too.
@@ -4092,7 +4325,7 @@ export function mountPullsPanel(container, ctx, mb) {
       // A grouped order replacing the drawn one at the top of the list, as the stacks arriving
       // after the first paint or the option turned on, keeps the top, as arrivals at the top
       // do: kept in place, the first pull request read pushed the stacks' rows above the view.
-      if ((model.stacks.rows !== null || paintedGrouped) && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+      if ((model.stacks.rows !== null || paintedGrouped) && atTop) {
         readingPlace = null;
       }
       paintedGrouped = model.stacks.rows !== null;
@@ -4133,7 +4366,9 @@ export function mountPullsPanel(container, ctx, mb) {
           model.countNumber === null || model.countSuffix === null
             ? [repository]
             : [
-                h("span", { class: "github-pulls-total" }, [model.countNumber]),
+                // The number bold, as every count summary's (docs/design-system.md, "Count
+                // Summaries Bold Their Numbers"), and the words in the line's weight.
+                h("span", { class: "github-pulls-total summary-number" }, [model.countNumber]),
                 model.countSuffix,
                 repository,
               ],
@@ -4231,7 +4466,7 @@ export function mountPullsPanel(container, ctx, mb) {
   nav.scrollRoot?.addEventListener(
     "scroll",
     () => {
-      readingPlace = visiblePlace();
+      readingPlace = keptPlace();
       queueWindow();
     },
     { passive: true, signal },
@@ -4239,6 +4474,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   // A key moved the focus, and not a reader arriving at a row: a walk reads nothing per row.
   let movingFocus = false;
+  /** @type {ReturnType<typeof createComparisonWarmer> | null} */
+  let warmer = null;
 
   const controller = createPullsController(
     {
@@ -4308,13 +4545,70 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       reveal(number) {
         paintViewport();
-        painted.get(number)?.row.scrollIntoView({ block: "nearest" });
+        const entry = painted.get(number);
+        entry?.row.scrollIntoView({ block: "nearest" });
+        const view = tab.scrollRoot?.getBoundingClientRect();
+        revealedPlace = null;
+        // A hidden panel's rows have no place, and its tab's reveal comes when it is shown.
+        if (entry !== undefined && view !== undefined && tab.scrollRoot !== null && panelShown) {
+          const offset = entry.item.getBoundingClientRect().top - view.top;
+          revealedPlace = { key: number, offset, scrollTop: tab.scrollRoot.scrollTop };
+          readingPlace = { key: number, offset };
+        }
+      },
+      markOutside(text) {
+        if (text === null) {
+          outsideNote.remove();
+          return;
+        }
+        outsideNote.textContent = text;
+        if (!outsideNote.isConnected) {
+          connection.after(outsideNote);
+        }
       },
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
+      warmComparisons: (numbers) => warmer?.want(numbers),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
+  // The comparisons of the pull requests a reader opens next, kept for the document so their
+  // pages draw the Diff summary at once (comparison-prefetch.js). A record is the peek's when
+  // a peek read it, and otherwise one cache read, which never asks GitHub and, marked
+  // `warm=1`, is not counted as a view: the server's prefetch lane refreshes the records a
+  // reader viewed last, and a warm is not one. Warming is idle work, so an SDK without
+  // `whenIdle`, as a session's that drives the panel alone is, has none, as one without
+  // `shortcuts` has no numbered controls below.
+  warmer =
+    typeof mb.whenIdle !== "function"
+      ? null
+      : createComparisonWarmer({
+          async read(number, readSignal) {
+            let envelope = await controller.knownRecord(number);
+            if (envelope === null) {
+              const response = await request(
+                mb.perf,
+                "GET",
+                `${PULL_ROUTE}?number=${number}&warm=1`,
+                { signal: readSignal },
+              );
+              envelope = response.status === 200 ? response.body : null;
+            }
+            if (!isPullEnvelope(envelope) || envelope.number !== number) {
+              throw new Error(`no record of pull request ${number}`);
+            }
+            return {
+              comparison: pullComparison(envelope),
+              // The record's own freshness window, past which its head may have moved.
+              freshForMs: envelope.fresh_for_s * 1000,
+            };
+          },
+          load: diffComparisonLoader(mb),
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible",
+          now: () => Date.now(),
+        });
 
   const unbindFilters = controls.bind(filters, {
     onChange(key, value, select) {
@@ -4531,6 +4825,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (visible) {
         queueWindow();
       } else {
+        revealedPlace = null;
         cancelCoreSample();
         // Hiding the tab cancels its animations without an animationend event.
         clearArrivalFlashes();
@@ -4540,11 +4835,12 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
     /**
-     * The address names a pull request's page, and maybe one file of it.
+     * The address names a pull request's page, and maybe one file of it. *again* reveals
+     * the pull request already current (the controller's `setCurrent`).
      *
      * @param {number | null} number
      * @param {string | null} [file]
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, file = null, options) {
       if (currentRow !== null && currentRow !== number) {
@@ -4623,6 +4919,21 @@ export function mountPullsPanel(container, ctx, mb) {
     fileLeft: () => focused()?.left() ?? false,
     fileRight: () => focused()?.right() ?? false,
     activateFile: () => focused()?.activateAnchor() ?? false,
+    /**
+     * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it.
+     * Every row's changed files close, whoever opened them, with no read, and the rows go
+     * back to every stack open and the Tab stop on the first. The lists of changed files
+     * already read stay held, as the rows do, so a row opened again opens at once, with
+     * the folders in it as the reader left them.
+     */
+    home() {
+      for (const key of Object.keys(expansion.snapshot())) {
+        const number = Number(key);
+        expansion.collapse(number);
+        setExpanded(number, false);
+      }
+      controller.home();
+    },
     dispose() {
       windowDisposed = true;
       cancelCoreSample();
@@ -4640,6 +4951,7 @@ export function mountPullsPanel(container, ctx, mb) {
       unbindFilters();
       stacks.dispose();
       controller.dispose();
+      warmer?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }

@@ -17,7 +17,8 @@ A repaint elsewhere on the page used to take a row’s tooltip away too, under a
 that had not moved (mb-alff).
 Now a surface’s hide puts away only a tooltip anchored in it, or one whose anchor has
 left the document, and focus a rebuild puts back after removing the element that had it
-leaves the tooltip be; focus moving between controls still puts it away.
+leaves the tooltip be, as the focus a press on the folder’s name gives it does; focus
+moving between controls still puts it away.
 
 ```console
 $ node tests/dom/tooltip-anchor-session.js
@@ -180,6 +181,22 @@ $ node tests/dom/tooltip-anchor-session.js
       "visible": false,
       "left": "",
       "top": ""
+    }
+  },
+  "the folder name's own press leaves its tooltip": {
+    "pressed": {
+      "html": "<b>~/served</b>",
+      "display": "block",
+      "visible": true,
+      "left": "190px",
+      "top": "36px"
+    },
+    "moved": {
+      "html": "<b>~/served</b>",
+      "display": "none",
+      "visible": false,
+      "left": "190px",
+      "top": "36px"
     }
   }
 }

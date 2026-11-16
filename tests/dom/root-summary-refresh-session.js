@@ -59,13 +59,17 @@ function updateFilterTallies() {
 }
 function renderNavFilterBar() {}
 function patchOpenRecencyTallyCounts() {}
-${["esc", "formatSize", "formatCount", "treeSummaryFormat", "treeSummaryHtml"].map(appFunction).join("\n")}
+${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml"].map(appFunction).join("\n")}
 var _lastTreeRender = { chromeHtml: treeSummaryHtml(null, null, null) };
 `;
 
-/** How a line of markup reads. */
+/**
+ * How a line of markup reads. A count summary's bold number (`.summary-number`) is inline in
+ * its item, so it reads as the figure it holds.
+ */
 function reads(html) {
   return html
+    .replace(/<span class="summary-number">([^<]*)<\/span>/g, "$1")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

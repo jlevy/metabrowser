@@ -178,8 +178,8 @@ def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
     Control chord they registered outside the view tabs and the modal scopes. Its letters
     are exactly the table's, so a shell key added or dropped on one side fails here; its
     digits are the situational numbers, ``1`` to ``9`` and no more, which the registry
-    hands out by place; and its chords are the registry's Control chords, which reserve no
-    letter, since a view's key is one letter alone.
+    hands out by place, and ``0``, Home; and its chords are the registry's Control chords,
+    which reserve no letter, since a view's key is one letter alone.
     """
     shell_keys = _golden_shell_keys()
     letters = set(string.ascii_lowercase)
@@ -187,7 +187,7 @@ def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
     chords = {key for key in shell_keys if key.startswith("control-")}
     assert shell_keys & letters == reserved & letters
     assert chords == _control_chords()
-    assert shell_keys - letters - chords == set("123456789")
+    assert shell_keys - letters - chords == set("0123456789")
     assert shell_keys - letters - chords == reserved - letters
 
 
@@ -342,13 +342,14 @@ def test_the_design_system_keymap_is_the_keys_the_app_binds() -> None:
     Every reserved shell letter, every manifest view key, and every letter a built-in plugin
     attaches has a row; every row's letter is one of those, ``?``, or ``/``; each Control
     chord the registry allows has a row; a view's or a plugin control's row names its label;
-    and the numbers are one row, ``1`` to ``9``, never a fixed digit.
+    the numbers are one row, ``1`` to ``9``, never a fixed digit; and ``0``, the one digit
+    with a fixed meaning, is Home's row.
     """
     rows = _documented_keymap()
     documented = {key for keys, _meaning in rows for key in keys if len(key) == 1}
     chords = {key for keys, _meaning in rows for key in keys if key.startswith("control-")}
     assert chords == _control_chords(), "each Control chord the registry allows has its row"
-    shell = {key for key in RESERVED_SHELL_KEYS if key.isalpha()}
+    shell = {key for key in RESERVED_SHELL_KEYS if key.isalpha() or key == "0"}
     views = _manifest_views()
     plugins = _builtin_plugin_letters()
     bound = shell | {key for _kind, _label, key in views} | set(plugins)
@@ -359,8 +360,9 @@ def test_the_design_system_keymap_is_the_keys_the_app_binds() -> None:
     for label, key in re.findall(r'label: "([^"]+)", key: "([a-z])"', pull_page):
         assert any(key in keys and label in meaning for keys, meaning in rows), (key, label)
     assert any("l" in keys and "Diff layout" in meaning for keys, meaning in rows)
-    numbered = [keys for keys, _meaning in rows if any(re.search(r"\d", key) for key in keys)]
-    assert numbered == [["1–9"]], "the numbers are one positional row"
+    digits = [keys for keys, _meaning in rows if any(re.search(r"\d", key) for key in keys)]
+    assert digits == [["0"], ["1–9"]], "Home's 0, then the numbers as one positional row"
+    assert any(keys == ["0"] and meaning.startswith("Home") for keys, meaning in rows)
 
 
 def _golden_shell_commands() -> list[tuple[str, str, str]]:
@@ -426,7 +428,7 @@ def test_the_documented_shell_letters_mean_their_commands() -> None:
     """
     commands = _golden_shell_commands()
     assert {key for key, _command, _action in commands} == {
-        key for key in RESERVED_SHELL_KEYS if key.isalpha()
+        key for key in RESERVED_SHELL_KEYS if key.isalpha() or key == "0"
     } | _control_chords()
     assert _shell_meaning_problems(_documented_keymap(), commands) == []
 
@@ -456,9 +458,18 @@ def test_swapping_two_documented_shell_letters_fails_the_meaning_check() -> None
 
 
 def test_the_numbers_stop_at_nine() -> None:
-    """The registry's numbering hands out ``1`` to ``9`` and no more: no ``0``, no tenth."""
+    """The registry's numbering hands out ``1`` to ``9`` and no more: no ``0``, no tenth.
+
+    ``0`` is reserved for Home, the one digit with a fixed meaning, which the numbering
+    never reaches.
+    """
     registry = (Path(server.__file__).parent / "static" / "keyboard-shortcuts.js").read_text(
         encoding="utf-8"
     )
     assert "const NUMBERED_LIMIT = 9;" in registry
-    assert set(RESERVED_SHELL_KEYS) - set(string.ascii_lowercase) == set("123456789")
+    digits = {key: reserved.purpose for key, reserved in RESERVED_SHELL_KEYS.items()}
+    assert {key for key in digits if key.isdigit()} == set("0123456789")
+    assert {key for key, purpose in digits.items() if purpose == "situational numbers"} == set(
+        "123456789"
+    )
+    assert digits["0"] == "Home"

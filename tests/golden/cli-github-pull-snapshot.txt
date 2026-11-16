@@ -168,7 +168,7 @@ status: 202
     "verified_by": "fetch",
     "head_moved": false,
     "checks_pending": true,
-    "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+    "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -182,13 +182,13 @@ status: 202
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": {
       "schema_version": 2,
-      "projection_version": 1,
+      "projection_version": 2,
       "source": "<PATH>",
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
       "reader": "gh:octo-reader",
       "etags": {
-        "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
+        "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
         "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
         "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
         "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -209,7 +209,11 @@ status: 202
         "merge_commit_sha": null,
         "mergeable": "mergeable",
         "labels": [
-          "enhancement"
+          {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip"
+          }
         ],
         "author": "forker",
         "author_avatar_url": null,
@@ -351,7 +355,9 @@ status: 202
       },
       "unavailable": {}
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=7"
 }
@@ -369,7 +375,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "b11067f0c62f37d78b13dad56eff5838b598a5de6e3b766d03c8e40a77b9f36b",
+  "record_revision": "110506edb97812d9e5a74edaee93e0bc817e8b375503a0fdd1df0a4edd17f83b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -383,13 +389,13 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "<PATH>",
     "number": 7,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"6a3910542cf06b04855d345176a8a5137e2e75ca25688ac5197c92c23de29ffd\"",
+      "repos/octo/demo/pulls/7": "W/\"78e3783480145382270d9a438ac8f38ee89baf34145910408cef3fe6ce8f307f\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -410,7 +416,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -528,7 +538,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request

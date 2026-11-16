@@ -11,7 +11,8 @@
 // whatever tooltip was up each time they drew, and the filter bar's rebuild, putting
 // focus back on its own control, counted as focus moving. Now a surface puts away only a
 // tooltip anchored in it (`hideTooltipWithin`), and focus put back after a rebuild
-// removed the element that had it leaves the tooltip be (`hideTooltipForFocus`).
+// removed the element that had it leaves the tooltip be (`hideTooltipOnFocus`), as the
+// focus a press on the folder's name gives it does (docs/design-system.md, "Home").
 //
 // The tooltip code is lifted verbatim from app.js, which cannot load without a
 // document, from its section comment to the block that publishes it. Timers and the
@@ -277,17 +278,17 @@ const transcript = {};
 {
   const { clock, read, sandbox } = page();
   const trigger = control();
-  sandbox.hideTooltipForFocus({ target: trigger });
+  sandbox.hideTooltipOnFocus({ target: trigger });
   sandbox.showTooltip("<b>size</b>", row(100));
   clock.advance(150);
   trigger.isConnected = false;
   const rebuilt = control();
-  sandbox.hideTooltipForFocus({ target: rebuilt });
+  sandbox.hideTooltipOnFocus({ target: rebuilt });
   clock.advance(150 + 16);
   const shown = read();
   assert(shown.display === "block" && shown.visible, "a focus repair took the tooltip");
   // Focus moving on from there, as Tab or an arrow key moves it, puts the tooltip away.
-  sandbox.hideTooltipForFocus({ target: control() });
+  sandbox.hideTooltipOnFocus({ target: control() });
   const moved = read();
   clock.advance(150);
   const afterFade = read();
@@ -299,14 +300,35 @@ const transcript = {};
 // never appears.
 {
   const { clock, read, sandbox } = page();
-  sandbox.hideTooltipForFocus({ target: control() });
+  sandbox.hideTooltipOnFocus({ target: control() });
   sandbox.showTooltip("<b>size</b>", row(100));
   clock.advance(150);
-  sandbox.hideTooltipForFocus({ target: control() });
+  sandbox.hideTooltipOnFocus({ target: control() });
   clock.advance(300 + 16);
   const atDelay = read();
   assert(atDelay.display !== "block" && !atDelay.visible, "a tooltip appeared after focus moved");
   transcript["focus moving during the delay puts the tooltip away"] = { atDelay };
+}
+
+// A press on the folder's name focuses it, and that focus is the click itself, not focus
+// moving: the name's tooltip stays as the pointer has it (docs/design-system.md, "Home").
+// The press is spent by that focus, so the next one moves focus as any other does.
+{
+  const { clock, read, sandbox } = page();
+  sandbox.hideTooltipOnFocus({ target: control() });
+  const name = row(10);
+  sandbox.showTooltip("<b>~/served</b>", name);
+  clock.advance(300 + 16);
+  sandbox.tooltipPressedAnchor = name;
+  sandbox.hideTooltipOnFocus({ target: name });
+  clock.advance(150);
+  const pressed = read();
+  assert(pressed.display === "block" && pressed.visible, "the name's own press took its tooltip");
+  sandbox.hideTooltipOnFocus({ target: control() });
+  clock.advance(150);
+  const moved = read();
+  assert(moved.display === "none" && !moved.visible, "focus moved after the press and it stayed");
+  transcript["the folder name's own press leaves its tooltip"] = { pressed, moved };
 }
 
 process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);

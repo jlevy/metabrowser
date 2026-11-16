@@ -768,7 +768,9 @@
   /**
    * Wire one container. `onChange(key, value, select)` fires for group
    * segments, `onToggle(key, nextPressed)` for standalone chips, and
-   * `onClear()` for the clear affordance. Returns a disposer, because
+   * `onClear()` for the clear affordance, and `onMenuFocus(key, value)` when the arrow
+   * keys, Home, or End move focus to a dropdown row (its value, or null for the any-row),
+   * so a consumer can act on the row a reader rests on. Returns a disposer, because
    * every listener the shell installs needs a way back out.
    *
    * @param {Element} root
@@ -776,6 +778,7 @@
    *          onToggle?: (key: string, pressed: boolean) => void,
    *          onMenuToggle?: (key: string, open: boolean) => void,
    *          onMenuPick?: (key: string, value: string | null) => void,
+   *          onMenuFocus?: (key: string, value: string | null) => void,
    *          onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void,
    *          onClear?: () => void}} handlers
    */
@@ -943,11 +946,17 @@
           return;
         }
         ev.preventDefault();
-        moveFocus(
+        const row = moveFocus(
           Array.prototype.slice.call(panel.querySelectorAll(".chip-menu-item")),
           target.closest(".chip-menu-item"),
           key,
         );
+        if (row && opts.onMenuFocus) {
+          opts.onMenuFocus(
+            row.getAttribute("data-chip-key") || "",
+            row.hasAttribute("data-chip-any") ? null : row.getAttribute("data-chip-value") || "",
+          );
+        }
         return;
       }
       // On a dropdown's trigger, Up and Down open it, as Enter and Space do through the

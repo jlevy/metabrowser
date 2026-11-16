@@ -55,6 +55,12 @@ def source_stacks(slug: str) -> str:
     return f"{source_pulls_directory(slug)}/stacks.json"
 
 
+def source_labels(slug: str) -> str:
+    """Return the GitHub plugin's cached label set of the repository: its names and colors."""
+
+    return f"{source_pulls_directory(slug)}/labels.json"
+
+
 def source_pull_record(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.json`` for a positive pull-request number."""
 
@@ -158,6 +164,7 @@ __all__ = [
     "source_pull_timeline",
     "source_pulls_directory",
     "source_record",
+    "source_labels",
     "source_stacks",
     "staging_entry",
     "store_directory",

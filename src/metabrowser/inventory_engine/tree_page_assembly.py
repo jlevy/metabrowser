@@ -14,9 +14,12 @@ from metabrowser.inventory_engine.contract import (
     EngineVersion,
     FilteredTreeProjection,
     FilteredTreeQuery,
+    GroupedTreeProjection,
+    GroupedTreeQuery,
     InventoryEntry,
     ReadQuery,
     ReadRequest,
+    TreeGroupProjection,
     VersionUnavailableError,
 )
 from metabrowser.inventory_engine.coordinator import (
@@ -155,4 +158,138 @@ async def assemble_tree_pages(
     ) from last_version_error
 
 
-__all__ = ["TreePageAssembly", "TreePageProjection", "TreePageQuery", "assemble_tree_pages"]
+@dataclass(frozen=True, slots=True)
+class GroupedTreeAssembly:
+    """Every group's complete filtered tree, read at one engine version."""
+
+    first_read: CoordinatedRead
+    final_read: CoordinatedRead
+    groups: tuple[TreeGroupProjection, ...]
+
+
+async def assemble_grouped_tree(
+    coordinator: InventoryCoordinator,
+    *,
+    query: GroupedTreeQuery,
+    companion_queries: tuple[ReadQuery, ...] = (),
+    max_pages: int = MAX_ASSEMBLED_PAGES,
+    max_assembled_rows: int = MAX_ASSEMBLED_ROWS,
+) -> GroupedTreeAssembly:
+    """Read a grouped tree and each group's continuation pages from one engine version.
+
+    The first read answers every group from one pass with the companion queries beside
+    it; a group whose rows outran the page bound continues as its own filtered tree,
+    pinned to that read's version, so every group is cut from one index version.
+    """
+
+    if any(companion.query_id == query.query_id for companion in companion_queries):
+        raise ValueError("the grouped query_id must be unique among companion queries")
+    if max_pages <= 0 or max_assembled_rows <= 0:
+        raise ValueError("grouped tree assembly bounds must be positive")
+    last_version_error: VersionUnavailableError | None = None
+    for _attempt in range(_MAX_ASSEMBLY_ATTEMPTS):
+        try:
+            async with coordinator.read_session() as session:
+                first_read = await session.read(ReadRequest(queries=(*companion_queries, query)))
+                projection = first_read.result.completed_projection(query.query_id)
+                if not isinstance(projection, GroupedTreeProjection):
+                    raise TypeError("a grouped tree query returned the wrong projection")
+                if [group.key for group in projection.groups] != [
+                    group.key for group in query.groups
+                ]:
+                    raise InventoryConsistencyError(
+                        "a grouped tree answered other groups than it was asked for"
+                    )
+                pinned = first_read.version.engine
+                final_read = first_read
+                pages_read = 1
+                assembled_rows = 0
+                complete: list[TreeGroupProjection] = []
+                for group, answer in zip(query.groups, projection.groups, strict=True):
+                    if len(answer.entries) > query.max_rows:
+                        raise InventoryConsistencyError("a tree page exceeded its row bound")
+                    entries: list[InventoryEntry] = list(answer.entries)
+                    seen_paths = {entry.path for entry in entries}
+                    if len(seen_paths) != len(entries):
+                        raise InventoryConsistencyError(
+                            f"grouped tree group {group.key!r} returned a duplicate path"
+                        )
+                    # Counted on every page, as `assemble_tree_pages` counts, so a group
+                    # whose cursors keep advancing stops at the bound, not past it.
+                    assembled_rows += len(entries)
+                    if assembled_rows > max_assembled_rows:
+                        raise InventoryConsistencyError(
+                            "grouped tree assembly exceeded its row bound"
+                        )
+                    seen_cursors: set[str] = set()
+                    after = answer.next_page
+                    while after is not None:
+                        if pages_read == max_pages:
+                            raise InventoryConsistencyError(
+                                "grouped tree assembly exceeded its page bound"
+                            )
+                        if after in seen_cursors:
+                            raise InventoryConsistencyError("tree page cursor did not advance")
+                        seen_cursors.add(after)
+                        page_query = query.group_query(group, after=after)
+                        read = await session.read(
+                            ReadRequest(queries=(page_query,), at_version=pinned)
+                        )
+                        pages_read += 1
+                        page = read.result.completed_projection(page_query.query_id)
+                        if not isinstance(page, FilteredTreeProjection):
+                            raise TypeError("a tree page query returned the wrong projection")
+                        if read.version.engine != pinned:
+                            raise InventoryConsistencyError(
+                                "a version-pinned tree page changed engine version"
+                            )
+                        if len(page.entries) > query.max_rows:
+                            raise InventoryConsistencyError("a tree page exceeded its row bound")
+                        if (
+                            page.matching_leaves,
+                            page.matching_files,
+                            page.matching_bytes,
+                        ) != (answer.matching_leaves, answer.matching_files, answer.matching_bytes):
+                            raise InventoryConsistencyError(
+                                "filtered tree totals changed within one version"
+                            )
+                        for entry in page.entries:
+                            if entry.path in seen_paths:
+                                raise InventoryConsistencyError(
+                                    f"tree page assembly returned duplicate path {entry.path!r}"
+                                )
+                            seen_paths.add(entry.path)
+                            entries.append(entry)
+                        assembled_rows += len(page.entries)
+                        if assembled_rows > max_assembled_rows:
+                            raise InventoryConsistencyError(
+                                "grouped tree assembly exceeded its row bound"
+                            )
+                        final_read = read
+                        after = page.next_page
+                    complete.append(replace(answer, entries=tuple(entries), next_page=None))
+                return GroupedTreeAssembly(
+                    first_read=first_read,
+                    final_read=final_read,
+                    groups=tuple(complete),
+                )
+        except VersionUnavailableError as error:
+            last_version_error = error
+            continue
+    if last_version_error is None:
+        raise InventoryConsistencyError("grouped tree assembly exhausted without a version failure")
+    # The last failure says why: the files changed, or a continuation's page was evicted.
+    raise VersionUnavailableError(
+        f"grouped tree assembly failed {_MAX_ASSEMBLY_ATTEMPTS} attempts; "
+        f"the last: {last_version_error}"
+    ) from last_version_error
+
+
+__all__ = [
+    "GroupedTreeAssembly",
+    "TreePageAssembly",
+    "TreePageProjection",
+    "TreePageQuery",
+    "assemble_grouped_tree",
+    "assemble_tree_pages",
+]

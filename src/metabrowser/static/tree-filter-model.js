@@ -286,6 +286,29 @@
   }
 
   /**
+   * The request to make ahead for the Group by row a reader is about to choose: the one the
+   * pointer presses, or the one the keyboard rests on (`createGroupsPrefetch`, `rest`). No
+   * grouping, and the grouping already shown, need none.
+   *
+   * Nothing is asked for when the menu opens: a reader chooses at most one grouping and
+   * often none, each asks for a pass over the index, and passes at once slow the one
+   * chosen. On a 380,000-entry folder two took 856-863 ms each, against about 420 ms alone
+   * (measured in headless Chrome, 2026-11-15).
+   *
+   * @param {string} value the row's grouping: "none", "age", or "type"
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @returns {string | null}
+   */
+  function groupPrefetchUrl(value, state, sizeFloors) {
+    if (!GROUP_BY_VALUES.includes(value) || value === "none" || value === groupBy(state)) {
+      return null;
+    }
+    const unfiltered = { recency: "all", types: null, size: "all", showIgnored: true };
+    return groupsUrl({ ...(state || unfiltered), group: value }, sizeFloors, 2);
+  }
+
+  /**
    * One group's tree under *path*: how a folder inside a group opens.
    *
    * @param {string} path
@@ -424,62 +447,280 @@
   }
 
   /**
+   * The part of a grouped request (`groupsUrl`) that names the filters, without the grouping:
+   * two groupings asked for under one filter state share it.
+   *
+   * @param {string} url
+   * @returns {string}
+   */
+  function groupsFilterKey(url) {
+    return url.replace(/^\/api\/tree\?group_by=[^&]*&?/, "");
+  }
+
+  /**
    * @typedef {object} GroupsPrefetchDeps
    * @property {() => number} now
    * @property {number} ttlMs how long a fetched-ahead answer stays good
    * @property {(url: string) => {answer: Promise<unknown>, abort: () => void}} start
+   * @property {number} dwellMs how long keyboard focus rests on a row before it asks ahead
+   * @property {(callback: () => void, ms: number) => unknown} setTimer
+   * @property {(timer: unknown) => void} clearTimer
    */
 
   /**
-   * The Group by prefetch: the groupings the menu offers are asked for when it opens, and a
-   * choice takes its answer. An answer younger than `ttlMs` is kept for the same request
-   * rather than asked for again, a request no longer offered is aborted, an answer is taken
-   * once, and a change to the files clears them all.
+   * The Group by prefetch: a grouping the reader is about to choose is asked for ahead
+   * (`groupPrefetchUrl`), and the choice takes its answer. A pointer's press asks at once
+   * (`want`); the keyboard asks only once focus has rested on a row for `dwellMs` (`rest`),
+   * so a row passed over on the way to another asks for nothing, and the next key, a
+   * choice, or the menu closing cancels the wait.
+   *
+   * An answer younger than `ttlMs` is kept for the same request rather than asked for again,
+   * an older one is dropped, and an answer is taken once. Asking for one drops the answers
+   * kept for other filters, which no choice under these filters takes.
+   *
+   * A change to the files makes every answer kept stale rather than dropping it. A choice
+   * still takes a stale answer, since it comes sooner than a new one, and says it is stale,
+   * so the shell paints it and then refreshes the sections. A stale answer still on its way
+   * is left alone, since its pass is running and a new one would run beside it; one that
+   * has come is asked for again. Dropping them would make a choice made just after a change
+   * start its pass over the index from nothing, which on a folder whose files keep changing
+   * looks like a choice that did nothing (mb-75l5).
    *
    * @param {GroupsPrefetchDeps} deps
    */
   function createGroupsPrefetch(deps) {
-    /** @type {Map<string, {at: number, answer: Promise<unknown>, abort: () => void}>} */
+    /**
+     * @type {Map<string, {at: number, stale: boolean, done: boolean, answer: Promise<unknown>, abort: () => void}>}
+     */
     const entries = new Map();
     /** @param {{at: number}} entry */
     const fresh = (entry) => deps.now() - entry.at < deps.ttlMs;
+    /** @type {unknown} */
+    let resting = null;
+    const stopResting = () => {
+      if (resting !== null) {
+        deps.clearTimer(resting);
+        resting = null;
+      }
+    };
+    /** @param {string | null} keep the filters whose answers stay kept, or null for any */
+    const prune = (keep) => {
+      for (const [url, entry] of entries) {
+        if (!fresh(entry) || (keep !== null && groupsFilterKey(url) !== keep)) {
+          entry.abort();
+          entries.delete(url);
+        }
+      }
+    };
+    /** @param {string} url */
+    const want = (url) => {
+      stopResting();
+      prune(groupsFilterKey(url));
+      const kept = entries.get(url);
+      if (kept && (!kept.stale || !kept.done)) {
+        return;
+      }
+      const started = deps.start(url);
+      const entry = {
+        at: deps.now(),
+        stale: false,
+        done: false,
+        answer: started.answer,
+        abort: started.abort,
+      };
+      const settle = () => {
+        entry.done = true;
+      };
+      started.answer.then(settle, settle);
+      entries.set(url, entry);
+    };
     return Object.freeze({
-      /** @param {string[]} urls */
-      prefetch(urls) {
-        for (const [url, entry] of entries) {
-          if (!urls.includes(url) || !fresh(entry)) {
-            entry.abort();
-            entries.delete(url);
-          }
+      want,
+      /**
+       * Keyboard focus rests on a row asking for *url* (or for nothing, when null): ask for
+       * it once focus has stayed `dwellMs`, and `stillThere` says it has not moved on.
+       *
+       * @param {string | null} url
+       * @param {() => boolean} [stillThere]
+       */
+      rest(url, stillThere) {
+        stopResting();
+        if (url === null) {
+          return;
         }
-        for (const url of urls) {
-          if (!entries.has(url)) {
-            const started = deps.start(url);
-            entries.set(url, { at: deps.now(), answer: started.answer, abort: started.abort });
+        resting = deps.setTimer(() => {
+          resting = null;
+          if (!stillThere || stillThere()) {
+            want(url);
           }
-        }
+        }, deps.dwellMs);
       },
-      /** @param {string} url @returns {Promise<unknown> | null} */
+      /** The menu closed, or the reader moved on: a rest under way asks for nothing. */
+      cancelRest: stopResting,
+      /**
+       * @param {string} url
+       * @returns {{answer: Promise<unknown>, stale: boolean, abort: () => void} | null}
+       */
       take(url) {
+        stopResting();
+        prune(null);
         const entry = entries.get(url);
         entries.delete(url);
         if (!entry) {
           return null;
         }
-        if (!fresh(entry)) {
-          entry.abort();
-          return null;
-        }
-        return entry.answer;
+        return { answer: entry.answer, stale: entry.stale, abort: entry.abort };
       },
-      clear() {
+      markChanged() {
         for (const entry of entries.values()) {
-          entry.abort();
+          entry.stale = true;
         }
-        entries.clear();
       },
       size: () => entries.size,
+      resting: () => resting !== null,
     });
+  }
+
+  /**
+   * What a Group by load asked for now does beside the one on its way: start, superseding
+   * it, or wait until it paints.
+   *
+   * A refresh of a grouping whose first sections are still on their way waits for them, and
+   * runs once they paint. Started at once, it would discard them and begin again from
+   * nothing, with no sections on screen to keep: on a folder whose files keep changing and
+   * whose groups take seconds to come, each refresh would restart the wait, and the choice
+   * would look like it did nothing (mb-75l5). Anything else starts: a newer grouping or
+   * filter cancels the load it supersedes.
+   *
+   * @param {{key: string, first: boolean} | null} inFlight the load on its way, if any
+   * @param {{key: string, first: boolean}} asked `first` for a load that paints new sections
+   * @returns {"start" | "after"}
+   */
+  function groupedLoadDecision(inFlight, asked) {
+    return inFlight?.first && !asked.first && inFlight.key === asked.key ? "after" : "start";
+  }
+
+  /**
+   * @typedef {object} GroupedLoad one Group by load, as `run` sees it
+   * @property {string} key the grouped request it paints (`groupedRequestKey`)
+   * @property {boolean} first whether it paints new sections rather than refreshing those
+   *   on screen
+   * @property {AbortSignal} signal aborted when a newer load supersedes it or it is
+   *   cancelled
+   * @property {() => boolean} current whether it is still the load on its way, so its
+   *   answer may paint
+   * @property {() => void} refreshAfter refresh the sections once it ends: its answer
+   *   predates a change to the files
+   */
+
+  /**
+   * @typedef {object} GroupedLoadsDeps
+   * @property {(load: GroupedLoad) => Promise<boolean>} run fetch the groups and paint
+   *   them, if the load is still `current` when they come; whether they painted
+   * @property {(load: {key: string, first: boolean} | null) => void} pending show the wait
+   *   for the load on its way, or end it
+   * @property {() => void} refresh ask for a refresh of the sections on screen
+   */
+
+  /**
+   * The Group by loads: at most one on its way, which a newer grouping or filter cancels
+   * and a refresh of its own first sections waits for (`groupedLoadDecision`).
+   *
+   * `load` starts one and resolves with whether it painted; a refresh that waits resolves
+   * true at once and runs, once, after the load it waits for. `cancel` aborts the load on
+   * its way and ends its wait at once, and its answer is never painted. `settled` resolves
+   * once no load is painting new sections: when it paints, fails, or is cancelled, and a
+   * newer one that superseded it is waited for in turn.
+   *
+   * @param {GroupedLoadsDeps} deps
+   */
+  function createGroupedLoads(deps) {
+    /**
+     * @type {{key: string, first: boolean, controller: AbortController, refreshAfter: boolean, settled: Promise<void>, settle: () => void} | null}
+     */
+    let current = null;
+    function cancel() {
+      const load = current;
+      if (!load) {
+        return;
+      }
+      current = null;
+      load.controller.abort();
+      deps.pending(null);
+      load.settle();
+    }
+    return Object.freeze({
+      /**
+       * @param {string} key
+       * @param {{refresh?: boolean, painted?: boolean}} [options] `refresh` refreshes the
+       *   sections on screen; `painted` says sections are on screen to refresh
+       * @returns {Promise<boolean>}
+       */
+      async load(key, options = {}) {
+        const refresh = options.refresh === true;
+        if (current && groupedLoadDecision(current, { key, first: !refresh }) === "after") {
+          current.refreshAfter = true;
+          return true;
+        }
+        cancel();
+        /** @type {() => void} */
+        let settle = () => {};
+        /** @type {Promise<void>} */
+        const settled = new Promise((resolve) => {
+          settle = resolve;
+        });
+        const load = {
+          key,
+          // A refresh with no sections on screen to keep paints new ones.
+          first: !refresh || options.painted !== true,
+          controller: new AbortController(),
+          refreshAfter: false,
+          settled,
+          settle,
+        };
+        current = load;
+        deps.pending({ key, first: load.first });
+        try {
+          return await deps.run({
+            key,
+            first: load.first,
+            signal: load.controller.signal,
+            current: () => current === load,
+            refreshAfter: () => {
+              load.refreshAfter = true;
+            },
+          });
+        } finally {
+          if (current === load) {
+            current = null;
+            deps.pending(null);
+            if (load.refreshAfter) {
+              deps.refresh();
+            }
+          }
+          load.settle();
+        }
+      },
+      cancel,
+      async settled() {
+        for (let load = current; load?.first; load = current) {
+          await load.settled;
+        }
+      },
+      /** @returns {{key: string, first: boolean} | null} */
+      inFlight: () => (current ? { key: current.key, first: current.first } : null),
+    });
+  }
+
+  /**
+   * What the scan row says while a grouping's first sections are on their way: the choice,
+   * in the words of its Group by row ("By file type" is "Grouping by file type…").
+   *
+   * @param {string} by "age" or "type"
+   * @returns {string}
+   */
+  function regroupingStatusText(by) {
+    return by === "age" ? "Grouping by age…" : "Grouping by file type…";
   }
 
   /**
@@ -1076,23 +1317,36 @@
   }
 
   /**
-   * Format the filtered Recent tally without presenting a retained-page lower
-   * bound as an exact result. An untruncated response can become non-exact
-   * after an unscoped live change, so exactness—not truncation—owns the `+`.
+   * The Files filter's remark under the totals, "Filtered to 1,234 files.", in its parts:
+   * the words as strings and each number as `{number}`, which the remark paints bold, as
+   * every count summary does (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers"). *recent* is the Recent source's response, or null for the tree, whose count
+   * is a subtree total and exact.
+   *
+   * Recent's tally does not present a retained-page lower bound as an exact result. An
+   * untruncated response can become non-exact after an unscoped live change, so
+   * exactness—not truncation—owns the `+`, which is part of its number.
    *
    * @param {number} count
-   * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean}} options
+   * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean} | null} recent
+   * @returns {MetabrowserCountParts}
    */
-  function recentFilteredTallyText(count, options) {
-    if (!options.totalMatchingExact && !options.truncated) {
-      return `Filtered to ${count.toLocaleString()}+ files.`;
+  function filteredTallyParts(count, recent) {
+    if (recent !== null && !recent.totalMatchingExact && !recent.truncated) {
+      return ["Filtered to ", { number: `${count.toLocaleString()}+` }, " files."];
     }
-    let text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
-    if (options.truncated) {
-      const totalSuffix = options.totalMatchingExact ? "" : "+";
-      text += ` of ${options.totalMatching.toLocaleString()}${totalSuffix} matching`;
+    const parts = [
+      "Filtered to ",
+      { number: count.toLocaleString() },
+      ` ${count === 1 ? "file" : "files"}`,
+    ];
+    if (recent?.truncated) {
+      const totalSuffix = recent.totalMatchingExact ? "" : "+";
+      const total = `${recent.totalMatching.toLocaleString()}${totalSuffix}`;
+      parts.push(" of ", { number: total }, " matching");
     }
-    return `${text}.`;
+    parts.push(".");
+    return parts;
   }
 
   /**
@@ -1730,8 +1984,12 @@
   window.MetabrowserTreeFilterModel = Object.freeze({
     GROUP_BY_VALUES,
     ageGroupFor,
+    createGroupedLoads,
     createGroupsPrefetch,
     graftOpenedFolders,
+    groupPrefetchUrl,
+    groupedLoadDecision,
+    regroupingStatusText,
     likelySectionKey,
     revealSectionOrder,
     sectionRowBudget,
@@ -1756,7 +2014,7 @@
     recentEntryMatches,
     recentFilterCursor,
     recentFilterTransition,
-    recentFilteredTallyText,
+    filteredTallyParts,
     recentRepairDisposition,
     recentRequestDisposition,
     recentRequestKey,

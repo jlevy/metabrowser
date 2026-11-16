@@ -22,6 +22,23 @@ type MetabrowserRenderContext = {
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;
+  /** Where a page that keeps a comparison's Diff summary at its own top wants the diff's
+   *  summary drawn, as a commit's page does; or false, where the page draws it itself and the
+   *  diff draws none, as a pull request's page does (docs/design-system.md, "Diff Summary"). */
+  summaryHost?: HTMLElement;
+  summary?: false;
+  /** The change set's whole totals, where the page knows more than the comparison's list,
+   *  as a commit's page does from the commit's own stats: the diff's summary says them, and
+   *  how many files are listed, when that list is cut short at its bound. */
+  summaryTotals?: {
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    exact: boolean;
+  };
+  /** Told the validated comparison a view mounts, so a page that draws its Diff summary
+   *  itself has the comparison's files however the diff came by them. */
+  onDocument?: (document: Record<string, unknown>) => void;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -91,7 +108,12 @@ type MetabrowserPullsPanelHandle = Readonly<{
   setCurrent(
     number: number | null,
     file?: string | null,
-    options?: { preserveScroll?: boolean },
+    /**
+     * *preserveScroll* keeps the list where the reader left it; *again* shows the pull
+     * request again when the address names the one already current, for an open of the
+     * pull request shown (docs/design-system.md, "Navigation Reveals the Item").
+     */
+    options?: { preserveScroll?: boolean; again?: boolean },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
@@ -113,6 +135,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
   fileLeft(): boolean;
   fileRight(): boolean;
   activateFile(): boolean;
+  /**
+   * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it,
+   * from the rows it holds and with no read. A view without it keeps what it shows.
+   */
+  home?(): void;
   dispose(): void;
 }>;
 
@@ -129,10 +156,34 @@ type MetabrowserViewSpec = {
       right: string;
       base_policy: "direct" | "merge_base";
       route?: string;
-      rendered_route?: string;
     },
     signal?: AbortSignal,
   ) => Promise<unknown>;
+  /**
+   * The first screen's rendered Markdown of a comparison *raw* answers, asked for ahead of
+   * the view, apart from `prefetch`, under the asking page's *signal*. The diff view has one;
+   * a comparison that names no rendered route asks for nothing.
+   */
+  prefetchMarkdown?: (
+    comparison: {
+      left: string;
+      right: string;
+      base_policy: "direct" | "merge_base";
+      route?: string;
+      rendered_route?: string;
+    },
+    raw: unknown,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  /**
+   * A comparison's Diff summary on its own, drawn in *slot* from what `prefetch` or `render`
+   * read, for a page that keeps it at its top while the view comes and goes, as a pull
+   * request's page does. The diff view has one; null for a comparison it cannot read.
+   */
+  summary?: (
+    slot: HTMLElement,
+    ctx: { raw: unknown; openFile: (path: string) => void },
+  ) => Promise<{ dispose: () => void } | null>;
 };
 
 type MetabrowserViewDescriptor = {
@@ -312,8 +363,8 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 
 /** The shell's text helpers the Files totals are written with (app.js). */
 type MetabrowserTreeSummaryFormat = {
-  esc(value: unknown): string;
-  formatCount(n: number): string;
+  /** A count of files as a count summary paints it, "12,797 files" in its parts. */
+  formatCountParts(n: number): MetabrowserCountParts;
   formatSize(bytes: number): string;
 };
 
@@ -382,11 +433,11 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   ): string;
   treeSummaryCountHtml(
     files: number | null | undefined,
-    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatCount">,
+    format: Pick<MetabrowserTreeSummaryFormat, "formatCountParts">,
   ): string;
   treeSummarySizeHtml(
     bytes: number | null | undefined,
-    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatSize">,
+    format: Pick<MetabrowserTreeSummaryFormat, "formatSize">,
   ): string;
   createController(options: {
     apply(
@@ -494,6 +545,10 @@ type MetabrowserFormatterRuntime = Readonly<{
   ): { label: string; className: string };
   ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
+  /** A count summary as markup, each number in `span.summary-number`, the words escaped. */
+  countPartsHtml(parts: MetabrowserCountParts): string;
+  /** A count summary as nodes, each number in `span.summary-number`, the words as text. */
+  countPartsNodes(doc: Document, parts: MetabrowserCountParts): Array<Node | string>;
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
@@ -930,6 +985,7 @@ type MetabrowserFilterState = {
 type MetabrowserFilterHandlers = {
   onChange?: (key: string, value: string, select: string) => void;
   onClear?: () => void;
+  onMenuFocus?: (key: string, value: string | null) => void;
   onMenuPick?: (key: string, value: string | null) => void;
   onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void;
   onMenuToggle?: (key: string, open: boolean) => void;
@@ -1360,8 +1416,9 @@ type MetabrowserSdk = {
   tooltip: {
     /** Put the tooltip away. With `within`, only a tooltip anchored at or inside it,
      *  shown or still waiting out its delay: a view that repaints or is disposed clears
-     *  its own and leaves another surface's; see docs/design-system.md, "A Surface Puts
-     *  Away Only Its Own Tooltip". */
+     *  its own and leaves another surface's. With none, whatever tooltip there is but one
+     *  anchored in the nav's header, the shell's chrome, which no view draws. See
+     *  docs/design-system.md, "A Surface Puts Away Only Its Own Tooltip". */
     hide(within?: Element | null): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip
      *  holds still once shown; see docs/design-system.md. */
@@ -1623,19 +1680,53 @@ type MetabrowserRecentContinuity = {
   settleRequest(request: MetabrowserRecentRequest): "commit" | "refetch" | "superseded";
 };
 
+type MetabrowserGroupedLoad = {
+  current(): boolean;
+  first: boolean;
+  key: string;
+  refreshAfter(): void;
+  signal: AbortSignal;
+};
+
 type MetabrowserTreeFilterModel = {
   GROUP_BY_VALUES: ReadonlyArray<string>;
   ageGroupFor(ageSeconds: number, windows: Record<string, number | null>): string;
+  createGroupedLoads(deps: {
+    pending(load: { first: boolean; key: string } | null): void;
+    refresh(): void;
+    run(load: MetabrowserGroupedLoad): Promise<boolean>;
+  }): {
+    cancel(): void;
+    inFlight(): { first: boolean; key: string } | null;
+    load(key: string, options?: { painted?: boolean; refresh?: boolean }): Promise<boolean>;
+    settled(): Promise<void>;
+  };
   createGroupsPrefetch(deps: {
+    clearTimer(timer: unknown): void;
+    dwellMs: number;
     now(): number;
+    setTimer(callback: () => void, ms: number): unknown;
     start(url: string): { abort(): void; answer: Promise<unknown> };
     ttlMs: number;
   }): {
-    clear(): void;
-    prefetch(urls: Array<string>): void;
+    cancelRest(): void;
+    markChanged(): void;
+    rest(url: string | null, stillThere?: () => boolean): void;
+    resting(): boolean;
     size(): number;
-    take(url: string): Promise<unknown> | null;
+    take(url: string): { abort(): void; answer: Promise<unknown>; stale: boolean } | null;
+    want(url: string): void;
   };
+  groupedLoadDecision(
+    inFlight: { first: boolean; key: string } | null,
+    asked: { first: boolean; key: string },
+  ): "after" | "start";
+  regroupingStatusText(by: string): string;
+  groupPrefetchUrl(
+    value: string,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string | null;
   graftOpenedFolders(
     nodes: Array<Record<string, unknown>>,
     opened: Array<string>,
@@ -1785,14 +1876,15 @@ type MetabrowserTreeFilterModel = {
     action: "apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent";
     current: MetabrowserRecentFilterCursor;
   }>;
-  recentFilteredTallyText(
+  /** The Files filter's remark in parts, each number apart from its words, to paint bold. */
+  filteredTallyParts(
     count: number,
-    options: {
+    recent: {
       totalMatching: number;
       totalMatchingExact: boolean;
       truncated: boolean;
-    },
-  ): string;
+    } | null,
+  ): MetabrowserCountParts;
   recentRequestDisposition(
     active: MetabrowserRecentRequest | null,
     request: MetabrowserRecentRequest,
@@ -2548,6 +2640,8 @@ type MetabrowserKeyRevealRuntime = Readonly<{
  * its mounted selector.
  */
 type MetabrowserShellKeymapShell = Readonly<{
+  /** Home: the served folder's home view, as the folder's name's click goes there. */
+  goHome(): void;
   openFolder(dir: string): void;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
   /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
@@ -3293,6 +3387,30 @@ declare global {
      * panel has no row yet, and the tab button keeps focus.
      */
     focusRow?: (() => boolean) | null;
+    /**
+     * Reveal what the address names in this panel: open what holds it, select it, and
+     * scroll it into view unless *scroll* is `keep` (main-tabs.js, `reveal`).
+     */
+    reveal?: ((how: MetabrowserRevealHow) => unknown) | null;
+    /**
+     * Home (main-tabs.js, `goHome`): put the panel back as a fresh load of `/view/` draws
+     * it, from what it holds and with no read. A panel that keeps nothing across a switch
+     * to it, as Commits, which lands on its newest commit every time, has none.
+     */
+    home?: (() => void) | null;
+  };
+
+  /** How the reader reached what the address names (main-tabs.js, `REVEAL_ROUTES`). */
+  type MetabrowserRevealRoute = "open" | "address" | "history" | "nav" | "tab" | "step";
+  type MetabrowserRevealHow = {
+    scroll: "nearest" | "keep";
+    isCurrent: () => boolean;
+    /**
+     * The reader opened the item already shown again (main-tabs.js, `reveal`): the call's
+     * own intent, which no state keeps. Files reveals a file on every call, so only Pulls
+     * reads it, to reveal the pull request the address already names.
+     */
+    again: boolean;
   };
 
   type MetabrowserMainTabsDeps = {
@@ -3306,9 +3424,13 @@ declare global {
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;
     isPullAddress(pathname: string): boolean;
-    /** The reader's own open of the served root, `/view/`. */
-    openRoot(): Promise<unknown>;
+    /** The reader's own open of the served root, `/view/`, drawn again at its default view. */
+    openHome(): Promise<unknown>;
+    /** The Files tab as a fresh load draws it: the Files panel's `home` (app.js, `resetFilesTab`). */
+    resetFiles(): void;
     restore(): Promise<unknown>;
+    /** Reveal the file the address names in the Files tree: the Files panel's `reveal`. */
+    revealFile(how: MetabrowserRevealHow): Promise<unknown>;
     scrollShadow(): void;
   };
   type MetabrowserMainTabsController = {
@@ -3317,15 +3439,20 @@ declare global {
     /** Bind the digits to a registry, or to none as the shell disposes it. */
     bindShortcuts(shortcuts: MetabrowserShortcutRegistry | null): void;
     finishGitDiscovery(): Promise<void>;
-    fileLanding(): void;
-    /** Go home: the Files tab at the served root, from any tab. */
+    /** Home: every tab forgets where it was, and the root opens at its default view. */
     home(): Promise<unknown>;
+    /** The route of the Files landing the navigation controller applies, read once. */
+    landingRoute(source: "startup" | "user" | "popstate"): MetabrowserRevealRoute;
     onHistory(): void;
     open(id: string): void;
     register(panel: MetabrowserNavPanel): void;
     remember(): void;
     remove(id: string): void;
-    takeFilesScroll(): boolean;
+    /** Show what the address names in its tab: switch to it and reveal the item there. */
+    reveal(
+      route: MetabrowserRevealRoute,
+      how?: { isCurrent?: () => boolean; again?: boolean },
+    ): Promise<void>;
   };
 
   type MetabrowserPreviewClaim = number;
@@ -3358,6 +3485,7 @@ declare global {
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
   type MetabrowserPublicTreeSection = MetabrowserTreeSection;
+  type MetabrowserPublicGroupedLoad = MetabrowserGroupedLoad;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
   type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
   type MetabrowserPublicShortcutCommand = MetabrowserShortcutCommand;
@@ -3449,9 +3577,18 @@ declare global {
     | MetabrowserChangedFilesFolderRow
     | MetabrowserChangedFilesFileRow;
 
+  /**
+   * A count summary in its parts, one shape for every count summary: the words as strings,
+   * and each number as `{number}`, which is painted bold. "35 changed files" is
+   * `[{number: "35"}, " changed files"]`, and its text is the parts joined.
+   */
+  type MetabrowserCountParts = ReadonlyArray<string | { readonly number: string }>;
+
   type MetabrowserChangedFilesSummary = {
-    files: string;
-    breakdown: string;
+    /** "35 changed files", in its parts. */
+    filesParts: MetabrowserCountParts;
+    /** "2 added, 3 removed, 30 modified", in its parts; none for no files. */
+    breakdownParts: MetabrowserCountParts;
     additions: string;
     deletions: string;
     estimated: boolean;
@@ -3592,6 +3729,29 @@ declare global {
     MetabrowserShell?: MetabrowserShellRuntime;
     MetabrowserMainTabs?: Readonly<{
       create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+      REVEAL_ROUTES: readonly MetabrowserRevealRoute[];
+      landingRoute(
+        source: "startup" | "user" | "popstate",
+        pending: MetabrowserRevealRoute | null,
+      ): MetabrowserRevealRoute;
+      revealPlan(
+        tab: string | null,
+        route: MetabrowserRevealRoute,
+        active: string,
+      ): Readonly<{
+        tab: string | null;
+        switches: boolean;
+        reveal: boolean;
+        scroll: "nearest" | "keep";
+      }>;
+      tabAtAddress(
+        address: { pathname: string; search: string; hash: string },
+        how: {
+          routes: MetabrowserNavigationRouteRuntime;
+          isPullAddress: (pathname: string) => boolean;
+          gitLanding: boolean;
+        },
+      ): string | null;
     }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;

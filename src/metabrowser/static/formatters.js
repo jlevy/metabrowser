@@ -1,5 +1,5 @@
-// Locale-aware numeric formatting, and the conventional-commit split of a commit's or a
-// pull request's title, shared by the shell and plugins.
+// Locale-aware numeric formatting, the conventional-commit split of a commit's or a pull
+// request's title, and a count summary's bold numbers, shared by the shell and plugins.
 
 (() => {
   const integerFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -100,6 +100,8 @@
   const TITLE_PREFIX_CLASS = "title-prefix";
   /** @type {Record<string, string>} */
   const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  /** @param {string} text */
+  const escaped = (text) => text.replace(/[&<>"']/g, (character) => ESCAPES[character]);
 
   /**
    * A title's prefix and the rest after it, which together are the title, or null.
@@ -140,8 +142,6 @@
    * @returns {string}
    */
   function titleHtml(title) {
-    /** @param {string} text */
-    const escaped = (text) => text.replace(/[&<>"']/g, (character) => ESCAPES[character]);
     const split = titlePrefix(title);
     if (split === null) {
       return escaped(String(title));
@@ -149,10 +149,55 @@
     return `<span class="${TITLE_PREFIX_CLASS}">${escaped(split.prefix)}</span>${escaped(split.rest)}`;
   }
 
+  // A count summary's numbers are bold and its words keep the line's weight
+  // (docs/design-system.md, "Count Summaries Bold Their Numbers"). Every count summary the
+  // shell paints comes in one shape of parts: the words as strings, and each number, the
+  // whole figure with its marks, sign, "+", or unit, as `{number}`. "12,797 files" is
+  // `[{number: "12,797"}, " files"]`, and its text is the parts joined.
+  /** The one class that sets a count summary's number's weight (static/styles.css). */
+  const SUMMARY_NUMBER_CLASS = "summary-number";
+
+  /**
+   * A count summary's nodes: each number in a `span.summary-number`, the words as text. A
+   * caller puts them in one inline element: in a flex line, each would be an item of its
+   * own, parted by the line's gap and read as runs of their own.
+   * @param {Document} doc
+   * @param {MetabrowserCountParts} parts
+   * @returns {Array<Node | string>}
+   */
+  function countPartsNodes(doc, parts) {
+    return parts.map((part) => {
+      if (typeof part === "string") {
+        return part;
+      }
+      const number = doc.createElement("span");
+      number.className = SUMMARY_NUMBER_CLASS;
+      number.textContent = part.number;
+      return number;
+    });
+  }
+
+  /**
+   * `countPartsNodes` as escaped markup.
+   * @param {MetabrowserCountParts} parts
+   * @returns {string}
+   */
+  function countPartsHtml(parts) {
+    return parts
+      .map((part) =>
+        typeof part === "string"
+          ? escaped(part)
+          : `<span class="${SUMMARY_NUMBER_CLASS}">${escaped(part.number)}</span>`,
+      )
+      .join("");
+  }
+
   window.MetabrowserFormatters = Object.freeze({
     age,
     ageClass,
     countClass,
+    countPartsHtml,
+    countPartsNodes,
     formatBytes,
     formatFileCount,
     formatInteger,

@@ -477,10 +477,12 @@ window that never existed on disk.
 | `JUMP_QUIET_MS` | 50 ms | How long a burst of jumps stops before its last file is asked for |
 | `MAX_CACHED_MANIFESTS` | 16 comparisons | Server memory for manifests kept by commit ID: up to 131 MB at the manifest cap, and about 190 MB of RSS, by the measurements beside the constant |
 | `MAX_CACHED_BODY_BYTES` | 64 MiB | Server memory for encoded comparison answers |
+| `KEPT_COMPARISON_CHARS` | 16 MiB of JSON | The document’s memory for the pull-request comparisons its pages read, which outlives every page, about 27 MiB of heap; a quarter for one answer, and the largest of this repository’s 192 merged pull requests is 1.34 MB. The Commits panel keeps its own comparisons apart, within `GIT_COMPARISON_CACHE_BYTES`, measured the same way, so a document holds both: about 54 MiB of heap at most |
 | `MAX_MANIFEST_FILES` | 2,000 files | Git comparison manifest entries; larger change sets report truncation |
 | `WINDOW_ROWS` | 100 rows | One cached-page request by the Pulls panel; automatic catalog backfill is not capped by the display window |
 | `DISPLAY_ROWS` | 500 rows | Pulls rows read from the cache at first; scrolling then reads one `WINDOW_ROWS` page per approach to the tail, with no cap |
 | `PULL_ROWS_OVERSCAN` | 40 rows | Neighbors on either side of the visible Pulls viewport; `createPullsWindow` also retains protected current or focused rows |
+| `SUMMARY_ROWS_OVERSCAN` | 40 rows | Diff summary rows on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond the comparison’s 2,000 files; the row that takes Tab is always drawn |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.
