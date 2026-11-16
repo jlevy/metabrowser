@@ -129,8 +129,9 @@ headers, comments, reviews, full commit summaries and folder headers use relativ
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, or weight.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
-in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago via GitHub CLI”
-retain their sentence formatter.
+in `data-tip-text`, on a surface that has tooltips
+([Tooltips Add Information](#tooltips-add-information)). Freshness sentences such as
+“Fetched 2 min ago via GitHub CLI” retain their sentence formatter.
 When a summary shows created or opened and updated ages, omit the updated age when its
 displayed label matches the closed or merged age beside it, or else the created or
 opened age, and add the exact updated time to the tooltip of the age it repeats.
@@ -3474,7 +3475,7 @@ A tooltip earns its place by one of these:
 | --- | --- |
 | The name of a glyph-only control or mark | Copy, print, the parent folder’s arrow, the theme and font segments, the filter drawer’s chevron, the served root’s “/” |
 | What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
-| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, and a folder’s other total |
+| The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, a folder’s other total, and the exact bytes of a size its chip rounds |
 | What a control does that its words do not say | The ref selector’s “Switch branch or tag”, the HTML preview’s “Open as full page” (its own tab, still sandboxed), a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
 | The whole of something cut short | A chip’s full name, a crumb’s own name, a diff file bar’s path, the page title past its two lines |
 
@@ -3490,20 +3491,23 @@ was renamed from, and what a folder’s sums leave out.
 folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
 button, which shows the folder it opens; nor a merge’s arrow, beside the two names it
 would restate; and a crumb’s tooltip is its own name, cut short, not the path the trail
-already shows. A Files tree row’s tooltip leaves out what the row shows, its name, a
-file’s size, and a folder’s size or file count, whichever its chip holds, and gives the
-exact date and a folder’s other total.
-These were the audit’s borderline tooltips, and the reader’s decisions on them
-(`mb-8mpo`).
+already shows. A Files tree row’s tooltip leaves out what the row shows: its name, and
+the size or file count its chip holds, where the chip shows it exactly, as it does a
+count and a size under 1,024 bytes.
+It gives the exact date, a folder’s other total, and the exact bytes of a size the chip
+rounds, “1,234 bytes” where the chip reads “1.2 KB”.
 
 The shell holds the repeat case.
 A `data-tip-text` that is its element’s own text, in any case and spacing, shows only
 while that text is cut short, by an ellipsis or a line clamp, so a surface may give an
 ellipsizing element its full text as a tip and the reader sees it only when the ellipsis
-hides some of it (`tipAddsInformation` in `static/app.js`). `devtools/check_tooltips.py`
-fails a literal tip that is its element’s literal text, and
-`tests/dom/github-pull-header-chrome.mjs` checks the shell’s rule in Chrome;
-`tests/dom/github-pulls-stacks-chrome.mjs` checks that the Pulls column carries no tip.
+hides some of it (`tipAddsInformation` in `static/app.js`). A tip that is the text of a
+box inside the element, as a changed file’s row holds its name beside its status letter
+and counts, shows only while that box is cut short.
+`devtools/check_tooltips.py` fails a literal tip that is its element’s literal text.
+`tests/dom/github-pulls-stacks-chrome.mjs` checks the shell’s rule in Chrome, through
+the document’s own listener and the tooltip it shows, on a changed file’s row among
+others, and checks that the Pulls column carries no tip.
 
 ### Tooltip Input Modality
 

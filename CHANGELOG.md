@@ -7,13 +7,15 @@ All notable changes to Metabrowser are documented here.
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one
-  that repeats an element’s own text shows only while that text is cut short.
+  that repeats an element’s own text shows only while that text is cut short, as does a
+  top-level changed file’s, which is its name.
   “Load more” and a changed-files folder whose sums are whole no longer repeat their own
   words in a tooltip, and neither do a “Show ignored” check, the treemap’s parent
   button, or a merge’s arrow.
   A crumb’s tooltip is its own name, shown only when the crumb is cut short, rather than
   the path the trail already shows, and a Files tree row’s tooltip leaves out the size
-  or count its row shows, keeping the exact date.
+  or count its row shows exactly, keeping the exact date and the exact bytes of a size
+  its row rounds.
 
 - In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
   lines instead of cutting off what does not fit.

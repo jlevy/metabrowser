@@ -456,8 +456,9 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
 - [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
   once in the design system; the app’s other tooltips audited, those that repeat visible
   text removed and the owner’s decisions on the borderline ones applied; the shell shows
-  a tip equal to its element’s text only while that text is cut short; checks in
-  `devtools/check_tooltips.py` and the Pulls, header, and Files Chrome tests.
+  a tip equal to its element’s text, or to a box’s inside it, only while that text is
+  cut short; checks in `devtools/check_tooltips.py` and its own test, and the Pulls and
+  Files Chrome tests.
 
 ## Testing Strategy
 
