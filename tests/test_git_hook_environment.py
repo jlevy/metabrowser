@@ -331,9 +331,15 @@ def test_every_python_fixture_that_runs_git_init_reads_the_environment_after_the
     assert spawns, "no fixture runs git init any more, so this check has no subject"
 
 
+# A CSS custom property, as a status token `--git-status-added` that a Chrome session reads,
+# names a color and starts nothing: a word inside one is not a command's name.
+_CSS_CUSTOM_PROPERTY = re.compile(r"(?<![\w-])--[\w-]+")
+
+
 def _script_starts_git(text: str) -> bool:
     return bool(_GIT_WRITE.search(text)) or (
-        "child_process" in text and re.search(r"\bgit\b", text) is not None
+        "child_process" in text
+        and re.search(r"\bgit\b", _CSS_CUSTOM_PROPERTY.sub("", text)) is not None
     )
 
 
@@ -346,6 +352,8 @@ def _script_starts_git(text: str) -> bool:
         ('require("child_process"); // a legitimate spawn', False),
         ('require("child_process"); readFileSync(".gitignore")', False),
         ('console.log("git status")', False),
+        ('import { spawn } from "node:child_process"; token("--git-status-added")', False),
+        ('require("child_process").spawnSync("git", ["--git-dir=x", "log"])', True),
     ],
 )
 def test_the_script_check_reads_git_as_a_word(text: str, starts: bool) -> None:
