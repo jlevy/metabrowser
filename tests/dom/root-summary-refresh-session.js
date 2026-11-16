@@ -38,7 +38,7 @@ function appFunction(name) {
 
 /** The summary refresh, from its introducing comment to the tree cache that follows. */
 function refreshBlock() {
-  const start = appSource.indexOf("// The walker's root upsert carries gitignore-blind totals");
+  const start = appSource.indexOf("// The root's tallies, asked of the server again");
   const end = appSource.indexOf("// Last /api/tree payload plus the chrome rendered above it.");
   if (start < 0 || end < start) {
     throw new Error("app.js summary refresh block is not extractable");
@@ -59,7 +59,11 @@ function updateFilterTallies() {
 }
 function renderNavFilterBar() {}
 function patchOpenRecencyTallyCounts() {}
-${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml"].map(appFunction).join("\n")}
+function isGitRevisionSource() {
+  return false;
+}
+var _rootTotals = null;
+${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml", "treeSummaryHoldsIgnored", "paintTreeSummary"].map(appFunction).join("\n")}
 var _lastTreeRender = { chromeHtml: treeSummaryHtml(null, null, null) };
 `;
 

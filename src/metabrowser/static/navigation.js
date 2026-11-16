@@ -732,33 +732,77 @@
   }
 
   /**
+   * The served root's tracked and ignored totals from its own entry, in the shape of the
+   * server's `summary`, or null while the entry cannot say: the walk has not finished
+   * the root, or the source keeps no ignored totals (a Git revision).
+   *
+   * The root's entry carries its descendant totals with and without ignored files, the
+   * figures the server's pass over every file counts, so the shell inlines them with its
+   * first rows and every root upsert brings them current (server.py, `_root_totals`).
+   *
+   * @param {{total_files?: unknown, total_size?: unknown, unignored_files?: unknown, unignored_size?: unknown} | null | undefined} entry
+   * @returns {{files: number, size: number, ignored_files: number, ignored_size: number} | null}
+   */
+  function rootTotalsFromEntry(entry) {
+    if (!entry) {
+      return null;
+    }
+    const { total_files: total, total_size: bytes, unignored_files, unignored_size } = entry;
+    const counts = [total, bytes, unignored_files, unignored_size];
+    if (!counts.every((value) => Number.isInteger(value) && Number(value) >= 0)) {
+      return null;
+    }
+    return {
+      files: Number(unignored_files),
+      size: Number(unignored_size),
+      ignored_files: Math.max(0, Number(total) - Number(unignored_files)),
+      ignored_size: Math.max(0, Number(bytes) - Number(unignored_size)),
+    };
+  }
+
+  /**
    * The Files tab's totals: a navigation metadata line (`.nav-metadata` in styles.css),
    * the component the Commits tally and the Pulls lines share.
    *
    * Tracked and ignored files are counted separately — "12,582 files, 189.8 MB" hides
    * that almost all of it is node_modules — and the ignored half is muted to match how
-   * those rows read in the tree. Without the server's split (a subtree request, or an
-   * index still being counted) the line gives the combined figure, in the same words,
-   * "4 files (38 B)", so it reads the same when the split arrives; it once set the
-   * figure in the tree rows' count and size chips, and changed colour on arrival.
+   * those rows read in the tree. It is a line of its own, "+ 248,189 ignored (10.1 GB)",
+   * in every pane, so the line's height is decided by whether anything is ignored, and
+   * never by how long its figures are: as half of one line it wrapped only when the two
+   * halves outgrew the pane, so the tree moved down when the split arrived (mb-h3hc).
+   *
+   * Without the split (an index still being counted) the line gives the combined figure,
+   * in the same words, "4 files (38 B)". *holdIgnored* says whether the split may bring an
+   * ignored line; if so, the line holds it from first paint with the shell's pending
+   * placeholder (`.tally-pending`, after the quiet period, `.mb-delayed-loading`), so
+   * the ignored count fills a box that is already there. The shell inlines the split with
+   * its first rows, so a folder with nothing ignored holds no such line.
    *
    * The fallback's figures are `.tree-summary-count` and `.tree-summary-size`, which the
    * shell patches as the walker's root aggregate changes (app.js,
-   * `updateRootAggregatePresentation`). The split line deliberately has neither: that
-   * aggregate cannot tell tracked from ignored, and the split refreshes by asking again.
+   * `updateRootAggregatePresentation`). The split line has neither: the shell repaints it
+   * whole from the root's own totals (`rootTotalsFromEntry`) or the server's summary.
    *
    * @param {{files?: unknown, size: number, ignored_files?: number, ignored_size?: number} | null | undefined} summary
    * @param {number | null | undefined} fallbackFiles
    * @param {number | null | undefined} fallbackSize
    * @param {{formatCountParts(n: number): MetabrowserCountParts, formatSize(bytes: number): string}} format
+   * @param {boolean} [holdIgnored] without the split, hold the ignored line it may bring
    * @returns {string}
    */
-  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format) {
+  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format, holdIgnored = false) {
     if (!summary || typeof summary.files !== "number") {
+      // The held line is a status, named for a screen reader; the block itself is shape.
+      const held = holdIgnored
+        ? '<span class="tree-summary-ignored-pending mb-delayed-loading" role="status"' +
+          ' aria-label="Counting ignored files">' +
+          '<span class="tally-pending" aria-hidden="true"></span></span>'
+        : "";
       return (
         '<div class="tree-summary nav-metadata">' +
         `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span>` +
         `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span>` +
+        held +
         "</div>"
       );
     }
@@ -1405,6 +1449,7 @@
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,
+    rootTotalsFromEntry,
     settleFileSelectionFailure,
     settleNavigationDependency,
     treeSummaryCountHtml,

@@ -1081,6 +1081,14 @@ function withTreeIdScope(scope, build) {
 // paint from a snapshot the server took at page-render time would be a
 // regression, not a shortcut.
 let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
+// The served root's tracked and ignored totals, as last known, in the server's `summary`
+// shape, or null while unknown: the shell inlines the root's own totals with its first
+// rows once the walk has finished the root (server.py, `_root_totals`), each root upsert
+// brings them current (`updateRootAggregatePresentation`), and each summary the server
+// answers replaces them. The Files totals line is drawn from them
+// (`treeSummaryHoldsIgnored`).
+/** @type {{files: number, size: number, ignored_files?: number, ignored_size?: number} | null} */
+let _rootTotals = window.METABROWSER_INITIAL_TREE?.summary ?? null;
 // The exact rows that reached the DOM from the shell. The first /api/tree
 // response reconciles against this snapshot instead of replacing the root,
 // which preserves the first paint while still converging to the newer index.
@@ -1124,7 +1132,9 @@ function renderInitialTreeRows() {
   // before it there were no rows in place to push.
   _lastTreeRender = {
     tree: rows,
-    chromeHtml: treeSummaryHtml(null, null, null),
+    // The root's totals came inlined with these rows when the walk had finished the
+    // root, so the line paints at its settled height, its ignored line included or not.
+    chromeHtml: treeSummaryHtml(_rootTotals, null, null),
     tallyCacheStatus: "scanning",
   };
   // Measured here rather than around the call, so the span exists only when
@@ -1238,9 +1248,23 @@ async function loadTree(options = {}) {
       // The index-wide tracked/ignored split is partial while scanning just
       // like the visible-tree fallback. Gate the summary object itself; passing
       // it through would make treeSummaryHtml prefer concrete partial values
-      // over the pending fallback we selected above.
-      var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;
-      var summaryHtml = treeSummaryHtml(stableSummary, summaryFiles, summarySize);
+      // over the pending fallback we selected above. A row request carries no
+      // summary of its own, so the line keeps the root's totals it already has
+      // (`_rootTotals`) rather than going back to the combined figure.
+      var scanning = data.tally_cache_status === "scanning";
+      if (data.summary && !scanning) {
+        _rootTotals = data.summary;
+      }
+      var stableSummary = scanning ? null : _rootTotals;
+      // A line holding its ignored line keeps its figures pending too: the top level's
+      // combined figure counts the ignored files, and read over the held line it said
+      // "9,670 files" for a moment before the split said 1,772.
+      var holding = !stableSummary && treeSummaryHoldsIgnored();
+      var summaryHtml = treeSummaryHtml(
+        stableSummary,
+        holding ? null : summaryFiles,
+        holding ? null : summarySize,
+      );
       // Cached so the recency source, which paints over the whole panel,
       // can keep the same tally row above its own filtered count.
       _lastTreeSummaryHtml = summaryHtml;
@@ -1900,12 +1924,45 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
     fallbackFiles,
     fallbackSize,
     treeSummaryFormat(),
+    treeSummaryHoldsIgnored(),
   );
 }
 
-// The walker's root upsert carries gitignore-blind totals, so it
-// cannot refresh the split. Refetch the summary instead — depth=0 so
-// the response is the tally and nothing else.
+// Whether the totals line, still without the root's totals, holds the line its ignored
+// count may need (navigation.js, `treeSummaryHtml`). A Git revision ignores nothing, and
+// totals known to have nothing ignored hold nothing, so the line holds one only while it
+// cannot tell: a shell drawn before the walk finished the root.
+function treeSummaryHoldsIgnored() {
+  if (isGitRevisionSource()) {
+    return false;
+  }
+  return _rootTotals === null || (_rootTotals.ignored_files ?? 0) > 0;
+}
+
+// Draw the totals line in place from the root's totals, and keep both caches of it in
+// step: chromeHtml feeds a source swap back to the tree, and _lastTreeSummaryHtml is what
+// the recency source prepends. Updating only the first left the tally showing
+// first-paint figures under a recency filter.
+/** @param {string} html */
+function paintTreeSummary(html) {
+  var row = document.querySelector(".tree-summary");
+  // A live tree upserts its root on every write, mostly with the same totals.
+  if (row && row.outerHTML !== html) {
+    row.outerHTML = html;
+  }
+  _lastTreeSummaryHtml = html;
+  if (_lastTreeRender) {
+    _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
+      /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
+      html,
+    );
+  }
+}
+
+// The root's tallies, asked of the server again: the filter menus' counts come only from
+// its pass over every file, which also answers the line's totals. Each root upsert
+// redraws the line itself from the root's own totals (updateRootAggregatePresentation);
+// depth=0 so the response is the tally and nothing else.
 //
 // One request at a time, however many callers ask (createRootSummaryRefresh in
 // navigation.js). A live tree upserts its root on every write, and each answer is a
@@ -2016,8 +2073,8 @@ async function fetchRootSummary() {
   if (!data?.summary || !_lastTreeRender) {
     return true;
   }
-  var row = document.querySelector(".tree-summary");
-  if (!row) {
+  _rootTotals = data.summary;
+  if (!document.querySelector(".tree-summary")) {
     return true;
   }
   // Only rebuild the bar when no dropdown is open. Replacing
@@ -2031,17 +2088,7 @@ async function fetchRootSummary() {
       patchOpenRecencyTallyCounts();
     }
   }
-  var html = treeSummaryHtml(data.summary, null, null);
-  row.outerHTML = html;
-  // Keep both caches in step: chromeHtml feeds a source swap back
-  // to the tree, and _lastTreeSummaryHtml is what the recency
-  // source prepends. Updating only the first left the tally
-  // showing first-paint figures under a recency filter.
-  _lastTreeSummaryHtml = html;
-  _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-    /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
-    html,
-  );
+  paintTreeSummary(treeSummaryHtml(data.summary, null, null));
   return true;
 }
 
@@ -8556,22 +8603,34 @@ function updateRootAggregatePresentation(entry) {
   var totalFiles = entry.total_files == null ? null : entry.total_files;
   var totalSize = entry.total_size == null ? null : entry.total_size;
   var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
-  // When the split row is on screen these selectors find nothing by
-  // design (see treeSummaryHtml): the blind aggregate cannot express
-  // tracked-versus-ignored, so the split refreshes itself instead.
-  var countEl = queryHtml(".tree-summary-count");
-  var sizeEl = queryHtml(".tree-summary-size");
-  if (countEl) {
-    countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
-      totalFiles,
-      treeSummaryFormat(),
-    );
-  }
-  if (sizeEl) {
-    sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
-      totalSize,
-      treeSummaryFormat(),
-    );
+  // The root's own totals tell tracked from ignored once the walk has finished it, so
+  // the line is drawn whole from them, and a line holding its ignored line fills it
+  // there, without waiting on the server's pass over every file (`fetchRootSummary`).
+  var totals = isGitRevisionSource()
+    ? null
+    : window.MetabrowserNavigationRoute.rootTotalsFromEntry(entry);
+  if (totals) {
+    _rootTotals = totals;
+    if (_lastTreeRender) {
+      paintTreeSummary(treeSummaryHtml(totals, null, null));
+    }
+  } else {
+    // Until then the fallback's two figures follow the aggregate. When the split row is
+    // on screen these selectors find nothing by design (see treeSummaryHtml).
+    var countEl = queryHtml(".tree-summary-count");
+    var sizeEl = queryHtml(".tree-summary-size");
+    if (countEl) {
+      countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
+        totalFiles,
+        treeSummaryFormat(),
+      );
+    }
+    if (sizeEl) {
+      sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
+        totalSize,
+        treeSummaryFormat(),
+      );
+    }
   }
   scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");

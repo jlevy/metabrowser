@@ -2204,13 +2204,19 @@ html.theme-anim .menu {
    listing. Holds the served-root file count + total size. Rendered by
    loadTree() in app.js as a navigation metadata line (`.nav-metadata`, under
    "Navigation metadata line" below), which owns its box, type, and spacing;
-   the spans inside it carry colour only.
+   the spans inside it carry colour and where the ignored count goes only.
 
-   The settled height is not a constant: `.tree-summary-split` reports tracked
-   and ignored files separately and wraps to a second line in a narrow pane.
-   The line reserves one line box, not two, which would leave dead space in
-   every other case, so the wrap is tracked as H54 instead -- shape the pending
-   row like the settled one. */
+   The ignored count is a line of its own (`flex-basis: 100%`), "+ 248,189
+   ignored (10.1 GB)" under the tracked one, in every pane wide enough for it,
+   so the band is one line with nothing ignored and two with something,
+   whatever the figures' lengths. As half of one line it wrapped only when the
+   two halves outgrew the pane: in the default 300 px pane the tree moved down
+   19.5 px when the split arrived (mb-h3hc, measured in headless Chrome on
+   2026-11-16; H54 before it). While the line cannot tell yet whether anything is
+   ignored, it holds that line with the shell's pending placeholder, after the
+   quiet period (`.tree-summary-ignored-pending`, app.js
+   `treeSummaryHoldsIgnored`); the shell inlines the root's totals, so that is
+   only a shell drawn before the walk finished the root. */
 /* The ignored half is muted to the same degree the gitignored rows
    below it are, so the header reads at a glance as "this much is
    yours, that much is build output". */
@@ -2220,8 +2226,19 @@ html.theme-anim .menu {
 }
 .tree-summary-ignored {
   display: inline-flex;
+  flex-basis: 100%;
   align-items: baseline;
   gap: var(--nav-metadata-gap);
+}
+/* The held ignored line: one line box of the line's type, its strut holding the
+   pending block (`.tally-pending`) across the middle of the line, where the count
+   will be, from the line's start, about as wide as a count of tens of thousands
+   with its size ("+ 7,898 ignored (132.5 MB)" is 11.5 em in the default font set). */
+.tree-summary-ignored-pending {
+  flex-basis: 100%;
+}
+.tree-summary-ignored-pending > .tally-pending {
+  width: min(100%, 11em);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns

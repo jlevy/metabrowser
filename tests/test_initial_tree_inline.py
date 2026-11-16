@@ -18,7 +18,12 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from metabrowser import server
-from metabrowser.inventory_engine.contract import Coverage, CoverageReason
+from metabrowser.inventory_engine.contract import (
+    Coverage,
+    CoverageReason,
+    EntryType,
+    InventoryEntry,
+)
 from tests.inventory_harness import inventory_harness
 
 STATIC_ROOT = Path(server.__file__).resolve().parent / "static"
@@ -375,3 +380,92 @@ def test_a_landing_inlines_no_folder_while_discovery_runs(tmp_path: Path, monkey
     # A root file is its own row, which the root listing names whatever discovery holds.
     root_file = _inline_payload(asyncio.run(_landing_html(tmp_path, "README.md")))
     assert root_file is not None and root_file["path"] == "README.md"
+
+
+class _Query:
+    def __init__(self, params: dict[str, str]) -> None:
+        self._params = params
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._params.get(key, default)
+
+
+def _ignoring_tree(root: Path) -> None:
+    """Tracked files, an ignored folder, an ignored file under a tracked folder, and a
+    link, which neither count holds. The repository's ignore file is hidden, so it is
+    not counted either."""
+
+    (root / ".git").mkdir()
+    (root / ".gitignore").write_text("build/\n*.log\n", encoding="utf-8")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print(1)\n", encoding="utf-8")
+    (root / "src" / "run.log").write_text("log line\n" * 20, encoding="utf-8")
+    (root / "build").mkdir()
+    for index in range(3):
+        (root / "build" / f"out-{index}.bin").write_bytes(b"x" * (100 + index))
+    (root / "README.md").write_text("# root\n", encoding="utf-8")
+    (root / "link.md").symlink_to(root / "README.md")
+
+
+async def _shell_and_summary(root: Path) -> tuple[dict[str, object] | None, dict[str, Any]]:
+    async with inventory_harness(root) as harness:
+        request = SimpleNamespace(app=harness.app)
+        html = bytes((await server.index(cast(Any, request))).body).decode("utf-8")
+        tree = await server.api_tree(
+            cast(Any, SimpleNamespace(app=harness.app, query_params=_Query({"depth": "0"})))
+        )
+        return _inline_payload(html), json.loads(bytes(tree.body))
+
+
+def test_the_shell_inlines_the_roots_totals_as_the_tally_counts_them(tmp_path: Path) -> None:
+    """The Files totals line paints its tracked and ignored halves from the first frame
+    (mb-h3hc). Its ignored half arrived with the tally's pass over every file, half a
+    second to seconds after the tree, and in the default pane it took a second line and
+    moved the tree down 19.5 px. The root's own entry has the same figures for the cost of
+    reading it, so the shell inlines them, and they are the tally's exactly."""
+
+    _ignoring_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    payload, tree = asyncio.run(_shell_and_summary(tmp_path))
+
+    assert payload is not None
+    assert payload["summary"] == tree["summary"]
+    assert payload["summary"] == {
+        "files": 2,
+        "size": len("print(1)\n") + len("# root\n"),
+        "ignored_files": 4,
+        "ignored_size": 100 + 101 + 102 + len("log line\n" * 20),
+    }
+
+
+def test_a_folder_with_nothing_ignored_says_so_before_first_paint(tmp_path: Path) -> None:
+    """So the page holds no ignored line for it."""
+
+    (tmp_path / "README.md").write_text("# root\n", encoding="utf-8")
+    server._set_root_dir(tmp_path)
+    payload, tree = asyncio.run(_shell_and_summary(tmp_path))
+
+    assert payload is not None
+    assert payload["summary"] == tree["summary"]
+    assert payload["summary"] == {"files": 1, "size": 7, "ignored_files": 0, "ignored_size": 0}
+
+
+def test_a_root_the_walk_has_not_finished_has_no_totals_to_inline() -> None:
+    """The root's totals are pending until the walk finishes it; the page then holds the
+    ignored line with the pending placeholder until they arrive (static/app.js,
+    `treeSummaryHoldsIgnored`)."""
+
+    pending = InventoryEntry(
+        path="", parent="", name="root", type=EntryType.DIRECTORY, ext="", size=0, mtime_ns=0
+    )
+    assert server._root_totals(pending) is None
+    assert server._root_totals(None) is None
+    finished = dataclasses.replace(
+        pending, total_files=10, total_size=1000, unignored_files=4, unignored_size=300
+    )
+    assert server._root_totals(finished) == {
+        "files": 4,
+        "size": 300,
+        "ignored_files": 6,
+        "ignored_size": 700,
+    }

@@ -136,6 +136,7 @@ from metabrowser.inventory_engine.contract import (
     FilteredTreeProjection,
     FilteredTreeQuery,
     GroupedTreeQuery,
+    InventoryEntry,
     InventoryFilter,
     LifecyclePhase,
     NavigationProjection,
@@ -1718,8 +1719,13 @@ async def index(
     # or deeper than _INLINE_LANDING_DEPTH, inlines the root alone and the page reveals the
     # path as before. The rows carry the canonical path, so the landing is canonicalized
     # before it is split.
+    #
+    # The root's own entry rides in the same read, so the Files totals line paints its
+    # tracked and ignored halves from the first frame (`_root_totals`), and a folder with
+    # nothing ignored never holds a line for it (static/app.js, `_rootTotals`).
     initial_tree_block = ""
     landed: str | None = None
+    root_totals: dict[str, int] | None = None
     if _INLINE_INITIAL_TREE_ROWS and not git_pin:
         landing = canonical_inventory_path(view_path) if view_path else ""
         landing_parts = [part for part in landing.split("/") if part]
@@ -1732,17 +1738,24 @@ async def index(
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
                 ReadRequest(
-                    queries=tuple(
-                        DirectoryQuery(
-                            query_id=f"initial-tree-{index}",
-                            path=path,
-                            max_depth=1,
-                            max_rows=_INLINE_INITIAL_TREE_ROWS,
-                        )
-                        for index, path in enumerate(["", *ancestors])
+                    queries=(
+                        *(
+                            DirectoryQuery(
+                                query_id=f"initial-tree-{index}",
+                                path=path,
+                                max_depth=1,
+                                max_rows=_INLINE_INITIAL_TREE_ROWS,
+                            )
+                            for index, path in enumerate(["", *ancestors])
+                        ),
+                        EntryQuery(query_id="initial-root", path=""),
                     )
                 )
             )
+            root_entry = initial_read.result.completed_projection("initial-root")
+            if not isinstance(root_entry, EntryProjection):
+                raise TypeError("the initial-root read returned the wrong projection")
+            root_totals = _root_totals(root_entry.entry)
 
             def inline_level(
                 index: int, path: str, *, parent_ignored: bool = False
@@ -1800,9 +1813,14 @@ async def index(
         except Exception:
             LOG.debug("initial tree inline failed", exc_info=True)
             initial_tree = []
-        if initial_tree:
+            root_totals = None
+        if initial_tree or root_totals is not None:
             initial_tree_json = _json.dumps(
-                {"tree": initial_tree, **({"path": landed} if landed else {})}
+                {
+                    "tree": initial_tree,
+                    **({"path": landed} if landed else {}),
+                    **({"summary": root_totals} if root_totals is not None else {}),
+                }
             ).replace("<", "\\u003c")
             initial_tree_block = (
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
@@ -2422,6 +2440,33 @@ async def _read_with_known_parent[T](
             if parent.presence is not EntryPresence.UNKNOWN:
                 break
     return answer, parent
+
+
+def _root_totals(root: InventoryEntry | None) -> dict[str, int] | None:
+    """The served root's tracked and ignored files and bytes, from its own aggregates.
+
+    The root's entry carries its descendant totals with and without ignored files, which
+    the provider keeps current on every write, so this costs nothing beyond reading one
+    entry. They are the figures the navigation tally's pass over every file counts
+    (`root_summary`), in the same shape as its `summary`, and the shell inlines them so the
+    Files totals line paints both halves from its first frame. None while the walk has
+    not finished the root, whose totals are pending until then.
+    """
+
+    if (
+        root is None
+        or root.total_files is None
+        or root.total_size is None
+        or root.unignored_files is None
+        or root.unignored_size is None
+    ):
+        return None
+    return {
+        "files": root.unignored_files,
+        "size": root.unignored_size,
+        "ignored_files": root.total_files - root.unignored_files,
+        "ignored_size": root.total_size - root.unignored_size,
+    }
 
 
 def _is_folder(parent: EntryProjection) -> bool:

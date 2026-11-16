@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Files panel’s totals no longer move the tree when the count of ignored files
+  arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
+  ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
+  first frame, so a folder with ignored files shows both lines from the start and one
+  with none shows one.
+  While a folder is still being scanned, the ignored line is held with a pulsing
+  placeholder, after a short quiet period, and the count fills it in place.
+  The tracked count no longer reads as the combined figure for a moment before the
+  ignored count arrives.
+  See [Navigation Metadata Line](docs/design-system.md#navigation-metadata-line).
+
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
   The disclosure appeared above every document ending in the guideline footer comment,

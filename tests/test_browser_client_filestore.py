@@ -524,12 +524,14 @@ def test_load_tree_renders_single_file_tally() -> None:
     summary_block = js[
         summary_start : js.index("function scheduleRootSummaryRefresh", summary_start)
     ]
-    # The single tally lives in the tree-summary row.
+    # The single tally lives in the tree-summary row, drawn from the root's totals the
+    # page already has, since a row request carries none (mb-h3hc).
+    assert 'var scanning = data.tally_cache_status === "scanning";' in fn_block
+    assert "var stableSummary = scanning ? null : _rootTotals;" in fn_block
     assert (
-        'var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;'
+        "treeSummaryHtml(\n        stableSummary,\n        holding ? null : summaryFiles,"
         in fn_block
     )
-    assert "treeSummaryHtml(stableSummary, summaryFiles, summarySize)" in fn_block
     # The line's markup is navigation.js's, which app.js hands its text helpers.
     assert "window.MetabrowserNavigationRoute.treeSummaryHtml(" in summary_block
     navigation = proc_browser.STATIC_DIR.joinpath("navigation.js").read_text(encoding="utf-8")
@@ -1282,6 +1284,9 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     )
     start = js.index("async function fetchRootSummary()")
     block = js[start : js.index("\nfunction ", start + 1)]
+    assert "paintTreeSummary(" in block
+    start = js.index("function paintTreeSummary(html)")
+    block = js[start : js.index("\n}\n", start)]
     # The cached chrome is rewritten by regex; if it only matches the split
     # spelling, the cache keeps a stale summary after the live row is replaced.
     assert "tree-summary(?: tree-summary-split)?" in block, (

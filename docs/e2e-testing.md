@@ -308,6 +308,8 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_git_commit_summary_chrome.py`, `tests/test_github_pull_header_chrome.py`,
   `tests/test_github_pull_text_chrome.py`, `tests/test_github_pulls_stacks_chrome.py`,
   `tests/test_nav_metadata_chrome.py`, and `tests/test_staged_fonts_chrome.py`;
+  `tests/test_files_totals_stable_chrome.py`, which records every frame of the Files
+  navigation from the document’s start to settled and holds that nothing in it moves;
   `tests/test_github_pull_timeline_chrome.py`, which reads a pull request’s Conversation
   timeline’s type, spacing, and line from the boxes Chrome lays out and the pixels it
   paints; `tests/test_prose_faces_chrome.py`, which reads the face documents and chrome

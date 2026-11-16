@@ -1061,7 +1061,11 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     assert "filterOpenMenu === null" in block
     # Both caches move together, or the tally reverts to first-paint
     # figures under a recency filter.
-    assert "_lastTreeSummaryHtml = html;" in block
+    assert "paintTreeSummary(" in block
+    paint = js[js.index("function paintTreeSummary(html)") :]
+    paint = paint[: paint.index("\n}\n")]
+    assert "_lastTreeSummaryHtml = html;" in paint
+    assert "_lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(" in paint
 
 
 def _provider_tree_source() -> str:
