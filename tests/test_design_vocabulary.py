@@ -1128,7 +1128,7 @@ def test_navigation_tooltips_are_pointer_only() -> None:
     assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
     assert 'document.addEventListener("focusin", showTipText)' not in app
     assert 'document.addEventListener("focusout", hideTipText)' not in app
-    assert 'document.addEventListener("focusin", hideTooltip)' in app
+    assert 'document.addEventListener("focusin", hideTooltipForFocus)' in app
     assert 'element.addEventListener("focus", () =>' not in panel
     assert "dismissHoverTooltip();" in panel
 

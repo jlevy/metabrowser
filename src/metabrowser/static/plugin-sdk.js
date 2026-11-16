@@ -955,9 +955,15 @@
         global.MetabrowserTooltip.show(html, anchor);
       }
     },
-    hide() {
+    /**
+     * Put the tooltip away. With `within`, only a tooltip anchored at or inside it, up
+     * or still waiting: a view that repaints or is disposed clears its own and leaves
+     * another surface's (docs/design-system.md, "A Surface Puts Away Only Its Own
+     * Tooltip"). With none, whatever tooltip there is, as a pointer leaving means.
+     */
+    hide(within) {
       if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.hide();
+        global.MetabrowserTooltip.hide(within);
       }
     },
   };

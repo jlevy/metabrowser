@@ -3061,12 +3061,61 @@ function hideTooltip() {
   }, TOOLTIP_FADE_OUT);
 }
 
+/**
+ * Put the tooltip away only when its anchor is `within` or inside it, whether the tooltip
+ * is up or still waiting out its delay. A surface that repaints or is disposed clears its
+ * own tooltip this way and leaves another surface's: the page has one tooltip, and the
+ * folder view's totals, which put it away on every draw, took a Files tree row's from
+ * under a pointer that had not moved (mb-alff, docs/design-system.md, "A Surface Puts Away
+ * Only Its Own Tooltip"). A tooltip whose anchor has left the document belongs to no
+ * surface on the page, and would never hear the mouseleave that ends it, so any surface's
+ * call puts it away, even one made after that surface removed its markup.
+ *
+ * @param {Node} within
+ */
+function hideTooltipWithin(within) {
+  if (tooltipAnchor && (!tooltipAnchor.isConnected || within.contains(tooltipAnchor))) {
+    hideTooltip();
+  }
+}
+
+// The element focus was last given to, which tells focus put back from focus moved.
+/** @type {Node | null} */
+var tooltipFocusOwner = null;
+
+/**
+ * Focus moving puts a pointer's tooltip away (docs/design-system.md, "Tooltip Input
+ * Modality"), but focus put back where it was does not. A rebuild that replaces the
+ * focused control focuses its replacement, as the Files filter bar's does when new
+ * tallies arrive. The element that had focus is out of the document by then, so a focus
+ * that follows one that left the document is that repair, and the tooltip under the
+ * pointer stays (mb-alff).
+ *
+ * @param {FocusEvent} event
+ */
+function hideTooltipForFocus(event) {
+  var previous = tooltipFocusOwner;
+  tooltipFocusOwner = /** @type {Node | null} */ (event.target);
+  if (previous && previous.isConnected === false) {
+    return;
+  }
+  hideTooltip();
+}
+
 if (typeof window !== "undefined") {
   window.MetabrowserTooltip = {
     show: (html, anchor) => {
       showTooltip(html, anchor);
     },
-    hide: hideTooltip,
+    // With no element, whatever tooltip there is: a pointer leaving its surface. Anything
+    // else, such as the event when `hide` is itself a listener, is no element.
+    hide: (within) => {
+      if (within instanceof Node) {
+        hideTooltipWithin(within);
+      } else {
+        hideTooltip();
+      }
+    },
   };
 }
 
@@ -3184,10 +3233,11 @@ function hideTipText(e) {
 
 // mouseenter/mouseleave do not bubble, so these listen in the capture phase.
 // Any focus transition ends pointer-owned tooltip presentation without
-// creating a second visual layer around keyboard navigation.
+// creating a second visual layer around keyboard navigation; focus a rebuild
+// puts back is not one (hideTooltipForFocus).
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
-document.addEventListener("focusin", hideTooltip);
+document.addEventListener("focusin", hideTooltipForFocus);
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,

@@ -218,6 +218,73 @@ const TREE_TIPS = `(async () => {
   };
 })()`;
 
+// A tree row's tooltip while something else on the page repaints, under a pointer that has
+// not moved: it stays, or still appears (mb-alff, docs/design-system.md, "A Surface Puts
+// Away Only Its Own Tooltip" and "Tooltip Input Modality"). With the row's tooltip up, the
+// folder view's totals draw again, as they do when the folder's sums arrive: the shell
+// announces that anything may have changed, as it does when the scan completes, and the
+// totals' rollup answers again. Then, during the row's appear delay, the filter bar
+// rebuilds with focus on its Group by trigger, as it does when new tallies arrive, and
+// puts focus back on the rebuilt trigger. Focus moving on from there, to a tree row, does
+// put the tooltip away. The totals' draw and the bar's rebuild each used to put the
+// row's tooltip away, and their race against its delay was this test's flake.
+const TIP_REPAINTS = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const tip = () => document.querySelector(".custom-tooltip");
+  const shown = () => tip()?.style.display === "block";
+  const until = async (done) => {
+    const bound = performance.now() + 20 * (TOOLTIP_APPEAR_DELAY + TOOLTIP_FADE_OUT);
+    while (!done() && performance.now() < bound) {
+      await wait(TOOLTIP_FADE_OUT / 5);
+    }
+  };
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const readme = () => tree.querySelector('.tree-file[data-path="README.md"]');
+
+  let row = readme();
+  row.dispatchEvent(new MouseEvent("mouseenter"));
+  await until(shown);
+  const up = shown();
+  let drawn = 0;
+  const totalsRoot = document.querySelector(".folder-totals");
+  const observer = new MutationObserver((records) => {
+    drawn += records.length;
+  });
+  if (totalsRoot) {
+    observer.observe(totalsRoot, { attributes: true, characterData: true, childList: true, subtree: true });
+  }
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", { detail: { kind: "snapshot", paths: null } }),
+  );
+  await until(() => drawn > 0);
+  observer.disconnect();
+  // Longer than the fade a hide starts, so a tooltip put away is gone by the read.
+  await wait(2 * TOOLTIP_FADE_OUT);
+  const totals = {
+    up,
+    drawn: drawn > 0,
+    stayed: shown() && tip().classList.contains("visible"),
+  };
+  row.dispatchEvent(new MouseEvent("mouseleave"));
+  await until(() => !shown());
+
+  const trigger = document.querySelector('[data-chip-menu-toggle="group"]');
+  trigger.focus({ preventScroll: true });
+  row = readme();
+  row.dispatchEvent(new MouseEvent("mouseenter"));
+  renderNavFilterBar();
+  const after = document.activeElement;
+  const refocused =
+    trigger.isConnected === false && after !== trigger && after?.dataset?.chipMenuToggle === "group";
+  await until(shown);
+  const bar = { refocused, shown: shown() };
+  tree.querySelector('.tree-folder[data-path="src"]').focus({ preventScroll: true });
+  await until(() => !shown());
+  bar.focusMovedOn = !shown();
+  row.dispatchEvent(new MouseEvent("mouseleave"));
+  return { totals, bar };
+})()`;
+
 // The bar's row and drawer: which controls each holds.
 const ROW = `(() => ({
   row: [...document.querySelector(".nav-filter-bar-main").children].map((child) =>
@@ -756,6 +823,7 @@ try {
   );
   result.slots = await browser.evaluate(SLOTS);
   result.treeTips = await browser.evaluate(TREE_TIPS);
+  result.tipRepaints = await browser.evaluate(TIP_REPAINTS);
   phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {

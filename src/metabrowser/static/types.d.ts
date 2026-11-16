@@ -1358,7 +1358,11 @@ type MetabrowserSdk = {
     set(name: string, value: unknown): boolean;
   };
   tooltip: {
-    hide(): void;
+    /** Put the tooltip away. With `within`, only a tooltip anchored at or inside it,
+     *  shown or still waiting out its delay: a view that repaints or is disposed clears
+     *  its own and leaves another surface's; see docs/design-system.md, "A Surface Puts
+     *  Away Only Its Own Tooltip". */
+    hide(within?: Element | null): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip
      *  holds still once shown; see docs/design-system.md. */
     show(html: string, anchor: Element | null): void;
@@ -3653,7 +3657,7 @@ declare global {
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
-      hide(): void;
+      hide(within?: Element | null): void;
       show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;

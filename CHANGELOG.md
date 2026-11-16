@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Files tree row’s tooltip stays under a pointer that has not moved when something
+  else on the page repaints.
+  The folder view’s totals, drawing again as the folder’s sums arrived, put away the
+  row’s tooltip, and so did the filter bar’s rebuild when it put focus back on its own
+  control; the tooltip vanished, or never appeared, until the pointer left the row.
+  A rebuild that puts focus back where it was no longer counts as focus moving, so it
+  leaves the tooltip be.
+  For plugin authors, `mb.tooltip.hide(within)` puts the tooltip away only when its
+  anchor is `within` or inside it, so a view that repaints or is disposed clears its own
+  tooltip and leaves another surface’s; `hide()` with no argument hides whatever tooltip
+  there is, as before.
+  See
+  [A Surface Puts Away Only Its Own Tooltip](docs/design-system.md#a-surface-puts-away-only-its-own-tooltip).
+
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one

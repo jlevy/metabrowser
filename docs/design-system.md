@@ -3625,6 +3625,15 @@ navigation tooltips such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
 
+**Focus put back where it was is not a transition.** A rebuild that replaces the focused
+control focuses its replacement, as the Files filter bar does when new tallies arrive.
+When the element that last had focus is no longer in the document, the focus that
+follows is that repair, and a tooltip under the pointer stays (`hideTooltipForFocus` in
+`static/app.js`, mb-alff).
+Before this rule, the filter bar’s rebuild put away a tree row’s tooltip, waiting or
+shown, under a pointer that had not moved, and nothing brought the tooltip back until
+the pointer left the row.
+
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
 read `data-tip-text`, so an icon-only control needs both.
@@ -3652,6 +3661,26 @@ and small, that is the only question the tooltip exists to answer.
 no room below, and clamps to the viewport.
 Calling `show` again with the same anchor is how a surface says “still here”: it cancels
 a pending hide and leaves the tooltip exactly where it is.
+
+### A Surface Puts Away Only Its Own Tooltip
+
+**A surface that repaints or is disposed puts away the tooltip it showed, and no
+other.** `mb.tooltip.hide(within)` hides the tooltip only when its anchor is `within` or
+inside it, whether the tooltip is up or still waiting out its delay.
+`MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
+Without `within`, `hide()` puts away whatever tooltip there is, which is what a pointer
+leaving a surface means.
+
+The page has one tooltip, so a surface that calls `hide()` to clear its own puts away
+another surface’s too.
+The folder view’s totals drew again whenever the folder’s sums arrived, and each draw
+called `hide()`. A reader hovering a Files tree row then saw the row’s tooltip vanish,
+or never appear, when the folder view beside it updated (mb-alff).
+The folder view’s totals and treemap and the Commits history now hide within their own
+element when they repaint or are disposed.
+`tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
+`tests/dom/files-tab-chrome.mjs` checks it in Chrome on a tree row while the totals
+redraw and the filter bar rebuilds.
 
 ### Shared Overlay Lifecycle
 
