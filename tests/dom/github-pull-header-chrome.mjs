@@ -520,13 +520,13 @@ const RECORDS = [
 ];
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
-// the number's line, which the stylesheet lays out as two lines (mb-lkkt): the number's
-// line, where a stack member's place comes before its number (mb-dzsi), and the age;
-// then the chevron, the icon, and the title, to the row's end. Each row is a member, a
-// level in under its stack's row. The age, the chevron, the icon, and the title are read,
-// from the row's top, before and after each row's place arrives, the title's width with
-// them: the place is on the number's line, which stays one line, so nothing else moves
-// and the row keeps its two lines (`grew`).
+// the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
+// chevron, the icon, the number's line, where a stack member's place comes before its
+// number (mb-dzsi), and the age; then the title alone, from the text column to the
+// row's end. Each row is a member, a level in under its stack's row. The age, the
+// chevron, the icon, and the title are read, from the row's top, before and after each
+// row's place arrives, the title's width with them: the place is on the number's line,
+// which stays one line, so nothing else moves and the row keeps its two lines (`grew`).
 const PULLS_ROWS = `async (rows, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const state = window.__state ??= await import("/github/pull-state.js");
@@ -554,8 +554,13 @@ const PULLS_ROWS = `async (rows, width) => {
     const number = h("span", { class: "github-pulls-number" }, ["#" + row.number]);
     const title = h("span", { class: "github-pulls-title" }, [row.title]);
     const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
+    // The registry's chevron is the shell's .toggle-chevron, which sizes it; its drawing is
+    // not read here.
+    const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    chevron.setAttribute("class", "toggle-chevron");
+    chevron.setAttribute("viewBox", "0 0 24 24");
     const anchor = h("a", { class: "github-pulls-row collapsed", href: "#", role: "treeitem" }, [
-      h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }),
+      h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]),
       state.pullStateIcon("open"),
       title,
       age,
@@ -626,6 +631,11 @@ const PULLS_ROWS = `async (rows, width) => {
     const by = anchor.querySelector(".github-pulls-by");
     const b = by.getBoundingClientRect();
     const t = title.getBoundingClientRect();
+    const style = getComputedStyle(anchor);
+    const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const glyphs = [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon")].map((node) => node.getBoundingClientRect());
+    const middle = (r) => (r.top + r.bottom) / 2;
+    const round = (value) => Math.round(value * 100) / 100;
     return {
       number: row.number,
       moved,
@@ -642,6 +652,13 @@ const PULLS_ROWS = `async (rows, width) => {
       oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
       // The title runs to the row's end, under the age.
       titleEnd: Math.abs(t.right - (end - 0.5)) < 0.5 && t.top > age.getBoundingClientRect().bottom - 0.5,
+      // The title starts in the text column, after the chevron's and the icon's slots.
+      titleFrom: round(t.left - inset),
+      textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
+      // The chevron and the icon are on the number's line, centered on it (mb-3cbf).
+      glyphsOff: glyphs.map((r) => round(middle(r) - middle(meta))),
+      withNumber: glyphs.every((r) => r.height > 0 && r.top >= meta.top - 0.5 && r.bottom <= meta.bottom + 0.5 && r.bottom <= t.top + 0.5),
+      glyphsFrom: glyphs.map((r) => round(r.left - inset)),
       // The author on the number's line, at its floor or wider, or off it, whole.
       author: b.top < meta.bottom - 0.5 ? (b.width + 0.5 >= parseFloat(getComputedStyle(by).minWidth) ? "shown" : "squeezed") : "off",
       authorWidth: Math.round(b.width * 10) / 10,
@@ -1287,8 +1304,18 @@ async function main() {
             JSON.stringify(row),
           );
           check(
-            `${where}: the title runs to the row's end, under the age`,
-            row.titleEnd,
+            `${where}: the title runs from the text column to the row's end, under the age`,
+            row.titleEnd && Math.abs(row.titleFrom - row.textColumn) < 0.5,
+            JSON.stringify(row),
+          );
+          // The chevron and the icon lead the number's line, in their slots (mb-3cbf); on
+          // the title's line they sat a line below it.
+          check(
+            `${where}: the chevron and the icon sit on the number's line, centered on it, in their slots`,
+            row.withNumber &&
+              row.glyphsOff.every((off) => Math.abs(off) < 0.5) &&
+              row.glyphsFrom[0] === 0 &&
+              Math.abs(row.glyphsFrom[1] - row.textColumn / 2) < 0.5,
             JSON.stringify(row),
           );
           check(
