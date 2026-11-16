@@ -61,10 +61,10 @@ All notable changes to Metabrowser are documented here.
   Files totals, as in “**15,458** files (**324.1 MB**)”, and the filter’s “Filtered to”
   line; in the Commits tally; in a pull request’s Checks summary; and in a commit’s
   files outside the served folder.
-  The Diff summary is new; the others were regular in 0.12.0, as was the totals line a
-  diff’s toolbar showed in its place.
-  The Pulls count’s number stays bold, as it was in 0.12.0. A size is bold with its
-  unit, and what a screen reader hears is unchanged.
+  The Diff summary is new; the others were regular in 0.12.0, as was the file count of
+  the totals line a diff’s toolbar showed in its place, whose line totals were bold
+  already. The Pulls count’s number stays bold, as it was in 0.12.0. A size is bold with
+  its unit, and what a screen reader hears is unchanged.
   A commit’s hover card in the Commits tab says its changes as the Diff summary’s header
   does, “**32** files changed · **4** A, **28** M · +1,921 −160”, in place of its two
   rows, “28 M 4 A files” and “+1921 −160 lines”, whose added and deleted counts were
@@ -80,9 +80,18 @@ All notable changes to Metabrowser are documented here.
   commit’s page, on a pull request’s Changes, and in a patch: the first file’s own
   border is the one line between the chooser and the files.
 
-- A commit’s page and a pull request’s page each have one Diff summary, collapsed, at
-  the top of the page, and the counts of files and lines are its header; a patch file of
-  more than one file has it at the top of its diff.
+- A change set’s totals are now a Diff summary, collapsed, in place of the line a diff
+  opened with, “41 changed files +6526 −555”: a header such as “**35** files changed ·
+  **2** A, **3** D, **30** M · +1,234 −3,423” that opens to the changed files as a tree
+  by folder; one file reads “1 file changed”.
+  A commit’s page and a pull request’s page each have one, at the top of the page, and a
+  patch file of more than one file has it at the top of its diff.
+  The header lists only the statuses some file has, in one order (added, deleted,
+  modified, renamed, then the rest), each the letter its files carry in the tree, in the
+  same green, red, ochre, or blue, with the dots and commas gray; it writes its numbers
+  in the shell’s format and still says “(estimated)”, in gray, when the totals are not
+  exact. A screen reader hears the statuses in words, “35 files changed: 2 added, 3
+  deleted, 30 modified”.
   On a commit’s page it sits under the commit’s identity, in place of the `M`, `A`, and
   `D` file counts and the line totals, and it is there for a commit of one file too.
   Until the commit’s diff draws it, and where the diff cannot be drawn, its place says
@@ -96,10 +105,25 @@ All notable changes to Metabrowser are documented here.
   Where the row cuts the summary short, its tooltip gives the whole of it, and a
   comparison that cannot be read leaves the row empty rather than showing an older
   comparison’s counts.
+  The tree is the one the Pulls tab shows under a pull request, row for row: folders
+  toggle, a chain of single folders is one row, and each file has its change letter and
+  line counts. Every folder now shows the line counts of the files under it, rolled up,
+  in the Diff summary and in the Pulls tab alike, and a folder’s tooltip gives only what
+  those counts leave out.
   Opened, its tree of files is as tall as its rows, and the page scrolls past it to the
   diff, drawing only the rows in view.
   Its first level starts one indentation step in from the summary’s header, and each
   folder’s rows one step further, as nested rows do in the Files tree and the Pulls tab.
+  Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
+  request’s page the address follows, as it does from the Pulls tab; the arrow keys move
+  along the rows without moving the diff.
+  A name shows a control or invisible character, such as a right-to-left override, as
+  U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
+  counts now read in the shell’s number format.
+  A path a patch lists more than once, as a file that became a symlink, is one row.
+  If the tree cannot load, the header is a totals line, “41 files changed · +6,526
+  −555”. Plugins can draw a tree of changed files with the shell’s own model,
+  `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
   See [Diff Summary](docs/design-system.md#diff-summary).
 
 - A Pulls row now reads its chevron, state icon, and number’s line first, a stack
@@ -456,32 +480,6 @@ All notable changes to Metabrowser are documented here.
   The fold’s chevron now lines up with the text’s left edge, and its label brightens to
   the text colour under the pointer.
   A document’s own `<details>` sections look as before.
-
-- A change set’s totals are now a Diff summary, collapsed, in place of the line a diff
-  opened with, “41 changed files +6526 −555”: a header such as “**35** files changed ·
-  **2** A, **3** D, **30** M · +1,234 −3,423” that opens to the changed files as a tree
-  by folder; one file reads “1 file changed”.
-  The header lists only the statuses some file has, in one order (added, deleted,
-  modified, renamed, then the rest), each the letter its files carry in the tree, in the
-  same green, red, ochre, or blue, with the dots and commas gray; it writes its numbers
-  in the shell’s format and still says “(estimated)”, in gray, when the totals are not
-  exact. A screen reader hears the statuses in words, “35 files changed: 2 added, 3
-  deleted, 30 modified”.
-  The tree is the one the Pulls tab shows under a pull request, row for row: folders
-  toggle, a chain of single folders is one row, and each file has its change letter and
-  line counts. Every folder now shows the line counts of the files under it, rolled up,
-  in the Diff summary and in the Pulls tab alike, and a folder’s tooltip gives only what
-  those counts leave out.
-  Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
-  request’s page the address follows, as it does from the Pulls tab; the arrow keys move
-  along the rows without moving the diff.
-  A name shows a control or invisible character, such as a right-to-left override, as
-  U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
-  counts now read in the shell’s number format.
-  A path a patch lists more than once, as a file that became a symlink, is one row.
-  If the tree cannot load, the header is a totals line, “41 files changed · +6,526
-  −555”. Plugins can draw a tree of changed files with the shell’s own model,
-  `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
 
 - The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
   and the pull request count with how fresh it is — now looks the same on every tab.
