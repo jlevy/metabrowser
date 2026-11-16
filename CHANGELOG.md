@@ -4,13 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- Every count summary bolds its numbers and keeps its words regular: the Diff summary’s
-  header, “**8** changed files (**8** modified)”, on a commit’s page, in a pull
-  request’s header, and in a patch’s toolbar; the Files totals and the filter’s
-  “Filtered to” line; the Commits tally; the Pulls count; a pull request’s Checks
-  summary; and a commit’s files outside the served folder.
-  A size is bold with its unit, as in “(**324.1 MB**)”, and what a screen reader hears
-  is unchanged. See
+- Every count summary bolds its numbers and keeps its words regular.
+  The numbers are now bold in the Diff summary’s header, “**8** changed files (**8**
+  modified)”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar;
+  in the Files totals, as in “**15,458** files (**324.1 MB**)”, and the filter’s
+  “Filtered to” line; in the Commits tally; in a pull request’s Checks summary; and in a
+  commit’s files outside the served folder, all of which were regular in 0.12.0. The
+  Pulls count’s number stays bold, as it was in 0.12.0. A size is bold with its unit,
+  and what a screen reader hears is unchanged.
+  See
   [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers).
 
 - A diff’s toolbar no longer draws a rule under the Split | Unified chooser, on a
@@ -364,7 +366,7 @@ All notable changes to Metabrowser are documented here.
   The Commits tally’s loading placeholder now sits where the count will, as the Files
   one does. The Files totals read “N files (size)” while the index is still being
   counted, as they do once it finishes, instead of switching from blue figures to plain
-  text, and the Pulls count is no longer bold.
+  text.
 
 - A size of a gigabyte or more now reads in gigabytes.
   The Files tree, the totals line under the Files toolbar, and the binary preview wrote

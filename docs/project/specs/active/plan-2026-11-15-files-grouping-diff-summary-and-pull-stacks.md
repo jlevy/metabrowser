@@ -792,7 +792,8 @@ tally of its pull requests, since it is obvious.
   Numbers”): the Diff summary’s header and fallback line, the Files totals and filter
   remark, the Commits tally, the Pulls count, a pull request’s Checks summary, and a
   commit’s files outside the folder; held without a browser per surface and in Chrome on
-  the Diff summary, the Files totals, and the Commits tally.
+  the Diff summary, the Files totals and filter remark, the Commits tally, and the Pulls
+  count, each number inline with its words.
 
 ## Testing Strategy
 
@@ -819,7 +820,8 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 22 merges.
+This plan moves to `docs/project/specs/done/` when the last pull request in Stack Order
+merges.
 
 ## Open Questions
 

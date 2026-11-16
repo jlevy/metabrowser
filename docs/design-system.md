@@ -416,51 +416,77 @@ Prefer truncation with an accessible full-value tooltip or allow a panel to scro
 A count summary is a line of chrome that says what a list, a tree, or a change set
 holds, in numbers and words: “8 changed files (8 modified)”, “15,458 files (324.1 MB)”,
 “3,310 commits begun 4mo ago”.
-In every one, each number is bold and the words around it keep the line’s weight, so the
-counts read at a glance and two of them read against each other.
+It is a line of the [navigation metadata band](#navigation-metadata-line), or a summary
+line that heads a list or a change set; a remark on that band that counts
+(`.nav-metadata-note`), as the Files filter’s “Filtered to 1,234 files.”, is one too,
+since it reads against the totals above it.
+A search’s or a process’s status is not one, though it counts: it says how far the
+search or the process has got, not what a list holds.
+In every count summary, each number is bold and the words around it keep the line’s
+weight, so the counts read at a glance and two of them read against each other.
 One token sets the weight, `--count-numeral-weight` in the shell’s stylesheet, which is
 `--weight-bold`, the weight of the [inline change stats](#inline-change-stats) and of a
-[pull request’s number](#pull-request-numbers); every count’s numeral takes it, and none
-borrows `--pull-number-weight`, which is a pull request’s number’s. A count summary’s
-number is the shell’s `.summary-number` in `static/styles.css`, which sets that weight
-alone: the number keeps its line’s size and ink, muted in a muted half or note.
+[pull request’s number](#pull-request-numbers).
+Every count’s numeral takes it, a count summary’s `.summary-number`, a commit hover
+card’s `.git-commit-file-status`, and a [heading’s tally](#heading-tallies),
+`.heading-tally-figure`, and none borrows `--pull-number-weight`, which only a pull
+request’s number takes.
+`.summary-number` in `static/styles.css` sets that weight alone: the number keeps its
+line’s size and ink, muted in a muted half or note.
 A number is the whole figure: its grouping and decimal marks, a sign, a lower bound’s
 “+”, and a size’s unit, “394.6 MB”. Parentheses, separators, and words stay regular, and
 an age keeps the [age primitive](#age), which has a weight of its own.
-The line’s text and accessible name are unchanged: the span adds no words, and a header
-with an `aria-label`, as the Diff summary’s, keeps it.
+
+A count summary’s text comes in one shape of parts: the words as strings and each number
+as `{number}`, “12,797 files” as `[{number: "12,797"}, " files"]`. The shell paints them
+through `countPartsHtml` and `countPartsNodes` on `window.MetabrowserFormatters`
+(`static/formatters.js`), and the built-in plugins with their own `el()` and `h()`. The
+words and numbers of one phrase sit in one inline element: in a flex line, as a
+navigation metadata line is, each would be an item of its own, parted by the line’s gap
+and read as a run of its own.
+So the line’s text and accessible name are unchanged: the span adds no words, the spaces
+stay where they are written, and a header with an `aria-label`, as the Diff summary’s,
+keeps it.
 
 | Count summary | Where its numbers are painted |
 | --- | --- |
-| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, from `describeChanges` (`fileCount`, `statusCounts`); its line totals are the inline change stats, bold already |
+| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, from `describeChanges` (`filesParts`, `breakdownParts`) and `plainTotals`; its line totals are the inline change stats, bold already |
 | The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
-| The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `paintCountParts` in `static/app.js` |
+| The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `_renderFilteredTally` in `static/app.js` in one span of its line |
 | The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
 | The Pulls count, “448 PRs on owner/repo” | `.github-pulls-total` in the GitHub plugin’s `pulls-panel.js` |
 | A pull request’s Checks summary, “3 success · 1 failure” | `paintChecks` in the GitHub plugin’s `pull-page.js` |
-| A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js` |
-| A commit’s hover card, “28 M 4 A files” and “+1921 −160 lines” | Bold already, by `.git-commit-file-status` and the commit’s change stats ([Git Commit Summary](#git-commit-summary)) |
+| A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js`, in one span of its line |
+| A commit’s hover card, “28 M 4 A files” and “+1921 −160 lines” | `.git-commit-file-status`, at `--count-numeral-weight`, with its status letter, and the commit’s change stats ([Git Commit Summary](#git-commit-summary)) |
 
 The rule does not reach a number that is not a count summary’s:
 
-- row metadata, as the right-aligned size and count of a tree row, which the size and
-  count chips set by their own threshold;
+- row metadata, as the right-aligned size and count of a tree row, and the size, count,
+  and age of a folder’s header strip, which the size and count chips set by their own
+  threshold;
 - a control’s label or a chip’s tally, as “Show 40 more” or the Pulls filters’ “Open
   30”;
-- prose, a notice, or a status sentence, as “wants to merge 6 commits”, a Quick Search
-  status, or “This commit changes 900 files; the diff below is bounded.”, where a number
-  is text and keeps its line’s weight, as a pull request’s number does in prose;
-- a progress line, as “~1,200 files scanned”, or a Pulls row’s file list while it fills
-  or stops; and
+- prose or a notice, as “wants to merge 6 commits” or “This commit changes 900 files;
+  the diff below is bounded.”, where a number is text and keeps its line’s weight, as a
+  pull request’s number does in prose;
+- a search’s or a process’s status, as a Quick Search status, “12 matching files.”, a
+  progress line, “~1,200 files scanned”, or a Pulls row’s file list while it fills or
+  stops; and
 - a labelled value, as a stat card’s, which has its own type.
 
-`tests/dom/diff-view-behavior.js`, `tests/dom/tree-summary-line-session.js`,
+`test_count_summaries_bold_their_numbers_through_one_token` in
+`tests/test_design_vocabulary.py` holds every rule that reads `--count-numeral-weight`
+or `--pull-number-weight` to its list, and no stylesheet to restyling a count summary’s
+number. `tests/dom/diff-view-behavior.js`, `tests/dom/tree-summary-line-session.js`,
 `tests/dom/tree-filter-model-behavior.js`, `tests/dom/git-panel-behavior.js`,
 `tests/dom/github-pulls-panel-session.js`, and
 `tests/dom/github-pull-core-preview-behavior.js` hold each surface’s numbers apart from
-its words without a browser, and `tests/dom/diff-summary-chrome.mjs` reads their
-computed weights in Chrome on a patch’s Diff summary, a commit’s, and the Files totals
-and Commits tally beside it.
+its words without a browser.
+In Chrome, `tests/dom/diff-summary-chrome.mjs` reads the computed weights on a patch’s
+Diff summary, a commit’s, and the Files totals and Commits tally beside it, and
+`tests/dom/nav-metadata-chrome.mjs` the Files filter’s remark and the Pulls count’s;
+both hold that every number is inline with its words, and the second that the remark
+reads as one run.
 
 ### KPress Base-Size Boundary
 
@@ -1503,9 +1529,9 @@ The diff’s toolbar, which holds the control, draws no rule under itself.
 The first file card’s own border, at the cards’ 12 px gap below the toolbar’s padding,
 is the line between the toolbar and the files.
 On a commit’s page and a pull request’s Changes, where the toolbar holds the control
-alone, a rule there drew a second line 12 px above the card’s. In a patch’s toolbar the
-[Diff summary](#diff-summary)’s header is its tree’s root, and the tree opens under it
-with no line between them, as it does at a page’s top.
+alone, a rule there would draw a second line 12 px above the card’s. In a patch’s
+toolbar the [Diff summary](#diff-summary)’s header is its tree’s root, and the tree
+opens under it with no line between them, as it does at a page’s top.
 The toolbar is not sticky, so nothing scrolls under it that a rule would separate.
 `tests/dom/diff-summary-chrome.mjs` reads in Chrome that a patch’s toolbar and a
 commit’s draw no rule and that the first card starts 12 px below them.
