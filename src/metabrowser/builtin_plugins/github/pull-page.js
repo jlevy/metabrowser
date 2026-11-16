@@ -631,7 +631,10 @@ function timeline(record) {
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
-      review: { state, label: state in REVIEW_STATES ? REVIEW_STATES[state] : state.toLowerCase() },
+      review: {
+        state,
+        label: Object.hasOwn(REVIEW_STATES, state) ? REVIEW_STATES[state] : state.toLowerCase(),
+      },
     });
   }
   // A pending review has no time and sorts last; ties keep comments before reviews,
