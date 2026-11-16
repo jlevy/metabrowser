@@ -26,6 +26,8 @@ from metabrowser.builtin_plugins.github.gh import GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_labels import (
     LABEL_FRESHNESS_S,
+    MAX_LABEL_NAME_BYTES,
+    MAX_LABELS_BYTES,
     LabelCache,
     LabelPage,
     LabelSnapshot,
@@ -39,7 +41,10 @@ from metabrowser.builtin_plugins.github.pull_labels import (
     refresh_wanted,
 )
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
-from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_REFRESH_MESSAGE_CHARS,
+    PullRefreshStamp,
+)
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
     FixtureSource,
     _stage_and_publish_source,
@@ -302,16 +307,70 @@ def test_only_a_label_named_without_a_color_takes_the_sets(
     assert (other.entries, other.missing) == ([], ("bug", "gone"))
 
 
+def test_a_name_of_any_script_matches_its_record_whole(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub's longest name, 50 characters, of 3- and 4-byte ones, is kept whole (A1)."""
+
+    cjk = "漢" * 50
+    mixed = "🏷é" * 25
+    assert len(cjk.encode()) == 150 and len(mixed.encode()) == 150
+    four = "🏷" * 50
+    assert len(four.encode()) == MAX_LABEL_NAME_BYTES
+    _GitHub(monkeypatch, [cjk, mixed, four])
+    asyncio.run(refresh_labels(repository))
+    shown: list[object] = [{"name": name, "color": None} for name in (cjk, mixed, four)]
+    lookup = labels_for(repository.home, repository.slug, repository.source, shown)
+    assert [entry["name"] for entry in lookup.entries] == [cjk, mixed, four]
+    assert lookup.missing == ()
+    # A whole set holds every name, so a page shows nothing pending and asks no more.
+    assert not refresh_wanted(repository)
+
+
 def test_a_name_past_its_bound_is_refused_and_the_set_reads_as_none(
     repository: ListedRepository,
 ) -> None:
     _seed(repository, "bug")
     path = repository.home / f"sources/{repository.slug}/pulls/labels.json"
     cache = json.loads(path.read_bytes())
-    cache["snapshot"]["pages"][0]["labels"][0]["name"] = "x" * 1000
+    cache["snapshot"]["pages"][0]["labels"][0]["name"] = "x" * (MAX_LABEL_NAME_BYTES + 1)
     path.write_text(json.dumps(cache))
     assert read_labels(repository.home, repository.slug, repository.source) is None
     assert label_index(repository.home, repository.slug, repository.source) is None
+
+
+def test_a_set_at_every_bound_fits_its_byte_bound() -> None:
+    """5,000 labels of 4-byte names and descriptions, a 256-byte ETag a page: 3,246,738 bytes."""
+
+    name = "🏷" * 50
+    description = "🏷" * 100
+    page = LabelPage(
+        etag='W/"' + "e" * 256 + '"',
+        has_next=True,
+        labels=tuple(
+            RepositoryLabel(name=name, color="d73a4a", description=description)
+            for _ in range(pull_labels.LABEL_PAGE_SIZE)
+        ),
+    )
+    last = page.model_copy(update={"has_next": False})
+    source = f"https://github.com/{'o' * 39}/{'r' * 100}"
+    reader = f"gh:{'x' * 39}"
+    at = utc_stamp(FETCHED_AT)
+    cache = LabelCache(
+        source=source,
+        snapshot=LabelSnapshot(
+            source=source,
+            reader=reader,
+            fetched_at=at,
+            complete=True,
+            pages=(page,) * (pull_labels.MAX_LABEL_PAGES - 1) + (last,),
+        ),
+        last_refresh=PullRefreshStamp(
+            outcome="succeeded", at=at, reader=reader, message="m" * MAX_REFRESH_MESSAGE_CHARS
+        ),
+    )
+    size = len(cache.model_dump_json().encode())
+    assert size == 3_246_738 and size < MAX_LABELS_BYTES
 
 
 def test_a_refresh_stops_at_its_page_bound_and_keeps_its_pages(
@@ -407,3 +466,52 @@ def test_a_publish_into_another_sources_cache_is_refused(
     with pytest.raises(ValueError, match="source identity changed"):
         publish_labels(elsewhere, None, None, stamp)
     assert read_labels(repository.home, repository.slug, elsewhere.source) is None
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "reader", "pages", "calls"),
+    [
+        # A label added after a full last page: that page's body is unchanged, so it answers
+        # 304, and its Link now names a next page, which is read (A11).
+        (["a", "b"], ["a", "b", "c"], READER, 2, ["page 1 (If-None-Match)", "page 2"]),
+        # A label deleted, so the set is one page again and the cached second one is gone:
+        # the unchanged first page answers 304 with no Link at all, which keeps its cached
+        # continuation, and the next page, asked for again, answers empty.
+        (
+            ["a", "b", "c"],
+            ["a", "b"],
+            READER,
+            2,
+            ["page 1 (If-None-Match)", "page 2 (If-None-Match)"],
+        ),
+        # A page in the middle changed: it alone answers 200.
+        (
+            ["a", "b", "c", "d", "e"],
+            ["a", "b", "c", "x", "e"],
+            READER,
+            3,
+            ["page 1 (If-None-Match)", "page 2 (If-None-Match)", "page 3 (If-None-Match)"],
+        ),
+        # Another account: no ETag of the earlier reader's is sent.
+        (["a", "b", "c"], ["a", "b", "c"], "someone-else", 2, ["page 1", "page 2"]),
+    ],
+)
+def test_the_page_loop_follows_githubs_continuation(
+    repository: ListedRepository,
+    monkeypatch: pytest.MonkeyPatch,
+    before: list[str],
+    after: list[str],
+    reader: str,
+    pages: int,
+    calls: list[str],
+) -> None:
+    monkeypatch.setattr(pull_labels, "LABEL_PAGE_SIZE", 2)
+    github = _GitHub(monkeypatch, before)
+    asyncio.run(refresh_labels(repository))
+    assert _names(repository) == before
+    github.names, github.calls, github.readers = after, [], [reader]
+    asyncio.run(refresh_labels(repository, retry=True))
+    snapshot = _cached(repository).snapshot
+    assert snapshot is not None and snapshot.complete
+    assert snapshot.reader == f"gh:{reader}"
+    assert (_names(repository), len(snapshot.pages), github.calls) == (after, pages, calls)

@@ -43,11 +43,7 @@ from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhResponse, gh_api
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, as_dict, utc_stamp
 from metabrowser.builtin_plugins.github.gh_lists import active_account as active_account
-from metabrowser.builtin_plugins.github.pull_list import (
-    ETAG_PATTERN,
-    MAX_ROW_LABEL_BYTES,
-    ListedRepository,
-)
+from metabrowser.builtin_plugins.github.pull_list import ETAG_PATTERN, ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     LabelColor,
     PullRefreshStamp,
@@ -86,13 +82,17 @@ LABEL_FRESHNESS_S: Final = 300.0
 LABEL_PAGE_SIZE: Final = 100
 # Measured 2026-11-15 (``gh api repos/<r>/labels``): home-assistant/core has 2,894 labels,
 # elastic/kibana 1,732, and rust-lang/rust 999, the most of eleven large repositories.
-# Fifty pages hold 5,000. A label's name is at most 50 characters and its description 100,
-# and they are cut as a row's name is and at 100 characters of any script.
+# Fifty pages hold 5,000.
 MAX_LABEL_PAGES: Final = 50
+# A GitHub label's name is at most 50 characters and its description 100, and each is cut
+# at what that many characters of any script take escaped, 4 bytes each: a record names a
+# label by its whole name, so a name cut shorter would never match it.
+MAX_LABEL_NAME_BYTES: Final = 200
 MAX_LABEL_DESCRIPTION_BYTES: Final = 400
 # home-assistant/core's 2,894 labels are 208,661 bytes cached (29 pages, each with its
-# ETag). A set of 5,000 labels at every bound would be about 2.6 MB; 4 MiB is the read
-# bound and the write bound.
+# ETag). A set of 5,000 labels at every bound, each name and description of 4-byte
+# characters and each page's ETag of 256, is 3,246,738 bytes
+# (tests/test_github_pull_labels.py); 4 MiB is the read bound and the write bound.
 MAX_LABELS_BYTES: Final = 4 * 1024 * 1024
 # Memory for a server's few repositories, and a test's many homes.
 _MAX_INDEXES: Final = 16
@@ -110,7 +110,7 @@ class _Model(BaseModel):
 class RepositoryLabel(_Model):
     """One label of the repository: its name, GitHub's color, and its description."""
 
-    name: Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTES)]
+    name: Annotated[str, StringConstraints(max_length=MAX_LABEL_NAME_BYTES)]
     color: LabelColor | None
     description: Annotated[str, StringConstraints(max_length=MAX_LABEL_DESCRIPTION_BYTES)] | None
 
@@ -375,7 +375,7 @@ def _label(value: object) -> RepositoryLabel | None:
         return None
     description = label_description(item.get("description"))
     return RepositoryLabel(
-        name=cut_escaped(name, MAX_ROW_LABEL_BYTES)[0],
+        name=cut_escaped(name, MAX_LABEL_NAME_BYTES)[0],
         color=label_color(item.get("color")),
         description=None
         if description is None
@@ -387,7 +387,11 @@ def _page(response: GhResponse, old: LabelPage | None) -> LabelPage:
     if response.status == 304:
         if old is None or old.etag is None:
             raise ValueError("an unconditional label page answered 304")
-        return old.model_copy(update={"etag": response.etag or old.etag})
+        # GitHub's ETag covers a page's body, not its Link header, and a 304 carries the
+        # Link: a full last page answers 304 after a label is added past it, naming the
+        # next page. Only a 304 that names no Link keeps the page's cached continuation.
+        has_next = response.has_next_page if "link" in response.headers else old.has_next
+        return old.model_copy(update={"etag": response.etag or old.etag, "has_next": has_next})
     payload = response.json()
     if not isinstance(payload, list) or len(payload) > LABEL_PAGE_SIZE:  # pyright: ignore[reportUnknownArgumentType]
         raise ValueError("unreadable label page")
@@ -483,6 +487,7 @@ __all__ = [
     "LabelPage",
     "LabelSnapshot",
     "MAX_LABELS_BYTES",
+    "MAX_LABEL_NAME_BYTES",
     "MAX_LABEL_PAGES",
     "RepositoryLabel",
     "forget",
