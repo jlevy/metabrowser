@@ -316,7 +316,8 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer; and
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
-  Chrome’s input and reads whether its navigator binds them, as on a Mac, or not.
+  Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
+  host, and reads that only the Mac’s binds them.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
