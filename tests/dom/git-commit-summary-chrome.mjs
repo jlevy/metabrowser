@@ -155,6 +155,12 @@ const offStep = (indent) =>
 // The pane widths the page is read at: a wide pane, the default, and a narrow one.
 const WIDTHS = [980, 760, 560, 420, 320];
 
+// Each dot's group dissolved, so the dot is an item of its line of its own, as it was before
+// A4 of review A on #479: the control that shows the sweeps below can fail.
+const DISSOLVED = `.metabrowser-diff-host .diff-summary-group, .change-line-group, .git-commit-change-group {
+  display: contents !important;
+}`;
+
 // In the page: draw a commit's page at each width, its Diff summary in its place, and read
 // where the summary's parts are; then open the summary; then draw the page with no diff.
 const MEASURE = `async (widths) => {
@@ -171,6 +177,27 @@ const MEASURE = `async (widths) => {
     throw new Error("timed out waiting for " + what);
   };
   const round = (value) => Math.round(value * 100) / 100;
+  // Each dot that sets a line's groups apart, and whether it starts a line of its own: the
+  // part before it does not end on the line it is on.
+  const dots = (line) =>
+    [...line.querySelectorAll('.summary-punctuation[aria-hidden="true"]')].map((dot) => {
+      const at = dot.getBoundingClientRect();
+      const before = dot.previousElementSibling;
+      const end = before ? [...before.getClientRects()].at(-1) : null;
+      return {
+        text: dot.textContent,
+        top: round(at.top),
+        startsLine: end === null || Math.abs(end.top - at.top) > 1 || end.right > at.left + 0.5,
+      };
+    });
+  // How many lines a line's parts take: the distinct tops of their boxes, but for the text a
+  // screen reader alone is told, which is on no line.
+  const lines = (line) =>
+    new Set(
+      [...line.querySelectorAll("span:not(.visually-hidden)")].flatMap((node) =>
+        [...node.getClientRects()].map((rect) => Math.round(rect.top)),
+      ),
+    ).size;
   const box = (node) => {
     const rect = node.getBoundingClientRect();
     return { top: round(rect.top), bottom: round(rect.bottom), left: round(rect.left), height: round(rect.height) };
@@ -186,7 +213,7 @@ const MEASURE = `async (widths) => {
     body: "Its counts are the Diff summary's header.\\nAnd its tree is the commit's files.",
     files: [],
   };
-  // The change set the commit's diff reads: 35 files, 2 added, 3 removed, 30 modified.
+  // The change set the commit's diff reads: 35 files, 2 added, 3 deleted, 30 modified.
   const kinds = [...Array(2).fill("added"), ...Array(3).fill("deleted"), ...Array(30).fill("modified")];
   const files = kinds.map((kind, at) => ({
     kind,
@@ -227,12 +254,40 @@ const MEASURE = `async (widths) => {
       toggle: toggle ? box(toggle) : null,
       body: box(body),
       rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")) || null,
-      text: toggle?.querySelector(".diff-summary-files")?.parentElement?.textContent ?? null,
+      text: toggle?.textContent ?? null,
+      dots: toggle ? dots(toggle) : null,
+      lines: toggle ? lines(toggle) : null,
       hang: toggle ? parseFloat(getComputedStyle(toggle).marginLeft) : null,
       stats: stage.querySelectorAll(".git-commit-change-stats").length,
       inHeader: place.parentElement?.classList.contains("git-commit-header") ?? false,
     };
     handle.dispose();
+  }
+  // Every width from 60 to 400 px, 1 px apart: wherever the header wraps, it breaks after a
+  // dot, never before one (A4 of review A on #479). The same sweep with each dot's group
+  // dissolved, so that each dot is an item of its own again, is the control: a dot then
+  // starts a line at some of these widths, so the check can fail (B2 of review B on #479).
+  const sweepHeader = () => {
+    const swept = [];
+    for (let width = 60; width <= 400; width += 1) {
+      const { place, handle } = draw(width, true);
+      const toggle = place.querySelector(".diff-summary");
+      swept.push({ width, lines: lines(toggle), starts: dots(toggle).filter((dot) => dot.startsLine).length });
+      handle.dispose();
+    }
+    return swept;
+  };
+  const dissolved = () => {
+    const style = document.createElement("style");
+    style.textContent = ${JSON.stringify(DISSOLVED)};
+    document.head.append(style);
+    return style;
+  };
+  out.sweep = sweepHeader();
+  {
+    const style = dissolved();
+    out.sweepDissolved = sweepHeader();
+    style.remove();
   }
   // Opened: the tree under its header, above the description.
   {
@@ -273,6 +328,14 @@ const MEASURE = `async (widths) => {
     const { stage, place } = draw(760, false);
     await frames();
     const line = place.querySelector(".diff-summary");
+    // The room each side of the dot, between the file count and the dot, and the dot and the
+    // change line, and how many lines the line takes.
+    const spacing = () => {
+      const files = line.querySelector(".diff-summary-files").getBoundingClientRect();
+      const dot = line.querySelector('.summary-punctuation[aria-hidden="true"]').getBoundingClientRect();
+      const change = line.querySelector(".change-line").getBoundingClientRect();
+      return { before: round(dot.left - files.right), after: round(change.left - dot.right), lines: lines(line) };
+    };
     out.totals = {
       display: getComputedStyle(place).display,
       text: line?.textContent ?? null,
@@ -280,7 +343,14 @@ const MEASURE = `async (widths) => {
       rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")) || null,
       place: box(place),
       meta: box(stage.querySelector(".git-commit-meta")),
+      spacing: line ? spacing() : null,
     };
+    // Without the diff plugin's stylesheet, as where the plugin is absent or its assets did
+    // not load, the line still has a space each side of its dot (B3 of review B on #479).
+    const plugin = [...document.styleSheets].find((sheet) => sheet.href?.endsWith("/diff/styles.css"));
+    plugin.disabled = true;
+    out.totals.shellOnly = line ? spacing() : null;
+    plugin.disabled = false;
   }
   // A commit with no count of files: the place is empty and takes no room.
   {
@@ -293,16 +363,69 @@ const MEASURE = `async (widths) => {
       body: box(stage.querySelector(".git-commit-body")),
     };
   }
-  // The hover summary keeps its two rows of counts.
+  // The hover summary says the commit's changes in the Diff summary's words and paint, in
+  // each theme: each number bold in the line's ink, each letter in its status's ink at the
+  // line's weight, and each comma and dot muted (mb-khm6); narrowed, it wraps after a dot.
   {
     const tip = document.createElement("div");
-    tip.className = "custom-tooltip";
+    // Shown, as the SDK's tooltip shows one, so it is laid out.
+    tip.className = "custom-tooltip visible";
+    tip.style.display = "block";
     tip.innerHTML = internals.renderCommitTooltip(detail);
+    pane.style.width = "980px";
     pane.replaceChildren(tip);
+    const line = tip.querySelector(".git-commit-change-line");
+    const ink = (node) => getComputedStyle(node).color;
+    const weight = (node) => getComputedStyle(node).fontWeight;
+    const token = (name) => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(" + name + ")";
+      line.append(probe);
+      const color = ink(probe);
+      probe.remove();
+      return color;
+    };
     out.tooltip = {
       stats: tip.querySelectorAll(".git-commit-change-stats").length,
       place: tip.querySelectorAll(".git-commit-diff-summary").length,
+      text: line?.textContent ?? null,
+      hidden: line?.getAttribute("aria-hidden") ?? null,
+      said: tip.querySelector(".git-commit-change-stats > .visually-hidden")?.textContent ?? null,
+      paint: [],
     };
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.dataset.theme = theme;
+      await frames();
+      const tokens = {};
+      for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified"]) {
+        tokens[name] = token(name);
+      }
+      out.tooltip.paint.push({
+        theme,
+        tokens,
+        line: { ink: ink(line), weight: weight(line) },
+        words: ink(line.querySelector(".git-commit-change-files")),
+        numbers: [...line.querySelectorAll(".summary-number")].map((node) => [node.textContent, ink(node), weight(node)]),
+        letters: [...line.querySelectorAll(".file-change-status")].map((node) => [node.textContent, node.dataset.fileStatus, ink(node), weight(node)]),
+        marks: [...line.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node)]),
+      });
+    }
+    delete document.documentElement.dataset.theme;
+    // Every width from 60 px to the card's own most, 360 px, 1 px apart: wherever it wraps, it
+    // breaks after a dot; and with its groups dissolved, the control, a dot starts a line at
+    // some of them (B2 of review B on #479).
+    const sweepTip = () => {
+      const swept = [];
+      for (let width = 60; width <= 360; width += 1) {
+        tip.style.width = width + "px";
+        swept.push({ width, lines: lines(line), dots: dots(line).length, starts: dots(line).filter((dot) => dot.startsLine).length });
+      }
+      return swept;
+    };
+    out.tooltip.sweep = sweepTip();
+    const style = dissolved();
+    out.tooltip.sweepDissolved = sweepTip();
+    style.remove();
   }
   pane.replaceChildren();
   return out;
@@ -345,11 +468,18 @@ async function main() {
         }
         check(
           `${where}: the Diff summary's header says the commit's counts`,
-          at.text?.includes("35 changed files") &&
-            at.text.includes("2 added, 3 removed, 30 modified") &&
+          at.text?.includes("35 files changed") &&
+            at.text.includes("2 A, 3 D, 30 M") &&
             at.text.includes("+1,234") &&
             at.text.includes("−3,423"),
           String(at.text),
+        );
+        // A header that wraps breaks after a dot: no dot starts a line (A4 of review A on
+        // #479).
+        check(
+          `${where}: no line of the summary's header starts with its dot`,
+          at.dots?.length === 2 && at.dots.every((dot) => !dot.startsLine),
+          JSON.stringify(at.dots),
         );
         check(`${where}: the commit's stats block is gone`, at.stats === 0, String(at.stats));
         check(
@@ -382,8 +512,9 @@ async function main() {
           }),
         );
       }
-      // One row where the header fits on one line: at the default pane and wider.
-      for (const width of WIDTHS.filter((each) => each >= 560)) {
+      // One row where the header fits on one line: at 420 px and wider, as the design system
+      // says (B4 of review B on #479). Measured 2026-11-16 in Chrome, it fits from 354 px.
+      for (const width of WIDTHS.filter((each) => each >= 420)) {
         const at = measured.widths[width];
         check(
           `at ${width} px: the summary's header is one row`,
@@ -393,6 +524,27 @@ async function main() {
           JSON.stringify(at?.toggle),
         );
       }
+      // At 320 px the header wraps, so its dots were read where a wrap can put them.
+      check(
+        "at 320 px: the summary's header wraps",
+        (measured.widths[320]?.lines ?? 0) >= 2,
+        JSON.stringify(measured.widths[320]),
+      );
+      const sweep = measured.sweep ?? [];
+      check(
+        "from 60 to 400 px, the summary's header never starts a line with its dot",
+        sweep.length === 341 &&
+          sweep.some((at) => at.lines >= 3) &&
+          sweep.every((at) => at.starts === 0),
+        JSON.stringify(sweep.filter((at) => at.starts > 0)),
+      );
+      // The control: with each dot an item of its own, the same sweep finds a dot starting
+      // a line, so the check above can fail.
+      check(
+        "with its groups dissolved, the header's sweep finds a dot starting a line",
+        (measured.sweepDissolved ?? []).some((at) => at.starts > 0),
+        JSON.stringify(measured.sweepDissolved?.length),
+      );
       const opened = measured.opened;
       check(
         "opened, the summary's tree is in its place, under its header",
@@ -417,12 +569,29 @@ async function main() {
       check(
         "with no diff drawn, the place says the commit's totals in one line",
         totals?.display !== "none" &&
-          totals?.text === "35 changed files +1,234 \u22123,423" &&
+          totals?.text === "35 files changed \u00b7,  +1,234\u22123,423" &&
           totals.line !== null &&
           totals.rowHeight !== null &&
           totals.line.height <= totals.rowHeight + 0.5 &&
           totals.place.top >= totals.meta.bottom - 0.5,
         JSON.stringify(totals),
+      );
+      // Its written spaces render nowhere on the diff plugin's flex line, whose 6 px gap
+      // spaces the dot; without the plugin's stylesheet they are its spaces, so the line
+      // still reads "35 files changed \u00b7 +1,234 \u22123,423" (B3 of review B on #479).
+      check(
+        "with no diff drawn, the totals line's dot is 6 px from each side",
+        totals?.spacing?.lines === 1 &&
+          Math.abs(totals.spacing.before - 6) <= 0.5 &&
+          Math.abs(totals.spacing.after - 6) <= 0.5,
+        JSON.stringify(totals?.spacing),
+      );
+      check(
+        "without the diff plugin's stylesheet, the totals line keeps a space each side of its dot",
+        totals?.shellOnly?.lines === 1 &&
+          totals.shellOnly.before >= 2 &&
+          totals.shellOnly.after >= 2,
+        JSON.stringify(totals?.shellOnly),
       );
       const empty = measured.empty;
       check(
@@ -430,10 +599,85 @@ async function main() {
         empty?.display === "none" && empty.height === 0,
         JSON.stringify(empty),
       );
+      const tooltip = measured.tooltip;
       check(
-        "the hover summary keeps its two rows of counts and has no Diff summary",
-        measured.tooltip?.stats === 1 && measured.tooltip.place === 0,
-        JSON.stringify(measured.tooltip),
+        "the hover summary has its change line and no Diff summary",
+        tooltip?.stats === 1 && tooltip.place === 0,
+        JSON.stringify(tooltip),
+      );
+      check(
+        "the hover summary reads as the Diff summary's header, in words for a screen reader",
+        tooltip?.text === "35 files changed·2 A, 3 D, 30 M·+1,234−3,423" &&
+          tooltip.hidden === "true" &&
+          tooltip.said ===
+            "35 files changed: 2 added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted",
+        JSON.stringify(tooltip),
+      );
+      const STATUS_INK = {
+        added: "--git-status-added",
+        deleted: "--git-status-deleted",
+        modified: "--git-status-modified",
+      };
+      for (const paint of tooltip?.paint ?? []) {
+        const where = `the hover summary, ${paint.theme}`;
+        const inks = Object.values(paint.tokens);
+        check(
+          `${where}: the tokens are distinct`,
+          new Set(inks).size === inks.length,
+          JSON.stringify(paint.tokens),
+        );
+        check(
+          `${where}: its numbers are bold, in the line's ink`,
+          paint.numbers.length === 4 &&
+            paint.numbers.every(
+              ([, color, weight]) => color === paint.tokens["--text"] && Number(weight) >= 600,
+            ),
+          JSON.stringify(paint.numbers),
+        );
+        check(
+          `${where}: its words are in the line's ink`,
+          paint.words === paint.tokens["--text"] && paint.line.ink === paint.tokens["--text"],
+          JSON.stringify({ words: paint.words, line: paint.line }),
+        );
+        check(
+          `${where}: each letter is in its status's ink at the line's weight, A, D, M`,
+          JSON.stringify(paint.letters.map(([text]) => text)) === JSON.stringify(["A", "D", "M"]) &&
+            paint.letters.every(
+              ([, status, color, weight]) =>
+                color === paint.tokens[STATUS_INK[status]] && weight === paint.line.weight,
+            ),
+          JSON.stringify(paint.letters),
+        );
+        check(
+          `${where}: its commas and dots are muted, the dots hidden`,
+          JSON.stringify(paint.marks.map(([text, hidden]) => [text, hidden])) ===
+            JSON.stringify([
+              ["·", "true"],
+              [",", null],
+              [",", null],
+              ["·", "true"],
+            ]) && paint.marks.every(([, , color]) => color === paint.tokens["--muted"]),
+          JSON.stringify(paint.marks),
+        );
+      }
+      check(
+        "the two themes ink the hover summary's letters apart",
+        JSON.stringify(tooltip?.paint?.[0]?.letters) !==
+          JSON.stringify(tooltip?.paint?.[1]?.letters),
+        JSON.stringify(tooltip?.paint),
+      );
+      const tipSweep = tooltip?.sweep ?? [];
+      check(
+        "from 60 to 360 px, the hover summary wraps and never starts a line with its dot",
+        tipSweep.length === 301 &&
+          tipSweep.some((at) => at.lines >= 3) &&
+          tipSweep.every((at) => at.dots === 2 && at.starts === 0),
+        JSON.stringify(tipSweep.filter((at) => at.dots !== 2 || at.starts > 0)),
+      );
+      check(
+        "with its groups dissolved, the hover summary's sweep finds a dot starting a line",
+        (tooltip?.sweepDissolved ?? []).some((at) => at.starts > 0),
+        JSON.stringify(tooltip?.sweepDissolved?.length),
       );
       if (process.env.MEASURE_OUT) {
         fs.writeFileSync(process.env.MEASURE_OUT, JSON.stringify(measured, null, 2));

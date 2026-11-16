@@ -99,8 +99,8 @@ request must prove.
   border or box, and opening it shows the hidden blocks in place.
 - **Diff summary** (`mb-epw2`):
   - Every multi-file diff opens with a Diff summary, collapsed by default.
-  - Its header reads like “35 changed files (2 added, 3 removed, 30 modified) +1,234
-    −3,423”.
+  - Its header reads like “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” (Phase
+    28).
   - Opened, it is the tree of changed files the Pulls tab shows under a pull request,
     and a closed folder shows its rolled-up line counts.
 - **Pull stack groups** (`mb-cm61`, `mb-vmwh`): the Pulls tab groups the pull requests
@@ -213,6 +213,7 @@ it:
 | 25 | `claude/pull-header-status` | `mb-2u08`, `mb-onr2` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, and holds the pending placeholder in the Diff summary row pull request 20 adds |
 | 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 | 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
+| 28 | `claude/diff-summary-letters` | `mb-vb51` | On pull request 27 (#478); rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, and resizes the pending placeholder pull request 25 holds in its row |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -930,6 +931,36 @@ it, and ideally cached it up front”.
   After review A, measured again, a page first opened on Changes is kept too, and the
   `summary-wait` part of `tests/test_github_pull_header_chrome.py` holds in Chrome that
   a revisit’s summary is in the frame that paints its record.
+
+### Phase 28: Diff Summary Letters (pull request 28)
+
+- [ ] `mb-vb51`: the Diff summary’s header reads “19 files changed · 10 A, 5 D, 4 M ·
+  +1,234 −567”, each status the letter its rows carry in its status’s color, the dots
+  and commas muted, and its accessible name in words; one rule in the design system, a
+  count summary’s separators and list punctuation muted (`.summary-punctuation`) and
+  painted from the shared count parts, which a pull request’s Checks summary takes too;
+  the pull request header’s pending placeholder re-measured in headless Chrome to 14.5
+  em; pinned in the Diff summary session and golden, the diff view session, and the
+  design vocabulary test, and in Chrome in both themes by the changed-file rows test and
+  the header session’s `summary-wait` part, each of which fails on the old wording.
+  Review A’s round (`mb-bvl2`): the count parts have one painter, formatters.js’s, which
+  the SDK exposes as `metabrowser.countPartsNodes` and the Diff summary and the Checks
+  summary paint through, pinned once in `tests/dom/count-parts-session.js`; what a
+  change set holds is said once, by `changeSummary`, and a commit’s hover card says it
+  in the Diff summary’s words and paint (`mb-khm6`); each dot is one item with the group
+  before it, so a wrap breaks after it; a line without a name says a comma in each dot’s
+  place; and “(estimated)” is muted.
+  `mb-9ekj`, its component half: the brief change line, “10 A, 5 D, 4 M · +1,234 −567”,
+  is one component, `.change-line`, which formatters.js’s `changeLine` builds and
+  `changeLineNodes` and `changeLineHtml` paint, and the SDK exposes as
+  `metabrowser.changeLine` and `metabrowser.changeLineNodes`, two additive methods; the
+  Diff summary’s header and fallback line, a commit’s hover card, and a commit page’s
+  totals line draw it, pinned in `tests/dom/count-parts-session.js` and its golden.
+  Its use in the Pulls tab’s stack headings is not in this pull request.
+  Review B’s round: the commit page’s header and hover card are swept 1 px apart, with a
+  control that shows the sweep can fail; the totals line writes its spaces, so it reads
+  right without the diff plugin’s stylesheet; and the startup scripts’ growth, 2,340
+  bytes compressed after the comments were cut, is recorded beside the budget.
 
 ## Testing Strategy
 

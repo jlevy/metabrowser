@@ -527,6 +527,21 @@ Useful helpers include:
   holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
   which the host draws at regular weight, then the rest, which keeps the element’s
   weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
+- `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
+  nodes its element holds, painted as the host paints every count summary: the parts are
+  words as strings, `{number}`, drawn bold, `{punctuation}` for a list’s comma and
+  `{separator}` for the dot between a line’s groups, both drawn gray, the dot hidden
+  from assistive technology with an optional `spoken` said in its place, and
+  `{status, letter}` for a file change status, its letter drawn in the status’s color
+  ([Count Summaries Bold Their Numbers](design-system.md#count-summaries-bold-their-numbers));
+- `changeLine(change)` and `changeLineNodes(line, options)` for a brief change line, “10
+  A, 5 D, 4 M · +1,234 −567”, the host’s one component for a change set’s statuses and
+  line totals: `changeLine` builds it from `{statuses, additions, deletions}`, each
+  status `{status, letter, word, count}` in the order shown and a count `null` where it
+  is not known, in the host’s number format, and returns its parts, its `text`, and its
+  `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
+  with `{spoken: ", "}` on a line whose name does not say it in words
+  ([Brief Change Line](design-system.md#brief-change-line));
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
