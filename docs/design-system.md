@@ -4341,6 +4341,9 @@ element when they repaint or are disposed.
 `tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
 `tests/dom/files-tab-chrome.mjs` checks it in Chrome on a tree row while the totals
 redraw and the filter bar rebuilds.
+`tests/dom/folder-totals-view-behavior.js`, `tests/dom/folder-plugin-behavior.js`,
+`tests/dom/treemap-not-indexed-session.js` and `tests/dom/git-panel-behavior.js` check
+that each of those surfaces passes its own element.
 
 ### Shared Overlay Lifecycle
 
