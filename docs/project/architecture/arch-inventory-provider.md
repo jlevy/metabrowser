@@ -178,6 +178,12 @@ A group whose rows outrun the page bound carries that filtered tree’s continua
 the grouped read’s version, so a caller completes every group from one engine version.
 A folder stands in every group that holds something under it, with that group’s totals,
 so grouped rows take no host decoration join.
+The Python provider retains every outrunning group’s rows at once, against the
+`MAX_ASSEMBLED_ROWS` bound that every continuation shares, so `/api/tree` admits one
+grouped assembly at a time per runtime (`InventoryRuntime.grouped_tree_admission`) and
+overlapping grouped reads take turns rather than evicting each other’s pages.
+A grouped read whose own continuations do not fit evicts its oldest, retries, and fails
+with `VersionUnavailableError`, whose message names the eviction.
 
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.

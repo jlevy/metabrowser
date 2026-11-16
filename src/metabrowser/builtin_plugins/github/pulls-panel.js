@@ -2864,12 +2864,13 @@ export function createPullsController(deps, options = {}) {
     prepareVisible,
     /**
      * The address says which pull request's page holds the pane. Not a selection: the row
-     * only follows it, and no fetch starts. *reveal* shows the row again when the address
-     * names the current one, as an open of the page shown does: its stack opens and it
-     * scrolls into view (docs/design-system.md, "Navigation Reveals the Item").
+     * only follows it, and no fetch starts. The current number named again moves nothing,
+     * as another tab of its page or one of its changed files does, unless *again* says the
+     * reader opened the pull request shown again: then its stack opens and its row scrolls
+     * into view (docs/design-system.md, "Navigation Reveals the Item").
      *
      * @param {number | null} number
-     * @param {{preserveScroll?: boolean, reveal?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, options = {}) {
       if (disposed) {
@@ -2879,7 +2880,7 @@ export function createPullsController(deps, options = {}) {
         revealCurrent = false;
       }
       if (number === current) {
-        if (options.reveal === true && number !== null) {
+        if (options.again === true && number !== null) {
           revealCurrent = true;
           showCurrent(number);
         }
@@ -4624,11 +4625,12 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
     /**
-     * The address names a pull request's page, and maybe one file of it.
+     * The address names a pull request's page, and maybe one file of it. *again* reveals
+     * the pull request already current (the controller's `setCurrent`).
      *
      * @param {number | null} number
      * @param {string | null} [file]
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, file = null, options) {
       if (currentRow !== null && currentRow !== number) {
