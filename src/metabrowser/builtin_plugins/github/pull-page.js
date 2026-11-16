@@ -5352,12 +5352,20 @@ export function mountPullPage(container, ctx, mb) {
    * *comparison*, the one the page shows, has no summary to draw: its read failed. A summary
    * of an earlier comparison is not left in the row, where it would read as this one's (A1 of
    * review A on #470): the row is emptied, and the next read of the comparison draws it. A
-   * draw of this comparison already under way answers for itself.
+   * draw of this comparison already under way answers for itself, and a failure of another
+   * comparison, as an older one Changes shows while it is repaired, changes nothing here.
    *
    * @param {{left: string, right: string, route?: string}} comparison
    */
   function summaryFailed(comparison) {
-    if (!listening.signal.aborted && summaryShown.key !== summaryKey(comparison)) {
+    const key = summaryKey(comparison);
+    const current = shown?.comparison ?? null;
+    if (
+      !listening.signal.aborted &&
+      current !== null &&
+      summaryKey(current) === key &&
+      summaryShown.key !== key
+    ) {
       clearSummary();
     }
   }
