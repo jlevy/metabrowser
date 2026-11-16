@@ -186,6 +186,11 @@ The `Serving` line prints the address.
 A GitHub `/pull/123/commits` URL opens **Conversation**, where commit summaries appear
 with the discussion.
 
+To start over, click the folder’s name at the top of the navigation, or press `0`. That
+is Home: the folder’s home view as a fresh load shows it, with every tab at its first.
+**Pulls** then opens its list, and a pull request you open from it opens on
+**Conversation**, whichever tab you last read ([Home](design-system.md#home)).
+
 ## What the Page Shows
 
 The header has the title and its PR number; the author’s sentence, such as “jlevy wants

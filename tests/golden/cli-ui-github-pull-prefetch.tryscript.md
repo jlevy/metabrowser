@@ -22,6 +22,18 @@ page nothing. The session asserts, and so prints nothing for, that a poll of the
 record sends nothing, that a mount waiting through a dispose is let go, that a cancelled
 request tells no failure, and that a disposed prefetch does nothing.
 
+What a page reads is kept for the document, not for the page, since a page is mounted
+again on every visit (mb-neg9). The later steps share one keep between pages: a second
+visit to a comparison draws its Diff summary in the paint that shows its record, with no
+request and no wait for idle, and a second page joins a request already on its way.
+A record whose head moved names another comparison, which is read anew.
+The keep is bounded by its answers’ JSON length, the oldest out first.
+Last, the Pulls tab’s warmer reads the records of the pull requests a reader is likely
+to open next, one at a time when the browser is idle, and asks only for a comparison the
+keep has neither kept nor on its way.
+The session asserts that a second visit, and a visit to a warmed comparison, send no
+request.
+
 ```console
 $ node tests/dom/github-pull-prefetch-session.js
 {
@@ -80,7 +92,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       }
     },
     {
-      "step": "a later mount gets nothing here, and the browser's cache answers it",
+      "step": "a later mount is handed it again, from the keep, with no request",
       "phase": "taken",
       "comparison": "aaaa...bbbb",
       "holding": false,
@@ -92,7 +104,9 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "failedTold": [],
-      "handed": null
+      "handed": {
+        "document": "first"
+      }
     },
     {
       "step": "back on Conversation: nothing more is sent for that comparison",
@@ -269,6 +283,290 @@ $ node tests/dom/github-pull-prefetch-session.js
       "assetsWarmed": 2,
       "summarized": [],
       "failedTold": []
+    },
+    {
+      "step": "the reader opens a pull request and leaves it: its answer stays in the keep",
+      "phase": "none",
+      "comparison": null,
+      "holding": false,
+      "requests": [
+        "bbbb"
+      ],
+      "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
+      "failedTold": [],
+      "kept": [
+        "aaaa...bbbb"
+      ]
+    },
+    {
+      "step": "another pull request's page reads its own comparison",
+      "phase": "fetching",
+      "comparison": "aaaa...cccc",
+      "holding": true,
+      "requests": [
+        "cccc"
+      ],
+      "assetsWarmed": 1,
+      "summarized": [],
+      "failedTold": []
+    },
+    {
+      "step": "the first pull request again: its summary is drawn in the paint that shows the record, with no request and no wait",
+      "phase": "held",
+      "comparison": "aaaa...bbbb",
+      "holding": true,
+      "requests": [],
+      "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
+      "failedTold": [],
+      "waitingForIdle": 0
+    },
+    {
+      "step": "its Changes is handed the same answer",
+      "phase": "taken",
+      "comparison": "aaaa...bbbb",
+      "holding": false,
+      "requests": [],
+      "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
+      "failedTold": [],
+      "handed": {
+        "document": "first"
+      }
+    },
+    {
+      "step": "a page behind another tab draws a kept summary too: it costs nothing",
+      "phase": "held",
+      "comparison": "aaaa...cccc",
+      "holding": true,
+      "requests": [],
+      "assetsWarmed": 1,
+      "summarized": [
+        "cccc"
+      ],
+      "failedTold": []
+    },
+    {
+      "step": "the head moved: the record names another comparison, which is read, and the old one is not drawn",
+      "phase": "fetching",
+      "comparison": "aaaa...dddd",
+      "holding": true,
+      "requests": [
+        "dddd"
+      ],
+      "assetsWarmed": 1,
+      "summarized": [],
+      "failedTold": []
+    },
+    {
+      "step": "a second page while the first's request is on its way joins it, and sends nothing",
+      "phase": "fetching",
+      "comparison": "aaaa...bbbb",
+      "holding": true,
+      "requests": [],
+      "assetsWarmed": 1,
+      "summarized": [],
+      "failedTold": [],
+      "firstPageRequests": 1
+    },
+    {
+      "step": "the first page went; the request it shared answers the second",
+      "phase": "held",
+      "comparison": "aaaa...bbbb",
+      "holding": true,
+      "requests": [],
+      "assetsWarmed": 1,
+      "summarized": [
+        "bbbb"
+      ],
+      "failedTold": []
+    },
+    {
+      "step": "a keep of 70 characters of JSON, 40 for one answer: the oldest answer goes first, and a larger one is not kept",
+      "keep": {
+        "kept": [
+          "aaaa...b2",
+          "aaaa...b3"
+        ],
+        "chars": 64,
+        "pending": []
+      }
+    },
+    {
+      "step": "the Pulls tab names six pull requests: five are queued, and nothing is read until idle",
+      "queue": [
+        8,
+        10,
+        11,
+        12,
+        13
+      ],
+      "running": null,
+      "sentThisHour": 0,
+      "recent": [],
+      "recordReads": [],
+      "comparisonRequests": [],
+      "kept": []
+    },
+    {
+      "step": "idle: the first one's record is read from the cache",
+      "queue": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "running": 8,
+      "sentThisHour": 0,
+      "recent": [],
+      "recordReads": [
+        "8"
+      ],
+      "comparisonRequests": [],
+      "kept": []
+    },
+    {
+      "step": "its record names a comparison the keep lacks: it is asked for",
+      "queue": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "running": 8,
+      "sentThisHour": 1,
+      "recent": [],
+      "recordReads": [
+        "8"
+      ],
+      "comparisonRequests": [
+        "head8"
+      ],
+      "kept": []
+    },
+    {
+      "step": "it is kept, and at the next idle the second's record is read",
+      "queue": [
+        11,
+        12,
+        13
+      ],
+      "running": 10,
+      "sentThisHour": 1,
+      "recent": [
+        "8: warmed"
+      ],
+      "recordReads": [
+        "8",
+        "10"
+      ],
+      "comparisonRequests": [
+        "head8"
+      ],
+      "kept": [
+        "/api/plugin/github/pull-comparison?number=8"
+      ]
+    },
+    {
+      "step": "the reader opens the first: its page draws the summary with no request",
+      "phase": "held",
+      "comparison": "/api/plugin/github/pull-comparison?number=8",
+      "holding": true,
+      "requests": [],
+      "assetsWarmed": 1,
+      "summarized": [
+        "head8"
+      ],
+      "failedTold": []
+    },
+    {
+      "step": "the reader rests on another row: the queue is replaced, the one being read goes on, and the kept one is not looked up again",
+      "queue": [
+        11
+      ],
+      "running": 10,
+      "sentThisHour": 1,
+      "recent": [
+        "8: warmed"
+      ],
+      "recordReads": [
+        "8",
+        "10"
+      ],
+      "comparisonRequests": [
+        "head8"
+      ],
+      "kept": [
+        "/api/plugin/github/pull-comparison?number=8"
+      ]
+    },
+    {
+      "step": "the one being read is kept, and a record with no comparison is passed over",
+      "queue": [],
+      "running": null,
+      "sentThisHour": 2,
+      "recent": [
+        "8: warmed",
+        "10: warmed",
+        "11: no comparison"
+      ],
+      "recordReads": [
+        "8",
+        "10",
+        "11"
+      ],
+      "comparisonRequests": [
+        "head8",
+        "head10"
+      ],
+      "kept": [
+        "/api/plugin/github/pull-comparison?number=8",
+        "/api/plugin/github/pull-comparison?number=10"
+      ]
+    },
+    {
+      "step": "past the record's freshness window it is read again, and the keep answers: no request",
+      "queue": [],
+      "running": null,
+      "sentThisHour": 2,
+      "recent": [
+        "8: warmed",
+        "10: warmed",
+        "11: no comparison",
+        "8: kept"
+      ],
+      "recordReads": [
+        "8",
+        "10",
+        "11",
+        "8"
+      ],
+      "comparisonRequests": [
+        "head8",
+        "head10"
+      ],
+      "kept": [
+        "/api/plugin/github/pull-comparison?number=8",
+        "/api/plugin/github/pull-comparison?number=10"
+      ]
+    },
+    {
+      "step": "a warm whose record is read while the open page's comparison is on its way waits for it",
+      "pageRequests": 1,
+      "warmRequests": []
+    },
+    {
+      "step": "the page's answer arrives: the warm is sent",
+      "warmRequests": [
+        "head20"
+      ]
     }
   ]
 }

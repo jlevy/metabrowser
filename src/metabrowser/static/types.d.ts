@@ -2576,6 +2576,8 @@ type MetabrowserKeyRevealRuntime = Readonly<{
  * its mounted selector.
  */
 type MetabrowserShellKeymapShell = Readonly<{
+  /** Home: the served folder's home view, as the folder's name's click goes there. */
+  goHome(): void;
   openFolder(dir: string): void;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
   /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
@@ -3346,8 +3348,8 @@ declare global {
     focusFilesRow(): boolean;
     isGitHistoryLanding(): boolean;
     isPullAddress(pathname: string): boolean;
-    /** The reader's own open of the served root, `/view/`. */
-    openRoot(): Promise<unknown>;
+    /** The reader's own open of the served root, `/view/`, drawn again at its default view. */
+    openHome(): Promise<unknown>;
     restore(): Promise<unknown>;
     /** Reveal the file the address names in the Files tree: the Files panel's `reveal`. */
     revealFile(how: MetabrowserRevealHow): Promise<unknown>;
@@ -3359,7 +3361,7 @@ declare global {
     /** Bind the digits to a registry, or to none as the shell disposes it. */
     bindShortcuts(shortcuts: MetabrowserShortcutRegistry | null): void;
     finishGitDiscovery(): Promise<void>;
-    /** Go home: the Files tab at the served root, from any tab. */
+    /** Home: every tab forgets where it was, and the root opens at its default view. */
     home(): Promise<unknown>;
     /** The route of the Files landing the navigation controller applies, read once. */
     landingRoute(source: "startup" | "user" | "popstate"): MetabrowserRevealRoute;

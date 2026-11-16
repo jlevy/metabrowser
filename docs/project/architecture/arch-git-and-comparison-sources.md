@@ -273,6 +273,26 @@ reader’s Git configuration, and a replace ref or graft can each change it, and
 does not notice them until one of those clears happens.
 The server keeps no folder comparison (`builtin_plugins/diff/comparison_cache.py`).
 
+A pull request’s page keeps what it reads for the document, not for one page
+(`createComparisonKeep` in `builtin_plugins/github/comparison-prefetch.js`), because a
+page is mounted again on every visit (mb-neg9). Its key is the comparison’s route, which
+names the pull request, both commits, the build, and the store, so a kept answer holds
+for as long as a record names that route, and a record whose head or base moved names
+another one. A visit to a comparison the keep holds draws its Diff summary in the paint
+that shows the record, and its Changes mounts from the same answer, with no request.
+A request on its way is shared: a second page or the Pulls tab joins it, and it is
+abandoned only when every asker has gone.
+It is bounded at `KEPT_COMPARISON_CHARS`, 16 MiB of JSON characters, with a quarter for
+one answer, least recently used first, and sized in a task after the one that hands the
+answer on, as the Commits panel’s is; the measurement is beside the constant.
+Past it the browser’s cache answers, without the server.
+The Pulls tab warms it for the pull requests a reader opens next
+(`createComparisonWarmer`), one at a time when the browser is idle, with a cache read of
+the record and a comparison from the store, no GitHub call, within `WARM_COMPARISONS` an
+ask and `WARM_PER_HOUR`. `tests/dom/github-pull-prefetch-session.js` holds the keep and
+the warmer, and `tests/dom/github-pulls-files-prefetch-behavior.js` which pull requests
+the Pulls tab names.
+
 ## Paths are bytes
 
 A POSIX path is an arbitrary byte sequence excluding NUL and `/`. It need not be valid

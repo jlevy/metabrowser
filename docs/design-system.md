@@ -311,8 +311,8 @@ A missing tab has no target, so its letter does nothing and stays reserved.
 - Shift never changes what a key means: a letter matches in either case, a named key
   such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
   matches the digit typed or, failing that, its key on the digit row, so Shift+`1` is
-  `1`. A character that is another binding’s key keeps it: German Shift+`7` types `/`
-  and is Quick Search.
+  `1`, and Shift+`0`, which types `)` on a US keyboard, is `0`. A character that is
+  another binding’s key keeps it: German Shift+`7` types `/` and is Quick Search.
 - Punctuation matches the character typed, so `?` and `/` stay distinct even where they
   share a key, and `/` works on layouts that type it with Shift.
 - Alternative bindings use the word “or”: `T` or `/`.
@@ -1495,6 +1495,28 @@ way ([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds
 words, the rows, and the keys, and the paint’s measurement is in the views, models, and
 routes map (`diff.summary-paint`).
 
+A pull request’s page reads its comparison once while Metabrowser is open, not once a
+visit: what it reads is kept for the document (`createComparisonKeep` in
+`builtin_plugins/github/comparison-prefetch.js`), keyed by the comparison’s route, which
+names both commits, so a pull request opened again draws its Diff summary in the paint
+that shows its record, with no request, no wait for the browser to be idle, and no
+placeholder, and its Changes mounts from the same answer (mb-neg9). A record whose head
+or base moved names another route, which is read anew.
+The Pulls tab reads ahead the comparisons of the pull requests a reader is likely to
+open next ([The Pulls Tab](#the-pulls-tab)), so a first visit to one of them draws it at
+once too. Before, every visit read the comparison again once the browser was idle, and a
+page is not idle while it draws its record: measured in headless Chrome 152 on the
+GitHub stand-in at a load average of 9 to 12, moving between pull requests of 26 to 121
+files from the Pulls tab, a revisit’s summary arrived 22 to 50 ms after the click, and
+175 to 238 ms at four times slower CPU, most of it the wait for idle; with no
+`requestIdleCallback`, as the app’s WebKit has none, the wait is for 250 ms with no
+input after a press (docs/development.md, “Idle Work”), and a revisit’s arrived 253 to
+256 ms after it. Now a revisit’s summary arrives with its record: 13 to 20 ms after the
+click, 57 to 73 ms at four times slower CPU, and 16 to 19 ms with no
+`requestIdleCallback`; and a first visit to a row the pointer rested on for 250 ms, 13
+to 55 ms after the click, where it was 283 to 343 ms.
+`tests/dom/github-pull-prefetch-session.js` holds that a second visit sends no request.
+
 ### Diff File Bar
 
 The bar shows its path, and a rename’s two, by the server’s display rule, as the
@@ -2033,6 +2055,19 @@ not depend on hydrated diff documents.
 The measured expansion and overscan choices are beside `AUTO_EXPAND_FILES` and
 `FILE_ROWS_OVERSCAN` in the GitHub plugin.
 
+The tab also has ready, behind the reader, the comparison of each pull request it is
+likely to open next, so its page draws the [Diff summary](#diff-summary) at once: the
+open pull request, the two rows the pointer or focus last rested on, the open pull
+request’s neighbours in its stacks, which Control-N and Control-P reach, and the rows
+above and below it, at most `WARM_COMPARISONS`, five, an ask (`createComparisonWarmer`
+in `builtin_plugins/github/comparison-prefetch.js`). They are read one at a time when
+the browser is idle and only once no page is reading one, each a record from the cache
+and a comparison from the repository store, with no GitHub request, at most
+`WARM_PER_HOUR`, 120, an hour; a comparison already kept or on its way is not asked for
+again. Its cost is beside the constants.
+`tests/dom/github-pulls-files-prefetch-behavior.js` holds which pull requests the tab
+names, and `tests/dom/github-pull-prefetch-session.js` what the warmer reads.
+
 ### A Pull Request’s State
 
 Four states, each with the shape GitHub gives it and a color token in GitHub’s hue:
@@ -2321,13 +2356,18 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   is always `V`, and no other meaning takes those keys.
 - **Numbers for situational items.** Links and one-off actions that depend on what the
   screen shows, such as the Files tab’s filters or a pull request’s Refresh, take `1`,
-  `2`, `3`, and on, in reading order, up to `9`. A tenth and later get no key: no `0`,
-  no letter, and no wrap-around.
+  `2`, `3`, and on, in reading order, up to `9`. A tenth and later get no key: no letter
+  and no wrap-around, and `0` is not a tenth number.
   Numbers are positional, so `1` reaches a different control on a different screen; Help
   says so, and the Shift reveal shows what each reaches now.
   One mechanism numbers them, the registry’s `attachNumbered()`, which the shell calls
   directly and plugins call through the shortcut surface, so no surface picks its own
   digits.
+- **`0` is Home.** It is the one digit with a fixed meaning, and it goes to the served
+  folder’s home view on every screen ([Home](#home)). It sits past the numbers, which
+  stop at `9`, so it never reaches a numbered control, and taking it moved no letter of
+  a known meaning: `H`, Home’s first letter, is commit History.
+  Shift-0 is `0`, as Shift with any digit is.
 - **No key on an ancillary item.** Copying a path, a revision, or a hash; a per-row or
   per-file affordance, such as a changed file’s View file or its Rendered | Source
   chooser, of which a page has many; and a control that shows only on hover take no key.
@@ -2340,11 +2380,11 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 
 ### Scopes and Collisions
 
-- **Shell letters are reserved everywhere.** `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`
-  keep their meaning even where they do nothing, so a letter never means one thing on
-  one screen and another elsewhere; only an open menu with focus puts its rows’ letters
-  ahead of them ([Keys in a Menu](#keys-in-a-menu)). Control-N and Control-P reserve no
-  letter: a view’s key is one letter alone.
+- **Shell keys are reserved everywhere.** `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`,
+  and `0`, keep their meaning even where they do nothing, so a letter never means one
+  thing on one screen and another elsewhere; only an open menu with focus puts its rows’
+  letters ahead of them ([Keys in a Menu](#keys-in-a-menu)). Control-N and Control-P
+  reserve no letter: a view’s key is one letter alone.
   A manifest whose view takes one is refused: the loader rejects it, the plugin does not
   load, and `metab --doctor` reports why.
   The plugin shortcut surface refuses one too, with a console warning, and the control
@@ -2354,6 +2394,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   view is served without it, and `metab --doctor` reports the lost key.
   `src/metabrowser/keymap.py` holds the table, and also reserves `1` to `9`, which only
   the numbering hands out.
+  A view’s key is one letter, so no view can take a digit.
 - **Tab letters are scoped to their tab bar.** A tab with a reusable meaning takes its
   letter, `V` or `S`. Any other tab takes the first letter of its label, or when that is
   taken, the next distinctive free letter of its label, never a shell letter (a menu
@@ -2376,6 +2417,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 | --- | --- | --- | --- |
 | `?` | Help | Always | Punctuation, by convention |
 | `T` or `/` | Quick Search, the file finder | Always | Letter |
+| `0` | Home: the served folder’s home view, every tab at its first | Always | Digit, its one fixed meaning |
 | `F` | The Files tab | Always | Letter, main tab |
 | `P` | The Pulls tab | The tab is drawn: a hosted origin | Letter, main tab |
 | `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
@@ -2478,7 +2520,8 @@ Control-P to the previous one toward its base.
 
 Help lists the letters by meaning, group by group, and the numbers once, in an “On this
 screen” group: `1`–`9`, “Numbered links and actions,” with the note that the numbers are
-not fixed. It gives no digit a fixed meaning.
+not fixed. It gives no number a fixed meaning; `0`, Home, is listed under Anywhere with
+Help and Quick Search.
 The registry marks the numbers’ command `situational`, so every surface renders them as
 that one run, and no surface special cases them.
 
@@ -2554,7 +2597,8 @@ a keyboard user needs next; no command synthesizes a click.
 A main tab’s letter opens the tab and then focuses the panel’s roving row; a view tab’s
 letter selects the tab and leaves focus where it was; a filter’s number opens its menu,
 and the drawer that holds it, and focuses the checked row; `W` opens the branch list and
-focuses its filter; and `U` opens the parent folder.
+focuses its filter; `U` opens the parent folder; and `0` goes home through the folder’s
+name’s click path, and badges the name beside it.
 View tab letters are commands in a permanent `view-tabs` scope below `global`, one per
 letter, held for the bar the main pane commits and never for one still staged; the
 keymap check keeps them off the shell’s letters.
@@ -3563,24 +3607,84 @@ Clicking Commits while it is already in front changes nothing.
 `static/git-panel.js` (`landOnNewestCommit`) owns the selection;
 `tests/dom/git-commit-history-session.js` runs it.
 
-The heading above the nav’s tab bar, the served root’s name, is home.
-Activating it, by pointer or by Enter, shows the Files tab at the served root from any
-tab, with the tree at the top of its panel.
-It pushes one history entry, or none when Files already shows the root, so Back returns
-to the tab the reader left.
-It stays a link to `/view/`, so a modified or middle click and its context menu do what
-they do on any link.
-Its accessible name is the text it shows, and a description says that it goes home, as
-its tooltip does for a pointer.
-`static/main-tabs.js` (`goHome`) owns the switch;
-`tests/dom/preview-pane-state-session.js` (`goingHome`) runs it.
-
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
 A use site does not pad, recolor, or re-letter it.
 In the navigation, a pane too narrow for its tabs wraps the bar between them
 ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
 `test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Home
+
+**The folder’s name at the top of the nav is Home, and so is `0`.** Either shows the
+served folder’s home view exactly as a fresh load of `/view/` shows it, from any tab and
+whatever the reader was doing.
+A reader who has wandered off into a pull request’s Changes, a file’s Source, or an old
+commit gets the page back as it first came up.
+
+Home resets everything a fresh load decides:
+
+- **The main pane.** Files comes to the front, and the served root is drawn at its
+  default view, Overview.
+  A root already shown at another view, such as Treemap, is drawn again.
+- **Every tab’s place.** Files and Pulls forget their last destinations, and every panel
+  forgets its scroll. So Pulls next opens its list of open pull requests, a pull request
+  opened from it opens on Conversation, and Commits lands on its newest commit, as it
+  always does.
+- **The Files tab.** Every filter and Group by go back to their defaults, and the filter
+  drawer closes with no menu open.
+  The tree is drawn again from the server’s answer, with the folders a first paint opens
+  and no row selected, at the top of its panel.
+
+Home keeps what a fresh load would only fetch again, or keeps itself:
+
+- **The caches.** Files, folders’ rows, pull request records, and the history already
+  read stay in memory.
+  This is why Home stays in the page rather than reloading it: a reload draws the same
+  page from nothing, and the next open would wait on the network.
+  Home asks the server again only for what it draws: the tree, as a change of filter
+  does, and the root’s view, as a return to Files does.
+  `tests/test_folder_home_chrome.py` prints each request and its time.
+- **Preferences.** The theme, the fonts, the text width, a folder overview’s rollup
+  choices, and the diff layout are kept across a reload too.
+- **History.** Home is the reader’s own open of `/view/`. It pushes one entry, none when
+  the address is already `/view/`, so Back returns to where the reader was, and a pull
+  request’s page writes its place into its entry first.
+- **The Pulls list’s disclosures.** A stack the reader closed, or a pull request whose
+  changed files the reader opened under its row, stays so: the list stays mounted, so
+  Pulls opens on its rows at once.
+  A fresh load starts with every stack open.
+
+The name reads as a link home.
+Its box is the name’s own, and it takes a folder crumb’s treatment: the hover surface
+under the name and the link-colored ring on keyboard focus.
+Its accessible name is “Home:” and the name it shows, read from its own content, so a
+mirror’s ref and commit are in it too.
+It stays a link to `/view/`, so a modified or middle click and its context menu do what
+they do on any link.
+A plain click, or Enter on it, stays in the page.
+
+Its tooltip adds details and nothing else
+([Tooltips Add Information](#tooltips-add-information)): the full path of the served
+root, its files, size, and newest change, and on a mirror what the mirror is.
+It does not say that the name goes home, which the click and the name already say.
+A click neither shows nor hides it.
+A press on the name moves focus to it in Chrome, and that focus is the pointer’s own
+click rather than a reader moving focus
+([Tooltip Input Modality](#tooltip-input-modality)), so the tooltip stays as the pointer
+has it: shown while the pointer rests on the name, and gone when it leaves.
+
+`0` runs the name’s own click path, from anywhere a shell letter works, and never in a
+text field ([Keyboard Shortcuts](#keyboard-shortcuts)). `static/main-tabs.js` (`goHome`)
+makes every tab forget its place, and `app.js` (`goHome`, `resetFilesTab`,
+`openHomeRoot`) resets the Files tab and draws the root.
+`tests/dom/preview-pane-state-session.js` (`goingHome`), pinned by
+`cli-ui-file-lifecycle.tryscript.md`, runs that on the production code.
+`tests/test_folder_home_chrome.py` checks in headless Chrome that a click, `0`, and
+Shift-0 leave exactly what a fresh load of `/view/` shows, from a pull request’s Changes
+tab, a file’s Source view, Commits, and the root at Treemap.
+It also checks that the pane never blanks on the way, that the tooltip survives the
+click, and that the name is called “Home: <folder>”.
 
 ### Navigation Reveals the Item
 
@@ -4018,8 +4122,12 @@ moved.
 
 Pointer hover may open supplementary tooltip detail.
 Pointer leave or any focus transition dismisses it, and focus alone never opens or
-retains it. This contract applies to delegated `data-tip-text` tooltips and rich
-navigation tooltips such as Git commit summaries.
+retains it. The focus a press on the folder’s name gives it is the click itself, not a
+transition, so it leaves the name’s tooltip as the pointer has it ([Home](#home)). A
+view’s `mb.tooltip.hide()` takes away a tooltip of its own content, never one in the
+nav’s header, which no view draws.
+This contract applies to delegated `data-tip-text` tooltips and rich navigation tooltips
+such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
 

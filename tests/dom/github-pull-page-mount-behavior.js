@@ -1330,11 +1330,21 @@ async function headerShape(page) {
 // its place once read, and nothing once a read draws none, so a placeholder never outlives
 // its wait. Each state the row passes through is told, in order, for the golden.
 async function headerSummary(page) {
+  // What a page reads is kept for the document (mb-neg9). Each mount here is a fresh load of
+  // the page, with an empty keep, unless it is a `revisit` in the same document.
+  const { documentComparisons } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/comparison-prefetch.js"))
+      .href
+  );
+  const raw = { comparison: "read" };
   /**
    * @param {string} tab
-   * @param {{read?: "answers" | "fails", summary?: "draws" | "declines", diff?: "reads" | "fails", body?: unknown}} [options]
+   * @param {{read?: "answers" | "fails", summary?: "draws" | "declines", diff?: "reads" | "fails", body?: unknown, revisit?: boolean}} [options]
    */
   const mount = async (tab, options = {}) => {
+    if (options.revisit !== true) {
+      documentComparisons.clear();
+    }
     const tasks = [];
     globalThis.document = {
       visibilityState: "visible",
@@ -1352,10 +1362,10 @@ async function headerSummary(page) {
       clearTimeout() {},
     };
     globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
-    const raw = { comparison: "read" };
-    const steps = { summaries: [], renders: [] };
+    const steps = { summaries: [], renders: [], reads: 0 };
     const diffView = {
       prefetch: async () => {
+        steps.reads += 1;
         if (options.read === "fails") {
           throw new Error("refused");
         }
@@ -1468,6 +1478,12 @@ async function headerSummary(page) {
   assert.deepEqual(checks.steps.summaries, ["the comparison read"], "read for it on Checks too");
   tell("Checks, the comparison read", checks.row());
   checks.handle.dispose();
+
+  const revisit = await mount("", { revisit: true });
+  assert.deepEqual(revisit.steps.summaries, ["the comparison read"], "drawn from the keep");
+  assert.equal(revisit.steps.reads, 0, "a revisit read its comparison again");
+  tell("the same pull request again in this document, before any idle", revisit.row());
+  revisit.handle.dispose();
 
   const changes = await mount("files");
   await settle();

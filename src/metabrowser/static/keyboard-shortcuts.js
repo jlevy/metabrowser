@@ -329,9 +329,10 @@
    * macOS moves the caret with Control+N and Control+P there.
    *
    * The physical pass matches a digit binding by its digit-row key, for an
-   * event whose character is not a digit: US Shift+1 types `!`, and AZERTY's
-   * unshifted digit row types `&é"'(`. The dispatcher takes it only after the
-   * character matched nothing, so German Shift+7, which types `/`, stays `/`.
+   * event whose character is not a digit: US Shift+1 types `!` and Shift+0 `)`,
+   * and AZERTY's unshifted digit row types `&é"'(` and `à`. The dispatcher takes
+   * it only after the character matched nothing, so German Shift+7, which types
+   * `/`, stays `/`.
    * Numpad digits match by character.
    *
    * @param {KeyboardEvent} event
@@ -358,8 +359,7 @@
     if (matchOptions.physical) {
       return (
         bindingClass === "digit" &&
-        // Digit1 through Digit9, the keys the situational numbers use.
-        /^[1-9]$/.test(normalized.key) &&
+        // Digit0 through Digit9: the situational numbers' keys, and Home's `0`.
         !isDigitKey(event.key) &&
         event.code === `Digit${normalized.key}`
       );

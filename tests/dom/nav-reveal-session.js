@@ -241,7 +241,7 @@ async function tabsStory() {
     focusFilesRow: () => false,
     isGitHistoryLanding: () => false,
     isPullAddress: (pathname) => pathname.startsWith("/pull/") || pathname === "/pulls",
-    openRoot: () => Promise.resolve(),
+    openHome: () => Promise.resolve(),
     restore() {
       restores += 1;
       return Promise.resolve();

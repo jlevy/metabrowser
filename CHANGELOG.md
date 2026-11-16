@@ -19,6 +19,32 @@ All notable changes to Metabrowser are documented here.
   [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers)
   and [Diff Summary](docs/design-system.md#diff-summary).
 
+- A pull request you have opened before shows its Diff summary at once when you open it
+  again, and its Changes opens with no wait: what a page reads of a comparison is kept
+  while Metabrowser is open, instead of being read again, once the browser was idle, on
+  every visit. A pull request whose head or base moved is read anew.
+  The Pulls tab also reads ahead, behind you, the comparisons of the pull requests you
+  are likely to open next: the open one, the rows the pointer or focus rests on, the
+  open pull request’s neighbours in its stacks, and the rows above and below it, from
+  the local repository cache with no GitHub request.
+  See [Diff Summary](docs/design-system.md#diff-summary).
+
+- The folder’s name at the top of the navigation is Home, and `0` and Shift-0 go there
+  too: the folder’s home view exactly as a fresh load of it shows it.
+  From any tab, Files comes to the front and the folder is drawn at Overview, and every
+  tab goes back to its first: Pulls opens its list next, and a pull request opened from
+  it opens on Conversation, rather than returning to the tab you left.
+  Filters and Group by return to their defaults, the filter drawer closes, and the tree
+  closes the folders you opened.
+  It happens in the page, without a reload: what the page has loaded stays, and only the
+  tree and the folder’s own view ask the server again, as a change of filter and a
+  return to Files do. The name now hugs its text and takes a link’s hover and focus
+  treatment, and screen readers call it “Home:” and the name.
+  Its tooltip shows only details, the full path, counts, and age, without the line that
+  said it goes home, and a click no longer hides it.
+  Help, the Shift reveal, and the keymap list `0`. See
+  [Home](docs/design-system.md#home).
+
 - A pull request’s “Fetched … via GitHub CLI” line is one of its header’s metadata
   lines: 18 px tall, as the “Opened …” line above it is, and 6 px under it, or under the
   labels where the pull request has them.

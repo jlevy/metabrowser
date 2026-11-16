@@ -211,6 +211,8 @@ it:
 | 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 | 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
 | 25 | `claude/pull-header-status` | `mb-2u08`, `mb-onr2` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, and holds the pending placeholder in the Diff summary row pull request 20 adds |
+| 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
+| 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -617,6 +619,42 @@ part of the same metadata lines”.
   A commit’s page stages its summary out of sight with its diff, so it does not wait in
   view and needs none.
 
+### Comparison Kept and Read Ahead
+
+The owner’s report of 2026-11-16: the Diff summary “takes a little longer to load on a
+PR view”, and “When I browse different diffs, I see a delay repeatedly.
+It should never delay after the second time because we should have fetched and cached
+it, and ideally cached it up front”.
+
+- **Cause** (`mb-neg9`): not the server, nor the browser’s cache.
+  Both answered a revisit: the comparison route keeps each answer in memory, so a repeat
+  ran no Git and took 2.4 ms, and it is immutable at its address, so a revisit in Chrome
+  was read from the disk cache with no request.
+  What waited was the page.
+  A page is mounted again on every visit, and its prefetch, which held nothing past its
+  page, read the comparison again only once the browser was idle, then parsed it and
+  drew the summary. Measured in headless Chrome 152 on the GitHub stand-in, with three
+  pull requests of 26 to 121 files at a load average of 9 to 12: a revisit’s summary
+  arrived 22 to 50 ms after the click, and 175 to 238 ms at four times slower CPU, of
+  which the wait for idle was 156 to 164 ms.
+  The app’s WebKit has no `requestIdleCallback`, so there the wait is the 250 ms of
+  quiet after a press: with a real press and no `requestIdleCallback`, a revisit’s
+  summary arrived 253 to 256 ms after it.
+- **Measured after:** a revisit sends no request and draws its summary with its record,
+  13 to 20 ms after the click, 57 to 73 ms at four times slower CPU, and 16 to 19 ms
+  with no `requestIdleCallback`; a first visit to a row rested on for 250 ms draws it 13
+  to 55 ms after the click, where it was 283 to 343 ms.
+- **The keep:** what a page reads is kept for the document, keyed by the comparison’s
+  route, which names both commits, the build, and the store, within 16 MiB of JSON,
+  measured over this repository’s 192 merged pull requests; a request on its way is
+  shared. A revisit draws the summary in the paint that shows the record, and Changes
+  mounts from the same answer.
+  A moved head names another route.
+- **Read ahead:** the Pulls tab warms the keep for the open pull request, the rows the
+  pointer or focus rested on, the open pull request’s stack neighbours, and its list
+  neighbours, one at a time on idle and behind any page’s own read, with no GitHub
+  request.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -841,6 +879,30 @@ part of the same metadata lines”.
   the page of a failed read; measured in Chrome 152 at 560, 420, and 360 px in both
   themes by the header Chrome session’s `summary-wait` part, which fails on the old
   page, and pinned in the page mount and prefetch sessions and their goldens.
+
+### Phase 26: Home (pull request 26)
+
+- [ ] `mb-5lzl`: the folder’s name at the top of the nav, `0`, and Shift-0 show the
+  served folder’s home view as a fresh load of `/view/` shows it, in the page: Files in
+  front with the root drawn again at its default view, every tab’s destination and
+  scroll forgotten, so Pulls opens its list and a pull request from it opens on
+  Conversation, and the Files tab’s filters, Group by, drawer, and open folders a fresh
+  load’s; the Pulls list’s closed stacks and opened file lists are kept.
+  The name hugs its text with a crumb’s hover and focus ring and is named “Home:” and
+  its text; its tooltip shows details only, and a click neither shows nor hides it.
+  `0` is reserved, bound on the name, and listed in Help, the Shift reveal, and the
+  keymap; the digit-row match covers `Digit0`. Run browserlessly in the preview pane and
+  key reveal sessions and their goldens, and in headless Chrome by
+  `tests/test_folder_home_chrome.py`, which fails on the old code.
+
+### Phase 27: Comparison Kept and Read Ahead (pull request 27)
+
+- [ ] `mb-neg9`: a pull request’s comparison is kept for the document, so a revisit
+  draws its Diff summary in the paint that shows its record, with no request, and the
+  Pulls tab reads ahead the comparisons a reader opens next; measured in headless Chrome
+  on the GitHub stand-in before and after, pinned in the prefetch session and the Pulls
+  prefetch behavior session and their goldens, each of which fails on the old code, and
+  a server test that a repeated comparison runs no Git.
 
 ## Testing Strategy
 

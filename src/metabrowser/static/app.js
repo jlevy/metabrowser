@@ -254,8 +254,14 @@ function pathBaseHtml(path) {
  * root there is the empty GitPath, which has no name to show.
  */
 function renderServedRootHeading(pathEl, root) {
-  if (pathEl && !isGitRevisionSource()) {
-    pathEl.innerHTML = pathBaseHtml(root);
+  if (!pathEl || isGitRevisionSource()) {
+    return;
+  }
+  // Home draws the tree again, and with it this; rewriting the same name under a pointer
+  // resting on it would replace the nodes it is over for nothing.
+  var html = pathBaseHtml(root);
+  if (pathEl.innerHTML !== html) {
+    pathEl.innerHTML = html;
   }
 }
 
@@ -1072,6 +1078,15 @@ let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
 // which preserves the first paint while still converging to the newer index.
 let _inlineTreeBaseline = null;
 let _rootTreeRequestsInFlight = 0;
+// Whether this server paints the tree's first rows from the page itself, as it does for a
+// folder (server.py, _INLINE_INITIAL_TREE_ROWS). A fresh load of `/view/` then paints the
+// root's rows alone and keeps them so through the fetch, so it opens no folder; a pin's
+// page has no inline rows, and its first paint opens the folders the planner chooses. Home
+// draws the tree as that load does (resetFilesTab).
+const _firstPaintInlinesTree = Array.isArray(window.METABROWSER_INITIAL_TREE?.tree);
+// Set by Home across the filter reset it makes, so the tree load that reset begins draws
+// the tree as a fresh load of `/view/` does; read and cleared by that load.
+let _homeTreeDraw = false;
 
 /**
  * Paint the inlined rows, if the shell carried any and nothing has painted yet.
@@ -1129,8 +1144,9 @@ function renderInitialTreeRows() {
  *
  * A discovery-completion refresh already has a useful keyed tree mounted. It
  * reconciles that tree in place instead of rebuilding the whole Files region.
+ * Home's load (`asHome`) draws the tree as a fresh load of `/view/` does.
  *
- * @param {{ reconcileMountedRoot?: boolean }} [options]
+ * @param {{ reconcileMountedRoot?: boolean, asHome?: boolean }} [options]
  */
 async function loadTree(options = {}) {
   if (filesPanelUsesGroupedSource()) {
@@ -1248,7 +1264,7 @@ async function loadTree(options = {}) {
         if (_inlineTreeBaseline || reconcileMountedRoot) {
           reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
         } else {
-          renderFilesFromTree();
+          renderFilesFromTree(options.asHome === true);
         }
         retryFailedExpandedSubtrees();
       }
@@ -2030,8 +2046,11 @@ var _filteredTreeTotals = null;
 var _lastTreeSummaryHtml = "";
 
 // Paint #tab-files from that cache. Returns false when nothing has
-// been fetched yet, so the caller can fall back to loadTree().
-function renderFilesFromTree() {
+// been fetched yet, so the caller can fall back to loadTree(). Drawn for Home
+// (`asHome`), the tree opens the folders a fresh load of `/view/` opens: none, where
+// the page paints the root's rows itself, and else the planner's.
+/** @param {boolean} [asHome] */
+function renderFilesFromTree(asHome = false) {
   if (!_lastTreeRender) {
     return false;
   }
@@ -2044,7 +2063,10 @@ function renderFilesFromTree() {
       pendingTreePageId = 0;
       var filesPanel = document.getElementById("tab-files");
       if (filesPanel) {
-        filesPanel.innerHTML = snapshot.chromeHtml + renderTreeNodes(snapshot.tree, true);
+        var expansion =
+          asHome && _firstPaintInlinesTree ? { defaultExpandedPaths: new Set() } : undefined;
+        filesPanel.innerHTML =
+          snapshot.chromeHtml + renderTreeNodes(snapshot.tree, true, expansion);
       }
     },
     { nodes: snapshot.tree ? snapshot.tree.length : 0 },
@@ -2209,6 +2231,13 @@ function ensureTreeTruncationNote(maxFiles) {
 // Header hover tooltip — same folder-tooltip HTML the tree uses, so
 // hovering the served-root path shows the same name / files / size /
 // mtime block a hovered folder row shows below. One helper, one design.
+//
+// It adds details and nothing else (docs/design-system.md, "Home"): the click is what the
+// name is for, and it reads as a link home without a line saying so. A press on the name
+// moves focus to it, in Chrome, and the focus transition that ends a tooltip would end
+// this one, or cancel it before it showed, so a click took it away. That focus is the
+// pointer's own click, not a reader moving focus, so it leaves the tooltip as the pointer
+// has it: shown while the pointer rests on the name, gone when it leaves.
 document.addEventListener("DOMContentLoaded", () => {
   const headerPath = queryHtml(".header-path");
   if (!headerPath) {
@@ -2220,10 +2249,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // here — as one tooltip. It used to be here and in a native `title` as
     // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
-      showTooltip(
-        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
-        headerPath,
-      );
+      showTooltip(`${esc(d.servedRoot || "")}${mirrorHeading("tip")}`, headerPath);
       return;
     }
     var folderTip = folderTooltipHtml(
@@ -2232,12 +2258,12 @@ document.addEventListener("DOMContentLoaded", () => {
       parseTipNumber(d.tipSize),
       parseTipNumber(d.tipMtime),
     );
-    showTooltip(
-      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
-      headerPath,
-    );
+    showTooltip(`${folderTip}${mirrorHeading("tip")}`, headerPath);
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
+  headerPath.addEventListener("pointerdown", () => {
+    tooltipPressedAnchor = headerPath;
+  });
 });
 
 // Lookup table from "page-more" sentinel id to the deferred slice.
@@ -3246,7 +3272,17 @@ if (typeof window !== "undefined") {
     show: (html, anchor) => {
       showTooltip(html, anchor);
     },
-    hide: hideTooltip,
+    // What a view or a panel calls, through `mb.tooltip.hide()`, to take away a tooltip of
+    // its own content as it redraws or scrolls. The nav's header is the shell's chrome,
+    // which no view draws, so its tooltips are never one a view showed: a view's hide
+    // leaves them. Home redraws the folder overview and the Commits panel, whose hides
+    // took the folder's name's tooltip away under a click (docs/design-system.md, "Home").
+    hide: () => {
+      if (tooltipAnchor?.closest?.(".app-header")) {
+        return;
+      }
+      hideTooltip();
+    },
   };
 }
 
@@ -3347,7 +3383,30 @@ function hideTipText(e) {
 // creating a second visual layer around keyboard navigation.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
-document.addEventListener("focusin", hideTooltip);
+document.addEventListener("focusin", hideTooltipOnFocus);
+
+/**
+ * The element whose own press is under way, when it is one whose tooltip a click must not
+ * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
+ * read and cleared by the focus that press gives it.
+ *
+ * @type {HTMLElement | null}
+ */
+var tooltipPressedAnchor = null;
+
+/** @param {FocusEvent} event */
+function hideTooltipOnFocus(event) {
+  var pressed = tooltipPressedAnchor;
+  tooltipPressedAnchor = null;
+  if (pressed !== null && event.target === pressed) {
+    return;
+  }
+  hideTooltip();
+}
+// A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
+document.addEventListener("pointerup", () => {
+  tooltipPressedAnchor = null;
+});
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
@@ -4625,7 +4684,7 @@ function attachMainTabs() {
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
       isGitHistoryLanding,
       isPullAddress,
-      openRoot: () => navigateToPath(""),
+      openHome: openHomeRoot,
       restore: () => navigationController.restore(),
       revealFile: (how) => revealFileRow(addressedFilePath(), how),
       scrollShadow: () => navScrollShadowUpdate?.(),
@@ -4633,12 +4692,14 @@ function attachMainTabs() {
   return mainTabs;
 }
 
-// The heading at the top of the nav is home: main-tabs.js `home`. The link keeps its
-// `/view/` address for what a browser does with a link, so a modified or middle click,
-// its context menu, and copying it behave as they do on any link. A plain primary
-// activation, by pointer or by Enter, stays in the page. It used to load `/view/` again,
-// and a browser reloading the neutral Commits entry, which has that address, kept its
-// state and came back to Commits.
+// The folder's name at the top of the nav is Home (docs/design-system.md, "Home"), and `0`
+// runs the same path (shell-keymap.js). The link keeps its `/view/` address for what a
+// browser does with a link, so a modified or middle click, its context menu, and copying
+// it behave as they do on any link. A plain primary activation, by pointer or by Enter,
+// stays in the page, so the caches that make the app fast stay too: a reload of `/view/`
+// would draw the same page from nothing. It used to load `/view/` again, and a browser
+// reloading the neutral Commits entry, which has that address, kept its state and came
+// back to Commits.
 function initHomeHeading() {
   queryHtml(".header-path")?.addEventListener("click", onHomeHeadingClick);
 }
@@ -4659,12 +4720,20 @@ function onHomeHeadingClick(event) {
   goHome();
 }
 
-// Before the tab controller has loaded, the server's tab is in front: Files, unless the
-// page opened on a pull request's address. With Files in front this does what the
-// controller's `home` does, the tree at its top and the root opened, even on the root
-// already shown. Only a pull request's page waits for the controller, and a later choice
-// of the reader's cancels it, as a tab click does.
+/**
+ * Home: the served folder's home view, exactly as a fresh load of `/view/` shows it
+ * (docs/design-system.md, "Home"). The Files tab is drawn as a page that has just loaded
+ * draws it (`resetFilesTab`), and the tab controller's `home` makes every tab forget where
+ * it was and opens the root at its default view (`openHomeRoot`).
+ *
+ * Before the tab controller has loaded, the server's tab is in front: Files, unless the
+ * page opened on a pull request's address, and no tab has a place to forget. With Files in
+ * front this does what the controller's `home` does, the tree at its top and the root
+ * drawn again, even on the root already shown. Only a pull request's page waits for the
+ * controller, and a later choice of the reader's cancels it, as a tab click does.
+ */
 function goHome() {
+  resetFilesTab();
   if (mainTabs) {
     void mainTabs.home().catch((error) => {
       console.error("Could not go home", error);
@@ -4679,7 +4748,7 @@ function goHome() {
     if (scroller) {
       scroller.scrollTop = 0;
     }
-    void navigateToPath("").catch(console.error);
+    void openHomeRoot().catch(console.error);
     return;
   }
   const intent = ++mainTabIntent;
@@ -4691,6 +4760,52 @@ function goHome() {
       }
     })
     .catch(console.error);
+}
+
+/**
+ * The served root, drawn again at its default view, as a fresh load draws it. What the
+ * pane shows is released first, as a tab switch releases it, so the root already shown is
+ * drawn again from the file cache rather than kept at the view tab and the place the
+ * reader left it at; the old view stays on screen until the root's replaces it.
+ *
+ * @returns {Promise<unknown>}
+ */
+function openHomeRoot() {
+  cancelMainTabPreview();
+  return navigateToPath("");
+}
+
+/**
+ * The Files tab as a page that has just loaded draws it: every filter and Group by at its
+ * default, the filter drawer closed with no menu open, and the tree drawn again from the
+ * server's answer with the folders a first paint opens and no other. A change of filter
+ * draws the tree that way already (onFilterStateChange), so a reset that changes one
+ * leaves the drawing to it, and one that changes none asks for the tree itself. The
+ * subtree cache stays, so a folder the reader opens again opens at once.
+ */
+function resetFilesTab() {
+  var barChanged = filterOpenMenu !== null || filterDrawerOpen;
+  filterOpenMenu = null;
+  filterDrawerOpen = false;
+  if (!filterState) {
+    return;
+  }
+  var current = filterState.get();
+  var defaults = filterState.DEFAULTS;
+  var fresh = Object.keys(defaults).every(
+    (key) => JSON.stringify(current[key]) === JSON.stringify(defaults[key]),
+  );
+  if (!fresh) {
+    // Its listener draws the bar, closed, and the tree for the defaults.
+    _homeTreeDraw = true;
+    filterState.set({ ...defaults });
+    _homeTreeDraw = false;
+    return;
+  }
+  if (barChanged) {
+    renderNavFilterBar();
+  }
+  void loadTree({ asHome: true });
 }
 
 function initNavTabs() {
@@ -4729,6 +4844,7 @@ function initNavTabs() {
  */
 function shellKeymapShell() {
   return Object.freeze({
+    goHome,
     openFolder: navigateToFolder,
     selectPreviewTab,
     toggleFilterMenu,
@@ -5952,7 +6068,10 @@ function onFilterStateChange(state) {
     // Refetch the authoritative tree. The first-paint cache can still carry
     // pending aggregates even after live events patched the visible DOM; using
     // it here reintroduced skeleton cells after progress polling had stopped.
-    loadTree();
+    // Home's reset draws it as a fresh load does (resetFilesTab).
+    var asHome = _homeTreeDraw;
+    _homeTreeDraw = false;
+    loadTree({ asHome });
     return;
   }
   applyTreeFilters();

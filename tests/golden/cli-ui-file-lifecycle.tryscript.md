@@ -162,10 +162,20 @@ Files and Pulls return to what they last showed.
 A switch to Commits, the first or a later one, pushes the neutral entry and asks the Git
 panel to land, which selects the newest commit and replaces the entry with its address;
 Commits starts from its top, and the shell paints no prompt over the pane while it
-waits. The heading at the top of the nav goes home from any tab, in the page: a plain
-click, or Enter on the link, opens the served root in Files at the top of its panel and
-pushes one entry, none when Files already shows the root, and Back returns to the tab
-the reader left. A modified or middle click is left to the browser.
+waits. The folder’s name at the top of the nav goes home from any tab, in the page, as
+`0` does: a plain click, or Enter on the link, shows what a fresh load of `/view/`
+shows. Files comes to the front at the top of its panel, and the served root is drawn
+again at its default view, the root already shown at another view too.
+The Files tab’s filters and Group by go back to their defaults, its drawer and menu
+close, and its tree is drawn again from the server’s answer, as a change of filter or a
+first paint draws it, so the folders the reader opened close.
+Every tab forgets where it was: Pulls, after home from a pull request’s Changes tab with
+its list scrolled, opens its list at the top.
+Home pushes one entry, none when the address is already `/view/`, and Back returns to
+the tab the reader left.
+A modified or middle click is left to the browser and draws nothing.
+`drawn` is what the pane drew and `filesDrawn` what the Files tab was asked to draw;
+app.js’s `onFilterStateChange`, which a change of filter reaches, is stood in for.
 Before the tab controller has loaded, Files in front opens the root with the tree at its
 top, on the root already shown too; a pull request’s page fetches the controller first,
 and a later open wins.
@@ -563,13 +573,24 @@ $ node tests/dom/preview-pane-state-session.js
       ]
     },
     "goingHome": {
-      "the page opens on a file, its tree scrolled": {
+      "the page opens on a file, its tree scrolled, grouped, and filtered": {
         "address": "/view/notes.md",
         "state": null,
         "tab": "files",
         "pane": "file \"notes.md\"",
         "scroll": 240,
-        "pushes": 0
+        "pushes": 0,
+        "files": {
+          "filters": {
+            "recency": "all",
+            "types": null,
+            "size": "100k",
+            "showIgnored": true,
+            "group": "type"
+          },
+          "drawer": "open",
+          "menu": "types"
+        }
       },
       "Commits, before a commit is selected": {
         "address": "/view/",
@@ -588,7 +609,25 @@ $ node tests/dom/preview-pane-state-session.js
         "tab": "files",
         "pane": "file \"\"",
         "scroll": 0,
-        "pushes": 2
+        "pushes": 2,
+        "view": "default view",
+        "drawn": [
+          ": default view"
+        ],
+        "files": {
+          "filters": {
+            "recency": "all",
+            "types": null,
+            "size": "all",
+            "showIgnored": true,
+            "group": "none"
+          },
+          "drawer": "closed",
+          "menu": null
+        },
+        "filesDrawn": [
+          "the filter bar and the tree, for the default filters, drawn as a fresh load of /view/ draws it"
+        ]
       },
       "Back from home": {
         "address": "/view/",
@@ -615,7 +654,25 @@ $ node tests/dom/preview-pane-state-session.js
         "tab": "files",
         "pane": "file \"\"",
         "scroll": 0,
-        "pushes": 3
+        "pushes": 3,
+        "view": "default view",
+        "drawn": [
+          ": default view"
+        ],
+        "files": {
+          "filters": {
+            "recency": "all",
+            "types": null,
+            "size": "all",
+            "showIgnored": true,
+            "group": "none"
+          },
+          "drawer": "closed",
+          "menu": null
+        },
+        "filesDrawn": [
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+        ]
       },
       "Pulls": {
         "address": "/pulls",
@@ -632,16 +689,95 @@ $ node tests/dom/preview-pane-state-session.js
         "tab": "files",
         "pane": "file \"\"",
         "scroll": 0,
-        "pushes": 5
+        "pushes": 5,
+        "view": "default view",
+        "drawn": [
+          ": default view"
+        ],
+        "files": {
+          "filters": {
+            "recency": "all",
+            "types": null,
+            "size": "all",
+            "showIgnored": true,
+            "group": "none"
+          },
+          "drawer": "closed",
+          "menu": null
+        },
+        "filesDrawn": [
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+        ]
       },
-      "home on the root it shows": {
+      "home on the root it shows, at its Source view": {
         "kept": true,
         "address": "/view/",
         "state": null,
         "tab": "files",
         "pane": "file \"\"",
         "scroll": 0,
+        "pushes": 5,
+        "view": "default view",
+        "drawn": [
+          ": default view"
+        ],
+        "files": {
+          "filters": {
+            "recency": "all",
+            "types": null,
+            "size": "all",
+            "showIgnored": true,
+            "group": "none"
+          },
+          "drawer": "closed",
+          "menu": null
+        },
+        "filesDrawn": [
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+        ]
+      },
+      "a pull request's Changes tab": {
+        "address": "/pull/7/files",
+        "state": null,
+        "tab": "pulls",
+        "pane": "pull-request",
+        "scroll": 300,
         "pushes": 5
+      },
+      "home from a pull request's Changes tab": {
+        "kept": true,
+        "address": "/view/",
+        "state": null,
+        "tab": "files",
+        "pane": "file \"\"",
+        "scroll": 0,
+        "pushes": 6,
+        "view": "default view",
+        "drawn": [
+          ": default view"
+        ],
+        "files": {
+          "filters": {
+            "recency": "all",
+            "types": null,
+            "size": "all",
+            "showIgnored": true,
+            "group": "none"
+          },
+          "drawer": "closed",
+          "menu": null
+        },
+        "filesDrawn": [
+          "the tree, from the server's answer, drawn as a fresh load of /view/ draws it"
+        ]
+      },
+      "Pulls, after home": {
+        "address": "/pulls",
+        "state": null,
+        "tab": "pulls",
+        "pane": "pull-request",
+        "scroll": 0,
+        "pushes": 7
       },
       "a click the browser keeps": {
         "Command": "left to the browser",
