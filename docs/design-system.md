@@ -1758,8 +1758,8 @@ what is left is cut short with an ellipsis, the number whole after it.
 The author is on the pull request’s page, and the age never gives way.
 The second line is the title alone, from the text column, where the number’s line
 starts, under the age to the row’s end, cut there with an ellipsis, so a member’s title
-has the room a first-level row’s has, less its one indent: 208 px at the default 299 px
-pane, where beside the age it had 170. The Pulls column has no tooltips
+has the room a first-level row’s has, less its one indent.
+The Pulls column has no tooltips
 ([Tooltips Add Information](#tooltips-add-information)). Stack membership comes from one
 shared repository snapshot, indexed once by PR number; rows make no stack requests, and
 enrichment updates retain the row and any focused changed-file tree.
@@ -1919,7 +1919,8 @@ A row is two lines and one target, because a pane is narrower than its parts: fi
 chevron, the state icon, and the number’s line, a stack member’s place, the number, and
 the author, with the age at the row’s end on its baseline; then the title alone, from
 the text column under the age to the row’s end.
-The title comes first in the link’s text, so the row’s accessible name leads with it.
+The title is the link’s first text, so the row’s accessible name gives the state, from
+the state icon’s label, and then the title, before the number’s line.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
 text is text: GitHub’s users write it, and none of it reaches markup or a style.
 
@@ -2055,16 +2056,21 @@ heading resolve to the same label tokens, where a stack’s row and its pull req
 start, that the two kinds of row hover and focus alike, that the toolbar fits the
 default pane with room to spare, that real keys and a press move focus and open and
 close a stack, that a member’s changed files are a level further in, that the first
-stack’s row is in view after grouping arrives and after Left then Right, that a member’s
-place is on its number’s line, before the number, in the number’s ink, and names another
-stack by its glyph, that a member’s row draws no stack icon and its title has a
-first-level row’s room less its indent, and that the menu lists the group’s order with
-its positions in text ink.
-`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows from 420 px to the 180
-px minimum and holds that a place arriving moves nothing on its row’s title line and
-leaves the title its width, that it sits before the number, which shows whole, that
-nothing ends past the row, and that one stack’s place shows whole and, at 300 px and
-wider, keeps its row two lines.
+stack’s row is in view after grouping arrives and after Left then Right, that a pull
+request’s row is two lines, the chevron and the state icon centered on its one-line
+number’s line and the title under it from the text column to the row’s end, that a
+member’s place is on its number’s line, before the number, in the number’s ink, and
+names another stack by its glyph, that a member’s row draws no stack icon and its title
+has a first-level row’s room less its indent, and that the menu lists the group’s order
+with its positions in text ink.
+`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width from 420
+px to the 180 px minimum and holds that a place arriving moves nothing else in its row,
+not the chevron, the icon, the age, or the title, that it sits before the number, which
+shows whole, that nothing ends past the row and nothing scrolls sideways, that one
+stack’s place shows whole, that the number’s line stays one line and the row two, that
+the title runs from the text column to the row’s end, that the chevron and the icon sit
+on the number’s line, centered on it, and that the author keeps its floor with its name
+inside the line, or leaves the line whole.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
 for every stack word.
 

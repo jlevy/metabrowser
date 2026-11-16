@@ -851,8 +851,9 @@
    leads in the slot a folder's takes, as its icon does (`--tree-icon-slot`,
    docs/design-system.md, "Container Rows"). The row centers its boxes; on the first line
    the number's line and the age share a baseline (docs/design-system.md, "Row Text Shares
-   a Baseline"), and the title is alone on its. The DOM keeps the title first, so the row's
-   accessible name leads with it. */
+   a Baseline"), and the title is alone on its. The DOM keeps the title the row's first text,
+   so its accessible name gives the state, from the state icon's label, and then the title,
+   before the number's line. */
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
@@ -996,8 +997,7 @@
   width: var(--tree-icon-slot);
 }
 /* The first line's glyphs: the chevron and the state icon, centered on the number's line, as
-   a stack's row's chevron is on its one line (`.github-pulls-stack-row`). They sat on the
-   title's line until mb-3cbf. */
+   a stack's row's chevron is on its one line (`.github-pulls-stack-row`). */
 .github-pulls-row > .github-pulls-toggle {
   grid-row: 1;
   grid-column: 1;
@@ -1339,9 +1339,10 @@
 
 /* The author never gets narrower than its separator, its avatar if it has one, and a little
    of the name, so neither the separator nor the avatar stands without a visible name: past
-   that, the author and its separator move to the next line together. Above it the name
-   ends in an ellipsis. The avatar's share is its size and the identity's gap
-   (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
+   that, the author and its separator move to the next line together, which the number's
+   line's one-line box clips (`.github-pulls-meta`), so the author leaves the row's view.
+   Above it the name ends in an ellipsis. The avatar's share is its size and the identity's
+   gap (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
    hidden, so the name's share is still there. */
 .github-pulls-by {
   display: flex;

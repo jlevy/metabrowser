@@ -3578,7 +3578,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * end; the title has the second line to itself, from the text column to the row's end
    * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
    * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
-   * comes first in the row's DOM, so its accessible name leads with it.
+   * is the row's first text, so its accessible name gives the state, from the state icon's
+   * label, and then the title, before the number's line.
    *
    * @param {PullRow} row
    * @param {HTMLElement} place The row's place, kept across the line built again.

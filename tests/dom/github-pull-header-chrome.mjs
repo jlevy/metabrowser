@@ -585,6 +585,18 @@ const PULLS_ROWS = `async (rows, width) => {
     const glyphs = [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon")].map((node) => node.getBoundingClientRect());
     const middle = (r) => (r.top + r.bottom) / 2;
     const round = (value) => Math.round(value * 100) / 100;
+    // The author's floor, from its parts rather than its own min-width, which a flex item
+    // never goes below: the separator, the avatar's size and the identity's gap when it has
+    // one, and 1.75 of its type's em of the name (styles.css, .github-pulls-by).
+    const panel = getComputedStyle(nav);
+    const floor =
+      by.querySelector(".github-pulls-sep").getBoundingClientRect().width +
+      (by.querySelector(".github-pull-avatar") === null
+        ? 0
+        : parseFloat(panel.getPropertyValue("--github-pull-avatar-size")) +
+          parseFloat(panel.getPropertyValue("--github-pull-identity-gap"))) +
+      1.75 * parseFloat(getComputedStyle(by).fontSize);
+    const name = by.querySelector(".github-pulls-author").getBoundingClientRect();
     return {
       number: row.number,
       moved,
@@ -608,10 +620,17 @@ const PULLS_ROWS = `async (rows, width) => {
       glyphsOff: glyphs.map((r) => round(middle(r) - middle(meta))),
       withNumber: glyphs.every((r) => r.height > 0 && r.top >= meta.top - 0.5 && r.bottom <= meta.bottom + 0.5 && r.bottom <= t.top + 0.5),
       glyphsFrom: glyphs.map((r) => round(r.left - inset)),
-      // The author on the number's line, at its floor or wider, or off it, whole.
-      author: b.top < meta.bottom - 0.5 ? (b.width + 0.5 >= parseFloat(getComputedStyle(by).minWidth) ? "shown" : "squeezed") : "off",
+      // The author on the number's line, at its floor or wider and its name ending inside the
+      // line, or off it, whole.
+      author:
+        b.top < meta.bottom - 0.5
+          ? b.width + 0.5 >= floor && name.right <= meta.right + 0.5
+            ? "shown"
+            : "squeezed"
+          : "off",
       authorWidth: Math.round(b.width * 10) / 10,
-      authorFloor: getComputedStyle(by).minWidth,
+      authorFloor: round(floor),
+      authorNameEnd: round(name.right - meta.right),
       title: Math.round(t.width * 10) / 10,
     };
   });
@@ -1208,7 +1227,7 @@ async function main() {
             JSON.stringify(row),
           );
           check(
-            `${where}: the author shows at its floor or wider, or leaves the line whole`,
+            `${where}: the author shows at its floor or wider, its name ending inside the line, or leaves the line whole`,
             row.author !== "squeezed",
             JSON.stringify(row),
           );
