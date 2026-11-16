@@ -23,10 +23,14 @@ ours and is left alone.
 **And a tooltip adds information.** A tooltip says something the reader cannot
 already see (docs/design-system.md, "Tooltips Add Information"). One whose literal
 text is its element's literal text, in one line of markup, repeats what the element
-shows, and fails here: `data-tip-text="Copy">Copy<`, or h()'s
-`"data-tip-text": "Copy" }, ["Copy"]`. A tip computed at run time is held by the
-shell instead: app.js shows a tip equal to its element's text only while that text is
-cut short.
+shows, and fails here. It reads two forms: an HTML string's double-quoted
+``data-tip-text="Copy">Copy<``, its quotes escaped or not and with any attributes
+after it, and h()'s ``"data-tip-text": "Copy"`` with any other attributes in the same
+object literal, before or after it, and ``["Copy"]`` its children. It does not read a
+single-quoted attribute, a ``dataset.tipText`` or ``setAttribute`` assignment, or a
+tip computed at run time. The shell holds those: app.js shows a tip equal to its
+element's text, or to the text of a box inside it, only while that text is cut short.
+``tests/test_check_tooltips.py`` pins what it finds and what it does not.
 
 **What this is not.** It is not a rule about accessible names. ``aria-label``
 is untouched and still required wherever it was: a screen reader does not read
@@ -107,9 +111,12 @@ ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
 )
 
 # A tip whose literal text is its element's literal text, in one line: an HTML string's
-# `data-tip-text="X" ...>X<`, and h()'s `"data-tip-text": "X" }, ["X"]`.
+# `data-tip-text="X" ...>X<`, and h()'s `{ ... "data-tip-text": "X" ... }, ["X"]`, where
+# what follows the tip up to the object's close may hold `${...}` but no other brace.
 _REPEAT_HTML = re.compile(r"""data-tip-text=\\?"([^"\\$<>]+)\\?"[^<>]*>\s*\1\s*<""")
-_REPEAT_H = re.compile(r""""data-tip-text":\s*"([^"]+)"\s*}\s*,\s*\[\s*"\1"\s*\]""")
+_REPEAT_H = re.compile(
+    r""""data-tip-text":\s*"([^"]+)"(?:\$\{[^{}]*\}|[^{}])*}\s*,\s*\[\s*"\1"\s*\]"""
+)
 
 # A document's <title> is the tab's name, not a tooltip.
 _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")

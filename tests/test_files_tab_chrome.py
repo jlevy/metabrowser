@@ -24,10 +24,12 @@ opens the Modified within menu in both. This judges what it measured against
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
-- each section heading's tally sits beside its name after the separator, on its one line
-  at the default pane and the 180 px minimum, its numeral at the numbers' weight, and
-  the section and its tree are named by the heading's words without the dot ("Heading
-  Tallies");
+- each section heading's tally sits beside its name after the separator, its dot one
+  space's advance after the name, on its one line at the default pane and the 180 px
+  minimum, its numeral at a count's numeral weight, and the section and its tree are
+  named by the heading's words without the dot ("Heading Tallies"); at 180 px a name cut
+  short shows its whole in its tooltip, and a whole one shows none ("Tooltips Add
+  Information");
 - a file written into a folder open in a section refreshes the sections in place, keeping
   that folder open, the scroll position, the focused row, and the heading, whose tally
   counts the new file;
@@ -39,6 +41,8 @@ opens the Modified within menu in both. This judges what it measured against
   and a reveal made meanwhile lands once they paint;
   and a newer choice, or No grouping, ends the wait at once ("Grouping the Files Tree",
   Waiting);
+- the arrow keys walking past By age to By file type ask for By file type alone, by the
+  choice, and resting on By age asks for it ahead, which the choice then takes;
 - a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
   row's content edge, each glyph centred in it, so the names after them start on one
   column ("One Glyph Size", mb-hmv7).
@@ -90,6 +94,11 @@ _DOCS = ("md", "txt", "rst", "adoc")
 _DATA = ("json", "yaml", "toml", "ini", "csv", "xml")
 _MEDIA = ("png", "jpg", "mp3")
 _LIB_FILES = 12
+# The README's size: past 1,024 bytes, so its row's chip rounds it ("1.2 KB") and its
+# tooltip keeps the exact count. The src folder's files total under 1,024, which its chip
+# shows whole.
+_README = "# Fixture\n" + "Text.\n" * 200
+_README_BYTES = 1210
 
 
 def _served_folder(root: Path) -> None:
@@ -106,7 +115,8 @@ def _served_folder(root: Path) -> None:
     for ext in _MEDIA:
         (root / "media" / f"m.{ext}").write_bytes(b"x")
     (root / "archives" / "a.zip").write_bytes(b"x")
-    (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+    (root / "README.md").write_text(_README, encoding="utf-8")
+    assert len(_README.encode()) == _README_BYTES
     # A note beside the code, so src stands in Documentation and in Code.
     (root / "src" / "notes.md").write_text("# Notes\n", encoding="utf-8")
     # A folder two levels down, which the session opens and then writes a file into.
@@ -285,22 +295,28 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         )
         assert slot["name"] == 14 + slot["gap"] == 20, (kind, slot)
 
-    # A tree row's tooltip leaves out what the row shows, its name, a file's size, and the
-    # total a folder's chip holds, and gives the exact date and a folder's other total
-    # (mb-8mpo). The row's chips here are sizes.
+    # A tree row's tooltip leaves out what the row shows, its name and what its chip shows
+    # exactly, and gives the exact date, a folder's other total, and the exact size behind
+    # one its chip rounds (mb-8mpo, mb-qg4z). The row's chips here are sizes: the README's
+    # rounds its 1,210 bytes, and src's shows its total whole.
     tips = measured["treeTips"]
     assert tips["file"] == {
         "chip": "size",
+        "chipText": "1.2 KB",
         "visible": True,
-        "size": False,
+        "size": True,
+        "sizeDigits": str(_README_BYTES),
         "count": False,
-        "lines": 1,
+        "lines": 2,
         "name": False,
     }, tips
-    assert tips["folder"] == {
+    folder = tips["folder"]
+    assert folder["chipText"] is not None and folder["chipText"].endswith(" B"), tips
+    assert {key: value for key, value in folder.items() if key != "chipText"} == {
         "chip": "size",
         "visible": True,
         "size": False,
+        "sizeDigits": None,
         "count": True,
         "lines": 2,
         "name": False,
@@ -345,12 +361,14 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "enter": "group: No grouping, checked",
         "enterEscaped": "group trigger",
     }, measured["focus"]
-    # Enter on a File type row picks it and the menu stays open; through the bar's rebuilds
-    # as the filter answers, focus stays on that row, checked, and unchecked again.
+    # Enter on a File type row picks it and the menu stays open; through the bar's rebuild
+    # for each pick, which the session waits for by count, focus stays on that row,
+    # checked, and unchecked again. A tally refresh's rebuild is pinned browserlessly.
     row = measured["typesRow"]
     assert row.startswith("types: ") and not row.endswith("checked"), row
     assert measured["typesPicked"] == f"{row}, checked", measured
     assert measured["typesUnpicked"] == row, measured
+    assert measured["typesRebuilds"] >= 2, measured
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at
@@ -381,26 +399,30 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
         assert _close(section["tallyFromLabel"], 0), section
+        # One space's advance at the tally's size: the tally keeps its spaces.
+        assert 2 < section["dotFromLabel"] < 6, section
         assert section["tallyToEnd"] > 100, section
         assert section["lines"] == 1, section
         assert not section["nameCut"] and section["tallyWhole"], section
         assert section["weights"] == {
             "label": "700",
             "tally": "400",
-            "figure": section["numberWeight"],
+            "figure": section["numeralWeight"],
         }, section
-        assert section["numberWeight"] == "700", section
+        assert section["numeralWeight"] == "700", section
         assert section["dotHidden"], section
-    # A section and its tree read the heading's words, the dot left out; Chrome's name
-    # carries the label register's capitals.
+    # A section and its tree read the heading's words, the dot left out. Chrome's name
+    # carries the label register's capitals today; the contract is the words, so case is
+    # not compared.
     expected_names = [
-        f"{label.upper()} {tally}"
+        f"{label} {tally}".casefold()
         for label, tally in zip(
             ["Documentation", "Code", "Data", "Archives", "Media"], tallies, strict=True
         )
     ]
-    assert [name["section"] for name in measured["byTypeNames"]] == expected_names
-    assert [name["tree"] for name in measured["byTypeNames"]] == expected_names
+    names = measured["byTypeNames"]
+    assert [(name["section"] or "").casefold() for name in names] == expected_names, names
+    assert [(name["tree"] or "").casefold() for name in names] == expected_names, names
     # At the narrowest pane, 180 px, each heading is still its one line, as tall as at the
     # default width, with its tally whole beside the name.
     narrow = measured["byTypeNarrow"]
@@ -410,7 +432,13 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert _close(section["headingHeight"], wide["headingHeight"]), (wide, section)
         assert section["tallyWhole"], section
         assert _close(section["tallyFromLabel"], 0), section
+        assert 2 < section["dotFromLabel"] < 6, section
         assert section["tallyToEnd"] >= -TOLERANCE, section
+    # There, a name cut short shows its whole in its tooltip, and a whole one shows none.
+    assert measured["sectionTips"] == {
+        "cut": {"cut": True, "visible": True, "text": "Documentation"},
+        "whole": {"cut": False, "visible": False, "text": None},
+    }, measured["sectionTips"]
     # A folder opened inside Code lists Code's files only (src/lib, inside it, stays closed).
     code = measured["codeFiles"]
     assert len(code) == len(_CODE) * 3, code
@@ -486,3 +514,10 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert state["trigger"] == "No grouping" and state["sections"] == 0, state
         assert state["progress"] is None and state["treeOpacity"] == 1, state
         assert state["busy"] == "false" and not state["breathing"], state
+
+    # The keyboard asks only for a row it rests on: walking past By age to By file type
+    # asks for By file type once, by the choice; resting on By age asks for it ahead, and
+    # the choice takes that answer rather than asking again.
+    keyboard = measured["keyboard"]
+    assert keyboard["walk"] == ["type"] and keyboard["walkTrigger"] == "By file type", keyboard
+    assert keyboard["rest"] == ["age"] and keyboard["restTrigger"] == "By age", keyboard

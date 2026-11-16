@@ -13,16 +13,16 @@
 // the window, which controls the bar's row and closed drawer hold, whether the row fits
 // its pane, how it wraps in a narrower one, and which take keyboard numbers, where a
 // Group by section's heading starts against its tree and where its tally sits beside its
-// name, at the default pane and the narrowest, and what Chrome names the section, whether
-// a refresh after a write keeps the scroll position and the focused row, what a Group by
-// choice shows while its request is held, and a tree row's leading slot, a folder's
-// chevron and a file's icon, against the name after it (docs/design-system.md, "Groups
-// in a Menu", "Heading Tallies", "Menu Height", "Grouping the Files Tree", "One Glyph
-// Size", and "Navigation Toolbars Wrap"). The wrap is held to its rule by
+// name, at the default pane and the narrowest, whether a name cut short there shows its
+// tooltip, and what Chrome names the section, whether a refresh after a write keeps the
+// scroll position and the focused row, what a Group by choice shows while its request is
+// held, and a tree row's leading slot, a folder's chevron and a file's icon, against the
+// name after it (docs/design-system.md, "Groups in a Menu", "Heading Tallies", "Tooltips
+// Add Information", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
+// "Navigation Toolbars Wrap"). The wrap is held to its rule by
 // tests/dom/nav-toolbar-wrap.mjs. The requests and sections themselves run browserlessly
-// in
-// tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
-// a browser in tests/dom/filter-controls-behavior.js.
+// in tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked
+// without a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -179,33 +179,67 @@ const SLOTS = `(() => {
   };
 })()`;
 
-// A tree row's tooltip, after its delay: what it holds, and what the row's chip shows. It
-// leaves out what the row shows and gives the exact date (mb-8mpo, docs/design-system.md,
-// "Tooltips Add Information").
-const TREE_TIPS = `(async () => {
+// The page's one tooltip, waited on rather than slept for: a tooltip appears on a 300 ms
+// timer (TOOLTIP_APPEAR_DELAY) and goes on a 150 ms one, and a fixed sleep only guesses at
+// either. `until` polls a condition up to a bound and returns whether it held. A focus
+// change hides a tooltip and cancels one on its delay (focusin, hideTooltip), so a read
+// moves focus out of the filter bar first, where a choice from a menu left it: the bar,
+// rebuilt when the tree's tallies answer, puts focus back on the menu's trigger, and on a
+// loaded runner that lands inside the delay (mb-alff).
+const TIP_WAITS = `
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const until = async (test, ms) => {
+    const end = performance.now() + ms;
+    while (performance.now() < end) {
+      if (test()) return true;
+      await wait(20);
+    }
+    return test();
+  };
+  const tipShown = () => document.querySelector(".custom-tooltip")?.style.display === "block";
+`;
+
+// A tree row's tooltip, once it shows: what it holds, and what the row's chip shows. It
+// leaves out what the row shows and gives the exact date, and the exact size behind one its
+// chip rounds (mb-8mpo, mb-qg4z, docs/design-system.md, "Tooltips Add Information").
+const TREE_TIPS = `(async () => {
+  ${TIP_WAITS}
   const tree = document.querySelector('#tab-files [role="tree"]');
+  // Focus moves to the tree first: ungrouping came from the Group by menu (TIP_WAITS).
+  tree.querySelector('.tree-file[data-path="README.md"]').focus({ preventScroll: true });
+  // A focus change during a read, kept beside the readings for a failure's message.
+  const focused = [];
+  const onFocus = (event) =>
+    focused.push([event.target?.tagName, event.target?.className, event.target?.dataset?.treeId ?? ""].join(" ").trim());
+  document.addEventListener("focusin", onFocus, true);
   const read = async (row) => {
+    await until(() => !tipShown(), 5000);
+    focused.length = 0;
+    const entered = performance.now();
     row.dispatchEvent(new MouseEvent("mouseenter"));
-    await wait(450);
+    await until(tipShown, 5000);
     const tip = document.querySelector(".custom-tooltip");
     const chip = row.querySelector(".tree-item-size");
     const shown = {
       chip: chip === null ? null : chip.classList.contains("count") ? "count" : "size",
-      visible: tip !== null && tip.style.display === "block",
+      chipText: chip?.textContent ?? null,
+      visible: tipShown(),
       size: tip?.querySelector(".size") !== null,
+      // The size's digits, which the locale groups as it likes.
+      sizeDigits: tip?.querySelector(".size")?.textContent.replace(/\\D/g, "") ?? null,
       count: tip?.querySelector(".count") !== null,
       lines: tip === null ? 0 : tip.querySelectorAll(".tip-detail").length,
       name: tip?.querySelector(".tip-name") !== null,
     };
+    const why = { ms: Math.round(performance.now() - entered), connected: row.isConnected, focused: [...focused] };
     row.dispatchEvent(new MouseEvent("mouseleave"));
-    await wait(250);
-    return shown;
+    await until(() => !tipShown(), 5000);
+    return [shown, why];
   };
-  return {
-    file: await read(tree.querySelector('.tree-file[data-path="README.md"]')),
-    folder: await read(tree.querySelector('.tree-folder[data-path="src"]')),
-  };
+  const [file, fileWhy] = await read(tree.querySelector('.tree-file[data-path="README.md"]'));
+  const [folder, folderWhy] = await read(tree.querySelector('.tree-folder[data-path="src"]'));
+  document.removeEventListener("focusin", onFocus, true);
+  return { file, folder, why: { file: fileWhy, folder: folderWhy } };
 })()`;
 
 // The bar's row and drawer: which controls each holds.
@@ -296,6 +330,7 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
   const tree = section.querySelector(":scope > [role='tree']");
   const tally = heading.querySelector(":scope > .heading-tally");
   const figure = tally.querySelector(".heading-tally-figure");
+  const dot = tally.querySelector(".heading-tally-dot");
   const headingBox = heading.getBoundingClientRect();
   const headingStyle = getComputedStyle(heading);
   const tallyBox = tally.getBoundingClientRect();
@@ -307,8 +342,11 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
     key: section.dataset.treeGroup,
     label: label.textContent,
     tally: tally.textContent,
-    // The tally starts where the name's box ends, its separator's space its own.
+    // The tally starts where the name's box ends.
     tallyFromLabel: round(tallyBox.left - labelBox.right),
+    // And its dot stands one space's advance after the name: the tally keeps its spaces
+    // (white-space: pre), which a flex heading would otherwise drop.
+    dotFromLabel: round(dot.getBoundingClientRect().left - labelBox.right),
     // And it does not reach for the far end: the room left after it.
     tallyToEnd: round(headingBox.right - parseFloat(headingStyle.paddingRight) - tallyBox.right),
     // The name and the tally share one line, and the heading is that line.
@@ -322,8 +360,8 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
       tally: getComputedStyle(tally).fontWeight,
       figure: getComputedStyle(figure).fontWeight,
     },
-    numberWeight: getComputedStyle(document.documentElement).getPropertyValue("--pull-number-weight").trim(),
-    dotHidden: tally.querySelector(".heading-tally-dot")?.getAttribute("aria-hidden") === "true",
+    numeralWeight: getComputedStyle(document.documentElement).getPropertyValue("--count-numeral-weight").trim(),
+    dotHidden: dot.getAttribute("aria-hidden") === "true",
     headingClasses: [...heading.classList],
     fromRowInset: Math.round((range.getBoundingClientRect().left - box.left -
       parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)) * 100) / 100,
@@ -332,6 +370,45 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
     divider: parseFloat(getComputedStyle(section).borderTopWidth),
   };
 })`;
+
+// A section name's tooltip at the narrowest pane: shown while the name is cut short, with
+// the whole name, and not while it is whole, since it would only repeat it
+// (docs/design-system.md, "Tooltips Add Information"). Documentation's name, the longest,
+// is cut by its tally set to a 10,004-file group's, a size that cuts it at 180 px; Code's
+// short name stays whole. The tally is put back after.
+const SECTION_TIPS = `(async () => {
+  ${TIP_WAITS}
+  const heading = (key) =>
+    document.querySelector('.tree-section[data-tree-group="' + key + '"] > .tree-section-heading');
+  // Focus moves to the tree first: the grouping came from the Group by menu (TIP_WAITS).
+  document
+    .querySelector('.tree-section[data-tree-group="type:docs"] [role="treeitem"]')
+    .focus({ preventScroll: true });
+  const read = async (key, expectShown) => {
+    const label = heading(key).querySelector(".tree-section-label");
+    await until(() => !tipShown(), 5000);
+    label.dispatchEvent(new MouseEvent("mouseenter"));
+    // A tooltip that should show is waited for; one that should not is given well past
+    // its delay to appear.
+    const visible = expectShown ? await until(tipShown, 5000) : (await wait(900), tipShown());
+    const found = {
+      cut: label.scrollWidth > label.clientWidth,
+      visible,
+      text: visible ? document.querySelector(".custom-tooltip").textContent : null,
+    };
+    label.dispatchEvent(new MouseEvent("mouseleave"));
+    await until(() => !tipShown(), 5000);
+    return found;
+  };
+  const figure = heading("type:docs").querySelector(".heading-tally-figure");
+  const was = figure.textContent;
+  figure.textContent = (10004).toLocaleString();
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const cut = await read("type:docs", true);
+  figure.textContent = was;
+  const whole = await read("type:code", false);
+  return { cut, whole };
+})()`;
 
 // The gear menu: where its title, its labelled row, and its foot start, against the menu.
 const GEAR = `(() => {
@@ -356,6 +433,19 @@ const GEAR = `(() => {
 
 const frames =
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
+
+// The bar's transitions run to their end, the drawer's grid track and the bar's row-gap
+// on --transition-fast among them. `getAnimations` brings style up to date first, so a
+// transition the last change started is among them.
+const BAR_SETTLED = `(async () => {
+  const bar = document.getElementById("nav-filter-bar");
+  const running = () =>
+    bar.getAnimations({ subtree: true }).filter((animation) => animation instanceof CSSTransition);
+  for (let now = running(); now.length > 0; now = running()) {
+    await Promise.all(now.map((animation) => animation.finished.catch(() => null)));
+  }
+  return true;
+})()`;
 
 const profiles = process.env.CHROME_PROFILES;
 if (!process.env.CHROME_BIN || !profiles) {
@@ -514,14 +604,14 @@ try {
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.narrowKeyThree = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   result.narrowOpen = await browser.evaluate(NARROW);
   await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "false"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.narrowClosed = await browser.evaluate(NARROW);
   await paneWidth(null);
   await browser.evaluate(frames);
@@ -602,19 +692,35 @@ try {
   // 3 is File type: it opens the closed drawer with its menu.
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
   result.focus.three = await browser.evaluate(FOCUS);
-  // A pick in the multi-select menu keeps it open, and the bar rebuilds as the filter and
-  // the tree's tallies answer: focus stays on the row picked, and on it again unpicked.
+  // A pick in the multi-select menu keeps it open, and the bar rebuilds under it,
+  // synchronously from the filter's change: focus stays on the row picked, and on it again
+  // unpicked. A MutationObserver counts the bar's rebuilds, so each read waits for the
+  // rebuild it is about instead of for a time. New tallies rebuild the bar asynchronously
+  // too (loadTree in app.js), but a file written here does not, because the root summary's
+  // refresh leaves the bar alone while a menu is open; a rebuild with a row focused is
+  // pinned browserlessly in tests/dom/key-reveal-session.js and filter-controls-behavior.js.
+  await browser.evaluate(`(() => {
+    window.filterBarRebuilds = 0;
+    new MutationObserver((records) => { window.filterBarRebuilds += records.length; })
+      .observe(document.getElementById("nav-filter-bar"), { childList: true });
+    return true;
+  })()`);
+  const rebuilds = () => browser.evaluate("window.filterBarRebuilds");
+  const rebuiltSince = (count) => browser.waitFor(`window.filterBarRebuilds > ${count}`, 30000);
   await press("ArrowDown");
   result.typesRow = await browser.evaluate(FOCUS);
+  let rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesPicked = await browser.evaluate(FOCUS);
+  rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesUnpicked = await browser.evaluate(FOCUS);
+  result.typesRebuilds = await rebuilds();
   await browser.waitFor(
     `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
     30000,
@@ -705,6 +811,8 @@ try {
   await paneWidth(NARROWEST);
   await browser.evaluate(frames);
   result.byTypeNarrow = await browser.evaluate(SECTIONS);
+  // There, a name cut short gives its whole in its tooltip, and a whole one shows none.
+  result.sectionTips = await browser.evaluate(SECTION_TIPS);
   await paneWidth(null);
   await browser.evaluate(frames);
   // A folder inside a section opens under that section's group.
@@ -805,8 +913,11 @@ try {
     }
   };
   let requested = 0;
-  browser.on("Fetch.requestPaused", () => {
+  /** @type {string[]} the groupings asked for, in order */
+  const asked = [];
+  browser.on("Fetch.requestPaused", (params) => {
     requested += 1;
+    asked.push(new URL(params.request.url).searchParams.get("group_by") || "");
   });
   await browser.send("Fetch.enable", { patterns: [{ urlPattern: "*group_by=*" }] });
   const WAITING = `(() => {
@@ -926,7 +1037,9 @@ try {
     const { paint, css, ground, contrast, opacity } = ${PAINT};
     const row = document.querySelector("#tab-files .tree-item:not(.tree-item-gitignored, .tree-item-empty, :hover)");
     row.classList.add("tree-item-gitignored");
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Under the dim the row holds itself after the quiet period, by an animation; at rest it
+    // has none, so this is at once.
+    await Promise.all(row.getAnimations().map((animation) => animation.finished));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const name = row.querySelector(".tree-item-name");
     const drawn = opacity(name);
@@ -1041,6 +1154,41 @@ try {
   result.waiting.stale = await browser.evaluate(WAITING);
   releaseAll = true;
   await release();
+  // The keyboard asks only for a row it rests on (createGroupsPrefetch, rest). ↓ ↓ ↓ and
+  // Enter on the trigger, each in the frame after the last, pass By age on the way to By
+  // file type: the choice asks for By file type, and By age is never asked for.
+  const keyboard = async (keys, restMs = 0) => {
+    const before = asked.length;
+    await browser.evaluate(
+      `document.querySelector('[data-chip-menu-toggle="group"]').focus(), true`,
+    );
+    for (const key of keys) {
+      if (key === "rest") {
+        await sleep(restMs);
+      } else {
+        await press(key);
+      }
+    }
+    await browser.waitFor(
+      `!document.querySelector('[data-chip-menu-toggle="group"]').classList.contains("mb-refreshing") && document.querySelectorAll('.tree-section').length > 0`,
+      30000,
+    );
+    return asked.slice(before);
+  };
+  result.keyboard = {};
+  result.keyboard.walk = await keyboard(["ArrowDown", "ArrowDown", "ArrowDown", "Enter"]);
+  result.keyboard.walkTrigger = await browser.evaluate(
+    `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim()`,
+  );
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
+  // Resting on By age past the dwell asks for it ahead, and Enter takes that answer.
+  result.keyboard.rest = await keyboard(["ArrowDown", "ArrowDown", "rest", "Enter"], 700);
+  result.keyboard.restTrigger = await browser.evaluate(
+    `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim()`,
+  );
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
   await browser.send("Fetch.disable");
   phase("waited");
   process.stdout.write(`${JSON.stringify(result)}\n`);

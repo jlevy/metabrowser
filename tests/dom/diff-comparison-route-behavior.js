@@ -155,6 +155,28 @@ async function main() {
   loadTree = () => Promise.resolve(tree);
   const again = await registered.render({}, { comparison });
   assert.equal(again.options.changedFiles, tree, "the next diff asks for the tree again");
+
+  // A commit's page gives the diff its own totals for the summary, which the view is handed
+  // as they are (A3 of review A on #470).
+  const totals = { files: 5, additions: 15, deletions: 3, exact: true };
+  const counted = await registered.render({}, { comparison, summaryTotals: totals });
+  assert.equal(counted.options.summaryTotals, totals, "a page's totals reach the view");
+  assert.equal(again.options.summaryTotals, undefined, "and only where it gives them");
+
+  // A page's Diff summary on its own reads the comparison's manifest alone, so its patches
+  // are neither read nor validated, and one whose manifest is not valid draws nothing (A5 of
+  // review A on #470).
+  const broken = structuredClone(answer);
+  for (const patch of Object.values(broken.patches)) {
+    patch.hunks = "not hunks";
+  }
+  const slot = { replaceChildren() {} };
+  const drawn = await registered.summary(slot, { raw: broken, openFile() {} });
+  assert.deepEqual(drawn.document, { manifest: broken.manifest }, "drawn from the manifest");
+  assert.equal(drawn.options.changedFiles, tree);
+  const unlisted = structuredClone(answer);
+  delete unlisted.manifest.totals;
+  assert.equal(await registered.summary(slot, { raw: unlisted, openFile() {} }), null);
   console.log("diff comparison routes OK");
 }
 main().catch((error) => {

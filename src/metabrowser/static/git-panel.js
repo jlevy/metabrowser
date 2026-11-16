@@ -326,6 +326,8 @@
 
   /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
   const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
+  /** The commit totals line's dot, which says a comma in its place, as a line has no name. */
+  const COMMIT_TOTALS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
 
   /**
    * A commit's changes in its hover card, in the Diff summary's words and paint
@@ -380,6 +382,60 @@
   }
 
   /**
+   * The commit's own totals, which the server counts over the whole commit before it caps its
+   * list of files (`git/detail.py`), or null where the detail has no count of files.
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {{files: number, additions: number | null, deletions: number | null, exact: boolean} | null}
+   */
+  function commitTotals(stats) {
+    const files = stats.files_changed;
+    if (typeof files !== "number" || !Number.isInteger(files)) {
+      return null;
+    }
+    /** @param {unknown} value */
+    const lines = (value) => (typeof value === "number" && Number.isInteger(value) ? value : null);
+    return {
+      files,
+      additions: lines(stats.additions),
+      deletions: lines(stats.deletions),
+      exact: true,
+    };
+  }
+
+  /**
+   * The commit's totals as one line, "35 files changed · +1,234 −3,423", worded as a diff's line
+   * is where its tree of files did not load (`plainTotals`, builtin_plugins/diff/diff-model.js):
+   * what the Diff summary's place says until the commit's diff draws the summary there, and
+   * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
+   * comparison fails, so the page always states its counts (A6 of review A on #470). Empty
+   * where the detail has no count of files, and the place then takes no room. Its words and
+   * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painter
+   * (`countPartsHtml`): the file count bold, and the dot muted, one item with the count before
+   * it, and said as a comma to a screen reader, as a line has no name in words.
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {string}
+   */
+  function renderCommitTotals(stats) {
+    const totals = commitTotals(stats);
+    if (totals === null) {
+      return "";
+    }
+    const formatters = window.MetabrowserFormatters;
+    const said = formatters.changeSummary(totals, [], formatters.formatInteger);
+    return (
+      '<div class="diff-summary"><span class="diff-summary-group">' +
+      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span>` +
+      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span>` +
+      '<span class="diff-summary-stats">' +
+      `<span class="diff-stat-add">${escapeHtml(said.additions)}</span>` +
+      `<span class="diff-stat-del">${escapeHtml(said.deletions)}</span>` +
+      "</span></div>"
+    );
+  }
+
+  /**
    * Render the complete commit summary as one component. The comparison,
    * out-of-root files, and bounds remain siblings because they describe the
    * rendered change rather than the commit's identity and message.
@@ -429,10 +485,12 @@
     html += "</div>";
     // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
     // diff below draws it here, its header the commit's file and line totals and its tree
-    // the commit's files (`mountCommitDiff`). The hover summary keeps its two rows.
+    // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
+    // place says the commit's totals. The hover summary says its changes itself, in the Diff
+    // summary's words and paint.
     html += compact
       ? renderCommitChangeStats(stats)
-      : '<div class="git-commit-diff-summary metabrowser-diff-host"></div>';
+      : `<div class="git-commit-diff-summary metabrowser-diff-host">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
@@ -2252,6 +2310,9 @@
    */
   function cancelPending() {
     landingGeneration += 1;
+    // Another owner has the pane: a commit's row that waited for history is not revealed
+    // over it (revealWaitingCommit).
+    waitingReveal = null;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
@@ -2674,7 +2735,13 @@
       return;
     }
     try {
-      const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation, previewClaim);
+      const nextHandle = await mountCommitDiff(
+        stage,
+        commit.id,
+        diffPreparation,
+        previewClaim,
+        commitTotals(stats),
+      );
       if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
         nextHandle?.dispose?.();
         return;
@@ -2731,9 +2798,12 @@
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
    * @param {MetabrowserPreviewClaim} claim
+   * @param {ReturnType<typeof commitTotals>} [totals] The commit's own totals, which its Diff
+   *   summary says where the comparison's list of files is cut short at its bound (A3 of review
+   *   A on #470).
    * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, preparation, claim) {
+  async function mountCommitDiff(preview, revision, preparation, claim, totals = null) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
@@ -2774,6 +2844,7 @@
               revision,
               raw,
               ...(summaryHost instanceof HTMLElement ? { summaryHost } : {}),
+              ...(totals === null ? {} : { summaryTotals: totals }),
             })
           );
         },
@@ -3423,14 +3494,24 @@
   /**
    * Reveal the row of a commit's address once the history holds it. It runs as the landing
    * selects the commit and whenever a page of history settles (`selectNewestWhenReady`), and
-   * stops waiting once the first pages are read without it, or the selection moves on.
+   * stops waiting once the first pages are read without it, or the reader moves on: the
+   * selection moves, the address names another commit or none, or another tab is in front,
+   * whose panel scrolls the same scroller.
    */
   function revealWaitingCommit() {
     const waiting = waitingReveal;
     if (waiting === null) {
       return;
     }
-    if (state.selectedId !== waiting || revealCommitRow(waiting)) {
+    const addressed = window.MetabrowserNavigationRoute?.parseCommit?.(
+      window.location?.pathname ?? "",
+    )?.revision;
+    if (
+      state.selectedId !== waiting ||
+      addressed !== waiting ||
+      !panelInFront() ||
+      revealCommitRow(waiting)
+    ) {
       waitingReveal = null;
     } else if (!state.loading && !refreshing && state.rowCount > 0) {
       waitingReveal = null;

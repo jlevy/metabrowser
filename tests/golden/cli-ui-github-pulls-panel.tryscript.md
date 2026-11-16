@@ -562,7 +562,6 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "catalog backfill": [
       "gh auth status",
       "gh api graphql catalog state=all cursor=start",
-      "gh api repos/octo/demo/labels?per_page=100&page=1",
       "gh api graphql catalog state=all cursor=all-100"
     ],
     "cached windows, filters, scrolling and reopen": [],
@@ -578,7 +577,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "newer_cache": {
       "status": "absent",
       "connection": {
-        "text": "The pull-request list in the cache was written by a newer Metabrowser (row projection 4, where this release reads up to 3), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "text": "The pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
         "state": "paused",
         "reload": true
       }

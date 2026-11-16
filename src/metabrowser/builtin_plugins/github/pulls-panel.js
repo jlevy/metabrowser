@@ -2926,12 +2926,13 @@ export function createPullsController(deps, options = {}) {
     prepareVisible,
     /**
      * The address says which pull request's page holds the pane. Not a selection: the row
-     * only follows it, and no fetch starts. *reveal* shows the row again when the address
-     * names the current one, as an open of the page shown does: its stack opens and it
-     * scrolls into view (docs/design-system.md, "Navigation Reveals the Item").
+     * only follows it, and no fetch starts. The current number named again moves nothing,
+     * as another tab of its page or one of its changed files does, unless *again* says the
+     * reader opened the pull request shown again: then its stack opens and its row scrolls
+     * into view (docs/design-system.md, "Navigation Reveals the Item").
      *
      * @param {number | null} number
-     * @param {{preserveScroll?: boolean, reveal?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, options = {}) {
       if (disposed) {
@@ -2941,7 +2942,7 @@ export function createPullsController(deps, options = {}) {
         revealCurrent = false;
       }
       if (number === current) {
-        if (options.reveal === true && number !== null) {
+        if (options.again === true && number !== null) {
           revealCurrent = true;
           showCurrent(number);
         }
@@ -2961,6 +2962,27 @@ export function createPullsController(deps, options = {}) {
       showCurrent(number);
       // Back, a link, or a stack walk on the page: its neighbours are next all the same.
       warmAhead();
+    },
+    /**
+     * Home (static/main-tabs.js, `goHome`): the rows as a fresh load of `/view/` draws them,
+     * from the rows held and with no read. Every stack opens, and the Tab stop goes to the
+     * first row as no reader chose it. The address Home opens names no pull request, which
+     * `setCurrent` hears next and which keeps that row.
+     */
+    home() {
+      if (disposed) {
+        return;
+      }
+      closedStacks.clear();
+      anchorChosen = false;
+      groupingInputs += 1;
+      render();
+      const first = grouping().keys[0] ?? null;
+      if (first !== anchor) {
+        const previous = anchor;
+        anchor = first;
+        deps.markAnchor(previous, first, false);
+      }
     },
     move,
     /** The key that was walking was let go: open what it stopped on. */
@@ -3369,11 +3391,21 @@ export function mountPullsPanel(container, ctx, mb) {
   const gaps = new Map();
   /**
    * The row the reader is reading, its key and its distance from the scroller's top, which
-   * a paint keeps: a pull request's row or a stack's, the first one in view.
+   * a paint keeps: the row a reveal scrolled to while it holds (`revealedPlace`), and
+   * otherwise a pull request's row or a stack's, the first one in view.
    *
    * @type {{key: number, offset: number} | null}
    */
   let readingPlace = null;
+  /**
+   * Where a reveal put its row, and the scroll that put it there. Rows that arrive or regroup
+   * after the reveal, as stacks read after the list's first window do, leave the row where
+   * the reveal put it, until the list is scrolled other than by this view, as a reader
+   * scrolls it: kept as the first row in view, the row was regrouped out of view.
+   *
+   * @type {{key: number, offset: number, scrollTop: number} | null}
+   */
+  let revealedPlace = null;
   /** Whether the rows last painted were grouped by stack. */
   let paintedGrouped = false;
   /** @type {number | null} */
@@ -3662,7 +3694,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * end; the title has the second line to itself, from the text column to the row's end
    * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
    * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
-   * comes first in the row's DOM, so its accessible name leads with it.
+   * is the row's first text, so its accessible name gives the state, from the state icon's
+   * label, and then the title, before the number's line.
    *
    * @param {PullRow} row
    * @param {HTMLElement} place The row's place, kept across the line built again.
@@ -3907,6 +3940,24 @@ export function mountPullsPanel(container, ctx, mb) {
     return null;
   }
 
+  /**
+   * The place a paint keeps: a reveal's, until the list is scrolled other than by this view,
+   * and otherwise the first row in view.
+   *
+   * @returns {{key: number, offset: number} | null}
+   */
+  function keptPlace() {
+    if (
+      revealedPlace !== null &&
+      Math.abs((tab.scrollRoot?.scrollTop ?? 0) - revealedPlace.scrollTop) >= 1
+    ) {
+      revealedPlace = null;
+    }
+    return revealedPlace === null
+      ? visiblePlace()
+      : { key: revealedPlace.key, offset: revealedPlace.offset };
+  }
+
   function queueWindow() {
     if (windowDisposed || windowFrame !== null) {
       return;
@@ -4126,6 +4177,13 @@ export function mountPullsPanel(container, ctx, mb) {
         if (Math.abs(delta) >= 0.5) {
           tab.scrollRoot.scrollTop += delta;
         }
+        if (revealedPlace?.key === readingPlace.key) {
+          // Where the row is now: at the list's top or end, the scroll falls short of it.
+          revealedPlace.offset = item.getBoundingClientRect().top - view.top;
+        }
+      }
+      if (revealedPlace !== null) {
+        revealedPlace.scrollTop = tab.scrollRoot.scrollTop;
       }
     }
     if (focusBefore !== null && document.activeElement === document.body) {
@@ -4156,7 +4214,7 @@ export function mountPullsPanel(container, ctx, mb) {
         }
       }
     }
-    readingPlace = visiblePlace();
+    readingPlace = keptPlace();
     for (const number of painted.keys()) {
       const tree = trees.get(number);
       tree?.controller.setShown(panelShown);
@@ -4227,6 +4285,7 @@ export function mountPullsPanel(container, ctx, mb) {
       paintedRows = [];
       gaps.clear();
       readingPlace = null;
+      revealedPlace = null;
       list.replaceChildren();
       paintedVersion = -1;
       for (const { chip } of tallies) {
@@ -4235,7 +4294,9 @@ export function mountPullsPanel(container, ctx, mb) {
         chip.tabIndex = on ? 0 : -1;
       }
     }
-    if (arrivals.length > 0 && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+    // A row a reveal put in view holds its place over arrivals and a regroup, at the top too.
+    const atTop = revealedPlace === null && (tab.scrollRoot?.scrollTop ?? 0) <= 0;
+    if (arrivals.length > 0 && atTop) {
       readingPlace = null;
     }
     // Flat rows change with the list's rows; grouped rows with the grouping too.
@@ -4247,7 +4308,7 @@ export function mountPullsPanel(container, ctx, mb) {
       // A grouped order replacing the drawn one at the top of the list, as the stacks arriving
       // after the first paint or the option turned on, keeps the top, as arrivals at the top
       // do: kept in place, the first pull request read pushed the stacks' rows above the view.
-      if ((model.stacks.rows !== null || paintedGrouped) && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+      if ((model.stacks.rows !== null || paintedGrouped) && atTop) {
         readingPlace = null;
       }
       paintedGrouped = model.stacks.rows !== null;
@@ -4388,7 +4449,7 @@ export function mountPullsPanel(container, ctx, mb) {
   nav.scrollRoot?.addEventListener(
     "scroll",
     () => {
-      readingPlace = visiblePlace();
+      readingPlace = keptPlace();
       queueWindow();
     },
     { passive: true, signal },
@@ -4467,7 +4528,16 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       reveal(number) {
         paintViewport();
-        painted.get(number)?.row.scrollIntoView({ block: "nearest" });
+        const entry = painted.get(number);
+        entry?.row.scrollIntoView({ block: "nearest" });
+        const view = tab.scrollRoot?.getBoundingClientRect();
+        revealedPlace = null;
+        // A hidden panel's rows have no place, and its tab's reveal comes when it is shown.
+        if (entry !== undefined && view !== undefined && tab.scrollRoot !== null && panelShown) {
+          const offset = entry.item.getBoundingClientRect().top - view.top;
+          revealedPlace = { key: number, offset, scrollTop: tab.scrollRoot.scrollTop };
+          readingPlace = { key: number, offset };
+        }
       },
       markOutside(text) {
         if (text === null) {
@@ -4729,6 +4799,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (visible) {
         queueWindow();
       } else {
+        revealedPlace = null;
         cancelCoreSample();
         // Hiding the tab cancels its animations without an animationend event.
         clearArrivalFlashes();
@@ -4738,11 +4809,12 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
     /**
-     * The address names a pull request's page, and maybe one file of it.
+     * The address names a pull request's page, and maybe one file of it. *again* reveals
+     * the pull request already current (the controller's `setCurrent`).
      *
      * @param {number | null} number
      * @param {string | null} [file]
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, file = null, options) {
       if (currentRow !== null && currentRow !== number) {
@@ -4821,6 +4893,21 @@ export function mountPullsPanel(container, ctx, mb) {
     fileLeft: () => focused()?.left() ?? false,
     fileRight: () => focused()?.right() ?? false,
     activateFile: () => focused()?.activateAnchor() ?? false,
+    /**
+     * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it.
+     * Every row's changed files close, whoever opened them, with no read, and the rows go
+     * back to every stack open and the Tab stop on the first. The lists of changed files
+     * already read stay held, as the rows do, so a row opened again opens at once, with
+     * the folders in it as the reader left them.
+     */
+    home() {
+      for (const key of Object.keys(expansion.snapshot())) {
+        const number = Number(key);
+        expansion.collapse(number);
+        setExpanded(number, false);
+      }
+      controller.home();
+    },
     dispose() {
       windowDisposed = true;
       cancelCoreSample();

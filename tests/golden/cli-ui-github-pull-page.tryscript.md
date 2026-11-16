@@ -1646,15 +1646,26 @@ and while its record is on its way, but for the labels row, which a pull request
 labels does not have: the state row holds a chip’s height with a strut, a stack has its
 slot at the end of the author’s row, and Refresh, a text action, at the end of the
 status row. The header’s last row, its Diff summary, holds the shell’s pending
-placeholder, the navigation tally’s block after the quiet period, while the comparison
-the record names is read, on Conversation and on Checks, and the summary takes its
-place; the same pull request opened again in the document draws its summary from the
-kept comparison as the page mounts, with no read and no placeholder (mb-neg9); a read
-that fails, a comparison the summary draws nothing for, a Changes diff that reads no
-comparison, a record on its way, and a record that names no comparison leave the row
-empty (`headerSummary`). The tabs answer to `C`, `G`, and `E` through the production
-shortcut registry and plugin shortcut facade, with or without Shift and never with Ctrl:
-a tab the address does not show opens through the route, as a click on its link does.
+placeholder, the navigation tally’s block after the quiet period, while a comparison is
+on its way and while it is read: from a core preview whose read prepares it, the same
+node through its record to the read, and from a record whose comparison the page asked
+to prepare, on Conversation and on Checks, and on Changes the mounted diff’s; the
+summary takes its place.
+The same pull request opened again in the document draws its summary from the kept
+comparison as the page mounts, with no read and no placeholder (mb-neg9). A read that
+fails, a comparison the summary draws nothing for, a Changes diff that reads no
+comparison, a record on its way, a record that names no comparison and has none coming,
+a core preview whose read prepares none or none is running for, and a preparation that
+ended with none leave the row empty; so does a newer comparison on Changes until the
+reader takes it, and a Retry or the offer starts the wait again; a record that then
+names no comparison takes Changes’ diff away, and its wait with it (`headerSummary`). A
+page mounted with no record in hand holds its header and tab column for the quiet
+period, the first header with a record lifts the hold, a record that lands while the
+header waits for the conversation’s held first paint keeps them unseen until that paint,
+and a page with its record in hand holds nothing (`coldHold`). The tabs answer to `C`,
+`G`, and `E` through the production shortcut registry and plugin shortcut facade, with
+or without Shift and never with Ctrl: a tab the address does not show opens through the
+route, as a click on its link does.
 `H` is the Commits tab’s, so it does nothing here.
 The header keeps the tab column unless its first read fails: while the record is on its
 way, and for an absent record nothing is fetching, such as a server with no GitHub
@@ -1675,7 +1686,7 @@ first paint, so it is paintHeader’s own retarget that badges the returning lin
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: nothing","a record that names no comparison: nothing"],"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks E; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 View on GitHub, 2 Browse code","1: window.open https://github.com/octo/demo/pull/7 _blank noopener,noreferrer","2: POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh","2: navigation.open /view/","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","3: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks E","live: conversation files checks","G: showed Changes","disposed: keys none"]}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core no read is running for: nothing","a core preview whose read prepared nothing and ended: nothing","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head lands, offering the newer changes: nothing","the reader takes them, their diff not yet read: the pending placeholder","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the header waiting for the conversation: header github-pull-cold github-pull-cold-held, tab column github-pull-cold github-pull-cold-held","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown"],"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks E; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 View on GitHub, 2 Browse code","1: window.open https://github.com/octo/demo/pull/7 _blank noopener,noreferrer","2: POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh","2: navigation.open /view/","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","3: not handled","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks E","live: conversation files checks","G: showed Changes","disposed: keys none"]}
 ? 0
 ```
 
@@ -1688,6 +1699,22 @@ check links and notices once the record is ready.
 ```console
 $ node tests/dom/github-pull-core-preview-behavior.js
 {"description":"plain preview before full conversation","pendingParts":["discussion","checks"],"checkResults":{"route":"/pull/7/checks","links":2,"empty":true,"pending":true},"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":0,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
+? 0
+```
+
+A record cached before label colors names its labels alone.
+On the first read that shows one the envelope has no entry for, the page asks for the
+repository’s label set at once, and the job that starts makes its next read a fast poll.
+It keeps polling fast while the envelope says the job runs.
+Once the set is cached, the label it holds takes its color and tooltip, a label GitHub
+no longer has stays neutral, and nothing else the page paints changes.
+A page whose set is already being read asks for nothing.
+One the server finds not due asks once and stays on its slow poll, and labels with their
+own colors never ask.
+
+```console
+$ node tests/dom/github-pull-labels-behavior.js
+{"labelsPending":[{"step":"a first read of labels named alone","requests":["GET /api/plugin/github/pull?number=7","POST /api/plugin/github/labels-refresh {}"],"poll":"fast","labels":["enhancement neutral no tip","deleted-on-github neutral no tip"]},{"step":"the set's job runs","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"fast","labels":"unchanged"},{"step":"the set is cached","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":["enhancement #2700af tip","deleted-on-github neutral no tip"]},{"step":"nothing changes","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":"unchanged"},{"step":"a first read while the job runs","requests":["GET /api/plugin/github/pull?number=7"],"poll":"fast","labels":["enhancement neutral no tip","deleted-on-github neutral no tip"]},{"step":"a label the set does not hold","requests":["GET /api/plugin/github/pull?number=7","POST /api/plugin/github/labels-refresh {}"],"poll":"slow","labels":["enhancement #2700af tip","deleted-on-github neutral no tip"]},{"step":"the next poll","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":"unchanged"},{"step":"labels with their own colors","requests":["GET /api/plugin/github/pull?number=7"],"poll":"slow","labels":["enhancement #2700af tip"]}]}
 ? 0
 ```
 
@@ -1710,6 +1737,10 @@ A cache miss waits for metadata settlement before asking the provider, and an ol
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
 A partial timeline and its focused commit link remain in place during the retry.
+Every review’s heading is its author, “reviewed”, and its age, with a chip after the age
+only for a state the verb does not say: Approved, Changes requested, and Dismissed, and
+a state GitHub adds later as itself, even one named as an `Object.prototype` property
+is. A plain review and a pending one have no chip (`reviewHeadings`).
 
 ```console
 $ node tests/dom/github-pull-timeline-session.js
@@ -1739,7 +1770,16 @@ $ node tests/dom/github-pull-timeline-session.js
   "unavailableKeepsDiscussion": true,
   "transientRetryIsBoundedAndKeepsPartial": true,
   "supersededRowsRetired": true,
-  "keptCommitRowsRetellAges": true
+  "keptCommitRowsRetellAges": true,
+  "reviewHeadings": {
+    "review/9007199254740993": "maintainer reviewed 1d ago",
+    "review/16": "maintainer reviewed 1d ago [Changes requested]",
+    "review/17": "maintainer reviewed 1d ago [Dismissed]",
+    "review/18": "maintainer reviewed 1d ago [Escalated]",
+    "review/19": "maintainer reviewed 1d ago [Constructor]",
+    "review/3279967139": "maintainer reviewed 1d ago [Approved]",
+    "review/15": "maintainer reviewed (pending)"
+  }
 }
 ? 0
 ```

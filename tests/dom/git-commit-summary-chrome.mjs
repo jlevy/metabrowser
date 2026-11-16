@@ -15,8 +15,9 @@
 // tests/dom/diff-view-behavior.js for the place). What only a browser can tell is where it
 // lands: at the page's top, under the commit's identity and above its description, on the
 // summary's content edge, its header one row at the widths it fits in; its tree opening
-// under its header and above the description; and an empty place, where no diff was drawn,
-// taking no room (docs/design-system.md, "Git Commit Summary" and "Diff Summary").
+// under its header and above the description; the commit's totals in one line where no diff
+// was drawn; and an empty place, for a commit with no count of files, taking no room
+// (docs/design-system.md, "Git Commit Summary" and "Diff Summary").
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -215,11 +216,11 @@ const MEASURE = `async (widths) => {
     deletions: 90,
   }));
   const document_ = { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } };
-  const draw = (width, withDiff) => {
+  const draw = (width, withDiff, shown = detail) => {
     pane.style.width = width + "px";
     const stage = document.createElement("div");
     stage.className = "git-commit-stage";
-    stage.innerHTML = '<div class="git-commit-view">' + internals.renderCommitSummary(detail) + "</div>";
+    stage.innerHTML = '<div class="git-commit-view">' + internals.renderCommitSummary(shown) + "</div>";
     pane.replaceChildren(stage);
     const place = stage.querySelector(".git-commit-diff-summary");
     const handle = withDiff
@@ -231,7 +232,7 @@ const MEASURE = `async (widths) => {
     return { stage, place, handle };
   };
   await document.fonts.ready;
-  const out = { widths: {}, opened: null, empty: null };
+  const out = { widths: {}, opened: null, totals: null, empty: null };
   for (const width of widths) {
     const { stage, place, handle } = draw(width, true);
     await frames();
@@ -298,9 +299,24 @@ const MEASURE = `async (widths) => {
     nested.dispose();
     handle?.dispose();
   }
-  // No diff drawn: the place takes no room.
+  // No diff drawn: the place says the commit's totals in one line, worded as a diff's line
+  // is without its tree (A6 of review A on #470).
   {
     const { stage, place } = draw(760, false);
+    await frames();
+    const line = place.querySelector(".diff-summary");
+    out.totals = {
+      display: getComputedStyle(place).display,
+      text: line?.textContent ?? null,
+      line: line ? box(line) : null,
+      rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")) || null,
+      place: box(place),
+      meta: box(stage.querySelector(".git-commit-meta")),
+    };
+  }
+  // A commit with no count of files: the place is empty and takes no room.
+  {
+    const { stage, place } = draw(760, false, { ...detail, stats: {} });
     await frames();
     out.empty = {
       display: getComputedStyle(place).display,
@@ -491,9 +507,20 @@ async function main() {
         offStep(indent).length === 0 && new Set(indent.rows.map((row) => row.level)).size === 5,
         JSON.stringify(indent),
       );
+      const totals = measured.totals;
+      check(
+        "with no diff drawn, the place says the commit's totals in one line",
+        totals?.display !== "none" &&
+          totals?.text === "35 files changed\u00b7, +1,234\u22123,423" &&
+          totals.line !== null &&
+          totals.rowHeight !== null &&
+          totals.line.height <= totals.rowHeight + 0.5 &&
+          totals.place.top >= totals.meta.bottom - 0.5,
+        JSON.stringify(totals),
+      );
       const empty = measured.empty;
       check(
-        "with no diff drawn, the place takes no room",
+        "with no count of files, the empty place takes no room",
         empty?.display === "none" && empty.height === 0,
         JSON.stringify(empty),
       );

@@ -23,8 +23,10 @@
 // - every heading reads alike (mb-novh): the author, a plain verb, and the age, and a boxed
 //   chip after the age only for a review state the verb does not say;
 // - one rhythm (mb-w7rt): every two consecutive events are the timeline's one token apart,
-//   a card by its border and a commit by its text, card to card, card to commit, commit to
-//   card, and commit to commit alike, and roomier than the 12 px cards had;
+//   a card by its border and a commit by the glyphs of its text nodes, card to card, card to
+//   commit, commit to card, and commit to commit alike, and roomier than the 12 px cards
+//   had, and anything else below an event, Review comments, keeps the page's gap and its
+//   own margin;
 // - every card head's avatar, or the empty slot of one for an author without one, is on
 //   the line, and every head's name starts where the commits' subjects do;
 // - one line joins every two adjacent events, at one x, from a card's edge or a commit's
@@ -187,6 +189,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
       titleNodes: mb.titleNodes,
+      countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "2mo ago", className: "age-old" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -255,25 +258,37 @@ const MEASURE = `async (arrangement, width, theme) => {
       right: round(r.right + scrollX),
     };
   };
-  // An element's first line of glyphs, as a range reads it, and how many lines it has.
+  // An element's first line of glyphs, as a range reads it.
   const firstLine = (element) => {
     const range = document.createRange();
     range.selectNodeContents(element);
-    const rects = [...range.getClientRects()].filter((r) => r.width > 0);
-    const r = rects[0];
+    const r = [...range.getClientRects()].find((x) => x.width > 0);
     return r
-      ? {
-          top: round(r.top + scrollY),
-          bottom: round(r.bottom + scrollY),
-          left: round(r.left + scrollX),
-          // Boxes of several sizes share a line: a new line starts past half of one.
-          lines: rects
-            .map((x) => x.top)
-            .sort((one, two) => one - two)
-            .reduce((runs, top) => (top - runs.at(-1) > 8 ? [...runs, top] : runs), [-Infinity])
-            .length - 1,
-        }
+      ? { top: round(r.top + scrollY), bottom: round(r.bottom + scrollY), left: round(r.left + scrollX) }
       : null;
+  };
+  // Where an element's glyphs start and end, however it wraps: the union of its text nodes'
+  // own boxes, and the size of the text that ends lowest. A range over the element would
+  // also give each flex item's border box, and a commit row's items fill its line, so it
+  // would read the row's box and not its text.
+  const glyphs = (element) => {
+    const rects = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const size = getComputedStyle(node.parentElement).fontSize;
+      for (const r of range.getClientRects()) {
+        if (r.width > 0) rects.push({ top: r.top, bottom: r.bottom, size });
+      }
+    }
+    if (rects.length === 0) return null;
+    const last = rects.reduce((low, r) => (r.bottom > low.bottom ? r : low));
+    return {
+      top: round(Math.min(...rects.map((r) => r.top)) + scrollY),
+      bottom: round(last.bottom + scrollY),
+      endSize: last.size,
+    };
   };
   const type = (node) => {
     if (!node) return null;
@@ -320,16 +335,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       const subject = node.querySelector(".github-pull-commit-subject");
       const when = [...node.children].find((child) => /^committed /.test(child.textContent || ""));
       item.text = firstLine(subject);
-      item.lines = firstLine(node)?.lines ?? 0;
-      // Where the row's last line of glyphs ends, however it wraps.
-      const whole = document.createRange();
-      whole.selectNodeContents(node);
-      item.textTop = round(
-        Math.min(...[...whole.getClientRects()].filter((r) => r.width > 0).map((r) => r.top)) + scrollY,
-      );
-      item.textEnd = round(
-        Math.max(...[...whole.getClientRects()].filter((r) => r.width > 0).map((r) => r.bottom)) + scrollY,
-      );
+      item.glyphs = glyphs(node);
       item.type = {
         row: type(node),
         subject: type(subject),
@@ -344,7 +350,6 @@ const MEASURE = `async (arrangement, width, theme) => {
       item.text = author ? firstLine(author) : null;
       item.avatar = avatar ? box(avatar) : null;
       item.slot = avatar?.classList.contains("github-pull-avatar-slot") ?? false;
-      item.headOnly = node.children.length === 1;
       item.type = { head: type(head), age: type(head?.querySelector(".github-pull-age")) };
       // The heading as read: its words, the verb said in the head's own text, and its chips.
       item.heading = head ? head.textContent.replace(/\\s+/g, " ").trim() : null;
@@ -361,6 +366,8 @@ const MEASURE = `async (arrangement, width, theme) => {
             boxed: getComputedStyle(chip).borderTopStyle !== "none",
           }))
         : [];
+    } else {
+      item.margin = parseFloat(getComputedStyle(node).marginBlockStart);
     }
     return item;
   });
@@ -590,14 +597,23 @@ function hold(measured, image) {
   );
   // One rhythm (mb-w7rt): the visible space between any two consecutive events, card or
   // commit, is the timeline's one token, roomier than the 12 px cards had. Visible is a card's
-  // border, and a commit row's text, whose row is its line: so every box is the token apart,
-  // and a commit's text is the token from a card's border and from the next commit's. In
-  // Chrome 152 every pair measured the token exactly; a face whose glyphs sit higher or lower
-  // in their line may differ by its half-leading, a pixel at most.
+  // border, and a commit row's glyphs, read from its text nodes, whose row is its line: so
+  // every box is the token apart, and a commit's glyphs are the token from a card's border
+  // and from the next commit's. In Chrome 152 every box gap measured the token exactly, and
+  // the glyphs 20 to 21 px: the face's glyphs fill 20 of the line's 21 px, and a face whose
+  // glyphs sit higher or lower in their line may differ by its half-leading, a pixel at most.
+  // A line taller than its glyphs, as `line-height: 2` on the rows and heads, fails here.
+  // A row that a narrow pane wraps can end on a line that holds only its hash, a revision a
+  // step below the row's text in a monospace face, whose glyphs leave more of their line
+  // under them: in Chrome 152 on a Mac, 13 px SF Mono's 15 px of glyphs leave 2.5 px of its
+  // 19.5 px line, so 22.5 px shows below each such row at 420 px. Under such a line the
+  // space may be up to 3 px over the rhythm, to allow another platform's monospace face, and
+  // it is left out of the comparison of every pair, which is of the events' own face.
+  const HASH_LINE_SPARE = 3;
   const rhythm = measured.rhythm;
   check(`${where}: the rhythm is one token, roomier than 12 px`, rhythm > 12, String(rhythm));
-  const top = (item) => (item.kind === "commit" ? item.textTop : item.box.top);
-  const end = (item) => (item.kind === "commit" ? item.textEnd : item.box.bottom);
+  const top = (item) => (item.kind === "commit" ? item.glyphs.top : item.box.top);
+  const end = (item) => (item.kind === "commit" ? item.glyphs.bottom : item.box.bottom);
   const spaces = [];
   for (const [index, item] of items.entries()) {
     const next = items[index + 1];
@@ -612,11 +628,30 @@ function hold(measured, image) {
       `${round(between)} against ${rhythm} px`,
     );
     const space = top(next) - end(item);
-    spaces.push([pair, round(space)]);
+    const underHash = item.kind === "commit" && item.glyphs.endSize !== item.type.row.size;
+    if (!underHash) {
+      spaces.push([pair, round(space)]);
+    }
     check(
       `${where}: ${pair}, "${item.label}" to "${next.label}", show the rhythm between them`,
-      space >= rhythm - 1 && space <= rhythm + 1,
-      `${round(space)} against ${rhythm} px`,
+      space >= rhythm - 1 && space <= rhythm + (underHash ? HASH_LINE_SPARE : 1),
+      `${round(space)} against ${rhythm} px${underHash ? ", under a line of its hash" : ""}`,
+    );
+  }
+  // Anything else keeps the page's gap above it, and its own margin: the rhythm is the
+  // events' alone, as it is the Conversation's and not the Files or Checks tab's. Review
+  // comments stands 28 px below a card, as before the rhythm; with the rhythm as the body's
+  // gap it stood 36 px below, in Chrome 152.
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (!isEvent(item) || next === undefined || isEvent(next)) {
+      continue;
+    }
+    const between = next.box.top - item.box.bottom;
+    check(
+      `${where}: "${next.label}" keeps the page's gap and its own margin below "${item.label}"`,
+      measured.gap < rhythm && Math.abs(between - (measured.gap + next.margin)) < 0.5,
+      `${round(between)} against ${measured.gap} and ${next.margin} px`,
     );
   }
   const shown = spaces.map(([, space]) => space);
