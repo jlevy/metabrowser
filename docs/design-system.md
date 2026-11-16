@@ -1966,6 +1966,10 @@ spare.
 - **Scroll.** A grouping that arrives at the top of the list keeps the top, so its first
   stack’s row shows; elsewhere the row the reader is reading keeps its place, and a
   stack’s row can be that row, so opening one keeps its header still.
+  A row a reveal scrolled to stays the row being read until the reader scrolls, at the
+  top too: stacks that arrive after the list’s first window regroup the list around it,
+  as far as the list’s top allows, rather than around the first row in view, which moved
+  the revealed row out of view.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
   stack’s row passed over, and the first pull requests drawn.
 

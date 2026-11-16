@@ -172,6 +172,23 @@ try {
     check(`${label}: nothing is noted`, pane.notes.length === 0, JSON.stringify(pane));
     return pane;
   };
+  /**
+   * Hold the page's reads of its stacks at their answers until the returned function lets
+   * them go, so they arrive after the Pulls list's first window.
+   */
+  const pausedStacks = [];
+  chrome.on("Fetch.requestPaused", ({ requestId }) => pausedStacks.push(requestId));
+  const holdStacks = async () => {
+    await send("Fetch.enable", {
+      patterns: [{ urlPattern: "*/api/plugin/github/stacks*", requestStage: "Response" }],
+    });
+    return async () => {
+      for (const requestId of pausedStacks.splice(0)) {
+        await send("Fetch.continueRequest", { requestId });
+      }
+      await send("Fetch.disable");
+    };
+  };
   const fileRow = (filePath) => `#tab-files .tree-item[data-path="${filePath}"]`;
   const pullRow = (number) => `#tab-pulls .github-pulls-row[data-number="${number}"]`;
 
@@ -348,6 +365,30 @@ try {
   await load(`${base}/pull/7`);
   phase("a pull request's address");
   await revealed("a pull request's address", pullRow(7), "pulls");
+  // Again, with the stacks read after the list's first window, as a loaded machine can read
+  // them: the first window reveals #7 far down the flat list, and the regroup that the
+  // stacks bring leaves it in view. A paint that kept the first row in view instead moved
+  // #7 into its stack, out of view.
+  const release = await holdStacks();
+  await load(`${base}/pull/7`);
+  await revealed("a pull request's address, before its stacks", pullRow(7), "pulls");
+  const flat = await evaluate(PANE(pullRow(7)));
+  const level = `document.querySelector(${JSON.stringify(pullRow(7))})?.getAttribute("aria-level")`;
+  check(
+    "a pull request's address, before its stacks: the list is flat",
+    (await evaluate(level)) === "1",
+    JSON.stringify(flat),
+  );
+  await release();
+  await waitFor(`${level} === "2"`, "#7 is grouped under its stack");
+  await frames();
+  phase("a pull request's address, stacks after the first window");
+  const grouped = await evaluate(PANE(pullRow(7)));
+  check(
+    "a pull request's address, stacks after the first window: the row stays in view",
+    grouped.row?.inView === true && grouped.row?.selected === true,
+    JSON.stringify({ flat: flat.row, grouped: grouped.row }),
+  );
 
   // 9. A key that opens an item: Control-N or Control-P walks the stack from #7 to its
   // neighbour, which the Pulls tab reveals, or, when the list does not hold it, names. #7
@@ -444,11 +485,7 @@ try {
   // with the list as the reader left it: the reveal ends that kept place, and opens the
   // stack the reader closed since.
   await load(`${base}/pull/7`);
-  // Step 8 holds the address's own reveal; here the list only has to mark #7.
-  await waitFor(
-    `${activeIs("pulls")} && document.querySelector(${JSON.stringify(pullRow(7))})?.getAttribute("aria-current") === "page"`,
-    "#7 is the current pull request",
-  );
+  await revealed("a pull request's address, before its tab's button", pullRow(7), "pulls");
   await evaluate(`${tabButton("files")}.click()`);
   await waitFor(activeIs("files"), "the Files tab's button");
   await evaluate(`${tabButton("pulls")}.click()`);
