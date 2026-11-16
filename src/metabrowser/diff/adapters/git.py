@@ -392,6 +392,42 @@ def _asked_sections(out: bytes, changes: Sequence[FileChange]) -> bytes:
     )
 
 
+def _sections_by_position(
+    patch: bytes, listed: ChangeSetManifest, changes: Sequence[FileChange]
+) -> bytes | None:
+    """The sections of *changes* in the whole comparison's *patch*, found by position and
+    confirmed by their own headers; None when any is not where its position says.
+
+    The unrestricted run prints a section for each record of its listing, in the listing's
+    order, and two for a type change, delete and add; *listed* is that listing. Where that
+    holds, a page's sections are cut out without parsing any other header, so the cost of a
+    page follows the page and not the comparison. It does not always hold:
+    ``diff.submodule=log`` prints a changed submodule as a ``Submodule`` line under the
+    section before it, and ``diff`` as the sections of the submodule's own files. So each
+    asked section's header is parsed and must name its positional owner, and the sections
+    must add up to the records when the listing is whole; on any mismatch the caller parses
+    every header (:func:`_asked_sections`).
+    """
+    sections = _git_sections(patch)
+    starts: dict[str, int] = {}
+    count = 0
+    for change in listed.files:
+        starts[change.id] = count
+        count += 2 if change.kind is ChangeKind.type_changed else 1
+    if len(sections) < count or (len(sections) != count and not listed.truncated):
+        return None
+    asked = sorted({change.id: change for change in changes}.values(), key=lambda c: starts[c.id])
+    picked: list[bytes] = []
+    expected: list[str | None] = []
+    for change in asked:
+        width = 2 if change.kind is ChangeKind.type_changed else 1
+        picked.extend(sections[starts[change.id] : starts[change.id] + width])
+        expected.extend([change.id] * width)
+    if _section_owners(picked, asked) != expected:
+        return None
+    return b"".join(picked)
+
+
 def _commit_ids(out: bytes, count: int) -> list[str] | None:
     """*count* commit IDs, one a line and of one length, or None for any other answer."""
     lines = out.split(b"\n")
@@ -930,7 +966,7 @@ class GitDiffSource:
             and kept.comparison_id == resolved.comparison_id
         ):
             answered = await self._hydrate_from(
-                kept.patch, changes, whole=len(file_ids) == len(listed.files)
+                kept.patch, changes, listed, whole=len(file_ids) == len(listed.files)
             )
             if answered is not None:
                 return answered
@@ -989,7 +1025,12 @@ class GitDiffSource:
         )
 
     async def _hydrate_from(
-        self, patch: bytes, changes: Sequence[FileChange], *, whole: bool
+        self,
+        patch: bytes,
+        changes: Sequence[FileChange],
+        listed: ChangeSetManifest,
+        *,
+        whole: bool,
     ) -> PatchHydration | None:
         """What :meth:`hydrate` answers for *changes*, from the listing run's whole *patch*.
 
@@ -1004,11 +1045,18 @@ class GitDiffSource:
         file otherwise, the limited run's section matched nothing the manifest lists, and the
         file was left out unless the retry without rename detection found it; *patch* pairs
         it as the manifest does, and it is answered (``test_a_page_paired_otherwise_alone``).
-        None when a file has no section of its own, which the runs below answer for.
+        The sections of some are found by position, and every header is parsed only where a
+        position proves wrong (:func:`_sections_by_position`). None when a file has no
+        section of its own, which the runs below answer for.
         """
 
         def bounded() -> _Budgeted:
-            return _within_file_bounds(patch if whole else _asked_sections(patch, changes), changes)
+            if whole:
+                return _within_file_bounds(patch, changes)
+            asked = _sections_by_position(patch, listed, changes)
+            if asked is None:
+                asked = _asked_sections(patch, changes)
+            return _within_file_bounds(asked, changes)
 
         budgeted = await asyncio.to_thread(bounded)
         document = await asyncio.to_thread(parse_unified_patch, budgeted.kept)

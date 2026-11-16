@@ -673,6 +673,47 @@ def test_a_page_paired_otherwise_alone_is_answered_as_the_manifest_lists_it(
     assert set(page_now["patches"]) == set(page_today["patches"]) | set(page_today["left_out"])
 
 
+# ── A page of a large commit, cut from the kept patch ───────────────────
+
+
+def test_a_page_of_a_large_commit_parses_its_own_sections_not_every_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A thousand mode changes fit the bound, and the first page is fifty of them. Its
+    sections are found by position and only their headers are parsed, plus the page: the
+    work follows the page, as the run limited to the page's paths did, not the commit."""
+    root = tmp_path / "modes"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    env = _env(root, "2026-01-01T00:00:00 +0000")
+
+    def run(*args: str, stdin: bytes) -> str:
+        out = subprocess.run(
+            ["git", "-C", str(root), *args], input=stdin, check=True, capture_output=True, env=env
+        )
+        return out.stdout.decode().strip()
+
+    blob = run("hash-object", "-w", "--stdin", stdin=b"same\n").encode()
+
+    def commit(mode: bytes) -> str:
+        records = b"".join(mode + b" blob " + blob + b"\tf%04d\0" % i for i in range(1000))
+        return run("commit-tree", run("mktree", "-z", stdin=records), "-m", "modes", stdin=b"")
+
+    intent = {"left": commit(b"100644"), "right": commit(b"100755")}
+    _both(root, intent)
+    real = adapter.parse_unified_patch
+    parsed: list[int] = []
+
+    def counted(text: bytes, *args: Any, **kwargs: Any) -> Any:
+        parsed.append(len(text))
+        return real(text, *args, **kwargs)
+
+    monkeypatch.setattr(adapter, "parse_unified_patch", counted)
+    processes, _answer_text = _answer(GitDiffSource(root, patch_with_listing=True), intent)
+    assert processes == 2
+    assert len(parsed) == sidekick.MAX_HYDRATED_FILES + 1, "a header a file asked, then the page"
+
+
 # ── Names with unusual bytes, and binary files ──────────────────────────
 
 
@@ -791,6 +832,29 @@ def test_gitlinks_answer_alike_in_every_submodule_format(
         ("type_changed", "file", "submodule"),
         ("type_changed", "submodule", "file"),
     } <= kinds
+
+
+@pytest.mark.parametrize("submodule", ["short", "log", "diff"])
+def test_a_section_found_by_position_is_its_owners_or_none(tmp_path: Path, submodule: str) -> None:
+    """Where a section's position is not its owner, the cut by position says so, and the
+    caller parses every header: it never hands a file another's section, nor raises."""
+    root, target = _superproject(tmp_path)
+    git(root, "config", "diff.submodule", submodule)
+    source = _Today(root)
+    resolved = asyncio.run(source.resolve({"revision": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    patch = asyncio.run(source._patch(resolved, None))
+    by_id = {c.id: c for c in manifest.files}
+    found = []
+    for ids in _every_ask(manifest):
+        changes = [by_id[file_id] for file_id in ids]
+        cut = adapter._sections_by_position(patch, manifest, changes)
+        assert cut is None or cut == adapter._asked_sections(patch, changes)
+        found.append(cut is not None)
+    if submodule == "short":
+        assert all(found)
+    else:
+        assert not all(found), "a submodule's sections are not where position says"
 
 
 def test_a_submodules_own_drivers_run_only_as_the_page_ran_them(tmp_path: Path) -> None:
