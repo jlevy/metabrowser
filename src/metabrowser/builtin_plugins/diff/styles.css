@@ -56,7 +56,7 @@
   align-items: center;
   flex-wrap: wrap;
   min-width: 0;
-  column-gap: 8px;
+  column-gap: 6px;
   font-size: var(--nav-font-size);
   color: var(--text);
 }
@@ -75,7 +75,6 @@
   font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
-  column-gap: 6px;
 }
 
 .metabrowser-diff-host .diff-summary-toggle:hover {
@@ -98,10 +97,25 @@
 
 /* The header's groups, "19 files changed", "10 A, 5 D, 4 M", and "+1,234 −567", are items
    of its line, in the line's ink, with the shell's muted dot (`.summary-punctuation`, the
-   count summaries' punctuation) an item between each two, so the line's gap spaces the dot
-   on both sides, as the change stats' gap spaces their pair. The statuses' letters take
-   their statuses' ink from the shell's status primitive (`.file-change-status`), and their
-   commas the same muted punctuation (mb-vb51). */
+   count summaries' punctuation) between each two. Each dot is one item with the group
+   before it (`.diff-summary-group`), so a header that wraps breaks after a dot and no line
+   starts with one; the group's gap is the line's, so the dot is spaced alike on both sides,
+   on a toggle and on a line alike, as the change stats' gap spaces their pair. The
+   statuses' letters take their statuses' ink from the shell's status primitive
+   (`.file-change-status`), and their commas the same muted punctuation; the "(estimated)"
+   after totals that are not exact is muted too, a qualifier of the totals, as their marks
+   are. tests/dom/git-commit-summary-chrome.mjs holds that no line starts with a dot at 320
+   px, where the commit page's header wraps. */
+.metabrowser-diff-host .diff-summary-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
+}
+
+.metabrowser-diff-host .diff-summary-note {
+  color: var(--muted);
+}
+
 .metabrowser-diff-host .diff-summary-stats {
   display: inline-flex;
   gap: 6px;

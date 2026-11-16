@@ -523,6 +523,13 @@ Useful helpers include:
   holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
   which the host draws at regular weight, then the rest, which keeps the element’s
   weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
+- `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
+  nodes its element holds, painted as the host paints every count summary: the parts are
+  words as strings, `{number}`, drawn bold, `{punctuation}` for a list’s comma and
+  `{separator}` for the dot between a line’s groups, both drawn gray, the dot hidden
+  from assistive technology with an optional `spoken` said in its place, and
+  `{status, letter}` for a file change status, its letter drawn in the status’s color
+  ([Count Summaries Bold Their Numbers](design-system.md#count-summaries-bold-their-numbers));
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and

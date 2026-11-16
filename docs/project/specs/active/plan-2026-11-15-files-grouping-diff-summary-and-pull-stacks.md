@@ -99,8 +99,8 @@ request must prove.
   border or box, and opening it shows the hidden blocks in place.
 - **Diff summary** (`mb-epw2`):
   - Every multi-file diff opens with a Diff summary, collapsed by default.
-  - Its header reads like “35 changed files (2 added, 3 removed, 30 modified) +1,234
-    −3,423”.
+  - Its header reads like “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” (Phase
+    28).
   - Opened, it is the tree of changed files the Pulls tab shows under a pull request,
     and a closed folder shows its rolled-up line counts.
 - **Pull stack groups** (`mb-cm61`, `mb-vmwh`): the Pulls tab groups the pull requests
@@ -916,6 +916,13 @@ it, and ideally cached it up front”.
   em; pinned in the Diff summary session and golden, the diff view session, and the
   design vocabulary test, and in Chrome in both themes by the changed-file rows test and
   the header session’s `summary-wait` part, each of which fails on the old wording.
+  Review A’s round (`mb-bvl2`): the count parts have one painter, formatters.js’s, which
+  the SDK exposes as `metabrowser.countPartsNodes` and the Diff summary and the Checks
+  summary paint through, pinned once in `tests/dom/count-parts-session.js`; what a
+  change set holds is said once, by `changeSummary`, and a commit’s hover card says it
+  in the Diff summary’s words and paint (`mb-khm6`); each dot is one item with the group
+  before it, so a wrap breaks after it; a line without a name says a comma in each dot’s
+  place; and “(estimated)” is muted.
 
 ## Testing Strategy
 

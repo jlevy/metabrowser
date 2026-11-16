@@ -1107,7 +1107,8 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "html += renderCommitSummary(detail);" in panel
     assert "renderCommitSummary(detail, { compact: true })" in panel
     # The commit page's change counts are its one Diff summary, which its diff draws in the
-    # summary's place (mb-pb35); only the compact summary, in a tooltip, keeps the two rows.
+    # summary's place (mb-pb35); only the compact summary, in a tooltip, draws its own, one
+    # line in the Diff summary's words and paint (mb-khm6).
     assert (
         "html += compact\n"
         "      ? renderCommitChangeStats(stats)\n"
@@ -1122,14 +1123,15 @@ def test_git_commit_summary_is_one_component() -> None:
         'const subjectClass = compact ? "git-commit-subject"',
         'class="git-commit-meta"',
         'class="git-commit-identity"',
-        'class="git-commit-file-statuses"',
+        'class="git-commit-change-line"',
         'class="git-commit-change-stats"',
         'class="git-commit-refs"',
         'class="git-commit-body page-card chrome-prose"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     change_stats = _rule(styles, ".git-commit-change-stats")
-    stats_rows = _rule(styles, ".git-commit-file-statuses,\n.git-commit-line-stats")
+    change_line = _rule(styles, ".git-commit-change-line")
+    line_stats = _rule(styles, ".git-commit-line-stats")
     compact = _rule(styles, ".git-commit-summary-compact")
     meta = _rule(styles, ".git-commit-meta")
     summary_sha = _rule(styles, ".git-commit-sha")
@@ -1140,14 +1142,16 @@ def test_git_commit_summary_is_one_component() -> None:
     summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
-    assert "display: grid" in change_stats
-    assert "white-space: nowrap" in change_stats
-    assert "display: inline-flex" in stats_rows
+    assert "display: flex" in change_line
+    assert "flex-wrap: wrap" in change_line
+    assert "display: inline-flex" in line_stats
+    assert "white-space: nowrap" in line_stats
     # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
     assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
     assert "white-space: pre-wrap" in summary_body
     for rule in (
+        change_stats,
         meta,
         compact_subject,
         compact_meta,
@@ -2135,7 +2139,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
 # A count's numeral and a pull request's number are both bold, each through a token of its
 # own, so the two may part (docs/design-system.md, "Count Summaries Bold Their Numbers" and
 # "Pull Request Numbers"): the selectors that take each.
-_COUNT_NUMERALS = frozenset({".summary-number", ".git-commit-file-status", ".heading-tally-figure"})
+_COUNT_NUMERALS = frozenset({".summary-number", ".heading-tally-figure"})
 _PULL_NUMBERS = frozenset(
     {
         ".github-pull-number",
@@ -2216,13 +2220,13 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
             if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
                 assert "font-weight" not in declarations, (sheet, selector)
     painters = {
-        "static/formatters.js": "return { className: SUMMARY_NUMBER_CLASS, text: part.number",
+        "static/formatters.js": "{ className: SUMMARY_NUMBER_CLASS, text: part.number",
         "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
         "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
         "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
-        "builtin_plugins/diff/diff-view.js": 'el("span", "summary-number", part.number)',
+        "builtin_plugins/diff/diff-view.js": "words.append(...paint(parts));",
         "builtin_plugins/github/pulls-panel.js": '{ class: "github-pulls-total summary-number" }',
-        "builtin_plugins/github/pull-page.js": 'h("span", { class: "summary-number" }',
+        "builtin_plugins/github/pull-page.js": "mb.countPartsNodes(counted)",
     }
     for path, painted in painters.items():
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
@@ -2231,26 +2235,44 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
     assert 'const SUMMARY_NUMBER_CLASS = "summary-number";' in formatters
 
 
-# What paints a count summary's punctuation in `.summary-punctuation`: the shell's one painter
-# of count parts, the Diff summary's, and a pull request's Checks summary's dots.
+# A count summary's one painter, and how each surface reaches it: the shell through
+# formatters.js, a plugin through the SDK's `countPartsNodes` (A3 of review A on #479).
 _PUNCTUATION_PAINTERS = {
     "static/formatters.js": (
         'const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";',
         'const FILE_CHANGE_STATUS_CLASS = "file-change-status";',
-        '[["aria-hidden", "true"]]',
+        'const VISUALLY_HIDDEN_CLASS = "visually-hidden";',
+        'attributes: [["aria-hidden", "true"]],',
+        '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
+        "{ status: entry.status, letter: entry.letter },",
+    ),
+    "static/plugin-sdk.js": (
+        "return global.MetabrowserFormatters.countPartsNodes(global.document, parts);",
+        "countPartsNodes: countPartsNodes,",
+    ),
+    "static/changed-files-tree.js": (
+        "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
+        'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",',
+    ),
+    "static/git-panel.js": (
+        "const said = formatters.changeSummary(",
+        "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
+        'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
     ),
     "builtin_plugins/diff/diff-view.js": (
         'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
-        'el("span", "summary-punctuation", part.separator)',
-        'dot.setAttribute("aria-hidden", "true");',
-        'el("span", "summary-punctuation", part.punctuation)',
-        'el("span", "file-change-status", part.letter)',
-        "letter.dataset.fileStatus = part.status;",
+        'const LINE_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
+        "const paint = api?.countPartsNodes;",
     ),
     "builtin_plugins/github/pull-page.js": (
-        'h("span", { class: "summary-punctuation", "aria-hidden": "true" }, ["·"])',
+        'const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
+        'h("p", { class: "github-pull-quiet" }, mb.countPartsNodes(counted))',
     ),
 }
+# A class only the one painter writes: no other source spells one as a class of its own.
+_PAINTED_CLASSES = re.compile(
+    r"""["'](summary-number|summary-punctuation|file-change-status)["']"""
+)
 
 
 def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -> None:
@@ -2260,12 +2282,14 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -
     One shell class, `.summary-punctuation`, sets the muted ink and nothing else, and no
     stylesheet restyles it; a status letter in a count summary is the shell's status
     primitive, `.file-change-status`, whose inks `test_file_status_ink_is_shared_and_legible`
-    holds. The Diff summary's model writes its statuses as letters and its commas as
-    punctuation (`describeChanges`), and its words for a screen reader. The painters below
-    paint them, a separator hidden from assistive technology as a heading tally's dot is.
-    tests/dom/diff-view-behavior.js holds the Diff summary's classes on its header and its
-    fallback line, and tests/test_changed_file_rows_chrome.py reads their inks in Chrome in
-    both themes.
+    holds. What a change set's summary says is one function, `changeSummary`, which the Diff
+    summary's model and a commit's hover card both say it through, and its parts have one
+    painter, formatters.js's, which a plugin reaches through the SDK's `countPartsNodes`:
+    the Diff summary and the Checks summary paint none of those classes themselves.
+    tests/dom/count-parts-session.js pins each kind's markup, tests/dom/diff-view-behavior.js
+    the Diff summary's header and fallback line, tests/dom/git-panel-behavior.js the hover
+    card, and tests/test_changed_file_rows_chrome.py and tests/dom/git-commit-summary-chrome.mjs
+    read their inks in Chrome.
     """
 
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
@@ -2283,15 +2307,29 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         for text in painted:
             assert text in source, (path, text)
-    tree = (STATIC / "changed-files-tree.js").read_text(encoding="utf-8")
-    assert '...(at === 0 ? [] : [{ punctuation: "," }, " "]),' in tree
-    assert "{ status: entry.status, letter: entry.letter }," in tree
-    assert 'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",' in (
-        tree
-    )
-    # The Diff summary's breakdown is in its line's ink: only its marks are muted.
+    for path in ("builtin_plugins/diff/diff-view.js", "builtin_plugins/github/pull-page.js"):
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        assert _PAINTED_CLASSES.findall(source) == [], path
+    # The Diff summary's breakdown is in its line's ink: only its marks, and the
+    # "(estimated)" note that qualifies its totals, are muted. Each dot is one item with the
+    # group before it, spaced by the line's one gap, on a toggle and on a line alike.
     diff_css = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     assert ".metabrowser-diff-host .diff-summary-breakdown" not in diff_css
+    assert diff_css[".metabrowser-diff-host .diff-summary-note"] == {"color": "var(--muted)"}
+    assert diff_css[".metabrowser-diff-host .diff-summary-group"] == {
+        "display": "inline-flex",
+        "align-items": "baseline",
+        "column-gap": "inherit",
+    }
+    assert diff_css[".metabrowser-diff-host .diff-summary"]["column-gap"] == "6px"
+    assert "column-gap" not in diff_css[".metabrowser-diff-host .diff-summary-toggle"]
+    # The hover card's change line is spaced as the Diff summary's is.
+    assert shell[".git-commit-change-group"] == {
+        "display": "inline-flex",
+        "align-items": "baseline",
+        "column-gap": "inherit",
+    }
+    assert shell[".git-commit-change-line"]["column-gap"] == "6px"
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:

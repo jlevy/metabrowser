@@ -384,17 +384,24 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     );
     // Each status is its rows' letter in the shell's status primitive, which inks it by its
     // status; the dots between the groups and the comma between the statuses are the
-    // shell's muted punctuation, the dots hidden from a screen reader (mb-vb51).
+    // shell's muted punctuation, the dots hidden from a screen reader (mb-vb51). The header
+    // is painted by the shell's one painter, the SDK's `countPartsNodes`, and each dot is
+    // one item of its line with the group before it, so a wrap breaks after a dot.
     const letters = header
       .find("file-change-status")
-      .map((letter) => `${letter.reads()} ${letter.dataset.fileStatus}`);
+      .map((letter) => `${letter.reads()} ${letter.getAttribute("data-file-status")}`);
+    /** An item of the header's line: its class, or a group's parts, each mark with its aria-hidden. */
+    const item = (child) =>
+      child.classList.contains("diff-summary-group")
+        ? child.children.map((part) =>
+            part.classList.contains("summary-punctuation")
+              ? `${part.reads()} ${part.getAttribute("aria-hidden")}`
+              : part.className,
+          )
+        : child.className;
     const groups = header.children
       .filter((child) => typeof child === "object" && child.className !== "diff-summary-chevron")
-      .map((child) =>
-        child.classList.contains("summary-punctuation")
-          ? `${child.reads()} ${child.getAttribute("aria-hidden")}`
-          : child.className,
-      );
+      .map(item);
     const commas = header
       .find("diff-summary-breakdown")[0]
       ?.find("summary-punctuation")
@@ -404,13 +411,12 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       JSON.stringify(letters) === JSON.stringify(["A added", "M modified"]) &&
         JSON.stringify(groups) ===
           JSON.stringify([
-            "diff-summary-files",
-            "· true",
-            "diff-summary-breakdown",
-            "· true",
+            ["diff-summary-files", "· true"],
+            ["diff-summary-breakdown", "· true"],
             "diff-summary-stats",
           ]) &&
-        JSON.stringify(commas) === JSON.stringify([", null"]),
+        JSON.stringify(commas) === JSON.stringify([", null"]) &&
+        header.find("visually-hidden").length === 0,
       JSON.stringify({ letters, groups, commas }),
     );
     check(
@@ -786,11 +792,15 @@ async function main() {
     mountDiffView: mountDiffViewImpl,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
+  // A count summary is painted by the shell's one painter, as the SDK's `countPartsNodes`
+  // hands it the page's document (formatters.js).
+  const countPartsNodes = require("./changed-files-tree-fixture.js").countPartsNodes();
   const defaultTestApi = {
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForPath: () => "",
     prefs: { get: () => "unified" },
+    countPartsNodes,
   };
   const mountDiffView = (container, document, api = {}, options) =>
     mountDiffViewImpl(container, document, { ...defaultTestApi, ...api }, options);
@@ -1397,6 +1407,21 @@ async function main() {
     JSON.stringify(plainMarks) === JSON.stringify(["· true"]),
     JSON.stringify(plainMarks),
   );
+  // A line has no name that says it in words, as the toggle's does, so a screen reader is
+  // told a comma in its dot's place, and the dot is one item with the file count before it.
+  const plainGroup = plain?.find("diff-summary-group")[0];
+  check(
+    "the totals line says a comma in its hidden dot's place",
+    JSON.stringify(
+      plainGroup?.children.map((part) => `${part.className}: ${part.reads()}`) ?? null,
+    ) ===
+      JSON.stringify([
+        "diff-summary-files: 2 files changed",
+        "summary-punctuation: ·",
+        "visually-hidden: , ",
+      ]) && plain.children[0] === plainGroup,
+    JSON.stringify(plainGroup?.children.map((part) => part.className) ?? null),
+  );
   const hosted = new FakeElement("div");
   mountDiffView(hosted, twoFiles, undefined, { showSummary: false, changedFiles: sharedTree });
   check(
@@ -1438,7 +1463,7 @@ async function main() {
   const standalone = mountDiffSummary(
     slot,
     twoFiles,
-    { formatInteger: (count) => String(count) },
+    { formatInteger: (count) => String(count), countPartsNodes },
     { changedFiles: sharedTree, openFile() {} },
   );
   const drawn = slot.children[0];

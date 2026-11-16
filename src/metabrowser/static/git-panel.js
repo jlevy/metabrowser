@@ -312,45 +312,70 @@
   }
 
   /**
+   * A commit's file families in its hover card, in the Diff summary's order, added, deleted,
+   * then modified (changed-files-tree.js, `STATUS_ORDER`), each with its letter, the badge
+   * its rows carry, and its word. They are Git's, which the server counts before it bounds
+   * the commit's list of files: A holds added and copied files, D deleted ones, and M
+   * modified, renamed, and type-changed ones.
+   */
+  const COMMIT_FILE_FAMILIES = Object.freeze([
+    Object.freeze({ key: "files_added", status: "added", letter: "A", word: "added" }),
+    Object.freeze({ key: "files_deleted", status: "deleted", letter: "D", word: "deleted" }),
+    Object.freeze({ key: "files_modified", status: "modified", letter: "M", word: "modified" }),
+  ]);
+
+  /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
+  const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
+
+  /**
+   * A commit's changes in its hover card, in the Diff summary's words and paint
+   * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
+   * −160", through the same parts (formatters.js, `changeSummary`) and painter
+   * (`countPartsHtml`), so each number is bold in the line's ink, each status its letter in
+   * its status's ink at the line's weight, and the commas and dots muted. A family no file
+   * has is left out, and a count the commit does not know is "?". Each dot is one item with
+   * the group before it, so a line that wraps breaks after a dot. A screen reader is told
+   * the line in words, "32 files changed: 4 added, 28 modified; 1,921 lines added, 160
+   * deleted", in place of its letters and marks.
+   *
    * @param {Record<string, unknown>} stats
    * @returns {string}
    */
   function renderCommitChangeStats(stats) {
-    const fileStatuses = [
-      [stats.files_modified ?? "?", "M", "modified", "git-commit-file-status-modified"],
-      [stats.files_added ?? "?", "A", "added", "git-commit-file-status-added"],
-      [stats.files_deleted ?? "?", "D", "deleted", "git-commit-file-status-deleted"],
-    ]
-      .filter(([count]) => count !== 0)
-      .map(([count, code, label, className]) => {
-        const fileLabel = count === 1 ? "file" : "files";
-        return (
-          `<span class="git-commit-file-status ${className}"` +
-          ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
-          `${escapeHtml(String(count))} <span class="file-change-status" data-file-status="${label}">${code}</span></span>`
-        );
-      })
-      .join("");
-    const filesChanged = stats.files_changed ?? "?";
-    const fileUnit = filesChanged === 1 ? "file" : "files";
-    const additions = stats.additions ?? "?";
-    const deletions = stats.deletions ?? "?";
-    const lineTotal =
-      typeof additions === "number" && typeof deletions === "number" ? additions + deletions : null;
-    const lineUnit = lineTotal === 1 ? "line" : "lines";
+    const formatters = window.MetabrowserFormatters;
+    /** @param {unknown} value */
+    const known = (value) => (typeof value === "number" ? value : null);
+    const entries = COMMIT_FILE_FAMILIES.map(({ key, ...family }) => ({
+      ...family,
+      count: known(stats[key]),
+    })).filter((entry) => entry.count !== 0);
+    const said = formatters.changeSummary(
+      {
+        files: known(stats.files_changed),
+        additions: known(stats.additions),
+        deletions: known(stats.deletions),
+        exact: true,
+      },
+      entries,
+      formatters.formatInteger,
+    );
+    /** @param {string} className @param {MetabrowserCountParts} parts */
+    const group = (className, parts) =>
+      '<span class="git-commit-change-group">' +
+      `<span class="${className}">${formatters.countPartsHtml(parts)}</span>` +
+      `${formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])}</span>`;
     return (
       '<div class="git-commit-change-stats">' +
-      '<div class="git-commit-file-statuses" aria-label="File changes">' +
-      `${fileStatuses}<span class="git-commit-stat-unit">${fileUnit}</span>` +
-      "</div>" +
-      '<div class="git-commit-line-stats" aria-label="Line changes">' +
-      `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
-      `+${escapeHtml(String(additions))}</span>` +
-      `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
-      `−${escapeHtml(String(deletions))}</span>` +
-      `<span class="git-commit-stat-unit">${lineUnit}</span>` +
-      "</div>" +
-      "</div>"
+      `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+      group("git-commit-change-files", said.filesParts) +
+      (said.breakdownParts.length > 0
+        ? group("git-commit-file-statuses", said.breakdownParts)
+        : "") +
+      '<span class="git-commit-line-stats">' +
+      `<span class="git-stat-add">${escapeHtml(said.additions)}</span>` +
+      `<span class="git-stat-del">${escapeHtml(said.deletions)}</span>` +
+      "</span></span></div>"
     );
   }
 

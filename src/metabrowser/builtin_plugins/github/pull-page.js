@@ -3732,6 +3732,12 @@ export function numberHeaderControls(shortcuts, held, controls, signal) {
 }
 
 /**
+ * The dot between the Checks summary's counts, "3 success · 1 failure": muted and hidden
+ * from a screen reader, which is told a comma in its place.
+ */
+const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
+
+/**
  * Mount the page into *container*. Browser only.
  *
  * @param {HTMLElement} container
@@ -5317,26 +5323,19 @@ export function mountPullPage(container, ctx, mb) {
           : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
       );
     } else if (summary !== null) {
-      // "3 success · 1 failure": a count summary, its numbers bold and its dots the shell's
-      // muted punctuation, hidden from a screen reader as a heading tally's dot is
-      // (docs/design-system.md, "Count Summaries Bold Their Numbers").
-      checksSection.append(
-        h(
-          "p",
-          { class: "github-pull-quiet" },
-          Object.entries(summary.counts).flatMap(([tone, count], at) => [
-            ...(at === 0
-              ? []
-              : [
-                  " ",
-                  h("span", { class: "summary-punctuation", "aria-hidden": "true" }, ["·"]),
-                  " ",
-                ]),
-            h("span", { class: "summary-number" }, [String(count)]),
-            ` ${tone}`,
-          ]),
-        ),
-      );
+      // "3 success · 1 failure": a count summary in its parts, painted by the shell's one
+      // painter of them (`mb.countPartsNodes`): its numbers bold, and its dots muted and
+      // hidden from a screen reader, which is told a comma in each one's place, as a paragraph
+      // has no name to say the line in words (docs/design-system.md, "Count Summaries Bold
+      // Their Numbers"). A no-break space holds each dot to the count before it, so a line
+      // that wraps never starts with one.
+      /** @type {MetabrowserCountPart[]} */
+      const counted = Object.entries(summary.counts).flatMap(([tone, count], at) => [
+        ...(at === 0 ? [] : ["\u00a0", CHECKS_SEPARATOR, " "]),
+        { number: String(count) },
+        ` ${tone}`,
+      ]);
+      checksSection.append(h("p", { class: "github-pull-quiet" }, mb.countPartsNodes(counted)));
       const rows = h("ul", { class: "github-pull-checks" });
       for (const item of summary.items) {
         rows.append(

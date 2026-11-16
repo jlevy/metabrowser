@@ -516,9 +516,21 @@ type MetabrowserFormatterRuntime = Readonly<{
   ): { label: string; className: string };
   ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
-  /** A count summary as markup, each number in `span.summary-number`, the words escaped. */
+  /** What a change set's summary says, in a count summary's parts: "35 files changed · 2 A,
+   *  3 D, 30 M · +1,234 −3,423", its text, and its words for a screen reader. */
+  changeSummary(
+    totals: {
+      files: number | null;
+      additions: number | null;
+      deletions: number | null;
+      exact: boolean;
+    },
+    entries: ReadonlyArray<{ status: string; letter: string; word: string; count: number | null }>,
+    formatCount: (count: number) => string,
+  ): MetabrowserChangedFilesSummary;
+  /** A count summary as markup, each kind of part in its one class, the words escaped. */
   countPartsHtml(parts: MetabrowserCountParts): string;
-  /** A count summary as nodes, each number in `span.summary-number`, the words as text. */
+  /** A count summary as nodes, each kind of part in its one class, the words as text. */
   countPartsNodes(doc: Document, parts: MetabrowserCountParts): Array<Node | string>;
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
@@ -1379,6 +1391,11 @@ type MetabrowserSdk = {
   /** A commit's or pull request's title as nodes for its element: a conventional-commit
    *  prefix in `span.title-prefix`, at regular weight, then the rest. */
   titleNodes(title: string): Array<Node | string>;
+  /** A count summary as nodes for its element, painted as the shell paints every count
+   *  summary: each number in `span.summary-number`, each mark in `span.summary-punctuation`,
+   *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,
+   *  each status its letter in `span.file-change-status`, and the words as text. */
+  countPartsNodes(parts: MetabrowserCountParts): Array<Node | string>;
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;
@@ -3501,14 +3518,16 @@ declare global {
    * painted bold (`.summary-number`); a list's punctuation, the comma between its entries,
    * as `{punctuation}`, and the " · " dot that sets a line's groups apart as `{separator}`,
    * both painted muted (`.summary-punctuation`), the separator hidden from assistive
-   * technology; and a file change status as `{status, letter}`, its letter painted in the
-   * status's ink (`.file-change-status`).
+   * technology, with `spoken`, what a screen reader is told in its place (`.visually-hidden`),
+   * on a line whose name does not say it in words; and a file change status as `{status,
+   * letter}`, its letter painted in the status's ink (`.file-change-status`). The shell's
+   * formatters.js paints them all, and a plugin through `metabrowser.countPartsNodes`.
    */
   type MetabrowserCountPart =
     | string
     | { readonly number: string }
     | { readonly punctuation: string }
-    | { readonly separator: string }
+    | { readonly separator: string; readonly spoken?: string }
     | { readonly status: string; readonly letter: string };
 
   /**

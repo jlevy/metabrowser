@@ -4,21 +4,6 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- The Diff summary’s header reads “**19** files changed · **10** A, **5** D, **4** M ·
-  +1,234 −567”, on a commit’s page, in a pull request’s header, and in a patch’s
-  toolbar: each status is the letter its files carry in the tree below, in the same
-  green, red, ochre, or blue, and the dots and commas are gray, so the counts and the
-  letters stand out. One file reads “1 file changed”.
-  A screen reader still hears the statuses in words, “19 files changed: 10 added, 5
-  deleted, 4 modified”, with deleted files now called deleted, as their rows are.
-  Every count summary follows the same rule: numbers bold, separators and commas gray,
-  status letters in their status’s color; a pull request’s Checks summary was gray
-  throughout already. The gray block a pull request’s header shows while its summary
-  loads is narrower to match, so the summary still moves nothing when it arrives.
-  See
-  [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers)
-  and [Diff Summary](docs/design-system.md#diff-summary).
-
 - A pull request you have opened before shows its Diff summary at once when you open it
   again, and its Changes opens with no wait: what a page reads of a comparison is kept
   while Metabrowser is open, instead of being read again, once the browser was idle, on
@@ -57,7 +42,8 @@ All notable changes to Metabrowser are documented here.
   See [The Pull Request Page](docs/design-system.md#layout) and
   [Diff Summary](docs/design-system.md#diff-summary).
 
-- Every count summary bolds its numbers and keeps its words regular.
+- Every count summary bolds its numbers and keeps its words regular, with its separators
+  and commas gray and each file status its letter in its status’s color.
   The numbers are now bold in the Diff summary’s header, “**8** files changed · **8**
   M”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar; in the
   Files totals, as in “**15,458** files (**324.1 MB**)”, and the filter’s “Filtered to”
@@ -65,8 +51,14 @@ All notable changes to Metabrowser are documented here.
   files outside the served folder, all of which were regular in 0.12.0. The Pulls
   count’s number stays bold, as it was in 0.12.0. A size is bold with its unit, and what
   a screen reader hears is unchanged.
-  See
-  [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers).
+  A commit’s hover card in the Commits tab says its changes as the Diff summary’s header
+  does, “**32** files changed · **4** A, **28** M · +1,921 −160”, in place of its two
+  rows, “28 M 4 A files” and “+1921 −160 lines”, whose added and deleted counts were
+  green and red; a screen reader hears them in words.
+  Plugins can paint a count summary as the shell does with
+  `metabrowser.countPartsNodes(parts)`. See
+  [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers)
+  and [Plugins](docs/plugins.md).
 
 - A diff’s toolbar no longer draws a rule under the Split | Unified chooser, on a
   commit’s page, on a pull request’s Changes, and in a patch: the first file’s own
@@ -385,11 +377,15 @@ All notable changes to Metabrowser are documented here.
   A document’s own `<details>` sections look as before.
 
 - A diff of more than one file now opens with a Diff summary, collapsed, in place of the
-  “41 changed files +6526 −555” line at its top: a header such as “35 files changed · 2
-  A, 3 D, 30 M · +1,234 −3,423” that opens to the changed files as a tree by folder.
+  “41 changed files +6526 −555” line at its top: a header such as “**35** files changed
+  · **2** A, **3** D, **30** M · +1,234 −3,423” that opens to the changed files as a
+  tree by folder; one file reads “1 file changed”.
   The header lists only the statuses some file has, in one order (added, deleted,
-  modified, renamed, then the rest), writes its numbers in the shell’s format, and still
-  says “(estimated)” when the totals are not exact.
+  modified, renamed, then the rest), each the letter its files carry in the tree, in the
+  same green, red, ochre, or blue, with the dots and commas gray; it writes its numbers
+  in the shell’s format and still says “(estimated)”, in gray, when the totals are not
+  exact. A screen reader hears the statuses in words, “35 files changed: 2 added, 3
+  deleted, 30 modified”.
   The tree is the one the Pulls tab shows under a pull request, row for row: folders
   toggle, a chain of single folders is one row, and each file has its change letter and
   line counts. Every folder now shows the line counts of the files under it, rolled up,

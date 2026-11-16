@@ -41,22 +41,13 @@ function assertNotContains(label, haystack, needle) {
   }
 }
 
-// Counts are accessible labels; status identity and visible letters are separate
-// semantics. Attribute order and incidental span whitespace are not the contract.
-function assertFileStatus(label, html, status, count) {
-  const token = `data-file-status="${status}"`;
-  if (count === 0) {
-    assertNotContains(label, html, token);
-    return;
-  }
-  const unit = count === 1 ? "file" : "files";
-  assertContains(`${label}: accessible count`, html, `aria-label="${count} ${status} ${unit}"`);
-  assertContains(`${label}: status identity`, html, token);
-  const letter = { modified: "M", added: "A", deleted: "D" }[status];
-  const text = String(html)
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ");
-  assertContains(`${label}: visible count and letter`, text, `${count} ${letter}`);
+// A hover card's change line, as a reader sees it: its markup's text, without the words a
+// screen reader is told in its place.
+function changeLineText(html) {
+  const line = String(html).match(
+    /<span class="git-commit-change-line" aria-hidden="true">(.*?)<\/div>/s,
+  );
+  return line === null ? null : line[1].replace(/<[^>]*>/g, "");
 }
 
 // ── Fake DOM ─────────────────────────────────────────────────
@@ -650,6 +641,9 @@ for (const file of [
 
 const panel = sandbox.MetabrowserGitPanel;
 const internals = panel._internals;
+// The shared changed-files model, as its bundle installs it: what a Diff summary says of a
+// change set, which a commit's hover card says of its own in the same words.
+const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
@@ -910,25 +904,64 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    assertFileStatus("tooltip: modified files", html, "modified", 28);
-    assertFileStatus("tooltip: added files", html, "added", 4);
-    assertFileStatus("tooltip: zero deleted files are omitted", html, "deleted", 0);
-    assertContains("tooltip: file unit", html, 'git-commit-stat-unit">files');
-    assertContains("tooltip: additions", html, "+1921");
-    assertContains("tooltip: deletions", html, "−160");
-    assertContains("tooltip: line unit", html, 'git-commit-stat-unit">lines');
+    // The hover card says a commit's changes in the Diff summary's words and paint, through
+    // its parts and painter (formatters.js, `changeSummary` and `countPartsHtml`): the
+    // summary's order, A, D, M, each count bold in the line's ink, each status its letter in
+    // the status primitive at the line's weight, and the commas and dots muted, each dot one
+    // item with the group before it (mb-khm6).
+    const format = sandbox.MetabrowserFormatters.formatInteger;
+    assertEqual(
+      "tooltip: the change line reads as the Diff summary's header",
+      changeLineText(html),
+      `32 files changed·4 A, 28 M·+${format(1921)}−160`,
+    );
+    assertContains(
+      "tooltip: the change line, painted",
+      html,
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+        '<span class="git-commit-change-group"><span class="git-commit-change-files">' +
+        '<span class="summary-number">32</span> files changed</span>' +
+        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
+        '<span class="git-commit-change-group"><span class="git-commit-file-statuses">' +
+        '<span class="summary-number">4</span> ' +
+        '<span class="file-change-status" data-file-status="added">A</span>' +
+        '<span class="summary-punctuation">,</span> ' +
+        '<span class="summary-number">28</span> ' +
+        '<span class="file-change-status" data-file-status="modified">M</span></span>' +
+        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
+        '<span class="git-commit-line-stats">' +
+        `<span class="git-stat-add">+${format(1921)}</span>` +
+        '<span class="git-stat-del">−160</span></span></span></div>',
+    );
+    assertNotContains(
+      "tooltip: zero deleted files are omitted",
+      html,
+      'data-file-status="deleted"',
+    );
+    assertContains(
+      "tooltip: a screen reader is told the change line in words",
+      html,
+      `<span class="visually-hidden">32 files changed: 4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
+    );
+    // The same counts as the Diff summary says them, from the shared changed-files model.
+    const said = sharedTree.describeChanges(
+      { files: 32, additions: 1921, deletions: 160, exact: true },
+      [...Array(4).fill("added"), ...Array(28).fill("modified")],
+      format,
+    );
+    assertEqual(
+      "tooltip: the change line is the Diff summary's, word for word",
+      [changeLineText(html), html.includes(`>${said.label}</span>`)],
+      [said.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+    );
+    assertNotContains("tooltip: no old per-status tint", html, "git-commit-file-status-");
+    assertNotContains("tooltip: no old units", html, "git-commit-stat-unit");
     const metaStart = html.indexOf('<div class="git-commit-meta">');
     const metaEnd = html.indexOf("</div>", metaStart);
     const statsStart = html.indexOf('<div class="git-commit-change-stats">');
-    const fileStatsStart = html.indexOf('<div class="git-commit-file-statuses"', statsStart);
-    const lineStatsStart = html.indexOf('<div class="git-commit-line-stats"', statsStart);
     assertTrue(
-      "tooltip: change statistics are two rows below identity metadata",
-      metaStart >= 0 &&
-        metaEnd > metaStart &&
-        statsStart > metaEnd &&
-        fileStatsStart > statsStart &&
-        lineStatsStart > fileStatsStart,
+      "tooltip: the change line is below the identity metadata",
+      metaStart >= 0 && metaEnd > metaStart && statsStart > metaEnd,
     );
     assertNotContains("tooltip: omits long body", html, "long body");
     assertNotContains("tooltip: has no interactive copy button", html, "<button");
@@ -939,11 +972,45 @@ async function run() {
       stats: {},
       files_truncated: true,
     });
-    assertFileStatus("tooltip: unknown modified count stays unknown", unknown, "modified", "?");
-    assertFileStatus("tooltip: unknown added count stays unknown", unknown, "added", "?");
-    assertFileStatus("tooltip: unknown deleted count stays unknown", unknown, "deleted", "?");
-    assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
-    assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
+    assertEqual(
+      "tooltip: unknown counts stay unknown, each family kept",
+      changeLineText(unknown),
+      "? files changed·? A, ? D, ? M·+?−?",
+    );
+    assertContains(
+      "tooltip: unknown counts are said as unknown",
+      unknown,
+      '<span class="visually-hidden">? files changed: ? added, ? deleted, ? modified; line counts unknown</span>',
+    );
+    const one = internals.renderCommitTooltip({
+      ...detail,
+      stats: {
+        files_changed: 1,
+        files_modified: 0,
+        files_added: 0,
+        files_deleted: 1,
+        additions: 0,
+        deletions: 1,
+      },
+    });
+    assertEqual("tooltip: one file", changeLineText(one), "1 file changed·1 D·+0−1");
+    assertContains(
+      "tooltip: one file, in words",
+      one,
+      "1 file changed: 1 deleted; 0 lines added, 1 deleted</span>",
+    );
+    const empty = internals.renderCommitTooltip({
+      ...detail,
+      stats: {
+        files_changed: 0,
+        files_modified: 0,
+        files_added: 0,
+        files_deleted: 0,
+        additions: 0,
+        deletions: 0,
+      },
+    });
+    assertEqual("tooltip: no files", changeLineText(empty), "0 files changed·+0−0");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   await internals.renderCommitDetail({

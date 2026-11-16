@@ -64,6 +64,9 @@
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
+//     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
+//                                          marks muted, and its status letters in their
+//                                          statuses' ink: the shell's one painter of them
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
@@ -1531,6 +1534,16 @@
     return global.MetabrowserFormatters.titleNodes(global.document, title);
   }
 
+  // A count summary, for its element to hold, painted as the shell paints every count
+  // summary: each number bold, each comma and separator muted, a separator hidden from
+  // assistive technology, and each status its letter in its status's ink
+  // (docs/design-system.md, "Count Summaries Bold Their Numbers"). The nodes belong to the
+  // page's document.
+  /** @param {MetabrowserCountParts} parts @returns {Array<Node | string>} */
+  function countPartsNodes(parts) {
+    return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
+  }
+
   function formatTimestamp(secondsSinceEpoch) {
     // Local-time short form; matches the file header / activity feed.
     if (!secondsSinceEpoch) {
@@ -1753,6 +1766,7 @@
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
     titleNodes: titleNodes,
+    countPartsNodes: countPartsNodes,
     countClass: countClass,
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,

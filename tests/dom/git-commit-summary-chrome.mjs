@@ -170,6 +170,26 @@ const MEASURE = `async (widths) => {
     throw new Error("timed out waiting for " + what);
   };
   const round = (value) => Math.round(value * 100) / 100;
+  // Each dot that sets a line's groups apart, and whether it starts a line of its own: the
+  // part before it does not end on the line it is on.
+  const dots = (line) =>
+    [...line.querySelectorAll('.summary-punctuation[aria-hidden="true"]')].map((dot) => {
+      const at = dot.getBoundingClientRect();
+      const before = dot.previousElementSibling;
+      const end = before ? [...before.getClientRects()].at(-1) : null;
+      return {
+        text: dot.textContent,
+        top: round(at.top),
+        startsLine: end === null || Math.abs(end.top - at.top) > 1 || end.right > at.left + 0.5,
+      };
+    });
+  // How many lines a line's parts take: the distinct tops of their boxes.
+  const lines = (line) =>
+    new Set(
+      [...line.querySelectorAll("span")].flatMap((node) =>
+        [...node.getClientRects()].map((rect) => Math.round(rect.top)),
+      ),
+    ).size;
   const box = (node) => {
     const rect = node.getBoundingClientRect();
     return { top: round(rect.top), bottom: round(rect.bottom), left: round(rect.left), height: round(rect.height) };
@@ -226,11 +246,23 @@ const MEASURE = `async (widths) => {
       toggle: toggle ? box(toggle) : null,
       body: box(body),
       rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")) || null,
-      text: toggle?.querySelector(".diff-summary-files")?.parentElement?.textContent ?? null,
+      text: toggle?.textContent ?? null,
+      dots: toggle ? dots(toggle) : null,
+      lines: toggle ? lines(toggle) : null,
       hang: toggle ? parseFloat(getComputedStyle(toggle).marginLeft) : null,
       stats: stage.querySelectorAll(".git-commit-change-stats").length,
       inHeader: place.parentElement?.classList.contains("git-commit-header") ?? false,
     };
+    handle.dispose();
+  }
+  // Every width from 180 to 400 px, 4 px apart: wherever the header wraps, it breaks after a
+  // dot, never before one. A dot of its own, as an item of the line, started a line at some
+  // of these widths (A4 of review A on #479).
+  out.sweep = [];
+  for (let width = 180; width <= 400; width += 4) {
+    const { place, handle } = draw(width, true);
+    const toggle = place.querySelector(".diff-summary");
+    out.sweep.push({ width, lines: lines(toggle), starts: dots(toggle).filter((dot) => dot.startsLine).length });
     handle.dispose();
   }
   // Opened: the tree under its header, above the description.
@@ -277,16 +309,57 @@ const MEASURE = `async (widths) => {
       body: box(stage.querySelector(".git-commit-body")),
     };
   }
-  // The hover summary keeps its two rows of counts.
+  // The hover summary says the commit's changes in the Diff summary's words and paint, in
+  // each theme: each number bold in the line's ink, each letter in its status's ink at the
+  // line's weight, and each comma and dot muted (mb-khm6); narrowed, it wraps after a dot.
   {
     const tip = document.createElement("div");
-    tip.className = "custom-tooltip";
+    // Shown, as the SDK's tooltip shows one, so it is laid out.
+    tip.className = "custom-tooltip visible";
+    tip.style.display = "block";
     tip.innerHTML = internals.renderCommitTooltip(detail);
+    pane.style.width = "980px";
     pane.replaceChildren(tip);
+    const line = tip.querySelector(".git-commit-change-line");
+    const ink = (node) => getComputedStyle(node).color;
+    const weight = (node) => getComputedStyle(node).fontWeight;
+    const token = (name) => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(" + name + ")";
+      line.append(probe);
+      const color = ink(probe);
+      probe.remove();
+      return color;
+    };
     out.tooltip = {
       stats: tip.querySelectorAll(".git-commit-change-stats").length,
       place: tip.querySelectorAll(".git-commit-diff-summary").length,
+      text: line?.textContent ?? null,
+      hidden: line?.getAttribute("aria-hidden") ?? null,
+      said: tip.querySelector(".git-commit-change-stats > .visually-hidden")?.textContent ?? null,
+      paint: [],
     };
+    for (const theme of ["light", "dark"]) {
+      document.documentElement.dataset.theme = theme;
+      await frames();
+      const tokens = {};
+      for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified"]) {
+        tokens[name] = token(name);
+      }
+      out.tooltip.paint.push({
+        theme,
+        tokens,
+        line: { ink: ink(line), weight: weight(line) },
+        words: ink(line.querySelector(".git-commit-change-files")),
+        numbers: [...line.querySelectorAll(".summary-number")].map((node) => [node.textContent, ink(node), weight(node)]),
+        letters: [...line.querySelectorAll(".file-change-status")].map((node) => [node.textContent, node.dataset.fileStatus, ink(node), weight(node)]),
+        marks: [...line.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node)]),
+      });
+    }
+    delete document.documentElement.dataset.theme;
+    tip.style.width = "160px";
+    await frames();
+    out.tooltip.narrow = { dots: dots(line), lines: lines(line) };
   }
   pane.replaceChildren();
   return out;
@@ -335,6 +408,13 @@ async function main() {
             at.text.includes("−3,423"),
           String(at.text),
         );
+        // A header that wraps breaks after a dot: no dot starts a line (A4 of review A on
+        // #479).
+        check(
+          `${where}: no line of the summary's header starts with its dot`,
+          at.dots?.length === 2 && at.dots.every((dot) => !dot.startsLine),
+          JSON.stringify(at.dots),
+        );
         check(`${where}: the commit's stats block is gone`, at.stats === 0, String(at.stats));
         check(
           `${where}: the summary is in the commit's header`,
@@ -377,6 +457,20 @@ async function main() {
           JSON.stringify(at?.toggle),
         );
       }
+      // At 320 px the header wraps, so its dots were read where a wrap can put them.
+      check(
+        "at 320 px: the summary's header wraps",
+        (measured.widths[320]?.lines ?? 0) >= 2,
+        JSON.stringify(measured.widths[320]),
+      );
+      const sweep = measured.sweep ?? [];
+      check(
+        "from 180 to 400 px, the summary's header never starts a line with its dot",
+        sweep.length === 56 &&
+          sweep.some((at) => at.lines >= 3) &&
+          sweep.every((at) => at.starts === 0),
+        JSON.stringify(sweep.filter((at) => at.starts > 0)),
+      );
       const opened = measured.opened;
       check(
         "opened, the summary's tree is in its place, under its header",
@@ -403,10 +497,79 @@ async function main() {
         empty?.display === "none" && empty.height === 0,
         JSON.stringify(empty),
       );
+      const tooltip = measured.tooltip;
       check(
-        "the hover summary keeps its two rows of counts and has no Diff summary",
-        measured.tooltip?.stats === 1 && measured.tooltip.place === 0,
-        JSON.stringify(measured.tooltip),
+        "the hover summary has its change line and no Diff summary",
+        tooltip?.stats === 1 && tooltip.place === 0,
+        JSON.stringify(tooltip),
+      );
+      check(
+        "the hover summary reads as the Diff summary's header, in words for a screen reader",
+        tooltip?.text === "35 files changed·2 A, 3 D, 30 M·+1,234−3,423" &&
+          tooltip.hidden === "true" &&
+          tooltip.said ===
+            "35 files changed: 2 added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted",
+        JSON.stringify(tooltip),
+      );
+      const STATUS_INK = {
+        added: "--git-status-added",
+        deleted: "--git-status-deleted",
+        modified: "--git-status-modified",
+      };
+      for (const paint of tooltip?.paint ?? []) {
+        const where = `the hover summary, ${paint.theme}`;
+        const inks = Object.values(paint.tokens);
+        check(
+          `${where}: the tokens are distinct`,
+          new Set(inks).size === inks.length,
+          JSON.stringify(paint.tokens),
+        );
+        check(
+          `${where}: its numbers are bold, in the line's ink`,
+          paint.numbers.length === 4 &&
+            paint.numbers.every(
+              ([, color, weight]) => color === paint.tokens["--text"] && Number(weight) >= 600,
+            ),
+          JSON.stringify(paint.numbers),
+        );
+        check(
+          `${where}: its words are in the line's ink`,
+          paint.words === paint.tokens["--text"] && paint.line.ink === paint.tokens["--text"],
+          JSON.stringify({ words: paint.words, line: paint.line }),
+        );
+        check(
+          `${where}: each letter is in its status's ink at the line's weight, A, D, M`,
+          JSON.stringify(paint.letters.map(([text]) => text)) === JSON.stringify(["A", "D", "M"]) &&
+            paint.letters.every(
+              ([, status, color, weight]) =>
+                color === paint.tokens[STATUS_INK[status]] && weight === paint.line.weight,
+            ),
+          JSON.stringify(paint.letters),
+        );
+        check(
+          `${where}: its commas and dots are muted, the dots hidden`,
+          JSON.stringify(paint.marks.map(([text, hidden]) => [text, hidden])) ===
+            JSON.stringify([
+              ["·", "true"],
+              [",", null],
+              [",", null],
+              ["·", "true"],
+            ]) && paint.marks.every(([, , color]) => color === paint.tokens["--muted"]),
+          JSON.stringify(paint.marks),
+        );
+      }
+      check(
+        "the two themes ink the hover summary's letters apart",
+        JSON.stringify(tooltip?.paint?.[0]?.letters) !==
+          JSON.stringify(tooltip?.paint?.[1]?.letters),
+        JSON.stringify(tooltip?.paint),
+      );
+      check(
+        "narrowed, the hover summary wraps after a dot and starts no line with one",
+        (tooltip?.narrow?.lines ?? 0) >= 2 &&
+          tooltip.narrow.dots.length === 2 &&
+          tooltip.narrow.dots.every((dot) => !dot.startsLine),
+        JSON.stringify(tooltip?.narrow),
       );
       if (process.env.MEASURE_OUT) {
         fs.writeFileSync(process.env.MEASURE_OUT, JSON.stringify(measured, null, 2));

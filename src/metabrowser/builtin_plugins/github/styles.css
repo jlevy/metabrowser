@@ -139,8 +139,13 @@
   max-width: 100%;
   white-space: nowrap;
 }
+/* The breakdown is cut short inside its group, the item that holds it and the dot after it
+   (`.diff-summary-group`), which shrinks with it. */
+.github-pull-header .github-pull-summary .diff-summary-group:has(> .diff-summary-breakdown),
 .github-pull-header .github-pull-summary .diff-summary-breakdown {
   min-width: 0;
+}
+.github-pull-header .github-pull-summary .diff-summary-breakdown {
   overflow: hidden;
   text-overflow: ellipsis;
 }

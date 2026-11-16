@@ -1,5 +1,6 @@
 // Locale-aware numeric formatting, the conventional-commit split of a commit's or a pull
-// request's title, and a count summary's bold numbers, shared by the shell and plugins.
+// request's title, a count summary's parts and their one painter, and the words a change
+// set's summary says, shared by the shell and plugins.
 
 (() => {
   const integerFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
@@ -151,64 +152,75 @@
 
   // A count summary's numbers are bold, its punctuation muted, its status letters in their
   // statuses' ink, and its words keep the line's ink and weight (docs/design-system.md,
-  // "Count Summaries Bold Their Numbers"). Every count summary the shell paints comes in one
-  // shape of parts: the words as strings; each number, the whole figure with its marks,
-  // sign, "+", or unit, as `{number}`; a list's comma as `{punctuation}`; the " · " dot
-  // between a line's groups as `{separator}`; and a file change status as `{status,
-  // letter}`. "12,797 files" is `[{number: "12,797"}, " files"]`, and its text is the parts
-  // joined.
+  // "Count Summaries Bold Their Numbers"). Every count summary comes in one shape of parts:
+  // the words as strings; each number, the whole figure with its marks, sign, "+", or unit,
+  // as `{number}`; a list's comma as `{punctuation}`; the " · " dot between a line's groups
+  // as `{separator}`, with `spoken`, what a screen reader is told in its place, on a line
+  // whose name does not say it in words; and a file change status as `{status, letter}`.
+  // "12,797 files" is `[{number: "12,797"}, " files"]`, and its text is the parts joined.
+  // This is their one painter: the shell paints through `countPartsHtml` and
+  // `countPartsNodes`, and a plugin through the SDK's `metabrowser.countPartsNodes`.
   /** The one class that sets a count summary's number's weight (static/styles.css). */
   const SUMMARY_NUMBER_CLASS = "summary-number";
   /** The one class that mutes a count summary's punctuation (static/styles.css). */
   const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";
   /** The file change status primitive, which inks a letter by its status (static/styles.css). */
   const FILE_CHANGE_STATUS_CLASS = "file-change-status";
+  /** The shell's text for a screen reader alone (static/styles.css). */
+  const VISUALLY_HIDDEN_CLASS = "visually-hidden";
 
   /**
-   * One part as the element that paints it, its class, its text, and its attributes, or
-   * null for words, which are text.
+   * One part as what paints it: words as their text, and each other kind as the element
+   * that paints it, its class, its text, and its attributes. A separator is hidden from
+   * assistive technology, as a heading tally's dot is, and its `spoken` follows it in the
+   * shell's text for a screen reader alone.
    * @param {MetabrowserCountPart} part
-   * @returns {{className: string, text: string, attributes: Array<[string, string]>} | null}
+   * @returns {Array<string | {className: string, text: string, attributes: Array<[string, string]>}>}
    */
-  function countPartPaint(part) {
+  function countPartPaints(part) {
     if (typeof part === "string") {
-      return null;
+      return [part];
     }
     if ("number" in part) {
-      return { className: SUMMARY_NUMBER_CLASS, text: part.number, attributes: [] };
+      return [{ className: SUMMARY_NUMBER_CLASS, text: part.number, attributes: [] }];
     }
     if ("status" in part) {
-      return {
-        className: FILE_CHANGE_STATUS_CLASS,
-        text: part.letter,
-        attributes: [["data-file-status", part.status]],
-      };
+      return [
+        {
+          className: FILE_CHANGE_STATUS_CLASS,
+          text: part.letter,
+          attributes: [["data-file-status", part.status]],
+        },
+      ];
     }
     if ("separator" in part) {
-      // Hidden, as a heading tally's dot is: the line's words carry its meaning.
-      return {
+      const dot = {
         className: SUMMARY_PUNCTUATION_CLASS,
         text: part.separator,
+        /** @type {Array<[string, string]>} */
         attributes: [["aria-hidden", "true"]],
       };
+      return part.spoken === undefined
+        ? [dot]
+        : [dot, { className: VISUALLY_HIDDEN_CLASS, text: part.spoken, attributes: [] }];
     }
-    return { className: SUMMARY_PUNCTUATION_CLASS, text: part.punctuation, attributes: [] };
+    return [{ className: SUMMARY_PUNCTUATION_CLASS, text: part.punctuation, attributes: [] }];
   }
 
   /**
    * A count summary's nodes: each number in a `span.summary-number`, each mark in a
-   * `span.summary-punctuation`, each status's letter in a `span.file-change-status`, and the
-   * words as text. A caller puts them in one inline element: in a flex line, each would be
-   * an item of its own, parted by the line's gap and read as runs of their own.
+   * `span.summary-punctuation`, each status's letter in a `span.file-change-status`, a
+   * separator's `spoken` in a `span.visually-hidden`, and the words as text. A caller puts
+   * one phrase's nodes in one inline element: in a flex line, each would be an item of its
+   * own, parted by the line's gap and read as runs of their own.
    * @param {Document} doc
    * @param {MetabrowserCountParts} parts
    * @returns {Array<Node | string>}
    */
   function countPartsNodes(doc, parts) {
-    return parts.map((part) => {
-      const paint = countPartPaint(part);
-      if (paint === null) {
-        return /** @type {string} */ (part);
+    return parts.flatMap(countPartPaints).map((paint) => {
+      if (typeof paint === "string") {
+        return paint;
       }
       const span = doc.createElement("span");
       span.className = paint.className;
@@ -227,10 +239,10 @@
    */
   function countPartsHtml(parts) {
     return parts
-      .map((part) => {
-        const paint = countPartPaint(part);
-        if (paint === null) {
-          return escaped(/** @type {string} */ (part));
+      .flatMap(countPartPaints)
+      .map((paint) => {
+        if (typeof paint === "string") {
+          return escaped(paint);
         }
         const attributes = paint.attributes
           .map(([name, value]) => ` ${name}="${escaped(value)}"`)
@@ -240,9 +252,95 @@
       .join("");
   }
 
+  /**
+   * A count summary's parts as the text they read: each number, letter, and mark as it is
+   * written, and no separator's `spoken`.
+   * @param {MetabrowserCountParts} parts
+   * @returns {string}
+   */
+  function countText(parts) {
+    return parts
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : "number" in part
+            ? part.number
+            : "letter" in part
+              ? part.letter
+              : "separator" in part
+                ? part.separator
+                : part.punctuation,
+      )
+      .join("");
+  }
+
+  /** The minus sign a deleted line count is written with. */
+  const MINUS = "−";
+
+  /**
+   * What a change set's summary says, in its parts: the file count, which statuses make it
+   * up, and its line totals, each written with *formatCount*, the shell's number format, and
+   * "?" for a count it does not know. Every summary of a change set says it in these words,
+   * the Diff summary's header (changed-files-tree.js, `describeChanges`) and a commit's hover
+   * card (git-panel.js, `renderCommitChangeStats`) (docs/design-system.md, "Diff Summary").
+   *
+   * `filesParts` is "35 files changed" and `breakdownParts` "2 A, 3 D, 30 M", or nothing for
+   * no *entries*, each in a count summary's parts, so a summary paints each number bold, each
+   * status's letter in its status's ink, the commas between them muted, and the words in the
+   * line's own. *entries* are the statuses in the order shown, each with its letter, the badge
+   * its rows carry, its word, and its count; a caller leaves out a status no file has. A
+   * summary sets its groups apart with a muted " · ": the files, the statuses, and the line
+   * totals. `additions` and `deletions` are "+1,234" and "−3,423"; `estimated` is whether the
+   * totals are not exact, which a summary says as "(estimated)"; `text` is the whole line as
+   * it reads, "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"; and `label` is what a
+   * screen reader is told, in words, the statuses' and the signs' alike: "35 files changed: 2
+   * added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted".
+   *
+   * @param {{files: number | null, additions: number | null, deletions: number | null, exact: boolean}} totals
+   * @param {ReadonlyArray<{status: string, letter: string, word: string, count: number | null}>} entries
+   * @param {(count: number) => string} formatCount
+   * @returns {MetabrowserChangedFilesSummary}
+   */
+  function changeSummary(totals, entries, formatCount) {
+    /** @param {number | null} count */
+    const written = (count) => (count === null ? "?" : formatCount(count));
+    /** @type {MetabrowserCountParts} */
+    const filesParts = [
+      { number: written(totals.files) },
+      ` ${totals.files === 1 ? "file" : "files"} changed`,
+    ];
+    // "2 A, 3 D": each status's count and letter, the commas between them a list's
+    // punctuation.
+    /** @type {MetabrowserCountParts} */
+    const breakdownParts = entries.flatMap((entry, at) => [
+      ...(at === 0 ? [] : [{ punctuation: "," }, " "]),
+      { number: written(entry.count) },
+      " ",
+      { status: entry.status, letter: entry.letter },
+    ]);
+    const files = countText(filesParts);
+    const breakdown = countText(breakdownParts);
+    const added = written(totals.additions);
+    const deleted = written(totals.deletions);
+    const additions = `+${added}`;
+    const deletions = `${MINUS}${deleted}`;
+    const estimated = !totals.exact;
+    const groups = [files, ...(breakdown === "" ? [] : [breakdown]), `${additions} ${deletions}`];
+    const text = `${groups.join(" · ")}${estimated ? " (estimated)" : ""}`;
+    const lines =
+      totals.additions === null && totals.deletions === null
+        ? "line counts unknown"
+        : `${added} ${totals.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
+    const words = entries.map((entry) => `${written(entry.count)} ${entry.word}`).join(", ");
+    const named = words === "" ? files : `${files}: ${words}`;
+    const label = `${named}; ${lines}${estimated ? ", estimated" : ""}`;
+    return { filesParts, breakdownParts, additions, deletions, estimated, text, label };
+  }
+
   window.MetabrowserFormatters = Object.freeze({
     age,
     ageClass,
+    changeSummary,
     countClass,
     countPartsHtml,
     countPartsNodes,

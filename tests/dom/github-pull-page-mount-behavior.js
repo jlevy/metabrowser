@@ -38,6 +38,14 @@ class Element {
       toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name)),
     };
   }
+  // A class written as `className`, as the shell's painter of count summaries writes it, is
+  // the element's classes, as a page's are.
+  get className() {
+    return [...this.classes].join(" ");
+  }
+  set className(value) {
+    this.classes = new Set(String(value).split(" ").filter(Boolean));
+  }
   get ownerDocument() {
     return globalThis.document;
   }
