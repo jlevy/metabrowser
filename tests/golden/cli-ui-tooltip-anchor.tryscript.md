@@ -19,6 +19,8 @@ Now a surface’s hide puts away only a tooltip anchored in it, or one whose anc
 left the document, and focus a rebuild puts back after removing the element that had it
 leaves the tooltip be, as the focus a press on the folder’s name gives it does; focus
 moving between controls still puts it away.
+A key or press of the reader’s after that removal ends the repair, so the focus it gives
+moves, and a repair still puts away a tooltip whose own anchor the rebuild removed.
 
 ```console
 $ node tests/dom/tooltip-anchor-session.js
@@ -172,6 +174,47 @@ $ node tests/dom/tooltip-anchor-session.js
       "visible": false,
       "left": "190px",
       "top": "126px"
+    }
+  },
+  "a rebuild the reader's key causes is still a repair": {
+    "shown": {
+      "html": "<b>size</b>",
+      "display": "block",
+      "visible": true,
+      "left": "190px",
+      "top": "126px"
+    }
+  },
+  "the reader's key after a rebuild dropped focus moves it": {
+    "up": {
+      "html": "<b>size</b>",
+      "display": "block",
+      "visible": true,
+      "left": "190px",
+      "top": "126px"
+    },
+    "afterTab": {
+      "html": "<b>size</b>",
+      "display": "none",
+      "visible": false,
+      "left": "190px",
+      "top": "126px"
+    }
+  },
+  "a repair puts away a tooltip whose anchor the rebuild removed": {
+    "up": {
+      "html": "<b>Filters</b>",
+      "display": "block",
+      "visible": true,
+      "left": "190px",
+      "top": "66px"
+    },
+    "afterRepair": {
+      "html": "<b>Filters</b>",
+      "display": "none",
+      "visible": false,
+      "left": "190px",
+      "top": "66px"
     }
   },
   "focus moving during the delay puts the tooltip away": {

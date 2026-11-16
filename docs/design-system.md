@@ -4277,8 +4277,13 @@ or state.
 - Focus put back where it was.
   A rebuild that replaces the focused control focuses its replacement, as the Files
   filter bar does when new tallies arrive.
-  When the element that last had focus is no longer in the document, the focus that
-  follows is that repair (mb-alff).
+  When the element that last had focus has left the document, and no key or pointer
+  press of the reader’s has come since, the focus that follows is that repair (mb-alff).
+  A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
+  Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
+  gives is focus moving and puts the tooltip away.
+  The repair still puts away a tooltip whose own anchor the rebuild removed, since that
+  tooltip would never hear the pointer leave.
   Before this rule, the filter bar’s rebuild put away a tree row’s tooltip, waiting or
   shown, under a pointer that had not moved, and nothing brought the tooltip back until
   the pointer left the row.

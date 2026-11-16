@@ -12,7 +12,9 @@
 // focus back on its own control, counted as focus moving. Now a surface puts away only a
 // tooltip anchored in it (`hideTooltipWithin`), and focus put back after a rebuild
 // removed the element that had it leaves the tooltip be (`hideTooltipOnFocus`), as the
-// focus a press on the folder's name gives it does (docs/design-system.md, "Home").
+// focus a press on the folder's name gives it does (docs/design-system.md, "Home"). A key
+// or press of the reader's after that removal ends the repair (`endTooltipFocusRepair`),
+// so the focus it gives still moves.
 //
 // The tooltip code is lifted verbatim from app.js, which cannot load without a
 // document, from its section comment to the block that publishes it. Timers and the
@@ -294,6 +296,72 @@ const transcript = {};
   const afterFade = read();
   assert(!moved.visible && afterFade.display === "none", "focus moved and the tooltip stayed");
   transcript["focus put back after a rebuild leaves the tooltip"] = { shown, moved, afterFade };
+}
+
+// A key of the reader's causes the rebuild: its keydown comes while the trigger is still in
+// the document, so the focus the rebuild puts back is still the repair.
+{
+  const { clock, read, sandbox } = page();
+  const trigger = control();
+  sandbox.hideTooltipOnFocus({ target: trigger });
+  sandbox.showTooltip("<b>size</b>", row(100));
+  clock.advance(150);
+  sandbox.endTooltipFocusRepair();
+  trigger.isConnected = false;
+  sandbox.hideTooltipOnFocus({ target: control() });
+  clock.advance(150 + 16);
+  const shown = read();
+  assert(shown.display === "block" && shown.visible, "a key before the rebuild ended its repair");
+  transcript["a rebuild the reader's key causes is still a repair"] = { shown };
+}
+
+// A rebuild removes the focused control and focuses nothing, as pressing the filter bar's
+// Clear does: focus falls to the page with no focusin. A tree row's tooltip comes up, and
+// the reader's next key, a Tab, ends the repair before the focus it gives, so that focus
+// moves and puts the tooltip away. A press's pointerdown does the same.
+{
+  const { clock, read, sandbox } = page();
+  const clear = control();
+  sandbox.hideTooltipOnFocus({ target: clear });
+  clear.isConnected = false;
+  sandbox.showTooltip("<b>size</b>", row(100));
+  clock.advance(300 + 16);
+  const up = read();
+  sandbox.endTooltipFocusRepair();
+  sandbox.hideTooltipOnFocus({ target: control() });
+  clock.advance(150);
+  const afterTab = read();
+  assert(up.display === "block" && up.visible, "the row's tooltip did not appear");
+  assert(
+    afterTab.display === "none" && !afterTab.visible,
+    "the reader's Tab after focus was dropped left the tooltip up",
+  );
+  transcript["the reader's key after a rebuild dropped focus moves it"] = { up, afterTab };
+}
+
+// The rebuild replaces the very control whose tooltip is up, as the bar's drawer toggle is
+// replaced with the pointer resting on it: the repair puts that tooltip away, since its
+// anchor has left the document and will never hear the mouseleave that ends it.
+{
+  const { clock, read, sandbox } = page();
+  const toggle = row(40);
+  sandbox.hideTooltipOnFocus({ target: toggle });
+  sandbox.showTooltip("<b>Filters</b>", toggle);
+  clock.advance(300 + 16);
+  const up = read();
+  toggle.isConnected = false;
+  sandbox.hideTooltipOnFocus({ target: row(40) });
+  clock.advance(150);
+  const afterRepair = read();
+  assert(up.display === "block" && up.visible, "the toggle's tooltip did not appear");
+  assert(
+    afterRepair.display === "none" && !afterRepair.visible,
+    "a repair left up a tooltip whose anchor the rebuild removed",
+  );
+  transcript["a repair puts away a tooltip whose anchor the rebuild removed"] = {
+    up,
+    afterRepair,
+  };
 }
 
 // Focus moving between two controls still in the document, during the delay: the tooltip

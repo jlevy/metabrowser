@@ -3331,7 +3331,9 @@ var tooltipFocusOwner = null;
  * - focus put back where it was. A rebuild that replaces the focused control focuses its
  *   replacement, as the Files filter bar's does when new tallies arrive. The element that
  *   had focus is out of the document by then, so a focus that follows one that left the
- *   document is that repair (mb-alff).
+ *   document, with no key or press of the reader's since (endTooltipFocusRepair), is that
+ *   repair (mb-alff). A tooltip whose own anchor the rebuild removed still goes: it would
+ *   never hear the mouseleave that ends it.
  *
  * @param {FocusEvent} event
  */
@@ -3341,12 +3343,30 @@ function hideTooltipOnFocus(event) {
   tooltipPressedAnchor = null;
   tooltipFocusOwner = /** @type {Node | null} */ (event.target);
   if (previous && previous.isConnected === false) {
+    if (tooltipAnchor && !tooltipAnchor.isConnected) {
+      hideTooltip();
+    }
     return;
   }
   if (pressed !== null && event.target === pressed) {
     return;
   }
   hideTooltip();
+}
+
+/**
+ * The reader's own key or press ends a pending repair. A rebuild that removes the focused
+ * element and focuses nothing, as pressing the Files filter bar's Clear does, leaves focus
+ * on the page with no `focusin`, so the owner stays out of the document until the next
+ * focus, and that focus, the reader's Tab or click, would pass for the repair and leave
+ * the pointer's tooltip up beside the focus ring. A rebuild the reader's key causes still
+ * counts as one, since its `keydown` comes before the removal. Letting the owner go also
+ * lets the removed subtree it holds be collected.
+ */
+function endTooltipFocusRepair() {
+  if (tooltipFocusOwner && !tooltipFocusOwner.isConnected) {
+    tooltipFocusOwner = null;
+  }
 }
 
 if (typeof window !== "undefined") {
@@ -3493,6 +3513,10 @@ function hideTipText(e) {
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
 document.addEventListener("focusin", hideTooltipOnFocus);
+// The reader's key or press, in the capture phase so that it comes before any focus it
+// gives, ends a focus repair (endTooltipFocusRepair).
+document.addEventListener("keydown", endTooltipFocusRepair, true);
+document.addEventListener("pointerdown", endTooltipFocusRepair, true);
 // A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
 document.addEventListener("pointerup", () => {
   tooltipPressedAnchor = null;
