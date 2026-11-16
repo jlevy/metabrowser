@@ -5,12 +5,55 @@
 // in this realm, so the rows it builds are this realm's arrays and objects, which a strict deep
 // comparison in the caller needs. The file installs the model on `window`, which here is an
 // object of the call's own for the moment it runs, whatever `window` a caller has set up for
-// its own checks.
+// its own checks. The shell's formatters (static/formatters.js), which every page loads before
+// an on-demand bundle and whose words a change set's summary says, run first, on the same
+// object, the same way.
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
 const source = path.resolve(__dirname, "../../src/metabrowser/static/changed-files-tree.js");
+const formatters = path.resolve(__dirname, "../../src/metabrowser/static/formatters.js");
+
+/**
+ * The shell's formatters alone, as a page installs them, for a check that paints a count
+ * summary through their one painter, as the SDK's `countPartsNodes` does.
+ *
+ * @returns {MetabrowserFormatterRuntime}
+ */
+function shellFormatters() {
+  const before = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const page = {};
+  globalThis.window = page;
+  try {
+    vm.runInThisContext(fs.readFileSync(formatters, "utf8"), { filename: formatters });
+  } finally {
+    if (before === undefined) {
+      delete globalThis.window;
+    } else {
+      Object.defineProperty(globalThis, "window", before);
+    }
+  }
+  return page.MetabrowserFormatters;
+}
+
+/**
+ * The SDK's painters as a page has them, for a view handed an SDK of the caller's own: the
+ * shell's one painter of a count summary, `countPartsNodes`, and its brief change line,
+ * `changeLine` in the shell's number format and `changeLineNodes`, each drawing into whatever
+ * document the caller has set up when it is called.
+ *
+ * @returns {Pick<MetabrowserPublicSdk, "countPartsNodes" | "changeLine" | "changeLineNodes">}
+ */
+function shellPainters() {
+  const formatters = shellFormatters();
+  return {
+    countPartsNodes: (parts) => formatters.countPartsNodes(globalThis.document, parts),
+    changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
+    changeLineNodes: (line, options) =>
+      formatters.changeLineNodes(globalThis.document, line, options),
+  };
+}
 
 /** @returns {MetabrowserChangedFilesTree} */
 function changedFilesTree() {
@@ -18,6 +61,7 @@ function changedFilesTree() {
   const page = {};
   globalThis.window = page;
   try {
+    vm.runInThisContext(fs.readFileSync(formatters, "utf8"), { filename: formatters });
     vm.runInThisContext(fs.readFileSync(source, "utf8"), { filename: source });
   } finally {
     if (before === undefined) {
@@ -29,4 +73,4 @@ function changedFilesTree() {
   return page.MetabrowserChangedFilesTree;
 }
 
-module.exports = { changedFilesTree, source };
+module.exports = { changedFilesTree, shellFormatters, shellPainters, source };

@@ -157,6 +157,11 @@ and three at 320 px, all before the page is shown; opened, its tree is under it 
 above the description; with no diff the totals line is one row under the identity; and
 an empty place takes no room.
 
+Measured again on 2026-11-16 in Chrome 152 at 980 to 320 px, when the summary’s statuses
+became Git’s letters: the summary sits where it did, and for “35 files changed · 2 A, 3
+D, 30 M · +1,234 −3,423” its header is one 24 px row at 420 px and wider and wraps to
+two lines at 320 px, breaking after a dot, all before the page is shown.
+
 ## Diff Summary
 
 For [Diff Summary](../../docs/design-system.md#diff-summary).
@@ -172,6 +177,15 @@ Recorded on 2026-11-16, when a pull request header’s Diff summary row took the
 placeholder: measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is
 221 by 11.05 px, at the row’s start and centred on its line, the row is 24 px before and
 after the summary arrives, and the tab bar under it does not move.
+
+Recorded again on 2026-11-16, when the summary’s statuses became Git’s letters: measured
+in Chrome 152 at 560, 420, and 360 px in both themes, the block is 188.5 by 11.05 px
+(14.5 em of the header’s type), at the row’s start and centred on its line, the row is
+24 px before and after the summary arrives, and the tab bar under it does not move.
+A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 files changed · 8 M ·
++120 −30”, ends 13.88 to 15.88 em from the row’s start, its text 13.42 to 15.42 em, and
+the block ends between the two; one of three statuses, “35 files changed · 2 A, 3 D, 30
+M · +1,234 −3,423”, ends its text at 22.18 em.
 
 ### A Kept Comparison
 
@@ -210,6 +224,12 @@ is on its way, so a labels row that comes or goes moves the tab bar 26 px.
 Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px labels
 row stood between it and the row of ages, 32 px under that row, and the header was 263
 px in every state.
+
+Recorded again on 2026-11-16, when the Diff summary’s statuses became Git’s letters:
+measured in Chrome 152 at 980 to 320 px on every tab, a summary of “35 files changed · 2
+A, 3 D, 30 M · +1,234 −3,423” arriving moved no row and not the tab bar, and kept its
+row’s 24 px on one line, its breakdown cut short at 320 px with the whole header as its
+tooltip.
 
 ## Pull Request Stacks and the Timeline
 

@@ -209,14 +209,16 @@ document paths named in `src/` and `apps/`, so a move that breaks one fails the 
 Size targets guide the rewrite; no check enforces them.
 The targets were revised on 2026-11-16 to fit the documents as built, after the reviews’
 cuts, where a document holds one subject and needs the room.
-Four were raised again on 2026-11-16, when merging main brought in the rules stack #446
+Five were raised again on 2026-11-16, when merging main brought in the rules stack #446
 added: the design system’s Home, Titles, Navigation Reveals the Item, Tooltips Add
-Information, Count Summaries Bold Their Numbers, Label Colors, Heading Tallies, and Keys
-in a Menu; Keys in a Menu in `docs/keyboard-shortcuts.md`; Home, stack groups, and the
-header’s Diff summary in `docs/reviewing-pull-requests.md`; and the comparison keep and
-label sets in `arch-github-pull-requests.md`. The design system’s measurements that came
-with them moved to `explorations/performance-loop/design-rule-measurements.md`. A guide
-that needs more than its target is a sign that it covers two subjects.
+Information, Count Summaries Bold Their Numbers, Label Colors, Heading Tallies, Keys in
+a Menu, and Brief Change Line; the SDK’s count-parts and change-line helpers in
+`docs/plugins.md`; Keys in a Menu in `docs/keyboard-shortcuts.md`; Home, stack groups,
+and the header’s Diff summary in `docs/reviewing-pull-requests.md`; and the comparison
+keep and label sets in `arch-github-pull-requests.md`. The design system’s measurements
+that came with them moved to
+`explorations/performance-loop/design-rule-measurements.md`. A guide that needs more
+than its target is a sign that it covers two subjects.
 
 | Document | Audience | Target lines | Subject |
 | --- | --- | --- | --- |
@@ -230,14 +232,14 @@ that needs more than its target is a sign that it covers two subjects.
 | `docs/keyboard-shortcuts.md` (new) | Users | 120 | The shortcut reference, pinned to the keymap registry by `tests/test_keymap.py` |
 | `docs/command-line.md` | Users and scripts | 600 | Every mode, every option, configuration, and environment variables |
 | `docs/scale-benchmark.md` (new) | Everyone | 100 | What the baseline benchmark measures, how to run it, and its results |
-| `docs/plugins.md` | Plugin authors | 950 | Manifest, SDK, data hooks, packaging, and the security boundary |
+| `docs/plugins.md` | Plugin authors | 1,000 | Manifest, SDK, data hooks, packaging, and the security boundary |
 | `skills/metabrowser/SKILL.md` | Agents | 200 | Adds commits, `--diff`, live logs, and handing the user any page |
 | `SECURITY.md` | Everyone | 100 | Reporting, the served-root boundary, and trust settings, linking the trust model |
 | `CONTRIBUTING.md` | Contributors | 100 | Matches `AGENTS.md` on internal contracts |
 | `TODO.md` | Everyone | 250 | Current release state; no replacement history |
 | `docs/development.md` | Contributors | 650 | Setup, commands, the gate, conventions, docs, tbd, pull requests, troubleshooting |
 | `docs/e2e-testing.md` | Contributors | 420 | Test layers, tiers, skips, and measuring the suite |
-| `docs/design-system.md` | Designers and implementers | 4,850 | Tokens, color, type, components, and interaction design, with one keyboard section |
+| `docs/design-system.md` | Designers and implementers | 4,950 | Tokens, color, type, components, and interaction design, with one keyboard section |
 | `docs/publishing.md` | Maintainers | 190 | Unchanged |
 | `apps/macos/README.md` | App developers | 450 | Build, test, and release the app |
 | Architecture documents | Architecture readers | See below | One per layer |

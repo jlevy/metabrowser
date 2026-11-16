@@ -32,6 +32,10 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
  * @property {MetabrowserPublicSdk["formatInteger"]} [formatInteger]
+ * @property {MetabrowserPublicSdk["countPartsNodes"]} [countPartsNodes] The shell's painter
+ *   of a count summary, which a Diff summary is drawn with.
+ * @property {MetabrowserPublicSdk["changeLine"]} [changeLine] The brief change line's builder.
+ * @property {MetabrowserPublicSdk["changeLineNodes"]} [changeLineNodes] Its painter.
  */
 
 /**
@@ -1389,23 +1393,57 @@ function countFormatter(api) {
 let summaryIds = 0;
 
 /**
- * A count summary's parts, "35 changed files", as a span of *className*: each number in
- * the shell's `.summary-number`, bold, and the words in the line's own weight
- * (docs/design-system.md, "Count Summaries Bold Their Numbers"). Its text is the phrase as
- * it reads, so the accessible name is unchanged.
+ * The dot after the Diff summary's file count, as a count summary's part: muted, and hidden
+ * from a screen reader. A header that is its toggle is named in words, so its dot says
+ * nothing; a header that is a line has no name, so its dot says a comma in its place.
+ */
+const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });
+/** @see SUMMARY_SEPARATOR */
+const LINE_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
+
+/**
+ * The shell's painters a Diff summary is drawn with, the SDK's (formatters.js;
+ * docs/design-system.md, "Count Summaries Bold Their Numbers" and "Brief Change Line"):
+ * `countPartsNodes`, a count summary's one painter, for its file count, and `changeLine` and
+ * `changeLineNodes`, the brief change line, the one component for "2 A, 3 D, 30 M · +1,234
+ * −3,423", for the rest. The diff paints none of their classes itself.
  *
- * @param {string} className
+ * @param {DiffViewApi | undefined} api
+ * @returns {{countPartsNodes: NonNullable<DiffViewApi["countPartsNodes"]>, changeLine: NonNullable<DiffViewApi["changeLine"]>, changeLineNodes: NonNullable<DiffViewApi["changeLineNodes"]>}}
+ */
+function shellPainters(api) {
+  const countPartsNodes = api?.countPartsNodes;
+  const changeLine = api?.changeLine;
+  const changeLineNodes = api?.changeLineNodes;
+  if (
+    typeof countPartsNodes !== "function" ||
+    typeof changeLine !== "function" ||
+    typeof changeLineNodes !== "function"
+  ) {
+    throw new TypeError(
+      "A Diff summary is painted by the SDK's countPartsNodes, changeLine, and changeLineNodes.",
+    );
+  }
+  return { countPartsNodes, changeLine, changeLineNodes };
+}
+
+/**
+ * The Diff summary's file count, "35 files changed", in `.diff-summary-files`, its text the
+ * phrase as it reads, and the dot after it, as one item of the line
+ * (`.diff-summary-group`), so a line that wraps breaks after the dot and no line starts with
+ * one.
+ *
  * @param {MetabrowserCountParts} parts
+ * @param {(parts: MetabrowserCountParts) => Array<Node | string>} paint
+ * @param {MetabrowserCountPart} separator
  * @returns {HTMLElement}
  */
-function countSummary(className, parts) {
-  const span = el("span", className);
-  span.append(
-    ...parts.map((part) =>
-      typeof part === "string" ? part : el("span", "summary-number", part.number),
-    ),
-  );
-  return span;
+function summaryFiles(parts, paint, separator) {
+  const words = el("span", "diff-summary-files");
+  words.append(...paint(parts));
+  const item = el("span", "diff-summary-group");
+  item.append(words, ...paint([separator]));
+  return item;
 }
 
 /**
@@ -1452,15 +1490,17 @@ function summaryOwnerOf(view) {
 
 /**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
- * changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423", and is the disclosure
- * toggle of its files as a tree by folder. It starts collapsed, and the tree is not mounted,
- * or its module imported, until the header is first opened; hovering or focusing the header
- * asks for the module first. Its words are the shared model's (`describeChanges`), from the
- * manifest's totals and the kinds of the files it lists, or, for a list cut short, the
- * whole change set's totals (*whole*) and how many files it lists. A change set of no files
- * has nothing to open, so its header is a line. A header whose host cuts its breakdown short,
- * as a pull request's header does to keep one line, has its whole words as its tooltip while
- * it is cut.
+ * files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and is the disclosure toggle of its files
+ * as a tree by folder. Each status is its rows' letter, in the status's ink, and the dots
+ * between the groups, the commas, and the notes after the totals are muted. It starts
+ * collapsed, and the tree is not mounted, or its module imported, until the header is first
+ * opened; hovering or focusing the header asks for the module first. Its words are the
+ * shared model's (`describeChanges`), from the manifest's totals and the kinds of the
+ * files it lists, or, for a list cut short, the whole change set's totals (*whole*) and how
+ * many files it lists, and its accessible name says them in words, "35 files changed: 2
+ * added, 3 deleted, 30 modified; …". A change set of no files has nothing to open, so its
+ * header is a line. A header whose host cuts its breakdown short, as a pull request's
+ * header does to keep one line, has its whole words as its tooltip while it is cut.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
@@ -1471,21 +1511,21 @@ function summaryOwnerOf(view) {
  */
 function renderDiffSummary(totals, files, view, model, whole = null) {
   const formatCount = countFormatter(view.api);
+  const paint = shellPainters(view.api);
   const { rows, said, listed } = diffSummaryOf(totals, files, model, formatCount, whole);
-  const parts = [countSummary("diff-summary-files", said.filesParts)];
-  const breakdown =
-    said.breakdownParts.length === 0
-      ? null
-      : countSummary("diff-summary-breakdown", ["(", ...said.breakdownParts, ")"]);
-  if (breakdown !== null) {
-    parts.push(breakdown);
-  }
-  const stats = el("span", "diff-summary-stats");
-  stats.append(
-    el("span", "diff-stat-add", said.additions),
-    el("span", "diff-stat-del", said.deletions),
-  );
-  parts.push(stats);
+  // "N files changed · ", then the brief change line, each an item of the header's line. A
+  // header with files to open is its toggle, which says the line in words; a line says a
+  // comma in each hidden dot's place.
+  const named = rows.length > 0;
+  /** @type {Array<Node | string>} */
+  const parts = [
+    summaryFiles(
+      said.filesParts,
+      paint.countPartsNodes,
+      named ? SUMMARY_SEPARATOR : LINE_SEPARATOR,
+    ),
+    ...paint.changeLineNodes(said.line, named ? {} : { spoken: ", " }),
+  ];
   if (said.estimated) {
     parts.push(el("span", "diff-summary-note", "(estimated)"));
   }
@@ -1542,7 +1582,8 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
       if (toggle.getAttribute("aria-disabled") === "true") {
         return;
       }
-      if (breakdown !== null && breakdown.scrollWidth > breakdown.clientWidth) {
+      const statuses = toggle.querySelector(".change-line-statuses");
+      if (statuses !== null && statuses.scrollWidth > statuses.clientWidth) {
         toggle.dataset.tipText = said.text;
       } else {
         delete toggle.dataset.tipText;
@@ -1627,7 +1668,8 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
 
 /**
  * A change set's Diff summary, or, where the shared changed-files tree did not load, its
- * totals on their own, as they always were: only the tree of files is lost.
+ * totals on their own, "41 files changed · +6,526 −555": only the statuses, which the tree's
+ * model names, and the tree of files are lost.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
@@ -1640,14 +1682,13 @@ function summaryOrTotals(totals, files, view, whole = null) {
     return renderDiffSummary(totals, files, view, view.changedFiles, whole);
   }
   const formatCount = countFormatter(view.api);
+  const paint = shellPainters(view.api);
   const said = plainTotals(whole ?? totals, formatCount);
   const line = el("div", "diff-summary");
-  const stats = el("span", "diff-summary-stats");
-  stats.append(
-    el("span", "diff-stat-add", said.additions),
-    el("span", "diff-stat-del", said.deletions),
+  line.append(
+    summaryFiles(said.filesParts, paint.countPartsNodes, LINE_SEPARATOR),
+    ...paint.changeLineNodes(paint.changeLine(said.change), { spoken: ", " }),
   );
-  line.append(countSummary("diff-summary-files", said.filesParts), stats);
   if (said.estimated) {
     line.append(el("span", "diff-summary-note", "(estimated)"));
   }

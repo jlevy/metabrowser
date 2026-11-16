@@ -7,24 +7,29 @@ env:
 # Golden Test: A Diff’s Summary of Its Changed Files
 
 A diff of more than one file opens with its Diff summary, collapsed: a header that says
-what the change set holds, such as “35 changed files (2 added, 3 removed, 30 modified)
-+1,234 −3,423”, and opens to its files as a tree by folder.
+what the change set holds, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”,
+and opens to its files as a tree by folder.
 This browserless session loads the production code that decides it: the shell’s
 changed-files tree (`static/changed-files-tree.js`), which the Pulls tab’s tree of a
 pull request’s files is drawn on too, for the header’s words, the roll-ups, and the rows
 a reader sees; `builtin_plugins/diff/diff-model.js` for what each change of a manifest
 is as a row; and `builtin_plugins/diff/diff-summary.js` for the tree’s decisions.
 
-The header lists only the statuses some file has, in one order: added, removed,
-modified, renamed, then the rest.
-Counts use the shell’s number format, the minus sign is U+2212, and “(estimated)”
-follows totals that are not exact.
+The header lists only the statuses some file has, each as its count and the letter its
+rows carry, in one order: added, deleted, modified, renamed, then the rest.
+A “ · ” sets apart the file count, the statuses, and the line totals, and a comma the
+statuses. Counts use the shell’s number format, the minus sign is U+2212, and
+“(estimated)” follows totals that are not exact.
 `numbers` are the counts the header paints bold, the file count and then each status’s,
 each apart from its words, which stay regular (`docs/design-system.md`, “Count Summaries
-Bold Their Numbers”). A list cut short at its bound, on a page that knows the whole
-change set’s totals, as a commit’s page does, says those, with no breakdown of the
-listed files alone, and how many files are listed.
-A screen reader is told the same in words.
+Bold Their Numbers”). `parts` are the file count’s and the statuses’ parts as they are
+painted: a bold number between asterisks, a status’s letter with its status in braces,
+which the letter is inked by, and a muted mark in angle quotes; the header paints a
+muted dot between its groups.
+A list cut short at its bound, on a page that knows the whole change set’s totals, as a
+commit’s page does, says those, with no breakdown of the listed files alone, and how
+many files are listed.
+A screen reader is told the same in words, each status by its name.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
 A chain of single folders is one row.
@@ -43,27 +48,32 @@ a folder, and only Enter, Space, or a press on a file jumps the diff to it, sinc
 tree sits above the files a jump scrolls to.
 `invariants` are relations the session holds: the breakdown counts each file once, each
 folder’s counts are the sums of its files’, the root’s are the manifest’s totals, every
-file row names a path the diff finds it by, and the header’s parts, joined, read as its
-text and its accessible name.
+file row names a path the diff finds it by, the header’s parts, joined, read as its text
+and its accessible name, and each status is its rows’ letter with a comma between each
+two.
 
 ```console
 $ node tests/dom/diff-summary-session.js
 {
   "stories": {
     "the reader's example": {
-      "text": "35 changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423",
-      "label": "35 changed files: 2 added, 3 removed, 30 modified; 1,234 lines added, 3,423 deleted",
+      "text": "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423",
+      "label": "35 files changed: 2 added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted",
       "estimated": false,
       "numbers": [
         "35",
         "2",
         "3",
         "30"
-      ]
+      ],
+      "parts": {
+        "files": "*35* files changed",
+        "statuses": "*2* A{added}‹,› *3* D{removed}‹,› *30* M{modified}"
+      }
     },
     "every kind, in the header's order": {
-      "text": "11 changed files (3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged)  +669 −60",
-      "label": "11 changed files: 3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged; 669 lines added, 60 deleted",
+      "text": "11 files changed · 3 A, 1 D, 3 M, 1 R, 1 C, 1 T, 1 U · +669 −60",
+      "label": "11 files changed: 3 added, 1 deleted, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged; 669 lines added, 60 deleted",
       "estimated": false,
       "numbers": [
         "11",
@@ -74,7 +84,11 @@ $ node tests/dom/diff-summary-session.js
         "1",
         "1",
         "1"
-      ]
+      ],
+      "parts": {
+        "files": "*11* files changed",
+        "statuses": "*3* A{added}‹,› *1* D{removed}‹,› *3* M{modified}‹,› *1* R{renamed}‹,› *1* C{copied}‹,› *1* T{changed}‹,› *1* U{unmerged}"
+      }
     },
     "each change as a row": [
       "modified -> modified README.md",
@@ -90,8 +104,8 @@ $ node tests/dom/diff-summary-session.js
       "added -> added src/viewer/plugins/diff/diff-summary.js"
     ],
     "a change set whose totals are not exact": {
-      "text": "11 changed files (3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged)  +? −? (estimated)",
-      "label": "11 changed files: 3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged; line counts unknown, estimated",
+      "text": "11 files changed · 3 A, 1 D, 3 M, 1 R, 1 C, 1 T, 1 U · +? −? (estimated)",
+      "label": "11 files changed: 3 added, 1 deleted, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged; line counts unknown, estimated",
       "estimated": true,
       "numbers": [
         "11",
@@ -102,32 +116,61 @@ $ node tests/dom/diff-summary-session.js
         "1",
         "1",
         "1"
-      ]
+      ],
+      "parts": {
+        "files": "*11* files changed",
+        "statuses": "*3* A{added}‹,› *1* D{removed}‹,› *3* M{modified}‹,› *1* R{renamed}‹,› *1* C{copied}‹,› *1* T{changed}‹,› *1* U{unmerged}"
+      }
     },
     "one status, one file of it": {
-      "text": "2 changed files (2 modified)  +2 −1",
-      "label": "2 changed files: 2 modified; 2 lines added, 1 deleted",
+      "text": "2 files changed · 2 M · +2 −1",
+      "label": "2 files changed: 2 modified; 2 lines added, 1 deleted",
       "estimated": false,
       "numbers": [
         "2",
         "2"
-      ]
+      ],
+      "parts": {
+        "files": "*2* files changed",
+        "statuses": "*2* M{modified}"
+      }
+    },
+    "one file, renamed": {
+      "text": "1 file changed · 1 R · +5 −2",
+      "label": "1 file changed: 1 renamed; 5 lines added, 2 deleted",
+      "estimated": false,
+      "numbers": [
+        "1",
+        "1"
+      ],
+      "parts": {
+        "files": "*1* file changed",
+        "statuses": "*1* R{renamed}"
+      }
     },
     "no files": {
-      "text": "0 changed files  +0 −0",
-      "label": "0 changed files; 0 lines added, 0 deleted",
+      "text": "0 files changed · +0 −0",
+      "label": "0 files changed; 0 lines added, 0 deleted",
       "estimated": false,
       "numbers": [
         "0"
-      ]
+      ],
+      "parts": {
+        "files": "*0* files changed",
+        "statuses": ""
+      }
     },
     "a list cut short, with the page's whole totals": {
-      "text": "5,000 changed files  +152,340 −30,211 (11 listed)",
-      "label": "5,000 changed files; 152,340 lines added, 30,211 deleted; 11 listed",
+      "text": "5,000 files changed · +152,340 −30,211 (11 listed)",
+      "label": "5,000 files changed; 152,340 lines added, 30,211 deleted; 11 listed",
       "estimated": false,
       "numbers": [
         "5,000"
       ],
+      "parts": {
+        "files": "*5,000* files changed",
+        "statuses": ""
+      },
       "listed": "11"
     },
     "the tree as it opens": [
@@ -288,7 +331,7 @@ $ node tests/dom/diff-summary-session.js
     },
     "a path a patch lists twice is one row": {
       "a file that became a symlink": {
-        "header": "3 changed files (1 added, 1 removed, 1 modified)  +3 −4",
+        "header": "3 files changed · 1 A, 1 D, 1 M · +3 −4",
         "rows": [
           "v bin/ (1) +1 −3",
           "  T run +1 −3",
@@ -297,7 +340,7 @@ $ node tests/dom/diff-summary-session.js
         "rootMatchesTotals": true
       },
       "a format-patch series of two commits": {
-        "header": "6 changed files (1 added, 1 removed, 4 modified)  +12 −7",
+        "header": "6 files changed · 1 A, 1 D, 4 M · +12 −7",
         "rows": [
           "v src/ (3) +12 −7",
           "  M a.py +5 −1",
@@ -361,7 +404,8 @@ $ node tests/dom/diff-summary-session.js
     "the root's lines are the manifest's totals": true,
     "every file row jumps to a path the diff finds it by": true,
     "a closed tree's rows are the top level": true,
-    "the header's parts read as its text and its label": true
+    "the header's parts read as its text and its label": true,
+    "each status is its rows' letter, and the commas are punctuation": true
   }
 }
 ? 0
