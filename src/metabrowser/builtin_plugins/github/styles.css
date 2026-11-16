@@ -1069,7 +1069,7 @@
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
 /* A row the comparison does not hold: it is listed, and the diff has nothing to show of it. */
-.changed-file-row.github-pull-file-muted {
+.github-pull-file-muted.changed-file-row {
   color: var(--muted);
 }
 /* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
@@ -1253,7 +1253,7 @@
    edge, hovered or not. A menu row has no border to color, so the bar is drawn inset and
    moves nothing. Focus on it shows as on every member, by the header's link ring
    (`.github-pull-header a:focus-visible`). */
-.menu-item.github-pull-stack-member[aria-current="page"] {
+.github-pull-stack-member.menu-item[aria-current="page"] {
   background: var(--highlight-bg);
   box-shadow: inset 2px 0 0 var(--highlight-bar);
 }
