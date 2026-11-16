@@ -1,12 +1,12 @@
 // Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
 // from the heading above them.
 (() => {
-  // In tab order, each with its letter: F for Files, R for pull Requests, H for commit
-  // History. The letters name what each tab holds and mean the same wherever they are
-  // pressed (docs/design-system.md, "Keyboard Shortcuts").
+  // In tab order, each with its letter: F for Files, P for Pulls, H for commit History.
+  // The letters name what each tab holds and mean the same wherever they are pressed
+  // (docs/design-system.md, "Keyboard Shortcuts").
   const MAIN_TABS = [
     { id: "files", label: "Files", key: "f" },
-    { id: "pulls", label: "Pulls", key: "r" },
+    { id: "pulls", label: "Pulls", key: "p" },
     { id: "git", label: "Commits", key: "h" },
   ];
 
@@ -27,6 +27,7 @@
         focusRow: () => deps.focusFilesRow(),
         onFirstShow: null,
         onShow: () => deps.filesShown(),
+        onHide: () => deps.filesHidden(),
       },
     ];
     /** @type {Set<string>} */
@@ -354,20 +355,12 @@
       // so a panel that is not Files would otherwise keep a bar of file
       // filters on screen above content they cannot filter. The bar is the
       // Files tab's toolbar in one slot every tab fills with its own, at one
-      // height, so the panel below starts at one y on every tab.
+      // height while each is one line, so the panel below starts at one y on
+      // every tab. A toolbar its pane is too narrow for wraps instead of
+      // scrolling (docs/design-system.md, "Navigation Toolbars Wrap").
       for (const toolbar of document.querySelectorAll("[data-nav-toolbar]")) {
         const slot = /** @type {HTMLElement} */ (toolbar);
-        const returning = slot.hidden && slot.dataset.navToolbar === panelId;
         slot.hidden = slot.dataset.navToolbar !== panelId;
-        // A toolbar a narrow pane scrolled comes back at its start, with its chosen
-        // filter, the roving tab stop of its chips, in view: it came back scrolled, with
-        // the filter off the edge.
-        if (returning && slot.scrollLeft > 0) {
-          slot.scrollLeft = 0;
-          slot
-            .querySelector('[tabindex="0"]')
-            ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-        }
       }
       if (leaving !== panelId && scroller) {
         scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;

@@ -174,8 +174,11 @@ def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
     tab_start = html.index('id="tab-files"')
     tab_tag = html[tab_start : html.index(">", tab_start)]
     assert 'role="tree"' not in tab_tag
-    assert 'role="tree" aria-label="Files"' in js
-    assert "return isRoot ? treeRootHtml(content) : content;" in js
+    # One "Files" tree, or under Group by one tree per section, named by its heading.
+    root = _function_source(js, "treeRootHtml")
+    assert 'role="tree" ${name}' in root
+    assert "'aria-label=\"Files\"'" in root
+    assert "return isRoot ? treeRootHtml(content, options.treeLabelledBy) : content;" in js
     assert 'role="group"' in js
     assert "aria-labelledby" in js
     assert "data-tree-level" in js
@@ -869,9 +872,11 @@ def test_set_selected_path_called_from_shared_activation_and_reveal() -> None:
     select_block = js[select_branch : select_branch + 500]
     assert "setSelectedPath(row.dataset.path)" in select_block
 
-    # revealInTree uses it.
+    # revealInTree uses it, through the scope it reveals in: the panel, or under Group by
+    # the section that holds the row.
     reveal_block = _function_source(js, "revealInTree")
-    assert "setSelectedPath(path)" in reveal_block
+    assert "revealWithin(" in reveal_block
+    assert "setSelectedPath(path)" in _function_source(js, "revealWithin")
 
 
 def test_folder_row_activation_selects_opens_and_toggles_the_folder() -> None:

@@ -222,9 +222,10 @@
      */
     function focusRow() {
       const container = deps.container();
+      // A pull request's row, or a stack's while the list is grouped by stack.
       const row =
-        container?.querySelector('a.github-pulls-row[tabindex="0"]') ??
-        container?.querySelector("a.github-pulls-row");
+        container?.querySelector('.github-pulls-row[tabindex="0"]') ??
+        container?.querySelector(".github-pulls-row");
       if (!(row instanceof HTMLElement)) {
         return false;
       }
@@ -334,6 +335,8 @@
       activateAnchor: () => handle?.activateAnchor() ?? false,
       /** @param {number} number */
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
+      /** @param {number} number */
+      toggleStack: (number) => handle?.toggleStack(number) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -366,46 +369,56 @@
   function registerKeys(nav, shortcuts) {
     /** @param {Record<string, unknown>} context */
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
+    // Control-N and Control-P, next and previous as in Emacs and the macOS text system,
+    // walk the stack, so N stays free and P opens the Pulls tab. They are global, so a
+    // focused Pulls row keeps J and K, and Shift changes neither pair; a text field keeps
+    // them. They are bound only where Control reaches the page, macOS and iOS: elsewhere
+    // Ctrl+N and Ctrl+P are the browser's, a new window and Print, and the stack menu
+    // walks the stack (docs/design-system.md, "Control Chords"). A held chord walks once
+    // and its repeats are consumed, so none falls through to the browser.
+    const stackKeys = shortcuts.controlReachesPage()
+      ? [
+          shortcuts.register({
+            bindings: [{ key: "n", control: true }],
+            available: () => nav.hasStack(),
+            copy: {
+              action: "Next in stack",
+              description: "Open the next pull request toward the top of the stack.",
+              hint: "Stack",
+            },
+            group: "pull-stack",
+            handler: (context) => repeating(context) === true || nav.moveStack(1),
+            id: "pulls.stack.top",
+            order: 10,
+            repeat: true,
+            scope: "global",
+            surfaces: { help: "always", reveal: "always" },
+          }),
+          shortcuts.register({
+            bindings: [{ key: "p", control: true }],
+            available: () => nav.hasStack(),
+            copy: {
+              action: "Previous in stack",
+              description: "Open the previous pull request toward the stack base.",
+              hint: "Stack",
+            },
+            group: "pull-stack",
+            handler: (context) => repeating(context) === true || nav.moveStack(-1),
+            id: "pulls.stack.base",
+            order: 20,
+            repeat: true,
+            scope: "global",
+            surfaces: { help: "always", reveal: "always" },
+          }),
+        ]
+      : [];
     return [
-      // N and P, next and previous as in Gmail, walk the stack. They are global, so a
-      // focused Pulls row keeps J and K, and Shift changes neither pair.
-      shortcuts.register({
-        bindings: [{ key: "n" }],
-        available: () => nav.hasStack(),
-        copy: {
-          action: "Next in stack",
-          description: "Open the next pull request toward the top of the stack.",
-          hint: "Stack",
-        },
-        group: "pull-stack",
-        handler: () => nav.moveStack(1),
-        id: "pulls.stack.top",
-        order: 10,
-        repeat: false,
-        scope: "global",
-        surfaces: { help: "always", reveal: "always" },
-      }),
-      shortcuts.register({
-        bindings: [{ key: "p" }],
-        available: () => nav.hasStack(),
-        copy: {
-          action: "Previous in stack",
-          description: "Open the previous pull request toward the stack base.",
-          hint: "Stack",
-        },
-        group: "pull-stack",
-        handler: () => nav.moveStack(-1),
-        id: "pulls.stack.base",
-        order: 20,
-        repeat: false,
-        scope: "global",
-        surfaces: { help: "always", reveal: "always" },
-      }),
+      ...stackKeys,
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
           action: "Previous pull request",
-          description: "Open the previous pull request in the list.",
+          description: "Open the previous pull request in the list, or go to a stack's row.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -420,7 +433,7 @@
         bindings: [{ key: "ArrowDown" }, { key: "j" }],
         copy: {
           action: "Next pull request",
-          description: "Open the next pull request in the list.",
+          description: "Open the next pull request in the list, or go to a stack's row.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -435,7 +448,7 @@
         bindings: [{ key: "Enter" }],
         copy: {
           action: "Open pull request",
-          description: "Open the focused pull request.",
+          description: "Open the focused pull request, or open or close the focused stack.",
           hint: "Open",
         },
         group: "pull-requests",
@@ -449,7 +462,8 @@
         bindings: [{ key: " " }],
         copy: {
           action: "Toggle changed files",
-          description: "Expand or collapse the focused pull request's changed files.",
+          description:
+            "Expand or collapse the focused pull request's changed files, or the focused stack.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -457,11 +471,15 @@
           const event = /** @type {{event?: KeyboardEvent}} */ (context).event;
           const target = event?.target;
           // Consume held Space without toggling again. The row's actual focus can
-          // outlast a catalog update that changes the tab stop.
+          // outlast a catalog update that changes the tab stop. A stack's row, while the
+          // list is grouped by stack, carries its stack's number.
           return (
             target instanceof HTMLElement &&
-            target.matches("a.github-pulls-row") &&
-            (event?.repeat === true || nav.toggleFiles(Number(target.dataset.number)))
+            target.matches(".github-pulls-row") &&
+            (event?.repeat === true ||
+              (target.dataset.stack === undefined
+                ? nav.toggleFiles(Number(target.dataset.number))
+                : nav.toggleStack(Number(target.dataset.stack))))
           );
         },
         id: "pulls.toggle-files",
@@ -474,7 +492,8 @@
         bindings: [{ key: "ArrowRight" }],
         copy: {
           action: "Show changed files",
-          description: "Show the focused pull request's changed files, or go to the first.",
+          description:
+            "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -488,7 +507,8 @@
         bindings: [{ key: "ArrowLeft" }],
         copy: {
           action: "Hide changed files",
-          description: "Hide the focused pull request's changed files.",
+          description:
+            "Hide the focused pull request's changed files, or go to its stack; on a stack, close it.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -601,7 +621,7 @@
   const scopeOf = (target) =>
     !(target instanceof Element)
       ? null
-      : target.closest("a.github-pulls-row") !== null
+      : target.closest(".github-pulls-row") !== null
         ? KEY_SCOPE
         : target.closest(".github-pull-file-row, .github-pull-folder-row") !== null
           ? FILE_KEY_SCOPE

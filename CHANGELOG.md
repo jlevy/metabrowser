@@ -4,6 +4,148 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
+  lines instead of cutting off what does not fit.
+  The Files filter row moves Show ignored down, then Clear and the chevron, which stay
+  together at the line’s end; the Pulls toolbar moves Reload down to the line’s end; the
+  Commits tally breaks between “12,345 commits” and “begun 1y ago”; and the Files,
+  Pulls, and Commits tabs wrap too.
+  The Files row overflowed the pane below about 297 px with a filter set, and its
+  chevron was out of sight at the narrowest pane, 180 px.
+  The Pulls toolbar, which scrolled sideways, ran past the default pane in the system
+  font set, so Reload was cut off.
+  A toolbar that fits stays one line, as before, and a wrapped one keeps one spacing
+  between its lines and its controls.
+  The Pulls tab’s Show choice, when even its own line is too narrow for it, shows its
+  three choices as separate pills that wrap, and joins them again when there is room.
+  Reload in the Pulls toolbar is now a chip’s height, 2 px shorter.
+  See [Navigation Toolbars Wrap](docs/design-system.md#navigation-toolbars-wrap).
+  For plugin authors, a row of controls in the navigation’s toolbar slot takes the
+  `nav-toolbar-row` class, and `filterControls.bind` keeps a joined group in a
+  navigation toolbar fitted to its line; `filterControls.fitJoinedGroups(root)` fits one
+  at once, and `filterControls.joinedGroupFits` is the pure rule.
+
+- `P` now opens the Pulls tab, as `F` opens Files and `H` Commits; it was `R`, for pull
+  Requests, while `P` walked a stack.
+  `R` now does nothing, and for plugin authors a manifest view may take it as its key,
+  while `P` is reserved in every kind.
+  See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
+
+- Walking a pull request’s stack is now Control-N, to the next member toward the stack’s
+  top, and Control-P, to the previous one toward its base, on macOS and iOS, so `N` and
+  `P` alone are free. Help and the Shift strip write them `⌃N` and `⌃P`, and holding one
+  walks once. A text field keeps both, since macOS moves its caret with them.
+  On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
+  Help lists neither and the stack menu walks the stack there.
+  For plugin authors, a manifest view may now take `N` as its key.
+  See [Control Chords](docs/design-system.md#control-chords).
+
+- A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
+  description, comments, and reviews, and in any document when you chose the Sans
+  reading font. It was italic under either reading font, an accent of the serif that read
+  as slanted sans. Serif documents keep the italic, and the heading’s size, weight, and
+  spacing are unchanged.
+  See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
+
+- A pull request’s page header gives the head and base branches a line of their own,
+  under “jlevy wants to merge 2 commits”, instead of ending that sentence with them.
+  The state badge (Draft, Open, Merged, Closed) moves down a line, to lead “Opened 9h
+  ago · updated …”. The stack button moves from the end of the labels row to the right
+  end of the author’s row, under the end of the title, and its menu opens from there;
+  arriving after the page, it still moves nothing.
+  A short title now starts at the header’s left edge with its icon, instead of sitting
+  centred, and the pull request’s number ends at the right edge, above the stack button,
+  for every title.
+
+- On a pull request’s Conversation, a commit now reads like the comments around it.
+  A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
+  pressed against the event above it.
+  It is now set in a comment header’s size and line, with “committed” and the age in the
+  header’s type, and a run of commits stands at least as far from the comment above and
+  below it as one commit stands from the next.
+  A line now joins the description, comments, reviews, and commits down the avatars’
+  column, with a dot at each commit, as on GitHub’s own pull request page.
+  The commit hash is one step below the row’s text, as a revision is elsewhere.
+  See [Conversation Timeline](docs/design-system.md#conversation-timeline).
+
+- A Pulls row no longer names its branches, so its title has more room; the pull
+  request’s page still names them, head → base.
+
+- A pull request’s number is bold wherever it names the pull request: a Pulls row, the
+  pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
+  one width for a chevron and a file type icon alike, so names start 2px sooner and a
+  pull request’s title is 4px wider.
+
+- A stack member’s place in its stack is on its number’s line, before the number, as
+  “1/6 · #455 · jlevy”, and its row draws no stack icon: the stack’s row above it has
+  one. Its title’s line holds only the title and the age, so the title has all that room:
+  at the default pane, 166 px where it had 65 to 125.
+
+- The Pulls tab groups a native GitHub stack’s pull requests under a “Stack #N” row,
+  open by default, with the stack’s pull requests under it top of the stack first, as
+  the pull request page’s stack menu lists them, and the pull requests in no stack after
+  the stacks. It always groups once the repository’s stacks are known; until then, or
+  when they cannot be read, the list stays as it was.
+  A stack’s row counts the pull requests of it the list holds, and its tip says where
+  any sit under another stack.
+  A pull request in two stacks appears once, under the first, and its place names the
+  other stack by the stack icon and its number before its position, everywhere a place
+  shows two positions; it showed two bare positions, such as “4/4 · 2/2”. A stack’s row
+  opens and closes like a folder: J and K stop on it, Enter, Space, and the arrow keys
+  open, close, enter, and leave it.
+  The stack row’s header and the stack menu’s heading are now one label, gray, all caps,
+  and tracked, and the menu’s positions are in the row’s ink rather than link blue
+  ([Stacks](docs/design-system.md#stacks)).
+
+- The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
+  type. Grouped, the tree splits into sections, each headed like a menu group with the
+  group’s file count and holding a full tree of the group’s files after the filters.
+  Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
+  month, each holding only what the bands before it do not, then Older.
+  File type groups are Documentation, Code, Data, Archives, Media, and Other, which
+  takes every file the type registry does not recognize; a group the filters leave empty
+  is not shown, and a Git revision offers no Age.
+  Show ignored moves out of the drawer to follow it on the row, and Modified within and
+  File type move into the drawer behind the chevron beside Minimum file size; the
+  chevron’s badge counts the ones of those three that are set.
+  Clear resets every filter, Show ignored included, and keeps the grouping.
+  Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
+  drawer is open; a filter’s number opens the drawer with its menu.
+  Grouping keeps symbolic links: File type puts them in Other, and Age places them by
+  their own modification time.
+  When files change, the sections refresh in place, keeping the open folders, the scroll
+  position, and the focused row.
+  For plugin authors, a `filterControls` option may carry a `summary`, the words its
+  closed trigger shows when it is the one chosen: Group by’s trigger reads “By age”
+  where its row reads “Age”.
+
+- Every list of file type groups puts Documentation before Code: the type filter, Group
+  by, and File Overview.
+  The type registry keeps its own order, which is the File Rollup Format’s; for plugin
+  authors, `fileTypes.displayGroups` is the order to list groups in.
+
+- `/api/tree` takes `group_by=type` or `group_by=age` for the groups, with their counts
+  and trees, and `group=<by>:<id>` for one group’s tree.
+
+- The Files tab’s File type menu shows up to 16 rows before it scrolls, where it showed
+  about 8, and never reaches past the window: in a short window it stops 8 px above the
+  bottom edge and scrolls inside, and it fits itself again when the window is resized.
+  The other filter menus follow the same rule; one with few rows, such as Modified
+  within, keeps its size unless the window is too short to hold it.
+  Its group headings, such as “Groups” and “Code”, now start on the menu’s left edge,
+  over the check marks, instead of indented to the row labels as if they were rows.
+  A pull request’s stack menu heads its members the same way, and screen readers now
+  read its name once. The gear menu’s “Max text width” label starts on the same edge as
+  the menu’s title. For plugin authors, menu groups have one pattern: a `.menu-group`
+  with `role="group"` and `aria-labelledby` naming its `.group-heading`, which draws its
+  own divider; the `.menu-section-label` class is gone.
+  `filterControls.bind` fits a filter dropdown when its trigger opens it, and
+  `filterControls.fitOpenMenus(root)` fits one rendered open another way
+  ([Groups in a Menu](docs/design-system.md#groups-in-a-menu),
+  [Menu Height](docs/design-system.md#menu-height)).
+
 - Code keeps one monospace face for the life of a window, and code in a Markdown
   document matches it.
   Highlighted source, diffs, JSON and YAML, and log payloads changed face once any
@@ -76,6 +218,39 @@ All notable changes to Metabrowser are documented here.
   row that starts with `|`, directly above a `---`, is no longer mistaken for a heading,
   so it gets no heading anchor, and embedding a section through `![[Note#Heading]]` no
   longer stops at it.
+
+- In a pull request’s rendered Markdown diff, a fold such as “6 unchanged blocks” is now
+  a quiet line in the document instead of a bordered box, and opening it shows the
+  blocks it held in place, set exactly like the unchanged blocks around them.
+  It drew a box with space above and below it, and when open a rule under its label that
+  pushed the rest of the document 1px further than the blocks it showed.
+  The fold’s chevron now lines up with the text’s left edge, and its label brightens to
+  the text colour under the pointer.
+  A document’s own `<details>` sections look as before.
+
+- A diff of more than one file now opens with a Diff summary, collapsed, in place of the
+  “41 changed files +6526 −555” line at its top: a header such as “35 changed files (2
+  added, 3 removed, 30 modified) +1,234 −3,423” that opens to the changed files as a
+  tree by folder. The header lists only the statuses some file has, in one order (added,
+  removed, modified, renamed, then the rest), writes its numbers in the shell’s format,
+  and still says “(estimated)” when the totals are not exact.
+  The tree is the one the Pulls tab shows under a pull request: folders toggle, a chain
+  of single folders is one row, and each file has its change letter and line counts.
+  Every folder now shows the line counts of the files under it, rolled up, in the Diff
+  summary and in the Pulls tab alike.
+  Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
+  request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
+  move along the rows without moving the diff.
+  A name shows a control or invisible character, such as a right-to-left override, as
+  U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
+  counts now read in the shell’s number format.
+  A path a patch lists more than once, as a file that became a symlink, is one row.
+  If the tree cannot load, the totals line stays.
+  It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
+  commit summary’s totals, as before.
+
+- Plugins can draw a tree of changed files with the shell’s own model,
+  `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
 
 - The line under the Files, Commits, and Pulls toolbars — the totals, the commit tally,
   and the pull request count with how fresh it is — now looks the same on every tab.

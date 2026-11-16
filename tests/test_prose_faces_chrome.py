@@ -2,11 +2,13 @@
 
 A document reads in the reading font and chrome prose in sans under either, as
 docs/design-system.md's "Serif Is for Documents" says, under both reading fonts and both
-font sets (tests/dom/prose-faces-chrome.mjs). A face is the cascade's answer, which only a
-browser computes: a check of the stylesheets' text passed while a pull request's page set
-the Markdown files in its Changes in sans. Which texts carry ``.chrome-prose`` is checked
-browserless in tests/dom/github-pull-first-paint-behavior.js, and which rules may set a
-face for a text in ``test_serif_is_only_for_documents``.
+font sets (tests/dom/prose-faces-chrome.mjs). Each Markdown text's h2 is italic only in a
+serif document; upright in the sans, it keeps its size, weight, and margins. A face is
+the cascade's answer, which only a browser computes: a check of the stylesheets' text
+passed while a pull request's page set the Markdown files in its Changes in sans. Which
+texts carry ``.chrome-prose`` is checked browserless in
+tests/dom/github-pull-first-paint-behavior.js, and which rules may set a face for a text
+in ``test_serif_is_only_for_documents``.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
@@ -40,21 +42,28 @@ SERVER_KILL_S = 2
 LIFECYCLE_S = RUN_BUDGET_S + GROUP_STOP_S + SERVER_TERM_S + SERVER_KILL_S + PROFILE_TEARDOWN_S
 _METAB = Path(sys.executable).with_name("metab")
 # The session's checks, pinned so a probe or a pass that stops running is seen. Each of its
-# four passes, a reading font and a font set, checks <html> on each of its 3 pages and the
-# face of each of its 8 probes; in the clean set it also checks the face Chrome drew for
-# each probe set in the sans, which is all 8 under the sans reading font and the 4 chrome
-# probes under the serif one: 4 * (3 + 8) + 8 + 4.
-CHECKS = 56
+# four passes, a reading font and a font set, checks <html> on each of its 3 pages, the
+# face of each of its 8 probes, the style of the h2 in each of the 6 that hold Markdown,
+# and that chrome prose's KPress h2 has the Document view h2's size, weight and margins;
+# in the clean set it also checks the face Chrome drew for each probe set in the sans,
+# which is all 8 under the sans reading font and the 4 chrome probes under the serif one;
+# and in each set, under the sans reading font, that each of the 6 h2s keeps its size,
+# weight and margins: 4 * (3 + 8 + 6 + 1) + 8 + 4 + 2 * 6.
+CHECKS = 96
 
 
 def _repository(root: Path) -> str:
     """A repository with a document, a README, and a commit with a body; its commit ID."""
 
     (root / "doc.md").write_text(
-        "# Document\n\nA paragraph of document prose, in the Document view.\n", encoding="utf-8"
+        "# Document\n\nA paragraph of document prose, in the Document view.\n\n"
+        "## A document section\n\nMore of the document.\n",
+        encoding="utf-8",
     )
     (root / "README.md").write_text(
-        "# Faces\n\nA paragraph of README prose, on the Overview.\n", encoding="utf-8"
+        "# Faces\n\nA paragraph of README prose, on the Overview.\n\n"
+        "## A README section\n\nMore of the README.\n",
+        encoding="utf-8",
     )
     git = [
         require_git(),

@@ -966,16 +966,30 @@ class InventoryFilter:
     filenames: tuple[str, ...] = ()
     type_families: tuple[str, ...] = ()
     recency_seconds: float | None = None
+    # A Group by group, which places every entry it keeps, symlinks included, where the
+    # filter fields above drop symlinks. An age band: entries modified within
+    # `band_within_seconds` of `as_of_ns` and at least `older_than_seconds` before it.
+    band_within_seconds: float | None = None
+    older_than_seconds: float | None = None
+    # A type group: the files the registry classifies into this display group, `other`
+    # taking every file it does not recognize, and every symlink.
+    type_group: str | None = None
     minimum_size: int | None = None
     include_ignored: bool = True
     as_of_ns: int | None = None
 
     def __post_init__(self) -> None:
-        if self.recency_seconds is not None and self.recency_seconds <= 0:
-            raise ValueError("recency_seconds must be positive")
+        for name in ("recency_seconds", "band_within_seconds", "older_than_seconds"):
+            seconds = getattr(self, name)
+            if seconds is not None and seconds <= 0:
+                raise ValueError(f"{name} must be positive")
         if self.minimum_size is not None:
             _require_nonnegative(self.minimum_size, "minimum_size")
-        if self.recency_seconds is not None and self.as_of_ns is None:
+        if (
+            self.recency_seconds is not None
+            or self.band_within_seconds is not None
+            or self.older_than_seconds is not None
+        ) and self.as_of_ns is None:
             raise ValueError("a recency filter requires as_of_ns")
         if self.as_of_ns is not None:
             _require_positive(self.as_of_ns, "as_of_ns")

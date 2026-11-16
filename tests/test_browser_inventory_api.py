@@ -157,9 +157,10 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
     assert "tally_cache_status" in body
     assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
     assert "tree" in body
+    # Documentation first, the order every surface lists the groups in.
     assert [row[0] for row in body["type_presets"]] == [
-        "code",
         "docs",
+        "code",
         "data",
         "archives",
         "media",

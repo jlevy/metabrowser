@@ -505,12 +505,14 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     assert "transition: none" in instant, "the instant disclosure travels"
     assert styles.index(".tree-children-instant {") > styles.index(".tree-children {")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    reveal = app[app.index("async function revealInTree(") :]
+    # revealInTree reveals within a scope (the panel, or a Group by section) through
+    # revealWithin, which opens the folders.
+    reveal = app[app.index("async function revealWithin(") :]
     reveal = reveal[: reveal.index("\n}\n")]
     assert "setFolderExpanded(folder, true, { instant })" in reveal, (
         "navigation's reveal of a path animates the folders it opens"
     )
-    assert "instant = true }" in reveal.splitlines()[0], "a reveal the reader caused travels"
+    assert "instant = true }" in reveal[: reveal.index(") {")], "a reveal the reader caused travels"
     # A landing's reveal answers no input, and its folders travelling moved the tree less.
     landing = app[app.index("    revealInTree(initialPath, {") :]
     assert "instant: false" in landing[: landing.index("});")]
@@ -818,9 +820,9 @@ def test_branch_chips_are_blue_and_never_a_merged_pull_requests_purple() -> None
     history = (REPO_ROOT / "src/metabrowser/git/history.py").read_text(encoding="utf-8")
     assert 'const HEAD_LANE_COLOR = "var(--git-ref-remote)";' in graph
     assert '_HEAD_LANE_COLOR = "var(--git-ref-remote)"' in history
-    for page in ("pull-page.js", "pulls-panel.js"):
-        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / page).read_text(encoding="utf-8")
-        assert 'kind: "remote"' in source, f"{page}'s branches lost the remote chip"
+    # The pull request's page names its branches; a Pulls row names none.
+    source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
+    assert 'kind: "remote"' in source, "pull-page.js's branches lost the remote chip"
 
 
 def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
@@ -897,14 +899,12 @@ _CHIP_TYPE_AND_BOX = frozenset(
 _CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
 
 
-# The boxes a chip sits in, in every context: a merge's grid and the Pulls row's wrapper
-# around it, a history row's ref group, a commit summary's identity and ref groups, and
+# The boxes a chip sits in, in every context: a merge's grid, a history row's ref group, a commit summary's identity and ref groups, and
 # the ref selector's label and row name. None sets a size, so the chip scales from the
 # text beside it.
 _CHIP_CONTAINERS = frozenset(
     {
         "merge-refs",
-        "github-pulls-merge",
         "git-graph-refs",
         "git-commit-identity",
         "git-commit-refs",
@@ -989,7 +989,6 @@ def test_each_context_assigns_its_chip_kind() -> None:
         "A commit’s summary",
         "A commit’s tooltip",
         "A pull request’s header",
-        "A Pulls row",
         "The ref selector’s button and list",
     ):
         assert f"| {context} |" in section, f"the table lost {context!r}"
@@ -1009,8 +1008,9 @@ def test_each_context_assigns_its_chip_kind() -> None:
     assert panel.count("refChipHtml(") == 1, "git history draws chips only in renderRefBadges"
     assert "renderRefBadges(commit.refs || [])" in panel
     assert 'renderRefBadges(commit.refs, compact ? false : "inline")' in panel
-    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD.
-    for name in ("pull-page.js", "pulls-panel.js"):
+    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD. The
+    # pull request's page draws them; a Pulls row names no branches.
+    for name in ("pull-page.js",):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         calls = re.findall(r"mb\.mergeRefs\((.*?)\n\s*\),?\n", source, re.S)
         assert len(calls) == 1, f"{name} draws one merge"
@@ -1405,7 +1405,7 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     # Later than the rest fill it ties with, or a joined chip answers the pointer with
     # nothing, and earlier than the selected fill, which outranks it either way.
     chip_rest = styles.index(".chip-group > .chip {")
-    wrapped_rest = styles.index('.chip-group[data-layout="wrap"] > .chip {')
+    wrapped_rest = styles.index('.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {')
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
     ring = "outline: 2px solid var(--link)"
@@ -1588,9 +1588,14 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-view.js": (
         '"fold-expander diff-fold-control disclosure-toggle"',
         '"diff-file-bar disclosure-toggle"',
+        '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
     ),
+    "diff/diff-summary.js": ('"diff-summary-row diff-summary-folder disclosure-toggle"',),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
-    "github/pulls-panel.js": ('"github-pulls-row disclosure-toggle collapsed"',),
+    "github/pulls-panel.js": (
+        '"github-pulls-row disclosure-toggle collapsed"',
+        '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
+    ),
     "github/pull-files-view.js": ('"github-pull-folder-row disclosure-toggle"',),
     "github/pull-page.js": (
         '"btn github-pull-stack-trigger disclosure-toggle"',
@@ -1629,11 +1634,18 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "diff/diff-view.js": (
         ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
+        ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
+    ),
+    "diff/diff-summary.js": (
+        ("host.chevron()", '"diff-summary-row diff-summary-folder disclosure-toggle"'),
     ),
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
-    "github/pulls-panel.js": (("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),),
+    "github/pulls-panel.js": (
+        ("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),
+        ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
+    ),
     "github/pull-files-view.js": (
         ("host.chevron()", '"github-pull-folder-row disclosure-toggle"'),
     ),
@@ -1646,7 +1658,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
 # A glyph built far from its builder: a folder row's parts are made by one function and
 # put in the row by another.
 _GLYPH_FAR_FROM_BUILDER: frozenset[tuple[str, str]] = frozenset(
-    {("github/pull-files-view.js", "host.chevron()")}
+    {("github/pull-files-view.js", "host.chevron()"), ("diff/diff-summary.js", "host.chevron()")}
 )
 # The classes the registered toggles are made of. A stylesheet that gives one of them a
 # selectable `user-select` reopens the toggle, whether or not its selector also names
@@ -1671,7 +1683,10 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "fold-expander",
         "diff-fold-control",
         "diff-file-bar",
+        "diff-summary-toggle",
+        "diff-summary-folder",
         "github-pulls-row",
+        "github-pulls-stack-row",
         "github-pull-folder-row",
         "btn",
         "github-pull-stack-trigger",
@@ -2024,16 +2039,30 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
         if selector not in titles and any(title in selector for title in titles):
             assert not {"color", "font-weight"} & declarations.keys(), selector
-    # The page's heading and a search result's label already are; the number beside a
-    # title keeps its regular weight.
+    # The page's heading and a search result's label already are.
     assert 'class: "page-heading github-pull-title' in page
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-heading"]["font-weight"] == "var(--weight-bold)"
     label = shell[".search-palette-label"]
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
-    assert github[".github-pull-number"]["font-weight"] == "var(--weight-normal)"
-    for number in (".github-pulls-number", ".github-pull-stack-member-number"):
-        assert "font-weight" not in github[number], number
+    # A pull request's number is bold wherever it names the pull request, the weight of a
+    # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
+    # title's, a Pulls row's, and a stack member's, and the shell's Quick Search result
+    # and ref selector; no other rule sets a number's weight. In headless Chrome each
+    # computes to 700 (github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs).
+    assert "### Pull Request Numbers" in doc
+    shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert shell_css.count("--pull-number-weight:") == 1
+    assert "--pull-number-weight: var(--weight-bold);" in shell_css
+    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
+    weighted = [
+        (selector, declarations["font-weight"])
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if "font-weight" in declarations and any(number in selector for number in numbers)
+    ]
+    assert weighted == [(number, "var(--pull-number-weight)") for number in numbers], weighted
+    for number in (".search-palette-pull-number", ".source-ref-selector-pull-number"):
+        assert shell[number]["font-weight"] == "var(--pull-number-weight)", number
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -2054,10 +2083,14 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         r"chip\(target, \"merge-refs-target\"\),?\s*\)",
         views,
     ), "the group is the source, the arrow, then the target"
-    # Both pages draw their merge with it, head first. Neither draws a ref chip of its own,
-    # so neither can compose two around a connector, nor writes the left arrow; the sessions
-    # of both pages hold the rendered order, the arrow, and the literal refs.
-    for name, side in (("pull-page.js", "pull"), ("pulls-panel.js", "row")):
+    # The page draws its merge with it, head first, and draws no ref chip of its own, so it
+    # cannot compose two around a connector, nor writes the left arrow; its session holds
+    # the rendered order, the arrow, and the literal refs. A Pulls row names no branches.
+    panel_source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(
+        encoding="utf-8"
+    )
+    assert "mergeRefs" not in panel_source, "a Pulls row names no branches"
+    for name, side in (("pull-page.js", "pull"),):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         assert re.search(
             rf"mb\.mergeRefs\(\s*\{{\s*name:\s*{side}\.headRef\b[^}}]*\}},\s*"
@@ -2083,10 +2116,9 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
-    # loses the arrow in Chrome when it overflows. The author and the branches each carry
-    # their separator, breaks fall at their floors, and a separator that starts a line lies
-    # in the one-separator offset the row clips.
+    # The Pulls tab's muted line names no branches (the pull request's page does) and wraps
+    # rather than clips: the author carries its separator, a break falls at its floor, and
+    # a separator that starts a line lies in the one-separator offset the row clips.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
     assert (meta["min-width"], meta["overflow"]) == ("0", "hidden")
@@ -2094,11 +2126,11 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
     assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-number"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
     assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
-    for part in (".github-pulls-by", ".github-pulls-merge"):
-        rule = github[part]
-        assert (rule["flex"], rule["max-width"]) == ("1 1 0", "max-content"), part
+    by_rule = github[".github-pulls-by"]
+    assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")
+    assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
     assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
     avatar = github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"]
@@ -2107,7 +2139,6 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         "18px",
         "4px",
     ), "the floor counts the avatar and its gap"
-    assert "min-width" not in github[".github-pulls-merge"], "its floor is the merge's own"
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
@@ -2135,7 +2166,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert 'class: "page-heading github-pull-title' in page
     assert (
         github[".github-pull-title-with-state"]["grid-template-columns"]
-        == "auto minmax(0, max-content) auto"
+        == "auto minmax(0, 1fr) auto"
     ), "the number is a track of its own, after the title it is never clamped with"
     title_icon = github[".github-pull-title > .github-pull-state-icon"]
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
@@ -2144,7 +2175,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
     # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus, at its row's size.
+    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
+    # check's are at their row's size; a commit hash is one step below its row (below).
     for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
         action = f"{place} .github-pull-external-action"
         assert github[action] == {"color": "var(--muted)"}, action
@@ -2154,11 +2186,30 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
-    # A hash matches its 12 px row; the ramp's next step below is the 10 px micro size.
-    assert github[".github-pull-commit"]["font-size"] == "var(--ui-small-font-size)"
-    assert github[".github-pull-commit .git-commit-sha"]["font-size"] == (
-        "var(--ui-small-font-size)"
+    # A conversation commit is said in a card head's type ("Conversation Timeline"): its
+    # when is no quieter than a comment's, its age is the head's, and its hash takes a
+    # revision's own size, one step below the text beside it. The sizes and the line they
+    # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
+    commit = github[".github-pull-commit"]
+    assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
+    assert commit["min-height"] == github[".github-pull-card-head"]["min-height"]
+    assert ".github-pull-commit .git-commit-sha" not in github
+    assert (
+        github[".github-pull-commit .github-pull-age"]
+        == (github[".github-pull-card-head .github-pull-age"])
     )
+    # The row's when is a plain span in the row's type; the Chrome test holds its ink.
+    assert 'h("span", {}, ["committed ", age(event.committed_at)])' in page
+    # The events the line joins: the description, each comment and review, and each commit.
+    assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
+    # Their heads keep an avatar's slot for an author without one; the header and Pulls
+    # rows do not ask for it.
+    assert page.count("{ slot: true }") == 2, "the description's head and a card's"
+    slot = github[".github-pull-avatar-slot"]
+    avatar = github[".github-pull-avatar"]
+    assert (slot["width"], slot["height"]) == (avatar["width"], avatar["height"])
+    node = github[".github-pull-commit::after"]
+    assert (node["border-radius"], node["background"]) == ("var(--radius-circle)", "var(--muted)")
     # A button that moves the pin looks as a link does: no primitive's border or fill.
     action = github[".github-pull-text-action"]
     assert (action["color"], action["border"], action["background"]) == (
@@ -2399,6 +2450,26 @@ def test_serif_is_only_for_documents() -> None:
             assert not faces, f"{where} sets a face token: {sorted(faces)}"
     assert roots == _FACE_ROOTS
     assert documents == _DOCUMENT_FACES
+    # An h2 is upright wherever the prose face is sans: the one rule that sets its style
+    # keys on each selector that points the prose hook at sans, and on nothing else, so a
+    # third such place cannot arrive without it.
+    style_rules = _rules_of(styles)
+    sans_hooks = {
+        selector
+        for selector, declarations in style_rules
+        if declarations.get("--kpress-host-font-prose") == "var(--prose-sans-font)"
+    }
+    upright = [
+        (selector, declarations)
+        for selector, declarations in style_rules
+        if selector.endswith(".kpress-prose h2") and "font-style" in declarations
+    ]
+    assert sans_hooks, "no rule points the prose hook at sans"
+    assert {selector for selector, _ in upright} == {
+        f"{hook} .kpress-prose h2" for hook in sans_hooks
+    }
+    for selector, declarations in upright:
+        assert declarations == {"font-style": "normal"}, selector
     builders = {
         path.relative_to(source).as_posix(): path.read_text(encoding="utf-8").count("chrome-prose")
         for path in sorted([*STATIC.glob("*.js"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.js")])

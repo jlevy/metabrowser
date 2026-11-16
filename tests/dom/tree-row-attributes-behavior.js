@@ -60,6 +60,8 @@ const sandbox = {
   sizeHtml: () => "",
   treeDirChipHtml: () => "",
   treeNodeDisplayName: (name) => String(name ?? ""),
+  // Outside a Group by section (app.js, withTreeIdScope).
+  _treeIdScope: "",
 };
 sandbox.window = { MetabrowserNavigationRoute: { displayPath: (name) => name } };
 vm.createContext(sandbox);

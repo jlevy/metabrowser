@@ -398,9 +398,15 @@ async function run() {
   };
 }
 
-/** Stack commands use the active page capability and the real registry's global guards. */
+/**
+ * Stack commands use the active page capability and the real registry's global guards. They
+ * are bound on a Mac, where Control reaches the page, and nowhere else.
+ */
 async function stackKeysStory() {
-  const { nav, shortcuts } = modules;
+  const { context, nav, shortcuts } = modules;
+  // A Mac's navigator: only where Control reaches the page are the stack's chords bound
+  // (static/keyboard-shortcuts.js, `controlReachesPage`).
+  context.navigator = { platform: "MacIntel" };
   const page = createShell("/pull/7/checks", { active: "pulls" });
   let known = true,
     endpoint = false;
@@ -421,14 +427,14 @@ async function stackKeysStory() {
   await settle();
   page.take();
   let dispatch;
-  const registry = shortcuts.create({
-    document: {
-      addEventListener: (_type, listener) => {
-        dispatch = listener;
-      },
-      removeEventListener() {},
+  // Each registry made on this document is the one `press` reaches.
+  const document = {
+    addEventListener: (_type, listener) => {
+      dispatch = listener;
     },
-  });
+    removeEventListener() {},
+  };
+  const registry = shortcuts.create({ document });
   const unregister = nav.registerKeys(host, registry);
   const press = (key, values = {}) => {
     const event = {
@@ -449,20 +455,33 @@ async function stackKeysStory() {
     dispatch(event);
     return event.defaultPrevented;
   };
-  assert(press("p"));
-  assert(press("n"));
+  // Control-N and Control-P walk the stack (mb-lnqj), and Control is held alone.
+  const control = { ctrlKey: true };
+  assert(press("p", control));
+  assert(press("n", control));
   assert.deepEqual(moves, [-1, 1], "global direction reaches the active subtab without row focus");
   // Shift never changes a key, so a reader holding it still walks the stack.
-  assert(press("P", { shiftKey: true }));
-  assert(press("N", { shiftKey: true }));
-  assert.deepEqual(moves, [-1, 1, -1, 1], "Shift+P and Shift+N walk the stack as P and N do");
-  assert.equal(press("n", { metaKey: true }), false, "Command+N stays the browser's");
+  assert(press("P", { ...control, shiftKey: true }));
+  assert(press("N", { ...control, shiftKey: true }));
+  assert.deepEqual(moves, [-1, 1, -1, 1], "Shift changes neither Control-P nor Control-N");
+  // The letters alone are free. Command, and Control with Command, stay the browser's;
+  // AltGr reports Control and Alt, and types its character.
+  const plainLetters = [press("n"), press("p"), press("N", { shiftKey: true })];
+  assert.deepEqual(plainLetters, [false, false, false], "N and P alone walk nothing");
+  const otherChords = {
+    "Command-N": press("n", { metaKey: true }),
+    "Control-Command-N": press("n", { ...control, metaKey: true }),
+    "Control-Alt-N, as AltGr": press("n", { ...control, altKey: true }),
+    "Control-Alt-P, as AltGr": press("p", { ...control, altKey: true }),
+  };
+  assert.deepEqual(Object.values(otherChords), [false, false, false, false]);
+  assert.deepEqual(moves, [-1, 1, -1, 1], "only Control with N or P walks the stack");
   const rowScope = registry.activateScope("pull-rows");
   const plainJ = press("j");
   assert(plainJ);
   assert.deepEqual(page.take(), ["view told: move 1"]);
-  // On a focused row, J and K move the row with or without Shift; only N and P
-  // reach the stack.
+  // On a focused row, J and K move the row with or without Shift; only Control-N and
+  // Control-P reach the stack.
   const shiftedRowKeys = [press("J", { shiftKey: true }), press("K", { shiftKey: true })];
   const shiftedRowMoves = page.take();
   assert.deepEqual(shiftedRowKeys, [true, true]);
@@ -473,39 +492,47 @@ async function stackKeysStory() {
   fileScope();
   assert.deepEqual(shiftedFileKeys, [true, true]);
   assert.deepEqual(shiftedFileMoves, ["view told: move file 1", "view told: move file -1"]);
-  assert(press("n"), "N still walks the stack while a row has focus");
+  assert(press("n", control), "Control-N still walks the stack while a row has focus");
   assert.deepEqual(moves, [-1, 1, -1, 1, 1], "row keys never reach the stack");
-  assert.equal(press("P", { repeat: true }), false);
-  assert.equal(press("P", { target: { tagName: "INPUT" } }), false);
-  assert.equal(press("P", { target: { tagName: "DIV", isContentEditable: true } }), false);
+  // A held chord walks once: its repeats are consumed without walking, so none falls
+  // through to the browser.
+  const heldRepeat = press("p", { ...control, repeat: true });
+  assert.equal(heldRepeat, true, "a held Control-P is consumed");
+  // A text field keeps Control-N and Control-P, which move its caret on macOS.
+  const textFields = [
+    press("p", { ...control, target: { tagName: "INPUT" } }),
+    press("n", { ...control, target: { tagName: "TEXTAREA" } }),
+    press("p", { ...control, target: { tagName: "DIV", isContentEditable: true } }),
+  ];
+  assert.deepEqual(textFields, [false, false, false], "a text field keeps both chords");
   const closeHelp = registry.activateScope("help", { exclusive: true });
-  assert.equal(press("P"), false);
+  assert.equal(press("p", control), false);
   closeHelp();
   const closeModal = registry.activateScope("dialog", { exclusive: true });
-  assert.equal(press("N"), false);
+  assert.equal(press("n", control), false);
   closeModal();
   assert.deepEqual(moves, [-1, 1, -1, 1, 1], "repeat, editor, Help and modal never navigate");
   endpoint = true;
-  assert(press("p"));
+  assert(press("p", control));
   assert.equal(moves.at(-1), "endpoint", "endpoint is consumed without a row fallback");
   assert.deepEqual(page.take(), []);
   endpoint = false;
   known = false;
-  assert.equal(press("n"), false);
+  assert.equal(press("n", control), false);
   known = true;
-  assert(press("n"), "newly known membership becomes available without re-registration");
+  assert(press("n", control), "newly known membership becomes available without re-registration");
   page.shell.pages.set(7, {});
-  assert.equal(press("p"), false, "custom PR pages may omit stack navigation");
+  assert.equal(press("p", control), false, "custom PR pages may omit stack navigation");
   page.shell.pages.set(7, { hasStack: () => true });
-  assert.equal(press("p"), false, "a partial capability cannot consume navigation");
+  assert.equal(press("p", control), false, "a partial capability cannot consume navigation");
   page.shell.pages.set(7, renderer);
   page.deps.activate("files");
-  assert.equal(press("p"), false, "a hidden Pulls panel does not own a global command");
+  assert.equal(press("p", control), false, "a hidden Pulls panel does not own a global command");
   page.deps.activate("pulls");
   page.shell.address = new URL("/pulls", "http://x");
-  assert.equal(press("p"), false, "the list has no active PR stack");
+  assert.equal(press("p", control), false, "the list has no active PR stack");
   page.shell.address = new URL("/view/README.md", "http://x");
-  assert.equal(press("n"), false, "another preview does not reuse an old PR capability");
+  assert.equal(press("n", control), false, "another preview does not reuse an old PR capability");
   page.shell.address = new URL("/pull/7/checks", "http://x");
   const help = registry
     .snapshot("help", { includeInactive: true })
@@ -516,21 +543,81 @@ async function stackKeysStory() {
   }));
   assert.deepEqual(
     Array.from(copy, (entry) => entry.keys),
-    ["N", "P"],
+    ["Control N", "Control P"],
   );
-  const visible = registry.present("pulls.stack.base").bindings.visible;
-  assert.deepEqual(Array.from(visible), ["P"]);
+  // A Mac writes the chord ⌃P.
+  const presented = registry.present("pulls.stack.base").bindings;
+  const written = {
+    visible: Array.from(presented.visible),
+    aria: presented.ariaKeyshortcuts,
+  };
+  assert.deepEqual(written, { visible: ["⌃P"], aria: "Control+P" });
   host.dispose();
-  assert.equal(press("p"), false, "disposed pages cannot navigate even before registry cleanup");
+  assert.equal(
+    press("p", control),
+    false,
+    "disposed pages cannot navigate even before registry cleanup",
+  );
   rowScope();
   for (const remove of unregister) {
     remove();
   }
   assert.equal(registry.present("pulls.stack.base"), null);
   registry.dispose();
+
+  // The same page on each platform. On a Mac the chords are bound, listed, and walk, and a
+  // held one is consumed. Elsewhere Control is the browser's command key, Ctrl+N a new
+  // window and Ctrl+P Print, so the chords are not bound: Help and the Shift strip list
+  // neither, neither walks the stack, and the browser gets both, held or not, uncancelled.
+  // The stack menu walks the stack there.
+  const platforms = {};
+  for (const [platform, navigator] of [
+    ["macOS", { platform: "MacIntel" }],
+    ["Windows", { platform: "Win32" }],
+    ["Linux", { platform: "Linux x86_64" }],
+    [
+      "Windows, by its client hints",
+      { platform: "MacIntel", userAgentData: { platform: "Windows" } },
+    ],
+    ["no navigator, as in a browserless session", undefined],
+  ]) {
+    context.navigator = navigator;
+    const other = nav.createPullsNav(page.deps);
+    other.start();
+    await settle();
+    page.take();
+    const otherRegistry = shortcuts.create({ document });
+    const release = nav.registerKeys(other, otherRegistry);
+    const listed = (surface) =>
+      otherRegistry
+        .snapshot(surface, { includeInactive: true })
+        .some((group) => group.id === "pull-stack");
+    const before = moves.length;
+    platforms[platform] = {
+      bound: ["pulls.stack.top", "pulls.stack.base"].filter((id) => otherRegistry.present(id)),
+      help: listed("help"),
+      strip: listed("reveal"),
+      cancelled: [
+        press("n", control),
+        press("p", control),
+        press("p", { ...control, repeat: true }),
+      ],
+      walked: moves.slice(before),
+    };
+    for (const remove of release) {
+      remove();
+    }
+    otherRegistry.dispose();
+    other.dispose();
+  }
+  delete context.navigator;
   return {
     directions: moves.slice(0, 2),
     shiftedDirections: moves.slice(2, 4),
+    plainLettersWalkNothing: plainLetters,
+    otherChordsWalkNothing: otherChords,
+    textFieldsKeepTheChords: textFields,
+    repeatConsumedWithoutWalking: heldRepeat,
     endpointConsumed: true,
     plainJRemainsRowNavigation: plainJ,
     shiftedRowKeysMoveTheRow: { handled: shiftedRowKeys, did: shiftedRowMoves },
@@ -538,6 +625,7 @@ async function stackKeysStory() {
     guards: [
       "repeat",
       "input",
+      "textarea",
       "contenteditable",
       "Help",
       "modal",
@@ -549,6 +637,7 @@ async function stackKeysStory() {
       "disposed",
     ],
     help: copy,
+    platforms,
     cleanup: true,
   };
 }
@@ -919,13 +1008,24 @@ function twoTreesPage() {
     });
   const pulls = [3900, 3899, 3898].map(pullRow);
   const copyRef = make("button", { "aria-label": "Copy ref main" });
-  const pullsTab = make("div", { id: "tab-pulls", "data-tab-content": "pulls" }, [
-    make(
-      "ul",
-      { class: "github-pulls-list", role: "tree" },
-      pulls.map((row, index) => make("li", { role: "none" }, index === 0 ? [row, copyRef] : [row])),
-    ),
-  ]);
+  const pullsList = make(
+    "ul",
+    { class: "github-pulls-list", role: "tree" },
+    pulls.map((row, index) => make("li", { role: "none" }, index === 0 ? [row, copyRef] : [row])),
+  );
+  const pullsTab = make("div", { id: "tab-pulls", "data-tab-content": "pulls" }, [pullsList]);
+  // A stack's row, as the panel paints one while the list is grouped by stack: a tree row
+  // that is not a link, carrying its stack's number. In the list only for the Space story.
+  const stackRow = make("div", {
+    class: "github-pulls-row github-pulls-stack-row",
+    role: "treeitem",
+    "aria-level": "1",
+    "aria-expanded": "true",
+    tabindex: "-1",
+    "data-stack": "286",
+    "data-tree-id": "Stack #286",
+  });
+  const stackItem = make("li", { role: "none" }, [stackRow]);
   document.body.append(
     make("div", { id: "tree-pane" }, [make("div", { id: "tree-content" }, [filesTab, pullsTab])]),
     make("div", { id: "preview-pane" }),
@@ -1032,6 +1132,16 @@ function twoTreesPage() {
               return true;
             },
             collapse() {
+              return true;
+            },
+            toggleStack(number) {
+              const row = container
+                .querySelectorAll(".github-pulls-stack-row")
+                .find((item) => Number(item.dataset.stack) === number);
+              assert.ok(row, "Space identifies the focused stack's row");
+              const open = row.getAttribute("aria-expanded") !== "true";
+              row.setAttribute("aria-expanded", String(open));
+              log.push(`${open ? "opened" : "closed"} Stack #${number}`);
               return true;
             },
             toggleFiles(number) {
@@ -1144,6 +1254,16 @@ function twoTreesPage() {
     pulls,
     changedFiles,
     copyRef,
+    stackRow,
+    /** Put a stack's row in the list, or take it out. @param {boolean} shown */
+    showStack(shown) {
+      if (shown) {
+        pullsList.append(stackItem);
+      } else {
+        pullsList.children.splice(pullsList.children.indexOf(stackItem), 1);
+        stackItem.parentElement = null;
+      }
+    },
     shell,
     take: () => log.splice(0),
     /** A key pressed where focus is, and its release. */
@@ -1209,6 +1329,29 @@ async function twoTreesStory() {
     assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the PR");
   }
   assert.equal(nextPull.getAttribute("aria-expanded"), null, "Space ignores the new tab stop");
+  // Grouped by stack, Space on a stack's row opens and closes the stack, by its number, and
+  // a held Space does nothing more.
+  page.showStack(true);
+  page.stackRow.focus();
+  story["Space on a stack's row closes the stack"] = page.press(" ");
+  story["holding Space on it leaves it closed"] = page.press(" ", { repeat: true });
+  story["Space again opens it"] = page.press(" ");
+  assert.equal(page.stackRow.getAttribute("aria-expanded"), "true", "Space opens the stack again");
+  assert.deepEqual(
+    [
+      story["Space on a stack's row closes the stack"],
+      story["holding Space on it leaves it closed"],
+      story["Space again opens it"],
+    ].map((action) => [action.handled, action.did.join()]),
+    [
+      [true, "closed Stack #286"],
+      [true, ""],
+      [true, "opened Stack #286"],
+    ],
+    "Space on a stack's row is the stack's, not a pull request's",
+  );
+  page.showStack(false);
+  firstPull.focus();
   page.copyRef.focus();
   const copySpace = page.press(" ");
   assert.equal(copySpace.handled, false, "Space on a copy button retains its native behavior");

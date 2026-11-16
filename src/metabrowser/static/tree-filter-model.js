@@ -13,6 +13,7 @@
    * @property {string[] | null} types
    * @property {string} size
    * @property {boolean} showIgnored
+   * @property {string} [group] Group by: "none", "age", or "type"
    */
 
   /**
@@ -54,8 +55,9 @@
   /**
    * @typedef {object} RecentFilterCursor
    * @property {string} recentRequestKey
-   * @property {"recent" | "tree"} source
+   * @property {"recent" | "tree" | "grouped"} source
    * @property {string} treeRequestKey
+   * @property {string} groupedRequestKey
    * @property {string} windowKey
    */
 
@@ -69,7 +71,7 @@
 
   /**
    * @typedef {object} RecentFilterTransition
-   * @property {"apply" | "load-recent" | "load-tree" | "refetch-recent"} action
+   * @property {"apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent"} action
    * @property {RecentFilterCursor} current
    */
 
@@ -204,6 +206,325 @@
     return params.length > 0 ? `/api/tree?${params.join("&")}` : "/api/tree";
   }
 
+  // ── Group by ──────────────────────────────────────────────────
+  //
+  // Grouping splits the Files tree into groups, each a full tree of its members after the
+  // filter. The server decides which groups hold anything, their order, and their counts
+  // (`/api/tree?group_by=`, metabrowser/tree_groups.py); these functions say which
+  // requests the browser makes for them and turn the answer into sections to paint.
+
+  const GROUP_BY_VALUES = Object.freeze(["none", "age", "type"]);
+
+  /**
+   * @param {FilterSnapshot | null} state
+   * @returns {string} "none", "age", or "type"
+   */
+  function groupBy(state) {
+    const value = state?.group;
+    return value && GROUP_BY_VALUES.includes(value) ? value : "none";
+  }
+
+  /**
+   * The filters set behind the Files drawer's chevron, which its badge counts: Modified
+   * within, File type, and Minimum file size. Show ignored sits on the row beside Group
+   * by and shows its own state, so the badge leaves it out; Clear, which resets every
+   * filter, still counts it (`filterState.activeCount`).
+   *
+   * @param {FilterSnapshot | null} state
+   * @returns {number}
+   */
+  function drawerFilterCount(state) {
+    if (!state) {
+      return 0;
+    }
+    return Number(state.recency !== "all") + Number(!!state.types) + Number(state.size !== "all");
+  }
+
+  /**
+   * A grouped request's filter parameters: the tree's, and the recency window, which
+   * the ungrouped tree leaves to /api/recent but a group's tree narrows by itself.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @returns {string[]}
+   */
+  function groupedRequestParams(state, sizeFloors) {
+    const params = requestParams(state, sizeFloors);
+    if (state?.recency && state.recency !== "all") {
+      params.push(`recency=${encodeURIComponent(state.recency)}`);
+    }
+    return params;
+  }
+
+  /**
+   * The identity of a grouped view: the grouping and the filter it is cut under.
+   * Empty when nothing is grouped.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   */
+  function groupedRequestKey(state, sizeFloors) {
+    const by = groupBy(state);
+    return by === "none" ? "" : groupsUrl(state, sizeFloors, 0);
+  }
+
+  /**
+   * The request for the groups themselves: which hold anything, in order, with their
+   * counts and their trees to *depth*.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @param {number} depth
+   */
+  function groupsUrl(state, sizeFloors, depth) {
+    const params = [
+      `group_by=${encodeURIComponent(groupBy(state))}`,
+      ...groupedRequestParams(state, sizeFloors),
+      `depth=${depth}`,
+    ];
+    return `/api/tree?${params.join("&")}`;
+  }
+
+  /**
+   * One group's tree under *path*: how a folder inside a group opens.
+   *
+   * @param {string} path
+   * @param {string} groupKey `<by>:<id>`, as a section carries it
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @param {string[]} [extraParams]
+   */
+  function groupTreeUrl(path, groupKey, state, sizeFloors, extraParams) {
+    const params = [
+      `group=${encodeURIComponent(groupKey)}`,
+      ...groupedRequestParams(state, sizeFloors),
+      ...(extraParams || []),
+    ];
+    if (path) {
+      params.unshift(`path=${encodeURIComponent(path)}`);
+    }
+    return `/api/tree?${params.join("&")}`;
+  }
+
+  /**
+   * The age group a file of *ageSeconds* falls in: the first window, shortest first, it is
+   * inside, else "older" (metabrowser/tree_groups.py draws the same bands).
+   *
+   * @param {number} ageSeconds
+   * @param {Record<string, number | null>} windows the recency windows, by key
+   * @returns {string}
+   */
+  function ageGroupFor(ageSeconds, windows) {
+    const bounded = Object.entries(windows)
+      .filter((entry) => typeof entry[1] === "number" && entry[1] > 0)
+      .sort((left, right) => Number(left[1]) - Number(right[1]));
+    const inside = bounded.find((entry) => ageSeconds <= Number(entry[1]));
+    return inside ? inside[0] : "older";
+  }
+
+  /**
+   * How many rows each section may open by itself on first paint: the viewport's budget,
+   * which the ungrouped tree spends alone, split among the sections, at least one each,
+   * so together they fill about one screen.
+   *
+   * @param {number} budget
+   * @param {number} sectionCount
+   */
+  function sectionRowBudget(budget, sectionCount) {
+    return Math.max(1, Math.floor(budget / Math.max(1, sectionCount)));
+  }
+
+  /**
+   * @typedef {object} RevealEntry
+   * @property {string} type "dir", "file", or "symlink"
+   * @property {string} name
+   * @property {string} [ext]
+   * @property {number} [mtime] seconds
+   */
+
+  /**
+   * The section a row most likely stands in, for revealing it without asking the server:
+   * a file's type group, or the band its known mtime falls in. A folder stands in every
+   * section that holds its files, and an entry with nothing to place it by has no guess,
+   * so both give null.
+   *
+   * @param {string} by "age" or "type"
+   * @param {RevealEntry | null} entry
+   * @param {number} nowSec
+   * @param {Record<string, number | null>} windows
+   * @param {(name: string, ext: string) => string | null | undefined} groupForFile
+   * @returns {string | null}
+   */
+  function likelySectionKey(by, entry, nowSec, windows, groupForFile) {
+    if (!entry || entry.type === "dir") {
+      return null;
+    }
+    if (by === "type") {
+      if (entry.type === "symlink") {
+        return "type:other";
+      }
+      const id = groupForFile(entry.name, entry.ext || "");
+      return id ? `type:${id}` : null;
+    }
+    if (by === "age" && typeof entry.mtime === "number" && entry.mtime > 0) {
+      return `age:${ageGroupFor(nowSec - entry.mtime, windows)}`;
+    }
+    return null;
+  }
+
+  /**
+   * The order to look for a row in: the likely section first, then every other one, so a
+   * guess that misses (a file that crossed a band's edge since the answer) still finds it.
+   *
+   * @param {string[]} sectionKeys in display order
+   * @param {string | null} likelyKey
+   * @returns {string[]}
+   */
+  function revealSectionOrder(sectionKeys, likelyKey) {
+    if (!likelyKey || !sectionKeys.includes(likelyKey)) {
+      return sectionKeys.slice();
+    }
+    return [likelyKey, ...sectionKeys.filter((key) => key !== likelyKey)];
+  }
+
+  /**
+   * The reopen plan for a refreshed section: the reader's open folders put back into the
+   * new answer, from the answer itself or from cached subtrees, so they paint open in the
+   * same frame. `expanded` is what paints open, and `fetch` the open folders the answer
+   * reaches whose children neither it nor the cache holds: the shell fetches those before it
+   * paints and plans again, a level at a time. An open folder the answer no longer reaches,
+   * gone from the group or under one of these, is in neither list.
+   *
+   * @param {Array<Record<string, any>>} nodes the section's answer
+   * @param {string[]} opened paths open before the refresh
+   * @param {(path: string) => Array<Record<string, any>> | null | undefined} cached
+   * @returns {{tree: Array<Record<string, any>>, expanded: string[], fetch: string[]}}
+   */
+  function graftOpenedFolders(nodes, opened, cached) {
+    const wanted = new Set(opened);
+    /** @type {string[]} */
+    const expanded = [];
+    /** @type {string[]} */
+    const fetch = [];
+    /** @param {Array<Record<string, any>>} list @returns {Array<Record<string, any>>} */
+    const visit = (list) =>
+      list.map((node) => {
+        if (node.type !== "dir" || !wanted.has(node.path)) {
+          return node;
+        }
+        const children = Array.isArray(node.children) ? node.children : cached(node.path);
+        if (!Array.isArray(children)) {
+          fetch.push(node.path);
+          return node;
+        }
+        expanded.push(node.path);
+        return { ...node, children: visit(children) };
+      });
+    return { tree: visit(nodes), expanded, fetch };
+  }
+
+  /**
+   * @typedef {object} GroupsPrefetchDeps
+   * @property {() => number} now
+   * @property {number} ttlMs how long a fetched-ahead answer stays good
+   * @property {(url: string) => {answer: Promise<unknown>, abort: () => void}} start
+   */
+
+  /**
+   * The Group by prefetch: the groupings the menu offers are asked for when it opens, and a
+   * choice takes its answer. An answer younger than `ttlMs` is kept for the same request
+   * rather than asked for again, a request no longer offered is aborted, an answer is taken
+   * once, and a change to the files clears them all.
+   *
+   * @param {GroupsPrefetchDeps} deps
+   */
+  function createGroupsPrefetch(deps) {
+    /** @type {Map<string, {at: number, answer: Promise<unknown>, abort: () => void}>} */
+    const entries = new Map();
+    /** @param {{at: number}} entry */
+    const fresh = (entry) => deps.now() - entry.at < deps.ttlMs;
+    return Object.freeze({
+      /** @param {string[]} urls */
+      prefetch(urls) {
+        for (const [url, entry] of entries) {
+          if (!urls.includes(url) || !fresh(entry)) {
+            entry.abort();
+            entries.delete(url);
+          }
+        }
+        for (const url of urls) {
+          if (!entries.has(url)) {
+            const started = deps.start(url);
+            entries.set(url, { at: deps.now(), answer: started.answer, abort: started.abort });
+          }
+        }
+      },
+      /** @param {string} url @returns {Promise<unknown> | null} */
+      take(url) {
+        const entry = entries.get(url);
+        entries.delete(url);
+        if (!entry) {
+          return null;
+        }
+        if (!fresh(entry)) {
+          entry.abort();
+          return null;
+        }
+        return entry.answer;
+      },
+      clear() {
+        for (const entry of entries.values()) {
+          entry.abort();
+        }
+        entries.clear();
+      },
+      size: () => entries.size,
+    });
+  }
+
+  /**
+   * @typedef {object} TreeSection
+   * @property {string} key `<by>:<id>`, the group a folder inside it opens under
+   * @property {string} id
+   * @property {string} label
+   * @property {number | null} files
+   * @property {number | null} size
+   * @property {Array<Record<string, unknown>>} tree
+   */
+
+  /**
+   * The sections a grouped answer paints, in the order the server gave: one per group
+   * that holds anything. A malformed answer is refused rather than painted partly.
+   *
+   * @param {unknown} payload
+   * @returns {TreeSection[]}
+   */
+  function groupSections(payload) {
+    const answer = /** @type {{group_by?: unknown, groups?: unknown} | null} */ (payload);
+    const by = answer?.group_by;
+    if (typeof by !== "string" || !GROUP_BY_VALUES.includes(by) || by === "none") {
+      throw new Error("a grouped tree answer names no grouping");
+    }
+    if (!Array.isArray(answer?.groups)) {
+      throw new Error("a grouped tree answer has no groups");
+    }
+    return answer.groups.map((raw) => {
+      const group = /** @type {Record<string, unknown>} */ (raw);
+      if (typeof group.id !== "string" || typeof group.label !== "string") {
+        throw new Error("a group has no id or label");
+      }
+      return {
+        key: `${by}:${group.id}`,
+        id: group.id,
+        label: group.label,
+        // A source that could not count a group says so with null (a truncated Git index).
+        files: typeof group.files === "number" ? group.files : null,
+        size: typeof group.size === "number" ? group.size : null,
+        tree: Array.isArray(group.tree) ? group.tree : [],
+      };
+    });
+  }
+
   /**
    * The exact Recent request the browser makes. Filters precede the provider's
    * ranking and cap, so a narrow selection cannot spend its page on nonmatches.
@@ -246,7 +567,10 @@
     const windowKey = state?.recency || "all";
     return {
       recentRequestKey: recentRequestKey(windowKey, limit, state, sizeFloors),
-      source: windowKey === "all" ? "tree" : "recent",
+      // Grouping takes the tree source whatever the window: each group is a filtered tree,
+      // which the recency window narrows like any other filter (groupedRequestParams).
+      source: groupBy(state) !== "none" ? "grouped" : windowKey === "all" ? "tree" : "recent",
+      groupedRequestKey: groupedRequestKey(state, sizeFloors),
       treeRequestKey: requestKey(state, sizeFloors),
       windowKey,
     };
@@ -262,6 +586,12 @@
    * @returns {RecentFilterTransition}
    */
   function recentFilterTransition(previous, current) {
+    if (current.source === "grouped") {
+      return previous?.source !== "grouped" ||
+        previous.groupedRequestKey !== current.groupedRequestKey
+        ? { action: "load-groups", current }
+        : { action: "apply", current };
+    }
     if (current.source === "recent") {
       if (previous?.source !== "recent" || previous.windowKey !== current.windowKey) {
         return { action: "load-recent", current };
@@ -1398,6 +1728,20 @@
   }
 
   window.MetabrowserTreeFilterModel = Object.freeze({
+    GROUP_BY_VALUES,
+    ageGroupFor,
+    createGroupsPrefetch,
+    graftOpenedFolders,
+    likelySectionKey,
+    revealSectionOrder,
+    sectionRowBudget,
+    drawerFilterCount,
+    groupBy,
+    groupSections,
+    groupTreeUrl,
+    groupedRequestKey,
+    groupedRequestParams,
+    groupsUrl,
     applyRecentChangeBatch,
     applyRecentCatalogChange,
     beginRecentRequest,

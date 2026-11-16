@@ -100,7 +100,7 @@ def test_tree_depth_query_is_always_bounded() -> None:
 
 
 def test_tree_cold_start_uses_bounded_provider_queries() -> None:
-    source = inspect.getsource(proc_browser._read_tree_from_provider)
+    source = inspect.getsource(proc_browser._tree_payload_from_provider)
     assert "EntryQuery(" in source
     assert "PriorityRequest(" in source
     assert "runtime.config.budget.max_files" in source

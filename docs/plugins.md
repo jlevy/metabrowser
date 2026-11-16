@@ -246,7 +246,7 @@ rendered view, `s` for a source view, and otherwise a letter of the label, as
 Write it in either case: it is stored and served lowercase, as `views[].key` in the
 `/api/file` envelope, and compared without case.
 The manifest loader refuses a key that is not one ASCII letter, or that the shell
-reserves: `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`, in every kind.
+reserves: `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`, in every kind.
 A key belongs to one view of a kind.
 When two views of one kind declare the same key, as two plugins that add views to one
 kind can, the first view in tab order keeps it, the later view is served without a key,
@@ -527,8 +527,10 @@ Useful helpers include:
   `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
   `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
   `groups`, `families`, and `kinds` expose their immutable descriptors.
-  `classify(name, ext)` returns registry identities and evidence for one file.
-  `matchExtension(ext)` returns the matching family and canonical suffix,
+  `displayGroups` holds the same groups in the order the app lists them for a reader,
+  Documentation first; a view that lists groups uses it, and `groups` keeps the
+  registry’s order. `classify(name, ext)` returns registry identities and evidence for
+  one file. `matchExtension(ext)` returns the matching family and canonical suffix,
   `canonicalExtension(ext)` preserves unknown extensions, `groupForFile(name, ext)`
   includes whole-filename evidence, and `distributionKeyForExtension(ext)` returns the
   shared family or raw palette key.
@@ -554,6 +556,25 @@ A view that draws tabs of its own uses the host’s primitive, `.tab-btn` in a `
 and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet may
 position them but does not restyle them; see
 [The Tab Bar](design-system.md#the-tab-bar).
+
+A menu a view draws on the host’s `.menu` surface heads each group of its rows with the
+host’s pattern: a `.menu-group` with `role="group"` and `aria-labelledby` naming its
+`.group-heading`, which draws its own divider and starts on the menu’s row inset.
+A menu whose rows are all one group is named from that heading instead, through the
+menu’s own `aria-labelledby`. `filterControls.bind` fits a dropdown to its rows and the
+window when its trigger opens it and when the window resizes; a view that renders one
+open another way calls `filterControls.fitOpenMenus(root)` after rendering.
+See [Groups in a Menu](design-system.md#groups-in-a-menu) and
+[Menu Height](design-system.md#menu-height).
+
+A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
+gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row
+between its controls when the pane is too narrow for one line and spaces its lines by
+the toolbar’s tokens; a control that ends the row takes the line’s end with
+`margin-inline-start: auto`. Bound there, `filterControls.bind` keeps each joined group
+fitted to its line: one the line cannot hold takes the cluster layout until it can, and
+`filterControls.fitJoinedGroups(root)` fits them at once.
+See [Navigation Toolbars Wrap](design-system.md#navigation-toolbars-wrap).
 
 A view that shows a message about the content, such as a description or a comment, plain
 or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
@@ -626,6 +647,13 @@ path.
   navigation target and forwards an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
+- `loadChangedFilesTree()` loads the shell’s tree of a change set’s files once, on
+  demand, and resolves with it: folders built from paths with their line counts rolled
+  up, the visible rows with a chain of single folders as one row, which folders are
+  open, a change set’s header text, and `displayPath`, the server’s display rule for a
+  path whose list carries no display of its own.
+  A diff’s Diff summary and the Pulls tab’s changed files both draw with it;
+  `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target.
@@ -778,8 +806,8 @@ The handle, lifetime, and liveness rules below apply to it as to a letter.
 - A letter the shell reserves is refused without an error, so a view keeps working if
   the shell reserves another letter later.
   The reserved letters are the ones manifest view keys may not take (see
-  [Views](#views)): `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. The digits `1`
-  to `9` are reserved too, and only `numbered: true` reaches them.
+  [Views](#views)): `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`. The digits `1` to `9`
+  are reserved too, and only `numbered: true` reaches them.
   A refused control has no key, and the browser console shows one warning for its id.
 - A letter that two shown controls hold is settled when it is pressed: a shell key wins
   over a plugin key, and between plugins the one attached earlier wins.

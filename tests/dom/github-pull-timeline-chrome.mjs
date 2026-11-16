@@ -1,0 +1,751 @@
+// A pull request's Conversation timeline, laid out and painted by a real engine: the
+// production page module and its stylesheets, mounted on a recorded record in headless
+// Chrome, with a timeline projection that puts commits among its comments and reviews.
+//
+//   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
+//     KPRESS_STATIC=/dir/with/kpress/css/and/fonts KPRESS_SHEETS='["css/…", …]' \
+//     node tests/dom/github-pull-timeline-chrome.mjs [--shots DIR]
+//
+// tests/test_github_pull_timeline_chrome.py copies KPress's tokens, faces, and document
+// stylesheets out of the installed package, owns the profile, and runs this in a process
+// group of its own. `--shots DIR` also writes a screenshot of each layout, for review.
+//
+// The record is pull request 7 of tests/fixtures/github-pull-page-responses.json, with its
+// recorded Markdown answers. The projection is this session's: two commits in a run after
+// the description, a review with no text, the comment, a commit, and the approving review.
+// It is laid out both ways the page places commits (github-pull-timeline-session.js holds
+// which): answered after the conversation painted, its commits go after everything, past
+// the review comments; held at a repaint, they go among the cards in provider order.
+//
+// What it holds (docs/design-system.md, "The Pull Request Page", "Conversation Timeline"):
+// - a commit row is set in the type of a card head: the same size and line, its verb and
+//   age as a comment's, and its hash one step below, as a revision is beside body text;
+// - a commit row's text sits in its row as a card head's sits in its card, with as much
+//   room above it as below, and one gap between two cards or two commits;
+// - a run of commits stands at least as far from the card or section above it, and the
+//   card below it, as one commit's glyphs stand from the next's;
+// - every card head's avatar, or the empty slot of one for an author without one, is on
+//   the line, and every head's name starts where the commits' subjects do;
+// - one line joins every two adjacent events, at one x, from a card's edge or a commit's
+//   node to the next, and is drawn nowhere else: not above the first event, past the last,
+//   or across anything that is not an event. Each commit has a node on the line, at its
+//   first line. The line is read from the boxes Chrome laid out and from the pixels it
+//   painted, so a card that clips it or a box that covers it fails here.
+// The order of events is the browserless session's, and is not changed here.
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import zlib from "node:zlib";
+import { launchChrome } from "./chrome-session.mjs";
+
+const root = path.resolve(import.meta.dirname, "../..");
+const STATIC = path.join(root, "src/metabrowser/static");
+const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
+const FIXTURES = path.join(root, "tests/fixtures/github-pull-page-responses.json");
+const KPRESS = path.resolve(/** @type {string} */ (process.env.KPRESS_STATIC));
+const SHEETS = /** @type {string[]} */ (JSON.parse(process.env.KPRESS_SHEETS ?? "[]"));
+const SHOTS = (() => {
+  const at = process.argv.indexOf("--shots");
+  return at === -1 ? null : path.resolve(process.argv[at + 1]);
+})();
+const failures = [];
+let checks = 0;
+const check = (label, ok, detail = "") => {
+  checks += 1;
+  if (!ok) {
+    failures.push(`${label}${detail ? `: ${detail}` : ""}`);
+  }
+};
+const round = (value) => Math.round(value * 100) / 100;
+
+// The scripts the SDK's helpers need, in the order tests/dom/sdk-sandbox.js loads them.
+const SDK = [
+  "request-error.js",
+  "formatters.js",
+  "inventory-scope.js",
+  "resource-context.js",
+  "view-state.js",
+  "navigation.js",
+  "plugin-sdk.js",
+  "plugin-sdk-views.js",
+];
+const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull timeline</title>
+<link rel="stylesheet" href="/kpress/css/style-tokens.css">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/github/styles.css">
+${SHEETS.map((sheet) => `<link rel="stylesheet" href="/kpress/${sheet}">`).join("\n")}
+<script>
+  window.METABROWSER_SETTINGS = { SYNTAX_HIGHLIGHT_MAX_BYTES: 524288, SYNTAX_LANGUAGE_BY_BASENAME: {}, SYNTAX_LANGUAGE_BY_EXTENSION: {} };
+  window.MetabrowserIcons = { copy: '<svg data-icon="copy"></svg>' };
+</script>
+<script src="/static/inert-html.js"></script>
+${SDK.map((name) => `<script src="/static/${name}"></script>`).join("\n")}
+</head><body><div id="preview-pane" class="preview-pane"></div></body></html>`;
+
+const TYPES = {
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".json": "application/json",
+  ".woff2": "font/woff2",
+};
+function serve() {
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    let file = null;
+    if (url.pathname === "/" || url.pathname.startsWith("/pull/")) {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(PAGE);
+      return;
+    }
+    if (url.pathname === "/fixtures.json") {
+      file = FIXTURES;
+    } else if (url.pathname.startsWith("/static/")) {
+      file = path.join(STATIC, url.pathname.slice(8));
+    } else if (url.pathname.startsWith("/github/")) {
+      file = path.join(GITHUB, url.pathname.slice(8));
+    } else if (url.pathname.startsWith("/kpress/")) {
+      file = path.join(KPRESS, url.pathname.slice(8));
+    }
+    const within = [root, KPRESS].some((dir) => file?.startsWith(dir + path.sep));
+    if (!file || !within || !fs.existsSync(file)) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "text/plain" });
+    fs.createReadStream(file).pipe(response);
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+// In the page: mount pull request 7 on its Conversation, answer its requests, place the
+// commits the way `arrangement` names, and read every event's boxes, type, and pseudo-
+// elements, in page coordinates.
+const MEASURE = `async (arrangement, width, theme) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const mb = window.metabrowser;
+  document.documentElement.setAttribute("data-theme", theme);
+  const envelope = structuredClone(recorded.current.body);
+  envelope.comparison_route = null;
+  envelope.record.comparison = null;
+  envelope.record.unavailable.comparison = "no_store";
+  const record = envelope.record;
+  const [quiet, approved] = record.reviews;
+  const commit = (oid, subject, at) => ({ kind: "commit", oid, subject, committed_at: at });
+  const events = [
+    commit("3c4a8f1b2d6e09a7c5b3f1e8d2a6c4b0e9f7a5d3", "Teach the counter a second step", "2026-09-16T11:02:00Z"),
+    commit(quiet.commit_id, "Count to two in the app", "2026-09-16T11:40:00Z"),
+    { kind: "review", id: String(quiet.id) },
+    { kind: "comment", id: String(record.issue_comments[0].id) },
+    commit(record.pull.head.sha, "Address the review", "2026-09-16T17:35:00Z"),
+    { kind: "review", id: String(approved.id) },
+  ];
+  const markdown = new Map(
+    Object.entries(recorded)
+      .filter(([key, entry]) => key.startsWith("markdown ") && entry.body?.part)
+      .map(([, entry]) => [entry.body.part, entry.body]),
+  );
+  const json = (body) =>
+    new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+  let timelineAsked = 0;
+  window.fetch = async (route) => {
+    const url = new URL(String(route), "http://localhost");
+    if (url.pathname === "/api/plugin/github/pull-timeline") {
+      timelineAsked += 1;
+      return json({ record_revision: envelope.record_revision, state: "complete", events });
+    }
+    if (url.pathname === "/api/plugin/github/pull") {
+      return json(envelope);
+    }
+    if (url.pathname === "/api/plugin/github/pull-markdown") {
+      const answer = markdown.get(url.searchParams.get("part"));
+      if (answer) {
+        return json({ ...answer, record_revision: envelope.record_revision, assets: {} });
+      }
+    }
+    return new Response(null, { status: 304 });
+  };
+  history.replaceState(null, "", "/pull/7");
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const handle = page.mountPullPage(
+    container,
+    { number: 7, tab: "", reader: { initial: { etag: null, body: envelope }, fetchAfterMs: 0 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      loadKpressAssets: async () => {},
+      whenIdle: mb.whenIdle,
+      ensureKindAssets: async () => {},
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      formatAge: () => ({ label: "2mo ago", className: "age-old" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await handle.ready;
+  handle.activate();
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  // The commits took 34 to 40 ms to arrive on a Mac (\`waited\` in each record); the bound
+  // is the shared waitFor's 20 s (chrome-session.mjs), since this session's 48 s bound is
+  // set for a loaded CI runner, on which an inner bound must not fire first.
+  const began = performance.now();
+  const until = async (test, what) => {
+    const deadline = performance.now() + 20000;
+    while (performance.now() < deadline) {
+      if (test()) return;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error("timed out waiting for " + what);
+  };
+  const body = () => container.querySelector(".github-pull-body");
+  const commits = () => body()?.querySelectorAll(":scope > .github-pull-commit").length ?? 0;
+  await until(() => commits() === 3, "the commits");
+  if (arrangement === "held") {
+    // A repaint with the projection held: the Conversation's return from another tab.
+    history.replaceState(null, "", "/pull/7/checks");
+    handle.land({ tab: "checks" });
+    history.replaceState(null, "", "/pull/7");
+    handle.land({ tab: "" });
+    await until(
+      () => body()?.children[1]?.classList.contains("github-pull-commit") && commits() === 3,
+      "the commits among the cards",
+    );
+  }
+  const waited = Math.round(performance.now() - began);
+  // The recorded authors have no avatar URL, so each head draws the avatar's empty slot.
+  // Most authors have one, so every head but the description's gets the image authorLabel
+  // draws in that slot, without a request; the description keeps its slot.
+  const heads = [...body().querySelectorAll(":scope > .github-pull-card > .github-pull-card-head")];
+  for (const head of heads.slice(1)) {
+    const slot = head.querySelector(".github-pull-identity > .github-pull-avatar-slot");
+    if (slot) {
+      const image = document.createElement("img");
+      image.className = "github-pull-avatar";
+      image.alt = "";
+      image.width = 18;
+      image.height = 18;
+      image.src = "data:image/svg+xml," + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#8a8f98"/></svg>',
+      );
+      slot.replaceWith(image);
+    }
+  }
+  await Promise.allSettled([...container.querySelectorAll(".github-pull-avatar")].map((image) => image.decode()));
+  await document.fonts.ready;
+  await frames();
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => {
+    const r = node.getBoundingClientRect();
+    return {
+      top: round(r.top + scrollY),
+      bottom: round(r.bottom + scrollY),
+      left: round(r.left + scrollX),
+      right: round(r.right + scrollX),
+    };
+  };
+  // An element's first line of glyphs, as a range reads it, and how many lines it has.
+  const firstLine = (element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+    const r = rects[0];
+    return r
+      ? {
+          top: round(r.top + scrollY),
+          bottom: round(r.bottom + scrollY),
+          left: round(r.left + scrollX),
+          // Boxes of several sizes share a line: a new line starts past half of one.
+          lines: rects
+            .map((x) => x.top)
+            .sort((one, two) => one - two)
+            .reduce((runs, top) => (top - runs.at(-1) > 8 ? [...runs, top] : runs), [-Infinity])
+            .length - 1,
+        }
+      : null;
+  };
+  const type = (node) => {
+    if (!node) return null;
+    const s = getComputedStyle(node);
+    return { size: s.fontSize, line: s.lineHeight, weight: s.fontWeight, color: s.color, family: s.fontFamily };
+  };
+  // An absolutely positioned pseudo-element, in page coordinates: Chrome resolves its
+  // offsets and size to the used values, from its element's padding box.
+  const pseudo = (node, which) => {
+    const s = getComputedStyle(node, which);
+    if (s.content === "none" || s.content === "normal" || s.display === "none" || s.position !== "absolute") {
+      return null;
+    }
+    const own = getComputedStyle(node);
+    const r = node.getBoundingClientRect();
+    return {
+      left: round(r.left + scrollX + parseFloat(own.borderLeftWidth) + parseFloat(s.left)),
+      top: round(r.top + scrollY + parseFloat(own.borderTopWidth) + parseFloat(s.top)),
+      width: round(parseFloat(s.width)),
+      height: round(parseFloat(s.height)),
+      radius: s.borderTopLeftRadius,
+      color: s.backgroundColor,
+    };
+  };
+  const probe = document.createElement("span");
+  probe.style.fontSize = "var(--nav-font-size)";
+  container.append(probe);
+  const navSize = getComputedStyle(probe).fontSize;
+  probe.remove();
+  const items = [...body().children].map((node) => {
+    const kind = node.classList.contains("github-pull-commit")
+      ? "commit"
+      : node.classList.contains("github-pull-card")
+        ? "card"
+        : "other";
+    const item = {
+      kind,
+      label: (node.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 32),
+      box: box(node),
+      before: pseudo(node, "::before"),
+      after: pseudo(node, "::after"),
+    };
+    if (kind === "commit") {
+      const subject = node.querySelector(".github-pull-commit-subject");
+      const when = [...node.children].find((child) => /^committed /.test(child.textContent || ""));
+      item.text = firstLine(subject);
+      item.lines = firstLine(node)?.lines ?? 0;
+      // Where the row's last line of glyphs ends, however it wraps.
+      const whole = document.createRange();
+      whole.selectNodeContents(node);
+      item.textEnd = round(
+        Math.max(...[...whole.getClientRects()].filter((r) => r.width > 0).map((r) => r.bottom)) + scrollY,
+      );
+      item.type = {
+        row: type(node),
+        subject: type(subject),
+        when: type(when),
+        age: type(node.querySelector(".github-pull-age")),
+        sha: type(node.querySelector(".git-commit-sha")),
+      };
+    } else if (kind === "card") {
+      const head = node.querySelector(":scope > .github-pull-card-head");
+      const author = head?.querySelector(".github-pull-author");
+      const avatar = head?.querySelector(".github-pull-avatar, .github-pull-avatar-slot");
+      item.text = author ? firstLine(author) : null;
+      item.avatar = avatar ? box(avatar) : null;
+      item.slot = avatar?.classList.contains("github-pull-avatar-slot") ?? false;
+      item.headOnly = node.children.length === 1;
+      item.type = { head: type(head), age: type(head?.querySelector(".github-pull-age")) };
+    }
+    return item;
+  });
+  const gap = parseFloat(getComputedStyle(body()).rowGap);
+  window.__dispose = () => handle.dispose();
+  return {
+    width,
+    theme,
+    arrangement,
+    timelineAsked,
+    waited,
+    gap,
+    navSize,
+    items,
+    // To the conversation's end: the page past it is the window's.
+    height: Math.ceil(body().getBoundingClientRect().bottom + scrollY),
+  };
+}`;
+
+/** A PNG Chrome wrote: 8-bit RGB or RGBA, not interlaced. */
+function decodePng(buffer) {
+  let at = 8;
+  let width = 0;
+  let height = 0;
+  let channels = 0;
+  const data = [];
+  while (at < buffer.length) {
+    const length = buffer.readUInt32BE(at);
+    const kind = buffer.toString("ascii", at + 4, at + 8);
+    const chunk = buffer.subarray(at + 8, at + 8 + length);
+    if (kind === "IHDR") {
+      width = chunk.readUInt32BE(0);
+      height = chunk.readUInt32BE(4);
+      channels = { 2: 3, 6: 4 }[chunk[9]] ?? 0;
+      if (chunk[8] !== 8 || channels === 0 || chunk[12] !== 0) {
+        throw new Error("a PNG this reader does not read");
+      }
+    } else if (kind === "IDAT") {
+      data.push(chunk);
+    } else if (kind === "IEND") {
+      break;
+    }
+    at += 12 + length;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(data));
+  const stride = width * channels;
+  const pixels = Buffer.alloc(height * stride);
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)];
+    for (let x = 0; x < stride; x += 1) {
+      const a = x >= channels ? pixels[y * stride + x - channels] : 0;
+      const b = y > 0 ? pixels[(y - 1) * stride + x] : 0;
+      const c = x >= channels && y > 0 ? pixels[(y - 1) * stride + x - channels] : 0;
+      let value = raw[y * (stride + 1) + 1 + x];
+      if (filter === 1) {
+        value += a;
+      } else if (filter === 2) {
+        value += b;
+      } else if (filter === 3) {
+        value += (a + b) >> 1;
+      } else if (filter === 4) {
+        const p = a + b - c;
+        const pa = Math.abs(p - a);
+        const pb = Math.abs(p - b);
+        const pc = Math.abs(p - c);
+        value += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+      }
+      pixels[y * stride + x] = value & 255;
+    }
+  }
+  return {
+    pixel(x, y) {
+      const start = Math.floor(y) * stride + Math.floor(x) * channels;
+      return [pixels[start], pixels[start + 1], pixels[start + 2]];
+    },
+  };
+}
+const distance = (one, two) =>
+  one.reduce((sum, value, index) => sum + Math.abs(value - two[index]), 0);
+
+const centerX = (part) => part.left + part.width / 2;
+const centerY = (part) => part.top + part.height / 2;
+const isEvent = (item) => item !== undefined && item.kind !== "other";
+// Where the line meets an event: a card at its edge, a commit at its node.
+const attach = (item, side) =>
+  item.kind === "commit" && item.after ? centerY(item.after) : item.box[side];
+// The line's segments: each event's ::before.
+const segments = (items) =>
+  items
+    .filter((item) => isEvent(item) && item.before && item.before.height > 0)
+    .map((item) => ({
+      x: centerX(item.before),
+      width: item.before.width,
+      top: item.before.top,
+      bottom: item.before.top + item.before.height,
+    }));
+// Whether the segments at x cover [from, to], to half a pixel.
+const covered = (parts, x, from, to) => {
+  let reached = from;
+  for (const part of [...parts].sort((one, two) => one.top - two.top)) {
+    if (Math.abs(part.x - x) <= 0.5 && part.top <= reached + 0.5 && part.bottom > reached) {
+      reached = part.bottom;
+    }
+  }
+  return reached >= to - 0.5;
+};
+// How much of [from, to] the segments at x draw.
+const drawnWithin = (parts, x, from, to) =>
+  parts
+    .filter((part) => Math.abs(part.x - x) <= 0.5)
+    .reduce(
+      (sum, part) => sum + Math.max(0, Math.min(part.bottom, to) - Math.max(part.top, from)),
+      0,
+    );
+
+function hold(measured, image) {
+  const { items, gap } = measured;
+  const where = `${measured.arrangement} at ${measured.width} px, ${measured.theme}`;
+  const commits = items.filter((item) => item.kind === "commit");
+  const cards = items.filter((item) => item.kind === "card");
+  // The card head every commit is compared with: the first comment's or review's.
+  const head = cards.find((card, index) => index > 0 && card.text && card.avatar) ?? cards[0];
+  check(
+    `${where}: three commits and four cards`,
+    commits.length === 3 && cards.length === 4,
+    `${commits.length} and ${cards.length}`,
+  );
+
+  // Type: a commit row is set as a card head is.
+  for (const row of commits) {
+    const label = `${where}: commit "${row.label}"`;
+    check(
+      `${label} is set at the card head's size`,
+      row.type.subject.size === head.type.head.size,
+      `${row.type.subject.size} against ${head.type.head.size}`,
+    );
+    check(
+      `${label} has the card head's line`,
+      row.type.row.line === head.type.head.line,
+      `${row.type.row.line} against ${head.type.head.line}`,
+    );
+    check(
+      `${label} says when as a card head does`,
+      row.type.when?.size === head.type.head.size && row.type.when?.color === head.type.head.color,
+      `${row.type.when?.size} ${row.type.when?.color} against ${head.type.head.size} ${head.type.head.color}`,
+    );
+    check(
+      `${label} has a card head's age`,
+      row.type.age?.size === head.type.age?.size,
+      `${row.type.age?.size} against ${head.type.age?.size}`,
+    );
+    check(
+      `${label} sets its hash one step below its text, as a revision`,
+      row.type.sha?.size === measured.navSize,
+      `${row.type.sha?.size} against ${measured.navSize}`,
+    );
+  }
+
+  // Spacing: one gap between two cards and between two commits, and a commit's text where a
+  // card head's is.
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (isEvent(item) && isEvent(next) && item.kind === next.kind) {
+      const between = next.box.top - item.box.bottom;
+      check(
+        `${where}: one gap after "${item.label}"`,
+        Math.abs(between - gap) < 0.5,
+        `${round(between)} px`,
+      );
+    }
+  }
+  // A run of commits stands off what is around it at least as far as one commit's text
+  // stands from the next's: from the edge of a card or section above to the first commit's
+  // glyphs, and from the last commit's glyphs to the card below.
+  const runs = [];
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (item.kind === "commit" && next?.kind === "commit") {
+      runs.push(next.text.top - item.textEnd);
+    }
+  }
+  const pitch = Math.max(...runs);
+  check(`${where}: two commits in a run`, runs.length > 0, JSON.stringify(runs));
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (next === undefined || (item.kind === "commit") === (next.kind === "commit")) {
+      continue;
+    }
+    const space =
+      item.kind === "commit" ? next.box.top - item.textEnd : next.text.top - item.box.bottom;
+    check(
+      `${where}: from "${item.label}" to "${next.label}" is at least the space between two commits`,
+      space + 0.01 >= pitch,
+      `${round(space)} against ${round(pitch)} px`,
+    );
+  }
+  // A card that is only its head, the review with no text: a commit row on one line is that
+  // card's box, with its text as far from each edge. (Above and below differ by the face's
+  // rounding of its half-leading, the same in both.)
+  const bare = cards.find((card) => card.headOnly && card.text);
+  const above = (item) => item.text.top - item.box.top;
+  const below = (item) => item.box.bottom - item.text.bottom;
+  const tall = (item) => item.box.bottom - item.box.top;
+  check(`${where}: a card that is only its head`, bare !== undefined);
+  for (const row of commits) {
+    const label = `${where}: commit "${row.label}"`;
+    check(
+      `${label} has a card head's room above its text`,
+      bare !== undefined && Math.abs(above(row) - above(bare)) < 0.5,
+      `${round(above(row))} against ${bare && round(above(bare))} px`,
+    );
+    if (bare !== undefined && row.lines === 1) {
+      check(
+        `${label} is as tall as a card that is only its head`,
+        Math.abs(tall(row) - tall(bare)) < 0.5,
+        `${round(tall(row))} against ${round(tall(bare))} px`,
+      );
+      check(
+        `${label} has a card head's room below its text`,
+        Math.abs(below(row) - below(bare)) < 0.5,
+        `${round(below(row))} against ${round(below(bare))} px`,
+      );
+    }
+    check(
+      `${label} starts where a name after its avatar does`,
+      Math.abs(row.text.left - head.text.left) < 0.5,
+      `${row.text.left} against ${head.text.left}`,
+    );
+  }
+
+  // The line: at one x, the avatars' center, with a node on it at each commit's first line.
+  const parts = segments(items);
+  const rail = head.avatar ? (head.avatar.left + head.avatar.right) / 2 : Number.NaN;
+  const lineWidth = parts[0]?.width ?? Number.NaN;
+  check(
+    `${where}: the line runs down the avatars' center`,
+    parts.length > 0 && parts.every((part) => Math.abs(part.x - rail) <= 0.5),
+    `${JSON.stringify(parts.map((part) => part.x))} against ${rail}`,
+  );
+  // Every card head, the description's among them with only the avatar's empty slot, has
+  // its avatar or slot on the line and its name where the commits' subjects start.
+  check(
+    `${where}: the head with no avatar keeps the avatar's slot`,
+    cards.filter((card) => card.slot).length === 1 && cards[0].slot,
+    JSON.stringify(cards.map((card) => card.slot)),
+  );
+  for (const card of cards) {
+    const label = `${where}: card "${card.label}"`;
+    const center = card.avatar ? (card.avatar.left + card.avatar.right) / 2 : Number.NaN;
+    check(
+      `${label} has its ${card.slot ? "avatar's slot" : "avatar"} on the line`,
+      Math.abs(center - rail) <= 0.5,
+      `${center} against ${rail}`,
+    );
+    check(
+      `${label}'s name starts where the commits' subjects do`,
+      card.text !== null && commits.every((row) => Math.abs(row.text.left - card.text.left) < 0.5),
+      `${card.text?.left} against ${commits.map((row) => row.text.left)}`,
+    );
+  }
+  for (const row of commits) {
+    const node = row.after;
+    const label = `${where}: commit "${row.label}"`;
+    check(
+      `${label} has a round node on the line`,
+      node !== null && node.radius === "50%" && Math.abs(centerX(node) - rail) <= 0.5,
+      JSON.stringify(node),
+    );
+    if (node !== null) {
+      const middle = (row.text.top + row.text.bottom) / 2;
+      check(
+        `${label}'s node is at its first line`,
+        Math.abs(centerY(node) - middle) <= 0.75,
+        `${centerY(node)} against ${middle}`,
+      );
+      check(
+        `${label}'s node is wider than the line`,
+        node.width >= 3 * lineWidth,
+        `${node.width} px`,
+      );
+    }
+  }
+  // Joined: every two adjacent events. Not joined: across anything else, above the first
+  // event, or past the last.
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (!isEvent(item) || !isEvent(next)) {
+      continue;
+    }
+    const from = attach(item, "bottom");
+    const to = attach(next, "top");
+    check(
+      `${where}: the line joins "${item.label}" to "${next.label}"`,
+      covered(parts, rail, from, to),
+      `${from} to ${to}`,
+    );
+  }
+  for (const [index, item] of items.entries()) {
+    if (!isEvent(item)) {
+      continue;
+    }
+    const previous = items[index - 1];
+    const next = items[index + 1];
+    if (!isEvent(previous)) {
+      const from = previous ? previous.box.top : 0;
+      check(
+        `${where}: no line above "${item.label}"`,
+        drawnWithin(parts, rail, from, attach(item, "top")) < 0.5,
+      );
+    }
+    if (!isEvent(next)) {
+      const to = next ? next.box.bottom : measured.height;
+      check(
+        `${where}: no line past "${item.label}"`,
+        drawnWithin(parts, rail, attach(item, "bottom"), to) < 0.5,
+      );
+    }
+  }
+
+  // Paint: in each gap between joined events the line's pixel differs from the page's
+  // beside it, and is the same pixel in every gap; a node differs from both.
+  const x = Number.isFinite(rail) ? Math.floor(rail) : 0;
+  const inks = [];
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (!isEvent(item) || !isEvent(next)) {
+      continue;
+    }
+    const y = (item.box.bottom + next.box.top) / 2;
+    const ink = image.pixel(x, y);
+    const page = image.pixel(x + 9, y);
+    inks.push(ink);
+    check(
+      `${where}: the line is painted between "${item.label}" and "${next.label}"`,
+      distance(ink, page) >= 12,
+      `${ink} against ${page}`,
+    );
+  }
+  check(
+    `${where}: the line is one ink`,
+    inks.every((ink) => distance(ink, inks[0]) <= 3),
+    JSON.stringify(inks),
+  );
+  for (const row of commits) {
+    if (row.after === null) {
+      continue;
+    }
+    const node = image.pixel(x, centerY(row.after));
+    const page = image.pixel(x + 9, row.box.top + 1);
+    check(
+      `${where}: commit "${row.label}"'s node is painted`,
+      distance(node, page) >= 12 && distance(node, inks[0] ?? page) >= 12,
+      `${node} against ${page} and ${inks[0]}`,
+    );
+  }
+}
+
+// Each arrangement in a wide pane, the held one in a narrow one too, and both themes.
+const LAYOUTS = [
+  ["late", 980, "light"],
+  ["held", 980, "light"],
+  ["held", 420, "light"],
+  ["late", 980, "dark"],
+  ["held", 980, "dark"],
+];
+
+const server = await serve();
+const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
+/** @type {Awaited<ReturnType<typeof launchChrome>> | null} */
+let chrome = null;
+try {
+  chrome = await launchChrome(/** @type {string} */ (process.env.CHROME_BIN), {
+    profiles: /** @type {string} */ (process.env.CHROME_PROFILES),
+    width: 1100,
+    height: 1600,
+  });
+  await chrome.send("Page.enable");
+  await chrome.send("Page.navigate", { url: `http://127.0.0.1:${port}/pull/7` });
+  await chrome.waitFor(
+    "document.readyState === 'complete' && !!window.metabrowser && !!window.MetabrowserInertHtml",
+  );
+  for (const [arrangement, width, theme] of LAYOUTS) {
+    const measured = await chrome.evaluate(
+      `(${MEASURE})(${JSON.stringify(arrangement)}, ${width}, ${JSON.stringify(theme)})`,
+    );
+    process.stderr.write(`${JSON.stringify(measured)}\n`);
+    const shot = await chrome.send("Page.captureScreenshot", {
+      format: "png",
+      captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width, height: measured.height, scale: 1 },
+    });
+    const png = Buffer.from(shot.data, "base64");
+    if (SHOTS !== null) {
+      fs.mkdirSync(SHOTS, { recursive: true });
+      fs.writeFileSync(path.join(SHOTS, `${arrangement}-${width}-${theme}.png`), png);
+    }
+    hold(measured, decodePng(png));
+    await chrome.evaluate("window.__dispose()");
+  }
+} finally {
+  await chrome?.close();
+  server.close();
+}
+if (failures.length > 0) {
+  process.stderr.write(`${failures.join("\n")}\n`);
+  process.exit(1);
+}
+process.stdout.write(`pull timeline in Chrome: ${checks} checks passed\n`);

@@ -319,6 +319,23 @@ function snapshotHost(comparison) {
   };
 }
 
+/**
+ * The shared changed-files tree, the shell's `changed-files-tree` bundle, which the Pulls tab
+ * draws a pull request's files with too. A multi-file diff draws its Diff summary on it, and
+ * every diff shows its files' paths by its display rule. It is asked for beside the diff's
+ * own request, so it is in hand when the diff mounts: a cold load is one small local request.
+ * A diff whose tree does not load keeps its totals line and raw paths, and says why in the
+ * console.
+ *
+ * @returns {Promise<MetabrowserChangedFilesTree | null>}
+ */
+function changedFilesTree() {
+  return mb.loadChangedFilesTree().catch((error) => {
+    console.error("metabrowser diff: the Diff summary is unavailable", error);
+    return null;
+  });
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -348,6 +365,9 @@ mb.registerView("diff", "diff", {
     const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
     const markdown = markdownLayer(ctx.comparison);
+    // A commit's view gives the commit's own totals (`showSummary` below) and draws no summary,
+    // but its file bars show paths by the tree's display rule too.
+    const summaryTree = changedFilesTree();
     let payload;
     try {
       payload = revision
@@ -425,6 +445,10 @@ mb.registerView("diff", "diff", {
     }
     const files = /** @type {{files: Record<string, unknown>[]}} */ (result.document.manifest)
       .files;
+    const changedFiles = await summaryTree;
+    if (signal?.aborted) {
+      return null;
+    }
     const rendered =
       markdown !== null &&
       markdownViews !== null &&
@@ -434,6 +458,8 @@ mb.registerView("diff", "diff", {
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
+      changedFiles,
+      ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       viewFile,
       ...(!rendered
         ? {}

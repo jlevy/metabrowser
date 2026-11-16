@@ -1741,8 +1741,27 @@
     return anchor;
   }
 
+  /**
+   * The tree of a change set's files, which the Pulls tab and a diff's Diff summary both
+   * draw: static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. Loaded
+   * the first time a plugin asks, and once; a failed load rejects, and the next call tries
+   * again.
+   *
+   * @returns {Promise<MetabrowserChangedFilesTree>}
+   */
+  function loadChangedFilesTree() {
+    return mb.ensureAsset("changed-files-tree").then(() => {
+      const tree = global.MetabrowserChangedFilesTree;
+      if (tree === undefined) {
+        throw new Error("metabrowser.loadChangedFilesTree: the bundle installed no tree");
+      }
+      return tree;
+    });
+  }
+
   Object.assign(mb, {
     decorateExternalLink,
+    loadChangedFilesTree,
     refChipHtml,
     refChip,
     mergeRefs,

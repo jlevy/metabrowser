@@ -774,7 +774,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "stackMenus": 0,
                 "stackKeys": "none",
                 "strip": "none",
-                "n": "not handled",
+                "control-n": "not handled",
             },
             "released": {
                 "holding": False,
@@ -786,8 +786,10 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "stackMenus": 1,
                 "stackKeys": "pulls.stack.top, pulls.stack.base",
                 "strip": "pulls.stack.top, pulls.stack.base",
-                "n": "opened #8",
-                "p": "opened #6",
+                # Control-N and Control-P walk the stack (mb-lnqj); plain N is free.
+                "n": "not handled",
+                "control-n": "opened #8",
+                "control-p": "opened #6",
             },
         },
     }
