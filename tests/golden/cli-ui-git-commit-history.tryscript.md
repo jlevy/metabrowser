@@ -41,6 +41,15 @@ check changes nothing when it ends.
 The busy state ends when the commit shows, when a failure is shown, or when the reader
 moves on.
 
+A commit’s address reveals its row once the history read holds it
+([Navigation Reveals the Item](../../docs/design-system.md#navigation-reveals-the-item)),
+over a first page of 250 commits with more after them, drawn in the Commits panel’s own
+rows. A commit in that page has its row mounted, selected, and scrolled to.
+A commit past the pages read is shown with no row, and no page is read for it.
+A reader who moves on before the first page arrives, to another commit or by Forward to
+a file, is not scrolled back to it, and the Files tree, which shares the scroller, keeps
+its place.
+
 The panel’s loading session holds paint callbacks and diff assets independently.
 Its initial spinner preserves the connected diff stage, and deferred paint preserves the
 ready commit. An older selection’s paint callback preserves the newer selection’s busy
@@ -421,6 +430,92 @@ $ node tests/dom/git-commit-history-session.js
     "requests": [
       "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     ]
+  },
+  "a commit's address reveals its row": {
+    "a commit in the first page: its row is mounted, selected, and scrolled to": {
+      "url": "/commit/c0000000000000000000000000000000000000c8",
+      "pane": "commit c000000",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/c0000000000000000000000000000000000000c8"
+      ],
+      "mounted": true,
+      "selected": true,
+      "scrolledIntoView": [
+        "c000000"
+      ],
+      "scrollTop": 4191,
+      "historyReads": 1
+    },
+    "a commit past the pages read: shown, with no row, and no page read for it": {
+      "url": "/commit/dddddddddddddddddddddddddddddddddddddddd",
+      "pane": "commit ddddddd",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/dddddddddddddddddddddddddddddddddddddddd"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "Back to a commit's address while the first page loads": {
+      "url": "/commit/c0000000000000000000000000000000000000c8",
+      "pane": "commit c000000",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/c0000000000000000000000000000000000000c8"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "another commit selected before the page arrives: no scroll to the first": {
+      "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pane": "commit bbbbbbb",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "Back to it again, while the first page loads": {
+      "url": "/commit/c0000000000000000000000000000000000000c8",
+      "pane": "commit c000000",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/c0000000000000000000000000000000000000c8"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "Forward to a file before the page arrives: the Files tree is not scrolled": {
+      "url": "/view/README.md",
+      "pane": "file README.md",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": [],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 123,
+      "historyReads": 1
+    }
   },
   "an empty or failed history": {
     "empty": {

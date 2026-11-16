@@ -242,16 +242,27 @@ try {
     },
   };
   const TABS = { bar: ".nav-tab-bar", row: ".nav-tab-bar", tokens: {} };
+  // The tally the stand-in settles at, not the pending shimmer, which has a count span too:
+  // its first commit's age lands with its count. Each case writes its own markup in the
+  // sweep's own page call, so what a sweep measures does not depend on when the summary
+  // lands or whether the panel draws it again.
+  await waitFor(`document.querySelector("#nav-toolbar-git .git-history-summary-first") !== null`);
+  const SUMMARY = `document.querySelector("#nav-toolbar-git .git-history-summary")`;
+  const tallyOf = (html) => `(() => { ${SUMMARY}.innerHTML = ${JSON.stringify(html)}; })()`;
+  const TALLY = tallyOf(await evaluate(`${SUMMARY}.innerHTML`));
   // The spans git-panel.js (renderHistorySummary) writes, with a large, old repository's text.
-  const LONG_TALLY = `(() => {
-    document.querySelector("#nav-toolbar-git .git-history-summary").innerHTML =
-      '<span class="git-history-summary-count"><span class="summary-number">123,456</span> commits</span>' +
+  const LONG_TALLY = tallyOf(
+    '<span class="git-history-summary-count"><span class="summary-number">123,456</span> commits</span>' +
       '<span class="git-history-summary-first"><span>begun</span>' +
-      '<span class="git-history-summary-age age-old">12mo</span><span>ago</span></span>';
-  })()`;
+      '<span class="git-history-summary-age age-old">12mo</span><span>ago</span></span>',
+  );
   const sweep = (spec, before = "undefined") =>
     evaluate(`(${before}, (${SWEEP})(${JSON.stringify({ widths: WIDTHS, ...spec })}))`);
-  const wrapped = {};
+  const wrapped = {
+    tally: await evaluate(
+      `[...${SUMMARY}.querySelectorAll(".git-history-summary-count, .git-history-summary-first > span")].map((span) => span.textContent).join(" ")`,
+    ),
+  };
   for (const set of ["clean", "system"]) {
     await evaluate(
       `document.documentElement.setAttribute("data-app-font", ${JSON.stringify(set)})`,
@@ -259,7 +270,7 @@ try {
     await evaluate("document.fonts.ready.then(() => true)");
     await frames();
     for (const [name, before] of [
-      ["the tally", "undefined"],
+      ["the tally", TALLY],
       ["a long tally", LONG_TALLY],
     ]) {
       const measured = await sweep(COMMITS, before);
@@ -277,6 +288,8 @@ try {
       );
       wrapped[`commits, ${name}, ${set}`] = verdict.oneLineFrom;
     }
+    // The settled tally back in place of the long one.
+    await evaluate(TALLY);
     const tabs = await sweep(TABS);
     // A tab is its own line: its height, as the widest pane draws it.
     const tab = tabs.rows.at(-1).units[0];

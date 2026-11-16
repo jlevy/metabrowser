@@ -1,10 +1,11 @@
 """A GitHub label's color and description, from GitHub's answer to the chip's properties.
 
-The record and a list's rows keep each label's color as six lower-case hex digits, or
-``None`` for anything else (``pull_record.label_color``), and the record alone its
-description, or ``None`` for none (``pull_record.label_description``). The page turns a color
-into the custom properties github.com sets on a label (``labelColorProperties`` in
-``builtin_plugins/github/pull-page.js``), and ``tests/fixtures/github-label-colors.json``
+The record keeps each label's color as six lower-case hex digits, or ``None`` for anything
+else (``pull_record.label_color``), and its description, or ``None`` for none
+(``pull_record.label_description``); a list's row keeps its name alone, since no row draws
+labels. The page turns a color into the custom properties github.com sets on a label
+(``labelColorProperties`` in ``builtin_plugins/github/pull-page.js``), and
+``tests/fixtures/github-label-colors.json``
 holds the properties github.com set on 112 colors of six public repositories' labels, so
 the hue, saturation, and lightness are held to github.com's own, rounding and all. What
 the stylesheet paints from them is checked in Chrome, in
@@ -21,7 +22,6 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github import pull_list_refresh, pulls
-from metabrowser.builtin_plugins.github.pull_list import PullListRow
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRequest,
     label_color,
@@ -135,24 +135,18 @@ def test_a_record_keeps_each_labels_color_and_description() -> None:
     assert [label.model_dump() for label in pull.labels] == _KEPT
 
 
-def test_a_row_keeps_each_labels_color_and_no_description() -> None:
+def test_a_row_keeps_each_labels_name_alone() -> None:
     row, cut = pull_list_refresh._row(generated_item(1) | {"labels": _LABELS})  # pyright: ignore[reportPrivateUsage]
-    assert [label.model_dump() for label in row.labels] == [
-        {"name": label["name"], "color": label["color"]} for label in _KEPT
-    ]
+    assert row.labels == tuple(label["name"] for label in _KEPT)
     # A label without a name is left out, which the row says.
     assert cut
-    # A description is not the row's, so it never cuts one.
-    long = {"name": "long", "color": "ffffff", "description": "\x00" * 1000}
+    # Neither a color nor a description is the row's, so neither cuts it.
+    long = {"name": "long", "color": "#ffffff", "description": "\x00" * 1000}
     row, cut = pull_list_refresh._row(generated_item(1) | {"labels": [long]})  # pyright: ignore[reportPrivateUsage]
-    assert not cut and row.labels[0].model_dump() == {"name": "long", "color": "ffffff"}
+    assert not cut and row.labels == ("long",)
 
 
 def test_a_label_an_earlier_projection_named_alone_reads_without_color_or_description() -> None:
-    row = PullListRow.model_validate(
-        pull_list_refresh._row(generated_item(1))[0].model_dump() | {"labels": ["bug"]}  # pyright: ignore[reportPrivateUsage]
-    )
-    assert [label.model_dump() for label in row.labels] == [{"name": "bug", "color": None}]
     answer = recorded_responses()["pull"] | {"labels": []}
     answer["base"] = answer["base"] | {"sha": "1" * 40}
     answer["head"] = answer["head"] | {"sha": "2" * 40}

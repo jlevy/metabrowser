@@ -182,6 +182,7 @@ const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 // The repository's list of pull requests, whose scan says which records GitHub changed.
 const CATALOG_REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
+const LABELS_REFRESH_ROUTE = "/api/plugin/github/labels-refresh";
 // How the server says, on a 200 and a 304 alike, when the record was last checked and how.
 const VERIFIED_HEADER = "x-metabrowser-verified";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
@@ -389,6 +390,7 @@ const TRUNCATED = Object.freeze({
  *   checkNotes: string[],
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string, headMoved: boolean} | null,
+ *   comparisonComing: boolean,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
@@ -515,7 +517,7 @@ export function labelChip(label) {
  * @param {unknown} entries
  * @returns {Map<string, RepositoryLabel>}
  */
-export function knownLabels(entries) {
+function knownLabels(entries) {
   /** @type {Map<string, RepositoryLabel>} */
   const known = new Map();
   for (const entry of list(entries)) {
@@ -528,6 +530,26 @@ export function knownLabels(entries) {
     }
   }
   return known;
+}
+
+/**
+ * Whether the record or core the envelope shows names a label without a usable color that
+ * `repository_labels` has no entry for, as a record cached before label colors does while
+ * the repository's set lacks it (`mb-varu`).
+ *
+ * @param {PullEnvelope} envelope
+ * @returns {boolean}
+ */
+function labelsMissing(envelope) {
+  const pull = envelope.record !== null ? envelope.record.pull : envelope.core_preview?.pull;
+  const known = knownLabels(envelope.repository_labels);
+  return list(pull?.labels).some((value) => {
+    const label =
+      value !== null && typeof value === "object"
+        ? /** @type {Record<string, unknown>} */ (value)
+        : {};
+    return labelColorProperties(label.color) === null && !known.has(text(label.name));
+  });
 }
 
 /**
@@ -674,7 +696,10 @@ function timeline(record) {
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
-      review: { state, label: state in REVIEW_STATES ? REVIEW_STATES[state] : state.toLowerCase() },
+      review: {
+        state,
+        label: Object.hasOwn(REVIEW_STATES, state) ? REVIEW_STATES[state] : state.toLowerCase(),
+      },
     });
   }
   // A pending review has no time and sorts last; ties keep comments before reviews,
@@ -1188,6 +1213,13 @@ export function rateLimitLifts(envelope) {
  * *listed* is what the repository's list said of this pull request, whose state is shown
  * when the list saw a later update than the record or preview did.
  *
+ * `comparisonComing` is a comparison on its way that the page has none of yet, so the Diff
+ * summary's row waits for it (mb-onr2): a core preview whose selected read prepares the
+ * comparison with the record (`comparison_state: "pending"`), and a record whose comparison
+ * is not in the store and that the page asked the server to prepare, as Conversation's idle
+ * work does (`preparing_comparison`) and Changes does while it fetches it. A core with no
+ * store, or one no read is running for, has none coming until Changes asks.
+ *
  * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
@@ -1215,6 +1247,7 @@ export function describePull(envelope, page) {
     checkNotes: [],
     notes: [],
     comparison: null,
+    comparisonComing: false,
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     changesPending: false,
@@ -1282,6 +1315,7 @@ export function describePull(envelope, page) {
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
       : "Changes are unavailable because the full pull request could not be loaded.";
+    model.comparisonComing = envelope.refreshing && preview.comparison_state === "pending";
     return model;
   }
   if (record === null) {
@@ -1408,6 +1442,10 @@ export function describePull(envelope, page) {
       headMoved: model.headOffer !== null,
     };
   }
+  model.comparisonComing =
+    model.comparison === null &&
+    record.unavailable?.comparison === "no_store" &&
+    (envelope.preparing_comparison === true || (page.tab === "files" && model.changesPending));
   return model;
 }
 
@@ -1728,6 +1766,12 @@ export function createPullController(deps, options) {
   // The last answer said the catalog vouched while its next scan ran: the page reads again
   // in a fast poll, so a change that scan publishes is refreshed then, not a slow poll later.
   let catalogScanning = false;
+  // A label the page shows without its color, which the envelope has no entry for, asks
+  // for the repository's label set once a page (`mb-varu`); the server reads it only when
+  // it is absent or due. Once the set's job started or was joined, the page reads again in
+  // a fast poll, which says from then on whether the job still runs (`labels_pending`).
+  let labelsAsked = false;
+  let labelsComing = false;
   /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
   let askTimer = null;
   /** @type {string | null} */
@@ -2024,6 +2068,7 @@ export function createPullController(deps, options) {
       // The repository's labels are being read, so a chip still drawn without its color
       // takes it at once (`mb-varu`).
       envelope.labels_pending === true ||
+      labelsComing ||
       catalogScanning
     );
   }
@@ -2153,6 +2198,7 @@ export function createPullController(deps, options) {
    */
   function take(response, request) {
     catalogScanning = false;
+    labelsComing = false;
     if (response.status === 200 && isEnvelope(response.body)) {
       if (accept(response.body, request)) {
         etag = response.etag;
@@ -2234,6 +2280,7 @@ export function createPullController(deps, options) {
    */
   function afterRead(fastMs) {
     scheduleNext(fastMs);
+    askForLabels();
     fetchForReader();
     fetchSelectedChanges();
     // Decided before the paint, so a record that just went stale is painted refreshing and
@@ -2242,6 +2289,40 @@ export function createPullController(deps, options) {
     render();
     deps.timelineStateChanged?.();
     fetchIdleChanges();
+  }
+
+  /**
+   * Ask once for the repository's label set when the page shows a label named alone that
+   * the envelope has no entry for, at once on the first read that shows it, and not while
+   * the set's job already runs. The server reads the set only when it is absent or due; a
+   * job it started or joined makes the next read a fast poll.
+   */
+  function askForLabels() {
+    if (
+      labelsAsked ||
+      disposed ||
+      envelope === null ||
+      envelope.labels_pending === true ||
+      !deps.isVisible() ||
+      !online() ||
+      !labelsMissing(envelope)
+    ) {
+      return;
+    }
+    labelsAsked = true;
+    void (async () => {
+      let started = false;
+      try {
+        const response = await deps.request("POST", LABELS_REFRESH_ROUTE, { body: {} });
+        started = response.status === 202;
+      } catch {
+        // The chips keep their neutral color; the page's next visit asks again.
+      }
+      if (started && !disposed) {
+        labelsComing = true;
+        scheduleNext();
+      }
+    })();
   }
 
   /**
@@ -4631,8 +4712,71 @@ export function mountPullPage(container, ctx, mb) {
     );
   }
 
+  /**
+   * Whether the cold page is held: null before the header's first paint, true from a first
+   * paint with no record or core in hand until the header first paints one, false after.
+   *
+   * @type {boolean | null}
+   */
+  let coldHeld = null;
+  /** Whether the held cold page is kept unseen past the quiet period (`keepColdUnseen`). */
+  let coldKept = false;
+
+  /**
+   * A page mounted with no record in hand keeps its header and tab column out of sight for
+   * the shell's quiet period (`.github-pull-cold`, `--loading-state-delay`), and shows them
+   * at once with the first header that has a record or core. A read that lands within the
+   * quiet period then never shows the cold header, whose labels row a pull request with no
+   * labels drops as it lands; a slower one shows the cold header as it is, rows held, once
+   * the quiet period is over. Opacity alone, so the rows keep their layout and the tab keys
+   * stay live (docs/design-system.md, "Layout").
+   *
+   * @param {PullModel} model
+   */
+  function holdColdPage(model) {
+    const cold = model.pull === null;
+    if (coldHeld === null) {
+      coldHeld = cold;
+      if (!cold) {
+        return;
+      }
+    } else if (!coldHeld || cold) {
+      return;
+    } else {
+      coldHeld = false;
+    }
+    coldKept = false;
+    for (const part of [header, tabColumn]) {
+      part.classList.toggle("github-pull-cold", coldHeld);
+      part.classList.remove("github-pull-cold-held");
+    }
+  }
+
+  /**
+   * A record that lands while the cold page is still unseen, and whose header waits with the
+   * conversation's held first paint (`headerWaits`), keeps the cold page unseen past the quiet
+   * period until that paint, at most `DESCRIPTION_HOLD_MS`: the body is out of sight then too,
+   * with no loading blocks over it, since none had shown. Shown at the quiet period's end, the
+   * cold header would change with the body, and an unlabelled pull request's tab bar would
+   * move as it did (`.github-pull-cold-held`).
+   */
+  function keepColdUnseen() {
+    if (
+      coldHeld !== true ||
+      coldKept ||
+      (typeof window.getComputedStyle === "function" &&
+        window.getComputedStyle(header).opacity !== "0")
+    ) {
+      return;
+    }
+    coldKept = true;
+    header.classList.add("github-pull-cold-held");
+    tabColumn.classList.add("github-pull-cold-held");
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
+    holdColdPage(model);
     /** @type {Element[]} */
     const children = [];
     const pull = model.pull;
@@ -4876,7 +5020,7 @@ export function mountPullPage(container, ctx, mb) {
     if (pull !== null || model.status !== "unavailable") {
       children.push(summaryRow);
     }
-    paintSummaryWait(model.comparison);
+    paintSummaryWait(model);
     placeChildren(header, children);
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
@@ -5391,11 +5535,13 @@ export function mountPullPage(container, ctx, mb) {
       // never waits for it after its comparison (docs/development.md, Asset Loading Tiers).
       void mb.loadChangedFilesTree().catch(() => {});
     },
-    // What it read is the page's Diff summary too, on every tab (mb-pb35), and a read that
-    // failed leaves its row empty, with no placeholder (mb-onr2). A comparison the document
-    // keeps is handed over in the paint that shows its record, so the summary is drawn in
-    // that paint once the diff's view is registered, as it is after any first read (mb-neg9).
-    // Its first screen's Markdown is this page's own to ask for, once it is idle.
+    // What it read is the page's Diff summary too, on every tab (mb-pb35); a read on its way
+    // holds the summary's placeholder, and one that failed leaves its row empty (mb-onr2). A
+    // comparison the document keeps is handed over in the paint that shows its record, so the
+    // summary is drawn in that paint once the diff's view is registered, as it is after any
+    // first read (mb-neg9). Its first screen's Markdown is this page's own to ask for, once it
+    // is idle.
+    reading: (comparison) => summaryReading(comparison),
     loaded(comparison, payload) {
       if (mb.getRegisteredView("diff", "diff")) {
         showSummary(comparison, payload);
@@ -5429,19 +5575,44 @@ export function mountPullPage(container, ctx, mb) {
       open({ number, tab: "files", file: path, replace: false, jumped: false })
     );
     if (opened && typeof opened.then === "function") {
-      void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+      void Promise.resolve(opened).then(undefined, () => goToFileInPlace(path));
     } else {
-      jumpTo(path);
+      goToFileInPlace(path);
     }
   }
 
-  /** The comparison the page's Diff summary shows, and its mount. */
+  /**
+   * Go to a changed file that has no address: the diff jumps to it in place, or, with no diff
+   * mounted, as on Conversation and Checks, Changes opens at the page's own address and its
+   * diff goes to the file once it mounts (`landFile`), so the press is not lost (A8 of review
+   * A on #470).
+   *
+   * @param {string} path
+   */
+  function goToFileInPlace(path) {
+    if (listening.signal.aborted || diffHandle !== null) {
+      jumpTo(path);
+      return;
+    }
+    wantedFile = path;
+    void Promise.resolve(open({ number, tab: "files", replace: false, jumped: false })).catch(
+      () => {},
+    );
+  }
+
+  /**
+   * The page's Diff summary: the comparison it is drawn for, or being drawn for, the claim of
+   * its latest draw, and the mount in the row.
+   */
   let summaryShown = {
     key: "",
     claim: 0,
     handle: /** @type {{dispose: () => void} | null} */ (null),
   };
-  /** The comparison whose read drew no Diff summary, whose row is left empty (mb-pb35). */
+  /**
+   * The comparison whose last read drew no Diff summary, whose row is left empty until a
+   * read of it starts again (mb-pb35, mb-onr2).
+   */
   let summaryFailed = "";
   /** The comparison whose first screen's Markdown this page asked for, and how to stop it. */
   let markdownAsked = { key: "", controller: /** @type {AbortController | null} */ (null) };
@@ -5491,19 +5662,28 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * The Diff summary's row while no summary is drawn in it: the pending placeholder while the
-   * page waits for *comparison*'s summary, and empty when the record names no comparison or
-   * its read drew none, so a placeholder never outlives its wait (mb-onr2). A summary drawn
-   * stays while a newer comparison is read, as content already shown does ("Refreshing
-   * Content"). The summary replaces the placeholder in the row, which keeps its height.
+   * The Diff summary's row while no summary is drawn in it (mb-onr2). It waits on the read in
+   * flight: on Changes the mounted diff's, which the summary is drawn from, and on every other
+   * tab the record's comparison, which the prefetch reads; before the page has a comparison,
+   * on one coming (`comparisonComing`). While it waits, the row holds the pending placeholder,
+   * the same node from a core preview through its record to the read, so the wait has one
+   * quiet period and one pulse; it is empty when nothing is coming or the read it waits on drew
+   * no summary, so a placeholder never outlives its wait. A summary drawn stays while a newer
+   * comparison is read, as content already shown does ("Refreshing Content"). The summary
+   * replaces the placeholder in the row, which keeps its height.
    *
-   * @param {{left: string, right: string, route?: string} | null} comparison
+   * @param {PullModel | null} model
    */
-  function paintSummaryWait(comparison) {
+  function paintSummaryWait(model) {
     if (summaryShown.handle !== null) {
       return;
     }
-    if (comparison !== null && comparisonKey(comparison) !== summaryFailed) {
+    const awaited = model === null ? null : model.tab === "files" ? diffFor : model.comparison;
+    const waits =
+      awaited === null
+        ? model?.comparisonComing === true
+        : comparisonKey(awaited) !== summaryFailed;
+    if (waits) {
       if (summaryRow.firstChild !== summaryPending || summaryRow.childNodes.length !== 1) {
         summaryRow.replaceChildren(summaryPending);
       }
@@ -5513,7 +5693,12 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * *comparison* was read, or could not be, and drew no Diff summary: its row is empty.
+   * *comparison* was read, or could not be, and drew no Diff summary: its row is empty, the
+   * placeholder gone with its wait (mb-onr2). A summary of an earlier comparison is not left
+   * in the row either, where it would read as this one's (A1 of review A on #470), when
+   * *comparison* is the one the page shows; the next read of it draws it. A draw of this
+   * comparison already under way answers for itself, and a failure of another comparison, as
+   * an older one Changes shows while it is repaired, empties nothing.
    *
    * @param {{left: string, right: string, route?: string}} comparison
    */
@@ -5521,15 +5706,44 @@ export function mountPullPage(container, ctx, mb) {
     if (listening.signal.aborted) {
       return;
     }
-    summaryFailed = comparisonKey(comparison);
-    paintSummaryWait(shown?.comparison ?? null);
+    const key = comparisonKey(comparison);
+    summaryFailed = key;
+    const current = shown?.comparison ?? null;
+    if (current !== null && comparisonKey(current) === key && summaryShown.key !== key) {
+      clearSummary();
+    }
+    paintSummaryWait(shown);
+  }
+
+  /**
+   * A read of *comparison* starts: the prefetch's, or a Changes diff's, a Retry's included.
+   * One whose last read drew no summary is waited for again.
+   *
+   * @param {{left: string, right: string, route?: string}} comparison
+   */
+  function summaryReading(comparison) {
+    if (listening.signal.aborted) {
+      return;
+    }
+    if (summaryFailed === comparisonKey(comparison)) {
+      summaryFailed = "";
+    }
+    paintSummaryWait(shown);
+  }
+
+  /** Empty the summary's row, which keeps its held height, so nothing moves. */
+  function clearSummary() {
+    summaryShown.handle?.dispose();
+    summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
+    summaryRow.replaceChildren();
   }
 
   /**
    * Draw the page's Diff summary for *comparison* from what was read of it, once per
    * comparison, whichever read comes first: the prefetch, on any tab but Changes, or the
    * Changes diff's own. It is drawn out of sight and put in the header's held row in one
-   * step, so it moves nothing; a newer comparison's replaces it the same way.
+   * step, so it moves nothing; a newer comparison's replaces it the same way. One that draws
+   * nothing, or fails, empties the row rather than leave an earlier comparison's there.
    *
    * @param {{left: string, right: string, route?: string}} comparison
    * @param {unknown} raw
@@ -5561,7 +5775,7 @@ export function mountPullPage(container, ctx, mb) {
           return;
         }
         if (handle === null) {
-          summaryShown = { ...summaryShown, key: "" };
+          clearSummary();
           summaryUnavailable(comparison);
           return;
         }
@@ -5571,12 +5785,24 @@ export function mountPullPage(container, ctx, mb) {
         summaryRow.replaceChildren(...stage.childNodes);
       },
       () => {
-        if (summaryShown.claim === claim) {
-          summaryShown = { ...summaryShown, key: "" };
+        if (!listening.signal.aborted && summaryShown.claim === claim) {
+          clearSummary();
           summaryUnavailable(comparison);
         }
       },
     );
+  }
+
+  /**
+   * The comparison is read on every tab but Changes, which reads it itself: the page's Diff
+   * summary is drawn from it (mb-pb35). A page opened out of sight asks once it is shown.
+   *
+   * @param {PullModel} model
+   */
+  function wantComparison(model) {
+    if (model.pull !== null && model.tab !== "files" && model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
   }
 
   /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
@@ -5588,6 +5814,8 @@ export function mountPullPage(container, ctx, mb) {
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     diffHost = host;
     diffFor = comparison;
+    // The page's Diff summary waits on this diff's read now, a Retry's too (mb-onr2).
+    summaryReading(comparison);
     const owns = () => !listening.signal.aborted && diffHost === host;
     const loading = h(
       "div",
@@ -5653,12 +5881,6 @@ export function mountPullPage(container, ctx, mb) {
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
-              // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
-              // the route a press on it in the Pulls tab's tree takes, so the address names it
-              // and Back returns to where the reader was.
-              // A path the route cannot spell, as one with a backslash, which Git allows in a
-              // name, has no address: the diff goes to it in place instead.
-              openFile: openChangedFile,
             }),
           { number },
         )
@@ -5799,6 +6021,8 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
+      // The header was painted while the diff was mounted: its summary waited on that read.
+      paintSummaryWait(model);
       if (model.changesPending) {
         // Nothing of Changes is cached yet and its shape is unknown: the shared spinner after
         // the quiet period, and the sentence only for a screen reader.
@@ -5892,11 +6116,14 @@ export function mountPullPage(container, ctx, mb) {
     if (!headerHeld) {
       paintHeader(model);
       paintStacks(model);
+    } else {
+      keepColdUnseen();
     }
     // Conversation and Checks use the reading column. Changes uses the full pane.
     body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
+      paintSummaryWait(model);
       discussion = null;
       texts.clear();
       // A known text layout uses the shell's neutral pulse. The reveal wrapper has its
@@ -5929,11 +6156,7 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
-    // The comparison is read on every tab but Changes, which reads it itself: the page's
-    // Diff summary is drawn from it (mb-pb35).
-    if (model.comparison !== null) {
-      prefetch.want(model.comparison);
-    }
+    wantComparison(model);
     if (model.tab === "checks") {
       const key = JSON.stringify([
         "checks",
@@ -5953,9 +6176,6 @@ export function mountPullPage(container, ctx, mb) {
         paintChecks(model, model.pull);
       }
       return;
-    }
-    if (model.comparison !== null) {
-      prefetch.want(model.comparison);
     }
     if (hold === "delayed" || key === null) {
       return;
@@ -6525,12 +6745,10 @@ export function mountPullPage(container, ctx, mb) {
       controller.onVisibilityChange();
       followTimeline();
       // A page opened behind another tab is not prefetched until it is looked at: the
-      // wish is not recorded while hidden, so it is asked again when shown.
-      if (document.visibilityState === "visible" && shown?.tab === "") {
-        const comparison = shown?.comparison ?? null;
-        if (comparison !== null) {
-          prefetch.want(comparison);
-        }
+      // wish is not recorded while hidden, so it is asked again when shown, on every tab
+      // that paints it (A2 of review A on #470).
+      if (document.visibilityState === "visible" && shown !== null) {
+        wantComparison(shown);
       }
     },
     { signal: listening.signal },

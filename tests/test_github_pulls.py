@@ -680,6 +680,61 @@ def test_the_pull_route_answers_an_unchanged_record_with_a_304(
     assert aged.headers["etag"] != etag
 
 
+def test_labels_pending_holds_while_the_label_job_runs_and_the_set_lacks_a_shown_label(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record cached before label colors names its labels alone (``mb-varu``).
+
+    The pull route reads the set from the cache alone. Only ``labels-refresh`` starts its
+    job, and while that job runs and the set does not hold a label the record names,
+    ``labels_pending`` says so, which makes the page poll fast. Once the job has published,
+    the label the set holds has its entry, and one it does not hold leaves nothing pending.
+    """
+
+    from metabrowser.builtin_plugins.github import pull_labels
+
+    stand, client = pinned_pull
+    path = stand.published.home / source_pull_record(stand.published.slug, 7)
+    old = json.loads(path.read_bytes())
+    old["projection_version"] = 1
+    old["pull"]["labels"] = ["enhancement", "deleted-on-github"]
+    path.write_text(json.dumps(old))
+    stand.calls()
+    bare = _read(client, 7).json()
+    assert (bare["repository_labels"], bare["labels_pending"]) == ([], False)
+    # A read is cache-only: it asked GitHub for nothing, the label set included.
+    assert stand.calls() == []
+    release = threading.Event()
+    real = pull_labels.gh_api
+
+    async def held(path: str, *, etag: str | None = None) -> GhResponse:
+        await asyncio.to_thread(release.wait, 30)
+        return await real(path, etag=etag)
+
+    monkeypatch.setattr(pull_labels, "gh_api", held)
+    started = client.post("/api/plugin/github/labels-refresh", json={})
+    assert (started.status_code, started.json()["refresh"]) == (202, "started")
+    assert client.post("/api/plugin/github/labels-refresh", json={}).json()["refresh"] == "joined"
+    running = _read(client, 7, etag=None).json()
+    assert (running["repository_labels"], running["labels_pending"]) == ([], True)
+    release.set()
+    deadline = time.monotonic() + 30
+    while client.get("/api/plugin/github/labels").json()["refreshing"]:
+        assert time.monotonic() < deadline, "the label job did not end"
+        time.sleep(0.05)
+    colored = _read(client, 7).json()
+    assert colored["repository_labels"] == [
+        {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip",
+        }
+    ]
+    # The set does not hold the other label, and no job runs: nothing is pending.
+    assert colored["labels_pending"] is False
+    assert [label["color"] for label in colored["record"]["pull"]["labels"]] == [None, None]
+
+
 @pytest.mark.parametrize(
     ("part", "answer"),
     [
@@ -5246,6 +5301,8 @@ def test_disk_core_revocation_after_worker_check_is_rejected_on_loop(
         )
         body = client.post("/api/plugin/github/pull-refresh", json={"number": 8}).json()["pull"]
     assert revoked and body["core_preview"] is None
+    # Nor the label entries or the fast poll that only the dropped core asked for.
+    assert (body["repository_labels"], body["labels_pending"]) == ([], False)
 
 
 def test_unavailable_member_does_not_block_later_cohorts_or_lose_ready_siblings(

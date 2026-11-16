@@ -4,14 +4,16 @@ sandbox: false
 env:
   TZ: "UTC"
 ---
-# Golden Test: Files Changed Fetched From Conversation
+# Golden Test: The Comparison Read Before Changes Asks
 
-The pull-request page knows the comparison the moment its record arrives, and a reader
-on Conversation usually asks for Files changed next, so the page fetches it when the
-browser is idle and hands it to the diff when the tab is clicked.
+The pull-request page knows the comparison the moment its record arrives.
+Its header’s Diff summary is drawn from it on every tab, and a reader on Conversation
+often asks for Changes next.
+So on every tab but Changes the prefetch reads it when the browser is idle, tells the
+page what it read, and hands it to the diff when the tab is clicked.
 This browserless session runs the production
 `builtin_plugins/github/comparison-prefetch.js` as the page does: `want` on each paint
-of Conversation, `take` when a diff mounts, and `dispose` when the page goes.
+of every tab but Changes, `take` when a diff mounts, and `dispose` when the page goes.
 
 Each step prints what has been asked of the server, what is held, and what a mount is
 handed. A mount that finds nothing held or on its way reads the comparison then, through
@@ -19,8 +21,9 @@ the keep, as a page opened on Changes does, so its next visit is drawn from the 
 A mount handed nothing, because that read failed, asks for itself and reports its own
 errors. `summarized` is each answer the page was told of, for its Diff summary, and
 `failedTold` each read no mount took that failed, which leaves the summary’s row empty
-rather than holding its pending placeholder; a cancelled request, and one a mount took,
-tell the page nothing.
+rather than holding its pending placeholder, and not standing for another comparison;
+such a read is asked for again at the next paint.
+A cancelled request, and one a mount took, tell the page nothing.
 The session asserts, and so prints nothing for, that a poll of the same record sends
 nothing, that a mount waiting through a dispose is let go, that a cancelled request
 tells no failure, and that a disposed prefetch does nothing.
@@ -253,7 +256,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "failedTold": []
     },
     {
-      "step": "a refused request is not retried and not an error: the diff asks and says why",
+      "step": "a refused request is not an error: the page is told, and the diff asks and says why",
       "phase": "taken",
       "comparison": "aaaa...bbbb",
       "holding": false,
@@ -266,6 +269,23 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "handed": null
+    },
+    {
+      "step": "a refused request is asked again at the page's next paint",
+      "phase": "held",
+      "comparison": "aaaa...bbbb",
+      "holding": true,
+      "requests": [
+        "bbbb",
+        "bbbb"
+      ],
+      "assetsWarmed": 2,
+      "summarized": [
+        "bbbb"
+      ],
+      "failedTold": [
+        "bbbb"
+      ]
     },
     {
       "step": "a request a mount took fails: the diff asks and says why, and the page is told nothing",

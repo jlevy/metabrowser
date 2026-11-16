@@ -72,7 +72,6 @@ from metabrowser.builtin_plugins.github.pull_freshness import (
 )
 from metabrowser.builtin_plugins.github.pull_labels import (
     LabelEntry,
-    labels_fetching,
     labels_for,
     labels_job_key,
 )
@@ -146,8 +145,8 @@ class PullEnvelope(TypedDict):
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
     # The repository's label set's entries for the labels the record or core names without
-    # a color (:func:`.pull_labels.labels_for`), and whether one of those labels still has
-    # no color while the set's job runs, so a page reads again soon.
+    # a color (:func:`.pull_labels.labels_for`), and whether the set's job runs while the
+    # set does not hold one of those labels, so a page reads again soon.
     repository_labels: list[LabelEntry]
     labels_pending: bool
 
@@ -412,13 +411,8 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         and host.preparing(number),
         catalog_scanning=catalog_scanning(host),
         labels_running=host is not None
-        and (
-            labels_fetching(host.pulls.home, host.pulls.source)
-            or (
-                host.coordinator is not None
-                and host.coordinator.running(labels_job_key(host.pulls.source))
-            )
-        ),
+        and host.coordinator is not None
+        and host.coordinator.running(labels_job_key(host.pulls.source)),
     )
 
 
@@ -511,12 +505,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     )
     labels: object = shown.get("labels") if isinstance(shown, dict) else None
     listed: list[object] = labels if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
-    repository_labels = labels_for(served.home, served.slug, served.source, listed)
-    uncolored = sum(
-        1
-        for label in listed
-        if isinstance(label, dict) and label.get("color") is None  # pyright: ignore[reportUnknownMemberType]
-    )
+    lookup = labels_for(served.home, served.slug, served.source, listed)
     envelope = PullEnvelope(
         state=state,
         reason=absence,
@@ -540,8 +529,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         rendered_route=rendered,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
-        repository_labels=repository_labels,
-        labels_pending=view.labels_running and uncolored > len(repository_labels),
+        repository_labels=lookup.entries,
+        labels_pending=view.labels_running and bool(lookup.missing),
     )
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True
