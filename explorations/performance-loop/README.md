@@ -1489,12 +1489,30 @@ Its paint timings do, and they come from a headless window, so they are pair rat
 a quiet machine and never a substitute for the visible-Chrome captures `record` takes.
 
 **What loopback is sent.** Only a server started as the macOS app starts it, with
-`--exit-on-eof` and its stdin held, sends a loopback client its answers uncompressed
-(H115, [Compression](../../docs/command-line.md#compression)). A build started
-`--no-open` alone, as every harness here starts one and as `metab --remote` starts its
-far server, still compresses, so its bytes are the remote path’s, under `--network` too.
-To measure the local path, start the build as the app does: `--exit-on-eof`, with the
-harness holding the server’s stdin open, since a closed stdin stops it.
+`--exit-on-eof` on a loopback bind, its stdin held, and outside a remote session, sends
+a loopback client its answers uncompressed (H115,
+[Compression](../../docs/command-line.md#compression)). The harnesses that start a build
+make one of the two starts:
+
+- **Compressed, the remote path’s bytes:** `run.py serve`, `transitions.mjs`,
+  `pr-page.mjs`, and `server-time.mjs` by default start a build `--no-open` alone, as
+  `metab --remote` starts its far server, so their bytes are the remote path’s, under
+  `--network` too.
+- **Uncompressed, the app’s start:** `wkprobe.mjs` adds `--exit-on-eof` to every build
+  whose help lists the flag, so that its server dies with the probe, and the WebKit gate
+  (`apps/macos/webkit-gate/processes.mjs`) always does.
+  Both bind the default `127.0.0.1`, and `wkprobe.mjs`’s pass-through proxy adds no
+  forwarding header. `server-time.mjs -- --exit-on-eof` starts a build this way on
+  purpose.
+
+So a `wkprobe.mjs` pair of a control from before H115 and a candidate from after it
+compares compressed delivery with uncompressed: the candidate’s per-family `bytes` grow,
+startup JavaScript about 3.4 times (185,791 against 630,836 bytes in #455’s untimed
+reading), which is the delivery and not a regression.
+Read such a pair’s bytes by decoded size.
+To measure the local path with a harness that starts `--no-open`, start the build as the
+app does: `--exit-on-eof`, with the harness holding the server’s stdin open, since a
+closed stdin stops it.
 An emulated link (`--network`) does not change which: the emulation is in the browser,
 and the server sees a loopback peer either way.
 `run.py record` reads `startup_script_transfer_kb` as the remote path sends it whatever
@@ -1637,6 +1655,18 @@ started that way; leaving loopback answers uncompressed, H115 (b), is read as th
 started `-- --exit-on-eof` against the branch started as it is.
 With `--exit-on-eof` the instrument holds the server’s stdin open for as long as it
 runs, as the app does, since a closed stdin stops that server.
+Which harness measures (a) cold or warm matters as much as the start:
+
+- **Cold**, each asset read and compressed once by the landing that asked for it:
+  `run.py serve`, which starts a fresh server on an unused port for each sample, and
+  `server-time.mjs --warmup 0`, its default.
+- **Warm**, the store holding every asset, which is the shared-server case the app
+  rarely meets: `transitions.mjs`, whose measured pass follows an unrecorded one on the
+  same server, `server-time.mjs --warmup 1` or more, and the serial pass.
+
+exp-095 judges (a) on the cold regime and reports the warm one as the shared-server
+case; its protocol is in the load-time plan,
+[The exp-095 Protocol for H115](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#the-exp-095-protocol-for-h115).
 The record also keeps the build’s provenance, Chrome’s version, the load average before
 and after, and the server’s resident memory once the inventory is complete and again at
 the end, with the difference, which is what the landings left held.
