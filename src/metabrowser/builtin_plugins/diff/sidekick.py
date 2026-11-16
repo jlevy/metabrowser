@@ -120,6 +120,15 @@ async def shared_comparison_manifest(
     return await _COMPARISONS.manifest(key, load)
 
 
+def kept_comparison_manifest(key: tuple[str, ...]) -> ResolvedManifest | None:
+    """The manifest this process keeps for *key*, or ``None``. Computes and keeps nothing.
+
+    A caller that wants only what a comparison sums to reads a kept manifest this way,
+    without taking one of the cache's places from the comparisons a page opens.
+    """
+    return _COMPARISONS.kept_manifest(key)
+
+
 def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
     return JSONResponse({"error": kind, "message": message, "path": path}, status_code=status)
 

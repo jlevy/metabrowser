@@ -770,6 +770,35 @@ async def stacks_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def stack_change_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/stack-change?number=<stack>`` — a stack's combined change.
+
+    Its bottom's base against its top's head, from the cache and the store alone
+    (:mod:`.pull_stack_change`): no GitHub call, and Git only on a comparison not yet summed.
+    """
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_route import (
+        PullRequestError,
+        pull_host,
+        requested_number,
+    )
+    from metabrowser.builtin_plugins.github.pull_stack_change import envelope_etag, stack_change
+
+    if set(request.query_params) != {"number"}:
+        return _invalid_request('a stack change names its stack by "number" alone')
+    try:
+        number = requested_number(request.query_params)
+    except PullRequestError:
+        return _invalid_request('"number" is a native stack number')
+    await _resolve(request)
+    envelope = await stack_change(pull_host(request.app), served_repository(request.app), number)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
 async def stacks_refresh_handler(request: Request) -> Response:
     """Start or join optional stack work; core PR/catalog outcomes stay independent."""
     from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
@@ -998,6 +1027,7 @@ __all__ = [
     "pull_rendered_diff_handler",
     "pulls_handler",
     "pulls_prefetch_handler",
+    "stack_change_handler",
     "stacks_handler",
     "stacks_refresh_handler",
     "labels_handler",

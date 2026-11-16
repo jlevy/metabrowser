@@ -214,6 +214,7 @@ it:
 | 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 | 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
 | 28 | `claude/diff-summary-letters` | `mb-vb51` | On pull request 27 (#478); rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, and resizes the pending placeholder pull request 25 holds in its row |
+| 29 | `claude/stack-change-lines` | `mb-9ekj` | On pull request 28 (#479); draws the brief change line that pull request 28 makes one component on each Pulls stack heading pull request 5 adds, read from a new route that sums a stack’s change in the store, within the read-ahead cap pull request 27 sets |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -950,6 +951,25 @@ it, and ideally cached it up front”.
   in the Diff summary’s words and paint (`mb-khm6`); each dot is one item with the group
   before it, so a wrap breaks after it; a line without a name says a comma in each dot’s
   place; and “(estimated)” is muted.
+
+### Phase 29: Stack Change Lines (pull request 29)
+
+- [ ] `mb-9ekj`: each “Stack #N” heading in the Pulls tab shows its stack’s brief change
+  line, “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”, drawn through the SDK’s one
+  component. The numbers are the stack’s combined change, the bottom pull request’s base
+  against the top one’s head, from their merge base, which a new cache-only route,
+  `GET stack-change`, sums in the repository store from the two cached records and keeps
+  by the two commits; summing each layer’s own counts would count a file twice that two
+  layers change. Measured on this repository’s 19 stacks: 3 Git processes and 52 to 298
+  ms for a first answer, none and under 1 ms for a repeat, 318 to 430 bytes an answer.
+  The line is read for the stacks the list draws, when the browser is idle, within the
+  hourly cap the comparison warms count against, and kept in the document’s comparison
+  keep; the heading holds the pending placeholder while it waits and shows nothing for a
+  stack whose change cannot be had.
+  Pinned by the route’s server test and CLI golden, the stack lines session and golden,
+  and in headless Chrome from 420 px to 180 px in both themes, where nothing moves when
+  the line arrives, the row stays one line, and the line’s statuses give way first and
+  the whole line goes where its totals have no room.
 
 ## Testing Strategy
 

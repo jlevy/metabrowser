@@ -28,7 +28,11 @@
 // from GitHub reaches a class, a style, or markup. The only markup parsed is the shell's own
 // chip group and icons.
 
-import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
+import {
+  createComparisonWarmer,
+  createWarmBudget,
+  diffComparisonLoader,
+} from "./comparison-prefetch.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -48,12 +52,14 @@ import {
   createStackIndex,
   groupByStack,
   stackCaption,
+  stackGroupHint,
   stackMembership,
   stackRowKey,
   watchStacks,
 } from "./pull-stacks.js";
 import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
+import { createStackLines, STACK_CHANGE_ROUTE, stackLineInput } from "./stack-lines.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
@@ -3391,10 +3397,15 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {number | string} */
   let paintedVersion = -1;
   /**
-   * A stack's row as painted, by its row key (`stackRowKey`): its elements, and the key of
-   * what it shows.
+   * A stack's row as painted, by its row key (`stackRowKey`): its elements, its stack, and
+   * the key of what it shows. `change` holds its brief change line, or the pending
+   * placeholder while the line is read (`pending`), which is kept across paints so its quiet
+   * period and its pulse run once.
    *
-   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, key: string}} PaintedStack
+   * @typedef {{
+   *   item: HTMLElement, row: HTMLElement, label: HTMLElement, change: HTMLElement,
+   *   pending: HTMLElement | null, stack: import("./pull-stacks.js").NativeStack, key: string,
+   * }} PaintedStack
    */
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
@@ -3466,7 +3477,15 @@ export function mountPullsPanel(container, ctx, mb) {
     });
     return changedFiles;
   };
-  void loadChangedFiles().catch(() => {});
+  /** The tree once it has loaded, whose status breakdown a stack's change line says. */
+  /** @type {MetabrowserChangedFilesTree | null} */
+  let changedFilesModel = null;
+  void loadChangedFiles().then(
+    (model) => {
+      changedFilesModel = model;
+    },
+    () => {},
+  );
   /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
   const trees = new Map();
   /** The tree a file row with focus is in, whose keys the host's file keys are. */
@@ -3882,11 +3901,25 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A stack's row: the chevron, the Layers icon, and the stack's label in the label register
-   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"). It
-   * draws no tally: its pull requests are the rows under it ("Heading Tallies"), and its
-   * accessible name says how many. A row of the tree that opens and closes, as a folder is;
-   * it opens no page, so it is not a link.
+   * What a stack's heading shows of its change line now (stack-lines.js).
+   *
+   * @param {import("./pull-stacks.js").NativeStack} stack
+   * @returns {import("./stack-lines.js").StackLineState}
+   */
+  function stackLineState(stack) {
+    return stackLines?.line(stack, stackIdentity?.source ?? null) ?? { phase: "none" };
+  }
+
+  /**
+   * A stack's row: the chevron, the Layers icon, and its heading, the stack's label in the
+   * label register the stack menu's heading has (`.group-heading`, docs/design-system.md,
+   * "Stacks"), then the stack's brief change line, after a muted dot: "Stack #286 · 10 A, 5
+   * D, 4 M · +1,234 −567", the shell's one component for it (`metabrowser.changeLine`),
+   * whose words the row's accessible name says. It draws no tally: its pull requests are the
+   * rows under it ("Heading Tallies"), and its accessible name says how many. While the line
+   * is read the heading holds the shell's pending placeholder where it will be, so nothing
+   * moves when it arrives, and a stack whose change cannot be had shows neither. A row of
+   * the tree that opens and closes, as a folder is; it opens no page, so it is not a link.
    *
    * @param {import("./pull-stacks.js").StackGroupRow} group
    * @returns {PaintedStack}
@@ -3895,6 +3928,8 @@ export function mountPullsPanel(container, ctx, mb) {
     let entry = paintedStacks.get(group.key);
     if (entry === undefined) {
       const label = h("span", { class: "group-heading github-pull-stack-label" });
+      const change = h("span", { class: "github-pulls-stack-change" });
+      const heading = h("span", { class: "github-pulls-stack-heading" }, [label, change]);
       const row = h(
         "div",
         {
@@ -3908,7 +3943,7 @@ export function mountPullsPanel(container, ctx, mb) {
           h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
             stackSvg === null ? null : document.importNode(stackSvg, true),
           ]),
-          label,
+          heading,
         ],
       );
       row.dataset.stack = String(group.stack.number);
@@ -3916,15 +3951,47 @@ export function mountPullsPanel(container, ctx, mb) {
         row,
       ]);
       item.dataset.number = String(group.key);
-      entry = { item, row, label, key: "" };
+      entry = { item, row, label, change, pending: null, stack: group.stack, key: "" };
       paintedStacks.set(group.key, entry);
       rowSizes?.observe(item);
     }
-    const key = JSON.stringify([group.label, group.hint, group.expanded]);
+    entry.stack = group.stack;
+    const line = stackLineState(group.stack);
+    const shownLine =
+      line.phase === "shown"
+        ? `${line.change.base}...${line.change.head}:${changedFilesModel === null ? 0 : 1}`
+        : line.phase;
+    const key = JSON.stringify([group.label, group.hint, group.expanded, shownLine]);
     if (entry.key !== key) {
       entry.key = key;
       entry.label.textContent = group.label;
-      entry.row.setAttribute("aria-label", group.hint);
+      let name = group.hint;
+      if (line.phase === "shown") {
+        const said = mb.changeLine(
+          stackLineInput(line.change, changedFilesModel?.statusBreakdown ?? null),
+        );
+        // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567": the dot is a count summary's
+        // separator, which the name, saying the line in words, needs no word for.
+        entry.change.replaceChildren(
+          ...mb.countPartsNodes([{ separator: "·" }]),
+          ...mb.changeLineNodes(said),
+        );
+        name = stackGroupHint(group.stack, group.shown, group.elsewhere, said.label);
+      } else if (line.phase === "waiting") {
+        // The shell's pending placeholder (`.tally-pending`), after the quiet period
+        // (`.mb-delayed-loading`), where the line will be; the name says nothing of it.
+        entry.pending ??= h(
+          "span",
+          { class: "mb-delayed-loading github-pulls-stack-change-pending", "aria-hidden": "true" },
+          [h("span", { class: "tally-pending" })],
+        );
+        if (entry.change.firstChild !== entry.pending || entry.change.childNodes.length !== 1) {
+          entry.change.replaceChildren(entry.pending);
+        }
+      } else {
+        entry.change.replaceChildren();
+      }
+      entry.row.setAttribute("aria-label", name);
       entry.row.setAttribute("aria-expanded", String(group.expanded));
       entry.row.classList.toggle("expanded", group.expanded);
       entry.row.classList.toggle("collapsed", !group.expanded);
@@ -4181,6 +4248,16 @@ export function mountPullsPanel(container, ctx, mb) {
         list.insertBefore(node, cursor);
       }
     }
+    // The stacks drawn, in the list's order, whose headings read their change lines; a hidden
+    // panel reads none.
+    stackLines?.want(
+      panelShown
+        ? [...paintedStacks.entries()]
+            .sort(([left], [right]) => (rowIndices.get(left) ?? 0) - (rowIndices.get(right) ?? 0))
+            .map(([, entry]) => entry.stack)
+        : [],
+      stackIdentity?.source ?? null,
+    );
     if (builtRefreshing) {
       alignRefreshing(list);
     }
@@ -4476,6 +4553,11 @@ export function mountPullsPanel(container, ctx, mb) {
   let movingFocus = false;
   /** @type {ReturnType<typeof createComparisonWarmer> | null} */
   let warmer = null;
+  /** @type {ReturnType<typeof createStackLines> | null} */
+  let stackLines = null;
+  // The hour's cap on the local reads the tab starts on its own, which its comparison warms
+  // and its stack lines share (comparison-prefetch.js, `WARM_PER_HOUR`).
+  const warmBudget = createWarmBudget(() => Date.now());
 
   const controller = createPullsController(
     {
@@ -4608,6 +4690,33 @@ export function mountPullsPanel(container, ctx, mb) {
           cancel: (cancel) => /** @type {() => void} */ (cancel)(),
           isVisible: () => document.visibilityState === "visible",
           now: () => Date.now(),
+          budget: warmBudget,
+        });
+  // Each stack heading's brief change line, the stack's combined change (stack-lines.js):
+  // read for the stacks the list draws, when the browser is idle, within the hourly cap the
+  // warms count against, and drawn through the SDK's one component for it. An SDK without
+  // `whenIdle` or the component has no lines, and its headings no placeholders.
+  stackLines =
+    typeof mb.whenIdle !== "function" ||
+    typeof mb.changeLine !== "function" ||
+    typeof mb.changeLineNodes !== "function" ||
+    typeof mb.countPartsNodes !== "function"
+      ? null
+      : createStackLines({
+          budget: warmBudget,
+          async read(number, readSignal) {
+            const answer = await request(mb.perf, "GET", `${STACK_CHANGE_ROUTE}?number=${number}`, {
+              signal: readSignal,
+            });
+            // The line's letters are the changed-files tree's, so its first paint has them.
+            changedFilesModel = (await loadChangedFiles().catch(() => null)) ?? changedFilesModel;
+            return answer;
+          },
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible" && panelShown,
+          now: () => Date.now(),
+          changed: () => queueWindow(),
         });
 
   const unbindFilters = controls.bind(filters, {
@@ -4952,6 +5061,7 @@ export function mountPullsPanel(container, ctx, mb) {
       stacks.dispose();
       controller.dispose();
       warmer?.dispose();
+      stackLines?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }

@@ -89,7 +89,7 @@ _STATUSES: Final[frozenset[str]] = frozenset(
 )
 # The comparison's change kinds in GitHub's words. Git's ``unmerged`` cannot arise between two
 # commits, and a type change is what GitHub calls ``changed``.
-_KIND_STATUS: Final[dict[str, FileStatus]] = {
+KIND_STATUS: Final[dict[str, FileStatus]] = {
     "added": "added",
     "deleted": "removed",
     "modified": "modified",
@@ -375,7 +375,7 @@ async def _from_comparison(
                 PullFileRow(
                     path=_path(side.path),
                     previous_path=_path(change.old.path) if moved and change.old else None,
-                    status=_KIND_STATUS[change.kind.value],
+                    status=KIND_STATUS[change.kind.value],
                     additions=change.additions,
                     deletions=change.deletions,
                 )
@@ -487,4 +487,4 @@ async def refresh_pull_files(
     return listed
 
 
-__all__ = ["Slot", "refresh_pull_files"]
+__all__ = ["KIND_STATUS", "Slot", "refresh_pull_files"]

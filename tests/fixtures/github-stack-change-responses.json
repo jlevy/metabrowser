@@ -1,0 +1,83 @@
+{
+  "current": {
+    "status": 200,
+    "body": {
+      "state": "current",
+      "reason": null,
+      "number": 286,
+      "bottom": 7,
+      "top": 11,
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "83dccf7f5d848889396624cf14acf9fbe563a734",
+      "fresh_for_s": 300.0,
+      "files": 2,
+      "additions": 5,
+      "deletions": 0,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 1
+        },
+        {
+          "status": "modified",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "not_cached": {
+    "status": 200,
+    "body": {
+      "state": "absent",
+      "reason": "not_cached",
+      "number": 290,
+      "bottom": null,
+      "top": null,
+      "base": null,
+      "head": null,
+      "fresh_for_s": 300.0,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    }
+  },
+  "not_stacked": {
+    "status": 200,
+    "body": {
+      "state": "absent",
+      "reason": "not_stacked",
+      "number": 999,
+      "bottom": null,
+      "top": null,
+      "base": null,
+      "head": null,
+      "fresh_for_s": 300.0,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    }
+  },
+  "not_github": {
+    "status": 200,
+    "body": {
+      "state": "absent",
+      "reason": "not_github",
+      "number": 286,
+      "bottom": null,
+      "top": null,
+      "base": null,
+      "head": null,
+      "fresh_for_s": 300.0,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    }
+  }
+}

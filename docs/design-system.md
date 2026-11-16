@@ -1454,7 +1454,8 @@ not know is “?”. Its `label` says it in words for a screen reader, “10 add
 4 modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its
 hidden dot says a comma in its place (`spoken`). The [Diff summary](#diff-summary)’s
 header is its file count, “35 files changed · ”, then this component; a commit’s
-[hover card](#git-commit-summary) and a commit page’s totals line draw it too.
+[hover card](#git-commit-summary), a commit page’s totals line, and a stack’s heading in
+the Pulls tab ([Stack Groups](#stack-groups-in-the-pulls-tab)) draw it too.
 It sets no size or ink of its own, so it takes its line’s.
 `tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
 and `test_count_summaries_mute_their_punctuation_and_ink_their_status_letters` its rule
@@ -2395,7 +2396,7 @@ surface keeps a copy of either.
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the author’s row; a Pulls row’s place, before its number, with no icon |
 | Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and on the current pull request a check, `aria-current="page"`, and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
-| Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)) | The Pulls tab |
+| Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
   the register the menu’s heading has, so the menu’s heading and a stack group’s row are
@@ -2442,7 +2443,10 @@ surface keeps a copy of either.
   has no words of its own, and the place’s accessible name names each stack, “Stack
   #300, position 2 of 2”. A stack group’s row’s accessible name says its size, how many
   the list holds when that is fewer, and how many of those sit under an earlier stack:
-  “Stack #286, 4 pull requests, 3 in this list, 1 under Stack #290”.
+  “Stack #286, 4 pull requests, 3 in this list, 1 under Stack #290”. Once its change
+  line is shown, the name says the line in words after the label, as the Diff summary’s
+  does after its file count: “Stack #286: 10 added, 5 deleted, 4 modified; 1,234 lines
+  added, 567 deleted; 4 pull requests”.
 
 ### Stack Groups in the Pulls Tab
 
@@ -2484,34 +2488,57 @@ toolbar, the Show group and Reload, has 23 px to spare.
   the revealed row out of view.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
   stack’s row passed over, and the first pull requests drawn.
+- **Change line.** A stack’s row shows the stack’s combined change as its
+  [brief change line](#brief-change-line), after its label and a muted dot: “Stack #286
+  · 10 A, 5 D, 4 M · +1,234 −567”. The change is the bottom pull request’s base against
+  the top one’s head, from their merge base, which the server sums in the repository
+  store from the two cached records (`GET stack-change`), so a file two layers change
+  counts once; it never asks GitHub.
+  It is read for the stacks the list draws, one at a time when the browser is idle,
+  within the Pulls tab’s hourly cap, and kept for the document under the stack’s two
+  commits, so a heading drawn again has it in its first paint
+  (`builtin_plugins/github/stack-lines.js`). While it is read, the heading holds the
+  shell’s pending placeholder where the line will be, after the quiet period, so nothing
+  moves when it arrives; a stack whose change cannot be had, its ends not cached or no
+  store to compare in, shows neither.
+  The row stays one line at every pane width: the label is never cut for the line, the
+  line’s statuses are cut short first, as the pull request header’s are, its totals stay
+  whole, and where even its dot and totals have no room the whole line goes.
 
 `tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the keys, and what
 an open reads ahead against the production code on the server’s recorded answers; mounts
 the panel to drive its handle’s Space, Right, and Left and a press on a stack’s row, and
 print the tree’s roles and places; and mounts the page’s stack menu to hold that the
 groups list its order.
+`tests/dom/github-pulls-stack-lines-session.js` runs what each heading shows of its
+change line, and when it is read, against the production code on the route’s recorded
+answers, and mounts the panel to print a heading waiting, with its line, and with none.
+`tests/test_github_pulls_stack_lines_chrome.py` measures in headless Chrome, from 420 px
+to the 180 px minimum in both themes, that nothing in a stack’s row moves when its line
+arrives, that the row stays one line with its label whole, the line whole, its statuses
+cut short, or out of view, and that the line’s inks and weights are the component’s.
 `tests/test_github_pulls_stacks_chrome.py` measures in headless Chrome, against a
 running server with two native stacks, that a stack row’s header and the stack menu’s
-heading resolve to the same label tokens, that a stack’s row shows its label alone, with
-its size in its accessible name, where a stack’s row and its pull requests start, that
-the two kinds of row hover and focus alike, that the toolbar fits the default pane with
-room to spare, that real keys and a press move focus and open and close a stack, that a
-member’s changed files are a level further in, that the first stack’s row is in view
-after grouping arrives and after Left then Right, that a pull request’s row is two
-lines, the chevron and the state icon centered on its one-line number’s line and the
-title under it from the text column to the row’s end, that a member’s place is on its
-number’s line, before the number, in the number’s ink, and names another stack by its
-glyph, that a member’s row draws no stack icon and its title has a first-level row’s
-room less its indent, and that the menu lists the group’s order with its positions in
-text ink.
-`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width
-from 420 px to the 180 px minimum and holds that a place arriving moves nothing else in
-its row, not the chevron, the icon, the age, or the title, that it sits before the
-number, which shows whole, that nothing ends past the row and nothing scrolls sideways,
-that one stack’s place shows whole, that the number’s line stays one line and the row
-two, that the title runs from the text column to the row’s end, that the chevron and the
-icon sit on the number’s line, centered on it, and that the author keeps its floor with
-its name inside the line, or leaves the line whole.
+heading resolve to the same label tokens, that a stack’s row shows its label and no
+tally, with its size in its accessible name, where a stack’s row and its pull requests
+start, that the two kinds of row hover and focus alike, that the toolbar fits the
+default pane with room to spare, that real keys and a press move focus and open and
+close a stack, that a member’s changed files are a level further in, that the first
+stack’s row is in view after grouping arrives and after Left then Right, that a pull
+request’s row is two lines, the chevron and the state icon centered on its one-line
+number’s line and the title under it from the text column to the row’s end, that a
+member’s place is on its number’s line, before the number, in the number’s ink, and
+names another stack by its glyph, that a member’s row draws no stack icon and its title
+has a first-level row’s room less its indent, and that the menu lists the group’s order
+with its positions in text ink.
+`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width from 420
+px to the 180 px minimum and holds that a place arriving moves nothing else in its row,
+not the chevron, the icon, the age, or the title, that it sits before the number, which
+shows whole, that nothing ends past the row and nothing scrolls sideways, that one
+stack’s place shows whole, that the number’s line stays one line and the row two, that
+the title runs from the text column to the row’s end, that the chevron and the icon sit
+on the number’s line, centered on it, and that the author keeps its floor with its name
+inside the line, or leaves the line whole.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
 for every stack word.
 
@@ -4534,7 +4561,8 @@ read as a total of the heading’s row rather than the size of its group.
 - **No tally where its rows are the count.** A heading over rows that each stand for one
   of what it would count carries none, since the rows show it: a Pulls stack group’s row
   shows no count of its pull requests ([Stacks](#stacks)). Its accessible name still
-  says how many.
+  says how many. Its [brief change line](#brief-change-line) is no tally: it says what
+  the stack changes, not how many rows it heads.
 
 The headings that carry a tally, each with the builder that writes its markup:
 
@@ -4556,8 +4584,8 @@ its numeral at `--count-numeral-weight`, and leaves the section and its tree nam
 the heading’s words without the dot, and that at 180 px a name cut short shows its whole
 in a tooltip and a whole one shows none; `tests/dom/github-pull-timeline-chrome.mjs`
 holds the Review comments heading to the same place and register, and
-`tests/dom/github-pulls-stacks-chrome.mjs` holds that a stack’s row shows its label
-alone.
+`tests/dom/github-pulls-stacks-chrome.mjs` holds that a stack’s row shows its label and
+no tally.
 
 ### Menu Height
 

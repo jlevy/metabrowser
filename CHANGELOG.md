@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Each “Stack #N” heading in the Pulls tab shows what the whole stack changes, in the
+  brief change line the Diff summary uses: “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”.
+  The numbers compare the bottom pull request’s base with the top one’s head, so a file
+  that several layers change counts once.
+  They are summed from the local repository cache with no GitHub request, for the stacks
+  in view, when the browser is idle; a gray placeholder holds the line’s place while it
+  is read, so nothing moves when it arrives, and a stack whose pull requests have not
+  been fetched shows no line.
+  In a narrow Pulls column the line’s file statuses are cut short first, and the whole
+  line goes where its totals do not fit, so the heading stays one line.
+  Screen readers hear the line in words after the stack’s name.
+  A new cache-only route, `/api/plugin/github/stack-change`, answers a stack’s combined
+  change. See [Stacks](docs/design-system.md#stack-groups-in-the-pulls-tab).
+
 - A pull request you have opened before shows its Diff summary at once when you open it
   again, and its Changes opens with no wait, whether you first opened it on Conversation
   or on Changes: what a page reads of a comparison is kept while Metabrowser is open,
