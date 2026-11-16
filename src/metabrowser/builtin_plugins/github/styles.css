@@ -664,11 +664,9 @@
   gap: var(--github-pull-gap);
   margin-block-start: var(--content-padding-y);
 }
-/* Review comments, a comment's card from the next, at the Conversation's rhythm. The heading
-   sits over the first card at the section's gap, as every section's heading sits over its
-   content: with the rhythm as the section's gap, it stood 20 px over its first card where
-   other headings stand 12 px over theirs. The margin is the rhythm less the gap the column
-   already puts between two cards. */
+/* Review comments, a comment's card from the next, at the Conversation's rhythm, and the
+   heading over the first card at the section's gap, as every section's heading sits over its
+   content. The margin is the rhythm less the gap the column already puts between two cards. */
 .github-pull-threads > .github-pull-card + .github-pull-card {
   margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
 }

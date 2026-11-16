@@ -2880,10 +2880,12 @@ html[data-prose-font="sans"] .kpress-prose h2,
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
+/* The row's one slot: the glyph's width, and the icon box's height, as a file identity in
+   the slot is (`.tree-item-icon.file-identity-icon`, below). */
 .tree-item-icon {
   flex-shrink: 0;
   width: var(--tree-icon-slot);
-  height: 16px;
+  height: var(--icon-box);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5755,8 +5757,7 @@ pre.code-block.metabrowser-source-lines > code {
    the -2px focus ring, and the current row's highlight. A plugin sets only how far in a
    row's depth puts it, `--changed-file-indent`. The rows are drawn a window at a time,
    each placed at its index. These are the shell's rules, in its eager stylesheet, because
-   they are a few declarations; the tree's model loads on demand. Before the shared set the
-   Diff summary's rows started 2px left of the Pulls tree's (8px padding against 10px).
+   they are a few declarations; the tree's model loads on demand.
      .changed-file-row     a folder's or a file's row (a folder's also .disclosure-toggle)
      .changed-file-toggle  a folder's chevron, in the tree's icon slot
      .changed-file-name    the name, cut short at the row's end

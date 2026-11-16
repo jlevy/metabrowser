@@ -1297,10 +1297,10 @@ as a Files folder keeps its size whichever way it is turned.
 Both trees draw one row, the shell’s `.changed-file-row` class set in
 `static/styles.css` beside the Files tree’s rows: the 12 px content inset past the 2 px
 bar, the square hover, and the focus ring 2 px inside the row; each plugin sets only its
-depth’s indent, `--changed-file-indent`. The header hovers and rings as its rows do.
+depth’s indent, `--changed-file-indent`. The header hovers and rings in its rows’ style:
+the same ground, square, and the same ring 2 px inside its own box.
 `tests/test_changed_file_rows_chrome.py` mounts both trees on one list in Chrome and
-holds them to one row; before the shared set the summary’s rows started 2 px further
-left.
+holds them to one row.
 A folder says in its accessible name what its sums leave out (“2 files without line
 counts”, or each side’s when they differ), and its tooltip says that alone, since its
 name is on the row ([Tooltips Add Information](#tooltips-add-information)). A path a
@@ -4294,13 +4294,6 @@ or staleness sentence beside it.
 A spinner over rendered content is the strongest loading signal pointed at something
 that is not loading, and it drew the eye to a wait the reader was not making.
 
-One wait dims what is shown, and it is named here because it is the exception: a Group
-by choice’s first sections ([Grouping the Files Tree](#grouping-the-files-tree),
-Waiting). The tree on screen then is not the content being checked but the arrangement
-the reader left, and the reader is waiting for the new one, so past the quiet period it
-dims to its own token, `--loading-dim-opacity`, while the scan row says what is coming.
-Nothing else takes that token.
-
 Instead, the text a refresh is checking **breathes**: its opacity eases down and back
 once every `--refreshing-text-period` (2.4 s), starting only after
 `--loading-state-delay`, so a refresh that lands within the quiet period shows nothing.
@@ -4336,6 +4329,13 @@ their breathing is paint alone and nothing marks them busy.
   The numbers are beside the tokens in `static/styles.css`.
 - `prefers-reduced-motion: reduce` stops it: the text stays as it rests, and a status
   text’s `aria-busy` still says a refresh runs.
+
+A Group by choice’s first sections are the one wait that dims what is shown
+([Grouping the Files Tree](#grouping-the-files-tree), Waiting): the tree on screen then
+is not the content being checked but the arrangement the reader left, and the reader is
+waiting for the new one, so past the quiet period it dims to its own token,
+`--loading-dim-opacity`, while the scan row says what is coming.
+Nothing else takes that token.
 
 What a stale view says follows from the same rule.
 Stale data that can be refreshed is being refreshed, so a view shows its plain age

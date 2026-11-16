@@ -858,7 +858,9 @@ try {
     const { paint, css, ground, contrast, opacity } = ${PAINT};
     const row = document.querySelector("#tab-files .tree-item:not(.tree-item-gitignored, .tree-item-empty, :hover)");
     row.classList.add("tree-item-gitignored");
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Under the dim the row holds itself after the quiet period, by an animation; at rest it
+    // has none, so this is at once.
+    await Promise.all(row.getAnimations().map((animation) => animation.finished));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const name = row.querySelector(".tree-item-name");
     const drawn = opacity(name);
