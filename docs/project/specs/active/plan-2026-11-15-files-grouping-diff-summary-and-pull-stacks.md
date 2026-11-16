@@ -211,6 +211,7 @@ it:
 | 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 | 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
 | 25 | `claude/pull-header-status` | `mb-2u08`, `mb-onr2` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, and holds the pending placeholder in the Diff summary row pull request 20 adds |
+| 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -841,6 +842,21 @@ part of the same metadata lines”.
   the page of a failed read; measured in Chrome 152 at 560, 420, and 360 px in both
   themes by the header Chrome session’s `summary-wait` part, which fails on the old
   page, and pinned in the page mount and prefetch sessions and their goldens.
+
+### Phase 26: Home (pull request 26)
+
+- [ ] `mb-5lzl`: the folder’s name at the top of the nav, `0`, and Shift-0 show the
+  served folder’s home view as a fresh load of `/view/` shows it, in the page: Files in
+  front with the root drawn again at its default view, every tab’s destination and
+  scroll forgotten, so Pulls opens its list and a pull request from it opens on
+  Conversation, and the Files tab’s filters, Group by, drawer, and open folders a fresh
+  load’s; the Pulls list’s closed stacks and opened file lists are kept.
+  The name hugs its text with a crumb’s hover and focus ring and is named “Home:” and
+  its text; its tooltip shows details only, and a click neither shows nor hides it.
+  `0` is reserved, bound on the name, and listed in Help, the Shift reveal, and the
+  keymap; the digit-row match covers `Digit0`. Run browserlessly in the preview pane and
+  key reveal sessions and their goldens, and in headless Chrome by
+  `tests/test_folder_home_chrome.py`, which fails on the old code.
 
 ## Testing Strategy
 
