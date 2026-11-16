@@ -1674,11 +1674,12 @@ here. The chip keeps the size every label chip has: `--ui-small-font-size`, the 
 padding, the hairline border, `--radius-tag`, and its height, so a colored label is as
 tall as a neutral one and the header’s rows keep their heights.
 
-The colors are github.com’s own formula, read from its stylesheets (Primer’s
-`.IssueLabel`, on 2026-11-15). The page sets the label’s red, green, and blue, 0 to 255,
-and its hue, saturation, and lightness, each rounded to a whole number, as `--label-r`,
-`--label-g`, `--label-b`, `--label-h`, `--label-s`, and `--label-l` on the chip, as
-github.com does; `github/styles.css` states the formula once.
+The colors are github.com’s own formula, read from its stylesheets (its global
+`.hx_IssueLabel` and Primer React’s `.prc-Token-IssueLabel`, which agree, on
+2026-11-15). The page sets the label’s red, green, and blue, 0 to 255, and its hue,
+saturation, and lightness, each rounded to a whole number, as `--label-r`, `--label-g`,
+`--label-b`, `--label-h`, `--label-s`, and `--label-l` on the chip, as github.com does;
+`github/styles.css` states the formula once.
 Its perceived lightness is (0.2126 R + 0.7152 G + 0.0722 B) / 255.
 
 | Part | Light theme | Dark theme |
@@ -1686,6 +1687,10 @@ Its perceived lightness is (0.2126 R + 0.7152 G + 0.0722 B) / 255.
 | Ground | The color | The color at 0.18 alpha |
 | Text | Black when the perceived lightness is above 0.453, white otherwise | The label’s hue and saturation, its lightness raised by (0.6 − perceived lightness) × 100 points when the perceived lightness is under 0.6 |
 | Border | The label’s hue and saturation 25 points darker, at alpha (perceived lightness − 0.96) × 100, clamped to 0 to 1, so it shows only on a very pale label | The text’s color at 0.3 alpha |
+
+The dark theme’s ground and border are translucent over Metabrowser’s own `--bg`, not
+over github.com’s canvas, so beside github.com a dark chip’s ground looks a little
+different, though every color the chip computes is github.com’s.
 
 A color that is not six hex digits, or none, is kept as none, and its chip is the
 neutral one: `--muted` text on no ground in a `--border` box.

@@ -249,7 +249,8 @@
   font-size: var(--ui-small-font-size);
 }
 /* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
-   formula of github.com's own label stylesheet (Primer's .IssueLabel, read 2026-11-15),
+   formula of github.com's own label stylesheets (its global .hx_IssueLabel and Primer
+   React's .prc-Token-IssueLabel, which agree, read 2026-11-15),
    with its constants and its custom properties' names under a label- prefix, from the
    --label-r/g/b/h/s/l the page sets on the chip (labelColorProperties in pull-page.js).
    docs/design-system.md, "Label Colors", says why these colors are not oklch.
