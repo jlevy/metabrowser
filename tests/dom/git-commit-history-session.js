@@ -26,7 +26,14 @@
 // behind the first address, `gateHeldDuringInit` a repository gate that answers only at
 // `catchUp`, `notARepository` and `gateFailures` what it answers, `commitRequestsFail`
 // a commit route the network cannot reach, `emptyHistory` and `logFails` what the history
-// route answers, and `scroller` the navigation's scroll owner.
+// route answers, and `scroller` the navigation's scroll owner. `panel` gives the Commits
+// tab a panel of its own, `#tab-git`, which git-panel.js draws its rows in, and `commits`
+// and `more` make its first page of history that many commits, with more after them.
+//
+// A commit's address reveals its row once the history read holds it (git-panel.js,
+// `revealWaitingCommit`, docs/design-system.md, "Navigation Reveals the Item"): those steps
+// give the panel its rows, and print where the shared scroller is, whether the commit's
+// row is mounted and selected, and which rows were scrolled into view.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -55,7 +62,18 @@ class StandIn {
     this.connectedRoot = false;
     this.className = "";
     this.dataset = {};
-    this.style = {};
+    // A bag of properties, with the CSSOM methods the Git panel calls on its rows.
+    this.style = {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+      getPropertyValue(name) {
+        return this[name] ?? "";
+      },
+      removeProperty(name) {
+        delete this[name];
+      },
+    };
     this.attributes = {};
     this.textContent = "";
     this.markup = "";
@@ -92,8 +110,36 @@ class StandIn {
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
+  getAttribute(name) {
+    return this.attributes[name] ?? null;
+  }
   removeAttribute(name) {
     delete this.attributes[name];
+  }
+  /** The class names, read from and written to `className`, as the Git panel's rows use them. */
+  get classList() {
+    const names = () => this.className.split(/\s+/).filter(Boolean);
+    const list = {
+      add: (...added) => {
+        this.className = [...new Set([...names(), ...added])].join(" ");
+      },
+      remove: (...removed) => {
+        this.className = names()
+          .filter((name) => !removed.includes(name))
+          .join(" ");
+      },
+      contains: (name) => names().includes(name),
+      toggle: (name, force) => {
+        const on = force ?? !names().includes(name);
+        if (on) {
+          list.add(name);
+        } else {
+          list.remove(name);
+        }
+        return on;
+      },
+    };
+    return list;
   }
   addEventListener() {}
   removeEventListener() {}
@@ -101,15 +147,46 @@ class StandIn {
   focus() {
     StandIn.focusMoves += 1;
   }
+  /** A row brought into view: recorded, since the stand-in scroller has no layout to move. */
+  scrollIntoView() {
+    StandIn.scrolled.push(this.dataset.revision ?? this.className);
+  }
+  contains(node) {
+    for (let at = node; at; at = at.parentNode) {
+      if (at === this) {
+        return true;
+      }
+    }
+    return false;
+  }
+  matches(selector) {
+    return matchesCompound(this, selector);
+  }
   remove() {
     if (this.parentNode) {
       this.parentNode.children = this.parentNode.children.filter((node) => node !== this);
       this.parentNode = null;
     }
   }
-  /** What the commit's stage needs: a stable child host with real connection ownership. */
+  /** Whether this is the Commits tab's own panel or inside it (`options.panel`). */
+  inPanel() {
+    return StandIn.panel?.contains(this) === true;
+  }
+  /** Every element below this one, in document order. */
+  descendants() {
+    return this.children.flatMap((child) => [child, ...child.descendants()]);
+  }
+  /**
+   * What the commit's stage needs: a stable child host with real connection ownership. In
+   * the Commits panel, the rows and list the panel draws there, by one compound selector.
+   */
   querySelector(selector) {
-    if (selector !== ".git-commit-diff" || !this.markup.includes("git-commit-diff")) {
+    if (selector !== ".git-commit-diff") {
+      return this.inPanel()
+        ? (this.descendants().find((node) => matchesCompound(node, selector)) ?? null)
+        : null;
+    }
+    if (!this.markup.includes("git-commit-diff")) {
       return null;
     }
     let host = this.children.find((child) => child.className === "git-commit-diff");
@@ -120,11 +197,45 @@ class StandIn {
     }
     return host;
   }
-  querySelectorAll() {
-    return [];
+  querySelectorAll(selector) {
+    return this.inPanel()
+      ? this.descendants().filter((node) => matchesCompound(node, selector))
+      : [];
   }
 }
 StandIn.focusMoves = 0;
+StandIn.scrolled = [];
+/** The Commits tab's panel of the page being read, when it has one (`options.panel`). */
+StandIn.panel = null;
+
+/**
+ * Whether *node* matches one compound selector of classes and attributes, the only kind the
+ * Git panel queries its rows with: `.git-graph-row[data-ordinal="3"]`, `.git-graph-list`.
+ */
+function matchesCompound(node, selector) {
+  const parts = selector.match(/\.[\w-]+|\[[\w-]+(?:="[^"]*")?\]/g) ?? [];
+  assert(parts.join("") === selector, `the stand-in panel cannot match ${selector}`);
+  return parts.every((part) => {
+    if (part.startsWith(".")) {
+      return node.classList.contains(part.slice(1));
+    }
+    const [, name, value] = /^\[([\w-]+)(?:="([^"]*)")?\]$/.exec(part);
+    const key = name
+      .slice("data-".length)
+      .replace(/-(\w)/g, (_dash, letter) => letter.toUpperCase());
+    const actual = name.startsWith("data-")
+      ? (node.dataset[key] ?? node.attributes[name])
+      : node.attributes[name];
+    return value === undefined ? actual !== undefined : String(actual) === value;
+  });
+}
+
+/** A linear history of *count* commits, newest first, the first of them COMMIT_B. */
+function longHistory(count) {
+  return Array.from({ length: count }, (_unused, at) =>
+    at === 0 ? COMMIT_B : `c${at.toString(16).padStart(39, "0")}`,
+  );
+}
 
 /** One page: its history, its pane, and a server that answers the Git routes. */
 async function createPage(start, options = {}) {
@@ -137,6 +248,14 @@ async function createPage(start, options = {}) {
   const shown = { pane: "nothing", navPanel: "files" };
   const preview = new StandIn();
   preview.connectedRoot = true;
+  // The Commits tab's panel, which main-tabs.js shows only while Commits is in front.
+  const tabGit = options.panel ? new StandIn() : null;
+  if (tabGit) {
+    tabGit.connectedRoot = true;
+    tabGit.style.display = "none";
+  }
+  StandIn.panel = tabGit;
+  StandIn.scrolled = [];
   let pendingStageCleanup = null;
   const held = new Map();
   const listeners = new Map();
@@ -242,9 +361,14 @@ async function createPage(start, options = {}) {
         page: 0,
         commits: options.emptyHistory
           ? []
-          : [commitDetail(COMMIT_B).commit, commitDetail(COMMIT_A).commit],
-        cursor: null,
-        has_more: false,
+          : options.commits
+            ? longHistory(options.commits).map((id, at, ids) => ({
+                ...commitDetail(id).commit,
+                parent_ids: at + 1 < ids.length ? [ids[at + 1]] : [],
+              }))
+            : [commitDetail(COMMIT_B).commit, commitDetail(COMMIT_A).commit],
+        cursor: options.more ? "history:1" : null,
+        has_more: options.more === true,
         page_cursor: "history:0",
         previous_cursor: null,
         scope: "all",
@@ -274,7 +398,8 @@ async function createPage(start, options = {}) {
       addEventListener() {},
       createElement: (tag) => new StandIn(tag),
       createElementNS: (_ns, tag) => new StandIn(tag),
-      getElementById: (id) => (id === "tree-content" ? (options.scroller ?? null) : null),
+      getElementById: (id) =>
+        id === "tree-content" ? (options.scroller ?? null) : id === "tab-git" ? tabGit : null,
       querySelector: () => null,
       querySelectorAll: () => [],
     },
@@ -318,6 +443,8 @@ async function createPage(start, options = {}) {
         },
       }),
       icons: { copy: "" },
+      // A row's ref chips' copy controls, which a row of the panel mounts; none has refs.
+      mountRefCopies: () => () => {},
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       tooltip: { hide() {}, show() {} },
     },
@@ -355,6 +482,9 @@ async function createPage(start, options = {}) {
     activateNavPanel(id) {
       shown.navPanel = id;
       sandbox.activeNavPanelId = id;
+      if (tabGit) {
+        tabGit.style.display = id === "git" ? "" : "none";
+      }
       if (id === "git") {
         panel?.onShow?.();
       }
@@ -599,6 +729,21 @@ async function createPage(start, options = {}) {
     async retryHistory() {
       await sandbox.MetabrowserGitPanel._internals.retryFailedPage();
       await settle();
+    },
+    /**
+     * The Commits panel's row for *revision* (`options.panel`): whether it is mounted and
+     * selected, which rows were scrolled into view since the last read, where the shared
+     * scroller is, and how many pages of history were read.
+     */
+    row(revision) {
+      const row = tabGit?.querySelector(`.git-graph-row[data-revision="${revision}"]`) ?? null;
+      return {
+        mounted: row !== null,
+        selected: row?.classList.contains("selected") ?? false,
+        scrolledIntoView: StandIn.scrolled.splice(0).map((id) => id.slice(0, 7)),
+        scrollTop: options.scroller?.scrollTop ?? null,
+        historyReads,
+      };
     },
     /** How many entries the page has, what it asked of history, and whether focus moved. */
     facts() {
@@ -989,6 +1134,96 @@ async function createPage(start, options = {}) {
     const reloaded = page.read();
     assert(reloaded.url === `/commit/${COMMIT_B}`, `a reload onto the entry: ${reloaded.url}`);
     transcript["a reload onto the tab's entry"] = reloaded;
+  }
+
+  // A commit's address reveals its row once the history read holds it (git-panel.js,
+  // revealWaitingCommit): the first page holds 250 commits, newest first, and more follow.
+  // A commit in that page has its row mounted, selected, and scrolled to. A commit past the
+  // pages read has no row, and no page is read for it. A reader who moves on before the
+  // first page arrives, to another commit or to a file, is not scrolled back to it: Files
+  // shares the scroller.
+  {
+    const deep = longHistory(250)[200];
+    const outside = "d".repeat(40);
+    const newScroller = () => {
+      const scroller = new StandIn();
+      scroller.scrollTop = 0;
+      scroller.clientHeight = 440;
+      return scroller;
+    };
+    const steps = {};
+    const options = () => ({ scroller: newScroller(), panel: true, commits: 250, more: true });
+
+    const inPage = await createPage(`/commit/${deep}`, options());
+    const revealed = { ...inPage.read(), ...inPage.row(deep) };
+    steps["a commit in the first page: its row is mounted, selected, and scrolled to"] = revealed;
+    assert(revealed.mounted && revealed.selected, "the commit's row is not mounted and selected");
+    assert(revealed.scrollTop > 0, "the scroller did not move to the commit's row");
+    assert(revealed.scrolledIntoView.includes(deep.slice(0, 7)), "the row was not scrolled to");
+    assert(revealed.historyReads === 1, "a commit in the first page read another page");
+    assert(inPage.facts().focusMoves === 0, "a reveal moved focus");
+
+    const past = await createPage(`/commit/${outside}`, options());
+    const unread = { ...past.read(), ...past.row(outside) };
+    steps["a commit past the pages read: shown, with no row, and no page read for it"] = unread;
+    assert(unread.pane === `commit ${outside.slice(0, 7)}`, `past the pages: ${unread.pane}`);
+    assert(!unread.mounted, "a commit past the pages read has a row");
+    assert(unread.scrollTop === 0, "the scroller moved for a commit past the pages read");
+    assert(unread.historyReads === 1, "the history was paged for a commit past the pages read");
+
+    // The landing selects the commit while the first page is on its way.
+    const moving = await createPage("/view/README.md", {
+      ...options(),
+      behind: [`/commit/${deep}`],
+    });
+    let releaseMoving = () => {};
+    moving.held.set("/api/git/log", new Promise((resolve) => (releaseMoving = resolve)));
+    await moving.back();
+    const waiting = { ...moving.read(), ...moving.row(deep) };
+    steps["Back to a commit's address while the first page loads"] = waiting;
+    await moving.selectRow(COMMIT_B);
+    moving.options.scroller.scrollTop = 0;
+    moving.held.delete("/api/git/log");
+    releaseMoving();
+    await moving.settle();
+    const movedOn = { ...moving.read(), ...moving.row(deep) };
+    steps["another commit selected before the page arrives: no scroll to the first"] = movedOn;
+    assert(movedOn.scrollTop === 0, "the page that arrived scrolled to a commit left behind");
+    assert(
+      !movedOn.scrolledIntoView.includes(deep.slice(0, 7)),
+      "the page that arrived revealed a commit left behind",
+    );
+
+    const leaving = await createPage("/view/README.md", {
+      ...options(),
+      behind: [`/commit/${deep}`],
+    });
+    let releaseLeaving = () => {};
+    leaving.held.set("/api/git/log", new Promise((resolve) => (releaseLeaving = resolve)));
+    await leaving.back();
+    steps["Back to it again, while the first page loads"] = {
+      ...leaving.read(),
+      ...leaving.row(deep),
+    };
+    await leaving.forward();
+    // Files' tree, scrolled where the reader left it, in the scroller Commits shares.
+    leaving.options.scroller.scrollTop = 123;
+    leaving.held.delete("/api/git/log");
+    releaseLeaving();
+    await leaving.settle();
+    const left = { ...leaving.read(), ...leaving.row(deep) };
+    steps["Forward to a file before the page arrives: the Files tree is not scrolled"] = left;
+    assert(left.navPanel === "files", `the file left ${left.navPanel} in front`);
+    assert(
+      left.scrollTop === 123,
+      `the page that arrived scrolled the Files tree: ${left.scrollTop}`,
+    );
+    assert(
+      !left.scrolledIntoView.includes(deep.slice(0, 7)),
+      "the page that arrived revealed the commit under the Files tree",
+    );
+    StandIn.panel = null;
+    transcript["a commit's address reveals its row"] = steps;
   }
 
   // An empty history selects nothing and says so; history that failed says so, and the retry

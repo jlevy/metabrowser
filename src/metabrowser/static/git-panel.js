@@ -2215,6 +2215,9 @@
    */
   function cancelPending() {
     landingGeneration += 1;
+    // Another owner has the pane: a commit's row that waited for history is not revealed
+    // over it (revealWaitingCommit).
+    waitingReveal = null;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
@@ -3374,14 +3377,24 @@
   /**
    * Reveal the row of a commit's address once the history holds it. It runs as the landing
    * selects the commit and whenever a page of history settles (`selectNewestWhenReady`), and
-   * stops waiting once the first pages are read without it, or the selection moves on.
+   * stops waiting once the first pages are read without it, or the reader moves on: the
+   * selection moves, the address names another commit or none, or another tab is in front,
+   * whose panel scrolls the same scroller.
    */
   function revealWaitingCommit() {
     const waiting = waitingReveal;
     if (waiting === null) {
       return;
     }
-    if (state.selectedId !== waiting || revealCommitRow(waiting)) {
+    const addressed = window.MetabrowserNavigationRoute?.parseCommit?.(
+      window.location?.pathname ?? "",
+    )?.revision;
+    if (
+      state.selectedId !== waiting ||
+      addressed !== waiting ||
+      !panelInFront() ||
+      revealCommitRow(waiting)
+    ) {
       waitingReveal = null;
     } else if (!state.loading && !refreshing && state.rowCount > 0) {
       waitingReveal = null;
