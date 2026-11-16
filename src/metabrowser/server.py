@@ -72,7 +72,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, kpress_adapter, server_timing
+from metabrowser import __version__, delivery, kpress_adapter, server_timing
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -87,6 +87,7 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
+from metabrowser.encoded_assets import EncodedAssetResponse
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -1179,9 +1180,15 @@ class _SlowRequestLogMiddleware:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
                 # records is mechanical (subtract for transit time).
+                # `end_ms` is the time to the end of the body again, to the
+                # tenth of a millisecond the phases have, for a reader that
+                # sums many small answers (server-time.mjs); the rounded
+                # figure in parentheses stays where older readers find it.
+                # Taken when the application returns, it includes a response's
+                # background tasks and the waits for the client to drain the body.
                 LOG.info(
                     "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s "
-                    "bytes=%s start_ms=%s phases=%s",
+                    "bytes=%s start_ms=%s phases=%s end_ms=%.1f",
                     arrived,
                     arrived + duration_ms / 1000,
                     duration_ms,
@@ -1191,6 +1198,7 @@ class _SlowRequestLogMiddleware:
                     body_bytes,
                     first_byte,
                     phases,
+                    duration_ms,
                 )
             elif self.threshold_ms and duration_ms >= self.threshold_ms:
                 # Include the arrival epoch even in non-verbose mode so
@@ -3966,7 +3974,8 @@ async def kpress_static_asset(request: Request) -> Response:
         return asset, kpress_adapter.kpress_stamp_is_current(stamp_digest, asset.content)
 
     try:
-        asset, current = await asyncio.to_thread(read)
+        with server_timing.phase("read"):
+            asset, current = await asyncio.to_thread(read)
     except kpress_adapter.KPressAssetNotFoundError:
         return PlainTextResponse(f"not found: {rel}", status_code=404)
 
@@ -3986,6 +3995,15 @@ async def kpress_static_asset(request: Request) -> Response:
     }
     if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
+    if current:
+        # Compressed once under the ETag, which is KPress's hash of these bytes (H115).
+        # KPress reads the file itself, so the read above is still paid on each request.
+        return EncodedAssetResponse(
+            key=f"kpress:{asset.etag}",
+            identity=asset.content,
+            headers=headers,
+            media_type=asset.media_type,
+        )
     return Response(
         content=asset.content,
         media_type=asset.media_type,
@@ -4743,10 +4761,11 @@ routes = [
 ]
 
 # GZip every response above 1 KiB. This materially reduces tree and file
-# payloads over an SSH tunnel. ``compresslevel=6`` is Starlette's default and
-# trades CPU against compression ratio at the right point for the small
-# JSON payloads this app emits. ``FileResponse`` is excluded automatically
-# by Starlette since it sets its own headers.
+# payloads over an SSH tunnel. The level and the floor are in
+# ``metabrowser.delivery``, which also decides who is sent gzip. A streamed
+# ``FileResponse`` is compressed chunk by chunk like any other body; an asset at
+# a current stamped address arrives already encoded (``encoded_assets``), and
+# the middleware passes an answer with a ``Content-Encoding`` on unchanged.
 middleware = [
     # Outermost, so a rejection written before routing — and a 500 an
     # inner layer never got to shape — still leaves ``/raw`` sandboxed.
@@ -4757,7 +4776,11 @@ middleware = [
     Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
     # Starlette's, with the compression counted as the `encode` phase of Server-Timing.
-    Middleware(server_timing.TimedGZipMiddleware, minimum_size=1024, compresslevel=6),
+    Middleware(
+        server_timing.TimedGZipMiddleware,
+        minimum_size=delivery.GZIP_MINIMUM_SIZE,
+        compresslevel=delivery.GZIP_LEVEL,
+    ),
 ]
 
 # Lazy import: events_route.py pulls in the inventory + events

@@ -273,7 +273,10 @@ nothing still spends that budget.
 renders a folder’s shell through the application and counts every `<script src>` in it,
 whatever its attributes, compresses each file as the application’s gzip middleware does,
 and adds the 300 bytes Resource Timing reports for a response’s headers, which is how
-the browser arrives at the number the gate reads.
+the browser arrives at the number the gate reads when the server compresses toward it.
+A server started for local use sends a loopback browser its scripts uncompressed, so
+`run.py record` reads the gate’s number the same way, from the scripts the page
+requested, as the remote path sends them; the note beside the budget says why.
 Its module documentation records the two agreeing, script for script.
 A script can also ask for another one, which no tag shows and the gate still counts.
 So the check runs the shell’s own scripts without a browser
@@ -957,6 +960,13 @@ that verifies green can still push a commit that fails CI.
   A failure in another session’s work is something to raise, not to silently fix.
 - Lefthook cannot run from a git worktree created outside the repository, so pushing
   from a clean temporary worktree is not a workaround for a dirty one.
+- A new worktree has no `node_modules`, and `make lint-check`, `make test`, and
+  `make format` run `make install` first every time, which runs `npm ci` and replaces
+  `node_modules` even when it is present.
+  Copy `node_modules` from a checkout with the same `package-lock.json` (`cp -cR`, a
+  cheap clone on APFS) so hooks and `node_modules/.bin` tools work, and run those
+  targets as `make -o install lint-check`; never symlink it, because `npm ci` then
+  deletes the other checkout’s copy.
 
 ## Durable Storage
 
@@ -979,7 +989,8 @@ durable:
 | Logs, drivers, and probe output that hold local paths | The worktree’s gitignored `attic/` |
 | Raw bench output and corpora | The gitignored `.bench/` |
 | A lock that serializes timed rounds across worktrees | `$(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock`, which every worktree of the checkout shares |
-| Coordination scripts a campaign reuses | A worktree’s gitignored `attic/` |
+| A series driver or analysis a later round reuses | Committed, without local paths, under `explorations/performance-loop/`; its per-round config, which holds them, in that round’s `attic/` |
+| Coordination scripts for one campaign only | A worktree’s gitignored `attic/` |
 | Rebuilt intermediates, such as a filtered sample file or a scratch worktree in a “Reproducing” recipe | `/tmp/` or `$TMPDIR`, inside the recipe’s fenced block |
 
 **Write a protocol so it can be committed.** Name builds by their version line and
@@ -1007,8 +1018,8 @@ and re-arm any watcher from its durable copy.
 - no record points its evidence at a session scratchpad, or, outside a fenced recipe, at
   an operating system temporary directory;
 - every file a record names is in the repository: its protocol, with the sha256 the
-  record’s `method.protocol` gives, the files `method.record` names, and every relative
-  link;
+  record’s `method.protocol` gives, each script `method.analysis` registers, with its
+  sha256, the files `method.record` names, and every relative link;
 - a record that cites a pre-registration by sha256, or is dated from the rule on, names
   its committed protocol.
 
@@ -1021,6 +1032,14 @@ and re-arm any watcher from its durable copy.
 4. Run `make verify`.
 5. Review the diff and wheel contents for unintended files or private residue.
 6. Commit, push, open the pull request, and watch CI to completion.
+
+**A reference pull request can read as merged.** GitHub marks a pull request merged, and
+deletes its branch, as soon as its head commit is reachable from `main`. A reference
+branch that keeps removed code, cut at a commit the landing branch also carries, is
+therefore “merged” the moment that branch lands, though its code is not on `main` (H89’s
+#389 and H90’s #430). Cut a reference branch at a commit the landing branch never
+carries, such as a revert of the removal on top of it, or keep a tag.
+Cite the preserved code by its commit, never by the pull request’s state.
 
 ## Troubleshooting
 
