@@ -1705,6 +1705,10 @@ $ node tests/dom/key-reveal-session.js tabs
           "range": true,
           "action": "Numbered links and actions"
         }
+      ],
+      "menus": [
+        ["N","No grouping","Choose No grouping in the Group by menu."],
+        ["T","By file type","Choose By file type in the Group by menu."]
       ]
     }
   ],

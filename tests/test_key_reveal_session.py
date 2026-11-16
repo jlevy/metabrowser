@@ -243,6 +243,8 @@ def test_the_session_runs_on_the_recording() -> None:
     assert positional["numbers"] == ["Group by", "File type"]
     assert ["1", "Group by"] in positional["badges"]
     assert ["2", "File type"] in positional["badges"]
+    # A pin has no By age, so Group by registers N and T only, as app.js does.
+    assert [key for key, _action, _description in positional["menus"]] == ["N", "T"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
     for chord in (
         "a capital typed within the threshold never reveals",

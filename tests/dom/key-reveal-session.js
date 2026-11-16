@@ -485,7 +485,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
    * renderNavFilterBar: Group by on the row and, in the open drawer, the two filter
    * dropdowns, from the production filter controls, so the triggers, panels, and checked
    * rows the filter numbers reach are that module's markup. A pin has no modified-within
-   * filter. The options are a stand-in for the tallies.
+   * filter and no By age, as filterGroupOptions leaves out. The options are a stand-in
+   * for the tallies.
    */
   function renderFilters() {
     const controls = context.metabrowser.filterControls;
@@ -528,7 +529,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       options: [
         { key: "a", label: "By age", value: "age" },
         { key: "t", label: "By file type", value: "type" },
-      ],
+      ].filter((option) => !pin || option.value !== "age"),
       select: "one",
       value: groupBy,
     });
@@ -1758,6 +1759,9 @@ const PARTS = {
     steps.push(
       pinned.record("Help lists the numbers once, as positional", {
         helpDigits: pinned.helpDigits(),
+        // A pin has no By age, so Group by's letters are N and T (app.js,
+        // filterGroupOptions).
+        menus: pinned.helpGroup("menus"),
       }),
     );
     pinned.shiftUp();
