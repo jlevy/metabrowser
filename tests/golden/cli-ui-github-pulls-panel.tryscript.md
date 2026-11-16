@@ -562,7 +562,6 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "catalog backfill": [
       "gh auth status",
       "gh api graphql catalog state=all cursor=start",
-      "gh api repos/octo/demo/labels?per_page=100&page=1",
       "gh api graphql catalog state=all cursor=all-100"
     ],
     "cached windows, filters, scrolling and reopen": [],

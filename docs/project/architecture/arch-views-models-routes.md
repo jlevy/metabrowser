@@ -577,16 +577,19 @@ See
 (`mb-varu`): `state`, `reason`, `source`, `reader`, `fetched_at`, remaining
 `fresh_for_s`, `refreshing`, `last_refresh`, `complete`, `count`, and `labels`, each its
 `name`, `color` (six lower-case hex digits or null), and `description`, in GitHub’s
-order. Its tag leaves out the countdown, as the stack snapshot’s does.
+order. `complete` says the last page read named no next page.
+Its tag leaves out the countdown, as the stack snapshot’s does.
+GET remains cache-only.
 `POST github/labels-refresh` accepts only optional boolean `retry` and returns
 `refresh`, `labels`, and `status_route`; `202` starts or joins the job and `200` is
-`not_due`. The job also starts beside `POST github/pulls-refresh`, which a page and the
-Pulls tab send as they are read: when the set is absent or past its age, or when a pull
-read showed a label without a color that the set does not hold, once a freshness window.
-It never starts beside a reader’s own `POST github/pull-refresh`, whose network slot it
-would take. The pull envelope’s `repository_labels` are the set’s entries for the labels
-its record or core names without a color, and `labels_pending` says one of them still
-has none while the job runs.
+`not_due`. It is the job’s only start: the job runs under its own key, never inside the
+catalog’s or a reader’s job, takes the network slot one page at a time, and asks GitHub
+only when the set is absent, past its age, or `retry` asks.
+A pull request’s page sends it once, on the first read that shows a label named without
+a color that the envelope has no entry for (`github.pull-label-set`). The pull
+envelope’s `repository_labels` are the set’s entries for the labels its record or core
+names without a color, and `labels_pending` says the job runs while the set does not
+hold one of them.
 
 `GET github/pull-files?number=<n>&offset=&limit=` answers one pull request’s changed
 files from the cache alone, with the same `state` values.
@@ -923,6 +926,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pull-checks-tab` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-tab-keys` | interaction | `builtin_plugins/github/pull-page.js#attachTabKeys`, `builtin_plugins/github/pull-page.js#numberHeaderControls` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-timeline` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull-timeline` | `node tests/dom/github-pull-timeline-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-label-set` | interaction | `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/labels-refresh` | `node tests/dom/github-pull-labels-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.selected-core-preview` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-core-preview-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
 | `github.idle-comparison-preparation` | interaction | `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-idle-comparison-behavior.js` | `cli-ui-github-checkout-comparison.tryscript.md` |

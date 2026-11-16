@@ -178,6 +178,7 @@ const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 // The repository's list of pull requests, whose scan says which records GitHub changed.
 const CATALOG_REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
+const LABELS_REFRESH_ROUTE = "/api/plugin/github/labels-refresh";
 // How the server says, on a 200 and a 304 alike, when the record was last checked and how.
 const VERIFIED_HEADER = "x-metabrowser-verified";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
@@ -511,7 +512,7 @@ export function labelChip(label) {
  * @param {unknown} entries
  * @returns {Map<string, RepositoryLabel>}
  */
-export function knownLabels(entries) {
+function knownLabels(entries) {
   /** @type {Map<string, RepositoryLabel>} */
   const known = new Map();
   for (const entry of list(entries)) {
@@ -524,6 +525,26 @@ export function knownLabels(entries) {
     }
   }
   return known;
+}
+
+/**
+ * Whether the record or core the envelope shows names a label without a usable color that
+ * `repository_labels` has no entry for, as a record cached before label colors does while
+ * the repository's set lacks it (`mb-varu`).
+ *
+ * @param {PullEnvelope} envelope
+ * @returns {boolean}
+ */
+function labelsMissing(envelope) {
+  const pull = envelope.record !== null ? envelope.record.pull : envelope.core_preview?.pull;
+  const known = knownLabels(envelope.repository_labels);
+  return list(pull?.labels).some((value) => {
+    const label =
+      value !== null && typeof value === "object"
+        ? /** @type {Record<string, unknown>} */ (value)
+        : {};
+    return labelColorProperties(label.color) === null && !known.has(text(label.name));
+  });
 }
 
 /**
@@ -1705,6 +1726,12 @@ export function createPullController(deps, options) {
   // The last answer said the catalog vouched while its next scan ran: the page reads again
   // in a fast poll, so a change that scan publishes is refreshed then, not a slow poll later.
   let catalogScanning = false;
+  // A label the page shows without its color, which the envelope has no entry for, asks
+  // for the repository's label set once a page (`mb-varu`); the server reads it only when
+  // it is absent or due. Once the set's job started or was joined, the page reads again in
+  // a fast poll, which says from then on whether the job still runs (`labels_pending`).
+  let labelsAsked = false;
+  let labelsComing = false;
   /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
   let askTimer = null;
   /** @type {string | null} */
@@ -2001,6 +2028,7 @@ export function createPullController(deps, options) {
       // The repository's labels are being read, so a chip still drawn without its color
       // takes it at once (`mb-varu`).
       envelope.labels_pending === true ||
+      labelsComing ||
       catalogScanning
     );
   }
@@ -2130,6 +2158,7 @@ export function createPullController(deps, options) {
    */
   function take(response, request) {
     catalogScanning = false;
+    labelsComing = false;
     if (response.status === 200 && isEnvelope(response.body)) {
       if (accept(response.body, request)) {
         etag = response.etag;
@@ -2211,6 +2240,7 @@ export function createPullController(deps, options) {
    */
   function afterRead(fastMs) {
     scheduleNext(fastMs);
+    askForLabels();
     fetchForReader();
     fetchSelectedChanges();
     // Decided before the paint, so a record that just went stale is painted refreshing and
@@ -2219,6 +2249,40 @@ export function createPullController(deps, options) {
     render();
     deps.timelineStateChanged?.();
     fetchIdleChanges();
+  }
+
+  /**
+   * Ask once for the repository's label set when the page shows a label named alone that
+   * the envelope has no entry for, at once on the first read that shows it, and not while
+   * the set's job already runs. The server reads the set only when it is absent or due; a
+   * job it started or joined makes the next read a fast poll.
+   */
+  function askForLabels() {
+    if (
+      labelsAsked ||
+      disposed ||
+      envelope === null ||
+      envelope.labels_pending === true ||
+      !deps.isVisible() ||
+      !online() ||
+      !labelsMissing(envelope)
+    ) {
+      return;
+    }
+    labelsAsked = true;
+    void (async () => {
+      let started = false;
+      try {
+        const response = await deps.request("POST", LABELS_REFRESH_ROUTE, { body: {} });
+        started = response.status === 202;
+      } catch {
+        // The chips keep their neutral color; the page's next visit asks again.
+      }
+      if (started && !disposed) {
+        labelsComing = true;
+        scheduleNext();
+      }
+    })();
   }
 
   /**

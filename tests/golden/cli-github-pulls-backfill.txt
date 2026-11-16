@@ -13,7 +13,6 @@ cloned https://github.com/octo/demo in 0.0 s
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api graphql catalog state=closed cursor=start
-gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=closed cursor=closed-100
 gh api graphql catalog state=closed cursor=closed-200
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed&limit=0'

@@ -1680,6 +1680,22 @@ $ node tests/dom/github-pull-core-preview-behavior.js
 ? 0
 ```
 
+A record cached before label colors names its labels alone.
+On the first read that shows one the envelope has no entry for, the page asks for the
+repository’s label set at once, and the job that starts makes its next read a fast poll.
+It keeps polling fast while the envelope says the job runs.
+Once the set is cached, the label it holds takes its color and tooltip, a label GitHub
+no longer has stays neutral, and nothing else the page paints changes.
+A page whose set is already being read asks for nothing.
+One the server finds not due asks once and stays on its slow poll, and labels with their
+own colors never ask.
+
+```console
+$ node tests/dom/github-pull-labels-behavior.js
+{"labelsPending":[{"step":"a first read of labels named alone","requests":["GET /api/plugin/github/pull?number=7","POST /api/plugin/github/labels-refresh {}"],"poll":"fast","labels":["enhancement neutral no tip","deleted-on-github neutral no tip"]},{"step":"the set's job runs","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"fast","labels":"unchanged"},{"step":"the set is cached","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":["enhancement #2700af tip","deleted-on-github neutral no tip"]},{"step":"nothing changes","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":"unchanged"},{"step":"a first read while the job runs","requests":["GET /api/plugin/github/pull?number=7"],"poll":"fast","labels":["enhancement neutral no tip","deleted-on-github neutral no tip"]},{"step":"a label the set does not hold","requests":["GET /api/plugin/github/pull?number=7","POST /api/plugin/github/labels-refresh {}"],"poll":"slow","labels":["enhancement #2700af tip","deleted-on-github neutral no tip"]},{"step":"the next poll","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":"unchanged"},{"step":"labels with their own colors","requests":["GET /api/plugin/github/pull?number=7"],"poll":"slow","labels":["enhancement #2700af tip"]}]}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
