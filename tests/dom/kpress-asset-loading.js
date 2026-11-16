@@ -73,6 +73,14 @@ const fakeParent = {
   },
 };
 
+// The shell's <head> links KPress's style-tokens.css before static/styles.css (server.py).
+// Every link the loader appends carries data-kpress-asset, so this is all the loader's
+// selector can match.
+const pageStylesheetLinks = [
+  { rel: "stylesheet", href: "http://localhost/kpress-static/v0.3.0/css/style-tokens.css" },
+];
+const PAGE_LINK_SELECTOR = 'link[rel~="stylesheet"]:not([data-kpress-asset])';
+
 const sandbox = {
   console: {
     log: (...a) => process.stderr.write(`[sdk:log] ${a.join(" ")}\n`),
@@ -89,7 +97,12 @@ const sandbox = {
   document: {
     head: fakeParent,
     body: fakeParent,
+    baseURI: "http://localhost/view/docs/index.md",
     createElement: makeElement,
+    querySelectorAll(selector) {
+      assert(selector === PAGE_LINK_SELECTOR, `unexpected selector: ${selector}`);
+      return pageStylesheetLinks;
+    },
     documentElement: {
       getAttribute(name) {
         if (name === "data-theme-mode") {
@@ -116,6 +129,13 @@ const sandbox = {
         assets: {
           schema_version: "kpress-asset-manifest-v2",
           assets: [
+            {
+              id: "css/style-tokens.css",
+              path: "css/style-tokens.css",
+              public_url: "/kpress-static/v0.3.0/css/style-tokens.css",
+              entry_point: true,
+              loading: "stylesheet",
+            },
             {
               id: "css/document.css",
               path: "css/document.css",
@@ -210,6 +230,13 @@ sandbox.metabrowser
 
     const links = appended.filter((el) => el.tagName === "LINK");
     const scripts = appended.filter((el) => el.tagName === "SCRIPT");
+    // style-tokens.css is already linked by the page. Linking it again would put it after
+    // static/styles.css, where KPress's :root --font-sans and --font-mono aliases would
+    // replace the shell's tokens.
+    assert(
+      !links.some((el) => el.href.endsWith("/css/style-tokens.css")),
+      "style-tokens.css, which the page already links, was linked again",
+    );
     assert(links.length === 1, `expected one stylesheet, got ${links.length}`);
     assert(links[0].rel === "stylesheet", "stylesheet rel was not set");
     assert(
