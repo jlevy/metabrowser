@@ -155,6 +155,13 @@ highlighted source, code blocks, Markdown inline code, and raw log payloads.
 Numeric alignment on its own does not justify monospace — byte counts, durations, and
 timestamps stay sans and use `--tabular-numerals`.
 
+One stack, `--app-mono`, serves all of it: `--font-mono` and KPress’s
+`--kpress-host-font-mono` hook both read it, so highlighted source and the code in a
+rendered Markdown document draw in the same face.
+The face still depends on the engine: SF Mono in WebKit (Safari and the macOS app), and
+Menlo in Chromium on a Mac unless the user installed SF Mono.
+The measurement behind that order sits beside the token in `static/styles.css`.
+
 The authoritative rule, the current list of deliberate exceptions, and the reasoning for
 each live in the `── Typography roles ──` block of `static/styles.css`, next to the
 tokens they govern. `tests/test_chrome_typography.py` enforces that list across the host

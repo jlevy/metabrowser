@@ -48,3 +48,8 @@ def test_kpress_browser_assets_honor_manifest_loading_modes() -> None:
     ]
     assert [script["type"] for script in scripts] == ["module", "module", "text/javascript"]
     assert all(script["async"] is False for script in scripts)
+    # The page's <head> already links style-tokens.css, before static/styles.css. A
+    # second link would land after styles.css, and KPress's :root --font-sans and
+    # --font-mono aliases would replace the shell's tokens once a document rendered.
+    links = [node["href"] for node in payload["appended"] if node["tagName"] == "LINK"]
+    assert links == ["/kpress-static/v0.3.0/css/document.css"]
