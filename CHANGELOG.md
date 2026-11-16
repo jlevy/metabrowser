@@ -143,7 +143,7 @@ All notable changes to Metabrowser are documented here.
 - A Pulls row now reads its state icon and number’s line first, a stack member’s place,
   the number, and the author, as “1/4 · #113 · jlevy”, with the age at the row’s end,
   then the title alone on a line of its own, running to the pane’s edge and cut there
-  with an ellipsis, and then its change line, with the chevron (below).
+  with an ellipsis, and then its change line, with the chevron (above).
   The title has 38 px more at every pane width: 208 px for a stack member at the default
   pane, where it had 170. The number’s line stays one line, so a row’s link is always
   two lines: a long name ends in an ellipsis and then leaves the line, and a place in
