@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import threading
 import webbrowser
@@ -21,6 +22,7 @@ from typing import NoReturn, override
 import typer
 import uvicorn
 
+from metabrowser import delivery
 from metabrowser.build_version import build_state
 from metabrowser.cli.common import (
     apply_log_level,
@@ -191,6 +193,11 @@ def _run_until_interrupted(uvicorn_server: _QuietForceExitServer) -> bool:
     return uvicorn_server.interrupted is True
 
 
+# The banner line of a server that sends a loopback client its answers uncompressed
+# (metabrowser.delivery); a server that compresses for every client prints none.
+LOCAL_DELIVERY_BANNER = "Compression: off for loopback clients of this machine"
+
+
 def run_serve(
     root: Path,
     *,
@@ -198,6 +205,7 @@ def run_serve(
     port: int,
     host: str = "127.0.0.1",
     no_open: bool = False,
+    local_client: bool = False,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     untrusted: bool = False,
@@ -279,6 +287,7 @@ def run_serve(
         host=host,
         port=port,
         no_open=no_open,
+        local_client=local_client,
         attach=attach_root,
     )
 
@@ -311,13 +320,17 @@ def serve_until_interrupted(
     no_open: bool,
     attach: Callable[[], None],
     banner: Sequence[str] = (),
+    local_client: bool = False,
 ) -> None:
     """Print the banner and serve until the process is stopped.
 
     The caller has installed the interrupt handler and applied dotenv, the
     capability block, the log level, and plugin directories. *attach* selects
     what the server serves once its module is loaded; *served* names it in the
-    banner, followed by any *banner* lines.
+    banner, followed by any *banner* lines. *local_client* says the command line
+    started this server as the macOS app does, for a client on this machine; on a
+    loopback address, outside a remote session, it then leaves a loopback client's
+    answers uncompressed (:mod:`metabrowser.delivery`).
     """
 
     # Server import performs logging setup and plugin discovery. Keep it after
@@ -349,6 +362,9 @@ def serve_until_interrupted(
     # (which the allowlist always permits) instead of an unroutable
     # 0.0.0.0-style name.
     server._register_allowed_host(host)
+    delivery.serve_locally(
+        local_client and delivery.loopback_host(host) and not delivery.remote_session(os.environ)
+    )
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
     url = f"http://{display_host}:{actual_port}{view_href}"
 
@@ -359,6 +375,10 @@ def serve_until_interrupted(
     typer.echo(f"Serving {served} at {url}" + (f"  [dev build: {state}]" if state else ""))
     for line in banner:
         typer.echo(line)
+    if delivery.serving_locally():
+        # The one start that changes what a client is sent, said where an operator, and
+        # server-time.mjs, can read it (#455 A10).
+        typer.echo(LOCAL_DELIVERY_BANNER)
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")
