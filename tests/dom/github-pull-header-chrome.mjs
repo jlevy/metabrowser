@@ -137,7 +137,12 @@ const SUMMARY_INDENT = `async (place) => {
   while (!open() && performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  // The box travels open in --transition-fast: wait for that travel itself, and for one that
+  // replaced it, as a travel retargeted when the box's height changes is.
+  const travels = () => place.querySelector(".diff-summary-body")?.getAnimations() ?? [];
+  while (travels().length > 0 && performance.now() < deadline) {
+    await Promise.allSettled(travels().map((travel) => travel.finished));
+  }
   await frames();
   const left = (node) => Math.round(node.getBoundingClientRect().left * 100) / 100;
   return {

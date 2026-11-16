@@ -299,8 +299,8 @@ async function main() {
     .rows()
     .map((row) => ({ row: line(row), label: shared.rowLabel(row, formatCount) }));
 
-  // Which rows of a long tree are in the document: those in the box's view and 40 more each
-  // way, and the row that takes Tab wherever it is (A10 of review A on #448).
+  // Which rows of a long tree are in the document: those in the window's view of it and 40
+  // more each way, and the row that takes Tab wherever it is (A10 of review A on #448).
   const long = Array.from({ length: 1200 }, (_, at) =>
     change("modified", `pkg/file-${String(at).padStart(4, "0")}.py`, 1, 1),
   ).map(rowOf);

@@ -1393,7 +1393,7 @@ rows, in the page’s flow, with no scroll bar of its own: the page scrolls past
 It has no bound on its length beyond the comparison’s, at most 2,000 files, and the
 document holds only the rows in the window’s view of it and `SUMMARY_ROWS_OVERSCAN` more
 each way, as the Pulls tab’s tree does.
-On synthetic patches of 106, 600, and 2,000 files (3,221, 23,237, and 54,965 px tall) in
+On synthetic patches of 106, 600, and 2,000 files (3,197, 23,237, and 54,965 px tall) in
 Chrome the rows showed 8 to 57 ms after a press, the document held at most 116 rows, and
 scrolling the page through the tree kept its frames; the numbers are beside the constant
 in `diff-summary.js`. Nothing of it is mounted until the header first opens it.

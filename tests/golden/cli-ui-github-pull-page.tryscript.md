@@ -71,6 +71,8 @@ Back onto an entry waits for its page and puts the pane at that block, and back 
 each time the page changes height, until the reader moves it or the page has been still.
 A reader who moved first keeps the pane where they took it, and an address with a
 fragment is left alone.
+A place in the header goes no further than the first block, since a page opened again
+draws its header closed, and an open Diff summary made it far taller.
 It asserts, and so prints nothing for, that no pace of moves writes a place more often
 than Safari’s limit on `history.replaceState`, and that only a key that can move the
 pane ends a hold.
@@ -1609,6 +1611,7 @@ $ node tests/dom/github-pull-page-second-session.js
     "back and forward between tabs: this tab's place": "pane at 1430; entry {\"block\":2,\"offset\":10,\"top\":900}; 0 written; holding, settling",
     "a write still waiting when history moves is dropped with the old entry": "pane at 1025; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; holding, settling",
     "a page with fewer blocks than the place shows its last": "pane at 430; entry {\"block\":40,\"offset\":10,\"top\":90000}; 0 written; holding, settling",
+    "a place in a header now shorter shows the first block": "pane at 120; entry {\"block\":-1,\"offset\":0,\"top\":30000}; 0 written; holding, settling",
     "what is not a place is no place: {\"block\":\"1\",\"offset\":0,\"top\":0}": "pane at 0; entry {\"block\":\"1\",\"offset\":0,\"top\":0}; 0 written; nothing running",
     "what is not a place is no place: {\"block\":1}": "pane at 0; entry {\"block\":1}; 0 written; nothing running",
     "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
