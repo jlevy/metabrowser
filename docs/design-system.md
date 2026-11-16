@@ -488,14 +488,14 @@ keeps it.
 
 | Count summary | Where its numbers are painted |
 | --- | --- |
-| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes`, from `describeChanges` (`filesParts`, `breakdownParts`) and `plainTotals`, with its status letters and its muted dots and commas; its line totals are the inline change stats, bold already |
+| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status letters and its muted dots and commas; its line totals are the inline change stats, bold already |
 | The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
 | The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `_renderFilteredTally` in `static/app.js` in one span of its line |
 | The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
 | The Pulls count, “448 PRs on owner/repo” | `.github-pulls-total` in the GitHub plugin’s `pulls-panel.js` |
 | A pull request’s Checks summary, “3 success · 1 failure” | `paintChecks` in the GitHub plugin’s `pull-page.js`, through `metabrowser.countPartsNodes`, its dots `.summary-punctuation` in a line muted already, each saying a comma in its place |
 | A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js`, in one span of its line |
-| A commit’s hover card, “32 files changed · 4 A, 28 M · +1,921 −160” | `renderCommitChangeStats` in `static/git-panel.js`, through `changeSummary` and `countPartsHtml`, in the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
+| A commit’s hover card, “32 files changed · 4 A, 28 M · +1,921 −160” | `renderCommitChangeStats` in `static/git-panel.js`, through `changeSummary`, `countPartsHtml`, and `changeLineHtml`, in the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
 
 The rule does not reach a number that is not a count summary’s:
 
@@ -537,10 +537,11 @@ and `tests/dom/github-pull-core-preview-behavior.js` the Checks summary’s.
 themes, each letter at its status’s token and each mark at `--muted`, and
 `tests/dom/git-commit-summary-chrome.mjs` the hover card’s, each number bold in the
 line’s ink and each letter at the line’s weight; the latter holds that the commit page’s
-header starts no line with a dot from 180 to 400 px, and the hover card none narrowed to
-160 px.
-A heading tally’s dot (`.heading-tally-dot`) is muted with the rest of its tally,
-and is not painted from these parts.
+header starts no line with a dot at any width from 60 to 400 px, and the hover card none
+from 60 to 360 px, 1 px apart, and that with each dot’s group dissolved both sweeps find
+a dot starting a line.
+A heading tally’s dot (`.heading-tally-dot`) is muted with the rest of its tally, and is
+not painted from these parts.
 
 ### KPress Base-Size Boundary
 

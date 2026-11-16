@@ -105,8 +105,9 @@
    same 6 px, so every dot is spaced alike on both sides, on a toggle and on a line alike.
    The "(estimated)" after totals that are not exact, and the "(N listed)" of a list cut
    short, are muted, qualifiers of the totals, as their marks are.
-   tests/dom/git-commit-summary-chrome.mjs holds that no line starts with a dot from 180 to
-   400 px, where the commit page's header wraps. */
+   tests/dom/git-commit-summary-chrome.mjs holds that no line starts with a dot at any width
+   from 60 to 400 px, 1 px apart, where the commit page's header wraps, and that one does
+   with these groups dissolved. */
 .metabrowser-diff-host .diff-summary-group {
   display: inline-flex;
   align-items: baseline;

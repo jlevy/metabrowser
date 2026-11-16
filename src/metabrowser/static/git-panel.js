@@ -409,7 +409,9 @@
    * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painters
    * (`countPartsHtml`, and `changeLineHtml` for the totals): the file count bold, and the dot
    * muted, one item with the count before it, and said as a comma to a screen reader, as a
-   * line has no name in words.
+   * line has no name in words. The spaces around the dot are written, so the line reads
+   * "35 files changed · +1,234 −3,423" without the diff plugin's stylesheet too, whose flex
+   * line renders none of them (B3 of review B on #479).
    *
    * @param {Partial<MetabrowserGitCommitStats>} stats
    * @returns {string}
@@ -423,8 +425,8 @@
     const said = formatters.changeSummary(totals, [], formatters.formatInteger);
     return (
       '<div class="diff-summary"><span class="diff-summary-group">' +
-      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span>` +
-      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span>` +
+      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span> ` +
+      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span> ` +
       `${formatters.changeLineHtml(said.line)}</div>`
     );
   }

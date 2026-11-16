@@ -150,36 +150,22 @@
     return `<span class="${TITLE_PREFIX_CLASS}">${escaped(split.prefix)}</span>${escaped(split.rest)}`;
   }
 
-  // A count summary's numbers are bold, its punctuation muted, its status letters in their
-  // statuses' ink, and its words keep the line's ink and weight (docs/design-system.md,
-  // "Count Summaries Bold Their Numbers"). Every count summary comes in one shape of parts:
-  // the words as strings; each number, the whole figure with its marks, sign, "+", or unit,
-  // as `{number}`; a list's comma as `{punctuation}`; the " · " dot between a line's groups
-  // as `{separator}`, with `spoken`, what a screen reader is told in its place, on a line
-  // whose name does not say it in words; and a file change status as `{status, letter}`.
+  // A count summary's parts (`MetabrowserCountPart`) and their one painter, for the shell and,
+  // through the SDK, plugins (docs/design-system.md, "Count Summaries Bold Their Numbers").
   // "12,797 files" is `[{number: "12,797"}, " files"]`, and its text is the parts joined.
-  // This is their one painter: the shell paints through `countPartsHtml` and
-  // `countPartsNodes`, and a plugin through the SDK's `metabrowser.countPartsNodes`.
-  /** The one class that sets a count summary's number's weight (static/styles.css). */
   const SUMMARY_NUMBER_CLASS = "summary-number";
-  /** The one class that mutes a count summary's punctuation (static/styles.css). */
   const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";
-  /** The file change status primitive, which inks a letter by its status (static/styles.css). */
   const FILE_CHANGE_STATUS_CLASS = "file-change-status";
-  /** The shell's text for a screen reader alone (static/styles.css). */
   const VISUALLY_HIDDEN_CLASS = "visually-hidden";
 
   /**
-   * What paints a part of a count summary or a brief change line: words as their text, and an
-   * element as its class, its attributes, and its text or its children.
+   * Words as their text, or a span's class, attributes, and text or children.
    * @typedef {string | {className: string, attributes?: Array<[string, string]>, text?: string, children?: Paint[]}} Paint
    */
 
   /**
-   * One part as what paints it: words as their text, and each other kind as the element
-   * that paints it, its class, its text, and its attributes. A separator is hidden from
-   * assistive technology, as a heading tally's dot is, and its `spoken` follows it in the
-   * shell's text for a screen reader alone.
+   * A part's paint. A separator is hidden from assistive technology, and its `spoken`
+   * follows it in a span for a screen reader alone.
    * @param {MetabrowserCountPart} part
    * @returns {Paint[]}
    */
@@ -214,7 +200,6 @@
   }
 
   /**
-   * A paint as a node of *doc*: words as text, an element as a span.
    * @param {Document} doc
    * @param {Paint} paint
    * @returns {Node | string}
@@ -237,7 +222,6 @@
   }
 
   /**
-   * A paint as escaped markup.
    * @param {Paint} paint
    * @returns {string}
    */
@@ -256,11 +240,8 @@
   }
 
   /**
-   * A count summary's nodes: each number in a `span.summary-number`, each mark in a
-   * `span.summary-punctuation`, each status's letter in a `span.file-change-status`, a
-   * separator's `spoken` in a `span.visually-hidden`, and the words as text. A caller puts
-   * one phrase's nodes in one inline element: in a flex line, each would be an item of its
-   * own, parted by the line's gap and read as runs of their own.
+   * A count summary's nodes. A caller puts one phrase's nodes in one inline element: in a
+   * flex line, each would be an item of its own.
    * @param {Document} doc
    * @param {MetabrowserCountParts} parts
    * @returns {Array<Node | string>}
@@ -279,8 +260,7 @@
   }
 
   /**
-   * A count summary's parts as the text they read: each number, letter, and mark as it is
-   * written, and no separator's `spoken`.
+   * The text the parts read, without a separator's `spoken`.
    * @param {MetabrowserCountParts} parts
    * @returns {string}
    */
@@ -300,35 +280,20 @@
       .join("");
   }
 
-  /** The minus sign a deleted line count is written with. */
   const MINUS = "−";
 
-  // A brief change line, "10 A, 5 D, 4 M · +1,234 −567": a change set's statuses and its line
-  // totals, without its count of files. It is one component, the one every surface that says
-  // a change set in brief draws (docs/design-system.md, "Brief Change Line"): the Diff
-  // summary's header after its "N files changed · ", a commit's hover card, and a commit
-  // page's totals line. `changeLine` builds it and `changeLineNodes` and `changeLineHtml`
-  // paint it; a plugin reaches both through the SDK, `metabrowser.changeLine` and
-  // `metabrowser.changeLineNodes`.
-  /** The brief change line's classes (static/styles.css). */
+  // A brief change line, "10 A, 5 D, 4 M · +1,234 −567", the one component for a change set
+  // said in brief (docs/design-system.md, "Brief Change Line"; the SDK's `changeLine` and
+  // `changeLineNodes`).
   const CHANGE_LINE_CLASS = "change-line";
   const CHANGE_LINE_GROUP_CLASS = "change-line-group";
   const CHANGE_LINE_STATUSES_CLASS = "change-line-statuses";
   const CHANGE_LINE_STATS_CLASS = "change-line-stats";
 
   /**
-   * A brief change line from the model `describeChanges` reads: the statuses in the order
-   * shown, each with its letter, the badge its rows carry, its word, and its count, a caller
-   * leaving out a status no file has, and the line totals, null where they are not known;
-   * each count written with *formatCount*, the shell's number format, and "?" for one it does
-   * not know.
-   *
-   * `statusParts` is "10 A, 5 D, 4 M" in a count summary's parts, each number bold, each
-   * letter in its status's ink, the commas muted, or nothing for no statuses; `additions` and
-   * `deletions` are "+1,234" and "−567"; `text` is the line as it reads, "10 A, 5 D, 4 M ·
-   * +1,234 −567"; and `label` is what a screen reader is told, in words: "10 added, 5
-   * deleted, 4 modified; 1,234 lines added, 567 deleted".
-   *
+   * A brief change line, each count written with *formatCount* and an unknown one as "?":
+   * `text` as it reads, and `label` in words, "10 added, 5 deleted, 4 modified; 1,234 lines
+   * added, 567 deleted".
    * @param {MetabrowserChangeLineInput} change
    * @param {(count: number) => string} formatCount
    * @returns {MetabrowserChangeLine}
@@ -336,8 +301,6 @@
   function changeLine(change, formatCount) {
     /** @param {number | null} count */
     const written = (count) => (count === null ? "?" : formatCount(count));
-    // "10 A, 5 D": each status's count and letter, the commas between them a list's
-    // punctuation.
     /** @type {MetabrowserCountParts} */
     const statusParts = change.statuses.flatMap((entry, at) => [
       ...(at === 0 ? [] : [{ punctuation: "," }, " "]),
@@ -364,13 +327,8 @@
   }
 
   /**
-   * A brief change line's paint: one `span.change-line`, which holds its statuses,
-   * `span.change-line-statuses`, painted as a count summary's parts, with the muted dot
-   * after them as one item (`span.change-line-group`), so a line that wraps breaks after the
-   * dot; and its line totals, the inline change stats (`span.change-line-stats`, with
-   * `.diff-stat-add` and `.diff-stat-del`). A line of no statuses is its totals alone. On a
-   * line whose name does not say it in words, *options.spoken* is what a screen reader is
-   * told in the hidden dot's place.
+   * One `span.change-line`: its statuses and the dot after them as one item, so a wrap
+   * breaks after the dot, then its line totals. *options.spoken* is said in the dot's place.
    * @param {MetabrowserChangeLine} line
    * @param {MetabrowserChangeLineOptions} [options]
    * @returns {Paint}
@@ -405,7 +363,6 @@
   }
 
   /**
-   * A brief change line as nodes of *doc*: its one `span.change-line`.
    * @param {Document} doc
    * @param {MetabrowserChangeLine} line
    * @param {MetabrowserChangeLineOptions} [options]
@@ -416,7 +373,6 @@
   }
 
   /**
-   * `changeLineNodes` as escaped markup.
    * @param {MetabrowserChangeLine} line
    * @param {MetabrowserChangeLineOptions} [options]
    * @returns {string}
@@ -426,20 +382,8 @@
   }
 
   /**
-   * What a change set's summary says, in its parts: its file count, "35 files changed", and
-   * its brief change line (`changeLine`), "2 A, 3 D, 30 M · +1,234 −3,423", each count written
-   * with *formatCount*, the shell's number format, and "?" for a count it does not know.
-   * Every summary of a change set says it in these words, the Diff summary's header
-   * (changed-files-tree.js, `describeChanges`) and a commit's hover card (git-panel.js,
-   * `renderCommitChangeStats`) (docs/design-system.md, "Diff Summary").
-   *
-   * `filesParts` is "35 files changed" in a count summary's parts, which a summary sets
-   * apart from its line with a muted " · "; `line` is the brief change line of *entries* and
-   * the totals' line counts; `estimated` is whether the totals are not exact, which a summary
-   * says as "(estimated)"; `text` is the whole line as it reads, "35 files changed · 2 A, 3
-   * D, 30 M · +1,234 −3,423"; and `label` is what a screen reader is told, in words: "35
-   * files changed: 2 added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted".
-   *
+   * What every summary of a change set says: its file count, "35 files changed", and its
+   * brief change line (docs/design-system.md, "Diff Summary").
    * @param {{files: number | null, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {MetabrowserChangeLineInput["statuses"]} entries
    * @param {(count: number) => string} formatCount

@@ -1079,15 +1079,16 @@ async function run() {
   // it does, and where it is not drawn, the place says the commit's totals in one line, worded
   // and painted as the diff's line is (A6 of review A on #470), through the same parts and
   // painter: its dot one item with the count before it, and said as a comma (A5 of review A
-  // on #479).
+  // on #479); the spaces around the dot are written, so it reads as one line without the
+  // diff plugin's stylesheet too (B3 of review B on #479).
   assertContains(
     "detail: summary holds the Diff summary's place, with the commit's totals",
     previewHtml,
     '<div class="git-commit-diff-summary metabrowser-diff-host"><div class="diff-summary">' +
       '<span class="diff-summary-group"><span class="diff-summary-files">' +
-      '<span class="summary-number">2</span> files changed</span>' +
+      '<span class="summary-number">2</span> files changed</span> ' +
       '<span class="summary-punctuation" aria-hidden="true">·</span>' +
-      '<span class="visually-hidden">, </span></span>' +
+      '<span class="visually-hidden">, </span></span> ' +
       '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-add">+5</span>' +
       '<span class="diff-stat-del">−1</span></span></span></div></div>',
   );
