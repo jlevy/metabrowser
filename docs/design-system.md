@@ -463,10 +463,9 @@ on every ground a count summary is drawn on, the page, the sidebar, a hovered he
 and a tooltip, in both themes.
 A count that is not a status’s, as “19 files changed”, is a number, bold, in the line’s
 ink, and its words keep the line’s ink and weight.
-Before, a status count’s number was in the line’s ink and its letter at the line’s
-weight. The dot is hidden from assistive technology, as a heading tally’s is, and a line
-that shows letters tells a screen reader its statuses in words, “19 files changed: 10
-added, 5 deleted, 4 modified”, so no letter is read out.
+The dot is hidden from assistive technology, as a heading tally’s is, and a line that
+shows letters tells a screen reader its statuses in words, “19 files changed: 10 added,
+5 deleted, 4 modified”, so no letter is read out.
 Where the line has no name that says it in words, as a paragraph or a plain line has
 not, a comma is said in each hidden dot’s place, in the shell’s `.visually-hidden`. A
 note that qualifies the line’s figures, as the Diff summary’s “(estimated)”, is muted
@@ -1517,8 +1516,7 @@ row is 24 px before and after the summary arrives, and the tab bar under it does
 move. A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 files changed ·
 8 M · +120 −30”, ends 13.91 to 15.92 em from the row’s start, its text 13.45 to 15.46
 em, and the block ends between the two; one of three statuses, “35 files changed · 2 A,
-3 D, 30 M · +1,234 −3,423”, ends its text at 22.26 em, measured again with its status
-counts’ letters bold (mb-8iwn), where they ended 0.03 to 0.08 em sooner.
+3 D, 30 M · +1,234 −3,423”, ends its text at 22.26 em.
 `tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds that, and
 `tests/dom/github-pull-page-mount-behavior.js` which of them the row holds in each
 state. Its header is one row-like disclosure toggle that leads with the registry’s
