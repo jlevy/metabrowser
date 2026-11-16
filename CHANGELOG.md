@@ -6,16 +6,17 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request you have opened before shows its Diff summary at once when you open it
   again, and its Changes opens with no wait, whether you first opened it on Conversation
-  or on Changes: what a page reads of a comparison is kept while Metabrowser is open,
-  instead of being read again, once the browser was idle, on every visit.
+  or on Changes: what a page reads of a comparison is kept for the page’s session, until
+  a reload, instead of being read again, once the browser was idle, on every visit.
   A pull request whose head or base moved is read anew.
   What is kept is bounded, and a comparison past the bound, or one too large to keep, is
   read as before, once the browser is idle, from the browser’s cache.
   The Pulls tab also reads ahead, behind you, the comparisons of the pull requests you
   are likely to open next: the open one, the rows the pointer or focus rests on, the
-  open pull request’s neighbours in its stacks, and the rows above and below it, from
-  the local repository cache with no GitHub request, and only while the tab is shown and
-  you are online. See [Diff Summary](docs/design-system.md#diff-summary).
+  open pull request’s neighbours in its stacks, and the rows above and below the one
+  that takes Tab, from the local repository cache with no GitHub request, and only while
+  the tab is shown and you are online.
+  See [Diff Summary](docs/design-system.md#diff-summary).
 
 - The folder’s name at the top of the navigation is Home, and `0` and Shift-0 go there
   too: the folder’s home view exactly as a fresh load of it shows it.
@@ -59,9 +60,11 @@ All notable changes to Metabrowser are documented here.
   M”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar; in the
   Files totals, as in “**15,458** files (**324.1 MB**)”, and the filter’s “Filtered to”
   line; in the Commits tally; in a pull request’s Checks summary; and in a commit’s
-  files outside the served folder, all of which were regular in 0.12.0. The Pulls
-  count’s number stays bold, as it was in 0.12.0. A size is bold with its unit, and what
-  a screen reader hears is unchanged.
+  files outside the served folder.
+  The Diff summary is new; the others were regular in 0.12.0, as was the totals line a
+  diff’s toolbar showed in its place.
+  The Pulls count’s number stays bold, as it was in 0.12.0. A size is bold with its
+  unit, and what a screen reader hears is unchanged.
   A commit’s hover card in the Commits tab says its changes as the Diff summary’s header
   does, “**32** files changed · **4** A, **28** M · +1,921 −160”, in place of its two
   rows, “28 M 4 A files” and “+1921 −160 lines”, whose added and deleted counts were
@@ -76,12 +79,6 @@ All notable changes to Metabrowser are documented here.
 - A diff’s toolbar no longer draws a rule under the Split | Unified chooser, on a
   commit’s page, on a pull request’s Changes, and in a patch: the first file’s own
   border is the one line between the chooser and the files.
-
-- An opened Diff summary no longer scrolls in a box of its own: its tree of files is as
-  tall as its rows, and the page scrolls past it to the diff, drawing only the rows in
-  view. Its first level starts one indentation step in from the summary’s header, and
-  each folder’s rows one step further, as nested rows do in the Files tree and the Pulls
-  tab.
 
 - A commit’s page and a pull request’s page each have one Diff summary, collapsed, at
   the top of the page, and the counts of files and lines are its header; a patch file of
@@ -99,16 +96,20 @@ All notable changes to Metabrowser are documented here.
   Where the row cuts the summary short, its tooltip gives the whole of it, and a
   comparison that cannot be read leaves the row empty rather than showing an older
   comparison’s counts.
+  Opened, its tree of files is as tall as its rows, and the page scrolls past it to the
+  diff, drawing only the rows in view.
+  Its first level starts one indentation step in from the summary’s header, and each
+  folder’s rows one step further, as nested rows do in the Files tree and the Pulls tab.
   See [Diff Summary](docs/design-system.md#diff-summary).
 
 - A Pulls row now reads its chevron, state icon, and number’s line first, a stack
   member’s place, the number, and the author, as “1/4 · #113 · jlevy”, with the age at
   the row’s end, and then the title alone on a line of its own, running to the pane’s
   edge and cut there with an ellipsis.
-  The title has 38 px more at every pane width: 208 px for a stack member at the default
-  pane, where it had 170. The number’s line stays one line, so a row is always two
-  lines: a long name ends in an ellipsis and then leaves the line, and a place in two
-  stacks is cut short after that, the number always whole.
+  The title is 208 px wide for a stack member at the default pane.
+  The number’s line stays one line, so a row is always two lines: a long name ends in an
+  ellipsis and then leaves the line, and a place in two stacks is cut short after that,
+  the number always whole.
 
 - The Files tree under Modified within, File type, or Minimum file size answers faster
   on a large folder: by a quarter to a half on a folder of 100,000 files.

@@ -439,9 +439,9 @@ One token sets the weight, `--count-numeral-weight` in the shell’s stylesheet,
 [pull request’s number](#pull-request-numbers).
 Every count’s numeral takes it, a count summary’s `.summary-number` and a
 [heading’s tally](#heading-tallies), `.heading-tally-figure`, and none borrows
-`--pull-number-weight`, which only a pull request’s number takes.
-`.summary-number` in `static/styles.css` sets that weight alone: the number keeps its
-line’s size and ink, muted in a muted half or note.
+`--pull-number-weight`, which a pull request’s number, and a stack’s position read with
+it, take. `.summary-number` in `static/styles.css` sets that weight alone: the number
+keeps its line’s size and ink, muted in a muted half or note.
 A number is the whole figure: its grouping and decimal marks, a sign, a lower bound’s
 “+”, and a size’s unit, “394.6 MB”. Parentheses, separators, and words stay regular, and
 an age keeps the [age primitive](#age), which has a weight of its own.
@@ -488,7 +488,8 @@ keeps it.
 
 | Count summary | Where its numbers are painted |
 | --- | --- |
-| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status letters and its muted dots and commas; its line totals are the inline change stats, bold already |
+| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status letters and its muted dots and commas, and through `listedNote` for a list cut short, “(2,000 listed)”; its line totals are the inline change stats, bold already |
+| A commit’s totals line, in its Diff summary’s place until the commit’s diff draws the summary there, and where it is not drawn | `renderCommitTotals` in `static/git-panel.js`, through `changeSummary`, `countPartsHtml`, and `changeLineHtml`, in the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
 | The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
 | The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `_renderFilteredTally` in `static/app.js` in one span of its line |
 | The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
@@ -1592,14 +1593,17 @@ path, and the file bar the row goes to shows it the same way
 the rows, and the keys, and the paint’s measurement is in the views, models, and routes
 map (`diff.summary-paint`).
 
-A pull request’s page reads its comparison once while Metabrowser is open, not once a
-visit: what it reads is kept for the document (`createComparisonKeep` in
+A pull request’s page reads its comparison once for the page’s session, until a reload,
+not once a visit: what it reads is kept for the document (`createComparisonKeep` in
 `builtin_plugins/github/comparison-prefetch.js`), keyed by the comparison’s route, which
 names both commits, so a pull request opened again draws its Diff summary in the paint
 that shows its record, with no request, no wait for the browser to be idle, and no
 placeholder, and its Changes mounts from the same answer.
 That holds whichever tab read it first: a page opened on Changes reads through the keep
-too. A record whose head or base moved names another route, which is read anew.
+too, and draws the summary from what its diff read.
+The summary is drawn once for each comparison and kept across the page’s tabs.
+A page opened out of sight reads a comparison the document does not hold once it is
+shown. A record whose head or base moved names another route, which is read anew.
 The keep is bounded (`KEPT_COMPARISON_CHARS`): a comparison it no longer holds, or one
 too large to keep, is read as before, once the browser is idle, from the browser’s
 cache. The first screen’s rendered Markdown is the page’s own to ask for, apart from the
@@ -1802,18 +1806,13 @@ The row is held at `--ui-row-height` from first paint, holding the
 [pending placeholder](#diff-summary) while the comparison is read, and the summary’s
 header is one line, its breakdown cut short at its end, so the summary that arrives
 moves nothing; opened, its tree pushes the tabs down, as the reader asked.
-On every tab but Changes the page reads the comparison once it is idle, as it would for
-Changes, and once it is shown, for a page opened out of sight; on Changes it draws the
-summary from what the diff read.
-It is drawn once for each comparison it shows and kept across tabs.
-A newer comparison’s summary replaces it in one step; a read of the newer comparison
-that fails empties the row, at its height, rather than leave the older comparison’s
-counts there as the newer one’s, and the next paint reads it again.
-Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first paint;
-a summary of “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” arriving moved no row
-and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut short at
-320 px with the whole header as its tooltip; the row starts on the header’s content
-edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
+How the page reads the comparison the row is drawn from, what the row holds while it
+waits, and what a read that fails leaves there are the [Diff Summary](#diff-summary)’s
+rules. Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first
+paint; a summary of “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” arriving moved
+no row and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut
+short at 320 px with the whole header as its tooltip; the row starts on the header’s
+content edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
 The row adds its 24 px and one 6 px gap to the header.
 `tests/dom/github-pull-header-chrome.mjs` holds the measurement, and
 `tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
@@ -2225,14 +2224,14 @@ The tab also has ready, behind the reader, the comparison of each pull request i
 likely to open next, so its page draws the [Diff summary](#diff-summary) at once: the
 open pull request, the two rows the pointer or focus last rested on, the open pull
 request’s neighbours in its stacks, which Control-N and Control-P reach, and the rows
-above and below it, at most `WARM_COMPARISONS` an ask (`createComparisonWarmer` in
-`builtin_plugins/github/comparison-prefetch.js`). They are read one at a time when the
-browser is idle and only once no page is reading one, each a record from the cache and a
-comparison from the repository store, with no GitHub request and no rendered Markdown,
-at most `WARM_PER_HOUR` an hour, each counted before its record is read.
-A comparison already kept or on its way is not asked for again, and no outcome is looked
-up again within the record’s freshness window: a record that names no comparison, a
-refusal, and an answer too large to keep included.
+above and below the one that takes Tab, at most `WARM_COMPARISONS` an ask
+(`createComparisonWarmer` in `builtin_plugins/github/comparison-prefetch.js`). They are
+read one at a time when the browser is idle and only once no page is reading one, each a
+record from the cache and a comparison from the repository store, with no GitHub request
+and no rendered Markdown, at most `WARM_PER_HOUR` an hour, each counted before its
+record is read. A comparison already kept or on its way is not asked for again, and no
+outcome is looked up again within the record’s freshness window: a record that names no
+comparison, a refusal, and an answer too large to keep included.
 The tab warms only while it is shown, visible, and online; hidden, parked, or offline,
 it empties the queue.
 A warm’s record read is not a view, so it adds nothing to the records the server’s
