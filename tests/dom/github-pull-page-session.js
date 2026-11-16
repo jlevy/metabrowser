@@ -685,6 +685,13 @@ function placeStory(runtime) {
   step("a page with fewer blocks than the place shows its last", () => keeper.land());
   keeper.readerMoved();
 
+  // A place deep in a header that was taller, an open Diff summary's rows, on a page that
+  // draws its header shorter: the first block, not that many pixels into the page.
+  stage.entry = { block: -1, offset: 0, top: 30000 };
+  reopen([300, 400]);
+  step("a place in a header now shorter shows the first block", () => keeper.land());
+  keeper.readerMoved();
+
   for (const value of [{ block: "1", offset: 0, top: 0 }, { block: 1 }, "nonsense"]) {
     stage.entry = value;
     reopen([300, 400]);

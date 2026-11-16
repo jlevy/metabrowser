@@ -2762,6 +2762,11 @@ export function placeAt(tops, scrollTop) {
  * The scroll offset that shows *place*, or null while the page has no blocks to place it
  * in. A page that now has fewer blocks than it did shows its last.
  *
+ * A place in the header goes no further than the first block's top: the header can be
+ * shorter than it was, as it is when the Diff summary in it was open, tens of thousands of
+ * pixels of rows, and a page opened again draws it closed, so the same offset would land
+ * that far into the page.
+ *
  * @param {PanePlace} place
  * @param {number[]} tops
  * @returns {number | null}
@@ -2770,7 +2775,9 @@ export function scrollTopOf(place, tops) {
   if (tops.length === 0) {
     return null;
   }
-  return place.block < 0 ? place.top : tops[Math.min(place.block, tops.length - 1)] + place.offset;
+  return place.block < 0
+    ? Math.min(place.top, tops[0])
+    : tops[Math.min(place.block, tops.length - 1)] + place.offset;
 }
 
 /**
