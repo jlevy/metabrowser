@@ -63,6 +63,13 @@ log = logging.getLogger(__name__)
 # well before the process can hand us an unbounded buffer.
 _READ_CHUNK_BYTES = 64 * 1024
 
+
+def read_chunk_bytes() -> int:
+    """The most one read of a Git process's stdout holds, so how far past a cap the read
+    that crosses it can reach."""
+    return _READ_CHUNK_BYTES
+
+
 # stderr is only ever logged, so it needs far less headroom than stdout.
 # Git diagnostics are a few lines; anything beyond this is truncated.
 _STDERR_MAX_BYTES = 64 * 1024
@@ -1343,7 +1350,7 @@ def _signal(proc: asyncio.subprocess.Process, signum: int) -> None:
 
 # How long a run stopped early has to exit on SIGTERM before it is sent SIGKILL. Git's
 # handlers for SIGTERM and SIGPIPE remove the lock files it holds and exit; SIGKILL leaves
-# them, as a textconv cache's notes ref lock showed in review (#449, L4).
+# them, as a textconv cache's notes ref lock showed in review (fixed in 1f251b068).
 _STOP_GRACE_S: Final[float] = 0.5
 _STOP_SIGNAL: Final[int] = signal.SIGTERM
 
@@ -1522,6 +1529,7 @@ __all__ = [
     "loggable",
     "parse_git_version",
     "parsed_git_version_as_fixture",
+    "read_chunk_bytes",
     "repository_store_target",
     "require_acquisition_git",
     "run_git",

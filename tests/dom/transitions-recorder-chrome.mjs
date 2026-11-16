@@ -252,7 +252,7 @@ const actions = {
   pendingPrompt: () => { pane.classList.add("preview-navigation-pending"); setTimeout(() => { pane.classList.remove("preview-navigation-pending"); show("pendingPrompt"); }, 150); },
 };
 // The "u" key shows text in the stage, for a transition armed on a blank screen past a
-// long list, where the content search stops at its budget before the input.
+// long list, where the content search stops at its bound before the input.
 addEventListener("keydown", (e) => { const st = document.getElementById("stage"); if (e.key === "u" && st) { st.innerHTML = "<p>shown after the key</p>"; st.scrollTop = 0; } });
 const buttons = document.getElementById("buttons");
 for (const [name, fn] of Object.entries(actions)) {
@@ -1019,6 +1019,18 @@ try {
           cvHiddenRoot: () => { view.style.contentVisibility = "hidden"; view.style.containIntrinsicSize = "auto 600px"; st.innerHTML = lines(3000); },
           containPaintZero: () => { st.innerHTML = '<div style="height:0;contain:paint"><div data-target style="padding-top:20px">paint-contained text</div></div>'; },
           visuallyHidden: () => { st.innerHTML = '<span data-target class="visually-hidden">Line 1 selected.</span>'; },
+          // A blank screen whose only element the walk passes over on its own box, so the
+          // hit test runs every point it has (review C of #442, C5).
+          prunedOnly: () => { st.innerHTML = '<div style="position:absolute;top:-5000px;left:0;width:100px;height:100px;overflow:hidden">x</div>'; },
+          // One short text node of 33 runs, each a line of text and 19 blank lines of two
+          // spaces, 60 px a line, so a run is 1,200 px; the screen shows the blank lines
+          // between the 32nd and 33rd runs, or the 33rd run (review A of #442, A10).
+          manyRunsBlank: () => { st.innerHTML = '<pre data-target style="margin:0;line-height:60px">' + Array.from({ length: 33 }, () => "x\\n" + "  \\n".repeat(19)).join("") + "</pre>"; st.scrollTop = 31 * 1200 + 100; },
+          manyRunsText: () => { st.innerHTML = '<pre data-target style="margin:0;line-height:60px">' + Array.from({ length: 33 }, () => "x\\n" + "  \\n".repeat(19)).join("") + "</pre>"; st.scrollTop = 32 * 1200 - 400; },
+          // A source view's line-number gutter beside its code: painted alone, it is not the
+          // file (review B of #442, B9).
+          gutterOnly: () => { st.innerHTML = '<pre data-target class="code-block"><span class="source-line-numbers">' + Array.from({ length: 50 }, (_, i) => i + 1).join("\\n") + '</span><code class="hljs"></code></pre>'; },
+          gutterAndCode: () => { st.innerHTML = '<pre data-target class="code-block"><span class="source-line-numbers">' + Array.from({ length: 50 }, (_, i) => i + 1).join("\\n") + '</span><code class="hljs"><span class="hljs-keyword">const</span> x = 1;</code></pre>'; },
         };
         SHAPES[${JSON.stringify(shape)}]();
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -1076,11 +1088,66 @@ try {
         assert.deepEqual(wrong, []);
       },
     );
-    await check("a blank screen past a long list stops at the hit test's budget", async () => {
-      const r = await shapeFound("blankAfterBound");
-      assert.equal(r.found, false);
-      // Revision 6 tried 60 points there, 68 to 123 ms a call over 40,000 lines.
-      assert.ok(r.search.truncated && r.search.points < 60, JSON.stringify(r.search));
+    await check("a blank screen past a long list stops at the hit test's bound", async () => {
+      // Each point over the blank tail is charged the list's 40,001 children, so the bound
+      // stops the hit test after its second point; the bound is counted in work, so the
+      // same page stops at the same point however busy the machine is.
+      for (let i = 0; i < 2; i++) {
+        const r = await shapeFound("blankAfterBound");
+        assert.equal(r.found, false);
+        assert.ok(r.search.truncated, JSON.stringify(r.search));
+        assert.deepEqual(
+          [r.search.points, r.search.work >= 80000],
+          [2, true],
+          JSON.stringify(r.search),
+        );
+      }
+    });
+    await check("the hit test's rows reach the bottom eighth of the area", async () => {
+      // Review C of #442, C5: the grid's 60 points used to stop before its last rows, so no
+      // point ran below the 7/8 row.
+      await d.evaluate(`(() => {
+        window.__hitYs = [];
+        const original = Document.prototype.elementFromPoint;
+        document.elementFromPoint = function (x, y) { window.__hitYs.push(y); return original.call(this, x, y); };
+        return true;
+      })()`);
+      try {
+        const r = await shapeFound("prunedOnly");
+        const ys = await d.evaluate("window.__hitYs");
+        const height = await d.evaluate("innerHeight");
+        assert.equal(r.found, false);
+        assert.deepEqual(
+          [r.search.points, r.search.truncated],
+          [60, false],
+          JSON.stringify(r.search),
+        );
+        assert.ok(Math.max(...ys) > (height * 7) / 8, `rows tried ${JSON.stringify(ys)}`);
+      } finally {
+        await d.evaluate("delete document.elementFromPoint; true");
+      }
+    });
+    await check(
+      "a text node of more runs than are measured reads its blank lines as blank",
+      async () => {
+        // Review A of #442, A10: past the runs measured apart, the rest were measured as one,
+        // so the blank lines between two later runs read as content.
+        const blank = await shapeFound("manyRunsBlank");
+        assert.ok(blank.onScreen, "the shape's node is not on screen");
+        assert.equal(blank.found, false, JSON.stringify(blank.search));
+        // A later run on screen is still found, by the hit test.
+        const text = await shapeFound("manyRunsText");
+        assert.equal(text.found, true, JSON.stringify(text.search));
+        assert.ok(text.search.pruned && text.search.points >= 1, JSON.stringify(text.search));
+      },
+    );
+    await check("a source view's gutter alone is not its content", async () => {
+      const gutter = await shapeFound("gutterOnly");
+      assert.equal(gutter.found, false, JSON.stringify(gutter.search));
+      // With its code, the hit is the code's first token, not the gutter's numbers.
+      const code = await shapeFound("gutterAndCode");
+      assert.equal(code.found, true, JSON.stringify(code.search));
+      assert.ok(code.search.chars <= 5, JSON.stringify(code.search));
     });
     await check("blank lines on screen after text that is not are not content", async () => {
       for (const shape of ["longBlankTail", "shortBlankTail"]) {
@@ -1139,7 +1206,7 @@ try {
       "hidden roots, paint-contained boxes, and visually hidden labels show nothing",
       async () => {
         const cv = await shapeFound("cvHiddenRoot");
-        // Not walked at all, where revision 6 first walked its 3,000 lines every frame.
+        // Not walked at all: a root its own content-visibility hides shows nothing.
         assert.deepEqual([cv.found, cv.search.visits], [false, 0], JSON.stringify(cv.search));
         for (const shape of ["containPaintZero", "visuallyHidden"]) {
           const r = await shapeFound(shape);
@@ -1227,7 +1294,7 @@ try {
       await d.navigate(`${base}/view/tree`);
       assert.ok(await d.waitFor("!!window.__tr && !!document.getElementById('go')", 20000));
       // `tests` after 2 rows is pushed within view, after 10 out of it, after 60 it is out
-      // of view throughout; revision 6 before its fix read the last two as no movement.
+      // of view throughout, and it moves 660 px each time.
       for (const before of [2, 10, 60]) {
         await d.evaluate(`window.build(${before}); true`);
         await sleep(300);
@@ -1287,6 +1354,27 @@ try {
         }
       }
       assert.deepEqual(wrong, []);
+      // Review C of #442, C3: the shown header scrolled above the pane's top is still the
+      // region, not the retained one parked below it inside the pane.
+      const scrolled = await d.evaluate(`(async () => {
+        const pane = document.getElementById("preview-pane");
+        const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const host = (n, h, style, body) => { const e = document.createElement("div"); e.className = "pull-request-host"; e.style.cssText = style; e.innerHTML = '<div class="github-pull-header" style="height:' + h + 'px">#' + n + '</div><div class="tab-bar">Conversation</div><div class="github-pull-body" style="height:' + body + 'px">body ' + n + '</div>'; return e; };
+        pane.replaceChildren(host(353, 137, "position:absolute;left:0;top:5000px;width:100%", 20), host(351, 203, "", 3000));
+        await frame();
+        const top = window.__tr.snapshotRegions().prHeader;
+        pane.scrollTop = 600;
+        await frame();
+        const below = window.__tr.snapshotRegions().prHeader;
+        pane.replaceChildren();
+        pane.scrollTop = 0;
+        return [top, below];
+      })()`);
+      assert.deepEqual(
+        scrolled.map((b) => b?.[3]),
+        [203, 203],
+        JSON.stringify(scrolled),
+      );
     });
   } else if (group === "window") {
     // Revision 6, mb-s0e4: Chrome can stamp the frame that draws an input before the
@@ -1319,7 +1407,7 @@ try {
       "a frame read before the input is out of its window though stamped after it",
       async () => {
         // Stamped 34 ms late, the frames read just before the press begin, by their stamps,
-        // after it; revision 6 before its fix counted them, from the shown origin, as blank.
+        // after it; they are not the transition's, so none of them counts as blank.
         const r = await pressed("downShow", -34);
         assert.equal(r.ok, true, JSON.stringify(r.refusals));
         const down = await d.evaluate("window.downFrameMark");
@@ -1385,7 +1473,14 @@ try {
         ...extra,
       });
     await check("retained memory is read after a garbage collection", async () => {
+      // Review B of #442, B7: the recorder's own logs are emptied before the collection,
+      // so a condition's frames and DOM work since the last arm are not counted.
+      await d.evaluate(
+        "for (let i = 0; i < 5000; i++) { window.__tr.frames.push([0, 'U', 0, 0, 1, 0]); } window.__tr.inputs.push(['probe', 0, true, 0]); true",
+      );
       const m0 = await d.memory();
+      const left = await d.evaluate("[window.__tr.frames.length, window.__tr.inputs.length]");
+      assert.ok(left[0] < 5000 && left[1] === 0, `left after the reading: ${left}`);
       await d.evaluate(
         `window.retained = Array.from({ length: 20000 }, () => document.createElement("div")); true`,
       );

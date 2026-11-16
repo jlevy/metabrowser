@@ -40,6 +40,7 @@ import {
   sampleRow,
   summarize,
   summarizeJson,
+  unmeasuredMemoryAfter,
 } from "./transitions-stats.mjs";
 
 const HERE = import.meta.dirname;
@@ -478,6 +479,13 @@ async function oneRun(options) {
           row.refusals.push([guard, `${j.name}: ${detail}`]);
         }
       }
+      // A name --memory-after gave that no transition carried read nothing (revision 6).
+      for (const id of unmeasuredMemoryAfter(memoryAfter, row.journeys)) {
+        row.refusals.push([
+          "memory_after",
+          `--memory-after names ${id}, which no transition measured`,
+        ]);
+      }
     }
   } catch (error) {
     row.refusals.push(["run_error", String(error.stack || error).slice(0, 2000)]);
@@ -726,7 +734,9 @@ const USAGE = `usage:
   transitions.mjs compare RUNS.jsonl --aa LABEL      (odd against even runs of one build)
   transitions.mjs samples RUNS.jsonl --out FILE      (the fields summarize and compare read)
 compare exits 0 when complete with no wrong-way result, 1 on a wrong-way result, a gap, or
-an expectation not met (an A/A only on a gap), and 2 when it refuses.
+an expectation not met (an A/A only on a gap), and 2 when it refuses. run exits 2 when its
+arguments or its setup are refused. Any other error is a defect of the tool: it prints its
+stack and exits 3.
 journeys: ${Object.keys(JOURNEYS).join(", ")}
 subjects: ${JSON.stringify(SUBJECTS).slice(0, 120)}...`;
 
@@ -739,6 +749,14 @@ if (!commands[mode]) {
 try {
   process.exitCode = await commands[mode](rest);
 } catch (error) {
-  console.error(`transitions.mjs ${mode}: ${error.message}`);
-  process.exitCode = 2;
+  // A refusal exits 2. run refuses its arguments and setup with plain errors, so any error
+  // there does; in the reading commands only a CompareRefusal is one, and anything else (a
+  // TypeError in compare) is a defect, not a refusal.
+  if (error instanceof CompareRefusal || mode === "run") {
+    console.error(`transitions.mjs ${mode}: ${error.message}`);
+    process.exitCode = 2;
+  } else {
+    console.error(`transitions.mjs ${mode} failed: ${error.stack || error}`);
+    process.exitCode = 3;
+  }
 }
