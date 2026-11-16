@@ -1169,6 +1169,19 @@ async function headerShape(page) {
       ];
       return body;
     })(),
+    // A record cached before label colors names its labels alone; the envelope carries the
+    // repository's set's entry for the one it holds (`mb-varu`).
+    "labels named alone": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.record.pull.labels = [
+        { name: "bug", color: null, description: null },
+        { name: "needs review", color: null, description: null },
+      ];
+      body.repository_labels = [
+        { name: "bug", color: "d73a4a", description: "Something isn't working" },
+      ];
+      return body;
+    })(),
     merged: recorded.merged.body,
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
@@ -1219,6 +1232,23 @@ async function headerShape(page) {
             ["needs review", null, null, null],
           ],
           `${tab}: each chip's color, properties, and tooltip`,
+        );
+      }
+      if (name === "labels named alone") {
+        // The one the repository's set holds is colored and titled from it on first paint.
+        assert.deepEqual(
+          container
+            .querySelectorAll(".github-pull-label")
+            .map((chip) => [
+              chip.textContent,
+              chip.getAttribute("data-color"),
+              chip.getAttribute("data-tip-text"),
+            ]),
+          [
+            ["bug", "d73a4a", "Something isn't working"],
+            ["needs review", null, null],
+          ],
+          `${tab}: a label named alone takes the repository's color and description`,
         );
       }
       assert.ok(

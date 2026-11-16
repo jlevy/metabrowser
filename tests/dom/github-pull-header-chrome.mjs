@@ -145,6 +145,7 @@ const MEASURE = `async (name, change, tab, width) => {
   // Labels of each color the label part checks, in the theme it names.
   if (change.labels && body.record) {
     body.record.pull.labels = change.labels;
+    body.repository_labels = change.repositoryLabels ?? [];
   }
   if (change.theme) {
     document.documentElement.dataset.theme = change.theme;
@@ -1100,6 +1101,46 @@ async function main() {
               colored: places(shape),
               rows: [bare.rows, shape.rows],
             }),
+          );
+          // The same labels named alone, with the repository's cached set in the envelope, as
+          // a page first paints a record cached before label colors once the set is cached
+          // (mb-varu): every chip is colored and titled as the record's own colors draw it.
+          const known = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({
+              labels: LABEL_CASES.map(({ name }) => ({ name, color: null, description: null })),
+              repositoryLabels: LABEL_CASES.filter(({ color }) =>
+                /^[0-9a-fA-F]{6}$/.test(color ?? ""),
+              ).map(({ name, color, description }) => ({ name, color, description })),
+              theme,
+            })}, "", 980)`,
+          );
+          // A label the set holds is drawn as its own color draws it; one it does not hold, or
+          // holds without six hex digits, stays the neutral chip, with no tooltip.
+          const held = new Set(
+            LABEL_CASES.filter(({ color }) => /^[0-9a-fA-F]{6}$/.test(color ?? "")).map(
+              ({ name }) => name,
+            ),
+          );
+          const paint = (measured) =>
+            measured.labels
+              .filter((chip) => held.has(chip.name))
+              .map((chip) => [
+                chip.name,
+                chip.color,
+                chip.properties,
+                chip.tip,
+                chip.background,
+                chip.text,
+                chip.border,
+              ]);
+          check(
+            `${theme}: a label named alone takes the repository's color and tooltip on first paint`,
+            JSON.stringify(paint(known)) === JSON.stringify(paint(shape)) &&
+              paint(known).length === held.size &&
+              known.labels
+                .filter((chip) => !held.has(chip.name))
+                .every((chip) => chip.color === null && chip.tip === null),
+            JSON.stringify({ known: paint(known), own: paint(shape) }),
           );
           check(
             `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,

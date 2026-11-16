@@ -204,6 +204,12 @@ async def pull_handler(request: Request) -> Response:
         served.note_comparison((comparison["base"], comparison["head"]))
     if claimed_pin is not None and (refusal := pin_changed_response(claimed_pin)) is not None:
         return refusal
+    from metabrowser.builtin_plugins.github.pull_labels import note_unknown
+
+    # A label shown without a color the set does not hold: the catalog's next refresh,
+    # which the page asks for, asks for the set again (a read itself never asks GitHub).
+    if envelope["source"] is not None:
+        note_unknown(envelope["source"], _uncolored(envelope), envelope["repository_labels"])
     etag = envelope_etag(envelope, stamp)
     headers = {
         **_NO_STORE,
@@ -788,6 +794,78 @@ async def stacks_refresh_handler(request: Request) -> Response:
     )
 
 
+async def labels_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/labels`` — the repository's cached label set, cache only."""
+
+    from metabrowser.builtin_plugins.github.pull_labels_route import (
+        envelope_etag,
+        label_envelope,
+        label_view,
+    )
+
+    if request.query_params:
+        return _invalid_request("a label set has no query parameters")
+    await _resolve(request)
+    envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def labels_refresh_handler(request: Request) -> Response:
+    """``POST /api/plugin/github/labels-refresh`` — start or join the label set's refresh.
+
+    The body may name only a boolean ``retry``, a reader's own ask past the set's age.
+    ``202`` started or joined the job, ``200`` says it was ``not_due``.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_labels import refresh_wanted
+    from metabrowser.builtin_plugins.github.pull_labels_route import (
+        LABELS_ROUTE,
+        label_envelope,
+        label_view,
+        start_refresh,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    retry = body.get("retry", False)
+    if set(body) - {"retry"} or not isinstance(retry, bool):
+        return _invalid_request('a label refresh accepts only optional boolean "retry"')
+    await _resolve(request)
+    view = label_view(request.app)
+    if view.repository is None or view.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
+    started = start_refresh(view, retry=retry, wanted=wanted)
+    envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
+    return JSONResponse(
+        {"refresh": started, "labels": dict(envelope), "status_route": LABELS_ROUTE},
+        status_code=200 if started == "not_due" else 202,
+        headers=_NO_STORE,
+    )
+
+
+def _uncolored(envelope: Any) -> tuple[str, ...]:
+    """The names of the labels the envelope's record or core shows without a color."""
+
+    owner = envelope.get("record") or envelope.get("core_preview") or {}
+    pull = owner.get("pull") if isinstance(owner, dict) else None
+    labels = pull.get("labels") if isinstance(pull, dict) else None
+    names: list[str] = []
+    for label in labels if isinstance(labels, list) else []:
+        name = label.get("name") if isinstance(label, dict) else None
+        if isinstance(name, str) and label.get("color") is None and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
 async def cache_clear_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/cache-clear`` — discard the served repository's GitHub cache.
 
@@ -927,5 +1005,7 @@ __all__ = [
     "pulls_prefetch_handler",
     "stacks_handler",
     "stacks_refresh_handler",
+    "labels_handler",
+    "labels_refresh_handler",
     "pulls_refresh_handler",
 ]

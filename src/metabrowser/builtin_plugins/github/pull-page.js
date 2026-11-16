@@ -284,6 +284,8 @@ const TRUNCATED = Object.freeze({
  *   record: Record<string, any> | null,
  *   core_preview: {source: string, number: number, reader: string, observed_at: string,
  *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
+ *   repository_labels?: RepositoryLabel[],
+ *   labels_pending?: boolean,
  * }} PullEnvelope
  */
 
@@ -498,19 +500,55 @@ export function labelChip(label) {
 }
 
 /**
+ * A label of the repository's set, as the pull envelope's `repository_labels` names it.
+ * @typedef {{name: string, color: string | null, description: string | null}} RepositoryLabel
+ */
+
+/**
+ * The repository's labels the envelope carries, by name: those its record or core names
+ * without a color, as one cached before label colors does (`mb-varu`).
+ *
+ * @param {unknown} entries
+ * @returns {Map<string, RepositoryLabel>}
+ */
+export function knownLabels(entries) {
+  /** @type {Map<string, RepositoryLabel>} */
+  const known = new Map();
+  for (const entry of list(entries)) {
+    if (entry !== null && typeof entry === "object" && typeof entry.name === "string") {
+      known.set(entry.name, {
+        name: entry.name,
+        color: typeof entry.color === "string" ? entry.color : null,
+        description: typeof entry.description === "string" ? entry.description : null,
+      });
+    }
+  }
+  return known;
+}
+
+/**
+ * A label with its own color is drawn as it is; one named without a color takes the
+ * repository's color and description for that name, so its chip is colored on first paint
+ * whenever the repository's labels are cached.
+ *
  * @param {unknown} value
+ * @param {ReadonlyMap<string, RepositoryLabel>} [known]
  * @returns {PullLabel}
  */
-function describeLabel(value) {
+function describeLabel(value, known = new Map()) {
   const label =
     value !== null && typeof value === "object"
       ? /** @type {Record<string, unknown>} */ (value)
       : {};
-  const style = labelColorProperties(label.color);
-  const description = text(label.description);
+  const name = text(label.name);
+  const own = labelColorProperties(label.color);
+  const repository = own === null ? known.get(name) : undefined;
+  const color = own !== null ? label.color : repository?.color;
+  const style = own ?? labelColorProperties(color);
+  const description = text(label.description) || text(repository?.description);
   return {
-    name: text(label.name),
-    color: style === null ? null : text(label.color).toLowerCase(),
+    name,
+    color: style === null ? null : text(color).toLowerCase(),
     style,
     tip: description.trim() ? description : null,
   };
@@ -1056,9 +1094,11 @@ export function comparisonQueued(envelope, page) {
 
 /** Header and description fields shared by a full record and a validated core preview.
  * @param {Record<string, any>} pull
+ * @param {ReadonlyMap<string, RepositoryLabel>} [known] the repository's labels, by name,
+ *   for a label the record names without a color
  * @returns {NonNullable<PullModel["pull"]>}
  */
-function describeCore(pull) {
+function describeCore(pull, known = new Map()) {
   const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
   const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
@@ -1094,7 +1134,7 @@ function describeCore(pull) {
     updated: text(pull.updated_at),
     closed: state === "merged" ? pull.merged_at : state === "closed" ? pull.closed_at : null,
     closedLabel: state === "merged" ? "merged" : state === "closed" ? "closed" : null,
-    labels: list(pull.labels).map(describeLabel),
+    labels: list(pull.labels).map((label) => describeLabel(label, known)),
     merge: merge === null ? null : { state: merge, label: MERGEABLE[merge] ?? MERGEABLE.unknown },
     text: text(pull.body),
     truncated: pull.body_truncated === true,
@@ -1216,7 +1256,10 @@ export function describePull(envelope, page) {
   const record = envelope.record;
   if (record === null && envelope.core_preview !== null) {
     const preview = envelope.core_preview;
-    model.pull = describeCore(withListedState(preview.pull, page.listed));
+    model.pull = describeCore(
+      withListedState(preview.pull, page.listed),
+      knownLabels(envelope.repository_labels),
+    );
     model.corePreview = true;
     model.contentReady = true;
     model.message = page.error ?? null;
@@ -1298,7 +1341,10 @@ export function describePull(envelope, page) {
       : "New commits were pushed to this pull request.";
   }
   const pull = record.pull ?? {};
-  model.pull = describeCore(withListedState(pull, page.listed));
+  model.pull = describeCore(
+    withListedState(pull, page.listed),
+    knownLabels(envelope.repository_labels),
+  );
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
   model.checks = checks(record, model.pull.htmlUrl);
@@ -1952,6 +1998,9 @@ export function createPullController(deps, options) {
       envelope === null ||
       (envelope.refreshing && !quiet) ||
       envelope.state === "pending" ||
+      // The repository's labels are being read, so a chip still drawn without its color
+      // takes it at once (`mb-varu`).
+      envelope.labels_pending === true ||
       catalogScanning
     );
   }

@@ -70,6 +70,12 @@ from metabrowser.builtin_plugins.github.pull_freshness import (
     VerifiedBy,
     record_freshness,
 )
+from metabrowser.builtin_plugins.github.pull_labels import (
+    LabelEntry,
+    labels_fetching,
+    labels_for,
+    labels_job_key,
+)
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
 from metabrowser.builtin_plugins.github.pull_record import (
@@ -139,6 +145,11 @@ class PullEnvelope(TypedDict):
     rendered_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
+    # The repository's label set's entries for the labels the record or core names without
+    # a color (:func:`.pull_labels.labels_for`), and whether one of those labels still has
+    # no color while the set's job runs, so a page reads again soon.
+    repository_labels: list[LabelEntry]
+    labels_pending: bool
 
 
 def _parse_stamp(stamp: str) -> datetime:
@@ -360,6 +371,7 @@ class PullView:
     core_admission: CoreAdmission | None = None
     preparing_comparison: bool = False
     catalog_scanning: bool = False
+    labels_running: bool = False
 
 
 def catalog_scanning(host: PullHost | None) -> bool:
@@ -399,6 +411,14 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         and host.preparing is not None
         and host.preparing(number),
         catalog_scanning=catalog_scanning(host),
+        labels_running=host is not None
+        and (
+            labels_fetching(host.pulls.home, host.pulls.source)
+            or (
+                host.coordinator is not None
+                and host.coordinator.running(labels_job_key(host.pulls.source))
+            )
+        ),
     )
 
 
@@ -438,6 +458,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             rendered_route=None,
             record=None,
             core_preview=None,
+            repository_labels=[],
+            labels_pending=False,
         )
         return none, None
     served = host.pulls
@@ -480,6 +502,21 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             reader=served.observed_reader,
             reader_identity=served.core_catalog_identity,
         )
+    shown = (
+        dumped.get("pull")
+        if isinstance(record, PullRecord) and dumped is not None
+        else preview["pull"]
+        if preview is not None
+        else None
+    )
+    labels: object = shown.get("labels") if isinstance(shown, dict) else None
+    listed: list[object] = labels if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
+    repository_labels = labels_for(served.home, served.slug, served.source, listed)
+    uncolored = sum(
+        1
+        for label in listed
+        if isinstance(label, dict) and label.get("color") is None  # pyright: ignore[reportUnknownMemberType]
+    )
     envelope = PullEnvelope(
         state=state,
         reason=absence,
@@ -503,6 +540,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
         rendered_route=rendered,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
+        repository_labels=repository_labels,
+        labels_pending=view.labels_running and uncolored > len(repository_labels),
     )
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True

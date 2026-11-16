@@ -85,6 +85,18 @@ route = "stacks-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_refresh_handler"
 methods = ["POST"]
 
+# The repository's whole label set, cached, which colors a label a record names alone.
+# Reads never contact GitHub; a refresh, or the list's and a pull request's, asks for it.
+[[data_hook]]
+route = "labels"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:labels_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "labels-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:labels_refresh_handler"
+methods = ["POST"]
+
 # One pull request's changed files, from the local comparison or GitHub's list, with a
 # typed absent, pending, current, or stale state and an honest count while it fills.
 # Answers from the cache alone; only a refresh lists them.

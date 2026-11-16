@@ -1,0 +1,988 @@
+## A cache-only read; a refresh asks GitHub for the set, one page.
+# metab https://github.com/octo/demo --api /api/plugin/github/labels
+exit: 0
+--- stdout ---
+api: /api/plugin/github/labels
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "reader": null,
+  "fetched_at": null,
+  "fresh_for_s": 0,
+  "refreshing": false,
+  "last_refresh": null,
+  "complete": false,
+  "count": 0,
+  "labels": []
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+# metab https://github.com/octo/demo --api /api/plugin/github/labels-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/labels-refresh
+status: 202
+{
+  "refresh": "started",
+  "labels": {
+    "state": "absent",
+    "reason": "not_cached",
+    "source": "https://github.com/octo/demo",
+    "reader": null,
+    "fetched_at": null,
+    "fresh_for_s": 0,
+    "refreshing": true,
+    "last_refresh": null,
+    "complete": false,
+    "count": 0,
+    "labels": []
+  },
+  "status_route": "/api/plugin/github/labels"
+}
+after: /api/plugin/github/labels
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "count": 3,
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": null
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/labels?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/labels
+exit: 0
+--- stdout ---
+api: /api/plugin/github/labels
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "count": 3,
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": null
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/labels-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/labels-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "labels": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 300.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "complete": true,
+    "count": 3,
+    "labels": [
+      {
+        "name": "enhancement",
+        "color": "2700af",
+        "description": "A label's description is its chip's tooltip"
+      },
+      {
+        "name": "invalid",
+        "color": "e4e669",
+        "description": null
+      },
+      {
+        "name": "bug",
+        "color": "d73a4a",
+        "description": "Something isn't working"
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/labels"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+## A record cached before label colors names its labels alone; the pull envelope
+## carries the set's entry for each, and a colored record needs none.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": null,
+    "verified_at": null,
+    "verified_by": null,
+    "head_moved": false,
+    "checks_pending": false,
+    "record_revision": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "comparison_route": null,
+    "snapshot_route": null,
+    "rendered_route": null,
+    "record": null,
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
+  },
+  "status_route": "/api/plugin/github/pull?number=7"
+}
+after: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "verified_at": "2026-09-17T12:00:00Z",
+  "verified_by": "fetch",
+  "head_moved": false,
+  "checks_pending": true,
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 2,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 2,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
+      ],
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "author_avatar_url": null,
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
+}
+--- stderr ---
+--- body ---
+{"number": 7, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "verified_at": "2026-09-17T12:00:00Z",
+  "verified_by": "fetch",
+  "head_moved": false,
+  "checks_pending": true,
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 2,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 2,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
+      ],
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "author_avatar_url": null,
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "verified_at": "2026-09-17T12:00:00Z",
+  "verified_by": "fetch",
+  "head_moved": false,
+  "checks_pending": true,
+  "record_revision": "b86c50ad9d889336a7bfb252733dd1c4c9c859512ac375613f6083846ce509ee",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
+      "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
+      "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
+      "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1": "W/\"8b11f63f1595a605256b810ecbc6ad42f31ec79413e5748815f151c4ed6821e8\"",
+      "repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1": "W/\"7362c7bd7021c47983e06eb57cbc2d2b436158c6a1ec5f3fdeda0be1cc45832f\""
+    },
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 2,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        {
+          "name": "enhancement",
+          "color": null,
+          "description": null
+        },
+        {
+          "name": "deleted-on-github",
+          "color": null,
+          "description": null
+        }
+      ],
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "issue_comments": [
+      {
+        "id": 3341937855,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Thanks. CI is green; one question inline.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:34:17Z",
+        "updated_at": "2026-09-16T17:35:33Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": 3274109685,
+        "state": "COMMENTED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T12:32:50Z",
+        "commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a"
+      },
+      {
+        "id": 3279967139,
+        "state": "APPROVED",
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Looks right.",
+        "body_truncated": false,
+        "submitted_at": "2026-09-16T17:36:02Z",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"
+      }
+    ],
+    "review_comments": [
+      {
+        "id": 2383608906,
+        "review_id": 3274109685,
+        "in_reply_to": null,
+        "path": "src/app.txt",
+        "line": null,
+        "original_line": 1,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
+        "diff_hunk_truncated": false,
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "body": "Why does this line change?",
+        "body_truncated": false,
+        "created_at": "2026-09-16T12:32:50Z",
+        "updated_at": "2026-09-16T12:32:50Z"
+      },
+      {
+        "id": 2388073350,
+        "review_id": 3279967139,
+        "in_reply_to": 2383608906,
+        "path": "src/app.txt",
+        "line": 2,
+        "original_line": 2,
+        "start_line": null,
+        "original_start_line": null,
+        "side": "RIGHT",
+        "commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "original_commit_id": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
+        "diff_hunk_truncated": false,
+        "author": "forker",
+        "author_avatar_url": null,
+        "body": "It no longer does; the second line is new.",
+        "body_truncated": false,
+        "created_at": "2026-09-16T17:30:11Z",
+        "updated_at": "2026-09-16T17:30:11Z"
+      }
+    ],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null,
+  "repository_labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    }
+  ],
+  "labels_pending": false
+}
+--- stderr ---
+--- gh ---
+## A due refresh asks again with the page's ETag; a 304 keeps the set.
+# metab https://github.com/octo/demo --api /api/plugin/github/labels-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/labels-refresh
+status: 202
+{
+  "refresh": "started",
+  "labels": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 0.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "complete": true,
+    "count": 3,
+    "labels": [
+      {
+        "name": "enhancement",
+        "color": "2700af",
+        "description": "A label's description is its chip's tooltip"
+      },
+      {
+        "name": "invalid",
+        "color": "e4e669",
+        "description": null
+      },
+      {
+        "name": "bug",
+        "color": "d73a4a",
+        "description": "Something isn't working"
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/labels"
+}
+after: /api/plugin/github/labels
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:05:01Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:05:01Z"
+  },
+  "complete": true,
+  "count": 3,
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": null
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/labels?per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/labels
+exit: 0
+--- stdout ---
+api: /api/plugin/github/labels
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:05:01Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:05:01Z"
+  },
+  "complete": true,
+  "count": 3,
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "2700af",
+      "description": "A label's description is its chip's tooltip"
+    },
+    {
+      "name": "invalid",
+      "color": "e4e669",
+      "description": null
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something isn't working"
+    }
+  ]
+}
+--- stderr ---
+--- gh ---

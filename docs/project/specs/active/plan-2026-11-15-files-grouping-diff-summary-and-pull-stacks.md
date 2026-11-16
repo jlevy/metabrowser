@@ -59,6 +59,8 @@ day. They land as one native GitHub stack of eighteen pull requests on `main`:
 18. **Consistency in docs:** what the same review found in the design system, the user
     docs, this plan, and the CHANGELOG, whose Unreleased block then reads as one change
     from 0.12.0 (`mb-vg55`).
+19. **Label color cache:** each repository’s whole label set is cached, so a label a
+    record cached before label colors names alone is colored on first paint (`mb-varu`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -193,6 +195,7 @@ it:
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
+| 20 | `claude/label-color-cache` | `mb-varu` | On pull request 19; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -665,6 +668,13 @@ against 5 ms for the ungrouped tree.
   each feature in its final state; the design system, the user docs, and this plan
   describe the stack as pull request 17 leaves it, each rule stated once with links from
   the other sections, and with no bead IDs in the design system.
+
+### Phase 20: Label Color Cache (pull request 20)
+
+- [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
+  refreshed on its age and on a name it does not hold, and a chip takes its color and
+  description from it whenever its record lacks them; a `metab` route and golden, and a
+  Chrome check of a bare-names record’s chip colored on first paint.
 
 ## Testing Strategy
 

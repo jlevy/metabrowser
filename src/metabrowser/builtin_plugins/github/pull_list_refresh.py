@@ -52,6 +52,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     publish_page,
     read_catalog,
 )
+from metabrowser.builtin_plugins.github.pull_labels import refresh_labels, take_unknown
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_ROW_LABEL_BYTES,
     MAX_ROW_REF_BYTES,
@@ -433,6 +434,7 @@ async def refresh_pull_list(
         login = await active_account()
         reader = f"gh:{login}"
         restarted: set[str] = set()
+        labels_asked = False
         while True:
             previous = await asyncio.to_thread(read_catalog, repository.home, repository.slug)
             state = (
@@ -564,6 +566,14 @@ async def refresh_pull_list(
                 changes.update(cursors=cursors, covered=covered, done=done)
             proposed = state.model_copy(update=changes)
             accepted = await _publish(repository, previous, proposed, page.rows)
+            if accepted and not labels_asked:
+                # The repository's label set, once this job has published a page, so a
+                # reader's first rows wait for nothing and the two never ask at once. It
+                # asks GitHub only when the set is due (:func:`.pull_labels.refresh_wanted`).
+                labels_asked = True
+                await refresh_labels(
+                    repository, slot=slot, names=take_unknown(repository.source), reader=reader
+                )
             if accepted:
                 await run_lock_section(
                     partial(

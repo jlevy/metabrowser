@@ -1717,9 +1717,22 @@ set on 112 colors of six public repositories’ labels.
 ground, text, and border in both themes to the formula and to what github.com’s own
 stylesheet computed for a pale, a dark, a very pale, a white, an indigo, and a gray
 label, a colorless or malformed one to the neutral chip, and every chip to the neutral
-chip’s box. A label a core cached before label colors names alone is drawn neutral
-without a tooltip until the record arrives, and the same check holds that its colors and
-tooltip arriving move no chip and no row.
+chip’s box.
+
+**A chip never waits for its record to have its color.** A record or a core cached
+before label colors names its labels alone, and the catalog vouches for such a record as
+current until its pull request changes, so it is never read again.
+The repository’s whole label set is cached once, beside its pull requests, and kept
+fresh as the native stack snapshot is; the pull envelope carries the set’s entry for
+each label its record or core names without a color, and the chip takes its color and
+description from it, so the header is colored on first paint whenever the set is cached.
+A label with its own color keeps it.
+A label the set does not hold, one deleted on GitHub, stays the neutral chip and asks
+for the set again once a freshness window; while the set is read the page polls fast, so
+the color lands at once.
+Its arrival moves no chip and no row, which the same Chrome check holds; it also holds
+that a record of bare names, with the set cached, paints every chip as the record’s own
+colors do.
 
 ## The Pulls Tab
 
