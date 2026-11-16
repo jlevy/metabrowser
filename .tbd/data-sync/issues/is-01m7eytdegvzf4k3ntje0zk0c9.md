@@ -3,9 +3,9 @@ type: is
 id: is-01m7eytdegvzf4k3ntje0zk0c9
 title: "Pulls tab: group a native stack's pull requests under a Stack #N toggle"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:37:52.961Z
-updated_at: 2026-11-15T09:50:38.445Z
+updated_at: 2026-11-16T16:30:49.216Z
 started_at: 2026-11-15T07:41:28.229Z
+closed_at: 2026-11-16T16:30:49.213Z
+close_reason: "Merged into main at afda3599f (stack #446 lower layers)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim: "Feature is that within the Pulls tab, there is an option to group all PRs in a stack in a recursive toggle for the stack itself, so that if there are say 4 PRs in the stack, the stack itself (which github gives a number) woudl be somethig like Stack #1234  and then it would be pre-opened but include all PRs in that stack."
 

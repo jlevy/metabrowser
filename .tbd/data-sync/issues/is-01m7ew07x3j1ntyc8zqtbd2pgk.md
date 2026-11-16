@@ -3,9 +3,9 @@ type: is
 id: is-01m7ew07x3j1ntyc8zqtbd2pgk
 title: Menu group headings are indented; one design for groups in menus
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T05:48:38.178Z
-updated_at: 2026-11-15T08:04:24.221Z
+updated_at: 2026-11-16T16:30:43.596Z
 started_at: 2026-11-15T05:50:26.613Z
+closed_at: 2026-11-16T16:30:43.594Z
+close_reason: "Merged into main at afda3599f (stack #446 lower layers)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim: "in the drop down of Files, under the type filter, the groups like "GROUPS" are indented but theyshould not be. We should have a consistent design system for groups within menu items like this."
 

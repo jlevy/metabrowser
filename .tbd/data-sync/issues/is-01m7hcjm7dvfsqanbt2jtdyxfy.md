@@ -5,7 +5,7 @@ title: "PR #464 (merge): review, address, gate — feat(nav): navigating to an i
 kind: task
 status: open
 priority: 1
-version: 8
+version: 13
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -17,6 +17,11 @@ child_order_hints:
   - is-01m7hdz9szb8nq69wdm5ny153x
   - is-01m7hdza92p82d9978ed88nt2a
   - is-01m7hdzar16y2fzgav1vg7q889
+  - is-01m7jh99rfr5fncac2thwxce4d
+  - is-01m7jh9am0z50qmy904jbr7gc0
+  - is-01m7jh9b7942hs1apgwyqtg5e3
+  - is-01m7jh9bqp0hsbgkjzyvrevjan
+  - is-01m7jh9cdxvcxvh50g13sem4rm
 created_at: 2026-11-16T05:16:46.699Z
-updated_at: 2026-11-16T05:41:11.552Z
+updated_at: 2026-11-16T15:58:21.113Z
 ---

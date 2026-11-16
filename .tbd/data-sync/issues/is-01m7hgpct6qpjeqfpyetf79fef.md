@@ -5,10 +5,20 @@ title: "Land docs stack #454 (#452 docs rebuild, #453 plan) after review, once #
 kind: task
 status: open
 priority: 1
-version: 1
+version: 10
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
+child_order_hints:
+  - is-01m7jeqm49ppe20mk1g21tt05a
+  - is-01m7jeqmkzr97sa0qgethcse2q
+  - is-01m7jeqn2vkqqx0cxf0xv213mc
+  - is-01m7jeqnjjvs056j488cpz0dhw
+  - is-01m7jeqp399wsvn2cvg4wwn9ed
+  - is-01m7jeqpv3vht44cn11mrdbsv3
+  - is-01m7jeqqdm075zb7jt5dwj57b6
+  - is-01m7jeqqxsa73jwmrs9bvpfn8a
+  - is-01m7jeqre44fcyy2mw0k5kgp41
 created_at: 2026-11-16T06:28:44.485Z
-updated_at: 2026-11-16T06:28:44.485Z
+updated_at: 2026-11-16T15:13:46.435Z
 ---

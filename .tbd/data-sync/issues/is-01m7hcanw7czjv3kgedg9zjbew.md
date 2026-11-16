@@ -5,7 +5,7 @@ title: "Stack #446 (merge): review every layer and merge into main"
 kind: task
 status: in_progress
 priority: 1
-version: 22
+version: 26
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -30,14 +30,17 @@ child_order_hints:
   - is-01m7he951v8gwjt3ejjes5d4ab
   - is-01m7hg857dzfenxr1hee0jd9ka
   - is-01m7hgpct6qpjeqfpyetf79fef
+  - is-01m7jgg4b9taqwxcfevgd9c6gc
+  - is-01m7jjcfgz5r5ykt72449xb6as
+  - is-01m7jk552r4jya1wfe0p9acfmn
 hold: null
 hold_until: null
 created_at: 2026-11-16T05:12:26.236Z
-updated_at: 2026-11-16T06:28:44.485Z
+updated_at: 2026-11-16T16:30:59.664Z
 started_at: 2026-11-16T05:12:33.015Z
 ---
 Owner, 2026-11-15: "is the current app restarted with all the changes? Are all PRs reviewed? Make sure they follow our standard process of being reviewed, and then you should proceed with merging." Layers #444-#456 had Review A round 1, addressed. #457-#472 need senior reviews; #466 a dedicated performance review.
 
 ## Notes
 
-Owner, 2026-11-15, verbatim: "Make sure everything is reviewed and ready to merge in parallel. Mark all as ready to merge, and once everything is reviewed and all issues are fixed, you can merge the entire stack." All 22 layers (#444-#472) marked ready the same day; the two new top layers join the stack when their PRs open.
+Owner, 2026-11-15, verbatim: "Make sure everything is reviewed and ready to merge in parallel. Mark all as ready to merge, and once everything is reviewed and all issues are fixed, you can merge the entire stack." Owner, 2026-11-16: "Continue making sure everything is reviewed and merged as you go." and "Make sure the stacks are all ready and everything is merged, and that it is reasonably ready and has met the criteria for merging." State 2026-11-16: layers #444-#458 green after the merge pass; #459 fix a93288f04 for a chord test broken by #457's refusal; second pass from #459 and new main 204e50fd9 under way.

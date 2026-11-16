@@ -3,9 +3,9 @@ type: is
 id: is-01m7eyedp8mvkq8mgd3937dxqw
 title: "Diff summary: one collapsible changed-files tree with folder roll-ups, replacing the diff toolbar's count line"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:31:20.007Z
-updated_at: 2026-11-15T09:55:13.174Z
+updated_at: 2026-11-16T16:30:48.168Z
 started_at: 2026-11-15T06:32:50.037Z
+closed_at: 2026-11-16T16:30:48.165Z
+close_reason: "Merged into main at afda3599f (stack #446 lower layers)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 

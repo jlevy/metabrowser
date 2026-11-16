@@ -3,9 +3,9 @@ type: is
 id: is-01m7hcjeyyagvt3h7zcvvssfks
 title: "PR #458 (merge): review, address, gate — fix(nav): navigation toolbars wrap when the pane is narrow (mb-nm4z)"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 8
+version: 9
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
@@ -18,5 +18,9 @@ child_order_hints:
   - is-01m7hdmppvxf9zaj1hjr56249z
   - is-01m7hektjqx84t2edyqg4jhp4z
 created_at: 2026-11-16T05:16:41.309Z
-updated_at: 2026-11-16T05:52:23.126Z
+updated_at: 2026-11-16T16:30:35.509Z
+closed_at: 2026-11-16T16:30:35.507Z
+close_reason: "Merged into main at afda3599f with stack #446's lower layers (gate: reviews and dispositions, CI green at head, mergeable)."
+resolution: null
+duplicate_of: null
 ---

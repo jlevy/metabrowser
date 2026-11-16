@@ -3,9 +3,9 @@ type: is
 id: is-01m7ew147ccv479dyxq95wr1d7
 title: Files type filter menu is too short for its rows
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T05:49:07.179Z
-updated_at: 2026-11-15T08:04:24.579Z
+updated_at: 2026-11-16T16:30:44.782Z
 started_at: 2026-11-15T05:50:26.989Z
+closed_at: 2026-11-16T16:30:44.780Z
+close_reason: "Merged into main at afda3599f (stack #446 lower layers)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim: "the height of that menu should be taller if it has more items. Approximately double the size for a max height. it holds about 8 lines but should hold more like up to 16, but appropriate to the number of items and always within the window". Then: "(the age drop down is fine as it has only a few items)".
 

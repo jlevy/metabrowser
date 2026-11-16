@@ -3,9 +3,9 @@ type: is
 id: is-01m7exxk1qn8m1ryp2jpc7cfx2
 title: "Rendered Markdown diff: the unchanged-blocks fold has a border; expand in place"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:22:08.437Z
-updated_at: 2026-11-15T09:51:50.225Z
+updated_at: 2026-11-16T16:30:46.907Z
 started_at: 2026-11-15T06:23:09.404Z
+closed_at: 2026-11-16T16:30:46.906Z
+close_reason: "Merged into main at afda3599f (stack #446 lower layers)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim: "in the rendered document diff view, the "2 unchanged blocks" toggle should not have borders around it. it should just expand in place in the rendered doc"
 

@@ -3,9 +3,9 @@ type: is
 id: is-01m7g6dbyvtsbm7pzrgvmqreh4
 title: Nav tab toolbars wrap when narrow, one design-system rule with a set line height
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:09:48.506Z
-updated_at: 2026-11-15T18:13:53.639Z
+updated_at: 2026-11-16T16:30:54.751Z
 started_at: 2026-11-15T18:13:53.638Z
+closed_at: 2026-11-16T16:30:54.747Z
+close_reason: "Merged into main at afda3599f (stack #446 lower layers)."
+resolution: null
+duplicate_of: null
 ---
 Found while doing mb-x1h6 (#445, 6ef17dbe, 2026-11-15).
 
