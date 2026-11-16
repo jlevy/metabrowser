@@ -13,6 +13,19 @@ All notable changes to Metabrowser are documented here.
   show. For plugin authors and `--api` readers, `/api/kpress/render` now answers what the
   sanitizer removed in `sanitizer_diagnostics`, apart from `diagnostics`.
 
+- The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
+  parts no longer show one on hover.
+  Elsewhere a tooltip appears only when it adds something not already visible, and one
+  that repeats an element’s own text shows only while that text is cut short, as does a
+  top-level changed file’s, which is its name.
+  “Load more” and a changed-files folder whose sums are whole no longer repeat their own
+  words in a tooltip, and neither do a “Show ignored” check, the treemap’s parent
+  button, or a merge’s arrow.
+  A crumb’s tooltip is its own name, shown only when the crumb is cut short, rather than
+  the path the trail already shows, and a Files tree row’s tooltip leaves out the size
+  or count its row shows exactly, keeping the exact date and the exact bytes of a size
+  its row rounds.
+
 - In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
   lines instead of cutting off what does not fit.
   The Files filter row moves Show ignored down, then Clear and the chevron, which stay
@@ -70,8 +83,13 @@ All notable changes to Metabrowser are documented here.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.
   It is now set in a comment header’s size and line, with “committed” and the age in the
-  header’s type, and a run of commits stands at least as far from the comment above and
-  below it as one commit stands from the next.
+  header’s type. Every two events are now 20 px apart, comments, reviews, and commits
+  alike, and so are review comments: comments were 12 px apart and read as crowded, and
+  a commit stood 23.5 px from a comment.
+  Every heading reads alike, “jlevy commented 4d ago”, “jlevy reviewed 4d ago”: a review
+  no longer boxes “Reviewed” like a status, and a box after the age is kept for a state
+  the verb does not say, Approved, Changes requested, or Dismissed (“Requested changes”
+  is now “Changes requested”, as on GitHub).
   A line now joins the description, comments, reviews, and commits down the avatars’
   column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.
@@ -82,6 +100,18 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request’s number is bold wherever it names the pull request: a Pulls row, the
   pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- A commit’s or pull request’s title that starts with a conventional-commit prefix, such
+  as `feat(ledger):` or `fix:`, sets the prefix at regular weight and the rest of the
+  title bold, wherever the title appears: a Pulls row, the pull request page’s title,
+  its stack menu, its Conversation’s commits, Quick Search, a Commits tab row, a
+  commit’s page, and its tooltip.
+  A Commits tab row’s subject, regular until now, is bold, as a title is everywhere
+  else, so a long one is cut short a little sooner.
+  A prefix counts only when it is 16 characters or fewer, colon included, and its type
+  is lowercase; any other title looks as before.
+  For plugin authors, `metabrowser.titleNodes(title)` draws a title the same way.
+  See [Titles](docs/design-system.md#titles).
 
 - The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
   one width for a chevron and a file type icon alike, so names start 2px sooner and a
@@ -108,27 +138,52 @@ All notable changes to Metabrowser are documented here.
   and tracked, and the menu’s positions are in the row’s ink rather than link blue
   ([Stacks](docs/design-system.md#stacks)).
 
-- The Files tab has a Group by menu, first on its filter row: No grouping, Age, or File
-  type. Grouped, the tree splits into sections, each headed like a menu group with the
-  group’s file count and holding a full tree of the group’s files after the filters.
+- The Files tab has a Group by menu, first on its filter row: No grouping, By age, or By
+  file type, each read the same in the menu and on its closed trigger.
+  Grouped, the tree splits into sections, each headed like a menu group with the group’s
+  file count and holding a full tree of the group’s files after the filters.
   Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
   month, each holding only what the bands before it do not, then Older.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the type registry does not recognize; a group the filters leave empty
-  is not shown, and a Git revision offers no Age.
+  is not shown, and a Git revision offers no By age.
   Show ignored moves out of the drawer to follow it on the row, and Modified within and
   File type move into the drawer behind the chevron beside Minimum file size; the
   chevron’s badge counts the ones of those three that are set.
   Clear resets every filter, Show ignored included, and keeps the grouping.
   Holding Shift numbers Group by first, then the drawer’s filters, whether or not the
   drawer is open; a filter’s number opens the drawer with its menu.
-  Grouping keeps symbolic links: File type puts them in Other, and Age places them by
-  their own modification time.
+  Grouping keeps symbolic links: By file type puts them in Other, and By age places them
+  by their own modification time.
   When files change, the sections refresh in place, keeping the open folders, the scroll
   position, and the focused row.
-  For plugin authors, a `filterControls` option may carry a `summary`, the words its
-  closed trigger shows when it is the one chosen: Group by’s trigger reads “By age”
-  where its row reads “Age”.
+
+- With the Files tab’s Group by menu open, `A` chooses By age, `T` By file type, and `N`
+  No grouping, as a click on the row does.
+  The letters work only while the menu is open and has focus; anywhere else `T` is still
+  Quick Search, and `/` opens Quick Search from the menu too.
+  Holding Shift shows each row’s letter on it, and Help lists them in a new Menus group.
+  While a menu’s letter takes `T`, the strip Shift reveals offers Quick Search by `/`
+  alone, since `T` no longer reaches it.
+  See [Keys in a Menu](docs/design-system.md#keys-in-a-menu).
+  For plugin authors, `filterControls.menuGroupHtml` options take a `key` and the menu
+  an `anyKey`, the letter of each row, and `filterControls.activateMenuRow(row)` runs a
+  row’s click path; the shell reads the letters in the Files filter bar only.
+
+- Every way a Files filter menu opens now puts focus in it, as its number already did: a
+  click on its trigger, Enter or Space on it, and `↓` or `↑` on it.
+  Focus lands on the checked row, or the first, so the arrow keys, Enter, Escape, and
+  the menu’s letters work at once.
+  Escape, a second click, or a choice that closes the menu gives focus back to its
+  trigger, where it used to fall to the page.
+  A pick in File type keeps focus on its row while the bar refreshes, and so does any
+  refresh of the bar, where focus also used to fall to the page and the next arrow key
+  did nothing. An Escape that closes Quick Search or Help no longer also closes a filter
+  menu open behind it.
+  See [Keys in a Menu](docs/design-system.md#keys-in-a-menu).
+  For plugin authors, `filterControls.focusMenu(root, key)` focuses an open dropdown’s
+  checked row, and `filterControls.keepFocus(root)`, called before a rebuild, returns
+  the function that puts focus back after it.
 
 - Every list of file type groups puts Documentation before Code: the type filter, Group
   by, and File Overview.

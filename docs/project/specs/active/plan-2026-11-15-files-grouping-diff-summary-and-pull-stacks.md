@@ -8,8 +8,10 @@
 
 ## Overview
 
-Nine changes from the owner’s requests of 2026-11-15. They land as one native GitHub
-stack of nine pull requests on `main`:
+Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
+menu, a rule for tooltips, the Conversation’s rhythm and headings, and a rule for commit
+and pull request titles, from the same day.
+They land as one native GitHub stack of thirteen pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -29,6 +31,17 @@ stack of nine pull requests on `main`:
    `P`, and `P` then opens the Pulls tab.
 9. **Narrow toolbars:** the navigation’s toolbars and its tab bar wrap when the pane is
    too narrow for them, by one design-system rule with a set line height (`mb-nm4z`).
+10. **Group by menu:** its rows read “By age” and “By file type”, as its closed trigger
+    does (`mb-4mir`); `A`, `T`, and `N` choose them while it is open (`mb-ibo4`); and
+    every key that opens a menu puts focus in it (`mb-spqw`).
+11. **Tooltips:** the Pulls column shows no tooltips, and elsewhere a tooltip appears
+    only when it adds information that is not already visible (`mb-8mpo`).
+12. **Conversation rhythm and headings:** every two consecutive events are one token
+    apart (`mb-w7rt`), and every event’s heading reads “author verb age”, with a chip
+    only for a review state the verb does not say (`mb-novh`).
+13. **Title prefixes:** a conventional-commit prefix that starts a commit’s or a pull
+    request’s title, such as `feat(ledger):`, is regular weight and the rest bold,
+    wherever a title appears (`mb-z57p`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -44,7 +57,8 @@ request must prove.
     stays inside the window.
 - **Files Group by** (`mb-sogv`):
   - “Group by” leads the Files filter row, and Show ignored follows it (`mb-x1h6`). Its
-    values are No grouping (the default), Age, and File type.
+    values are No grouping (the default), By age, and By file type, which read the same
+    in the menu and on its closed trigger (`mb-4mir`).
   - The three filters (Modified within, File type, Minimum file size) move into the
     chevron drawer.
   - When grouping is on, the tree splits into headed sections.
@@ -80,6 +94,9 @@ request must prove.
 - **Narrow toolbars** (`mb-nm4z`): in a pane too narrow for one line, every navigation
   toolbar wraps at its natural break, so no control is cut, scrolled out of reach, or
   cut short, with a line height and gap from tokens; one that fits stays one line.
+- **Title prefixes** (`mb-z57p`): a conventional-commit prefix such as `feat(ledger):`
+  that starts a commit’s or a pull request’s title is regular weight and the rest of the
+  title keeps its weight, everywhere a title appears; any other title is unchanged.
 
 ## Non-Goals
 
@@ -143,6 +160,9 @@ it:
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
 | 8 | `claude/keymap-ctrl-np` | `mb-lnqj`, `mb-6rfu` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
 | 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
+| 10 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | On pull request 9; changes the Group by menu that pull request 2 adds, on the Files filter row as pull requests 4 and 9 left it |
+| 12 | `claude/conversation-rhythm` | `mb-w7rt`, `mb-novh` | On pull request 11; respaces and reheads the Conversation that pull requests 6 and 7 leave, on the page as pull request 11 leaves its tips |
+| 13 | `claude/title-prefix-weight` | `mb-z57p` | On pull request 12; draws the titles of the Pulls rows, the pull request page, and its Conversation that pull requests 5, 6, 11, and 12 change |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -173,7 +193,7 @@ it:
 - **Age groups:** disjoint bands built from the age filter’s windows: Live; then Past
   hour, Past day, Past week and Past month, each holding only what the earlier windows
   don’t; then Older. A Git revision source has no modification times, so it doesn’t offer
-  Age.
+  By age.
 - **File type groups:** the taxonomy’s groups, with Documentation before Code, then
   Data, Archives and Media in their current order, and Other last for files in no group.
   The order is defined in one place and shared by every surface that lists the groups.
@@ -186,6 +206,12 @@ it:
 - **Keys:** the filter shortcuts keep working once the filters move into the drawer.
   Group by, on the row, is `1`, and the drawer’s filters keep their numbers whether or
   not the drawer is open; a filter’s number opens the drawer with its menu.
+  With the menu open and focused, `N`, `A`, and `T` choose No grouping, By age, and By
+  file type (`mb-ibo4`), in the menu’s own scope, so `T` is Quick Search everywhere
+  else; the convention is one section of `docs/design-system.md`, “Keys in a Menu”.
+  Every way a filter menu opens, a number or a key on its trigger, focuses its checked
+  row through one path in the filter controls, and Escape gives focus back to the
+  trigger (`mb-spqw`).
 - **Section semantics:** a Files section takes the `.group-heading` look and names its
   section and its tree through `aria-labelledby`; it keeps the tree’s own semantics, a
   `role="tree"` per section, and takes no `role="group"`, which in a tree means a tree
@@ -257,7 +283,8 @@ it:
   (`mb-dzsi`). A tree row’s chevrons and icons share one slightly tighter slot,
   `--tree-icon-slot`, 14px where they had 16 (`mb-hmv7`). A pull request’s number is
   bold wherever it names the pull request, through one token, `--pull-number-weight`
-  (`mb-vrvs`).
+  (`mb-vrvs`). The Pulls column shows no tooltips, and elsewhere a tooltip appears only
+  when it adds information that is not already visible (`mb-8mpo`).
 
 - **One stack design** (the owner’s added requirement): the Pulls tab’s stack groups and
   the pull request page’s stack button and menu (`pull-page.js`) share one design,
@@ -309,6 +336,19 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   its number ends on the right edge, over the stack chip, for every title length; a
   short title no longer sits centred.
 
+### Conversation Rhythm and Headings
+
+The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
+`claude/conversation-rhythm` at the top of the stack:
+
+- **Rhythm** (`mb-w7rt`): every two consecutive events are one token apart, card to
+  card, card to commit, commit to card, and commit to commit alike, a card measured by
+  its border and a commit by its text, roomier than the 12 px cards had.
+  It replaces `mb-xz1r`’s “at least as far” with equal.
+- **Headings** (`mb-novh`): every event’s heading is the author, a plain verb, and the
+  age; a boxed chip only for a review state the verb does not say (Approved, Changes
+  requested, Dismissed), so a plain review is no longer boxed as “Reviewed”.
+
 ### Sans Headings
 
 - One scoped rule in the shell’s prose styles sets h2 upright (`font-style: normal`)
@@ -355,6 +395,29 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   font sets and both themes; the break widths are in the design system and beside the
   rules in `styles.css`, for the Pulls toolbar without the Stacks chip that pull request
   5 removed.
+
+### Title Prefixes
+
+- **The split** (`mb-z57p`): one pure function, `titlePrefix` in `static/formatters.js`,
+  finds a type of lowercase letters, an optional scope of one or more characters other
+  than parentheses, an optional `!`, and the colon, at most 16 code points, followed by
+  whitespace and more of the title.
+  Anything else has no prefix and is drawn as before.
+- **One markup, one rule:** `titleNodes` and `titleHtml` beside it put the prefix in a
+  `span.title-prefix`, the SDK’s `metabrowser.titleNodes` hands its title to the same
+  function, and one rule in the shell’s stylesheet sets the span’s weight from
+  `--weight-normal`. No new token: the one rule is the one place the weight is set.
+- **Surfaces:** a Pulls row, the pull request page’s title, its stack menu, its
+  Conversation’s commits, Quick Search’s pull requests, the Commits tab’s rows, a
+  commit’s page, and its tooltip.
+  Quick Search has no commit results.
+  A Commits tab row’s subject, regular before, is bold, so the rule shows there too (see
+  Open Questions); the row keeps its 22 px and its one line, measured in headless Chrome
+  before and after.
+- **Records:** the rule is stated once in `docs/design-system.md`, “Titles”, beside
+  “Pull Request Numbers”.
+  The split is a session owner, `shell.title-prefix`, and the weights a paint exemption,
+  `shell.title-prefix-weight`, read in Chrome.
 
 ### API Changes
 
@@ -425,6 +488,37 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   line spacing, the segmented group’s cluster fallback, and the Files, Pulls, and
   Commits Chrome tests sweeping every pane width in both font sets.
 
+### Phase 10: The Group By Menu (pull request 10)
+
+- [ ] `mb-4mir`: Group by’s rows read “By age” and “By file type”, as its trigger does,
+  pinned in Chrome and in the Group by session’s golden.
+- [ ] `mb-ibo4`: Group by’s rows take `N`, `A`, and `T` while it is open and has focus,
+  shown by the Shift reveal and in Help’s Menus group, with one menu-key convention in
+  the design system; the key reveal session and its golden, and a Chrome check.
+- [ ] `mb-spqw`: every key that opens a menu focuses its checked row through one path in
+  the filter controls, and Escape gives focus back to the trigger; the key reveal
+  session and the filter controls behavior test, and a Chrome check of
+  `document.activeElement`.
+
+### Phase 11: Tooltips Add Information (pull request 11)
+
+- [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
+  once in the design system; the app’s other tooltips audited, those that repeat visible
+  text removed and the owner’s decisions on the borderline ones applied; the shell shows
+  a tip equal to its element’s text, or to a box’s inside it, only while that text is
+  cut short; checks in `devtools/check_tooltips.py` and its own test, and the Pulls and
+  Files Chrome tests.
+
+### Phase 12: Conversation Rhythm and Headings (pull request 12)
+
+- [ ] `mb-w7rt`: one rhythm between every two consecutive events.
+- [ ] `mb-novh`: every event’s heading reads alike.
+
+### Phase 13: Title Prefixes (pull request 13)
+
+- [ ] `mb-z57p`: the split and its golden session, the shared helper on every title
+  surface, the one weight rule, the Chrome weights, and the docs.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -450,7 +544,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 9 merges.
+This plan moves to `docs/project/specs/done/` when pull request 13 merges.
 
 ## Open Questions
 
@@ -463,12 +557,20 @@ This plan moves to `docs/project/specs/done/` when pull request 9 merges.
   The question was: should an open folder also show its line counts?
   This plan leaves that to the implementer, kept consistent with the Files tab’s folder
   tallies.
+- **A Commits tab row’s weight (answered from the request, `mb-z57p`):** a Commits tab
+  row’s subject is bold, as every other title is, so its prefix reads regular against
+  the rest. The owner asked for the rule “anywhere it’s a commit title or a PR title”,
+  and that “Regular commit messages that don’t match that regex should just be bold as
+  usual”. The question was: the subject was regular, so its prefix looked as the rest
+  did; should it turn bold so the rule shows there?
+  The owner may reverse this.
 
 ## References
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
-  `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`.
+  `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
+  follow-ups on the Group by menu.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

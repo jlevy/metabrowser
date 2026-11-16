@@ -1607,6 +1607,7 @@ _NOT_TOGGLES: dict[str, str] = {
     "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
+    "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "server.py": "the settings gear is an icon-only menu button with no chevron",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
@@ -2030,7 +2031,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, [row.title])' in panel
+    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
     assert 'h("span", { class: "github-pull-stack-member-title" })' in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
@@ -2192,7 +2193,16 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
     commit = github[".github-pull-commit"]
     assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
-    assert commit["min-height"] == github[".github-pull-card-head"]["min-height"]
+    # Its box is its line, so its text is the rhythm from the events beside it (mb-w7rt).
+    assert "min-height" not in commit and commit["padding"].startswith("0 ")
+    # The rhythm is the Conversation's, and only its events carry it: the body keeps the
+    # page's gap, as the Files and Checks tabs and a section or note below an event do, and
+    # each event stands the rest of the rhythm below whatever is before it.
+    assert github[".github-pull-body"]["gap"] == "var(--github-pull-gap)"
+    assert github[".github-pull-body > * + .github-pull-event"] == {
+        "margin-block-start": "calc(var(--github-pull-rhythm) - var(--github-pull-gap))"
+    }
+    assert github[".github-pull-threads"]["gap"] == "var(--github-pull-rhythm)"
     assert ".github-pull-commit .git-commit-sha" not in github
     assert (
         github[".github-pull-commit .github-pull-age"]

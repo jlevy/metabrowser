@@ -12,8 +12,12 @@ opens the Modified within menu in both. This judges what it measured against
 - the Modified within menu, with few rows, keeps its natural height in both windows;
 - Group by and Show ignored are the row and the three filters wait in the closed drawer;
   the row fits the default pane at its widest, under every Group by value with Clear and
-  the chevron's badge showing, and the badge leaves Show ignored out; and the keyboard
-  numbers follow what is on screen ("Grouping the Files Tree");
+  the chevron's badge showing, and the badge leaves Show ignored out; Group by's rows read
+  as its trigger does, and its open menu's letters choose them while T stays Quick
+  Search's with the menu closed; every key that opens a menu focuses its checked row,
+  Escape and a choice that closes it give focus back to its trigger, and a pick in File
+  type keeps focus on its row through the bar's rebuilds ("Keys in a Menu"); and the
+  keyboard numbers follow what is on screen ("Grouping the Files Tree");
 - in a narrower pane the row wraps by the toolbar rule, at every width from the narrowest
   in both font sets, read in Tab order, its numbers working, and the closed drawer adding
   nothing to it ("Navigation Toolbars Wrap");
@@ -73,6 +77,11 @@ _DOCS = ("md", "txt", "rst", "adoc")
 _DATA = ("json", "yaml", "toml", "ini", "csv", "xml")
 _MEDIA = ("png", "jpg", "mp3")
 _LIB_FILES = 12
+# The README's size: past 1,024 bytes, so its row's chip rounds it ("1.2 KB") and its
+# tooltip keeps the exact count. The src folder's files total under 1,024, which its chip
+# shows whole.
+_README = "# Fixture\n" + "Text.\n" * 200
+_README_BYTES = 1210
 
 
 def _served_folder(root: Path) -> None:
@@ -89,7 +98,8 @@ def _served_folder(root: Path) -> None:
     for ext in _MEDIA:
         (root / "media" / f"m.{ext}").write_bytes(b"x")
     (root / "archives" / "a.zip").write_bytes(b"x")
-    (root / "README.md").write_text("# Fixture\n", encoding="utf-8")
+    (root / "README.md").write_text(_README, encoding="utf-8")
+    assert len(_README.encode()) == _README_BYTES
     # A note beside the code, so src stands in Documentation and in Code.
     (root / "src" / "notes.md").write_text("# Notes\n", encoding="utf-8")
     # A folder two levels down, which the session opens and then writes a file into.
@@ -268,9 +278,80 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         )
         assert slot["name"] == 14 + slot["gap"] == 20, (kind, slot)
 
+    # A tree row's tooltip leaves out what the row shows, its name and what its chip shows
+    # exactly, and gives the exact date, a folder's other total, and the exact size behind
+    # one its chip rounds (mb-8mpo, mb-qg4z). The row's chips here are sizes: the README's
+    # rounds its 1,210 bytes, and src's shows its total whole.
+    tips = measured["treeTips"]
+    assert tips["file"] == {
+        "chip": "size",
+        "chipText": "1.2 KB",
+        "visible": True,
+        "size": True,
+        "sizeDigits": str(_README_BYTES),
+        "count": False,
+        "lines": 2,
+        "name": False,
+    }, tips
+    folder = tips["folder"]
+    assert folder["chipText"] is not None and folder["chipText"].endswith(" B"), tips
+    assert {key: value for key, value in folder.items() if key != "chipText"} == {
+        "chip": "size",
+        "visible": True,
+        "size": False,
+        "sizeDigits": None,
+        "count": True,
+        "lines": 2,
+        "name": False,
+    }, tips
+
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.
     assert measured["keyOneOpens"] == {"menu": "group", "drawerOpen": "false"}
+    # Group by's rows read as its closed trigger does (mb-4mir).
+    assert measured["groupRows"] == ["No grouping", "By age", "By file type"]
+    # With the menu open from 1, A, T, and N choose its rows and close it; with the menu
+    # closed, T is Quick Search and chooses nothing (mb-ibo4).
+    letters = measured["letters"]
+    assert letters["a"]["trigger"] == "By age" and letters["a"]["sections"] > 0, letters
+    assert letters["t"]["trigger"] == "By file type" and letters["t"]["sections"] > 1, letters
+    assert letters["n"] == {"trigger": "No grouping", "open": None, "sections": 0}, letters
+    assert all(state["open"] is None for state in letters.values()), letters
+    assert measured["closedT"] == {
+        "focus": "combobox",
+        "trigger": "No grouping",
+        "open": None,
+        "sections": 0,
+    }
+    # Every key that opens a menu focuses its checked row: the numbers, and ↓ and Enter on
+    # a trigger. Escape, and a letter's choice that closes the menu, give focus back to the
+    # trigger (mb-spqw).
+    assert measured["focus"] == {
+        "one": "group: No grouping, checked",
+        "oneEscaped": "group trigger",
+        "one before a": "group: No grouping, checked",
+        "a": "group trigger",
+        "one before t": "group: By age, checked",
+        "t": "group trigger",
+        "one before n": "group: By file type, checked",
+        "n": "group trigger",
+        "three": "types: Any type, checked",
+        "threeEscaped": "types trigger",
+        "two": "recency: Any age, checked",
+        "twoEscaped": "recency trigger",
+        "arrowDown": "group: No grouping, checked",
+        "arrowDownEscaped": "group trigger",
+        "enter": "group: No grouping, checked",
+        "enterEscaped": "group trigger",
+    }, measured["focus"]
+    # Enter on a File type row picks it and the menu stays open; through the bar's rebuild
+    # for each pick, which the session waits for by count, focus stays on that row,
+    # checked, and unchecked again. A tally refresh's rebuild is pinned browserlessly.
+    row = measured["typesRow"]
+    assert row.startswith("types: ") and not row.endswith("checked"), row
+    assert measured["typesPicked"] == f"{row}, checked", measured
+    assert measured["typesUnpicked"] == row, measured
+    assert measured["typesRebuilds"] >= 2, measured
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at

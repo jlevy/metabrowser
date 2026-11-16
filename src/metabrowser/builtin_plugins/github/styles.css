@@ -6,6 +6,13 @@
 .github-pull {
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
+  /* The Conversation's one rhythm (mb-w7rt): the visible space between any two consecutive
+     events, a card's border or a commit's text, and between two review comments. 20 px is
+     the space between two commits' glyphs that the owner called good (Chrome 152), where
+     cards had 12 px, crowded, and a commit stood 23.5 px from a card. It is the
+     Conversation's alone: the Files and Checks tabs keep the gap between their notices and
+     what they show, and Review comments keeps its break below a card (below). */
+  --github-pull-rhythm: 20px;
   /* The column includes the pane gutter on each side. */
   --page-reading-gutter: var(--content-padding-x);
   display: flex;
@@ -328,6 +335,8 @@
   inset: var(--content-padding-y) var(--content-padding-x) auto;
   visibility: visible;
 }
+/* Every tab's body keeps the page's gap; the Conversation's events stand the rhythm apart
+   ("The Conversation timeline", below). */
 .github-pull-body {
   display: flex;
   flex-direction: column;
@@ -351,38 +360,22 @@
 }
 
 /* ── The Conversation timeline ──────────────────────────────────
-   docs/design-system.md, "Conversation Timeline". A commit row is a card head without its
-   card: the head's box, type, and line, in a frame as wide as a card's that draws nothing,
-   so its text sits in its row as a head's sits in its card, and its subject starts where
-   an author's name does after the 18 px avatar, or its empty slot, and the identity's
-   4 px gap. Its hash takes a revision's own size, one step below the text beside it
-   (`.git-commit-sha`). Measured in Chrome 152 before this: the row was set at 12 px
-   against the head's 14, its text 1 px under its top and 6 px over its bottom. */
+   docs/design-system.md, "Conversation Timeline". A commit row is set in a card head's type
+   and line, and its subject starts where an author's name does after the 18 px avatar, or
+   its empty slot, and the identity's 4 px gap: its frame is as wide as a card's and draws
+   nothing. Its box is its line, with no room of its own above or below, so its text is as
+   far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash takes a
+   revision's own size, one step below the text beside it (`.git-commit-sha`). Measured in
+   Chrome 152 before the rhythm: a card head's room in the row put its glyphs 20 px from the
+   next commit's, and 23.5 px from a card, which stood 12 px from the next card. */
 .github-pull-commit {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 10px;
-  min-height: var(--ui-row-height);
-  padding: 3px var(--github-pull-text-inset) 3px calc(var(--github-pull-text-inset) + 18px + 4px);
-  border: 1px solid transparent;
+  padding: 0 var(--github-pull-text-inset) 0 calc(var(--github-pull-text-inset) + 18px + 4px);
+  border-inline: 1px solid transparent;
   font-size: var(--body-font-size);
-  /* The room the row keeps between its text and its edge: its 1 px frame, the head's
-     3 px, and at least the line's half-leading, since a face's glyphs are at least 1em
-     tall. A run of commits keeps it outside the run too (below). */
-  --github-pull-run-space: calc(1px + 3px + (1lh - 1em) / 2);
-}
-/* Two commits' glyphs are a gap and both rows' room apart, so a run of commits stands that
-   room further from whatever is above and below it than the gap: from a card's edge, or
-   Review comments', to the first commit's glyphs is then at least as far as from one
-   commit's glyphs to the next's, and so from the last commit's to the card below. Measured
-   in Chrome 152 before this: 16 px from a card's edge to a commit's glyphs, against 20 px
-   between two commits'. */
-.github-pull-body > :not(.github-pull-commit) + .github-pull-commit {
-  margin-top: var(--github-pull-run-space);
-}
-.github-pull-commit:has(+ :not(.github-pull-commit)) {
-  margin-bottom: var(--github-pull-run-space);
 }
 .github-pull-commit-subject {
   flex: 1 1 12em;
@@ -399,16 +392,24 @@
    edge. So it starts at the first event, ends at the last, and breaks where anything else
    (Review comments, a note) stands between two events. An event card lets the line out
    above it: it clips only sideways, as `.page-card`'s hidden overflow did, and its radius
-   is the chrome's 0. Offsets are from each event's padding box, which is 1 px inside its
-   frame for a card and a commit row alike. */
+   is the chrome's 0. Offsets are from each event's padding box: 1 px inside its frame for
+   a card, and on a commit row's own edge above and below, 1 px inside it at its sides. */
 .github-pull-event {
   --github-pull-line: 2px;
   --github-pull-node: 8px;
   /* The avatar's center: the head's inset and half its 18 px. */
   --github-pull-rail: calc(var(--github-pull-text-inset) + 9px);
-  /* A commit's first line: the head's 3 px and half a line. */
-  --github-pull-node-y: calc(3px + 0.5lh);
+  /* A commit's first line: half of it. */
+  --github-pull-node-y: 0.5lh;
   position: relative;
+}
+/* The rhythm stands above each of the Conversation's events, whatever is before it: the
+   body's gap and this margin. Only its events are `.github-pull-event`, so the Files and
+   Checks tabs keep the gap, 12 px, and so does a section or note below an event, with its
+   own margin: Review comments stands 28 px below a card, as before the rhythm. Measured in
+   Chrome 152 with the rhythm as the body's gap: 20 px for those notices, and 36 px. */
+.github-pull-body > * + .github-pull-event {
+  margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
 }
 .github-pull-event.page-card {
   overflow: visible;
@@ -423,8 +424,8 @@
   background: var(--border);
 }
 .github-pull-event + .github-pull-event.page-card::before {
-  top: calc(-1px - var(--github-pull-gap));
-  height: calc(var(--github-pull-gap) + 1px);
+  top: calc(-1px - var(--github-pull-rhythm));
+  height: calc(var(--github-pull-rhythm) + 1px);
 }
 /* No length of its own: the events beside it give it one. */
 .github-pull-commit::before {
@@ -432,17 +433,10 @@
   bottom: calc(100% - var(--github-pull-node-y));
 }
 .github-pull-event + .github-pull-commit::before {
-  top: calc(-1px - var(--github-pull-gap));
+  top: calc(-1 * var(--github-pull-rhythm));
 }
 .github-pull-commit:has(+ .github-pull-event)::before {
-  bottom: -1px;
-}
-/* Across a run's own room above and below it, to the card beside it. */
-.github-pull-event:not(.github-pull-commit) + .github-pull-commit::before {
-  top: calc(-1px - var(--github-pull-gap) - var(--github-pull-run-space));
-}
-.github-pull-commit:has(+ .github-pull-event:not(.github-pull-commit))::before {
-  bottom: calc(-1px - var(--github-pull-run-space));
+  bottom: 0;
 }
 /* The commit's node: a solid dot on the line, as every commit is in the history graph. */
 .github-pull-commit::after {
@@ -595,6 +589,10 @@
   flex-direction: column;
   gap: var(--github-pull-gap);
   margin-block-start: var(--content-padding-y);
+}
+/* Review comments, a comment's card from the next, at the Conversation's rhythm. */
+.github-pull-threads {
+  gap: var(--github-pull-rhythm);
 }
 .github-pull-checks {
   list-style: none;

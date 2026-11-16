@@ -330,9 +330,10 @@ function isOwnedControl(element) {
  * changes nothing, but a run of links with one dead segment in the middle
  * reads as a bug rather than as a rule.
  *
- * Each crumb carries the path it navigates to as its tooltip, because a narrow
- * pane ellipsizes the crumbs themselves and the hover is then the only place
- * the whole component is legible.
+ * A crumb's tooltip is its own name, which the shell shows only while a narrow
+ * pane has cut the crumb short (`tipAddsInformation`): the trail itself shows
+ * the path, so a crumb repeats none of it (docs/design-system.md, "Tooltips Add
+ * Information").
  *
  * @param {string} path served-root-relative path; "" is the root itself
  * @param {boolean} isFile whether the last component names a file
@@ -351,8 +352,11 @@ function headerAddressHtml(path, isFile) {
     var last = i === segments.length - 1;
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    // One name, as the crumb's tip and its text, so the two cannot drift apart: the tip
+    // shows only while that text is cut short (`tipAddsInformation`).
+    var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
     );
   }
   return (
@@ -3098,10 +3102,75 @@ function tipTextAnchor(event) {
     : null;
 }
 
+/**
+ * A tip's text as compared with what its anchor shows: one space for every run of white
+ * space, no case.
+ *
+ * @param {string | null | undefined} text
+ */
+function tipComparable(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Whether *anchor* or a box in it is cut short, by an ellipsis or a line clamp. An inline
+ * box has no client box to overflow, so only boxes that have one are read.
+ *
+ * @param {HTMLElement} anchor
+ */
+function tipAnchorIsCut(anchor) {
+  var boxes = [anchor, ...anchor.querySelectorAll("*")];
+  return boxes.some(
+    (box) =>
+      box instanceof HTMLElement &&
+      ((box.clientWidth > 0 && box.scrollWidth > box.clientWidth) ||
+        (box.clientHeight > 0 && box.scrollHeight > box.clientHeight)),
+  );
+}
+
+/**
+ * Whether a tip says something its anchor does not already show (docs/design-system.md,
+ * "Tooltips Add Information"). A tip that is the anchor's own text says nothing while
+ * that text is whole, so it shows only while the text is cut short. So does a tip that is
+ * the text of a box inside the anchor, as a changed file's row holds its name beside its
+ * status letter and counts: it shows only while that box is cut short. Any other tip, such
+ * as a glyph's name or an exact time, shows.
+ *
+ * @param {HTMLElement} anchor
+ */
+function tipAddsInformation(anchor) {
+  var tip = tipComparable(anchor.dataset.tipText);
+  if (tip === "") {
+    return false;
+  }
+  var text = tipComparable(anchor.textContent);
+  if (tip === text) {
+    return tipAnchorIsCut(anchor);
+  }
+  // A box's text is part of its anchor's, so a tip the anchor's text does not hold is no
+  // box's text, and nothing inside need be read.
+  if (!text.includes(tip)) {
+    return true;
+  }
+  var repeated = false;
+  for (var box of anchor.querySelectorAll("*")) {
+    if (box instanceof HTMLElement && tipComparable(box.textContent) === tip) {
+      if (tipAnchorIsCut(box)) {
+        return true;
+      }
+      repeated = true;
+    }
+  }
+  return !repeated;
+}
+
 /** @param {Event} e */
 function showTipText(e) {
   var anchor = tipTextAnchor(e);
-  if (anchor) {
+  if (anchor && tipAddsInformation(anchor)) {
     showTooltip(esc(anchor.dataset.tipText || ""), anchor);
   }
 }
@@ -3235,29 +3304,35 @@ treePane.addEventListener(
       return;
     }
     var d = item.dataset;
-    // The tree row already shows the name, so the hover tooltip omits it and
-    // shows size + date only (the name would be duplicative).
+    // The tooltip gives what the row does not show (docs/design-system.md,
+    // "Tooltips Add Information"): the exact date, a folder's other total, and
+    // the exact size behind one its chip rounds. The row shows the name, and a
+    // size or file count, whichever its chip holds, so the tooltip leaves out the
+    // name and what the chip shows exactly: a count, and a size under 1,024
+    // bytes, which formatBytes writes in whole bytes ("512 B").
     var includeName = false;
+    var chip = item.querySelector(".tree-item-size");
+    var shows = chip === null ? null : chip.classList.contains("count") ? "count" : "size";
+    var size = parseTipNumber(d.tipSize);
+    var chipRoundsSize = typeof size === "number" && size >= 1024;
+    var tipSize = shows === "size" && !chipRoundsSize ? undefined : size;
     var html;
     if (d.tipType === "dir") {
       html = folderTooltipHtml(
         d.tipName,
-        parseTipNumber(d.tipFiles),
-        parseTipNumber(d.tipSize),
+        shows === "count" ? undefined : parseTipNumber(d.tipFiles),
+        tipSize,
         parseTipNumber(d.tipMtime),
         includeName,
       );
     } else if (d.tipType === "symlink") {
       html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
-      html = fileTooltipHtml(
-        d.tipName,
-        parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-        includeName,
-      );
+      html = fileTooltipHtml(d.tipName, tipSize, parseTipNumber(d.tipMtime), includeName);
     }
-    showTooltip(html, item);
+    if (html) {
+      showTooltip(html, item);
+    }
   },
   true,
 );
@@ -5196,12 +5271,14 @@ function filterKeySlotsHtml() {
     .join("");
 }
 
-// Group by's choices beside "No grouping". A Git revision has no mtime, so it offers no
-// Age, as it offers no Modified within.
+// Group by's choices beside "No grouping", each read the same on its row and on the closed
+// trigger, and each with the letter that chooses it while the menu is open: the first of
+// the word naming its value (docs/design-system.md, "Keys in a Menu"). A Git revision has
+// no mtime, so it offers no By age, as it offers no Modified within.
 function filterGroupOptions() {
   var options = [
-    { value: "age", label: "Age", summary: "By age" },
-    { value: "type", label: "File type", summary: "By file type" },
+    { value: "age", label: "By age", key: "a" },
+    { value: "type", label: "By file type", key: "t" },
   ];
   return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
 }
@@ -5345,6 +5422,7 @@ function renderNavFilterBar() {
       options: filterGroupOptions(),
       value: treeFilterModel.groupBy(st),
       anyLabel: "No grouping",
+      anyKey: "n",
       anyValue: "none",
       open: filterOpenMenu === "group",
       menuId: "filter-group-menu",
@@ -5355,7 +5433,6 @@ function renderNavFilterBar() {
           key: "showIgnored",
           label: "Show ignored",
           checked: st.showIgnored,
-          tip: "Show gitignored entries, dimmed",
         })) +
     '<span class="nav-filter-bar-end">' +
     // Clear sits on the row with the chevron: it can only appear when a filter is set,
@@ -5396,6 +5473,11 @@ function renderNavFilterBar() {
     typeMenu +
     sizeMenu +
     "</div></div>";
+  // The rebuild replaces the control that has focus: a menu row, its trigger, a checkbox.
+  // Focus goes back to the same control, or to the trigger of a menu the rebuild closed,
+  // so a key, a pick, or a tally refresh never drops it on the page (docs/design-system.md,
+  // "Keys in a Menu").
+  var restoreFocus = fc.keepFocus(bar);
   bar.innerHTML = main + drawer;
   if (_groupingPending && filesPanelUsesGroupedSource()) {
     queryHtml('[data-chip-menu-toggle="group"]', bar)?.classList.add("mb-refreshing");
@@ -5405,6 +5487,7 @@ function renderNavFilterBar() {
   fc.fitOpenMenus(bar);
   // The rebuild replaced the triggers that the file type and modified-within keys badge.
   shellKeymap?.syncFilters();
+  restoreFocus();
 }
 
 // Flip the drawer's open state on the existing nodes. Re-rendering

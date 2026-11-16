@@ -176,6 +176,48 @@ const SLOTS = `(() => {
   };
 })()`;
 
+// A tree row's tooltip, once it is up: what it holds, and what the row's chip shows. It
+// leaves out what the row shows and gives the exact date, and the exact size behind one its
+// chip rounds (mb-8mpo, mb-qg4z, docs/design-system.md, "Tooltips Add Information"). It
+// waits for the tooltip to come up and to go, bounded by the shell's own delays,
+// TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT (static/app.js), so a change to them is a wait
+// of a different length rather than a tooltip read too early.
+const TREE_TIPS = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const up = () => document.querySelector(".custom-tooltip")?.style.display === "block";
+  const until = async (done) => {
+    const bound = performance.now() + 20 * (TOOLTIP_APPEAR_DELAY + TOOLTIP_FADE_OUT);
+    while (!done() && performance.now() < bound) {
+      await wait(TOOLTIP_FADE_OUT / 5);
+    }
+  };
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const read = async (row) => {
+    row.dispatchEvent(new MouseEvent("mouseenter"));
+    await until(up);
+    const tip = document.querySelector(".custom-tooltip");
+    const chip = row.querySelector(".tree-item-size");
+    const shown = {
+      chip: chip === null ? null : chip.classList.contains("count") ? "count" : "size",
+      chipText: chip?.textContent ?? null,
+      visible: up(),
+      size: tip?.querySelector(".size") !== null,
+      // The size's digits, which the locale groups as it likes.
+      sizeDigits: tip?.querySelector(".size")?.textContent.replace(/\\D/g, "") ?? null,
+      count: tip?.querySelector(".count") !== null,
+      lines: tip === null ? 0 : tip.querySelectorAll(".tip-detail").length,
+      name: tip?.querySelector(".tip-name") !== null,
+    };
+    row.dispatchEvent(new MouseEvent("mouseleave"));
+    await until(() => !up());
+    return shown;
+  };
+  return {
+    file: await read(tree.querySelector('.tree-file[data-path="README.md"]')),
+    folder: await read(tree.querySelector('.tree-folder[data-path="src"]')),
+  };
+})()`;
+
 // The bar's row and drawer: which controls each holds.
 const ROW = `(() => ({
   row: [...document.querySelector(".nav-filter-bar-main").children].map((child) =>
@@ -340,17 +382,18 @@ try {
   const measure = (key) => browser.evaluate(`(${MEASURE})(${JSON.stringify(key)})`);
   /** Press one key, as the reader does, at the page. */
   /** @type {Record<string, number>} */
-  const NAMED_KEYS = { Escape: 27, ArrowLeft: 37, ArrowRight: 39 };
+  const NAMED_KEYS = { Enter: 13, Escape: 27, ArrowLeft: 37, ArrowDown: 40, ArrowRight: 39 };
   const press = async (key) => {
     const named = key in NAMED_KEYS;
-    const code = named ? key : `Digit${key}`;
-    const windowsVirtualKeyCode = named ? NAMED_KEYS[key] : key.charCodeAt(0);
+    const letter = /^[a-z]$/.test(key);
+    const code = named ? key : letter ? `Key${key.toUpperCase()}` : `Digit${key}`;
+    const windowsVirtualKeyCode = named ? NAMED_KEYS[key] : key.toUpperCase().charCodeAt(0);
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyDown",
       key,
       code,
       windowsVirtualKeyCode,
-      ...(named ? {} : { text: key }),
+      ...(key === "Enter" ? { text: "\r" } : named ? {} : { text: key }),
     });
     await browser.send("Input.dispatchKeyEvent", {
       type: "keyUp",
@@ -489,17 +532,123 @@ try {
   await browser.evaluate(frames);
   // The numbers: 1 is Group by, and the drawer's filters keep theirs while it is closed,
   // on stand-ins beside the chevron.
+  // Where focus is: a menu row by its menu, label, and whether it is checked, or a trigger.
+  const FOCUS = `(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body) return "body";
+    const trigger = active.getAttribute("data-chip-menu-toggle");
+    if (trigger) return trigger + " trigger";
+    const row = active.closest(".chip-menu-item");
+    if (!row) return active.tagName.toLowerCase();
+    const checked = row.getAttribute("aria-checked") === "true" ? ", checked" : "";
+    return row.closest(".chip-menu").dataset.chipMenu + ": " +
+      row.querySelector(".menu-item-label").textContent + checked;
+  })()`;
+  // Every key that opens a menu focuses its checked row, and Escape and a choice that
+  // closes it give focus back to its trigger (docs/design-system.md, "Keys in a Menu").
+  result.focus = {};
   await press("1");
   result.keyOneOpens = await browser.evaluate(OPEN_MENU);
+  result.focus.one = await browser.evaluate(FOCUS);
+  // Group by's rows read as its trigger does: "By age", not "Age".
+  result.groupRows = await browser.evaluate(
+    `[...document.querySelectorAll("#filter-group-menu .menu-item-label")].map((label) => label.textContent)`,
+  );
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  result.focus.oneEscaped = await browser.evaluate(FOCUS);
+  // Group by's rows take N, A, and T while its menu is open and has focus, each running
+  // the row's click path; with the menu closed, T is Quick Search (docs/design-system.md,
+  // "Keys in a Menu").
+  const GROUP_STATE = `({
+    trigger: document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim(),
+    open: document.querySelector('.chip-menu[aria-expanded="true"]')?.dataset.chipMenu ?? null,
+    sections: document.querySelectorAll(".tree-section").length,
+  })`;
+  result.letters = {};
+  for (const [letter, trigger, sections] of [
+    ["a", "By age", "> 0"],
+    ["t", "By file type", "> 1"],
+    ["n", "No grouping", "=== 0"],
+  ]) {
+    await press("1");
+    result.focus[`one before ${letter}`] = await browser.evaluate(FOCUS);
+    await press(letter);
+    await browser.waitFor(
+      `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim() === ${JSON.stringify(trigger)} && document.querySelectorAll(".tree-section").length ${sections}`,
+      30000,
+    );
+    result.letters[letter] = await browser.evaluate(GROUP_STATE);
+    result.focus[letter] = await browser.evaluate(FOCUS);
+  }
+  await browser.evaluate("document.activeElement?.blur(), true");
+  await press("t");
+  await browser.waitFor(`document.activeElement?.getAttribute("role") === "combobox"`);
+  result.closedT = await browser.evaluate(
+    `({ focus: document.activeElement.getAttribute("role"), ...${GROUP_STATE} })`,
+  );
+  await press("Escape");
+  await browser.waitFor(`document.activeElement?.getAttribute("role") !== "combobox"`);
+  await browser.waitFor(
+    `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
+    30000,
+  );
   // 3 is File type: it opens the closed drawer with its menu.
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
   await browser.evaluate(BAR_SETTLED);
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
+  result.focus.three = await browser.evaluate(FOCUS);
+  // A pick in the multi-select menu keeps it open, and the bar rebuilds under it,
+  // synchronously from the filter's change: focus stays on the row picked, and on it again
+  // unpicked. A MutationObserver counts the bar's rebuilds, so each read waits for the
+  // rebuild it is about instead of for a time. New tallies rebuild the bar asynchronously
+  // too (loadTree in app.js), but a file written here does not, because the root summary's
+  // refresh leaves the bar alone while a menu is open; a rebuild with a row focused is
+  // pinned browserlessly in tests/dom/key-reveal-session.js and filter-controls-behavior.js.
+  await browser.evaluate(`(() => {
+    window.filterBarRebuilds = 0;
+    new MutationObserver((records) => { window.filterBarRebuilds += records.length; })
+      .observe(document.getElementById("nav-filter-bar"), { childList: true });
+    return true;
+  })()`);
+  const rebuilds = () => browser.evaluate("window.filterBarRebuilds");
+  const rebuiltSince = (count) => browser.waitFor(`window.filterBarRebuilds > ${count}`, 30000);
+  await press("ArrowDown");
+  result.typesRow = await browser.evaluate(FOCUS);
+  let rebuildCount = await rebuilds();
+  await press("Enter");
+  await rebuiltSince(rebuildCount);
+  result.typesPicked = await browser.evaluate(FOCUS);
+  rebuildCount = await rebuilds();
+  await press("Enter");
+  await rebuiltSince(rebuildCount);
+  result.typesUnpicked = await browser.evaluate(FOCUS);
+  result.typesRebuilds = await rebuilds();
+  await browser.waitFor(
+    `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
+    30000,
+  );
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  result.focus.threeEscaped = await browser.evaluate(FOCUS);
+  // 2 is Modified within, in the drawer 3 left open.
+  await press("2");
+  result.focus.two = await browser.evaluate(FOCUS);
+  await press("Escape");
+  await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
+  result.focus.twoEscaped = await browser.evaluate(FOCUS);
+  // A trigger's own keys: ↓ opens its menu, and Enter clicks it, as Space does.
+  await browser.evaluate(`document.querySelector('[data-chip-menu-toggle="group"]').focus(), true`);
+  await press("ArrowDown");
+  result.focus.arrowDown = await browser.evaluate(FOCUS);
+  await press("Escape");
+  result.focus.arrowDownEscaped = await browser.evaluate(FOCUS);
+  await press("Enter");
+  result.focus.enter = await browser.evaluate(FOCUS);
+  await press("Escape");
+  result.focus.enterEscaped = await browser.evaluate(FOCUS);
+  await browser.evaluate("document.activeElement?.blur(), true");
   await toggle("types", true);
   result.typesTall = await measure("types");
   // The window shrinks under the open menu: it is fitted again to the room left.
@@ -606,6 +755,7 @@ try {
     `({ sections: document.querySelectorAll('.tree-section').length, trees: [...document.querySelectorAll('#tab-files [role="tree"]')].map((tree) => tree.getAttribute("aria-label")) })`,
   );
   result.slots = await browser.evaluate(SLOTS);
+  result.treeTips = await browser.evaluate(TREE_TIPS);
   phase("grouped");
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
