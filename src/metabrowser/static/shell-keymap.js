@@ -1,4 +1,4 @@
-// The shell's own keys: the main pane's view tabs, the header's Up, a pin's branch
+// The shell's own keys: Home, the main pane's view tabs, the header's Up, a pin's branch
 // switcher, the numbers of the navigation pane's filters, and the letters of their menus'
 // rows.
 //
@@ -201,6 +201,34 @@
     });
     /** @type {MetabrowserPublicShortcutTarget | null} */
     let parentTarget = null;
+
+    // `0` is Home, the one digit with a fixed meaning: the numbers stop at 9, so it never
+    // reaches a numbered control, and Shift-0, which types `)` on a US keyboard, is `0` by
+    // the registry's digit-row match. It runs the folder's name's own click path, and the
+    // name, which the nav's header always shows, is its target. Its badge sits beside the
+    // name, in the header that anchors it, since the name clips.
+    const releaseHome = registerCommand({
+      copy: {
+        action: "Home",
+        description:
+          "Show the served folder's home view, with every tab at its first, as a fresh load does.",
+        hint: "Home",
+      },
+      group: "anywhere",
+      handler: () => {
+        shell.goHome();
+        return true;
+      },
+      id: "shell.home",
+      key: "0",
+      order: 30,
+      surfaces: { help: "always", reveal: "always" },
+    });
+    const homeHeading = /** @type {HTMLElement | null} */ (document.querySelector(".header-path"));
+    /** @type {MetabrowserPublicShortcutTarget | null} */
+    let homeTarget = homeHeading
+      ? shortcuts.attachTarget("shell.home", homeHeading, { placement: "beside" })
+      : null;
 
     /**
      * Read the main-pane header again: Up's target is the folder header's Up button or,
@@ -565,6 +593,9 @@
         parentTarget?.detach();
         parentTarget = null;
         releaseParent();
+        homeTarget?.detach();
+        homeTarget = null;
+        releaseHome();
       });
       disposed = true;
     }

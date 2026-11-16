@@ -19,8 +19,8 @@ letters the manifest loader does.
 
 ``docs/design-system.md``, "Keyboard Shortcuts", is the one reference for the scheme:
 letters name known meanings and mean the same wherever they are pressed, the digits 1 to
-9 number the situational links and actions on a screen in reading order, and ancillary
-actions such as copying have no key. ``tests/test_keymap.py`` holds that section's
+9 number the situational links and actions on a screen in reading order, `0` is Home,
+and ancillary actions such as copying have no key. ``tests/test_keymap.py`` holds that section's
 table to this one and to the keys the registry registers.
 
 This module imports nothing beyond the standard library, so the manifest loader and
@@ -54,7 +54,8 @@ class ReservedKey:
 # one level up, such as the pull requests of a stack; a view's key is one letter alone,
 # so those chords reserve no letter. The digits 1 to 9 are the situational numbers,
 # which the registry hands out by place on screen (static/keyboard-shortcuts.js,
-# `attachNumbered`), so no view or plugin names one.
+# `attachNumbered`), so no view or plugin names one. `0` is Home, the one digit with a
+# fixed meaning: the numbers stop at 9, so it reaches no numbered control.
 RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
     {
         "f": ReservedKey("Files tab"),
@@ -65,6 +66,7 @@ RESERVED_SHELL_KEYS: Final[Mapping[str, ReservedKey]] = MappingProxyType(
         "k": ReservedKey("previous row"),
         "u": ReservedKey("parent folder command"),
         "w": ReservedKey("branch or tag switcher"),
+        "0": ReservedKey("Home"),
         **{digit: ReservedKey("situational numbers") for digit in "123456789"},
     }
 )

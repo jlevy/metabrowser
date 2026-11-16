@@ -185,7 +185,7 @@ def test_the_session_runs_on_the_recording() -> None:
 
     # What each part printed is what its golden pins, which tests/test_keymap.py holds to
     # the reserved shell keys.
-    assert {key for part in parts for key in part["shellKeys"]} == set("123456789fhjkptuw") | {
+    assert {key for part in parts for key in part["shellKeys"]} == set("0123456789fhjkptuw") | {
         "control-n",
         "control-p",
     }
@@ -234,11 +234,20 @@ def test_the_session_runs_on_the_recording() -> None:
         "P",
         "H",
     ]
-    # The numbers are positional and Help never gives a digit a fixed meaning.
+    # The numbers are positional, and Help gives one digit a fixed meaning: 0, Home.
     positional = by_name["Help lists the numbers once, as positional"]
     assert positional["helpDigits"] == [
-        {"keys": "1–9", "range": True, "action": "Numbered links and actions"}
+        {"keys": "0", "range": False, "action": "Home"},
+        {"keys": "1–9", "range": True, "action": "Numbered links and actions"},
     ]
+    # 0 is Home on any screen, and so is US Shift-0, which types ")" (mb-5lzl).
+    for step, typed in (
+        ("0 goes home, through the folder's name's own path", "0"),
+        ("Shift-0, which types ) on a US keyboard, goes home too", ")"),
+    ):
+        assert by_name[step]["pressed"] == {"key": typed, "handled": True}, step
+        assert by_name[step]["did"] == ["went home"], step
+        assert ["0", "shell.home", "squares"] in by_name[step]["keys"], step
     # A pin's bar: Group by first, then its one filter (no Modified within on a pin).
     assert positional["numbers"] == ["Group by", "File type"]
     assert ["1", "Group by"] in positional["badges"]

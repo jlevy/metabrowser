@@ -1491,8 +1491,13 @@ body {
   background: var(--hover-bg);
 }
 /* Path is the primary piece of information in the header — bold,
-   mixed-case, sans-serif at the tree-row size. Click jumps back to
-   the served root. */
+   mixed-case, sans-serif at the tree-row size. It is Home: a click shows
+   the folder's home view as a fresh load does (docs/design-system.md,
+   "Home"). So it is a link in the navigation's vocabulary, a folder
+   crumb's: the hover surface under the name and the link-colored ring on
+   keyboard focus. The box is the name's own, never the row's, so the hover
+   and the tooltip under it belong to the name, and its inline padding is
+   given back by the margin, so the name starts where it always has. */
 .header-path {
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -1500,15 +1505,24 @@ body {
   color: var(--header-text);
   font-family: var(--font-sans);
   font-size: var(--nav-font-size);
-  padding: 2px 0;
+  padding: 2px 4px;
+  margin-inline: -4px;
   border-radius: var(--radius-chrome);
-  /* Grows and truncates exactly as .file-header-path does, so both
-     headers shorten the same way when the panes are resized. */
-  flex: 1 1 auto;
+  /* Truncates exactly as .file-header-path does, so both headers shorten
+     the same way when the panes are resized; it does not grow past the
+     name, and the menu keeps the far end. */
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.header-path:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+.app-header > .settings-toggle {
+  margin-left: auto;
 }
 /* A pinned revision's heading: the repository's name at the heading's weight,
    then the ref and the short commit, muted. The full commit is in the
@@ -1542,14 +1556,9 @@ body {
   text-overflow: ellipsis;
 }
 /* The control that copies the full commit stands right after the short one, so
-   a mirror's heading ends at its text and the menu keeps the far end. It shows
-   while the pointer is over the header, as the file header's copy control does. */
-.mirror-source .header-path {
-  flex-grow: 0;
-}
-.mirror-source .settings-toggle {
-  margin-left: auto;
-}
+   a mirror's heading ends at its text, as every heading does, and the menu
+   keeps the far end. It shows while the pointer is over the header, as the
+   file header's copy control does. */
 .header-copy {
   flex: none;
   margin-left: -4px;

@@ -2051,7 +2051,7 @@ async def index(
 <body>
   <main class="container{mirror_class}">
     <div class="tree-pane" id="tree-pane">
-      <header class="app-header">
+      <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
              the two headers cannot disagree about what the root is. It is also
@@ -2064,13 +2064,17 @@ async def index(
              to prevent. See "One Tooltip, and It Is Ours" in
              docs/design-system.md.
 
-             The heading is home: app.js keeps a plain activation in the page and
-             opens the served root in the Files tab, from whichever tab is in front.
-             Its name stays the text it shows, and the description says where it
-             goes, so a screen reader hears both. -->
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" aria-describedby="header-home-description"
+             The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
+             plain activation in the page and shows the folder's home view as a fresh load
+             of this address does, every tab at its first, and `0` does the same. Its
+             accessible name is "Home:" and then the name it shows, read from its own
+             content, so the name a mirror's heading shows, its ref and commit with it,
+             stays in it. The header anchors the key's badge, which sits beside the name
+             because the name clips. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
+           aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
-        <span id="header-home-description" hidden>Go home: the root folder in the Files tab</span>
+        <span id="header-home-label" hidden>Home:</span>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,

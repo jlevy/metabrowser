@@ -1180,7 +1180,15 @@ def test_navigation_tooltips_are_pointer_only() -> None:
     assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
     assert 'document.addEventListener("focusin", showTipText)' not in app
     assert 'document.addEventListener("focusout", hideTipText)' not in app
-    assert 'document.addEventListener("focusin", hideTooltip)' in app
+    # Any focus transition hides the tooltip, but the focus a press on the folder's name
+    # gives it: that is the pointer's click, which neither shows nor hides the name's
+    # tooltip (docs/design-system.md, "Home"; tests/test_folder_home_chrome.py).
+    assert 'document.addEventListener("focusin", hideTooltipOnFocus)' in app
+    on_focus = app[app.index("function hideTooltipOnFocus(") :]
+    on_focus = on_focus[: on_focus.index("\n}\n")]
+    assert "if (pressed !== null && event.target === pressed) {" in on_focus
+    assert on_focus.rstrip().endswith("hideTooltip();")
+    assert app.count("tooltipPressedAnchor = headerPath;") == 1
     assert 'element.addEventListener("focus", () =>' not in panel
     assert "dismissHoverTooltip();" in panel
 

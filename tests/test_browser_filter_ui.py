@@ -1043,8 +1043,9 @@ def test_leaving_recency_refetches_the_authoritative_tree() -> None:
     js = _read("app.js")
     start = js.index("function onFilterStateChange(state)")
     block = js[start : js.index("\n}\n", start)]
-    assert "loadTree();" in block
-    assert "renderFilesFromTree()" not in block
+    # Home's filter reset asks the same load to draw the tree as a fresh load does.
+    assert "loadTree({ asHome });" in block
+    assert "renderFilesFromTree(" not in block
 
 
 def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:

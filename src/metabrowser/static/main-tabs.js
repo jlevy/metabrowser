@@ -1,5 +1,5 @@
 // Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
-// from the heading above them.
+// from the folder's name above them, or by `0`.
 (() => {
   // In tab order, each with its letter: F for Files, P for Pulls, H for commit History.
   // The letters name what each tab holds and mean the same wherever they are pressed
@@ -472,23 +472,32 @@
     }
 
     /**
-     * The heading at the top of the nav goes home: the Files tab at the served root, from
-     * whichever tab is in front. It is the reader's own open of `/view/`, so it pushes one
-     * history entry, none when Files already shows the root, and Back returns to where the
-     * reader was. Files shows the top of its panel, where the root's rows begin.
+     * Home: the served folder's home view, as a fresh load of `/view/` shows it
+     * (docs/design-system.md, "Home"). The folder's name at the top of the nav and `0` come
+     * here, from whichever tab is in front. Every tab forgets where it was, as a page that
+     * has just loaded knows nowhere: Files and Pulls their destinations, and every panel
+     * its scroll, so Files shows the top of its panel, Pulls next opens its list, a pull
+     * request opened from it opens on Conversation, and Commits lands on its newest commit
+     * as it always does. The shell then opens the root at its default view.
+     *
+     * It is the reader's own open of `/view/`, so it pushes one history entry, none when
+     * the address is already `/view/`, and Back returns to where the reader was: a pull
+     * request's page writes its place into its entry first.
      *
      * @returns {Promise<unknown>}
      */
     function goHome() {
       deps.flushPull();
-      rememberMainTabAddress();
-      // Another tab in front: the switch to Files puts back this offset.
-      navPanelScroll.set("files", 0);
+      gitOpenPending = false;
+      mainTabDestinations.clear();
+      navPanelScroll.clear();
+      // The panels share one scroller, and the switch to Files keeps the offset of the
+      // panel it leaves: at its top, that panel keeps none of the reader's either.
       const scroller = document.getElementById("tree-content");
-      if (activeNavPanelId === "files" && scroller) {
+      if (scroller) {
         scroller.scrollTop = 0;
       }
-      return deps.openRoot();
+      return deps.openHome();
     }
 
     /**
