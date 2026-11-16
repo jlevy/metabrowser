@@ -32,6 +32,8 @@ opens the Modified within menu in both. This judges what it measured against
   and a reveal made meanwhile lands once they paint;
   and a newer choice, or No grouping, ends the wait at once ("Grouping the Files Tree",
   Waiting);
+- the arrow keys walking past By age to By file type ask for By file type alone, by the
+  choice, and resting on By age asks for it ahead, which the choice then takes;
 - a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
   row's content edge, each glyph centred in it, so the names after them start on one
   column ("One Glyph Size", mb-hmv7).
@@ -424,3 +426,10 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert state["trigger"] == "No grouping" and state["sections"] == 0, state
         assert state["progress"] is None and state["treeOpacity"] == 1, state
         assert state["busy"] == "false" and not state["breathing"], state
+
+    # The keyboard asks only for a row it rests on: walking past By age to By file type
+    # asks for By file type once, by the choice; resting on By age asks for it ahead, and
+    # the choice takes that answer rather than asking again.
+    keyboard = measured["keyboard"]
+    assert keyboard["walk"] == ["type"] and keyboard["walkTrigger"] == "By file type", keyboard
+    assert keyboard["rest"] == ["age"] and keyboard["restTrigger"] == "By age", keyboard

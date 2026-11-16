@@ -737,8 +737,11 @@ try {
     }
   };
   let requested = 0;
-  browser.on("Fetch.requestPaused", () => {
+  /** @type {string[]} the groupings asked for, in order */
+  const asked = [];
+  browser.on("Fetch.requestPaused", (params) => {
     requested += 1;
+    asked.push(new URL(params.request.url).searchParams.get("group_by") || "");
   });
   await browser.send("Fetch.enable", { patterns: [{ urlPattern: "*group_by=*" }] });
   const WAITING = `(() => {
@@ -857,6 +860,41 @@ try {
   result.waiting.stale = await browser.evaluate(WAITING);
   releaseAll = true;
   await release();
+  // The keyboard asks only for a row it rests on (createGroupsPrefetch, rest). ↓ ↓ ↓ and
+  // Enter on the trigger, each in the frame after the last, pass By age on the way to By
+  // file type: the choice asks for By file type, and By age is never asked for.
+  const keyboard = async (keys, restMs = 0) => {
+    const before = asked.length;
+    await browser.evaluate(
+      `document.querySelector('[data-chip-menu-toggle="group"]').focus(), true`,
+    );
+    for (const key of keys) {
+      if (key === "rest") {
+        await sleep(restMs);
+      } else {
+        await press(key);
+      }
+    }
+    await browser.waitFor(
+      `!document.querySelector('[data-chip-menu-toggle="group"]').classList.contains("mb-refreshing") && document.querySelectorAll('.tree-section').length > 0`,
+      30000,
+    );
+    return asked.slice(before);
+  };
+  result.keyboard = {};
+  result.keyboard.walk = await keyboard(["ArrowDown", "ArrowDown", "ArrowDown", "Enter"]);
+  result.keyboard.walkTrigger = await browser.evaluate(
+    `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim()`,
+  );
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
+  // Resting on By age past the dwell asks for it ahead, and Enter takes that answer.
+  result.keyboard.rest = await keyboard(["ArrowDown", "ArrowDown", "rest", "Enter"], 700);
+  result.keyboard.restTrigger = await browser.evaluate(
+    `document.querySelector('[data-chip-menu-toggle="group"]').textContent.trim()`,
+  );
+  await choose("none");
+  await browser.waitFor("document.querySelectorAll('.tree-section').length === 0", 30000);
   await browser.send("Fetch.disable");
   phase("waited");
   process.stdout.write(`${JSON.stringify(result)}\n`);

@@ -20,8 +20,9 @@ All notable changes to Metabrowser are documented here.
   trees under Modified within, File type, or Minimum file size are faster too, by a
   quarter to a half on the 100,000-file folder.
   Opening the Group by menu no longer asks for both groupings ahead of the choice.
-  Pressing a row, or moving to it with the keyboard, asks for that grouping alone, and
-  the choice uses that answer when it comes.
+  Pressing a row asks for that grouping alone, as resting on one with the arrow keys
+  does; a row the keys pass over on the way to another asks for nothing.
+  The choice uses that answer when it comes.
 
 - A pull request’s labels are colored as github.com colors them, in both themes: the
   label’s own color as the chip’s ground in the light theme, and a tint of it in the

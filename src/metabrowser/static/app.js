@@ -1261,10 +1261,6 @@ async function loadTree(options = {}) {
 
 // ── Group by: loading and painting the sections ─────────────────
 
-// Which grouped request the panel shows, so an answer for a grouping or filter the reader
-// has since left is never painted over the current one.
-var _groupedRequestSerial = 0;
-
 function currentGroupedKey() {
   return treeFilterModel.groupedRequestKey(currentFilterSnapshot(), treeFilterSizeFloors());
 }
@@ -1272,97 +1268,44 @@ function currentGroupedKey() {
 /**
  * Load and paint the Group by sections. One request answers every group's count and its
  * first two levels (`/api/tree?group_by=`), the depth the ungrouped tree's first answer has.
+ * The load's lifecycle, which loads wait and which cancel, is `groupedLoads`.
  *
  * @param {{ preserve?: boolean }} [options] `preserve` refreshes the sections on screen in
  *   place, after files changed, rather than painting a new grouping.
  * @returns {Promise<boolean>} whether an answer was painted
  */
-async function loadGroupedTree(options = {}) {
-  var state = currentFilterSnapshot();
-  var key = currentGroupedKey();
-  var asked = { key, first: options.preserve !== true };
-  var inFlight = _groupedLoad;
-  if (inFlight && treeFilterModel.groupedLoadDecision(inFlight, asked) === "after") {
-    // The sections this refresh would refresh are on their way: it runs once they paint.
-    inFlight.refreshAfter = true;
-    return true;
-  }
-  cancelGroupedLoad();
-  var serial = ++_groupedRequestSerial;
-  // A first load paints new sections; so does a refresh with none on screen to keep
-  // (loadGroupedTreeInner).
-  var first = asked.first || queryHtml("#tab-files > .tree-section") === null;
-  /** @type {() => void} */
-  var settle = () => {};
-  /** @type {Promise<void>} */
-  var settled = new Promise((resolve) => {
-    settle = resolve;
+function loadGroupedTree(options = {}) {
+  return groupedLoads.load(currentGroupedKey(), {
+    refresh: options.preserve === true,
+    painted: queryHtml("#tab-files > .tree-section") !== null,
   });
-  var load = {
-    serial,
-    key,
-    first,
-    controller: new AbortController(),
-    refreshAfter: false,
-    settled,
-    settle,
-  };
-  _groupedLoad = load;
-  setGroupingPending(true);
-  try {
-    return await loadGroupedTreeInner(state, key, serial, {
-      ...options,
-      signal: load.controller.signal,
-    });
-  } finally {
-    if (_groupedLoad === load) {
-      _groupedLoad = null;
-      setGroupingPending(false);
-      if (load.refreshAfter) {
-        requestGroupedRefresh();
-      }
-    }
-    load.settle();
-  }
 }
 
-/**
- * The Group by load on its way: a choice's first sections, or a refresh of the ones on
- * screen (tree-filter-model.js, groupedLoadDecision).
- *
- * `settled` resolves when it ends, painted, failed, or superseded (groupedSectionsSettled).
- *
- * @type {{serial: number, key: string, first: boolean, controller: AbortController, refreshAfter: boolean, settled: Promise<void>, settle: () => void} | null}
- */
-var _groupedLoad = null;
+// The Group by loads (tree-filter-model.js, createGroupedLoads): at most one on its way,
+// which a newer grouping or filter cancels and a refresh of its first sections waits for.
+// The shell supplies the request and the paint, the wait it shows, and the refresh.
+var groupedLoads = treeFilterModel.createGroupedLoads({
+  run: (load) => loadGroupedTreeInner(currentFilterSnapshot(), load),
+  pending: (load) => setGroupingPending(load !== null, load?.first === true),
+  refresh: () => requestGroupedRefresh(),
+});
 
 // Cancel the load on its way, when a newer grouping or filter supersedes it or the reader
 // leaves grouping: its request is aborted, its answer is never painted, and the wait it
 // showed ends at once. The server's pass, once begun, runs to its end regardless.
 function cancelGroupedLoad() {
-  var load = _groupedLoad;
-  if (!load) {
-    return;
-  }
-  _groupedLoad = null;
-  _groupedRequestSerial += 1;
-  load.controller.abort();
-  setGroupingPending(false);
-  load.settle();
+  groupedLoads.cancel();
 }
 
 /**
  * Wait until no grouping's first sections are on their way. A reveal under Group by
  * looks for its row in the sections, which a choice paints only when its groups come;
- * looked for before, it would find none and land nowhere. A newer choice that
- * supersedes the load is waited for in turn.
+ * looked for before, it would find none and land nowhere.
  *
  * @returns {Promise<void>}
  */
-async function groupedSectionsSettled() {
-  for (let load = _groupedLoad; load?.first; load = _groupedLoad) {
-    await load.settled;
-  }
+function groupedSectionsSettled() {
+  return groupedLoads.settled();
 }
 
 // While the groups are on their way the tree on screen stays, and the Group by trigger
@@ -1372,7 +1315,11 @@ async function groupedSectionsSettled() {
 // an answer inside --loading-state-delay shows none of it.
 var _groupingPending = false;
 
-function setGroupingPending(pending) {
+/**
+ * @param {boolean} pending
+ * @param {boolean} [first] whether the load on its way paints new sections
+ */
+function setGroupingPending(pending, first = false) {
   _groupingPending = pending;
   var grouped = filesPanelUsesGroupedSource();
   queryHtml('[data-chip-menu-toggle="group"]')?.classList.toggle(
@@ -1381,27 +1328,39 @@ function setGroupingPending(pending) {
   );
   document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
   renderRegrouping(
-    pending && grouped && _groupedLoad?.first === true
-      ? treeFilterModel.groupBy(currentFilterSnapshot())
-      : null,
+    pending && grouped && first ? treeFilterModel.groupBy(currentFilterSnapshot()) : null,
   );
 }
 
 // The grouping whose first sections are on their way, or null.
 /** @type {string | null} */
 var _regroupingBy = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+var _regroupingWordsTimer = null;
+
+// The quiet period, `--loading-state-delay` in styles.css, in milliseconds.
+function loadingStateDelayMs() {
+  var value = getComputedStyle(document.documentElement).getPropertyValue("--loading-state-delay");
+  var ms = Number.parseFloat(value);
+  return Number.isFinite(ms) ? ms : 50;
+}
 
 /**
  * Show, or end, the wait for a grouping's first sections (docs/design-system.md, "Grouping
  * the Files Tree", Waiting): the tree dims (`.tree-regrouping` in styles.css) and the scan
  * row says "Grouping by file type…" in its spinner and words, both after the quiet period.
- * A scan the row was already showing keeps its place on screen, without a second quiet
- * period, and comes back when the wait ends.
+ * A scan the row is already showing keeps its words through the quiet period, so an answer
+ * inside it changes nothing the polite live region would announce, and comes back when the
+ * wait ends.
  *
  * @param {string | null} by
  */
 function renderRegrouping(by) {
   _regroupingBy = by;
+  if (_regroupingWordsTimer !== null) {
+    clearTimeout(_regroupingWordsTimer);
+    _regroupingWordsTimer = null;
+  }
   document.getElementById("tab-files")?.classList.toggle("tree-regrouping", by !== null);
   var row = document.getElementById("index-progress");
   if (!row) {
@@ -1413,31 +1372,44 @@ function renderRegrouping(by) {
     return;
   }
   var text = row.querySelector(".index-progress-text");
-  if (text) {
-    text.textContent = treeFilterModel.regroupingStatusText(by);
+  var words = treeFilterModel.regroupingStatusText(by);
+  if (row.hidden === true) {
+    // Hidden until the quiet period passes (.mb-delayed-loading).
+    if (text) {
+      text.textContent = words;
+    }
+    row.classList.add("mb-delayed-loading");
+    row.hidden = false;
+    return;
   }
-  row.classList.toggle("mb-delayed-loading", row.hidden === true);
-  row.hidden = false;
+  row.classList.remove("mb-delayed-loading");
+  _regroupingWordsTimer = setTimeout(() => {
+    _regroupingWordsTimer = null;
+    if (text && _regroupingBy === by) {
+      text.textContent = words;
+    }
+  }, loadingStateDelayMs());
 }
 
 /**
+ * Fetch one load's groups and paint them, if it is still the load on its way and its
+ * grouping and filters are still the panel's.
+ *
  * @param {ReturnType<typeof currentFilterSnapshot>} state
- * @param {string} key
- * @param {number} serial
- * @param {{ preserve?: boolean, signal?: AbortSignal }} options
+ * @param {MetabrowserPublicGroupedLoad} load
  * @returns {Promise<boolean>}
  */
-async function loadGroupedTreeInner(state, key, serial, options) {
-  var preserve = options.preserve === true && queryHtml("#tab-files > .tree-section") !== null;
-  var owns = () =>
-    serial === _groupedRequestSerial &&
-    filesPanelUsesGroupedSource() &&
-    key === currentGroupedKey();
+async function loadGroupedTreeInner(state, load) {
+  var key = load.key;
+  var preserve = !load.first;
+  var owns = () => load.current() && filesPanelUsesGroupedSource() && key === currentGroupedKey();
   var data;
   var sections;
   try {
     data = await fetchGroups(treeFilterModel.groupsUrl(state, treeFilterSizeFloors(), 2), {
       preserve,
+      signal: load.signal,
+      load,
     });
     sections = treeFilterModel.groupSections(data);
   } catch (error) {
@@ -1485,11 +1457,23 @@ async function loadGroupedTreeInner(state, key, serial, options) {
 // (`GroupedTreeQuery`): about 0.1 s on 100,000 files, where the ungrouped tree's rows take
 // a few milliseconds (docs/design-system.md, "Grouping the Files Tree"). So the grouping a
 // reader is about to choose is asked for ahead, when the pointer presses its row or the
-// keyboard moves to it, and the choice takes the answer already on its way
+// keyboard rests on it, and the choice takes the answer already on its way
 // (tree-filter-model.js, groupPrefetchUrl and createGroupsPrefetch). An answer is kept
 // until GROUPS_PREFETCH_TTL_MS passes; one a file change made stale still serves the
 // choice, which then refreshes, and a refresh always asks again.
 var GROUPS_PREFETCH_TTL_MS = 10000;
+
+// How long keyboard focus rests on a Group by row before it asks for that grouping ahead.
+// A row passed over on the way to another must ask for nothing: the server runs one
+// grouped pass at a time, so a pass for a row passed over delays the chosen one by its
+// whole length, and when passes overlapped one started 0, 100, or 250 ms ahead made the
+// chosen grouping take 1.96, 1.79, or 1.43 times as long (review B of #466, on 260,000
+// files). Pressing arrow keys walks rows about every 0.12-0.28 s (the keystroke-level
+// model's K for skilled to average typists), and a held arrow key here repeats every 30 ms,
+// so 300 ms passes over a walk; a choice comes after the reader has read the row, about
+// 1.35 s (the model's M), so a row rested on still asks a second ahead of the choice, more
+// than a pass takes on that folder (0.3-0.6 s).
+var GROUPS_PREFETCH_DWELL_MS = 300;
 
 /**
  * @param {string} url
@@ -1507,6 +1491,9 @@ function groupsRequest(url, signal) {
 var groupsPrefetch = treeFilterModel.createGroupsPrefetch({
   now: () => performance.now(),
   ttlMs: GROUPS_PREFETCH_TTL_MS,
+  dwellMs: GROUPS_PREFETCH_DWELL_MS,
+  setTimer: (callback, ms) => setTimeout(callback, ms),
+  clearTimer: (timer) => clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (timer)),
   start(url) {
     var controller = new AbortController();
     var answer = groupsRequest(url, controller.signal);
@@ -1521,7 +1508,7 @@ var groupsPrefetch = treeFilterModel.createGroupsPrefetch({
  * request of its own. A cancel of the load reaches either.
  *
  * @param {string} url
- * @param {{ preserve?: boolean, signal?: AbortSignal }} options
+ * @param {{ preserve?: boolean, signal?: AbortSignal, load?: MetabrowserPublicGroupedLoad }} options
  */
 function fetchGroups(url, options) {
   var kept = options.preserve ? null : groupsPrefetch.take(url);
@@ -1531,15 +1518,11 @@ function fetchGroups(url, options) {
   options.signal?.addEventListener("abort", kept.abort, { once: true });
   if (kept.stale) {
     // Asked for before a file changed: it paints, as it comes sooner than a new answer
-    // would, and the sections then refresh (groupedLoadDecision holds the refresh until
-    // they have painted).
-    requestGroupedRefresh();
+    // would, and the sections then refresh once (createGroupedLoads).
+    options.load?.refreshAfter();
   }
   return kept.answer;
 }
-
-// The keys that move focus between a menu's rows (filter-controls.js, onKeyDown).
-var MENU_ROW_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
 
 /**
  * Ask ahead for the grouping whose Group by row the pointer pressed.
@@ -1547,45 +1530,58 @@ var MENU_ROW_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
  * @param {Event} event
  */
 function prefetchPressedGrouping(event) {
-  prefetchGroupingRow(/** @type {Element | null} */ (event.target));
+  var row = /** @type {Element | null} */ (event.target)?.closest?.(
+    '#filter-group-menu .chip-menu-item[data-chip-key="group"]',
+  );
+  var url = row ? groupingRowPrefetchUrl(row) : null;
+  if (url) {
+    groupsPrefetch.want(url);
+  }
 }
 
 /**
- * Ask ahead for the grouping whose Group by row the arrow keys moved to. It runs after the
- * filter controls' own keydown, which moves focus between the rows and leaves a key held
- * with Command, Control, or Option alone, as this does (tests/test_modified_keys.py).
+ * Keyboard focus moved to a Group by row (filter-controls.js, onMenuFocus): ask for its
+ * grouping once focus has rested there (GROUPS_PREFETCH_DWELL_MS), and still is there.
  * Focus alone is not intent: a rebuild of the bar puts focus back on the row that had it,
- * which is no reader's move.
+ * which is no reader's move, and reports nothing.
  *
- * @param {KeyboardEvent} event
+ * @param {string} key
+ * @param {string | null} value
  */
-function prefetchGroupingByKey(event) {
-  if (event.altKey || event.ctrlKey || event.metaKey) {
-    return;
-  }
-  if (MENU_ROW_KEYS.has(event.key)) {
-    prefetchGroupingRow(document.activeElement);
-  }
-}
-
-/**
- * Ask ahead for the grouping of the Group by row *origin* is in, if it is in one.
- *
- * @param {Element | null} origin
- */
-function prefetchGroupingRow(origin) {
-  var row = origin?.closest?.('#filter-group-menu .chip-menu-item[data-chip-key="group"]');
-  if (!row) {
+function restOnGroupingRow(key, value) {
+  if (key !== "group") {
     return;
   }
   var url = treeFilterModel.groupPrefetchUrl(
+    value ?? "none",
+    currentFilterSnapshot(),
+    treeFilterSizeFloors(),
+  );
+  groupsPrefetch.rest(url, () => focusedGroupingValue() === (value ?? "none"));
+}
+
+// The grouping of the Group by row focus is on, "none" for No grouping, or null.
+function focusedGroupingValue() {
+  var row = document.activeElement?.closest?.(
+    '#filter-group-menu .chip-menu-item[data-chip-key="group"]',
+  );
+  if (!row) {
+    return null;
+  }
+  return row.hasAttribute("data-chip-any") ? "none" : row.getAttribute("data-chip-value");
+}
+
+/**
+ * The request a Group by row asks for ahead, if any (tree-filter-model.js, groupPrefetchUrl).
+ *
+ * @param {Element} row
+ */
+function groupingRowPrefetchUrl(row) {
+  return treeFilterModel.groupPrefetchUrl(
     row.hasAttribute("data-chip-any") ? "none" : row.getAttribute("data-chip-value") || "",
     currentFilterSnapshot(),
     treeFilterSizeFloors(),
   );
-  if (url) {
-    groupsPrefetch.want(url);
-  }
 }
 
 function failGroupedTree(reason) {
@@ -5730,6 +5726,10 @@ function closeFilterMenu() {
  * @param {boolean} open
  */
 function toggleFilterMenu(key, open) {
+  if (key === "group" && !open) {
+    // A row the keyboard is resting on asks for nothing once the menu closes.
+    groupsPrefetch.cancelRest();
+  }
   filterOpenMenu = open ? key : null;
   // The filters live in the drawer: a key that opens one opens the drawer with it.
   if (open && key !== "group") {
@@ -5835,21 +5835,21 @@ function initFilterBar() {
         renderNavFilterBar();
       }
     },
+    onMenuFocus: restOnGroupingRow,
     onClear: () => {
       filterOpenMenu = null;
       filterState.clear();
     },
   });
-  // The grouping a reader is about to choose is asked for ahead (prefetchGroupingRow).
+  // The grouping a pointer presses is asked for ahead at once (prefetchPressedGrouping);
+  // one the keyboard rests on, after a dwell (onMenuFocus above).
   const intentRoot = bar;
   var unbindControls = filterBarUnbind;
   intentRoot.addEventListener("pointerdown", prefetchPressedGrouping);
-  // After the filter controls' own keydown, which moves focus between the rows.
-  intentRoot.addEventListener("keydown", prefetchGroupingByKey);
   filterBarUnbind = () => {
     unbindControls?.();
+    groupsPrefetch.cancelRest();
     intentRoot.removeEventListener("pointerdown", prefetchPressedGrouping);
-    intentRoot.removeEventListener("keydown", prefetchGroupingByKey);
   };
   // Seed the source tracking from the persisted state so the first
   // user change is compared against reality, not against null.

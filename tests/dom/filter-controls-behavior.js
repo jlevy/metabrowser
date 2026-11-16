@@ -811,10 +811,15 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     restore();
   };
   render();
+  // The rows the keys move focus to, as the consumer hears them (onMenuFocus).
+  const moves = [];
   fc.bind(root, {
     onMenuToggle(key, open) {
       state.open = open ? key : null;
       render();
+    },
+    onMenuFocus(key, value) {
+      moves.push(`${key}:${value}`);
     },
     onMenuPick(key, value) {
       if (key === "group") {
@@ -856,6 +861,9 @@ assertMissing("group labels are escaped", hostile, '"><img>');
   step("a second click closes it", () => trigger("group").click());
   step("↓ on its trigger opens it", () => press("ArrowDown"));
   step("↓ in it moves a row", () => press("ArrowDown"));
+  step("Option-↓ is the browser's, and moves nothing", () => press("ArrowDown", { altKey: true }));
+  step("↑ moves back", () => press("ArrowUp"));
+  step("Home moves to the first row", () => press("Home"));
   step("Escape closes it", () => press("Escape"));
   step("an Escape a surface above took leaves it open", () => {
     trigger("group").click();
@@ -888,6 +896,9 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     "a second click closes it: group trigger",
     "↓ on its trigger opens it: By age row",
     "↓ in it moves a row: By file type row",
+    "Option-↓ is the browser's, and moves nothing: By file type row",
+    "↑ moves back: By age row",
+    "Home moves to the first row: No grouping row",
     "Escape closes it: group trigger",
     "an Escape a surface above took leaves it open: By age row",
     "the next Escape closes it: group trigger",
@@ -905,6 +916,14 @@ assertMissing("group labels are escaped", hostile, '"><img>');
     [state.group, state.types, state.open],
     ["type", [".md"], null],
   );
+  // A key that moves focus to a row reports it, the any-row as null; opening a menu onto
+  // its checked row, a chord, and a click report nothing.
+  assertEqual("each row a key moved focus to reached the consumer", moves, [
+    "group:type",
+    "group:age",
+    "group:null",
+    "types:.md",
+  ]);
 }
 
 // ── A segmented group wider than its line ──────────────────────

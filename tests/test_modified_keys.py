@@ -117,17 +117,6 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
                 "guard only keeps Command-Escape from closing the menu"
             ),
         ),
-        Listener(
-            "the Group by prefetch on a row the arrow keys reach (mb-navs)",
-            _GUARD,
-            via=("prefetchGroupingByKey",),
-            cancels=False,
-            unmounted=(
-                "app.js is a legacy module no session loads whole, and this listener cancels "
-                "no key, which the test checks; the guard keeps a chord, which moves no focus "
-                "between the rows, from asking for a grouping"
-            ),
-        ),
     ),
     "static/git-panel.js": (
         Listener(

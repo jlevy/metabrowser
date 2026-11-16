@@ -935,6 +935,7 @@ type MetabrowserFilterState = {
 type MetabrowserFilterHandlers = {
   onChange?: (key: string, value: string, select: string) => void;
   onClear?: () => void;
+  onMenuFocus?: (key: string, value: string | null) => void;
   onMenuPick?: (key: string, value: string | null) => void;
   onMenuPreset?: (key: string, presetId: string, wasOn: boolean) => void;
   onMenuToggle?: (key: string, open: boolean) => void;
@@ -1624,15 +1625,39 @@ type MetabrowserRecentContinuity = {
   settleRequest(request: MetabrowserRecentRequest): "commit" | "refetch" | "superseded";
 };
 
+type MetabrowserGroupedLoad = {
+  current(): boolean;
+  first: boolean;
+  key: string;
+  refreshAfter(): void;
+  signal: AbortSignal;
+};
+
 type MetabrowserTreeFilterModel = {
   GROUP_BY_VALUES: ReadonlyArray<string>;
   ageGroupFor(ageSeconds: number, windows: Record<string, number | null>): string;
+  createGroupedLoads(deps: {
+    pending(load: { first: boolean; key: string } | null): void;
+    refresh(): void;
+    run(load: MetabrowserGroupedLoad): Promise<boolean>;
+  }): {
+    cancel(): void;
+    inFlight(): { first: boolean; key: string } | null;
+    load(key: string, options?: { painted?: boolean; refresh?: boolean }): Promise<boolean>;
+    settled(): Promise<void>;
+  };
   createGroupsPrefetch(deps: {
+    clearTimer(timer: unknown): void;
+    dwellMs: number;
     now(): number;
+    setTimer(callback: () => void, ms: number): unknown;
     start(url: string): { abort(): void; answer: Promise<unknown> };
     ttlMs: number;
   }): {
+    cancelRest(): void;
     markChanged(): void;
+    rest(url: string | null, stillThere?: () => boolean): void;
+    resting(): boolean;
     size(): number;
     take(url: string): { abort(): void; answer: Promise<unknown>; stale: boolean } | null;
     want(url: string): void;
@@ -3380,6 +3405,7 @@ declare global {
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
   type MetabrowserPublicTreeSection = MetabrowserTreeSection;
+  type MetabrowserPublicGroupedLoad = MetabrowserGroupedLoad;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
   type MetabrowserPublicShortcutTarget = MetabrowserShortcutTarget;
   type MetabrowserPublicShortcutCommand = MetabrowserShortcutCommand;

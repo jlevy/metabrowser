@@ -2822,17 +2822,21 @@ it resets them all, Show ignored back on, and keeps the grouping.
   navigation’s scan row says what is coming, “Grouping by file type…” or “Grouping by
   age…”, in its spinner and words.
   The metadata band and notices above the tree keep their ink, and an answer inside the
-  quiet period shows none of it.
+  quiet period shows none of it; a scan the row is already showing keeps its words
+  through the quiet period too.
   The scan row rather than a metadata line holds the words because a metadata line takes
   its line box the moment it is drawn: a choice answered inside the quiet period would
   push the tree down a line and back.
   A newer choice, a filter change, or No grouping cancels the load on its way at once,
   and its answer is never painted.
-  Pressing a grouping’s row, or moving to it with the arrow keys, asks for that grouping
-  ahead of the choice; opening the menu asks for nothing, since a reader chooses at most
-  one grouping and often none.
-  A file change keeps an answer asked for ahead rather than dropping it: the choice
-  takes it, since it comes sooner than a new one, and then refreshes.
+  Pressing a grouping’s row asks for that grouping ahead of the choice, and so does
+  resting on it with the arrow keys for 300 ms (`GROUPS_PREFETCH_DWELL_MS` in `app.js`,
+  where its reasoning is); a row the keys pass over on the way to another asks for
+  nothing, since the server runs one grouped pass at a time and a pass for that row
+  would hold up the one chosen.
+  Opening the menu asks for nothing, since a reader chooses at most one grouping and
+  often none. A file change keeps an answer asked for ahead rather than dropping it: the
+  choice takes it, since it comes sooner than a new one, and then refreshes.
   A reveal made while a choice’s first sections are on their way
   ([Navigation Reveals the Item](#navigation-reveals-the-item)) waits for them, and
   lands in its section once they paint.
@@ -2853,12 +2857,14 @@ it resets them all, Show ignored back on, and keeps the grouping.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
-`tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections run
-browserlessly in `tests/dom/files-group-by-session.js`, and its refresh in
+`tests/golden/cli-api-tree-groups.tryscript.md`; the browser’s requests and sections,
+its prefetch and the keyboard’s dwell, and its loads’ lifecycle run browserlessly in
+`tests/dom/files-group-by-session.js`, and its refresh in
 `tests/dom/group-by-refresh-behavior.js`; and `tests/test_files_tab_chrome.py` measures
 the row, the drawer, the numbers, the sections’ headings, a refresh after a write, and,
 with the grouped requests held, the wait: the trigger in the choice’s frame, the dimmed
-tree and the scan row’s words, a refresh that waits, and cancelling, in Chrome.
+tree and the scan row’s words, a refresh that waits, cancelling, and the arrow keys
+asking only for a row they rest on, in Chrome.
 
 The server reads every group from one pass over the index, at one index version
 (`GroupedTreeQuery` in `inventory_engine/contract.py`). Measured in process, warm, on
@@ -2876,12 +2882,14 @@ painted its tree in 29–49 ms.
 On the larger folder By file type took 0.50–0.53 s, or 0.39–0.48 s after a 100 ms press,
 and No grouping 41–95 ms.
 Two groupings asked for at once each took twice as long there, 0.86 s against about 0.42
-s, which is why opening the menu no longer asks for both.
-Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
-spinner shown. On a folder of 112 files, a file written every 250 ms for 6 s into a
-folder open one or two levels down gave four paced refreshes of at most 8 ms of paint
-each, and the scroll position, the focused row inside that folder, and the open folders
-held through all of them.
+s, which is why opening the menu asks for neither and the keyboard asks only for a row
+it rests on.
+Opening a folder inside a section took 24 to 32 ms, the same as outside one,
+with no spinner shown.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
 
 ### Filters Say What They Do Not Know
 

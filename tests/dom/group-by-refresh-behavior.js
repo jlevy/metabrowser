@@ -41,6 +41,7 @@ function session(setup) {
   const calls = [];
   const subtreeCache = new Map();
   const sandbox = {
+    AbortController,
     Array,
     Map,
     Number,
@@ -49,7 +50,8 @@ function session(setup) {
     Set,
     String,
     console: { warn() {} },
-    _groupedRequestSerial: 1,
+    // Whether the load is still the one on its way (createGroupedLoads, `current`).
+    loadIsCurrent: true,
     _filteredTreeTotals: null,
     subtreeCache,
     queryHtml: (selector) =>
@@ -75,7 +77,7 @@ function session(setup) {
           throw children || new Error("not found");
         }
         if (setup.overtakeOn === folder) {
-          sandbox._groupedRequestSerial += 1;
+          sandbox.loadIsCurrent = false;
         }
         subtreeCache.set(`${group}\u0000${folder}`, children);
         return { tree: children, scanning: false };
@@ -109,9 +111,16 @@ function session(setup) {
   vm.runInContext(functions, sandbox, { filename: "app.js (lifted)" });
   return {
     calls,
+    // A refresh paints new sections when none are on screen to keep (createGroupedLoads).
     run: (preserve) =>
       vm.runInContext(
-        `loadGroupedTreeInner({ group: "type" }, "type", 1, { preserve: ${preserve} })`,
+        `loadGroupedTreeInner({ group: "type" }, {
+          key: "type",
+          first: ${!(preserve && setup.mounted !== false)},
+          signal: new AbortController().signal,
+          current: () => loadIsCurrent,
+          refreshAfter() {},
+        })`,
         sandbox,
       ),
   };
