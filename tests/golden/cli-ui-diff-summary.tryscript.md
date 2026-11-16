@@ -21,7 +21,10 @@ Counts use the shell’s number format, the minus sign is U+2212, and “(estima
 follows totals that are not exact.
 `numbers` are the counts the header paints bold, the file count and then each status’s,
 each apart from its words, which stay regular (`docs/design-system.md`, “Count Summaries
-Bold Their Numbers”). A screen reader is told the same in words.
+Bold Their Numbers”). A list cut short at its bound, on a page that knows the whole
+change set’s totals, as a commit’s page does, says those, with no breakdown of the
+listed files alone, and how many files are listed.
+A screen reader is told the same in words.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
 A chain of single folders is one row.
@@ -117,6 +120,15 @@ $ node tests/dom/diff-summary-session.js
       "numbers": [
         "0"
       ]
+    },
+    "a list cut short, with the page's whole totals": {
+      "text": "5,000 changed files  +152,340 −30,211 (11 listed)",
+      "label": "5,000 changed files; 152,340 lines added, 30,211 deleted; 11 listed",
+      "estimated": false,
+      "numbers": [
+        "5,000"
+      ],
+      "listed": "11"
     },
     "the tree as it opens": [
       "v assets/ (2; 2 files without line counts)",

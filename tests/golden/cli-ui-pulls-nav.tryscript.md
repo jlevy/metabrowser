@@ -20,21 +20,27 @@ front, `null` being none: a pull request’s address shows Pulls, a file’s add
 Pulls off the front, and a commit’s is the Git panel’s. `stories` is what the host asked
 of each, in order: a page elsewhere on a mirror, which reads the view ahead when the
 shell is idle; a page elsewhere on a checkout, which uses the same idle metadata warmup;
-the first page of a pull request’s address, which the server drew with the tab in front;
-Back between the list’s filters, each a place of its own, which shows the list though
-Files was chosen by hand; a load that fails, which says so only to a reader looking and
-tries again on the next show; and a page that goes while the view loads, whose late
-mount is disposed. `keys` is each key through the real registry and what it told the
-view, and `help` is what Help reads for the group.
-`stack keys` drives Control-N and Control-P, with and without Shift, through the real
-global registry and the active PR’s public stack capability, including endpoints,
-membership changes, editor and modal guards, and disposal, and shows that N and P alone,
-Command-N, Control-Command-N, and AltGr’s Control-Alt walk nothing and that a text field
-keeps both chords; Shift-J and Shift-K on a focused pull request row or changed file
-move the row, as J and K do, and never reach the stack.
-`the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
-listeners it adds, that only a walking key’s release ends a walk, and that an `init`
-after a `dispose` listens again.
+the first page of a pull request’s address, which the server drew with the tab in front,
+and which Home, through the panel’s own `home`, has the mounted view put back as a fresh
+load draws it; Back between the list’s filters, each a place of its own, which shows the
+list though Files was chosen by hand; a load that fails, which says so only to a reader
+looking and tries again on the next show; and a page that goes while the view loads,
+whose late mount is disposed.
+`keys` is each key through the real registry and what it told the view, and `help` is
+what Help reads for the group.
+`stack keys` drives Control-N and Control-P on a Mac, with and without Shift, through
+the real global registry and the active PR’s public stack capability, including
+endpoints, membership changes, editor and modal guards, and disposal, and shows that N
+and P alone, Command-N, Control-Command-N, and AltGr’s Control-Alt walk nothing, that a
+text field keeps both chords, and that a held chord walks once and its repeats are
+consumed; Shift-J and Shift-K on a focused pull request row or changed file move the
+row, as J and K do, and never reach the stack.
+Its `platforms` registers the same keys under each platform’s navigator: on a Mac the
+chords are bound, listed in Help and the Shift strip, and walk, and on Windows, Linux,
+and with no navigator they are not bound, so neither is listed and the browser gets both
+uncancelled. `the page’s host` is the module’s own `init` and `dispose` on a page it is
+played: the listeners it adds, that only a walking key’s release ends a walk, and that
+an `init` after a `dispose` listens again.
 `the two trees` is the Files tree and the Pulls list in one navigation pane, both trees
 of `treeitem` rows, with app.js’s `initKeyboardInfrastructure` and
 `resolveApplicationFocusFallback` run verbatim on a stand-in for the DOM whose focus
@@ -232,6 +238,7 @@ $ node tests/dom/pulls-nav-session.js
       false,
       false
     ],
+    "repeatConsumedWithoutWalking": true,
     "endpointConsumed": true,
     "plainJRemainsRowNavigation": true,
     "shiftedRowKeysMoveTheRow": {
@@ -278,6 +285,69 @@ $ node tests/dom/pulls-nav-session.js
         "action": "Previous in stack"
       }
     ],
+    "platforms": {
+      "macOS": {
+        "bound": [
+          "pulls.stack.top",
+          "pulls.stack.base"
+        ],
+        "help": true,
+        "strip": true,
+        "cancelled": [
+          true,
+          true,
+          true
+        ],
+        "walked": [
+          1,
+          -1
+        ]
+      },
+      "Windows": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      },
+      "Linux": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      },
+      "Windows, by its client hints": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      },
+      "no navigator, as in a browserless session": {
+        "bound": [],
+        "help": false,
+        "strip": false,
+        "cancelled": [
+          false,
+          false,
+          false
+        ],
+        "walked": []
+      }
+    },
     "cleanup": true
   },
   "addresses": {
@@ -498,6 +568,17 @@ $ node tests/dom/pulls-nav-session.js
           "view told: shown",
           "view told: current 7"
         ]
+      },
+      {
+        "Home: the panel's home tells the view, and /view/ names no pull request": [
+          "view told: home",
+          "activated files",
+          "view told: hidden",
+          "view told: current null"
+        ]
+      },
+      {
+        "Home after the page went: nothing": []
       }
     ],
     "Back between the list's filters": [

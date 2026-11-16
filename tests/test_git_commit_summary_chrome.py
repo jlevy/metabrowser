@@ -9,8 +9,8 @@ in the hover summary, which has no diff (docs/design-system.md, "Git Commit Summ
 summary lands is layout, which only a browser computes:
 ``tests/dom/git-commit-summary-chrome.mjs`` draws the page with the Git panel's
 ``renderCommitSummary`` and the diff plugin's ``mountDiffSummary`` in headless Chrome, from
-980 to 320 px, and reads the summary's place, its header's row, its tree opened, and an
-empty place.
+980 to 320 px, and reads the summary's place, its header's row, its tree opened, the
+commit's totals line where no diff is drawn, and an empty place.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """

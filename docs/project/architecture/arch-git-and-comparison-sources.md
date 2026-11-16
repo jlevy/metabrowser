@@ -121,6 +121,7 @@ The module exposes two seams, and which one a feature needs is a real decision:
 
 - **`run_git`** runs a command to completion and returns its buffered bytes.
   Every bounded, request-scoped read uses this.
+  Given `stop_when`, it stops Git once Git has printed what the caller can use.
 - **`spawn_git_process`** returns a live process whose streams the caller owns, for
   consumers that cannot wait for completion — a long walk read page by page.
   It performs the same executable lookup, environment isolation, fixed-argument
@@ -139,13 +140,16 @@ counterpart, and anything holding a process across requests needs the lifecycle 
 | No hanging prompt | `GIT_TERMINAL_PROMPT=0`, empty `GIT_ASKPASS`, empty `SSH_ASKPASS` | A credential prompt stalling a server request forever |
 | Bounded output | Incremental cap at `GIT_SUBPROCESS_MAX_BYTES`, 64 KiB read chunks | An unbounded buffer from a hostile or huge repository |
 | Bounded time | `GIT_SUBPROCESS_TIMEOUT_S`, then terminate and reap | A wedged process outliving its request |
+| Early stop | `stop_when` sees each stdout read; once it says enough, SIGTERM, then SIGKILL after `_STOP_GRACE_S` (0.5 s), and `GitOutputCutError` carries what was printed | Git printing output its caller would throw away, such as a comparison’s patch past `MAX_LISTED_PATCH_BYTES` |
+| Counted spawns | Each successful spawn calls `server_timing.git_process_started()` | A request’s Git cost hidden from `Server-Timing`, whose `git` entry says how many processes it started |
 | No deadlock | Concurrent stdout/stderr draining | Both pipes filling while one is unread |
 | No leaked paths | stderr capped at 64 KiB and only ever logged | Absolute local paths reaching a JSON body |
 
 Failures are typed rather than string-matched: `GitUnavailableError`, `GitCommandError`,
-`GitTimeoutError`, and `GitOutputTooLargeError`, all under `GitError`. Callers branch on
-the type, so “git is not installed” and “this is not a repository” stay distinguishable
-from “the command failed.”
+`GitTimeoutError`, and `GitOutputTooLargeError`, with `GitOutputCutError` under it for a
+run stopped early, all under `GitError`. Callers branch on the type, so “git is not
+installed” and “this is not a repository” stay distinguishable from “the command
+failed.”
 
 `run_git` returns **bytes**. That is load-bearing, not an accident of implementation.
 
