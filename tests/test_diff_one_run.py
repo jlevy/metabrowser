@@ -16,12 +16,15 @@ import threading
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import pytest
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from metabrowser import server, server_timing
 from metabrowser.builtin_plugins.diff import sidekick
+from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache, ResolvedManifest
 from metabrowser.diff.adapters import git as adapter
 from metabrowser.diff.adapters import textconv
 from metabrowser.diff.adapters.base import DiffSourceError
@@ -633,13 +636,10 @@ def _commit_of(root: Path, files: dict[bytes, bytes]) -> str:
     return run("commit-tree", run("mktree", "-z", stdin=records), "-m", "tree", stdin=b"")
 
 
-def test_a_page_paired_otherwise_alone_is_answered_as_the_manifest_lists_it(
-    tmp_path: Path,
-) -> None:
-    """Fifty-eight changed files, so the page is fifty of them. Asked alone, the page's
-    paths pair its renames otherwise than the whole comparison did, so today's page left
-    out the files the manifest lists as those renames. The one run's patch is the whole
-    comparison's, which pairs them as the manifest does: they have their hunks."""
+def _paired_otherwise(root: Path) -> dict[str, Any]:
+    """Fifty-eight changed files, so the first page is fifty of them. Asked alone, the
+    page's paths pair its renames otherwise than the whole comparison does, so a run limited
+    to them prints no section the manifest lists for two of its files."""
 
     def body(changed: dict[int, str]) -> bytes:
         return b"".join(
@@ -647,7 +647,6 @@ def test_a_page_paired_otherwise_alone_is_answered_as_the_manifest_lists_it(
             for i in range(100)
         )
 
-    root = tmp_path / "pairing"
     root.mkdir()
     git(root, "init", "-q", "-b", "main")
     base_files = {b"W": body({}), b"X": body(dict.fromkeys(range(10), "bee"))}
@@ -658,19 +657,105 @@ def test_a_page_paired_otherwise_alone_is_answered_as_the_manifest_lists_it(
         b"b-Y": body(dict.fromkeys(range(95, 100), "why")),
         b"zzz-V": body({}),
     }
-    base, target = _commit_of(root, base_files), _commit_of(root, target_files)
-    intent = {"left": base, "right": target}
-    _warm(root)
-    _, today = _answer(_Today(root), intent)
-    one_run_count, one_run = _answer(GitDiffSource(root, patch_with_listing=True), intent)
+    return {"left": _commit_of(root, base_files), "right": _commit_of(root, target_files)}
+
+
+def _limited_run_leaves_out(source: GitDiffSource, intent: dict[str, Any]) -> list[str]:
+    """What the run limited to the first page's paths has no section for."""
+
+    async def run() -> list[str]:
+        resolved = await source.resolve(intent)
+        manifest = await source.manifest(resolved)
+        changes = [c for c in manifest.files if c.id in set(_first_page(manifest)[0])]
+        pathspec = adapter._pathspec(changes)
+        out = await source._patch(resolved, pathspec)
+        document = adapter.parse_unified_patch(out)
+        return [change.id for change in source._patches_from(document, changes)[1]]
+
+    return asyncio.run(run())
+
+
+def test_a_page_paired_otherwise_alone_is_answered_as_the_manifest_lists_it(
+    tmp_path: Path,
+) -> None:
+    """The one run's patch is the whole comparison's, which pairs the page's renames as the
+    manifest does, so they have their hunks. A page with no such patch, as a kept manifest,
+    another request's listing or a caller's own loader leave it, asks for the whole patch
+    within the same bound once the limited run leaves a file out: one process more, and the
+    same answer, whichever way the page was reached."""
+    root = tmp_path / "pairing"
+    intent = _paired_otherwise(root)
+    assert _limited_run_leaves_out(_Today(root), intent), "the case: the limited run's pairing"
+    (today, _), (one_run, together) = _both(root, intent)
+    assert (today, one_run) == (5, 2)
+    page = json.loads(together)["hydrations"][0]
+    assert page["left_out"] == []
     _, everything = _answer(_Today(root), intent, lambda m: [[c.id for c in m.files]])
-    page_today = json.loads(today)["hydrations"][0]
-    page_now = json.loads(one_run)["hydrations"][0]
-    assert page_today["left_out"], "the case: today's page left files out"
-    assert page_now["left_out"] == [] and one_run_count == 2
     whole = json.loads(everything)["hydrations"][0]["patches"]
-    assert page_now["patches"] == {file_id: whole[file_id] for file_id in page_now["patches"]}
-    assert set(page_now["patches"]) == set(page_today["patches"]) | set(page_today["left_out"])
+    assert page["patches"] == {file_id: whole[file_id] for file_id in page["patches"]}
+    assert len(page["patches"]) == sidekick.MAX_HYDRATED_FILES
+
+
+def test_past_the_bound_a_page_paired_otherwise_leaves_the_same_files_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Past `MAX_LISTED_PATCH_BYTES` neither path has the whole patch, and both say so of
+    the same files."""
+    root = tmp_path / "pairing"
+    intent = _paired_otherwise(root)
+    monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", 200)
+    (_, answer), (_, _) = _both(root, intent)
+    assert json.loads(answer)["hydrations"][0]["left_out"]
+
+
+def test_a_store_comparison_answers_alike_however_its_manifest_was_had(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One URL, one entity tag, which `&build=&store=` makes immutable, and so one body:
+    from the request that listed the comparison, from a kept manifest once no body is kept,
+    and from a caller's own loader, as a pull request's page lists it."""
+    root = tmp_path / "pairing"
+    intent = _paired_otherwise(root)
+    store = _store(root, tmp_path)
+    location = GitLocation.revision(repository_store_target(git_dir=store), intent["right"])
+
+    def request() -> Request:
+        query = urlencode({**intent, "base_policy": "direct"}).encode()
+        return Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/plugin/diff/comparison",
+                "query_string": query,
+                "headers": [(b"accept-encoding", b"identity")],
+            }
+        )
+
+    async def loader(
+        source: GitDiffSource, wanted: dict[str, Any], _key: tuple[str, ...]
+    ) -> ResolvedManifest:
+        resolved = await source.resolve(wanted)
+        return ResolvedManifest(resolved, await source.manifest(resolved))
+
+    def ask(own_loader: bool = False) -> tuple[int, str | None, bytes]:
+        response = asyncio.run(
+            sidekick.comparison_at(
+                request(), location, manifest_loader=loader if own_loader else None
+            )
+        )
+        return response.status_code, response.headers.get("etag"), bytes(response.body)
+
+    # Bodies are never kept, as one past `MAX_CACHED_BODY_ENTRY_BYTES` is not.
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache(max_body_entry_bytes=0))
+    listed = ask()
+    from_the_kept_manifest = ask()
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache(max_body_entry_bytes=0))
+    from_a_loader = ask(own_loader=True)
+    assert listed[0] == 200 and listed[1] is not None
+    assert from_the_kept_manifest == listed
+    assert from_a_loader == listed
+    files = json.loads(listed[2])["manifest"]["files"]
+    assert [f["id"] for f in files if f["availability"] == "failed"] == []
 
 
 # ── A page of a large commit, cut from the kept patch ───────────────────

@@ -7,10 +7,13 @@ All notable changes to Metabrowser are documented here.
 - `Server-Timing` counts the Git processes a request started, in its `git` entry’s
   description: `git;dur=41.2;desc="2 processes"`.
 
-- A commit of more than 50 files no longer shows some of its renamed files as
-  unreadable. When Git paired the files of the first page differently on their own than
-  in the whole commit, the page named them “could not be read from the produced diff”;
-  their changes now show, as the file list describes them.
+- A page of a commit or a comparison no longer shows some of its renamed files as
+  unreadable when the whole patch is at most 256 KiB. When Git paired a page’s files
+  differently on their own than in the whole comparison, as on the first page of a
+  commit of more than 50 files, the page named them “could not be read from the produced
+  diff”; their changes now show, as the file list describes them, in a commit’s page and
+  in a pull request’s Files changed alike.
+  Past 256 KiB of patch such files are still named unreadable.
 
 - A Markdown file in a pull request’s Changes now reads in your reading font, serif
   unless you chose Sans, as the same file does in its Document view.

@@ -13,9 +13,11 @@ one run, the patch within :data:`MAX_LISTED_PATCH_BYTES`, and its revisions reso
 ``rev-parse``, so a commit costs two Git processes where it cost four (H116). That run never
 converts a file with a textconv driver; where the configuration names one, the page's files
 are diffed in a run of their own, as before (``textconv.py``). Its answers are the separate
-runs' with one exception, a better one: a page whose files Git paired otherwise when
-diffing them alone than when diffing the whole comparison left those files out, and now
-shows them as the manifest lists them. ``tests/test_diff_one_run.py`` holds the rest equal.
+runs' with one exception, a better one, on every path to a page: a page whose files Git
+paired otherwise when diffing them alone than when diffing the whole comparison left those
+files out, and now shows them as the manifest lists them where the whole comparison's
+patch is within :data:`MAX_LISTED_PATCH_BYTES` (:meth:`GitDiffSource.hydrate`).
+``tests/test_diff_one_run.py`` holds the rest equal.
 
 Merges are compared against their first parent
 (``--diff-merges=first-parent``), matching the history surface.
@@ -28,7 +30,7 @@ import logging
 import os
 import re
 from base64 import b64decode
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -174,6 +176,20 @@ class _PatchBound:
         return self._patch > self._bound
 
 
+class _ByteBound:
+    """Says when a run has printed more than *bound* bytes."""
+
+    __slots__ = ("_bound", "_seen")
+
+    def __init__(self, bound: int) -> None:
+        self._bound = bound
+        self._seen = 0
+
+    def __call__(self, chunk: bytes) -> bool:
+        self._seen += len(chunk)
+        return self._seen > self._bound
+
+
 @dataclass(frozen=True, slots=True)
 class _Split:
     """One ``diff --raw --numstat -p -z`` run's output, parsed once: the raw records and the
@@ -207,6 +223,14 @@ class PatchHydration:
     left_out: tuple[str, ...] = ()
     too_large: tuple[str, ...] = ()
     deferred: tuple[str, ...] = ()
+
+
+def _is_gitlink(change: FileChange) -> bool:
+    """Whether either side is a submodule, whose section no run pairs otherwise."""
+    return any(
+        side is not None and side.entry_type is EntryType.submodule
+        for side in (change.old, change.new)
+    )
 
 
 def display_path(change: FileChange) -> str:
@@ -934,6 +958,14 @@ class GitDiffSource:
         all: the pairing is decided before the filter and the section's bytes are the
         same. A name Git refuses as a pathspec, ``..`` from a source that runs no fsck,
         fails the limited run, and the unrestricted run answers for every file instead.
+
+        Git pairs a page's files otherwise alone when a file's best partner in the whole
+        comparison went to another file the page does not hold, and the retry without
+        rename detection cannot find a rename. Such a page is answered from the whole
+        comparison's patch within :data:`MAX_LISTED_PATCH_BYTES`, one run more, as the
+        route answers from the patch its listing run printed; past that bound both leave
+        the file out (:meth:`_whole_patch_within_bound`). A gitlink left out is one
+        ``diff.submodule`` printed with no section of its own, which no run pairs otherwise.
         """
         listed = manifest if manifest is not None else await self.manifest(resolved)
         by_id = {entry.id: entry for entry in listed.files}
@@ -960,11 +992,12 @@ class GitDiffSource:
             )
             await verify_store_blobs(target, oids, max_bytes=MAX_FILE_PATCH_BYTES)
         kept = self._listed
-        if (
+        whole_patch_tried = (
             kept is not None
             and kept.manifest is listed
             and kept.comparison_id == resolved.comparison_id
-        ):
+        )
+        if kept is not None and whole_patch_tried:
             answered = await self._hydrate_from(
                 kept.patch, changes, listed, whole=len(file_ids) == len(listed.files)
             )
@@ -1017,12 +1050,41 @@ class GitDiffSource:
                         *[change for change in left_out if change not in pairless],
                         *still_out,
                     ]
+        if (
+            pathspec is not None
+            and not whole_patch_tried
+            and any(not _is_gitlink(change) for change in left_out)
+        ):
+            # Paired otherwise alone: answer as the whole comparison's patch does.
+            whole_patch = await self._whole_patch_within_bound(resolved)
+            if whole_patch is not None:
+                answered = await self._hydrate_from(whole_patch, changes, listed, whole=False)
+                if answered is not None:
+                    return answered
         return PatchHydration(
             patches=patches,
             left_out=tuple(change.id for change in left_out),
             too_large=budgeted.too_large,
             deferred=budgeted.deferred,
         )
+
+    async def _whole_patch_within_bound(self, resolved: ResolvedComparison) -> bytes | None:
+        """The comparison's whole patch, or None past :data:`MAX_LISTED_PATCH_BYTES`.
+
+        A page whose files Git pairs otherwise in a run limited to their paths is answered
+        from it, as the route answers from the patch its listing run printed: the one bound
+        decides on both paths, so a comparison answers alike however its manifest was had,
+        from a kept manifest, from a listing another request computed, from a caller's own
+        loader, or past a configuration's textconv driver, which this run honors as the
+        page's own does. Any failure leaves the page as the limited run answered it.
+        """
+        try:
+            return await self._patch(resolved, None, bound=MAX_LISTED_PATCH_BYTES)
+        except GitOutputCutError:
+            return None
+        except GitError as exc:
+            log.info("the whole patch for a page paired otherwise failed: %s", failure_detail(exc))
+            return None
 
     async def _hydrate_from(
         self,
@@ -1106,9 +1168,16 @@ class GitDiffSource:
         renames: bool = True,
         diff_filter: str | None = None,
         listing: bool = False,
+        bound: int | None = None,
     ) -> bytes:
         """The patch; with *listing*, the manifest's listings before it and no textconv
-        driver run, stopped past :data:`MAX_LISTED_PATCH_BYTES` (:meth:`_list_with_patch`)."""
+        driver run, stopped past :data:`MAX_LISTED_PATCH_BYTES` (:meth:`_list_with_patch`);
+        with *bound*, stopped past that many bytes."""
+        stop_when: Callable[[bytes], bool] | None = None
+        if listing:
+            stop_when = _PatchBound(MAX_LISTED_PATCH_BYTES)
+        elif bound is not None:
+            stop_when = _ByteBound(bound)
         return await run_git_at(
             [
                 # Paths here are names, never patterns: `*` and `:(top)` mean themselves.
@@ -1136,7 +1205,7 @@ class GitDiffSource:
             max_bytes=(
                 self._location.read_policy.max_bytes + MAX_LISTED_PATCH_BYTES if listing else None
             ),
-            stop_when=_PatchBound(MAX_LISTED_PATCH_BYTES) if listing else None,
+            stop_when=stop_when,
         )
 
     def _patches_from(
