@@ -776,12 +776,11 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     # own tooltip, because the browser's would be a second one on the same
     # surface. See devtools/check_tooltips.py. The tip is the crumb's own name,
     # which the shell shows only while the crumb is cut short: the trail already
-    # shows the path (mb-8mpo, "Tooltips Add Information").
-    assert (
-        'data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}"'
-        in fn_block
-    )
-    assert 'displayPath(walked))}"' not in fn_block
+    # shows the path (mb-8mpo, "Tooltips Add Information"). One name is the tip
+    # and the text, so they cannot drift apart (mb-ex5r).
+    assert "var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    assert 'data-tip-text="${name}">${name}</button>' in fn_block
+    assert "displayPath(walked)" not in fn_block
     assert "title=" not in fn_block
 
 

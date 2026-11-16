@@ -352,8 +352,11 @@ function headerAddressHtml(path, isFile) {
     var last = i === segments.length - 1;
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    // One name, as the crumb's tip and its text, so the two cannot drift apart: the tip
+    // shows only while that text is cut short (`tipAddsInformation`).
+    var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
     );
   }
   return (
