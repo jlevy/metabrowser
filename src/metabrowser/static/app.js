@@ -1597,11 +1597,14 @@ function failGroupedTree(reason) {
  * the separator, as every heading's tally sits (docs/design-system.md, "Heading Tallies").
  * The separator's dot is hidden from assistive technology, so the heading reads "Older
  * 10,004 files". A group the source could not count (a truncated Git index) has no tally.
+ * A name too long for a narrow pane is cut short, and its tooltip then gives the whole
+ * of it; while the name is whole the tooltip repeats it, so it does not show
+ * (`tipAddsInformation`; docs/design-system.md, "Tooltips Add Information").
  *
  * @param {MetabrowserPublicTreeSection} section
  */
 function treeSectionHeadingHtml(section) {
-  var label = `<span class="tree-section-label">${esc(section.label)}</span>`;
+  var label = `<span class="tree-section-label" data-tip-text="${esc(section.label)}">${esc(section.label)}</span>`;
   if (section.files === null) {
     return label;
   }

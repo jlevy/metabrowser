@@ -1907,9 +1907,11 @@ that shows a number takes it:
 
 The GitHub plugin’s three are one rule.
 A number in prose, a commit subject, or a tooltip is text, and keeps its line’s weight.
-A stack’s own number, in “Stack #286”, is part of the stack’s label, in the label
-register ([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds
-the rules to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
+A count’s numeral, such as a heading’s tally, is not a pull request’s number and takes
+its own token, `--count-numeral-weight` ([Heading Tallies](#heading-tallies)). A stack’s
+own number, in “Stack #286”, is part of the stack’s label, in the label register
+([Stacks](#stacks)). `test_the_pulls_tab_carries_the_shells_primitives` holds the rules
+to the token, and `tests/dom/github-pulls-stacks-chrome.mjs` and
 `tests/dom/github-pull-header-chrome.mjs` read each surface’s computed weight in Chrome.
 
 ### Titles
@@ -3998,16 +4000,26 @@ read as a total of the heading’s row rather than the size of its group.
 - **Primitive.** `.heading-tally` in the shell’s `styles.css` follows the heading’s
   name: a space, the dot, a space, the figure, and its unit if it has one, on one line
   of markup, since the tally keeps its white space.
-  Any heading takes it, a [group heading](#groups-in-a-menu) or a
-  [section heading](#section-headings).
+  A [group heading](#groups-in-a-menu) or a [section heading](#section-headings) takes
+  it. In a flex heading, as the Files section’s is, the name and the tally are flex
+  items, and white space between them in the markup is dropped.
+  In an inline heading, as Review comments is, the tally follows the name with no white
+  space between them, since any would render and widen the gap before the dot.
 - **Register.** The tally is a figure, not part of the name, so the heading’s caps,
   tracking, and weight are for the name alone: the tally is at the heading’s size,
   regular, untracked, in `--muted`, with tabular numerals.
-  Its numeral and words follow the count-summary rule for numbers.
-- **One line.** The tally never wraps, and keeps its spaces where a heading lays out its
-  name and tally as flex items.
-  Where the two do not fit, the name is cut short with an ellipsis and the tally stays
-  whole.
+  Its numeral is bold and its words regular, through the shell’s token for a count’s
+  numeral, `--count-numeral-weight`. That token is not `--pull-number-weight`
+  ([Pull Request Numbers](#pull-request-numbers)): a count is not a pull request’s
+  number.
+- **One line.** The tally itself never wraps, and keeps its spaces where a heading lays
+  out its name and tally as flex items.
+  Cutting the name short is the heading’s own: a flex heading whose name shrinks with an
+  ellipsis (`min-width: 0; overflow: hidden; text-overflow: ellipsis`) cuts the name
+  where the two do not fit and keeps the tally whole, as a Files section’s
+  `.tree-section-label` does, and its tooltip then gives the whole name
+  ([Tooltips Add Information](#tooltips-add-information)). An inline heading wraps its
+  name instead.
 - **Accessible name.** The dot is hidden from assistive technology, so the heading reads
   its name and its count: Chrome names a Files section “OLDER 10,004 files”, in the
   label register’s capitals.
@@ -4016,17 +4028,28 @@ read as a total of the heading’s row rather than the size of its group.
   shows no count of its pull requests ([Stacks](#stacks)). Its accessible name still
   says how many.
 
-The headings that carry a tally are a Files Group by section’s
-([Grouping the Files Tree](#grouping-the-files-tree)) and a pull request page’s Review
-comments. A filter menu’s group headings, the stack menu’s heading, Overview’s panel
-headings, and File Overview’s type groups count nothing.
+The headings that carry a tally, each with the builder that writes its markup:
+
+| Heading | Builder | Its name cut short |
+| --- | --- | --- |
+| A Files Group by section’s ([Grouping the Files Tree](#grouping-the-files-tree)) | `treeSectionHeadingHtml` in `src/metabrowser/static/app.js` | With an ellipsis and a tooltip, in a flex heading |
+| A pull request page’s Review comments | `reviewThreads` in `src/metabrowser/builtin_plugins/github/pull-page.js` | Never: an inline `.section-heading`, whose name wraps |
+
+A filter menu’s group headings, the stack menu’s heading, Overview’s panel headings, and
+File Overview’s type groups count nothing.
+`test_every_heading_tally_is_the_one_node_sequence` in `tests/test_design_vocabulary.py`
+holds this table to every source that builds a `.heading-tally`, and each builder to the
+one node sequence: the tally directly after the name, then a space, the hidden dot, a
+space, and the figure.
 `tests/test_files_tab_chrome.py` measures in Chrome that each File type section’s tally
-starts where its name ends, leaves the rest of the line empty, shares the name’s line at
-the default pane and at the 180 px minimum, sets its numeral at the numbers’ weight, and
-leaves the section and its tree named by the heading’s words without the dot;
-`tests/dom/github-pull-timeline-chrome.mjs` holds the Review comments heading to the
-same place and register, and `tests/dom/github-pulls-stacks-chrome.mjs` holds that a
-stack’s row shows its label alone.
+starts where its name ends, its dot one space’s advance after it, leaves the rest of the
+line empty, shares the name’s line at the default pane and at the 180 px minimum, sets
+its numeral at `--count-numeral-weight`, and leaves the section and its tree named by
+the heading’s words without the dot, and that at 180 px a name cut short shows its whole
+in a tooltip and a whole one shows none; `tests/dom/github-pull-timeline-chrome.mjs`
+holds the Review comments heading to the same place and register, and
+`tests/dom/github-pulls-stacks-chrome.mjs` holds that a stack’s row shows its label
+alone.
 
 ### Menu Height
 

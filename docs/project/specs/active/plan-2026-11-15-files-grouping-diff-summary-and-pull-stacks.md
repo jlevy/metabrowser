@@ -579,8 +579,8 @@ tally of its pull requests, since it is obvious.
 - **Beside the name:** a heading that counts what it heads sets the count after “ · ” on
   its line, through one shell primitive, `.heading-tally`: a Files Group by section’s
   heading and a pull request page’s Review comments, which had its count in parentheses
-  (`mb-mcjd`). The name is cut short before the count wraps or leaves the line; the
-  numeral follows the count-summary rule for numbers.
+  (`mb-mcjd`). A Files section’s name is cut short before the count wraps or leaves the
+  line; the numeral is bold and its words regular, through `--count-numeral-weight`.
 - **No tally on a stack’s row:** a Pulls stack group’s row shows its label alone, and
   its accessible name still says its size (`mb-yk0i`).
 

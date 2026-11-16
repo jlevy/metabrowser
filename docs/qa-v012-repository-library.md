@@ -1701,10 +1701,10 @@ address.
    headed “maintainer reviewed …” with no chip, the comment
    `Thanks. CI is green; one question inline.`, and the review `Looks right.`, whose
    heading ends in an **approved** chip.
-3. **Review comments (2)** shows `src/app.txt` with an **outdated** badge and its diff
-   hunk, then forker’s reply on `src/app.txt:2`. Open **Checks** at `/pull/7/checks`. It
-   reads `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the
-   Read the Docs status.
+3. **Review comments · 2**, in the label capitals, shows `src/app.txt` with an
+   **outdated** badge and its diff hunk, then forker’s reply on `src/app.txt:2`. Open
+   **Checks** at `/pull/7/checks`. It reads `2 success · 1 pending`, with
+   `tests (3.13)`, `docs` (in progress), and the Read the Docs status.
    Each links out in a new tab.
    The tab also says `No conflicts with the base branch`.
 4. Return to **Conversation** and click **Changes**. The address becomes

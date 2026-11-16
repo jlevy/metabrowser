@@ -3224,3 +3224,117 @@ def test_revealed_strip_overlays_the_panel_without_reflowing_it() -> None:
         "color": "var(--kbd-badge-color)",
     }
     assert rules[".nav-shortcut-reveal .shortcut-binding-separator"] == {"color": "var(--text)"}
+
+
+# ── Heading tallies are one node sequence ──────────────────────────
+#
+# docs/design-system.md, "Heading Tallies". The tally keeps its white space
+# (`white-space: pre`), so its markup is whitespace-sensitive, and it is built twice: as
+# an HTML string in the shell and as `h()` nodes in the GitHub plugin. Every source that
+# builds a `.heading-tally` is found, each build is held to the one node sequence (a
+# space, the hidden dot, a space, the figure, and an optional unit, with no white space
+# between the name and the tally), and the builders found are held to the design
+# system's table of headings that carry one. A builder is the nearest `function` before
+# the tally; review holds that it is the heading's builder.
+
+_TALLY_CLASS = re.compile(r"""["']heading-tally["']""")
+# The shell's HTML string, with its template literals joined: the tally, then its unit.
+_TALLY_HTML = re.compile(
+    r'<span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span>'
+    r' <span class="heading-tally-figure">\$\{[^`]+?\}</span>(?: \$\{\w+\}| \w+)?</span>'
+)
+# A plugin's `h()` nodes.
+_TALLY_NODES = re.compile(
+    r'h\("span", \{ class: "heading-tally" \}, \[\s*" ",\s*'
+    r'h\("span", \{ class: "heading-tally-dot", "aria-hidden": "true" \}, \["·"\]\),\s*" ",\s*'
+    r'h\("span", \{ class: "heading-tally-figure" \}, \[[^\]]*\]\),\s*(?:"[^"]*",\s*)?\]\)'
+)
+_TALLY_ROW = re.compile(r"(?m)^\| [^|]+ \| `(?P<builder>\w+)` in `(?P<path>[^`]+)` \| [^|]+ \|$")
+
+
+def _joined_templates(text: str) -> str:
+    """*text* with each concatenation of two template literals joined into one."""
+
+    return re.sub(r"`\s*\+\s*`", "", text)
+
+
+def _heading_tally_problems(key: str, text: str) -> tuple[set[str], list[str]]:
+    """The builders in *text* that build a `.heading-tally`, and what is wrong with each."""
+
+    text = _joined_templates(text)
+    builds = [*_TALLY_HTML.finditer(text), *_TALLY_NODES.finditer(text)]
+    builders: set[str] = set()
+    problems: list[str] = []
+    for found in _TALLY_CLASS.finditer(text):
+        at = found.start()
+        build = next((build for build in builds if build.start() <= at < build.end()), None)
+        line = text.count("\n", 0, at) + 1
+        if build is None:
+            problems.append(f"{key}:{line} builds a .heading-tally out of the one sequence")
+            continue
+        if build.start() != at - len("<span class=") and not build.group().startswith("h("):
+            problems.append(f"{key}:{line} is not the tally's own element")
+            continue
+        before = text[: build.start()]
+        # Nothing but the name before it: no white space in the same literal, and no
+        # whitespace-only string node.
+        if build.group().startswith("<span"):
+            if not re.search(r"(?:>|\+\s*`)$", before):
+                problems.append(f"{key}:{line} puts white space between the name and the tally")
+        elif re.search(r'"\s*",\s*$', before):
+            problems.append(f"{key}:{line} puts a white-space node between the name and the tally")
+        names = re.findall(r"\bfunction\s+(\w+)\s*\(", before)
+        if not names:
+            problems.append(f"{key}:{line} builds a .heading-tally outside any function")
+            continue
+        builders.add(names[-1])
+    return builders, problems
+
+
+def test_every_heading_tally_is_the_one_node_sequence() -> None:
+    """Each source that builds a heading's tally builds the same nodes, and is listed."""
+
+    found: set[tuple[str, str]] = set()
+    problems: list[str] = []
+    for source in _browser_sources():
+        key = source.relative_to(REPO_ROOT).as_posix()
+        builders, wrong = _heading_tally_problems(key, source.read_text(encoding="utf-8"))
+        found |= {(key, builder) for builder in builders}
+        problems += wrong
+    assert problems == []
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    section = doc.split("\n### Heading Tallies\n", 1)[1].split("\n### ", 1)[0]
+    listed = {(row["path"], row["builder"]) for row in _TALLY_ROW.finditer(section)}
+    assert listed, "the Heading Tallies table is missing"
+    assert found == listed
+    # The numeral's weight is a count's, through its own token, not a pull request number's.
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert styles.count("--count-numeral-weight:") == 1
+    assert "--count-numeral-weight: var(--weight-bold);" in styles
+    assert "font-weight: var(--count-numeral-weight);" in _rule(styles, ".heading-tally-figure")
+    assert "white-space: pre;" in _rule(styles, ".heading-tally")
+
+
+def test_a_heading_tally_out_of_sequence_fails() -> None:
+    """White space before the tally, a missing dot, or a tally built elsewhere fails."""
+
+    key = "static/app.js"
+    text = (STATIC / "app.js").read_text(encoding="utf-8")
+    builders, problems = _heading_tally_problems(key, text)
+    assert (builders, problems) == ({"treeSectionHeadingHtml"}, [])
+    tally = '`<span class="heading-tally"> '
+    assert text.count(tally) == 1
+    spaced = text.replace("label +\n    " + tally, "label +\n    ` " + tally[1:])
+    assert spaced != text
+    assert _heading_tally_problems(key, spaced)[1]
+    undotted = text.replace('<span class="heading-tally-dot" aria-hidden="true">·</span> ', "")
+    assert _heading_tally_problems(key, undotted)[1]
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    builders, problems = _heading_tally_problems("github/pull-page.js", page)
+    assert (builders, problems) == ({"reviewThreads"}, [])
+    named = '        "Review comments",\n'
+    assert page.count(named) == 1
+    padded = page.replace(named, named + '        " ",\n')
+    assert _heading_tally_problems("github/pull-page.js", padded)[1]
+    elsewhere = text + '\nconst stray = `<span class="heading-tally">3</span>`;\n'
+    assert _heading_tally_problems(key, elsewhere)[1]

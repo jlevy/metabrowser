@@ -398,6 +398,13 @@
      and the ref selector (docs/design-system.md, "Pull Request Numbers";
      mb-vrvs). */
   --pull-number-weight: var(--weight-bold);
+  /* A count's numeral, under the count-summary rule: in a count that says
+     how many, "10,004 files", the numeral is bold and its words are
+     regular. A heading's tally takes it (.heading-tally-figure;
+     docs/design-system.md, "Heading Tallies"). It is its own token, apart
+     from --pull-number-weight, since a count is not a pull request's
+     number, and the two may part. */
+  --count-numeral-weight: var(--weight-bold);
 
   /* All-caps label style (shared by tabs, table headers, stat labels,
      section labels, and the embedded-document TOC title). Same size as
@@ -1667,15 +1674,17 @@ summary {
 }
 /* ── Heading tally — how many a heading's group or section holds ──
    It sits beside the heading's name, after the " · " separator, on the heading's line,
-   never at the far end (docs/design-system.md, "Heading Tallies"):
-     <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span>
-       <span class="heading-tally-figure">10,004</span> files</span>
-   Any heading takes it, a .group-heading or a .section-heading. It is a figure, not part
-   of the name, so the heading's caps, tracking, and weight are for the name alone: the
-   tally is regular, muted, and untracked at the heading's size, with its numeral bold at
-   the numbers' weight, --pull-number-weight. Its spaces are preserved, so the separator
-   keeps them where the heading lays its parts out as flex items, and it never wraps. The
-   dot is hidden from assistive technology: the heading reads "Older 10,004 files". */
+   never at the far end (docs/design-system.md, "Heading Tallies"). Its markup is one
+   line, and follows the name with nothing between them, since its spaces are kept:
+     <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span> <span class="heading-tally-figure">10,004</span> files</span>
+   A .group-heading or a .section-heading takes it. It is a figure, not part of the
+   name, so the heading's caps, tracking, and weight are for the name alone: the tally is
+   regular, muted, and untracked at the heading's size, its numeral bold at a count's
+   numeral weight, --count-numeral-weight. Its spaces are preserved, so the separator
+   keeps them where the heading lays its parts out as flex items, and the tally itself
+   never wraps. Cutting the name short is the use site's: a flex heading whose name
+   shrinks with an ellipsis, as .tree-section-label does. The dot is hidden from
+   assistive technology: the heading reads "Older 10,004 files". */
 .heading-tally {
   flex: none;
   color: var(--muted);
@@ -1686,7 +1695,7 @@ summary {
   white-space: pre;
 }
 .heading-tally-figure {
-  font-weight: var(--pull-number-weight);
+  font-weight: var(--count-numeral-weight);
 }
 /* ── Fold expander — a run of content withheld until asked for ───
    The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row

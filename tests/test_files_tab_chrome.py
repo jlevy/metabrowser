@@ -24,10 +24,12 @@ opens the Modified within menu in both. This judges what it measured against
 - each File type section's heading starts on its tree's row inset and names its section
   and tree, Documentation first, and a folder opened in a section lists its group's
   files only;
-- each section heading's tally sits beside its name after the separator, on its one line
-  at the default pane and the 180 px minimum, its numeral at the numbers' weight, and
-  the section and its tree are named by the heading's words without the dot ("Heading
-  Tallies");
+- each section heading's tally sits beside its name after the separator, its dot one
+  space's advance after the name, on its one line at the default pane and the 180 px
+  minimum, its numeral at a count's numeral weight, and the section and its tree are
+  named by the heading's words without the dot ("Heading Tallies"); at 180 px a name cut
+  short shows its whole in its tooltip, and a whole one shows none ("Tooltips Add
+  Information");
 - a file written into a folder open in a section refreshes the sections in place, keeping
   that folder open, the scroll position, the focused row, and the heading, whose tally
   counts the new file;
@@ -381,26 +383,30 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
         assert _close(section["tallyFromLabel"], 0), section
+        # One space's advance at the tally's size: the tally keeps its spaces.
+        assert 2 < section["dotFromLabel"] < 6, section
         assert section["tallyToEnd"] > 100, section
         assert section["lines"] == 1, section
         assert not section["nameCut"] and section["tallyWhole"], section
         assert section["weights"] == {
             "label": "700",
             "tally": "400",
-            "figure": section["numberWeight"],
+            "figure": section["numeralWeight"],
         }, section
-        assert section["numberWeight"] == "700", section
+        assert section["numeralWeight"] == "700", section
         assert section["dotHidden"], section
-    # A section and its tree read the heading's words, the dot left out; Chrome's name
-    # carries the label register's capitals.
+    # A section and its tree read the heading's words, the dot left out. Chrome's name
+    # carries the label register's capitals today; the contract is the words, so case is
+    # not compared.
     expected_names = [
-        f"{label.upper()} {tally}"
+        f"{label} {tally}".casefold()
         for label, tally in zip(
             ["Documentation", "Code", "Data", "Archives", "Media"], tallies, strict=True
         )
     ]
-    assert [name["section"] for name in measured["byTypeNames"]] == expected_names
-    assert [name["tree"] for name in measured["byTypeNames"]] == expected_names
+    names = measured["byTypeNames"]
+    assert [(name["section"] or "").casefold() for name in names] == expected_names, names
+    assert [(name["tree"] or "").casefold() for name in names] == expected_names, names
     # At the narrowest pane, 180 px, each heading is still its one line, as tall as at the
     # default width, with its tally whole beside the name.
     narrow = measured["byTypeNarrow"]
@@ -410,7 +416,13 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert _close(section["headingHeight"], wide["headingHeight"]), (wide, section)
         assert section["tallyWhole"], section
         assert _close(section["tallyFromLabel"], 0), section
+        assert 2 < section["dotFromLabel"] < 6, section
         assert section["tallyToEnd"] >= -TOLERANCE, section
+    # There, a name cut short shows its whole in its tooltip, and a whole one shows none.
+    assert measured["sectionTips"] == {
+        "cut": {"cut": True, "visible": True, "text": "Documentation"},
+        "whole": {"cut": False, "visible": False, "text": None},
+    }, measured["sectionTips"]
     # A folder opened inside Code lists Code's files only (src/lib, inside it, stays closed).
     code = measured["codeFiles"]
     assert len(code) == len(_CODE) * 3, code

@@ -224,9 +224,10 @@ All notable changes to Metabrowser are documented here.
   its numeral bold and its words regular: “Older · 10,004 files” over a Files Group by
   section, and “Review comments · 3” on a pull request’s page, where the count was in
   parentheses. A count at the far end of a line is a row’s total, as a folder’s size
-  stays. Where the name and the count do not fit, the name is cut short and the count
-  stays whole. A Pulls stack’s row shows no count, since its pull requests are the rows
-  under it. See [Heading Tallies](docs/design-system.md#heading-tallies).
+  stays. Where a Files section’s name and count do not fit, the name is cut short, with
+  its whole in a tooltip, and the count stays whole.
+  A Pulls stack’s row shows no count, since its pull requests are the rows under it.
+  See [Heading Tallies](docs/design-system.md#heading-tallies).
 
 - With the Files tab’s Group by menu open, `A` chooses By age, `T` By file type, and `N`
   No grouping, as a click on the row does.
