@@ -36,7 +36,12 @@ from typing import Any
 
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, name_paths, parse_unified_patch
-from metabrowser.diff.adapters.textconv import read_textconv_named, textconv_named
+from metabrowser.diff.adapters.textconv import (
+    kept_textconv_named,
+    read_textconv_named,
+    textconv_answer,
+    textconv_named,
+)
 from metabrowser.diff.format import (
     Availability,
     BasePolicy,
@@ -136,6 +141,7 @@ _COMMIT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _NOT_LISTED = re.compile(r"\.\.|\^[@!-]|:|\s|^[-^]|^$")
 
 type _SideKey = tuple[str | None, str | None]
+type _RawRecord = tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]
 
 
 class _PatchBound:
@@ -143,27 +149,41 @@ class _PatchBound:
 
     The patch begins after the first two NULs in a row, which end the listing, whose fields
     are never empty but for a name with no byte; such a name ends the count early, and its
-    listing is then refused whole (:func:`_listing_and_patch`).
+    listing is then refused whole (:func:`_listing_and_patch`). Each read is searched as it
+    is, and the two NULs are found across two reads by the last byte of the first.
     """
 
-    __slots__ = ("_bound", "_patch", "_tail")
+    __slots__ = ("_bound", "_ended_in_nul", "_patch")
 
     def __init__(self, bound: int) -> None:
         self._bound = bound
         self._patch: int | None = None
-        self._tail = b""
+        self._ended_in_nul = False
 
     def __call__(self, chunk: bytes) -> bool:
-        if self._patch is None:
-            seen = self._tail + chunk
-            end = seen.find(b"\0\0")
-            if end < 0:
-                self._tail = seen[-1:]
-                return False
-            self._patch = len(seen) - (end + 2)
-        else:
+        if self._patch is not None:
             self._patch += len(chunk)
+        elif self._ended_in_nul and chunk[:1] == b"\0":
+            self._patch = len(chunk) - 1
+        else:
+            end = chunk.find(b"\0\0")
+            if end < 0:
+                self._ended_in_nul = chunk[-1:] == b"\0"
+                return False
+            self._patch = len(chunk) - (end + 2)
         return self._patch > self._bound
+
+
+@dataclass(frozen=True, slots=True)
+class _Split:
+    """One ``diff --raw --numstat -p -z`` run's output, parsed once: the raw records and the
+    numstat tokens the manifest is built from, how many bytes of the output are the listing,
+    and the patch after it."""
+
+    records: list[_RawRecord]
+    numstat: list[bytes]
+    listing_bytes: int
+    patch: bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,32 +404,30 @@ def _commit_ids(out: bytes, count: int) -> list[str] | None:
     return [line.decode("ascii") for line in lines]
 
 
-def _listing_and_patch(out: bytes, *, cut: bool) -> tuple[bytes, bytes] | None:
+def _listing_and_patch(out: bytes, *, cut: bool) -> _Split | None:
     """The listing and the patch one ``diff --raw --numstat -p -z`` run prints, or None.
 
     Git prints the two listings the manifest reads, then one NUL, then the patch. A listing
-    holds no empty field while every name in it has a byte, so the first empty field after
-    the raw records is that NUL; a name with none, which a source that runs no fsck can hold,
-    leaves the listing to its own run. A *cut* run's patch is cut too, and only its listing
-    is any use: None unless the patch has begun after it.
+    holds no empty field while every name in it has a byte, so the first two NULs in a row
+    end it, as :class:`_PatchBound` finds them, and only the listing is split and parsed; a
+    name with none, which a source that runs no fsck can hold, ends it early, and is found in
+    the parse, which leaves the listing to its own run. A *cut* run's patch is cut too, and
+    only its listing is any use: None unless the patch has begun after it.
     """
     if not out:
-        return None if cut else (b"", b"")
-    tokens = out.split(b"\0")
-    records, rest = GitDiffSource._parse_raw(tokens)
+        return None if cut else _Split([], [], 0, b"")
+    end = out.find(b"\0\0")
+    if end < 0:
+        return None
+    records, numstat = GitDiffSource._parse_raw(out[: end + 1].split(b"\0"))
     if not records or any(
         path == b"" for record in records for path in record[6:] if path is not None
     ):
         return None
-    try:
-        separator = tokens.index(b"", len(tokens) - len(rest))
-    except ValueError:
-        return None
-    offset = sum(len(token) + 1 for token in tokens[:separator])
-    patch = out[offset + 1 :]
+    patch = out[end + 2 :]
     if not patch.startswith(b"diff --git "):
         return None
-    return out[:offset], patch
+    return _Split(records, numstat, end + 1, patch)
 
 
 def _pathspec(changes: Sequence[FileChange]) -> list[str] | None:
@@ -615,7 +633,8 @@ class GitDiffSource:
             ],
             self._location,
         )
-        return self._manifest_from(listed)
+        # Bounded by the read cap, not the manifest's: every record is parsed, off the loop.
+        return await asyncio.to_thread(self._manifest_from, listed)
 
     async def _list_with_patch(self, resolved: ResolvedComparison) -> ChangeSetManifest | None:
         """The manifest from one run that prints the patch after the listings, kept for
@@ -625,42 +644,54 @@ class GitDiffSource:
         added, and its output is the listing run's bytes, one NUL, then the unrestricted
         patch run's bytes with no driver run (``test_one_run_prints_what_the_two_runs_print``).
         Its patch is kept for :meth:`hydrate` only when the configuration names no textconv
-        driver, which ``textconv.py`` keeps an answer to: one named is the listing run alone,
-        and the page's run of its own with its drivers; one not yet known is asked beside
-        this run. A run that fails is None, so the runs that answer are the ones that always
-        did, in their own words, but for a timeout, which they would only repeat. A run past
-        :data:`MAX_LISTED_PATCH_BYTES` of patch is stopped there: its listing is the
-        manifest, and the patch is left to :meth:`hydrate`'s run.
+        driver, which ``textconv.py`` keeps an answer to. One known to be named is the
+        listing run alone, and the page's run of its own with its drivers, so the run is
+        not started only to be thrown away. Otherwise the run starts at once, since
+        ``--numstat`` runs no driver and its listing is the manifest whatever the answer,
+        and the answer is checked, or asked, beside it. A run that fails is None, so the
+        runs that answer are the ones that always did, in their own words, but for a
+        timeout, which they would only repeat. A run past :data:`MAX_LISTED_PATCH_BYTES` of
+        patch is stopped there: its listing is the manifest, and the patch is left to
+        :meth:`hydrate`'s run. The output is split and parsed once, off the event loop.
         """
-        named = await textconv_named(self._location)
-        if named:
-            return None
-        listing_run = self._patch(resolved, None, listing=True)
+        if kept_textconv_named(self._location) is True:
+            if await textconv_named(self._location):
+                return None
+            answer = read_textconv_named(self._location)
+        else:
+            answer = textconv_answer(self._location)
         try:
-            if named is None:
-                out, named = await asyncio.gather(listing_run, read_textconv_named(self._location))
-            else:
-                out = await listing_run
+            out, named = await asyncio.gather(self._patch(resolved, None, listing=True), answer)
         except GitOutputCutError as exc:
-            parts = _listing_and_patch(exc.prefix, cut=True)
-            return None if parts is None else self._manifest_from(parts[0])
+            cut = await asyncio.to_thread(self._listed_from, exc.prefix, cut=True)
+            return None if cut is None else cut[0]
         except GitTimeoutError:
             raise
         except GitError as exc:
             log.info("the listing with its patch failed, listing alone: %s", failure_detail(exc))
             return None
-        parts = _listing_and_patch(out, cut=False)
-        if parts is None:
+        listed = await asyncio.to_thread(self._listed_from, out, cut=False)
+        if listed is None:
             return None
-        listing, patch = parts
-        manifest = self._manifest_from(listing)
+        manifest, patch = listed
         if named is False:
             self._listed = _Listed(resolved.comparison_id, manifest, patch)
         return manifest
 
+    def _listed_from(self, out: bytes, *, cut: bool) -> tuple[ChangeSetManifest, bytes] | None:
+        """The manifest and the patch of one listing run's output, or None
+        (:func:`_listing_and_patch`)."""
+        split = _listing_and_patch(out, cut=cut)
+        if split is None:
+            return None
+        return self._manifest_of(split.records, split.numstat), split.patch
+
     def _manifest_from(self, listed: bytes) -> ChangeSetManifest:
         """The manifest of the listing run's output."""
-        records, numstat = self._parse_raw(listed.split(b"\0"))
+        return self._manifest_of(*self._parse_raw(listed.split(b"\0")))
+
+    def _manifest_of(self, records: list[_RawRecord], numstat: list[bytes]) -> ChangeSetManifest:
+        """The manifest of a listing's raw records and numstat tokens."""
         counts = self._parse_numstat(numstat)
         files: list[FileChange] = []
         total_add = total_del = 0
@@ -732,11 +763,7 @@ class GitDiffSource:
         )
 
     @staticmethod
-    def _parse_raw(
-        tokens: list[bytes],
-    ) -> tuple[
-        list[tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]], list[bytes]
-    ]:
+    def _parse_raw(tokens: list[bytes]) -> tuple[list[_RawRecord], list[bytes]]:
         """``--raw -z`` records: header NUL path [NUL path2] NUL ..., and the tokens after.
 
         The first record can arrive with a leading newline between the
@@ -745,7 +772,7 @@ class GitDiffSource:
         shape, so a path starting with ``:`` stays a path, and the first token
         that opens no record is where ``--numstat`` starts.
         """
-        records: list[tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]] = []
+        records: list[_RawRecord] = []
         cursor = 0
         while cursor < len(tokens):
             header = tokens[cursor].lstrip(b"\n")

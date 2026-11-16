@@ -12,6 +12,7 @@ import asyncio
 import dataclasses
 import json
 import subprocess
+import threading
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -177,6 +178,12 @@ class _Printed:
         monkeypatch.setattr(adapter, "run_git_at", spy)
 
 
+def _parts(out: bytes) -> tuple[bytes, bytes] | None:
+    """The listing's bytes and the patch the one run's *out* splits into, or None."""
+    split = adapter._listing_and_patch(out, cut=False)
+    return None if split is None else (out[: split.listing_bytes], split.patch)
+
+
 def _assert_one_run_is_the_two(
     location: Path | GitLocation, intent: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -189,7 +196,7 @@ def _assert_one_run_is_the_two(
     asyncio.run(today._patch(resolved, None, listing=True))
     (_, listing), (_, patch), (_, both) = printed.runs
     assert both == listing + b"\0" + patch
-    assert adapter._listing_and_patch(both, cut=False) == (listing, patch)
+    assert _parts(both) == (listing, patch)
 
 
 def test_one_run_prints_what_the_two_runs_print(
@@ -500,6 +507,60 @@ def test_a_git_before_2_42_keeps_its_answers_after_its_first_comparison(
     assert counts() == [5, 3, 3]
 
 
+def test_a_kept_answer_is_checked_beside_the_one_run_not_before_it(
+    repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check of a kept "no driver" answer stats files in a worker thread, which can wait
+    behind other work; the one run does not wait for it. The check here holds until the
+    run has started, so a run that waited for it would leave it waiting."""
+    root, _base, target = repo
+    _warm(root)
+    started = threading.Event()
+    run = adapter.run_git_at
+
+    async def spy(args: Sequence[str], location: GitLocation, **kwargs: Any) -> bytes:
+        if "--raw" in args and "-p" in args:
+            started.set()
+        return await run(args, location, **kwargs)
+
+    stamp = textconv._stamp
+    waited: list[bool] = []
+
+    def held(paths: set[Path]) -> Any:
+        waited.append(started.wait(5))
+        return stamp(paths)
+
+    monkeypatch.setattr(adapter, "run_git_at", spy)
+    monkeypatch.setattr(textconv, "_stamp", held)
+    processes, answer = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
+    assert waited == [True], "the check ran before the one run started"
+    assert processes == 2
+    monkeypatch.undo()
+    assert answer == _answer(_Today(root), {"revision": target})[1]
+
+
+def test_the_one_runs_output_is_parsed_once_and_off_the_event_loop(
+    repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Its listing is split and parsed once, in the call that builds the manifest, in a
+    worker thread: the listing is bounded by the read cap, not by the manifest's."""
+    root, _base, target = repo
+    _warm(root)
+    parse = GitDiffSource._parse_raw
+    threads: list[bool] = []
+
+    def counted(tokens: list[bytes]) -> Any:
+        threads.append(threading.current_thread() is threading.main_thread())
+        return parse(tokens)
+
+    monkeypatch.setattr(GitDiffSource, "_parse_raw", staticmethod(counted))
+    _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
+    assert threads == [False]
+    threads.clear()
+    _answer(_Today(root), {"revision": target})
+    assert threads == [False], "the listing run's manifest is built off the loop too"
+
+
 # ── A textconv driver ───────────────────────────────────────────────────
 
 
@@ -785,11 +846,8 @@ def test_a_listing_the_one_run_cannot_split_is_left_to_its_own_run() -> None:
     raw = b":100644 100644 " + b"1" * 40 + b" " + b"2" * 40 + b" M\0a.txt\0"
     numstat = b"1\t1\ta.txt\0"
     patch = b"diff --git a/a.txt b/a.txt\n"
-    assert adapter._listing_and_patch(raw + numstat + b"\0" + patch, cut=False) == (
-        raw + numstat,
-        patch,
-    )
-    assert adapter._listing_and_patch(b"", cut=False) == (b"", b"")
+    assert _parts(raw + numstat + b"\0" + patch) == (raw + numstat, patch)
+    assert _parts(b"") == (b"", b"")
     assert adapter._listing_and_patch(b"", cut=True) is None
     # Cut inside its listing, or before its patch has begun: no listing to use.
     assert adapter._listing_and_patch(raw, cut=True) is None
