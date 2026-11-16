@@ -182,10 +182,10 @@ All notable changes to Metabrowser are documented here.
   the pull request page’s stack menu lists them, and the pull requests in no stack after
   the stacks. It always groups once the repository’s stacks are known; until then, or
   when they cannot be read, the list stays as it was.
-  A stack’s row counts the pull requests of it the list holds, and its name for screen
-  readers says where any sit under another stack.
-  It opens and closes like a folder: J and K stop on it, Enter, Space, and the arrow
-  keys open, close, enter, and leave it.
+  A stack’s row shows its label alone, since its pull requests are the rows under it,
+  and its name for screen readers says how many it has and where any sit under another
+  stack. It opens and closes like a folder: J and K stop on it, Enter, Space, and the
+  arrow keys open, close, enter, and leave it.
   A member’s place in its stack comes first on its number’s line, in the number’s ink,
   as “1/6 · #455 · jlevy”, where it sat beside the number with a stack icon: the stack’s
   row above it has the icon, and a place that arrives after its row moves nothing.
@@ -203,9 +203,9 @@ All notable changes to Metabrowser are documented here.
 - The Files tab has a Group by menu, first on its filter row: No grouping, By age, or By
   file type, each read the same in the menu and on its closed trigger.
   Grouped, the tree splits into sections, each headed like a menu group with the group’s
-  file count and holding a full tree of the group’s files after the filters.
-  Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and Past
-  month, each holding only what the bands before it do not, then Older.
+  file count beside its name and holding a full tree of the group’s files after the
+  filters. Age groups are disjoint bands: Live, then Past hour, Past day, Past week, and
+  Past month, each holding only what the bands before it do not, then Older.
   File type groups are Documentation, Code, Data, Archives, Media, and Other, which
   takes every file the type registry does not recognize; a group the filters leave empty
   is not shown, and a Git revision offers no By age.
@@ -232,6 +232,14 @@ All notable changes to Metabrowser are documented here.
   a refresh waits until the sections have painted.
   `/api/tree` takes `group_by=type` or `group_by=age` for the groups, with their counts
   and trees, and `group=<by>:<id>` for one group’s tree.
+
+- A heading that counts what it heads sets the count beside its name after a middle dot,
+  its numeral bold and its words regular: “Older · 10,004 files” over a Files Group by
+  section, and “Review comments · 3” on a pull request’s page, where the count was in
+  parentheses. A count at the far end of a line is a row’s total, as a folder’s size
+  stays. Where the name and the count do not fit, the name is cut short and the count
+  stays whole. A Pulls stack’s row shows no count, since its pull requests are the rows
+  under it. See [Heading Tallies](docs/design-system.md#heading-tallies).
 
 - With the Files tab’s Group by menu open, `A` chooses By age, `T` By file type, and `N`
   No grouping, as a click on the row does.

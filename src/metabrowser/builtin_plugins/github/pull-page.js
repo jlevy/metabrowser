@@ -5182,9 +5182,21 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function reviewThreads(model) {
-    // Review comments are spaced as the Conversation's events are (mb-w7rt).
+    // Review comments are spaced as the Conversation's events are (mb-w7rt). Its heading's
+    // tally sits beside the name after the separator, as every heading's does (the shell's
+    // `.heading-tally`, docs/design-system.md, "Heading Tallies").
     const threads = h("section", { class: "github-pull-section github-pull-threads" }, [
-      h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
+      h("h2", { class: "section-heading" }, [
+        "Review comments",
+        h("span", { class: "heading-tally" }, [
+          " ",
+          h("span", { class: "heading-tally-dot", "aria-hidden": "true" }, ["·"]),
+          " ",
+          h("span", { class: "heading-tally-figure" }, [
+            model.reviewComments.length.toLocaleString(),
+          ]),
+        ]),
+      ]),
     ]);
     for (const comment of model.reviewComments) {
       const head = h("div", { class: "github-pull-card-head" }, [

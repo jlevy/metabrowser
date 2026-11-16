@@ -248,7 +248,7 @@ it:
   lives in one shared presentation place instead, and the pull request says why.
 - **Sections:** sections appear in group order, and a group left empty by the filters is
   not shown. A section’s heading uses the menu group pattern and carries the group’s
-  count.
+  count, beside its name ([Heading Tallies](#heading-tallies)).
 - **Persistence:** the choice persists the way the filter state does.
 - **Keys:** the filter shortcuts keep working once the filters move into the drawer.
   Group by, on the row, is `1`, and the drawer’s filters keep their numbers whether or
@@ -304,8 +304,8 @@ it:
 
 - **Stack rows:**
   - Each stack with at least one pull request in the current list gets a row reading
-    “Stack #N”, with the number of its pull requests.
-    The row is open by default.
+    “Stack #N”, with the number of its pull requests in its accessible name rather than
+    on the row ([Heading Tallies](#heading-tallies)). The row is open by default.
   - Under it are the stack’s pull requests present in the list, in the order the pull
     request page’s stack menu uses (top of the stack first), each keeping its own toggle
     for its changed files.
@@ -569,6 +569,21 @@ like the nested indentations.”
   request’s header; the rows give back the header’s inset and pull
   (`--diff-summary-header-inset`, `--diff-summary-toggle-pull`).
 
+### Heading Tallies
+
+The owner’s request of 2026-11-15: a Files section heading such as “Older” right-aligned
+its file count; folders keep their right-aligned size totals, but a larger group’s tally
+belongs beside its heading after the small bullet, and a Pulls stack’s heading needs no
+tally of its pull requests, since it is obvious.
+
+- **Beside the name:** a heading that counts what it heads sets the count after “ · ” on
+  its line, through one shell primitive, `.heading-tally`: a Files Group by section’s
+  heading and a pull request page’s Review comments, which had its count in parentheses
+  (`mb-mcjd`). The name is cut short before the count wraps or leaves the line; the
+  numeral follows the count-summary rule for numbers.
+- **No tally on a stack’s row:** a Pulls stack group’s row shows its label alone, and
+  its accessible name still says its size (`mb-yk0i`).
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -756,7 +771,17 @@ like the nested indentations.”
   toolbar, a commit’s page, and a pull request’s header; pinned in the changed-file
   rows, commit summary, and header Chrome tests and the diff view session.
 
-### Phase 23: Toolbar Rule and Bold Counts (pull request 23)
+### Phase 23: Heading Tallies (pull request 23)
+
+- [ ] `mb-mcjd`: a group or section heading’s tally sits beside its name after “ · ”, on
+  its line, in one shell primitive; the Files Group by sections and the Review comments
+  heading take it, and folder rows keep their right-aligned totals; measured in Chrome
+  at the default pane and the 180 px minimum, with the accessible names pinned.
+- [ ] `mb-yk0i`: a Pulls stack group’s row shows no tally, its size kept in its
+  accessible name; the stack groups’ session and golden and the stacks Chrome test
+  updated.
+
+### Phase 24: Toolbar Rule and Bold Counts (pull request 24)
 
 - [ ] `mb-a073`: the diff’s toolbar draws no rule under the Split | Unified chooser, on
   a commit’s page, a pull request’s Changes, and a patch, where the Diff summary’s

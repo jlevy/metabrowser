@@ -173,9 +173,8 @@ export function stackRowKey(number) {
 
 /**
  * @typedef {{
- *   kind: "stack", key: number, stack: NativeStack, label: string, count: string,
- *   hint: string, members: number[], expanded: boolean,
- *   level: 1, posinset: number, setsize: number,
+ *   kind: "stack", key: number, stack: NativeStack, label: string, hint: string,
+ *   members: number[], expanded: boolean, level: 1, posinset: number, setsize: number,
  * }} StackGroupRow
  * @typedef {{
  *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
@@ -248,14 +247,12 @@ export function groupByStack(numbers, index, identity, options = {}) {
   /** @type {GroupedRow[]} */
   const rows = [];
   for (const [at, { stack, members, listed: shown, elsewhere }] of groups.entries()) {
-    const total = stack.pulls.length;
     const expanded = !collapsed.has(stack.number);
     rows.push({
       kind: "stack",
       key: stackRowKey(stack.number),
       stack,
       label: stackLabel(stack.number),
-      count: shown === total ? `${total}` : `${shown} of ${total}`,
       hint: stackGroupHint(stack, shown, elsewhere),
       members,
       expanded,

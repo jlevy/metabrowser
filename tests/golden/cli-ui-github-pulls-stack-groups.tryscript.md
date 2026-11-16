@@ -20,16 +20,17 @@ lists them.
 The stacks come in the order of their first pull request in the list, and the
 pull requests in no stack follow them, in the list’s order.
 A pull request in two stacks sits once, under the first, and its badge names the other
-by the Layers glyph, written ⧉ here, before its number; the other stack’s row still
-counts it, and its tip says where it sits.
+by the Layers glyph, written ⧉ here, before its number; the other stack’s row’s
+accessible name still counts it and says where it sits.
 Until stacks are known for the list’s own GitHub account, and while none of the list’s
 pull requests is in one, the list stays flat; there is no option.
 A stack’s row is a row of the tree, as a folder is: J and K stop on it and open nothing,
 Enter opens or closes it, Right opens it or goes to its first pull request, and Left
 closes it, or from a pull request in it goes to it.
 
-Each step’s `rows` are what a reader sees: a stack’s row with its count, place, and tip,
-its pull requests a level in with their places, and then the ends of the rest.
+Each step’s `rows` are what a reader sees: a stack’s row with its label, place, and
+accessible name, and no count, since its pull requests are the rows under it; its pull
+requests a level in with their places; and then the ends of the rest.
 After a walk, `read ahead after the last open` is what the open asks to read next: its
 neighbours as drawn, a stack’s row passed over, then the first pull requests drawn.
 `mounted` mounts the panel over a stand-in for the DOM and drives its handle, as Space,
@@ -83,7 +84,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "stacks known: Stack #286 first, open, top of the stack first",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
@@ -98,7 +99,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "J walks into the stack and out past it, K steps back; only pulls open",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
@@ -132,7 +133,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Left on a pull request in a stack goes to the stack's row",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
@@ -149,7 +150,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Left on the stack's row closes it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▸ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "#106 [2/100]",
         "#105 [3/100]",
         "…",
@@ -160,7 +161,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "J from a closed stack goes past it, and K comes back to it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▸ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "#106 [2/100]",
         "#105 [3/100]",
         "…",
@@ -178,7 +179,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Right opens it",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
@@ -192,7 +193,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Right again goes to its first pull request, which opens",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
@@ -212,7 +213,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Enter on the stack's row closes it",
       "grouped": true,
       "rows": [
-        "▸ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▸ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "#106 [2/100]",
         "#105 [3/100]",
         "…",
@@ -229,7 +230,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "an address that names #7 opens the stack that holds it",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",
@@ -245,7 +246,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Open: #8 is closed, so Stack #286 holds 2 of its 3",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (2 of 3) [1/99] · Stack #286, 3 pull requests, 2 in this list",
+        "▾ Stack #286 [1/99] · Stack #286, 3 pull requests, 2 in this list",
         "    #7 2/3 [1/2]",
         "    #6 1/3 [2/2]",
         "#106 [2/99]",
@@ -258,11 +259,11 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "#8 in two stacks: once, under the first listed, its badge naming the other",
       "grouped": true,
       "rows": [
-        "▾ Stack #290 (3) [1/99] · Stack #290, 3 pull requests",
+        "▾ Stack #290 [1/99] · Stack #290, 3 pull requests",
         "    #10 3/3 [1/3]",
         "    #9 2/3 [2/3]",
         "    #8 1/3 · ⧉286 3/3 [3/3]",
-        "▾ Stack #286 (3) [2/99] · Stack #286, 3 pull requests, 1 under Stack #290",
+        "▾ Stack #286 [2/99] · Stack #286, 3 pull requests, 1 under Stack #290",
         "    #7 2/3 [1/2]",
         "    #6 1/3 [2/2]",
         "#106 [3/99]",
@@ -275,7 +276,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "Closed: #286's one listed pull request sits under #290, so #286 has no row",
       "grouped": true,
       "rows": [
-        "▾ Stack #290 (2 of 3) [1/1] · Stack #290, 3 pull requests, 2 in this list",
+        "▾ Stack #290 [1/1] · Stack #290, 3 pull requests, 2 in this list",
         "    #9 2/3 [1/2]",
         "    #8 1/3 · ⧉286 3/3 [2/2]"
       ]
@@ -284,7 +285,7 @@ $ node tests/dom/github-pulls-stack-groups-session.js
       "step": "a failed refresh keeps the snapshot, which still groups",
       "grouped": true,
       "rows": [
-        "▾ Stack #286 (3) [1/100] · Stack #286, 3 pull requests",
+        "▾ Stack #286 [1/100] · Stack #286, 3 pull requests",
         "    #8 3/3 [1/3]",
         "    #7 2/3 [2/3]",
         "    #6 1/3 [3/3]",

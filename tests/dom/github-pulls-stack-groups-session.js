@@ -383,7 +383,7 @@ async function mountStory() {
     for (const row of model.stacks.rows) {
       if (row.kind === "stack") {
         lines.push(
-          `${row.expanded ? "▾" : "▸"} ${row.label} (${row.count}) [${row.posinset}/${row.setsize}] · ${row.hint}`,
+          `${row.expanded ? "▾" : "▸"} ${row.label} [${row.posinset}/${row.setsize}] · ${row.hint}`,
         );
       } else if (row.level === 2) {
         lines.push(

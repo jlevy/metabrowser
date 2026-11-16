@@ -80,7 +80,9 @@ const LIST = `(() => {
         stack: Number(row.dataset.stack),
         label: row.querySelector(".github-pull-stack-label").textContent,
         shown: row.querySelector(".github-pull-stack-label").innerText,
-        count: row.querySelector(".github-pulls-stack-count").textContent,
+        // Everything the row says on screen: its label, and no tally (mb-yk0i).
+        text: row.textContent,
+        name: row.getAttribute("aria-label"),
         expanded: row.getAttribute("aria-expanded"),
         tip: row.dataset.tipText,
         members: [],
@@ -192,7 +194,8 @@ const LIST = `(() => {
     stackRowHeight: box(stackRow)?.height ?? null,
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
-    countRight: box(stackRow?.querySelector(".github-pulls-stack-count"))?.right ?? null,
+    // The label's room ends at the row's content end, where a row's age ends.
+    labelRoomRight: box(stackRow?.querySelector(".github-pull-stack-label"))?.right ?? null,
     flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and Reload, which sits at the line's end.
@@ -405,7 +408,7 @@ try {
     await shot("before-pulls-all", await paneClip());
   } else {
     await waitFor(
-      `document.querySelector(".github-pulls-stack-row .github-pulls-stack-count")?.textContent === "4"`,
+      `document.querySelector(".github-pulls-stack-row")?.getAttribute("aria-label") === "Stack #286, 4 pull requests"`,
     );
     await frames();
     const list = await evaluate(LIST);
@@ -424,7 +427,14 @@ try {
       JSON.stringify(first?.members.map((m) => m.number)) === "[10,9,8,7]",
       JSON.stringify(first?.members),
     );
-    check("with its count", first?.count === "4", first?.count);
+    // Its pull requests are the rows under it, so it shows no tally; its accessible name
+    // still says how many (docs/design-system.md, "Heading Tallies").
+    check("with no tally on screen", first?.text === "Stack #286", first?.text);
+    check(
+      "and its size in its accessible name",
+      first?.name === "Stack #286, 4 pull requests",
+      first?.name,
+    );
     check(
       "#10, in two stacks, sits once, and its badge names the other",
       first?.members[0]?.badge === "4/4 · 300 2/2" &&
@@ -526,9 +536,9 @@ try {
       `${list.stackRowHeight} ${list.rowHeightToken}`,
     );
     check(
-      "its count ends where a row's age does",
-      near(list.countRight, list.flatAgeRight),
-      `${list.countRight} ${list.flatAgeRight}`,
+      "its label has the row to where a row's age ends",
+      near(list.labelRoomRight, list.flatAgeRight),
+      `${list.labelRoomRight} ${list.flatAgeRight}`,
     );
     // The tab always groups by stack, so its toolbar holds no Group by stack chip, and at
     // the default pane width its one line fits, with room to spare (mb-vmwh): the worded

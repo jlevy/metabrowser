@@ -3271,7 +3271,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * A stack's row as painted, by its row key (`stackRowKey`): its elements, and the key of
    * what it shows.
    *
-   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, count: HTMLElement, key: string}} PaintedStack
+   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, key: string}} PaintedStack
    */
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
@@ -3748,10 +3748,11 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * A stack's row: the chevron, the Layers icon, the stack's label in the label register
-   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"), and how
-   * many of its pull requests are under it. A row of the tree that opens and closes, as a
-   * folder is; it opens no page, so it is not a link.
+   * A stack's row: the chevron, the Layers icon, and the stack's label in the label register
+   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"). It
+   * draws no tally: its pull requests are the rows under it ("Heading Tallies"), and its
+   * accessible name says how many. A row of the tree that opens and closes, as a folder is;
+   * it opens no page, so it is not a link.
    *
    * @param {import("./pull-stacks.js").StackGroupRow} group
    * @returns {PaintedStack}
@@ -3760,7 +3761,6 @@ export function mountPullsPanel(container, ctx, mb) {
     let entry = paintedStacks.get(group.key);
     if (entry === undefined) {
       const label = h("span", { class: "group-heading github-pull-stack-label" });
-      const count = h("span", { class: "github-pulls-stack-count" });
       const row = h(
         "div",
         {
@@ -3775,7 +3775,6 @@ export function mountPullsPanel(container, ctx, mb) {
             stackSvg === null ? null : document.importNode(stackSvg, true),
           ]),
           label,
-          count,
         ],
       );
       row.dataset.stack = String(group.stack.number);
@@ -3783,15 +3782,14 @@ export function mountPullsPanel(container, ctx, mb) {
         row,
       ]);
       item.dataset.number = String(group.key);
-      entry = { item, row, label, count, key: "" };
+      entry = { item, row, label, key: "" };
       paintedStacks.set(group.key, entry);
       rowSizes?.observe(item);
     }
-    const key = JSON.stringify([group.label, group.count, group.hint, group.expanded]);
+    const key = JSON.stringify([group.label, group.hint, group.expanded]);
     if (entry.key !== key) {
       entry.key = key;
       entry.label.textContent = group.label;
-      entry.count.textContent = group.count;
       entry.row.setAttribute("aria-label", group.hint);
       entry.row.setAttribute("aria-expanded", String(group.expanded));
       entry.row.classList.toggle("expanded", group.expanded);

@@ -1671,6 +1671,29 @@ summary {
   line-height: 1.25;
   text-transform: var(--label-text-transform);
 }
+/* ── Heading tally — how many a heading's group or section holds ──
+   It sits beside the heading's name, after the " · " separator, on the heading's line,
+   never at the far end (docs/design-system.md, "Heading Tallies"):
+     <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span>
+       <span class="heading-tally-figure">10,004</span> files</span>
+   Any heading takes it, a .group-heading or a .section-heading. It is a figure, not part
+   of the name, so the heading's caps, tracking, and weight are for the name alone: the
+   tally is regular, muted, and untracked at the heading's size, with its numeral bold at
+   the numbers' weight, --pull-number-weight. Its spaces are preserved, so the separator
+   keeps them where the heading lays its parts out as flex items, and it never wraps. The
+   dot is hidden from assistive technology: the heading reads "Older 10,004 files". */
+.heading-tally {
+  flex: none;
+  color: var(--muted);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: pre;
+}
+.heading-tally-figure {
+  font-weight: var(--pull-number-weight);
+}
 /* ── Fold expander — a run of content withheld until asked for ───
    The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
    height, hovering with the shared token like every other clickable row. */
@@ -3913,20 +3936,19 @@ a.tab-btn {
   margin-top: 4px;
   border-top: 1px solid var(--border);
 }
+/* One line at every pane width: the name, then its tally beside it (.heading-tally).
+   Where the two do not fit, the name is cut short and the tally stays whole, as a Pulls
+   stack's label is. */
 .tree-section-heading {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
   padding: 6px 12px 2px;
 }
-/* The count is a figure, not part of the name: the label register's caps and
-   tracking are for the name alone. */
-.tree-section-count {
-  font-weight: var(--weight-normal);
-  letter-spacing: 0;
-  text-transform: none;
-  font-variant-numeric: var(--tabular-numerals);
+.tree-section-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Regrouping (docs/design-system.md, "Grouping the Files Tree", Waiting): while a
    grouping's first sections are on their way, the tree on screen is the arrangement
