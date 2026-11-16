@@ -193,11 +193,12 @@
    pulse (`.tally-pending`), shown after the quiet period (`.mb-delayed-loading`), in the
    summary header's type, centred on the row's line from the row's start, and as wide as a
    summary of one status. The summary takes its place in the row, which keeps its height, so
-   nothing moves. Measured in headless Chrome 152 in both themes (mb-vb51), a summary header
-   of one status, from "1 file changed · 1 M · +3 −1" to "8 files changed · 8 M · +120 −30",
-   ends 13.88 to 15.88 em of its type from the row's start, its text 13.42 to 15.42 em; of
-   three statuses, "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423", its text ends 22.18
-   em. The old wording's one status ended 16.6 to 17.6 em, for which this was 17 em.
+   nothing moves. Measured in headless Chrome 152 in both themes (mb-vb51; again with the
+   status counts' letters bold, mb-8iwn), a summary header of one status, from "1 file
+   changed · 1 M · +3 −1" to "8 files changed · 8 M · +120 −30", ends 13.91 to 15.92 em of
+   its type from the row's start, its text 13.45 to 15.46 em; of three statuses, "35 files
+   changed · 2 A, 3 D, 30 M · +1,234 −3,423", its text ends 22.26 em. The old wording's one
+   status ended 16.6 to 17.6 em, for which this was 17 em.
    tests/dom/github-pull-header-chrome.mjs holds the width between the two. */
 .github-pull-summary-pending {
   display: flex;

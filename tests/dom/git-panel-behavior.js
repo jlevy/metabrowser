@@ -906,9 +906,9 @@ async function run() {
     );
     // The hover card says a commit's changes in the Diff summary's words and paint, through
     // its parts and painter (formatters.js, `changeSummary` and `countPartsHtml`): the
-    // summary's order, A, D, M, each count bold in the line's ink, each status its letter in
-    // the status primitive at the line's weight, and the commas and dots muted, each dot one
-    // item with the group before it (mb-khm6).
+    // summary's order, A, D, M, the file count bold in the line's ink, each status count,
+    // number and letter, one span that is the status primitive and bold (mb-8iwn), and the
+    // commas and dots muted, each dot one item with the group before it (mb-khm6).
     const format = sandbox.MetabrowserFormatters.formatInteger;
     assertEqual(
       "tooltip: the change line reads as the Diff summary's header",
@@ -924,11 +924,11 @@ async function run() {
         '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
         // The brief change line, the one component for "4 A, 28 M · +1,921 −160" (mb-9ekj).
         '<span class="change-line"><span class="change-line-group"><span class="change-line-statuses">' +
-        '<span class="summary-number">4</span> ' +
-        '<span class="file-change-status" data-file-status="added">A</span>' +
+        '<span class="summary-status-count file-change-status" data-file-status="added">' +
+        '<span class="summary-number">4</span> A</span>' +
         '<span class="summary-punctuation">,</span> ' +
-        '<span class="summary-number">28</span> ' +
-        '<span class="file-change-status" data-file-status="modified">M</span></span>' +
+        '<span class="summary-status-count file-change-status" data-file-status="modified">' +
+        '<span class="summary-number">28</span> M</span></span>' +
         '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
         '<span class="change-line-stats">' +
         `<span class="diff-stat-add">+${format(1921)}</span>` +

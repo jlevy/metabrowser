@@ -532,7 +532,8 @@ Useful helpers include:
   words as strings, `{number}`, drawn bold, `{punctuation}` for a list’s comma and
   `{separator}` for the dot between a line’s groups, both drawn gray, the dot hidden
   from assistive technology with an optional `spoken` said in its place, and
-  `{status, letter}` for a file change status, its letter drawn in the status’s color
+  `{status, letter, count}` for a status count, “21 A”, its number and letter drawn bold
+  in the status’s color
   ([Count Summaries Bold Their Numbers](design-system.md#count-summaries-bold-their-numbers));
 - `changeLine(change)` and `changeLineNodes(line, options)` for a brief change line, “10
   A, 5 D, 4 M · +1,234 −567”, the host’s one component for a change set’s statuses and

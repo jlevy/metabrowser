@@ -97,9 +97,10 @@
 
 /* The header is its file count, "19 files changed", and the dot after it, one item of its
    line (`.diff-summary-group`), then the shell's brief change line, "10 A, 5 D, 4 M ·
-   +1,234 −567" (`.change-line`, static/styles.css), the one component for it: its statuses'
-   letters in their statuses' ink (`.file-change-status`), its commas and dots the shell's
-   muted punctuation (`.summary-punctuation`), and its line totals the inline change stats.
+   +1,234 −567" (`.change-line`, static/styles.css), the one component for it: its status
+   counts, number and letter, bold in their statuses' ink (`.summary-status-count`), its
+   commas and dots the shell's muted punctuation (`.summary-punctuation`), and its line
+   totals the inline change stats.
    Each dot is one item with the group before it, so a header that wraps breaks after a dot
    and no line starts with one; the group's gap is the line's, and the change line's is the
    same 6 px, so every dot is spaced alike on both sides, on a toggle and on a line alike.

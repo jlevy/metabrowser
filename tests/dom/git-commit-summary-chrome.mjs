@@ -22,6 +22,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { STATUS_COUNTS } from "./status-count-paint.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
@@ -364,8 +365,9 @@ const MEASURE = `async (widths) => {
     };
   }
   // The hover summary says the commit's changes in the Diff summary's words and paint, in
-  // each theme: each number bold in the line's ink, each letter in its status's ink at the
-  // line's weight, and each comma and dot muted (mb-khm6); narrowed, it wraps after a dot.
+  // each theme: the file count bold in the line's ink, each status count, number and letter,
+  // bold in its status's ink, read with its contrast on the card's ground (mb-8iwn), and
+  // each comma and dot muted (mb-khm6); narrowed, it wraps after a dot.
   {
     const tip = document.createElement("div");
     // Shown, as the SDK's tooltip shows one, so it is laid out.
@@ -396,6 +398,10 @@ const MEASURE = `async (widths) => {
     for (const theme of ["light", "dark"]) {
       document.documentElement.dataset.theme = theme;
       await frames();
+      // Once any cross-fade the theme started is over, so the card's ground is the theme's.
+      await Promise.allSettled(
+        document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished),
+      );
       const tokens = {};
       for (const name of ["--text", "--muted", "--git-status-added", "--git-status-deleted", "--git-status-modified"]) {
         tokens[name] = token(name);
@@ -405,9 +411,9 @@ const MEASURE = `async (widths) => {
         tokens,
         line: { ink: ink(line), weight: weight(line) },
         words: ink(line.querySelector(".git-commit-change-files")),
-        numbers: [...line.querySelectorAll(".summary-number")].map((node) => [node.textContent, ink(node), weight(node)]),
-        letters: [...line.querySelectorAll(".file-change-status")].map((node) => [node.textContent, node.dataset.fileStatus, ink(node), weight(node)]),
-        marks: [...line.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node)]),
+        numbers: [...line.querySelectorAll(".git-commit-change-files .summary-number")].map((node) => [node.textContent, ink(node), weight(node)]),
+        counts: (${STATUS_COUNTS})(line),
+        marks: [...line.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node), weight(node)]),
       });
     }
     delete document.documentElement.dataset.theme;
@@ -627,10 +633,10 @@ async function main() {
           JSON.stringify(paint.tokens),
         );
         check(
-          `${where}: its numbers are bold, in the line's ink`,
-          paint.numbers.length === 4 &&
+          `${where}: its file count is bold, in the line's ink`,
+          JSON.stringify(paint.numbers.map(([text]) => text)) === JSON.stringify(["35"]) &&
             paint.numbers.every(
-              ([, color, weight]) => color === paint.tokens["--text"] && Number(weight) >= 600,
+              ([, color, weight]) => color === paint.tokens["--text"] && weight === "700",
             ),
           JSON.stringify(paint.numbers),
         );
@@ -639,14 +645,40 @@ async function main() {
           paint.words === paint.tokens["--text"] && paint.line.ink === paint.tokens["--text"],
           JSON.stringify({ words: paint.words, line: paint.line }),
         );
+        // A status count, "2 A", is one span that is the status primitive: its number and its
+        // letter bold, in its status's ink, at a text's 4.5:1 on the card (mb-8iwn). Before,
+        // the number was in the line's ink and the letter at the line's weight.
         check(
-          `${where}: each letter is in its status's ink at the line's weight, A, D, M`,
-          JSON.stringify(paint.letters.map(([text]) => text)) === JSON.stringify(["A", "D", "M"]) &&
-            paint.letters.every(
-              ([, status, color, weight]) =>
-                color === paint.tokens[STATUS_INK[status]] && weight === paint.line.weight,
+          `${where}: each status count, number and letter, is bold in its status's ink, 2 A, 3 D, 30 M`,
+          JSON.stringify(paint.counts.map((count) => [count.text, count.status])) ===
+            JSON.stringify([
+              ["2 A", "added"],
+              ["3 D", "deleted"],
+              ["30 M", "modified"],
+            ]) &&
+            paint.counts.every(
+              (count) =>
+                count.statusPrimitive &&
+                count.number !== null &&
+                count.number[1] === paint.tokens[STATUS_INK[count.status]] &&
+                count.letter[1] === paint.tokens[STATUS_INK[count.status]] &&
+                count.number[2] === "700" &&
+                count.letter[2] === "700",
             ),
-          JSON.stringify(paint.letters),
+          JSON.stringify(paint.counts),
+        );
+        check(
+          `${where}: each status count reads at a text's 4.5:1 on the card's ground`,
+          paint.counts.length === 3 && paint.counts.every((count) => count.contrast >= 4.5),
+          JSON.stringify(
+            paint.counts.map(({ text, size, ground, ink, contrast }) => ({
+              text,
+              size,
+              ground,
+              ink,
+              contrast,
+            })),
+          ),
         );
         check(
           `${where}: its commas and dots are muted, the dots hidden`,
@@ -661,9 +693,8 @@ async function main() {
         );
       }
       check(
-        "the two themes ink the hover summary's letters apart",
-        JSON.stringify(tooltip?.paint?.[0]?.letters) !==
-          JSON.stringify(tooltip?.paint?.[1]?.letters),
+        "the two themes ink the hover summary's status counts apart",
+        JSON.stringify(tooltip?.paint?.[0]?.counts) !== JSON.stringify(tooltip?.paint?.[1]?.counts),
         JSON.stringify(tooltip?.paint),
       );
       const tipSweep = tooltip?.sweep ?? [];

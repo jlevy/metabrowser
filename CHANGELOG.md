@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A change set’s status counts, as “21 A, 15 M, 7 D”, are bold and in their statuses’
+  colors, each number with its letter: added and copied green, deleted red, modified
+  ochre, and renamed blue, with the commas between them and the line’s dots gray.
+  They read so wherever a change set is summed up: the Diff summary’s header on a
+  commit’s page, in a pull request’s header, and in a patch’s toolbar, and a commit’s
+  hover card in the Commits tab.
+  A file count, as “19 files changed”, stays bold in the line’s color, with its words
+  regular. Each status’s color keeps a text’s 4.5:1 contrast on the page, the sidebar, a
+  hovered header, and a tooltip, in both themes.
+  Plugins paint a status count with `metabrowser.countPartsNodes` from a
+  `{status, letter, count}` part, as `metabrowser.changeLine` builds them.
+  See
+  [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers).
+
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
   The disclosure appeared above every document ending in the guideline footer comment,
@@ -67,16 +81,15 @@ All notable changes to Metabrowser are documented here.
   [Diff Summary](docs/design-system.md#diff-summary).
 
 - Every count summary bolds its numbers and keeps its words regular, with its separators
-  and commas gray and each file status its letter in its status’s color.
-  The numbers are now bold in the Diff summary’s header, “**8** files changed · **8**
-  M”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar; in the
-  Files totals, as in “**15,458** files (**324.1 MB**)”, and the filter’s “Filtered to”
-  line; in the Commits tally; in a pull request’s Checks summary; and in a commit’s
-  files outside the served folder, all of which were regular in 0.12.0. The Pulls
-  count’s number stays bold, as it was in 0.12.0. A size is bold with its unit, and what
-  a screen reader hears is unchanged.
+  and commas gray. The numbers are now bold in the Diff summary’s header, “**8** files
+  changed · **8 M**”, on a commit’s page, in a pull request’s header, and in a patch’s
+  toolbar; in the Files totals, as in “**15,458** files (**324.1 MB**)”, and the
+  filter’s “Filtered to” line; in the Commits tally; in a pull request’s Checks summary;
+  and in a commit’s files outside the served folder, all of which were regular in
+  0.12.0. The Pulls count’s number stays bold, as it was in 0.12.0. A size is bold with
+  its unit, and what a screen reader hears is unchanged.
   A commit’s hover card in the Commits tab says its changes as the Diff summary’s header
-  does, “**32** files changed · **4** A, **28** M · +1,921 −160”, in place of its two
+  does, “**32** files changed · **4 A**, **28 M** · +1,921 −160”, in place of its two
   rows, “28 M 4 A files” and “+1921 −160 lines”, whose added and deleted counts were
   green and red; a screen reader hears them in words.
   Plugins can paint a count summary as the shell does with
