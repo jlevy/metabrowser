@@ -1515,7 +1515,9 @@ function renderDiffSummary(totals, files, view, model) {
           { file_count: rows.length },
         );
         toggle.setAttribute("aria-controls", id);
-        toggle.closest(".diff-toolbar")?.after(tree.body);
+        // Under the toolbar in a diff; under the header itself where a page places the
+        // summary at its top (mb-pb35).
+        (toggle.closest(".diff-toolbar") ?? toggle).after(tree.body);
       }
       const open = !tree.isOpen();
       const shown = tree;
@@ -1541,37 +1543,55 @@ function renderDiffSummary(totals, files, view, model) {
 }
 
 /**
+ * A change set's Diff summary, or, where the shared changed-files tree did not load, its
+ * totals on their own, as they always were: only the tree of files is lost.
+ *
+ * @param {Record<string, unknown>} totals
+ * @param {Record<string, unknown>[]} files
+ * @param {MountedDiffState} view
+ * @returns {{element: HTMLElement, dispose: () => void}}
+ */
+function summaryOrTotals(totals, files, view) {
+  if (view.changedFiles !== null) {
+    return renderDiffSummary(totals, files, view, view.changedFiles);
+  }
+  const said = plainTotals(totals, countFormatter(view.api));
+  const line = el("div", "diff-summary");
+  const stats = el("span", "diff-summary-stats");
+  stats.append(
+    el("span", "diff-stat-add", said.additions),
+    el("span", "diff-stat-del", said.deletions),
+  );
+  line.append(el("span", "diff-summary-files", said.files), stats);
+  if (said.estimated) {
+    line.append(el("span", "diff-summary-note", "(estimated)"));
+  }
+  return { element: line, dispose: () => {} };
+}
+
+/**
  * The layout control is always present in the shell. A multi-file diff's toolbar leads with
- * its Diff summary; single-file views avoid repeating their file bar.
+ * its Diff summary; single-file views avoid repeating their file bar. A page that places the
+ * summary at its own top passes the place (*summaryHost*), as a commit's page does
+ * (mb-pb35): the summary is drawn there, for one file too, since there it stands for the
+ * change set's totals, and the toolbar holds the layout control alone.
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files
  * @param {MountedDiffState} view
  * @param {boolean} showSummary
+ * @param {HTMLElement | null} [summaryHost]
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, files, view, showSummary) {
+function renderDiffToolbar(totals, files, view, showSummary, summaryHost = null) {
   const toolbar = el("div", "diff-toolbar");
   /** @type {(() => void) | null} */
   let disposeSummary = null;
-  if (showSummary && Number(totals.files) !== 1) {
-    if (view.changedFiles === null) {
-      // The shared tree did not load: the totals stand on their own, as they always did, and
-      // only the tree of files is lost.
-      const said = plainTotals(totals, countFormatter(view.api));
-      const line = el("div", "diff-summary");
-      const stats = el("span", "diff-summary-stats");
-      stats.append(
-        el("span", "diff-stat-add", said.additions),
-        el("span", "diff-stat-del", said.deletions),
-      );
-      line.append(el("span", "diff-summary-files", said.files), stats);
-      if (said.estimated) {
-        line.append(el("span", "diff-summary-note", "(estimated)"));
-      }
-      toolbar.append(line);
+  if (showSummary && (summaryHost !== null || Number(totals.files) !== 1)) {
+    const summary = summaryOrTotals(totals, files, view);
+    disposeSummary = summary.dispose;
+    if (summaryHost !== null) {
+      summaryHost.replaceChildren(summary.element);
     } else {
-      const summary = renderDiffSummary(totals, files, view, view.changedFiles);
-      disposeSummary = summary.dispose;
       toolbar.append(summary.element);
     }
   }
@@ -2831,6 +2851,41 @@ function measureInContainer(root, container) {
 }
 
 /**
+ * A change set's Diff summary on its own, for a page that keeps it at its top while its diff
+ * comes and goes, as a pull request's page does on every tab (mb-pb35). The header and its
+ * tree are the diff's own (`renderDiffSummary`), from the document's manifest; a file it
+ * opens goes to *openFile*.
+ *
+ * @param {HTMLElement} slot Where the summary is drawn; its children are replaced.
+ * @param {Record<string, unknown>} document_ A validated ChangeSetDocument.
+ * @param {MetabrowserPublicSdk} api
+ * @param {{changedFiles: MetabrowserChangedFilesTree | null, openFile: (path: string) => void}} options
+ * @returns {{dispose: () => void}}
+ */
+export function mountDiffSummary(slot, document_, api, options) {
+  const manifest =
+    /** @type {{files: Record<string, unknown>[], totals: Record<string, unknown>}} */ (
+      document_.manifest
+    );
+  const view = /** @type {MountedDiffState} */ (
+    /** @type {unknown} */ ({
+      api,
+      disposed: false,
+      changedFiles: options.changedFiles,
+      openFile: options.openFile,
+    })
+  );
+  const summary = summaryOrTotals(manifest.totals, manifest.files, view);
+  slot.replaceChildren(summary.element);
+  return {
+    dispose() {
+      view.disposed = true;
+      summary.dispose();
+    },
+  };
+}
+
+/**
  * Mount a validated ChangeSetDocument.
  *
  * @param {HTMLElement} container
@@ -2838,6 +2893,7 @@ function measureInContainer(root, container) {
  * @param {DiffViewApi} [api]
  * @param {{
  *   showSummary?: boolean,
+ *   summaryHost?: HTMLElement | null,
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
@@ -2853,7 +2909,8 @@ function measureInContainer(root, container) {
  *   (`createMarkdownViews`'s *holdMs*); `firstScreen` settles when none of them waits.
  *   *changedFiles* is the shell's changed-files tree the Diff summary is drawn on; without
  *   it a multi-file diff has no summary. *openFile* is the host's way to a changed file's own
- *   address, which the summary's file rows take where the host has one.
+ *   address, which the summary's file rows take where the host has one. *summaryHost* is
+ *   where a page that places the summary at its own top wants it drawn (mb-pb35).
  * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, firstScreen: () => Promise<void>, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
@@ -2960,6 +3017,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     manifest.files,
     view,
     options.showSummary !== false,
+    options.summaryHost ?? null,
   );
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.

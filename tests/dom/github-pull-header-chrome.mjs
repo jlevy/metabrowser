@@ -41,6 +41,7 @@ import { launchChrome } from "./chrome-session.mjs";
 const root = path.resolve(import.meta.dirname, "../..");
 const STATIC = path.join(root, "src/metabrowser/static");
 const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
+const DIFF = path.join(root, "src/metabrowser/builtin_plugins/diff");
 const FIXTURES = path.join(root, "tests/fixtures/github-pull-page-responses.json");
 const LABEL_COLORS = path.join(root, "tests/fixtures/github-label-colors.json");
 const KPRESS = process.env.KPRESS_STATIC ? path.resolve(process.env.KPRESS_STATIC) : null;
@@ -68,10 +69,12 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull heade
 <link rel="stylesheet" href="/kpress/css/style-tokens.css">
 <link rel="stylesheet" href="/static/styles.css">
 <link rel="stylesheet" href="/github/styles.css">
+<link rel="stylesheet" href="/diff/styles.css">
 <script>
   window.METABROWSER_SETTINGS = { SYNTAX_HIGHLIGHT_MAX_BYTES: 524288, SYNTAX_LANGUAGE_BY_BASENAME: {}, SYNTAX_LANGUAGE_BY_EXTENSION: {} };
   window.MetabrowserIcons = { copy: '<svg data-icon="copy"></svg>' };
 </script>
+<script src="/static/changed-files-tree.js"></script>
 ${SDK.map((name) => `<script src="/static/${name}"></script>`).join("\n")}
 </head><body><div id="preview-pane" class="preview-pane"></div></body></html>`;
 
@@ -96,6 +99,8 @@ function serve() {
       file = path.join(STATIC, url.pathname.slice(8));
     } else if (url.pathname.startsWith("/github/")) {
       file = path.join(GITHUB, url.pathname.slice(8));
+    } else if (url.pathname.startsWith("/diff/")) {
+      file = path.join(DIFF, url.pathname.slice(6));
     } else if (KPRESS && url.pathname.startsWith("/kpress/")) {
       file = path.join(KPRESS, url.pathname.slice(8));
     }
@@ -235,6 +240,50 @@ const MEASURE = `async (name, change, tab, width) => {
     rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
     tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
   });
+  // The pull request's Diff summary arrives with its comparison, in the header's last row,
+  // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
+  // on a change set whose breakdown names three statuses, "35 changed files (2 added,
+  // 3 removed, 30 modified) +1,234 −3,423": it moves nothing, keeps its row's height, and
+  // starts on the header's content edge.
+  let summaryMoves = null;
+  if (change.stackChip) {
+    const slot = header.querySelector(".github-pull-summary");
+    const before = places();
+    const rowBefore = Math.round(box(slot).height * 100) / 100;
+    const diff = (window.__diff ??= await import("/diff/diff-view.js"));
+    const kinds = [
+      ...Array(2).fill("added"),
+      ...Array(3).fill("deleted"),
+      ...Array(30).fill("modified"),
+    ];
+    const files = kinds.map((kind, at) => ({
+      kind,
+      ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+      ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
+      additions: 30,
+      deletions: 90,
+    }));
+    const summary = diff.mountDiffSummary(
+      slot,
+      { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } },
+      mb,
+      { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} },
+    );
+    await frames();
+    const after = places();
+    const rows = (shape) => JSON.stringify({ rows: shape.rows, tabBar: shape.tabBar });
+    const headerLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+    const toggle = slot.querySelector(".diff-summary");
+    summaryMoves = {
+      moved: rows(before) === rows(after) ? null : { before, after },
+      rowBefore,
+      rowAfter: Math.round(box(slot).height * 100) / 100,
+      toggleHeight: toggle ? Math.round(box(toggle).height * 100) / 100 : null,
+      left: Math.round((box(slot).left - headerLeft) * 100) / 100,
+      text: toggle?.textContent ?? null,
+    };
+    summary.dispose();
+  }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
   // the right end of the author's row (mb-cf0l): one stack, "2/3", or two, "4/4" and "2/2".
   // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
@@ -382,6 +431,7 @@ const MEASURE = `async (name, change, tab, width) => {
     offers: header.querySelectorAll(".github-pull-offer").length,
     mergeShown,
     chipMoves,
+    summaryMoves,
     // How far any of the header's content ends past its content box, where it is not
     // clipped by a box that cuts it short, and which element it is; and the pane's own
     // sideways scroll.
@@ -919,6 +969,26 @@ async function main() {
                 `${where}: the merge's chips and arrow show whole on their line`,
                 shape.mergeShown >= 0.99,
                 String(shape.mergeShown),
+              );
+            }
+            if (shape.summaryMoves !== null) {
+              const moves = shape.summaryMoves;
+              check(
+                `${where}: the Diff summary arriving moves nothing in the header`,
+                moves.moved === null,
+                JSON.stringify(moves.moved),
+              );
+              check(
+                `${where}: the Diff summary keeps its row's height, on one line`,
+                Math.abs(moves.rowBefore - moves.rowAfter) <= 0.5 &&
+                  moves.toggleHeight !== null &&
+                  moves.toggleHeight <= moves.rowBefore + 0.5,
+                JSON.stringify(moves),
+              );
+              check(
+                `${where}: the Diff summary starts on the header's content edge`,
+                Math.abs(moves.left) <= 0.5,
+                JSON.stringify(moves),
               );
             }
             if (shape.chipMoves !== null) {

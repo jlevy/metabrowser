@@ -6626,6 +6626,23 @@ pre.code-block.metabrowser-source-lines > code {
   pointer-events: auto;
 }
 
+/* The commit's Diff summary, where its change stats were (mb-pb35): the diff plugin draws its
+   header and tree here (`.diff-summary`, builtin_plugins/diff/styles.css), above the body and
+   the diff, as the summary sits at the top of a pull request's page. The tree opens under it. */
+.git-commit-diff-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+/* No diff, as when its comparison failed: the place takes no room. */
+.git-commit-diff-summary:empty {
+  display: none;
+}
+.git-commit-diff-summary > .diff-summary-body {
+  align-self: stretch;
+}
+
 .git-commit-change-stats {
   display: grid;
   justify-items: start;

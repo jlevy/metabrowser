@@ -62,6 +62,9 @@ They land as one native GitHub stack of nineteen pull requests on `main`:
     from 0.12.0 (`mb-vg55`).
 19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
     age, and its second the whole title to the pane’s edge (`mb-lkkt`).
+20. **Diff summary at the top:** a commit’s page and a pull request’s page each show one
+    Diff summary, collapsed, at the page’s top, whose header is the counts of files and
+    lines, in place of a commit’s stats block and of the summary in Changes (`mb-pb35`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -519,6 +522,24 @@ against 5 ms for the ungrouped tree.
   dropped the prefetch, each refresh during the load discarded it and began again, and
   the two prefetches the open menu ran at once each took twice as long as one.
 
+### Diff Summary at the Top
+
+The owner’s report of 2026-11-15: a commit showed its counts twice, once as `M`, `A`,
+and `D` file counts with line totals, and once in its diff; the counts belong in the
+toggleable summary, at the top of both the commit page and the pull request page, not in
+the Changes tab.
+
+- **One summary, one wording:** each page has one Diff summary, whose header’s words are
+  the shared model’s (`describeChanges`); the commit summary’s change stats remain only
+  in the hover summary, which has no diff.
+- **Placement:** a commit’s diff draws its summary in the commit summary’s place
+  (`summaryHost`), for one file too; a pull request’s page draws its own as the header’s
+  last row on every tab, through the diff view’s `summary`, from the comparison the
+  prefetch reads or Changes read, and its Changes diff draws none (`summary: false`).
+- **Nothing moves:** the row is held at a row’s height from first paint and the
+  summary’s header is one line, cut short at its end; measured in Chrome 152 from 980 to
+  320 px, the summary arriving moved no row and not the tab bar.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -676,6 +697,14 @@ against 5 ms for the ungrouped tree.
   every width, its author giving way first and its place after; measured in Chrome from
   420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
   stylesheet’s tests.
+
+### Phase 21: Diff Summary at the Top (pull request 21)
+
+- [ ] `mb-pb35`: one Diff summary at the top of the commit page and of the pull request
+  page, on every tab; the commit page’s stats block removed; the pull request header’s
+  last row held from first paint and measured in Chrome to move nothing; pinned in the
+  diff view, git panel, pull page mount, and prefetch sessions, the prefetch golden, the
+  header Chrome test, and the design vocabulary.
 
 ## Testing Strategy
 

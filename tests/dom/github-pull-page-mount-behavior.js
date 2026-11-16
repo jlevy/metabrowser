@@ -1244,7 +1244,7 @@ async function headerShape(page) {
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta branches opened labels status"]),
+    new Set(["title meta branches opened labels status summary"]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.
@@ -1264,6 +1264,114 @@ async function headerShape(page) {
   title.events.get("pointerenter")();
   assert.equal(title.dataset.tipText, undefined, "a whole two-line title has no tooltip");
   handle.dispose();
+}
+
+// The pull request's Diff summary is the header's last row, on every tab (mb-pb35). Its row
+// is held, empty, from first paint; the page draws the summary in it from the comparison the
+// prefetch reads, through the diff view's `summary`, once per comparison; the Changes diff
+// draws none of its own (`summary: false`) and hands the page what it read
+// (`onDocument`), which draws nothing more for the same comparison; on Checks the
+// comparison is read for it too; and the page's disposal disposes it. The summary's own
+// header and tree are the diff plugin's, pinned in tests/dom/diff-summary-session.js.
+async function headerSummary(page) {
+  /** @param {string} tab */
+  const mount = async (tab) => {
+    const tasks = [];
+    globalThis.document = {
+      visibilityState: "visible",
+      addEventListener() {},
+      removeEventListener() {},
+      createElement: (tag) => new Element(tag),
+      importNode: () => new Element("svg"),
+    };
+    globalThis.window = {
+      location: { pathname: `/pull/7${tab ? `/${tab}` : ""}` },
+      setTimeout: (callback) => {
+        tasks.push(callback);
+        return Symbol();
+      },
+      clearTimeout() {},
+    };
+    globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
+    const raw = { comparison: "read" };
+    const steps = { summaries: [], renders: [] };
+    const diffView = {
+      prefetch: async () => raw,
+      summary: async (slot, ctx) => {
+        steps.summaries.push(ctx.raw === raw ? "the comparison read" : "another");
+        const header = new Element("button");
+        header.className = "diff-summary diff-summary-toggle";
+        slot.append(header);
+        return { dispose: () => steps.summaries.push("disposed") };
+      },
+      render: async (_host, ctx) => {
+        steps.renders.push({ summary: ctx.summary, onDocument: typeof ctx.onDocument });
+        ctx.onDocument?.(raw);
+        return { dispose() {} };
+      },
+    };
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: 7,
+        tab,
+        reader: { initial: { etag: null, body: recorded.current.body }, fetchAfterMs: 60_000 },
+      },
+      {
+        perf,
+        ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+        ensureKindAssets: async () => {},
+        getRegisteredView: () => diffView,
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/", async open() {} },
+        sourceKind: () => "filesystem",
+        icons: { toggle: "" },
+      },
+    );
+    await settle();
+    const row = () => container.querySelector(".github-pull-summary");
+    const idle = () => {
+      for (const task of tasks.splice(0)) {
+        task();
+      }
+    };
+    return { handle, row, steps, idle };
+  };
+
+  const conversation = await mount("");
+  const header = conversation.row().parentNode;
+  assert.equal(header.children.at(-1), conversation.row(), "the summary ends the header");
+  assert.ok(conversation.row().classes.has("metabrowser-diff-host"), "with the diff's styles");
+  assert.equal(conversation.row().children.length, 0, "held, empty, until the comparison is read");
+  conversation.idle();
+  await settle();
+  assert.deepEqual(conversation.steps.summaries, ["the comparison read"]);
+  assert.equal(conversation.row().children.length, 1, "drawn in the row the header held");
+  window.location.pathname = "/pull/7/files";
+  conversation.handle.land({ tab: "files" });
+  await settle();
+  assert.deepEqual(conversation.steps.renders, [{ summary: false, onDocument: "function" }]);
+  assert.deepEqual(conversation.steps.summaries, ["the comparison read"], "drawn once");
+  assert.equal(conversation.row().children.length, 1, "and kept on Changes");
+  conversation.handle.dispose();
+  assert.deepEqual(conversation.steps.summaries, ["the comparison read", "disposed"]);
+
+  const checks = await mount("checks");
+  checks.idle();
+  await settle();
+  assert.deepEqual(checks.steps.summaries, ["the comparison read"], "read for it on Checks too");
+  checks.handle.dispose();
+
+  const changes = await mount("files");
+  await settle();
+  assert.deepEqual(changes.steps.renders, [{ summary: false, onDocument: "function" }]);
+  assert.deepEqual(changes.steps.summaries, ["the comparison read"], "from what Changes read");
+  assert.equal(changes.row().children.length, 1);
+  changes.handle.dispose();
 }
 
 async function run() {
@@ -1876,6 +1984,7 @@ async function run() {
   await checkRows(page);
   await headerAges(page);
   await headerShape(page);
+  await headerSummary(page);
   const tabKeySteps = await tabKeys(page);
   for (const label of [
     "githubPull:decode",
@@ -1899,6 +2008,7 @@ async function run() {
     checkRows: true,
     headerAges: true,
     headerShape: true,
+    headerSummary: true,
     tabKeys: tabKeySteps,
   };
 }
