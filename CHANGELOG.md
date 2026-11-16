@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Code keeps one monospace face for the life of a window, and code in a Markdown
+  document matches it.
+  Highlighted source, diffs, JSON and YAML, and log payloads changed face once any
+  Markdown file had been opened, and Markdown code never matched them: on a Mac with
+  Microsoft Office, Chrome and Arc drew source in Consolas and Markdown code in Menlo,
+  and the macOS app drew source in Menlo and Markdown code in SF Mono.
+  Both now read one stack, which draws SF Mono in the macOS app and Safari, and Menlo in
+  Chrome and Arc unless you installed SF Mono.
+  The cause also changed printing: once a document had been shown, a printout took
+  KPress’s 0.7 in page margin instead of Metabrowser’s 0.65 in, which now always holds.
+  Plugin authors: `--font-sans` and `--font-mono` keep the shell’s values after a KPress
+  document renders, and the document’s code draws in the same stack as `--font-mono`.
+
 - The macOS app’s window is no longer sent gzipped answers, and the application’s own
   scripts, stylesheets, and fonts are compressed once rather than on every request.
   Compressing cost the server time on every answer, on the thread every request waits
