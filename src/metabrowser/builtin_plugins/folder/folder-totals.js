@@ -438,7 +438,8 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   }
 
   function render() {
-    mb.tooltip.hide();
+    // Its own segments' tooltip, and no other surface's (mb-alff).
+    mb.tooltip.hide(root);
     const model = buildFolderTotalsModel(currentTotals, mb);
     if (model.state === "pending") {
       table = null;
@@ -510,7 +511,7 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   }
 
   function dispose() {
-    mb.tooltip.hide();
+    mb.tooltip.hide(root);
     root.replaceChildren();
   }
 

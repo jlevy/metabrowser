@@ -4360,14 +4360,28 @@ moved.
 
 Pointer hover may open supplementary tooltip detail.
 Pointer leave or any focus transition dismisses it, and focus alone never opens or
-retains it. The focus a press on the folder’s name gives it is the click itself, not a
-transition, so it leaves the name’s tooltip as the pointer has it ([Home](#home)). A
-view’s `mb.tooltip.hide()` takes away a tooltip of its own content, never one in the
-nav’s header, which no view draws.
-This contract applies to delegated `data-tip-text` tooltips and rich navigation tooltips
-such as Git commit summaries.
+retains it. This contract applies to delegated `data-tip-text` tooltips and rich
+navigation tooltips such as Git commit summaries.
 Tooltip content therefore cannot be the only source of an accessible name, instruction,
 or state.
+
+**Two focuses are not transitions**, and leave the tooltip as the pointer has it
+(`hideTooltipOnFocus` in `static/app.js`):
+
+- The focus a press on the folder’s name gives it is the click itself ([Home](#home)).
+- Focus put back where it was.
+  A rebuild that replaces the focused control focuses its replacement, as the Files
+  filter bar does when new tallies arrive.
+  When the element that last had focus has left the document, and no key or pointer
+  press of the reader’s has come since, the focus that follows is that repair (mb-alff).
+  A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
+  Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
+  gives is focus moving and puts the tooltip away.
+  The repair still puts away a tooltip whose own anchor the rebuild removed, since that
+  tooltip would never hear the pointer leave.
+  Before this rule, the filter bar’s rebuild put away a tree row’s tooltip, waiting or
+  shown, under a pointer that had not moved, and nothing brought the tooltip back until
+  the pointer left the row.
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -4396,6 +4410,35 @@ and small, that is the only question the tooltip exists to answer.
 no room below, and clamps to the viewport.
 Calling `show` again with the same anchor is how a surface says “still here”: it cancels
 a pending hide and leaves the tooltip exactly where it is.
+
+### A Surface Puts Away Only Its Own Tooltip
+
+**A surface that repaints or is disposed puts away the tooltip it showed, and no
+other.** `mb.tooltip.hide(within)` hides the tooltip when its anchor is `within` or
+inside it, whether the tooltip is up or still waiting out its delay.
+It also hides a tooltip whose anchor has left the document: that tooltip belongs to no
+surface on the page and would never hear the pointer leave, so a view’s `hide(root)` at
+disposal still puts its own away after its markup is gone.
+A tooltip shown with no anchor is inside no element, so only a bare `hide()` puts it
+away. `MetabrowserTooltip.hide(within)` is the shell’s form of the same call.
+Without `within`, `hide()` puts away whatever tooltip there is, which is what a pointer
+leaving a surface means, but one in the nav’s header: the header is the shell’s chrome,
+which no view draws, so a view’s hide never takes the folder’s name’s tooltip
+([Home](#home)).
+
+The page has one tooltip, so a surface that calls `hide()` to clear its own puts away
+another surface’s too.
+The folder view’s totals drew again whenever the folder’s sums arrived, and each draw
+called `hide()`. A reader hovering a Files tree row then saw the row’s tooltip vanish,
+or never appear, when the folder view beside it updated (mb-alff).
+The folder view’s totals and treemap and the Commits history hide within their own
+element when they repaint or are disposed.
+`tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
+`tests/dom/files-tab-chrome.mjs` checks it in Chrome on a tree row while the totals
+redraw and the filter bar rebuilds.
+`tests/dom/folder-totals-view-behavior.js`, `tests/dom/folder-plugin-behavior.js`,
+`tests/dom/treemap-not-indexed-session.js` and `tests/dom/git-panel-behavior.js` check
+that each of those surfaces passes its own element.
 
 ### Shared Overlay Lifecycle
 
