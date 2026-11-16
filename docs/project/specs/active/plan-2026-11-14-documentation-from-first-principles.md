@@ -269,15 +269,21 @@ switcher shows, centered above a centered title.
   together. Shown at 192 pixels, it stays sharp on high-density screens.
   `AppIcon/README.md` adds the file to its table.
 - **Relative paths:** GitHub and Metabrowser itself both render an in-tree image.
-  Metabrowser’s inert Markdown keeps only in-tree images, and keeps `align` only on
-  table cells, so it shows the icon left-aligned.
-  The raw HTML has two more costs in Metabrowser, accepted for the centered block on
-  GitHub: the dropped `align` attributes are reported as two `html_sanitized_attribute`
-  warnings, so the README page shows a Diagnostics disclosure, and the rendered-Markdown
-  diff, which refuses raw HTML, shows no rendered diff of a README change.
-  Keeping presentational `align` on `p` and `h1` is tracked as mb-4cwy. PyPI, which
-  publishes the README as the package description, shows the alt text instead, as it
-  does for today’s screenshot (see Decisions).
+  In a served folder, KPress keeps the presentational `align` on `p` and `h1`, so
+  Metabrowser shows the block centered, as GitHub does, and reports nothing: measured
+  2026-11-16 with KPress 0.3.6, `/api/kpress/render` on this README answers the two
+  `align="center"` tags and empty `diagnostics` and `sanitizer_diagnostics`, so the page
+  has no Diagnostics disclosure.
+  With active content off, on a served mirror or a folder served with `--untrusted`,
+  Metabrowser’s inert Markdown keeps only in-tree images and keeps `align` only on table
+  cells, so it shows the icon left-aligned and without its `width`, still with no
+  diagnostics. One more cost is accepted for the centered block on GitHub: the
+  rendered-Markdown diff refuses raw HTML, so a README change has no rendered diff
+  (measured the same day, a one-word README change projects as `unsupported`, and the
+  same change under a Markdown title as `ready`). The inert profile’s `align` and the
+  projection are tracked as mb-4cwy. PyPI, which publishes the README as the package
+  description, shows the alt text instead, as it does for today’s screenshot (see
+  Decisions).
 
 **Outline:**
 
