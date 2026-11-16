@@ -25,7 +25,8 @@
 // - one rhythm (mb-w7rt): every two consecutive events are the timeline's one token apart,
 //   a card by its border and a commit by the glyphs of its text nodes, card to card, card to
 //   commit, commit to card, and commit to commit alike, and roomier than the 12 px cards
-//   had;
+//   had, and anything else below an event, Review comments, keeps the page's gap and its
+//   own margin;
 // - every card head's avatar, or the empty slot of one for an author without one, is on
 //   the line, and every head's name starts where the commits' subjects do;
 // - one line joins every two adjacent events, at one x, from a card's edge or a commit's
@@ -363,9 +364,12 @@ const MEASURE = `async (arrangement, width, theme) => {
             boxed: getComputedStyle(chip).borderTopStyle !== "none",
           }))
         : [];
+    } else {
+      item.margin = parseFloat(getComputedStyle(node).marginBlockStart);
     }
     return item;
   });
+  const gap = parseFloat(getComputedStyle(body()).rowGap);
   const rhythm = parseFloat(getComputedStyle(body()).getPropertyValue("--github-pull-rhythm"));
   window.__dispose = () => handle.dispose();
   return {
@@ -374,6 +378,7 @@ const MEASURE = `async (arrangement, width, theme) => {
     arrangement,
     timelineAsked,
     waited,
+    gap,
     rhythm,
     navSize,
     items,
@@ -593,6 +598,22 @@ function hold(measured, image) {
       `${where}: ${pair}, "${item.label}" to "${next.label}", show the rhythm between them`,
       space >= rhythm - 1 && space <= rhythm + (underHash ? HASH_LINE_SPARE : 1),
       `${round(space)} against ${rhythm} px${underHash ? ", under a line of its hash" : ""}`,
+    );
+  }
+  // Anything else keeps the page's gap above it, and its own margin: the rhythm is the
+  // events' alone, as it is the Conversation's and not the Files or Checks tab's. Review
+  // comments stands 28 px below a card, as before the rhythm; with the rhythm as the body's
+  // gap it stood 36 px below, in Chrome 152.
+  for (const [index, item] of items.entries()) {
+    const next = items[index + 1];
+    if (!isEvent(item) || next === undefined || isEvent(next)) {
+      continue;
+    }
+    const between = next.box.top - item.box.bottom;
+    check(
+      `${where}: "${next.label}" keeps the page's gap and its own margin below "${item.label}"`,
+      measured.gap < rhythm && Math.abs(between - (measured.gap + next.margin)) < 0.5,
+      `${round(between)} against ${measured.gap} and ${next.margin} px`,
     );
   }
   const shown = spaces.map(([, space]) => space);

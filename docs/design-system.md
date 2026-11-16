@@ -1579,6 +1579,11 @@ a commit. It is said the way a card head says a comment:
   The space is what the reader sees: a card’s border, and a commit’s text, whose row is
   its line. 20 px is the space between two commits’ text that the owner called good; the
   12 px between cards read as crowded.
+  The rhythm is the Conversation’s alone, the space above each of its events, whatever
+  stands before it. The Files and Checks tabs keep `--github-pull-gap` (12 px) between
+  their notices and what they show, and a section or note below an event keeps that gap
+  and its own margin, so Review comments stands 28 px below a card, as it did before the
+  rhythm.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
   center of the card heads’ avatars and their empty slots.
@@ -1597,24 +1602,35 @@ head’s.
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
 and the pixels painted, with one head drawn with only its slot.
-In Chrome 152 every pair of events is 20 px apart, card border or commit text, in both
-themes and at 980 and 420 px.
-Before the rhythm, two cards were 12 px apart, a card and a commit 23.5 px, and two
-commits 20 px; before a run of commits kept a room outside it (mb-xz1r), a card and a
-commit were 16 px apart.
+In Chrome 152 every two events’ boxes are 20 px apart, in both themes and at 980 and 420
+px, and their text 20 to 21 px apart, a commit’s read from its text nodes.
+At 420 px a commit row that wraps so that its hash ends it on a line of its own shows
+22.5 px below it: the hash’s smaller monospace face leaves 2.5 px of its line under its
+glyphs.
+Review comments stands 28 px below a card, which that test holds; with the rhythm
+as the body’s gap it stood 36 px below.
+Measured once outside that test, in Chrome 152, the Files and Checks tabs’ notices are
+12 px from what they show, as before the rhythm; with the rhythm as the body’s gap they
+were 20 px. Before the rhythm, two cards were 12 px apart, a card and a commit 23.5 px,
+and two commits 20 px; before a run of commits kept a room outside it (mb-xz1r), a card
+and a commit were 16 px apart.
 Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
 px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
 joined the events.
 
 In the macOS app’s web view (WebKit 21624.2.5.11.8 on macOS 26.5.2), run through the
 WebKit gate’s `webkit-driver measure` (`apps/macos/webkit-gate`) on the same page and
-layouts, every one of that test’s layout checks passes in both themes, apart from its
-pixel reads, which the driver cannot make: an event card computes to `overflow-x: clip`
-and `overflow-y: visible`, and in every gap between joined events WebKit hit-tests the
+layouts at the commit that added the rhythm (4a46ec4), that test’s type, spacing, and
+line checks as they were then pass in both themes, apart from its pixel reads, which the
+driver cannot make: an event card computes to `overflow-x: clip` and
+`overflow-y: visible`, and in every gap between joined events WebKit hit-tests the
 line’s x to the following event’s connector, which it would not do for a clipped one,
 and 9 px beside it to the page.
 Each node sits 0.5 px below its first line’s middle there, as in Chrome, and every pair
 of events is 20 px apart, as in Chrome.
+What the test holds since has not run in WebKit: the heading checks, the spacing read
+from a commit’s text nodes, the break above Review comments, and the rhythm as a margin
+above each event rather than the body’s gap.
 
 ### Chrome
 
