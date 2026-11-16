@@ -414,12 +414,12 @@
      and the ref selector (docs/design-system.md, "Pull Request Numbers";
      mb-vrvs). */
   --pull-number-weight: var(--weight-bold);
-  /* A count's numeral in a count summary, "8" of "8 changed files": bold, while the
+  /* A count's numeral in a count summary, "8" of "8 files changed": bold, while the
      words around it keep their line's weight, so the counts read at a glance. Every
-     count numeral takes this token, `.summary-number`, `.git-commit-file-status`, and
-     `.heading-tally-figure`, and not --pull-number-weight, which is a pull request's
-     number's (docs/design-system.md, "Count Summaries Bold Their Numbers" and "Heading
-     Tallies"; mb-roa9; test_count_summaries_bold_their_numbers_through_one_token). */
+     count numeral takes this token, `.summary-number` and `.heading-tally-figure`, and
+     not --pull-number-weight, which is a pull request's number's (docs/design-system.md,
+     "Count Summaries Bold Their Numbers" and "Heading Tallies"; mb-roa9;
+     test_count_summaries_bold_their_numbers_through_one_token). */
   --count-numeral-weight: var(--weight-bold);
 
   /* All-caps label style (shared by tabs, table headers, stat labels,
@@ -6508,7 +6508,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
-/* A number in a count summary, "8 changed files (8 modified)", "15,458 files (324.1 MB)",
+/* A number in a count summary, "8 files changed · 8 M", "15,458 files (324.1 MB)",
    "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
    line's weight, so the counts read at a glance. It sets the weight alone: the number
    keeps its line's ink, muted in a muted half, and its size. Every count summary in the
@@ -6517,6 +6517,54 @@ pre.code-block.metabrowser-source-lines > code {
    Summaries Bold Their Numbers"; mb-roa9). */
 .summary-number {
   font-weight: var(--count-numeral-weight);
+}
+
+/* A count summary's punctuation: the " · " that sets its groups apart and the comma
+   between a list's entries, as in the Diff summary's "19 files changed · 10 A, 5 D, 4 M ·
+   +1,234 −567". Muted, so the numbers, the status letters, and the words read and the marks
+   recede; it sets the ink alone, so a mark keeps its line's size and weight. Every count
+   summary puts each of its marks in one (formatters.js, countPartsHtml and countPartsNodes;
+   docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-vb51). */
+.summary-punctuation {
+  color: var(--muted);
+}
+
+/* A brief change line, "10 A, 5 D, 4 M · +1,234 −567": a change set's statuses and line
+   totals, the one component every surface that says them in brief draws (formatters.js,
+   changeLine and changeLineNodes; docs/design-system.md, "Brief Change Line"; mb-9ekj): the
+   Diff summary's header after its "N files changed · ", a commit's hover card, and a
+   commit page's totals line. Its statuses and the muted dot after them are one item
+   (`.change-line-group`), so a line that wraps breaks after the dot and no line starts with
+   one, and one 6 px gap, the Diff summary's, spaces the dot on both sides. Its line totals
+   are the inline change stats, bold, in their statuses' inks. It sets no size or ink of its
+   own: it takes its line's. */
+.change-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+}
+
+.change-line-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
+}
+
+.change-line-stats {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.change-line-stats > .diff-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+
+.change-line-stats > .diff-stat-del {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
 }
 
 /* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",
@@ -6716,42 +6764,31 @@ pre.code-block.metabrowser-source-lines > code {
   align-self: stretch;
 }
 
+/* A commit's changes in its hover card, in the Diff summary's words and paint: "32 files
+   changed · 4 A, 28 M · +1,921 −160" (git-panel.js, renderCommitChangeStats;
+   docs/design-system.md, "Git Commit Summary"). Its numbers are the shell's bold
+   `.summary-number` in the line's ink, its letters the status primitive at the line's
+   weight, its commas and dots `.summary-punctuation`, and its line totals the inline change
+   stats: its file count, then the brief change line (`.change-line`). Its groups are items
+   of one line, spaced as the Diff summary's are, and each dot is one item with the group
+   before it, so a line that wraps breaks after a dot. */
 .git-commit-change-stats {
-  display: grid;
-  justify-items: start;
-  gap: 4px;
   margin-top: 6px;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.git-commit-file-statuses,
-.git-commit-line-stats {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.git-commit-stat-unit {
   color: var(--text);
   font-size: var(--body-font-size);
 }
 
-/* "28 M": a count summary's number, at a count's numeral weight (docs/design-system.md,
-   "Count Summaries Bold Their Numbers"), with its status letter, the status primitive. */
-.git-commit-file-status {
-  color: var(--text);
-  font-variant-numeric: var(--tabular-numerals);
-  font-weight: var(--count-numeral-weight);
-  white-space: nowrap;
+.git-commit-change-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
 }
 
-.git-commit-file-status-added {
-  color: var(--status-success);
-}
-.git-commit-file-status-deleted {
-  color: var(--status-error-strong);
+.git-commit-change-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
 }
 
 .git-commit-summary .git-commit-age {

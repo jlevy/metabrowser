@@ -312,45 +312,68 @@
   }
 
   /**
+   * A commit's file families in its hover card, in the Diff summary's order, added, deleted,
+   * then modified (changed-files-tree.js, `STATUS_ORDER`), each with its letter, the badge
+   * its rows carry, and its word. They are Git's, which the server counts before it bounds
+   * the commit's list of files: A holds added and copied files, D deleted ones, and M
+   * modified, renamed, and type-changed ones.
+   */
+  const COMMIT_FILE_FAMILIES = Object.freeze([
+    Object.freeze({ key: "files_added", status: "added", letter: "A", word: "added" }),
+    Object.freeze({ key: "files_deleted", status: "deleted", letter: "D", word: "deleted" }),
+    Object.freeze({ key: "files_modified", status: "modified", letter: "M", word: "modified" }),
+  ]);
+
+  /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
+  const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
+  /** The commit totals line's dot, which says a comma in its place, as a line has no name. */
+  const COMMIT_TOTALS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
+
+  /**
+   * A commit's changes in its hover card, in the Diff summary's words and paint
+   * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
+   * −160", through the same parts (formatters.js, `changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the brief change line after the file
+   * count), so each number is bold in the line's ink, each status its letter in
+   * its status's ink at the line's weight, and the commas and dots muted. A family no file
+   * has is left out, and a count the commit does not know is "?". Each dot is one item with
+   * the group before it, so a line that wraps breaks after a dot. A screen reader is told
+   * the line in words, "32 files changed: 4 added, 28 modified; 1,921 lines added, 160
+   * deleted", in place of its letters and marks.
+   *
    * @param {Record<string, unknown>} stats
    * @returns {string}
    */
   function renderCommitChangeStats(stats) {
-    const fileStatuses = [
-      [stats.files_modified ?? "?", "M", "modified", "git-commit-file-status-modified"],
-      [stats.files_added ?? "?", "A", "added", "git-commit-file-status-added"],
-      [stats.files_deleted ?? "?", "D", "deleted", "git-commit-file-status-deleted"],
-    ]
-      .filter(([count]) => count !== 0)
-      .map(([count, code, label, className]) => {
-        const fileLabel = count === 1 ? "file" : "files";
-        return (
-          `<span class="git-commit-file-status ${className}"` +
-          ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
-          `${escapeHtml(String(count))} <span class="file-change-status" data-file-status="${label}">${code}</span></span>`
-        );
-      })
-      .join("");
-    const filesChanged = stats.files_changed ?? "?";
-    const fileUnit = filesChanged === 1 ? "file" : "files";
-    const additions = stats.additions ?? "?";
-    const deletions = stats.deletions ?? "?";
-    const lineTotal =
-      typeof additions === "number" && typeof deletions === "number" ? additions + deletions : null;
-    const lineUnit = lineTotal === 1 ? "line" : "lines";
+    const formatters = window.MetabrowserFormatters;
+    /** @param {unknown} value */
+    const known = (value) => (typeof value === "number" ? value : null);
+    const entries = COMMIT_FILE_FAMILIES.map(({ key, ...family }) => ({
+      ...family,
+      count: known(stats[key]),
+    })).filter((entry) => entry.count !== 0);
+    const said = formatters.changeSummary(
+      {
+        files: known(stats.files_changed),
+        additions: known(stats.additions),
+        deletions: known(stats.deletions),
+        exact: true,
+      },
+      entries,
+      formatters.formatInteger,
+    );
+    /** @param {string} className @param {MetabrowserCountParts} parts */
+    const group = (className, parts) =>
+      '<span class="git-commit-change-group">' +
+      `<span class="${className}">${formatters.countPartsHtml(parts)}</span>` +
+      `${formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])}</span>`;
     return (
       '<div class="git-commit-change-stats">' +
-      '<div class="git-commit-file-statuses" aria-label="File changes">' +
-      `${fileStatuses}<span class="git-commit-stat-unit">${fileUnit}</span>` +
-      "</div>" +
-      '<div class="git-commit-line-stats" aria-label="Line changes">' +
-      `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
-      `+${escapeHtml(String(additions))}</span>` +
-      `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
-      `−${escapeHtml(String(deletions))}</span>` +
-      `<span class="git-commit-stat-unit">${lineUnit}</span>` +
-      "</div>" +
-      "</div>"
+      `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+      group("git-commit-change-files", said.filesParts) +
+      formatters.changeLineHtml(said.line) +
+      "</span></div>"
     );
   }
 
@@ -377,12 +400,18 @@
   }
 
   /**
-   * The commit's totals as one line, "35 changed files +1,234 −3,423", worded as a diff's line
+   * The commit's totals as one line, "35 files changed · +1,234 −3,423", worded as a diff's line
    * is where its tree of files did not load (`plainTotals`, builtin_plugins/diff/diff-model.js):
    * what the Diff summary's place says until the commit's diff draws the summary there, and
    * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
    * comparison fails, so the page always states its counts (A6 of review A on #470). Empty
-   * where the detail has no count of files, and the place then takes no room.
+   * where the detail has no count of files, and the place then takes no room. Its words and
+   * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the totals): the file count bold, and the dot
+   * muted, one item with the count before it, and said as a comma to a screen reader, as a
+   * line has no name in words. The spaces around the dot are written, so the line reads
+   * "35 files changed · +1,234 −3,423" without the diff plugin's stylesheet too, whose flex
+   * line renders none of them (B3 of review B on #479).
    *
    * @param {Partial<MetabrowserGitCommitStats>} stats
    * @returns {string}
@@ -392,18 +421,13 @@
     if (totals === null) {
       return "";
     }
-    /** @param {number} value */
-    const format = (value) => window.MetabrowserFormatters?.formatInteger?.(value) ?? String(value);
-    /** @param {number | null} value */
-    const count = (value) => (value === null ? "?" : format(value));
+    const formatters = window.MetabrowserFormatters;
+    const said = formatters.changeSummary(totals, [], formatters.formatInteger);
     return (
-      '<div class="diff-summary">' +
-      `<span class="diff-summary-files">${escapeHtml(format(totals.files))} changed ` +
-      `${totals.files === 1 ? "file" : "files"}</span> ` +
-      '<span class="diff-summary-stats">' +
-      `<span class="diff-stat-add">+${escapeHtml(count(totals.additions))}</span> ` +
-      `<span class="diff-stat-del">−${escapeHtml(count(totals.deletions))}</span>` +
-      "</span></div>"
+      '<div class="diff-summary"><span class="diff-summary-group">' +
+      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span> ` +
+      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span> ` +
+      `${formatters.changeLineHtml(said.line)}</div>`
     );
   }
 
@@ -458,7 +482,8 @@
     // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
     // diff below draws it here, its header the commit's file and line totals and its tree
     // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
-    // place says the commit's totals. The hover summary keeps its two rows.
+    // place says the commit's totals. The hover summary says its changes itself, in the Diff
+    // summary's words and paint.
     html += compact
       ? renderCommitChangeStats(stats)
       : `<div class="git-commit-diff-summary metabrowser-diff-host">${renderCommitTotals(stats)}</div>`;

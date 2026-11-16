@@ -545,9 +545,34 @@ type MetabrowserFormatterRuntime = Readonly<{
   ): { label: string; className: string };
   ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
-  /** A count summary as markup, each number in `span.summary-number`, the words escaped. */
+  /** What a change set's summary says, in a count summary's parts: "35 files changed · 2 A,
+   *  3 D, 30 M · +1,234 −3,423", its text, and its words for a screen reader. */
+  changeSummary(
+    totals: {
+      files: number | null;
+      additions: number | null;
+      deletions: number | null;
+      exact: boolean;
+    },
+    entries: MetabrowserChangeLineInput["statuses"],
+    formatCount: (count: number) => string,
+  ): MetabrowserChangedFilesSummary;
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from statuses and line totals. */
+  changeLine(
+    change: MetabrowserChangeLineInput,
+    formatCount: (count: number) => string,
+  ): MetabrowserChangeLine;
+  /** A brief change line as nodes: its one `span.change-line`. */
+  changeLineNodes(
+    doc: Document,
+    line: MetabrowserChangeLine,
+    options?: MetabrowserChangeLineOptions,
+  ): Array<Node | string>;
+  /** A brief change line as markup. */
+  changeLineHtml(line: MetabrowserChangeLine, options?: MetabrowserChangeLineOptions): string;
+  /** A count summary as markup, each kind of part in its one class, the words escaped. */
   countPartsHtml(parts: MetabrowserCountParts): string;
-  /** A count summary as nodes, each number in `span.summary-number`, the words as text. */
+  /** A count summary as nodes, each kind of part in its one class, the words as text. */
   countPartsNodes(doc: Document, parts: MetabrowserCountParts): Array<Node | string>;
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
@@ -1409,6 +1434,21 @@ type MetabrowserSdk = {
   /** A commit's or pull request's title as nodes for its element: a conventional-commit
    *  prefix in `span.title-prefix`, at regular weight, then the rest. */
   titleNodes(title: string): Array<Node | string>;
+  /** A count summary as nodes for its element, painted as the shell paints every count
+   *  summary: each number in `span.summary-number`, each mark in `span.summary-punctuation`,
+   *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,
+   *  each status its letter in `span.file-change-status`, and the words as text. */
+  countPartsNodes(parts: MetabrowserCountParts): Array<Node | string>;
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from a change set's statuses and
+   *  line totals, in the shell's number format: the one component for one
+   *  (docs/design-system.md, "Brief Change Line"). */
+  changeLine(change: MetabrowserChangeLineInput): MetabrowserChangeLine;
+  /** A brief change line as nodes for its element, painted as the shell paints every one: its
+   *  one `span.change-line`. */
+  changeLineNodes(
+    line: MetabrowserChangeLine,
+    options?: MetabrowserChangeLineOptions,
+  ): Array<Node | string>;
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;
@@ -3577,19 +3617,67 @@ declare global {
     | MetabrowserChangedFilesFileRow;
 
   /**
-   * A count summary in its parts, one shape for every count summary: the words as strings,
-   * and each number as `{number}`, which is painted bold. "35 changed files" is
-   * `[{number: "35"}, " changed files"]`, and its text is the parts joined.
+   * One part of a count summary (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers"): words as a string, in the line's ink and weight; a number as `{number}`,
+   * painted bold (`.summary-number`); a list's punctuation, the comma between its entries,
+   * as `{punctuation}`, and the " · " dot that sets a line's groups apart as `{separator}`,
+   * both painted muted (`.summary-punctuation`), the separator hidden from assistive
+   * technology, with `spoken`, what a screen reader is told in its place (`.visually-hidden`),
+   * on a line whose name does not say it in words; and a file change status as `{status,
+   * letter}`, its letter painted in the status's ink (`.file-change-status`). The shell's
+   * formatters.js paints them all, and a plugin through `metabrowser.countPartsNodes`.
    */
-  type MetabrowserCountParts = ReadonlyArray<string | { readonly number: string }>;
+  type MetabrowserCountPart =
+    | string
+    | { readonly number: string }
+    | { readonly punctuation: string }
+    | { readonly separator: string; readonly spoken?: string }
+    | { readonly status: string; readonly letter: string };
+
+  /**
+   * A count summary in its parts, one shape for every count summary. "35 files changed" is
+   * `[{number: "35"}, " files changed"]`, "2 A, 3 D" is `[{number: "2"}, " ", {status:
+   * "added", letter: "A"}, {punctuation: ","}, " ", {number: "3"}, " ", {status: "removed",
+   * letter: "D"}]`, and its text is the parts joined.
+   */
+  type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
+
+  /**
+   * What a brief change line is built from (formatters.js, `changeLine`): the statuses in
+   * the order shown, each with its letter, word, and count, null where not known, and the
+   * line totals, null where not known.
+   */
+  type MetabrowserChangeLineInput = {
+    statuses: ReadonlyArray<{ status: string; letter: string; word: string; count: number | null }>;
+    additions: number | null;
+    deletions: number | null;
+  };
+
+  /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567" (docs/design-system.md). */
+  type MetabrowserChangeLine = {
+    /** "10 A, 5 D, 4 M", in a count summary's parts; none for no statuses. */
+    statusParts: MetabrowserCountParts;
+    /** "+1,234". */
+    additions: string;
+    /** "−567". */
+    deletions: string;
+    /** "10 A, 5 D, 4 M · +1,234 −567". */
+    text: string;
+    /** "10 added, 5 deleted, 4 modified; 1,234 lines added, 567 deleted". */
+    label: string;
+  };
+
+  /** How a brief change line is painted where it stands. */
+  type MetabrowserChangeLineOptions = {
+    /** What a screen reader is told in the hidden dot's place, on a line with no name in words. */
+    spoken?: string;
+  };
 
   type MetabrowserChangedFilesSummary = {
-    /** "35 changed files", in its parts. */
+    /** "35 files changed", in its parts. */
     filesParts: MetabrowserCountParts;
-    /** "2 added, 3 removed, 30 modified", in its parts; none for no files. */
-    breakdownParts: MetabrowserCountParts;
-    additions: string;
-    deletions: string;
+    /** "2 A, 3 D, 30 M · +1,234 −3,423", the brief change line. */
+    line: MetabrowserChangeLine;
     estimated: boolean;
     text: string;
     label: string;
@@ -3628,7 +3716,7 @@ declare global {
     ): MetabrowserChangedFilesExpansion;
     statusBreakdown(
       statuses: Iterable<string>,
-    ): Array<{ status: string; count: number; word: string }>;
+    ): Array<{ status: string; count: number; word: string; letter: string }>;
     toggleFolder(
       expansion: MetabrowserChangedFilesExpansion,
       row: { ids: ReadonlyArray<string>; expanded: boolean },

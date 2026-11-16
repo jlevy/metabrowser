@@ -8,7 +8,7 @@
 // which a plugin reaches through the SDK, `metabrowser.loadChangedFilesTree()`, and never by
 // a URL into another plugin. Nothing here touches the DOM, so the sessions that pin both
 // trees (tests/dom/github-pull-files-tree-session.js, tests/dom/diff-summary-session.js)
-// run this file as it ships.
+// run this file as it ships, after the shell's formatters.js, as every page loads them.
 //
 // `buildFileTree` makes folders of a list's paths and rolls each folder's line counts up
 // from the files under it; `visibleRows` flattens the folders a reader has open into rows,
@@ -16,7 +16,8 @@
 // file tree does; `isOpen`, `toggleFolder`, `revealPath`, and `expansionFor` are which
 // folders are open; `parentIndex` and `windowRange` are what a tree's keys and its windowed
 // paint ask of its rows; `statusBreakdown`, `describeChanges`, and `changeStats` say what a
-// change set and a row hold, in the words and signs a reader sees.
+// change set and a row hold, in the words and signs a reader sees, a change set in the words
+// every summary of one says (formatters.js, `changeSummary`).
 //
 // A path is text whoever made the change wrote. It is a row's identity and the path a jump
 // is given, a rename's new path; what is painted is the row's `display`, and a name never
@@ -37,6 +38,18 @@
 // same walk.
 
 (() => {
+  /** The page the bundle is installed on: the shell's window, or a session's stand-in. */
+  const page = /** @type {Window} */ (
+    /** @type {unknown} */ (typeof window === "undefined" ? globalThis : window)
+  );
+
+  /**
+   * The shell's formatters (formatters.js), which a page loads before any on-demand bundle:
+   * the words a change set's summary says are theirs.
+   * @returns {Window["MetabrowserFormatters"]}
+   */
+  const formatters = () => page.MetabrowserFormatters;
+
   /**
    * The one-letter badge a file carries in place of an icon, by status. The statuses are
    * GitHub's, which the `pull-files` route answers, and `unmerged`, which a local comparison
@@ -66,13 +79,15 @@
   });
 
   /**
-   * What a change set's header calls each status, in the order it lists them: added,
-   * removed, modified, and renamed first, as the reader asked, then the rest in this order,
-   * then any status this does not know, by name.
+   * What a change set's header calls each status in words, in the order it lists them:
+   * added, deleted, modified, and renamed first, as the reader asked, then the rest in this
+   * order, then any status this does not know, by name. The header shows each status by its
+   * letter, the badge its rows carry, and says these words to a screen reader, as a row
+   * says its status (`STATUS_LABELS`).
    */
   const STATUS_WORDS = Object.freeze({
     added: "added",
-    removed: "removed",
+    removed: "deleted",
     modified: "modified",
     renamed: "renamed",
     copied: "copied",
@@ -611,10 +626,10 @@
 
   /**
    * How many files have each status, in the header's order, leaving out the statuses no
-   * file has.
+   * file has: each with its word, and its letter, the badge its rows carry.
    *
    * @param {Iterable<string>} statuses One per file.
-   * @returns {Array<{status: string, count: number, word: string}>}
+   * @returns {Array<{status: string, count: number, word: string, letter: string}>}
    */
   function statusBreakdown(statuses) {
     /** @type {Map<string, number>} */
@@ -630,20 +645,18 @@
       status,
       count: counts.get(status) ?? 0,
       word: STATUS_WORDS[/** @type {keyof typeof STATUS_WORDS} */ (status)] ?? status,
+      letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",
     }));
   }
 
   /**
    * What a change set's header says, in its parts: the file count, which statuses make it
-   * up, and its line totals, each written with *formatCount*, the shell's number format.
-   *
-   * `filesParts` is "35 changed files" and `breakdownParts` "2 added, 3 removed, 30
-   * modified", or nothing for no files, each in a count summary's parts, so a header paints
-   * the numbers bold and the words regular (docs/design-system.md, "Count Summaries Bold
-   * Their Numbers"); `additions` and `deletions` are "+1,234" and "−3,423", with "?" for a
-   * total the change set does not know; `estimated` is whether the totals are not exact,
-   * which the header says as "(estimated)"; `text` is the whole line as it reads; and
-   * `label` is what a screen reader is told, with the signs said as words.
+   * up, and its line totals, each written with *formatCount*, the shell's number format, in
+   * the words every summary of a change set says (formatters.js, `changeSummary`, which a
+   * commit's hover card says its changes through too). A status is its rows' letter, in the
+   * header's order, and the header leaves out the statuses no file has (`statusBreakdown`):
+   * "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and for a screen reader "35 files
+   * changed: 2 added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted".
    *
    * @param {{files: number, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {Iterable<string>} statuses One per file listed.
@@ -651,36 +664,7 @@
    * @returns {MetabrowserChangedFilesSummary}
    */
   function describeChanges(totals, statuses, formatCount) {
-    /** @type {MetabrowserCountParts} */
-    const filesParts = [
-      { number: formatCount(totals.files) },
-      ` changed ${totals.files === 1 ? "file" : "files"}`,
-    ];
-    /** @type {MetabrowserCountParts} */
-    const breakdownParts = statusBreakdown(statuses).flatMap((entry, at) => [
-      ...(at === 0 ? [] : [", "]),
-      { number: formatCount(entry.count) },
-      ` ${entry.word}`,
-    ]);
-    /** @param {MetabrowserCountParts} parts */
-    const written = (parts) =>
-      parts.map((part) => (typeof part === "string" ? part : part.number)).join("");
-    const files = written(filesParts);
-    const breakdown = written(breakdownParts);
-    const added = totals.additions === null ? "?" : formatCount(totals.additions);
-    const deleted = totals.deletions === null ? "?" : formatCount(totals.deletions);
-    const additions = `+${added}`;
-    const deletions = `${MINUS}${deleted}`;
-    const estimated = !totals.exact;
-    const said = breakdown === "" ? files : `${files} (${breakdown})`;
-    const text = `${said}  ${additions} ${deletions}${estimated ? " (estimated)" : ""}`;
-    const lines =
-      totals.additions === null && totals.deletions === null
-        ? "line counts unknown"
-        : `${added} ${totals.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
-    const named = breakdown === "" ? files : `${files}: ${breakdown}`;
-    const label = `${named}; ${lines}${estimated ? ", estimated" : ""}`;
-    return { filesParts, breakdownParts, additions, deletions, estimated, text, label };
+    return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);
   }
 
   /**
@@ -777,6 +761,6 @@
     windowRange,
   });
   /** @type {{MetabrowserChangedFilesTree?: MetabrowserChangedFilesTree}} */ (
-    /** @type {unknown} */ (typeof window === "undefined" ? globalThis : window)
+    /** @type {unknown} */ (page)
   ).MetabrowserChangedFilesTree = api;
 })();

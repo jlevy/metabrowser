@@ -10,7 +10,10 @@ summary lands is layout, which only a browser computes:
 ``tests/dom/git-commit-summary-chrome.mjs`` draws the page with the Git panel's
 ``renderCommitSummary`` and the diff plugin's ``mountDiffSummary`` in headless Chrome, from
 980 to 320 px, and reads the summary's place, its header's row, its tree opened, the
-commit's totals line where no diff is drawn, and an empty place.
+commit's totals line where no diff is drawn, with and without the diff plugin's stylesheet,
+and an empty place. It sweeps the header from 60 to 400 px and the hover card from 60 to
+360 px, 1 px apart, for a line that starts with a dot, and again with each dot's group
+dissolved, the control that shows the sweep can fail.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """

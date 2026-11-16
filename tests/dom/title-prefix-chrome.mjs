@@ -266,6 +266,7 @@ const MEASURE = `async (titles) => {
         mergeRefs: mb.mergeRefs,
         mountRefCopies: mb.mountRefCopies,
         titleNodes: mb.titleNodes,
+        countPartsNodes: mb.countPartsNodes,
         formatAge: () => ({ label: "2mo ago", className: "age-old" }),
         formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
         navigation: { href: () => "/view/" },
