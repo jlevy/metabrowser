@@ -5,10 +5,19 @@ title: "PR #477 (merge): review, address, gate — folder name goes home, 0 key 
 kind: task
 status: open
 priority: 1
-version: 1
+version: 9
 labels: []
 dependencies: []
 parent_id: is-01m7hcanw7czjv3kgedg9zjbew
+child_order_hints:
+  - is-01m7jpaams522c71rjkqnjj04t
+  - is-01m7jpadmhmpcveygehgyts40j
+  - is-01m7jpajnaf48ykvzsg25y88pb
+  - is-01m7jparbyd926ns2097xrpaw8
+  - is-01m7jpaxzajnk5dw3dfe2a45k9
+  - is-01m7jpb2dtxak8jfva3av2xp6j
+  - is-01m7jpb7hhbm1pwv2357dzh41c
+  - is-01m7jpbc9b2gavhs360stac980
 created_at: 2026-11-16T16:17:31.166Z
-updated_at: 2026-11-16T16:17:31.166Z
+updated_at: 2026-11-16T17:26:49.386Z
 ---
