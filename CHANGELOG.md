@@ -13,6 +13,10 @@ All notable changes to Metabrowser are documented here.
   show. For plugin authors and `--api` readers, `/api/kpress/render` now answers what the
   sanitizer removed in `sanitizer_diagnostics`, apart from `diagnostics`.
 
+- KPress moves to 0.3.6. A README’s `<p align="center">` icon block renders centered, as
+  on GitHub, and a stripped comment or a non-breaking space no longer counts as
+  sanitized HTML.
+
 - The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
   parts no longer show one on hover.
   Elsewhere a tooltip appears only when it adds something not already visible, and one

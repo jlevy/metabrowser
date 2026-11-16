@@ -20,6 +20,7 @@ HTML: a `<script>`, a `javascript:` link, an attribute outside its profile, or, 
 the catch-all `html_sanitized`, a change it could not name.
 Removing them is the safe outcome, and GitHub does the same without a word, so they are
 kept for `--api` and debugging rather than shown to the reader.
+A stripped comment and nh3’s reserialization, such as `&nbsp;`, are not reported at all.
 
 `tests/fixtures/render-diagnostics` holds a README with a centered icon block and a
 guideline footer comment, a guide with only the footer comment, a document with a script
@@ -27,7 +28,9 @@ and a `javascript:` link, and one with a broken anchor beside a script.
 
 ## Test: a README with a centered icon block shows the reader nothing
 
-The README’s `align` attributes are listed as removed, but none reaches the reader.
+KPress keeps the presentational `align` on the icon’s paragraph and the title, as GitHub
+does, so the block renders centered and nothing is removed.
+The footer comment is stripped without a report.
 
 ```console
 $ metab docs --api '/api/kpress/render?path=README.md' > README.txt
@@ -37,17 +40,20 @@ $ metab docs --api '/api/kpress/render?path=README.md' > README.txt
 ```console
 $ grep -E '^  "(diagnostics|sanitizer_diagnostics)":|^      "(type|message)":' README.txt
   "diagnostics": [],
-  "sanitizer_diagnostics": [
-      "type": "html_sanitized_attribute",
-      "message": "Removed attribute 'align' from <p>.",
-      "type": "html_sanitized_attribute",
-      "message": "Removed attribute 'align' from <h1>.",
+  "sanitizer_diagnostics": [],
+? 0
+```
+
+```console
+$ grep '^  "html":' README.txt | grep -oE '<(p|h1) [^>]*align=\\"center\\"'
+<p align=\"center\"
+<h1 align=\"center\"
 ? 0
 ```
 
 ## Test: a guide with a footer comment shows the reader nothing
 
-KPress strips the comment and reports it under the catch-all.
+KPress strips the comment without reporting it: a comment is not content.
 
 ```console
 $ metab docs --api '/api/kpress/render?path=guide.md' > guide.txt
@@ -57,9 +63,7 @@ $ metab docs --api '/api/kpress/render?path=guide.md' > guide.txt
 ```console
 $ grep -E '^  "(diagnostics|sanitizer_diagnostics)":|^      "(type|message)":' guide.txt
   "diagnostics": [],
-  "sanitizer_diagnostics": [
-      "type": "html_sanitized",
-      "message": "Unsafe raw HTML was removed for this trust mode.",
+  "sanitizer_diagnostics": [],
 ? 0
 ```
 
