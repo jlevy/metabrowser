@@ -8721,11 +8721,16 @@ async function openQuickSearchPull(number) {
     return { status: "cancelled" };
   }
   mainTabs?.remember();
-  const shown = window.location.pathname;
+  const routes = window.MetabrowserPullRoute;
+  const naming = () => routes?.parsePull(window.location.pathname)?.number ?? null;
+  // The pull request shown, on its page or on any of its tabs or changed files.
+  const shown = naming() === number;
   const outcome = await host.open({ number, tab: "" });
-  // An open of the page shown changes no address, so nothing else reveals its row.
-  if (outcome.status === "opened" && window.location.pathname === shown) {
-    void mainTabs?.reveal("open");
+  // Quick Search for the pull request shown opens it again, and its row is revealed again,
+  // opening a stack the reader closed since. Its address names no other pull request, so
+  // the host's write reveals nothing (revealPullAddress).
+  if (outcome.status === "opened" && shown && naming() === number) {
+    void mainTabs?.reveal("open", { again: true });
   }
   return outcome.status === "opened"
     ? { ...outcome, focusTarget: document.getElementById("preview-pane") }
@@ -8783,22 +8788,48 @@ function pullPageHostDeps(routes) {
       }),
     mountList: (claim) => mountView(claim, "pull-request-list", {}),
     pathname: () => window.location.pathname,
-    // A pull request's page opened by a link, a key, or a row: the Pulls tab reveals its row
-    // (main-tabs.js, `reveal`).
+    // A pull request's page, one of its tabs, or one of its changed files, opened by a link,
+    // a key, or a row.
     pushHref: (href) => {
+      var before = window.location.pathname;
       mainTabIntent += 1;
       window.history.pushState(null, "", href);
       mainTabs?.remember();
-      void mainTabs?.reveal("open");
+      revealPullAddress(before, "open");
     },
-    // A key's skim through the Pulls tab's rows replaces, as openTreeRow does.
+    // A key's skim through the Pulls tab's rows, or through a pull request's changed files,
+    // replaces, as openTreeRow does.
     replaceHref: (href) => {
+      var before = window.location.pathname;
       mainTabIntent += 1;
       window.history.replaceState(null, "", href);
       mainTabs?.remember();
-      void mainTabs?.reveal("nav");
+      revealPullAddress(before, "nav");
     },
   };
+}
+
+/**
+ * Show the pull request's address the page host just wrote, by the reveal rule
+ * (docs/design-system.md, "Navigation Reveals the Item"). An address that names another
+ * pull request than *before* did reveals that pull request's row, by *route*. One that
+ * names the same pull request, another tab of its page or one of its changed files, is a
+ * step within the item shown: the Pulls tab comes to the front if another is, and the
+ * list is told the address, which marks a changed file as current. A changed file's
+ * address never reveals the pull request's row.
+ *
+ * @param {string} before The address's path before the host wrote this one.
+ * @param {"open" | "nav"} route
+ */
+function revealPullAddress(before, route) {
+  var routes = window.MetabrowserPullRoute;
+  var number = routes?.parsePull(window.location.pathname)?.number ?? null;
+  if (mainTabs && number !== null && number !== (routes?.parsePull(before)?.number ?? null)) {
+    void mainTabs.reveal(route);
+    return;
+  }
+  void mainTabs?.reveal("step");
+  window.MetabrowserPullsNav?.routeChanged();
 }
 
 // Back and forward between a page's tabs change no navigation target, so the host decides
@@ -8906,7 +8937,7 @@ async function applyNavigationTarget(target, context) {
   var path = target.path.replace(/\/$/, "");
   // The file's tab comes to the front before the pane is read: a switch from another tab
   // takes the pane from what that tab showed there.
-  void revealAddressedItem("step", path, context.isCurrent);
+  void revealAddressedItem("step", { isCurrent: context.isCurrent });
   window.MetabrowserPullsNav?.routeChanged();
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
@@ -8919,9 +8950,9 @@ async function applyNavigationTarget(target, context) {
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
     // A fragment or a line anchor is a step within the file shown, which reveals nothing.
-    // Opening the file shown again, as Quick Search does, reveals its row.
+    // Opening the file shown again, as Quick Search does, reveals its row again.
     if (context.source === "user" && !target.fragment && !target.query) {
-      await revealAddressedItem(route, path, context.isCurrent);
+      await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
     // A line anchor added to the file shown opens its Source tab, as opening it does.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
@@ -8935,7 +8966,7 @@ async function applyNavigationTarget(target, context) {
       status: "opened",
     };
   }
-  await revealAddressedItem(route, path, context.isCurrent);
+  await revealAddressedItem(route, { isCurrent: context.isCurrent });
   // A held arrow key opens only the row its walk stops on.
   var walk = treeKeyboard?.walking(path);
   if (walk) {
@@ -8958,16 +8989,25 @@ async function applyNavigationTarget(target, context) {
  * has that tab's panel reveal it, by the one rule for every route. Before the tab
  * controller has loaded, Files is the tab in front and reveals the file itself.
  *
+ * The address is the one source of what is revealed, before the tab controller has
+ * loaded and after: the navigation controller writes a target's address before it
+ * applies the target, so the file a landing applies is the one the address names
+ * (addressedFilePath).
+ *
  * @param {MetabrowserRevealRoute | null} route Null before the tab controller has loaded.
- * @param {string} path The file or folder the address names.
- * @param {() => boolean} isCurrent
+ * @param {{isCurrent: () => boolean, again?: boolean}} how *again*: an open of the file
+ *   shown (main-tabs.js, `reveal`).
  * @returns {Promise<void>}
  */
-async function revealAddressedItem(route, path, isCurrent) {
+async function revealAddressedItem(route, how) {
   if (mainTabs && route !== null) {
-    await mainTabs.reveal(route, { isCurrent });
+    await mainTabs.reveal(route, how);
   } else if (route !== "step") {
-    await revealFileRow(path, { scroll: "nearest", isCurrent });
+    await revealFileRow(addressedFilePath(), {
+      scroll: "nearest",
+      isCurrent: how.isCurrent,
+      again: how.again === true,
+    });
   }
 }
 

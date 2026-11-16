@@ -373,6 +373,7 @@ const SHELL_FUNCTIONS = [
   "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
+  "revealPullAddress",
   "applyPullHistoryLanding",
   "addressedView",
   "addressedFilePath",

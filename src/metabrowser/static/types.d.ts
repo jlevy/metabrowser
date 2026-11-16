@@ -92,11 +92,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
     number: number | null,
     file?: string | null,
     /**
-     * *preserveScroll* keeps the list where the reader left it; *reveal* shows the pull
-     * request again when the address names the one already current (docs/design-system.md,
-     * "Navigation Reveals the Item").
+     * *preserveScroll* keeps the list where the reader left it; *again* shows the pull
+     * request again when the address names the one already current, for an open of the
+     * pull request shown (docs/design-system.md, "Navigation Reveals the Item").
      */
-    options?: { preserveScroll?: boolean; reveal?: boolean },
+    options?: { preserveScroll?: boolean; again?: boolean },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
@@ -3301,6 +3301,12 @@ declare global {
   type MetabrowserRevealHow = {
     scroll: "nearest" | "keep";
     isCurrent: () => boolean;
+    /**
+     * The reader opened the item already shown again (main-tabs.js, `reveal`): the call's
+     * own intent, which no state keeps. Files reveals a file on every call, so only Pulls
+     * reads it, to reveal the pull request the address already names.
+     */
+    again: boolean;
   };
 
   type MetabrowserMainTabsDeps = {
@@ -3337,7 +3343,10 @@ declare global {
     remember(): void;
     remove(id: string): void;
     /** Show what the address names in its tab: switch to it and reveal the item there. */
-    reveal(route: MetabrowserRevealRoute, how?: { isCurrent?: () => boolean }): Promise<void>;
+    reveal(
+      route: MetabrowserRevealRoute,
+      how?: { isCurrent?: () => boolean; again?: boolean },
+    ): Promise<void>;
   };
 
   type MetabrowserPreviewClaim = number;

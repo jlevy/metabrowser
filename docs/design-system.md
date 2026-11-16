@@ -3247,6 +3247,8 @@ calls the panel’s own `reveal`:
 - **Files:** `revealFileRow` in `app.js`.
 - **Pulls:** `pulls-nav.js` marks the pull request in the list (`setCurrent` in
   `builtin_plugins/github/pulls-panel.js`), which opens a closed stack that holds it.
+  An address the pull request’s page writes reveals its row only when it names another
+  pull request (`revealPullAddress` in `app.js`).
 - **Commits:** the panel reveals a commit from its own landing (`restoreCommitLanding`
   in `git-panel.js`), since it has to read history first.
 
@@ -3264,9 +3266,13 @@ Each exception has a reason:
   The reader asked for the tab, not the item.
   Back and Forward reveal the item.
 - **A step within the item shown reveals nothing.** This is a fragment, a line anchor,
-  another view of the file shown, or another tab of the pull request shown.
-  Opening the item shown again, as Quick Search does, reveals it again, opening a folder
-  or stack the reader closed since.
+  another view of the file shown, another tab of the pull request shown, or one of its
+  changed files, clicked or walked with `J` and `K`. The list stays on the reader’s row,
+  not the pull request’s. Opening the item shown again, as Quick Search does, reveals it
+  again, opening a folder or stack the reader closed since, even after a tab’s button
+  kept the panel’s place.
+  The reveal call says so itself (`again`): no state carries it from one call to the
+  next.
 - **A long folder draws the rest of its rows.** A folder draws its first 200 rows and
   holds the rest behind a row that shows them.
   When the item is among them, the reveal draws them first.

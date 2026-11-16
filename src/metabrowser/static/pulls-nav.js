@@ -67,7 +67,7 @@
    *   location(): {pathname: string, search: string},
    *   pushHref(href: string): void,
    *   activeTab(): string | null,
-   *   registerPanel(panel: {id: string, label: string, focusRow: () => boolean, onFirstShow: null, onShow: () => void, onHide: () => void, reveal: (how: {scroll: "nearest" | "keep"}) => void}): void,
+   *   registerPanel(panel: {id: string, label: string, focusRow: () => boolean, onFirstShow: null, onShow: () => void, onHide: () => void, reveal: (how: {scroll: "nearest" | "keep", again?: boolean}) => void}): void,
    *   activate(panelId: string): void,
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
@@ -248,11 +248,16 @@
     /**
      * The address changed, by history or in the page: which tab, and what the panel marks.
      * A step that stays in one place, such as a fragment in a file, moves no tab.
-     * Back from one filter of the list to another shows the list. *reveal* shows the pull
-     * request the address names even when it is already the current one: the shell's
-     * reveal asked (docs/design-system.md, "Navigation Reveals the Item").
+     * Back from one filter of the list to another shows the list.
+     *
+     * *preserveScroll* is a tab's landing: the list stays where the reader left it until
+     * the address moves on or a reveal asks for the row, and a view that mounts after the
+     * landing is told so then. *reveal* is the shell's reveal, which ends that kept scroll.
+     * *again* is its one-shot intent for an open of the pull request shown: the row is
+     * revealed although the address names the current one (docs/design-system.md,
+     * "Navigation Reveals the Item").
      */
-    /** @param {{preserveScroll?: boolean, reveal?: boolean}} [options] */
+    /** @param {{preserveScroll?: boolean, reveal?: boolean, again?: boolean}} [options] */
     function routeChanged(options = {}) {
       if (disposed) {
         return;
@@ -268,12 +273,15 @@
         }
       } else if (options.preserveScroll) {
         preserveScroll = true;
+      } else if (options.reveal === true) {
+        // The reader asked for the item, which a tab's landing kept the list away from.
+        preserveScroll = false;
       }
       const here = address();
       if (handle !== null) {
         handle.setCurrent(here?.page ?? null, here?.file ?? null, {
           preserveScroll,
-          ...(options.reveal === true && !preserveScroll ? { reveal: true } : {}),
+          ...(options.again === true ? { again: true } : {}),
         });
         if (here?.filter) {
           handle.setFilter(here.filter);
@@ -284,12 +292,17 @@
     /**
      * The Pulls panel's reveal (main-tabs.js, `reveal`): the pull request the address names
      * is marked, its closed stack opens, and its row scrolls into view unless the tab's
-     * own landing keeps the list where the reader left it.
+     * own landing keeps the list where the reader left it. The pull request already
+     * current is revealed only *again*, by an open of it.
      *
-     * @param {{scroll: "nearest" | "keep"}} how
+     * @param {{scroll: "nearest" | "keep", again?: boolean}} how
      */
     function reveal(how) {
-      routeChanged(how.scroll === "keep" ? { preserveScroll: true } : { reveal: true });
+      routeChanged(
+        how.scroll === "keep"
+          ? { preserveScroll: true }
+          : { reveal: true, ...(how.again === true ? { again: true } : {}) },
+      );
     }
 
     /** The active PR renderer may offer stack navigation; custom renderers need not.

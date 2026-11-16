@@ -9,11 +9,16 @@
 // history step began.
 //
 // `tabs` loads static/main-tabs.js and static/pulls-nav.js whole over the stand-in DOM of
-// tests/dom/key-reveal-dom.js and plays each route as app.js calls it: an open in the page
-// (Quick Search, a link, a key), the page's own address, Back, a tab's button, a row's skim,
-// and a step within the file shown. Each step prints the tab in front and what each panel
-// was asked: the Files tree's reveal (app.js, `revealFileRow`), recorded, and the Pulls
-// tab's view, a stand-in handle recording what the host told it. No step moves focus.
+// tests/dom/key-reveal-dom.js, with app.js's pull-request routes lifted verbatim (the page
+// host's address writes, `revealPullAddress`, and Quick Search's `openQuickSearchPull`),
+// and plays each route as app.js calls it: an open in the page (Quick Search, a link, a
+// key), the page's own address, Back, a tab's button, a row's skim, and a step within the
+// item shown, a fragment of a file or another tab or changed file of a pull request. Each
+// step prints the tab in front and what each panel was asked: the Files tree's reveal
+// (app.js, `revealFileRow`), recorded, and what the host told the Pulls tab's view, whose
+// own controller (builtin_plugins/github/pulls-panel.js) says when it reveals a row. A
+// step within the pull request shown reveals no row, and an open of it again does. No
+// step moves focus.
 //
 // `files tree` lifts app.js's tree reveal verbatim (`revealFileRow`, `revealInTree`,
 // `revealWithin`, `mountTreePageHolding`, `setSelectedPath`, and the outside-filter note)
@@ -25,8 +30,8 @@
 // `pulls list` runs builtin_plugins/github/pulls-panel.js's controller over the recorded
 // lists and stack snapshot that tests/test_github_pulls_panel_session.py records: an
 // address that names a pull request in a closed stack opens the stack, the same pull
-// request named again with `reveal` reveals it again, and one the list does not hold is
-// named under the band.
+// request named again moves nothing unless `again` says it was opened again, `again` ends
+// a tab landing's kept place, and one the list does not hold is named under the band.
 //
 // `invariants` are relations every step holds.
 
@@ -259,24 +264,31 @@ async function tabsStory() {
     activeTab: () => mainTabs.active(),
     registerPanel: (panel) => mainTabs.register(panel),
     activate: (id) => mainTabs.activate(id),
+    // The Pulls tab's view: the panel's own controller over the recorded lists, which decides
+    // whether a row is revealed; what the host tells the view is printed as it is told.
     async loadView() {
       return {
-        render(_container, ctx) {
+        async render(_container, ctx) {
           const host = ctx.pullsNav;
           told.push(`Pulls view mounted at current ${host.current}`);
+          const controller = await recordedPullsController(
+            { reveal: (number) => told.push(`Pulls: #${number} revealed`) },
+            { current: host.current },
+          );
+          void controller.start({ shown: host.shown });
           return {
-            setShown() {},
+            setShown: (shown) => controller.setShown(shown),
             setCurrent(number, file, options = {}) {
-              const how = [
-                options.reveal ? "reveal" : null,
-                options.preserveScroll ? "keep scroll" : null,
-              ].filter(Boolean);
+              const how = Object.entries(options)
+                .filter(([, value]) => value === true)
+                .map(([name]) => (name === "preserveScroll" ? "keep scroll" : name));
               told.push(
                 `Pulls: current ${number}${file ? `, file ${file}` : ""}${how.length > 0 ? ` (${how.join(", ")})` : ""}`,
               );
+              controller.setCurrent(number, options);
             },
             setFilter() {},
-            dispose() {},
+            dispose: () => controller.dispose(),
           };
         },
       };
@@ -299,26 +311,75 @@ async function tabsStory() {
   await settle();
   told.length = 0;
 
+  // app.js's pull-request routes, lifted verbatim: the page host's address writes
+  // (pullPageHostDeps, revealPullAddress) and Quick Search's open (openQuickSearchPull),
+  // over stand-ins for the pane they claim.
+  vm.runInContext(
+    [
+      "var mainTabIntent = 0;",
+      "var previewPane = { snapshot: () => ({ claim: 1 }) };",
+      "function isPreviewClaimCurrent() { return true; }",
+      "function renderPreviewHtml() {}",
+      "function beginPreviewNavigation() {}",
+      "function endPreviewNavigation() {}",
+      "function stagePreviewNode() {}",
+      "function showPullPageLoadFailure() {}",
+      ...["pullPageHostDeps", "revealPullAddress", "openQuickSearchPull"].map(appFunction),
+    ].join("\n"),
+    context,
+    { filename: "app.js (the pull-request routes)" },
+  );
+  const routes = context.MetabrowserPullRoute;
+  const hostDeps = context.pullPageHostDeps(routes);
+  // pull-route.js's host `open`: the address is written when it moves, pushed, or replaced
+  // for a key's skim, through the deps app.js gives the host.
+  const host = {
+    async open(route) {
+      const href = routes.pullHref(route.number, route.tab, route.file ?? "");
+      if (hostDeps.pathname() !== href) {
+        if (route.replace === true) {
+          hostDeps.replaceHref(href);
+        } else {
+          hostDeps.pushHref(href);
+        }
+      }
+      return { status: "opened" };
+    },
+  };
+  context.loadPullPageHost = async () => host;
+
   const steps = [];
-  const step = async (what, act) => {
+  /** *reveals*: whether the Pulls tab's row is revealed, for a step that names a pull request. */
+  const step = async (what, act, { reveals = null } = {}) => {
     await act();
     await settle();
+    const said = told.splice(0);
     steps.push({
       step: what,
       address: context.location.pathname + context.location.search,
       tab: mainTabs.active(),
-      told: told.splice(0),
+      told: said,
     });
     assert.equal(document.activeElement, reading, `${what}: focus stays where the reader reads`);
+    if (reveals !== null) {
+      assert.equal(
+        said.some((line) => line.endsWith(" revealed")),
+        reveals,
+        `${what}: ${reveals ? "the row is revealed" : "no row is revealed"} (${said.join("; ")})`,
+      );
+    }
   };
-  // As app.js's routes call it: pullPageHostDeps' pushHref and replaceHref, Quick Search,
-  // and applyNavigationTarget with the route main-tabs.js names for its source.
+  // As app.js's routes call it: the page host's writes and Quick Search, lifted above, and
+  // applyNavigationTarget with the route main-tabs.js names for its source.
   const fileLanding = async (source, pathname, { step: within = false } = {}) => {
     if (source !== "popstate") {
       context.go(pathname);
     }
     const route = mainTabs.landingRoute(source);
-    await mainTabs.reveal("step");
+    const switching = mainTabs.reveal("step");
+    // The list is told of every file's address: it names no pull request.
+    context.MetabrowserPullsNav.routeChanged();
+    await switching;
     if (!within) {
       await mainTabs.reveal(route);
     }
@@ -326,39 +387,70 @@ async function tabsStory() {
   await step("Quick Search or a link opens a file from Files", () =>
     fileLanding("user", "/view/docs/deep/leaf.md"),
   );
-  await step("a pull request opens by a link or Quick Search: Pulls comes to the front", () => {
-    context.go("/pull/7");
-    return mainTabs.reveal("open");
-  });
-  await step("Quick Search for the pull request shown: no new address, revealed again", () =>
-    mainTabs.reveal("open"),
+  await step(
+    "a link opens a pull request: Pulls comes to the front and reveals it",
+    () => host.open({ number: 7, tab: "" }),
+    { reveals: true },
   );
-  await step("a key skims the Pulls tab's rows: the next is revealed", () => {
-    context.go("/pull/8");
-    return mainTabs.reveal("nav");
-  });
-  await step("a changed file of #8 opens from its diff: #8 and the file are revealed", () => {
-    context.go("/pull/8/files/src/app.txt");
-    return mainTabs.reveal("open");
-  });
+  await step(
+    "Quick Search for the pull request shown: no new address, revealed again",
+    () => context.openQuickSearchPull(7),
+    { reveals: true },
+  );
+  await step(
+    "a key skims the Pulls tab's rows: the next is revealed",
+    () => host.open({ number: 8, tab: "", replace: true }),
+    { reveals: true },
+  );
+  await step(
+    "another tab of #8's page: a step within it, nothing is revealed",
+    () => host.open({ number: 8, tab: "files" }),
+    { reveals: false },
+  );
+  await step(
+    "a changed file of #8 opens from its diff: the list is told, nothing is revealed",
+    () => host.open({ number: 8, tab: "files", file: "src/app.txt" }),
+    { reveals: false },
+  );
+  await step(
+    "J walks #8's changed files: the next replaces it, nothing is revealed",
+    () => host.open({ number: 8, tab: "files", file: "src/b.txt", replace: true }),
+    { reveals: false },
+  );
+  await step(
+    "Quick Search for #8 from one of its files: its page opens, and #8 is revealed again",
+    () => context.openQuickSearchPull(8),
+    { reveals: true },
+  );
   await step("a link on the page opens a file: Files comes to the front", () =>
     fileLanding("user", "/view/src/app.txt"),
   );
   await step("a fragment on the file shown is a step: nothing is revealed", () =>
     fileLanding("user", "/view/src/app.txt", { step: true }),
   );
-  await step("the Pulls tab's button: its destination, with the list as it was", () =>
-    mainTabs.open("pulls"),
+  await step(
+    "the Pulls tab's button: its destination, with the list as it was",
+    () => mainTabs.open("pulls"),
+    { reveals: false },
+  );
+  await step(
+    "Quick Search for the pull request shown after the tab's button: revealed again",
+    () => context.openQuickSearchPull(8),
+    { reveals: true },
   );
   await step("the Files tab's button: its destination, with the tree as it was", async () => {
     mainTabs.open("files");
     await fileLanding("popstate", context.location.pathname);
   });
-  await step("Back to a pull request: Pulls comes to the front and reveals it", () => {
-    context.go("/pull/8");
-    mainTabs.onHistory();
-    nav.routeChanged();
-  });
+  await step(
+    "Back to a pull request: Pulls comes to the front and reveals it",
+    () => {
+      context.go("/pull/8");
+      mainTabs.onHistory();
+      nav.routeChanged();
+    },
+    { reveals: true },
+  );
   await step("Back to a file: Files comes to the front and reveals it", async () => {
     context.go("/view/src/app.txt");
     mainTabs.onHistory();
@@ -537,15 +629,11 @@ async function filesStory() {
 
 // ── The Pulls list ────────────────────────────────────────────────
 
-async function pullsStory() {
-  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
-  const { createStackIndex } = await import(
-    pathToFileURL(path.join(GITHUB, "pull-stacks.js")).href
-  );
+/** The recorded lists tests/test_github_pulls_panel_session.py records, each window resolved. */
+function recordedLists() {
   const lists = JSON.parse(
     fs.readFileSync(path.join(root, "tests/fixtures/github-pulls-panel-responses.json"), "utf8"),
   );
-  const stacks = require("../fixtures/github-stacks-responses.json");
   const rowsOf = (rows) =>
     Array.isArray(rows)
       ? rows.map((row) => JSON.parse(row))
@@ -556,9 +644,18 @@ async function pullsStory() {
   for (const [at, answer] of windows.entries()) {
     answer.body.rows = resolved[at];
   }
-  const told = [];
-  let model = null;
-  const controller = panel.createPullsController(
+  return lists;
+}
+
+/**
+ * builtin_plugins/github/pulls-panel.js's controller over the recorded lists, under All,
+ * with *deps* for what it tells the view: `reveal`, and `render` and `markOutside` when a
+ * story reads them.
+ */
+async function recordedPullsController(deps, options) {
+  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const lists = recordedLists();
+  return panel.createPullsController(
     {
       request(method, route) {
         if (method === "GET" && route.startsWith("/api/plugin/github/pulls?")) {
@@ -580,17 +677,34 @@ async function pullsStory() {
       now: () => Date.parse("2026-09-17T12:00:30Z"),
       isVisible: () => true,
       formatTime: (iso) => iso,
+      render() {},
+      markCurrent() {},
+      markAnchor() {},
+      open() {},
+      filterChanged() {},
+      ...deps,
+    },
+    { filter: "all", ...options },
+  );
+}
+
+async function pullsStory() {
+  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const { createStackIndex } = await import(
+    pathToFileURL(path.join(GITHUB, "pull-stacks.js")).href
+  );
+  const stacks = require("../fixtures/github-stacks-responses.json");
+  const told = [];
+  let model = null;
+  const controller = await recordedPullsController(
+    {
       render(next) {
         model = next;
       },
-      markCurrent() {},
-      markAnchor() {},
       reveal: (number) => told.push(`revealed #${number}`),
       markOutside: (text) => told.push(text === null ? "note gone" : `note: ${text}`),
-      open() {},
-      filterChanged() {},
     },
-    { filter: "all", current: null },
+    { current: null },
   );
   await controller.start({ shown: true });
   await settle();
@@ -613,14 +727,18 @@ async function pullsStory() {
     controller.setCurrent(7),
   );
   await step("the reader closes the stack again", () => controller.setStackOpen(286, false));
-  await step("#7 named again, as a history step that changes nothing: nothing moves", () =>
-    controller.setCurrent(7),
+  await step(
+    "#7 named again, by another tab of its page, one of its files, or a history step: nothing moves",
+    () => controller.setCurrent(7),
   );
   await step("#7 opened again, by Quick Search: the stack opens, and #7 is revealed", () =>
-    controller.setCurrent(7, { reveal: true }),
+    controller.setCurrent(7, { again: true }),
   );
   await step("a tab's landing at #8 keeps the list's place: marked, not revealed", () =>
     controller.setCurrent(8, { preserveScroll: true }),
+  );
+  await step("Quick Search for #8 after that landing: revealed, which ends the kept place", () =>
+    controller.setCurrent(8, { again: true }),
   );
   await step("under Open, the list does not hold closed #8, and says so", () =>
     controller.setFilter("open"),
@@ -663,6 +781,7 @@ async function pullsStory() {
   transcript.invariants = {
     "no route moves focus": true,
     "a reveal never leaves another row selected": true,
+    "a step within the pull request shown reveals no row, and Quick Search for it does": true,
   };
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
 })().catch((error) => {

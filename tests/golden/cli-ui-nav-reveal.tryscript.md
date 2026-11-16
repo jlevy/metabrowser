@@ -19,16 +19,20 @@ Only a tab’s own button or letter keeps the panel’s place, and only a step w
 item shown, such as a fragment, reveals nothing.
 `landing` is how the shell names a file landing’s route from the navigation controller’s
 source. `tabs` loads `static/main-tabs.js` and `static/pulls-nav.js` whole over a
-stand-in DOM and plays each route as `app.js` calls it, printing the tab in front and
-what each panel was asked; no step moves focus.
-`files tree` lifts `app.js`’s tree reveal verbatim over a stand-in tree: closed folders
-open, the page of a long folder that holds the row is drawn, a reveal that cannot show
-its row leaves no other row selected, and the tree says a file is outside the filter
-only when the filter is what hides it.
+stand-in DOM, with `app.js`’s pull-request routes lifted verbatim, and plays each route
+as `app.js` calls it, printing the tab in front, what each panel was asked, and when the
+Pulls tab’s own controller reveals a row.
+Another tab or a changed file of the pull request shown is a step within it and reveals
+no row; Quick Search for it reveals it again, after the tab’s button too; no step moves
+focus. `files tree` lifts `app.js`’s tree reveal verbatim over a stand-in tree: closed
+folders open, the page of a long folder that holds the row is drawn, a reveal that
+cannot show its row leaves no other row selected, and the tree says a file is outside
+the filter only when the filter is what hides it.
 `pulls list` runs the Pulls tab’s controller over the recorded lists and stack snapshot:
 an address naming a pull request in a closed stack opens the stack, the same pull
-request opened again reveals it again, one the list does not hold is named under the
-band, and under All the list reads on for one past the rows it has read.
+request named again moves nothing unless it was opened again, which reveals it and ends
+a tab landing’s kept place, one the list does not hold is named under the band, and
+under All the list reads on for one past the rows it has read.
 
 ```console
 $ node tests/dom/nav-reveal-session.js
@@ -150,11 +154,12 @@ $ node tests/dom/nav-reveal-session.js
         ]
       },
       {
-        "step": "a pull request opens by a link or Quick Search: Pulls comes to the front",
+        "step": "a link opens a pull request: Pulls comes to the front and reveals it",
         "address": "/pull/7",
         "tab": "pulls",
         "told": [
           "Pulls view mounted at current 7",
+          "Pulls: #7 revealed",
           "Pulls: current 7"
         ]
       },
@@ -163,7 +168,8 @@ $ node tests/dom/nav-reveal-session.js
         "address": "/pull/7",
         "tab": "pulls",
         "told": [
-          "Pulls: current 7 (reveal)"
+          "Pulls: current 7 (again)",
+          "Pulls: #7 revealed"
         ]
       },
       {
@@ -171,15 +177,42 @@ $ node tests/dom/nav-reveal-session.js
         "address": "/pull/8",
         "tab": "pulls",
         "told": [
-          "Pulls: current 8 (reveal)"
+          "Pulls: current 8",
+          "Pulls: #8 revealed"
         ]
       },
       {
-        "step": "a changed file of #8 opens from its diff: #8 and the file are revealed",
+        "step": "another tab of #8's page: a step within it, nothing is revealed",
+        "address": "/pull/8/files",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current 8"
+        ]
+      },
+      {
+        "step": "a changed file of #8 opens from its diff: the list is told, nothing is revealed",
         "address": "/pull/8/files/src/app.txt",
         "tab": "pulls",
         "told": [
-          "Pulls: current 8, file src/app.txt (reveal)"
+          "Pulls: current 8, file src/app.txt"
+        ]
+      },
+      {
+        "step": "J walks #8's changed files: the next replaces it, nothing is revealed",
+        "address": "/pull/8/files/src/b.txt",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current 8, file src/b.txt"
+        ]
+      },
+      {
+        "step": "Quick Search for #8 from one of its files: its page opens, and #8 is revealed again",
+        "address": "/pull/8",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current 8",
+          "Pulls: current 8 (again)",
+          "Pulls: #8 revealed"
         ]
       },
       {
@@ -188,6 +221,7 @@ $ node tests/dom/nav-reveal-session.js
         "tab": "files",
         "told": [
           "the pane given up",
+          "Pulls: current null",
           "Files: reveal /view/src/app.txt, scroll nearest"
         ]
       },
@@ -195,15 +229,26 @@ $ node tests/dom/nav-reveal-session.js
         "step": "a fragment on the file shown is a step: nothing is revealed",
         "address": "/view/src/app.txt",
         "tab": "files",
-        "told": []
+        "told": [
+          "Pulls: current null"
+        ]
       },
       {
         "step": "the Pulls tab's button: its destination, with the list as it was",
-        "address": "/pulls",
+        "address": "/pull/8",
         "tab": "pulls",
         "told": [
           "the pane given up",
-          "Pulls: current null (keep scroll)"
+          "Pulls: current 8 (keep scroll)"
+        ]
+      },
+      {
+        "step": "Quick Search for the pull request shown after the tab's button: revealed again",
+        "address": "/pull/8",
+        "tab": "pulls",
+        "told": [
+          "Pulls: current 8 (again)",
+          "Pulls: #8 revealed"
         ]
       },
       {
@@ -212,6 +257,7 @@ $ node tests/dom/nav-reveal-session.js
         "tab": "files",
         "told": [
           "the pane given up",
+          "Pulls: current null",
           "Pulls: current null",
           "Files: reveal /view/src/app.txt, scroll keep"
         ]
@@ -223,6 +269,7 @@ $ node tests/dom/nav-reveal-session.js
         "told": [
           "the pane given up",
           "Pulls: current 8",
+          "Pulls: #8 revealed",
           "Pulls: current 8"
         ]
       },
@@ -232,6 +279,7 @@ $ node tests/dom/nav-reveal-session.js
         "tab": "files",
         "told": [
           "the pane given up",
+          "Pulls: current null",
           "Files: reveal /view/src/app.txt, scroll nearest"
         ]
       },
@@ -382,7 +430,7 @@ $ node tests/dom/nav-reveal-session.js
         "told": []
       },
       {
-        "step": "#7 named again, as a history step that changes nothing: nothing moves",
+        "step": "#7 named again, by another tab of its page, one of its files, or a history step: nothing moves",
         "stack": "Stack #286 closed",
         "told": []
       },
@@ -397,6 +445,13 @@ $ node tests/dom/nav-reveal-session.js
         "step": "a tab's landing at #8 keeps the list's place: marked, not revealed",
         "stack": "Stack #286 open",
         "told": []
+      },
+      {
+        "step": "Quick Search for #8 after that landing: revealed, which ends the kept place",
+        "stack": "Stack #286 open",
+        "told": [
+          "revealed #8"
+        ]
       },
       {
         "step": "under Open, the list does not hold closed #8, and says so",
@@ -445,7 +500,8 @@ $ node tests/dom/nav-reveal-session.js
   },
   "invariants": {
     "no route moves focus": true,
-    "a reveal never leaves another row selected": true
+    "a reveal never leaves another row selected": true,
+    "a step within the pull request shown reveals no row, and Quick Search for it does": true
   }
 }
 ? 0

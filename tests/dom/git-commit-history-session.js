@@ -456,7 +456,7 @@ async function createPage(start, options = {}) {
   const landingTest = appSource.match(/\nfunction isGitHistoryLanding\(\) \{[\s\S]*?\n\}/);
   assert(landingTest, "isGitHistoryLanding was not found in app.js");
   const revealItem = appSource.match(
-    /\nasync function revealAddressedItem\(route, path, isCurrent\) \{[\s\S]*?\n\}/,
+    /\nasync function revealAddressedItem\(route, how\) \{[\s\S]*?\n\}/,
   );
   assert(revealItem, "revealAddressedItem was not found in app.js");
   vm.runInContext(

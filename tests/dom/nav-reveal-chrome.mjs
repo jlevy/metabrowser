@@ -342,7 +342,164 @@ try {
   }
   await shot("control-n");
 
-  // 10. A file a filter hides: the tree selects nothing else and says why.
+  const STACK = `#tab-pulls .github-pulls-stack-row[data-stack="286"]`;
+  const stackState = () =>
+    evaluate(
+      `document.querySelector(${JSON.stringify(STACK)})?.getAttribute("aria-expanded") ?? null`,
+    );
+  const closeStack = async () => {
+    await waitFor(`document.querySelector(${JSON.stringify(STACK)}) !== null`, "Stack #286");
+    if ((await stackState()) !== "false") {
+      await evaluate(`document.querySelector(${JSON.stringify(STACK)}).click()`);
+    }
+    await waitFor(
+      `document.querySelector(${JSON.stringify(STACK)}).getAttribute("aria-expanded") === "false"`,
+      "Stack #286 closes",
+    );
+  };
+  const scrollTop = () => evaluate(`document.getElementById("tree-content").scrollTop`);
+  const scrollAway = async () => {
+    await evaluate(`document.getElementById("tree-content").scrollTop = 1e6`);
+    await frames();
+    return scrollTop();
+  };
+  // A step that moves nothing has had the time a reveal takes to move something.
+  const settled = async () => {
+    await evaluate("new Promise((resolve) => setTimeout(resolve, 400))");
+    await frames();
+  };
+  const tabButton = (tab) => `document.querySelector('.nav-tab-bar .tab-btn[data-tab="${tab}"]')`;
+  const activeIs = (tab) =>
+    `document.querySelector(".nav-tab-bar .tab-btn.active")?.dataset.tab === "${tab}"`;
+
+  // 10. Quick Search for the pull request shown, after the Pulls tab's button returned to it
+  // with the list as the reader left it: the reveal ends that kept place, and opens the
+  // stack the reader closed since.
+  await load(`${base}/pull/7`);
+  await revealed("a pull request's address, before its tab's button", pullRow(7), "pulls");
+  await evaluate(`${tabButton("files")}.click()`);
+  await waitFor(activeIs("files"), "the Files tab's button");
+  await evaluate(`${tabButton("pulls")}.click()`);
+  await waitFor(
+    `${activeIs("pulls")} && location.pathname === "/pull/7"`,
+    "the Pulls tab's button returns to #7",
+  );
+  await closeStack();
+  await scrollAway();
+  await quickSearch("#7", "#7");
+  phase("quick search: the pull request shown, after its tab's button");
+  await revealed(
+    "Quick Search, the pull request shown after its tab's button",
+    pullRow(7),
+    "pulls",
+  );
+  check(
+    "Quick Search, the pull request shown after its tab's button: its stack opened",
+    (await stackState()) === "true",
+  );
+
+  // 11. Another tab of the pull request shown is a step within it: the page's Changes tab
+  // leaves the stack the reader closed closed, and the list where the reader scrolled it.
+  await closeStack();
+  const beforeTab = await scrollAway();
+  await evaluate(`document.activeElement?.blur?.()`);
+  await evaluate(
+    `document.querySelector('#preview-pane a.tab-btn[role="tab"][href="/pull/7/files"]').click()`,
+  );
+  await waitFor(`location.pathname === "/pull/7/files"`, "the page's Changes tab");
+  await settled();
+  phase("the page's tab");
+  const afterTab = { stack: await stackState(), scrollTop: await scrollTop(), before: beforeTab };
+  check(
+    "the page's Changes tab: the closed stack stays closed",
+    afterTab.stack === "false",
+    JSON.stringify(afterTab),
+  );
+  check(
+    "the page's Changes tab: the list stays where the reader scrolled it",
+    Math.abs(afterTab.scrollTop - beforeTab) <= 1,
+    JSON.stringify(afterTab),
+  );
+
+  // 12. A changed file of the pull request shown, clicked in the Pulls tab or walked with J,
+  // is a step within it: the list stays on the reader's row, well below the pull request's
+  // own, rather than jumping back to it. #106 has 250 changed files.
+  await load(`${base}/pull/106`);
+  await revealed("a pull request with 250 changed files", pullRow(106), "pulls");
+  await evaluate(`document.querySelector(${JSON.stringify(pullRow(106))}).focus()`);
+  await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
+  const FILE_ROW = (name) =>
+    `#tab-pulls a.github-pull-file-row[href="/pull/106/files/src/app/plugins/github/${name}"]`;
+  const clicked = FILE_ROW("mod_040.py");
+  await waitFor(
+    `document.querySelector('#tab-pulls .github-pulls-item[data-number="106"] .github-pull-file-row') !== null`,
+    "#106's changed files are read",
+  );
+  // The file tree draws the rows near the view, so the list is scrolled down to the file.
+  await waitFor(
+    `(async () => {
+      const scroller = document.getElementById("tree-content");
+      for (let turn = 0; turn < 40 && document.querySelector(${JSON.stringify(clicked)}) === null; turn += 1) {
+        scroller.scrollTop += 300;
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      }
+      return document.querySelector(${JSON.stringify(clicked)}) !== null;
+    })()`,
+    "#106's mod_040.py is drawn",
+  );
+  await evaluate(
+    `document.querySelector(${JSON.stringify(clicked)}).scrollIntoView({ block: "center" })`,
+  );
+  await frames();
+  const beforeClick = await scrollTop();
+  await evaluate(`document.querySelector(${JSON.stringify(clicked)}).click()`);
+  await waitFor(
+    `location.pathname === "/pull/106/files/src/app/plugins/github/mod_040.py"`,
+    "the clicked file's address",
+  );
+  await settled();
+  phase("a changed file clicked");
+  const afterClick = await evaluate(PANE(clicked));
+  check(
+    "a changed file clicked: the list stays where the reader scrolled it",
+    Math.abs(afterClick.row?.at?.[4] - beforeClick) <= 1,
+    JSON.stringify({ beforeClick, afterClick }),
+  );
+  check(
+    "a changed file clicked: its row stays in view",
+    afterClick.row?.inView === true,
+    JSON.stringify(afterClick),
+  );
+  // J from mod_044.py, three times: each opens the next file, and the row J moved to,
+  // which has focus, stays in view.
+  await evaluate(`document.querySelector(${JSON.stringify(FILE_ROW("mod_044.py"))}).focus()`);
+  const FOCUSED = `(() => {
+    const scroller = document.getElementById("tree-content");
+    const view = scroller.getBoundingClientRect();
+    const row = document.activeElement;
+    const box = row?.getBoundingClientRect?.();
+    return {
+      address: location.pathname,
+      row: row?.getAttribute?.("href") ?? null,
+      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      scrollTop: scroller.scrollTop,
+    };
+  })()`;
+  for (let walk = 1; walk <= 3; walk += 1) {
+    const from = await evaluate("location.pathname");
+    await press("j", { code: "KeyJ", keyCode: 74, text: "j" });
+    await waitFor(`location.pathname !== ${JSON.stringify(from)}`, `J ${walk} opens the next file`);
+    await settled();
+    const walked = await evaluate(FOCUSED);
+    check(
+      `J ${walk} through #106's files: the row J moved to has focus and stays in view`,
+      walked.inView && walked.row === walked.address,
+      JSON.stringify(walked),
+    );
+  }
+  phase("J through a pull request's files");
+
+  // 13. A file a filter hides: the tree selects nothing else and says why.
   await load(`${base}/view/README.md`);
   await revealed("before the filter", fileRow("README.md"), "files");
   await evaluate(`window.metabrowser.filterState.set({ types: [".md"] })`);
@@ -367,7 +524,7 @@ try {
   await shot("filtered");
   await evaluate(`window.metabrowser.filterState.set({ types: null })`);
 
-  // 11. A commit's address, halfway down a 300-commit history.
+  // 14. A commit's address, halfway down a 300-commit history.
   await load(`${historyBase}/commit/${deepCommit}`);
   phase("commit");
   await revealed(

@@ -9,6 +9,8 @@ All notable changes to Metabrowser are documented here.
   open one. Its tab comes to the front, the folders or the stack that hold it open, and
   its row is selected and scrolled into view, while focus stays where you are reading.
   Back and Forward now scroll to the row too, as a tab’s own button still does not.
+  Another tab of the pull request shown, or one of its changed files, clicked or walked
+  with J and K, leaves the Pulls list on your row.
   Quick Search for the item already shown reveals it again, a file past a long folder’s
   first 200 rows is drawn, and a commit’s address scrolls the Commits list to its row.
   A file a filter hides no longer leaves the previous file selected: the tree says

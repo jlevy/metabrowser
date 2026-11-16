@@ -495,12 +495,17 @@
      * Show what the address names in the navigation pane, by the one rule (`revealPlan`):
      * bring its tab to the front and have that tab's panel reveal it. Every route to an
      * item comes here: a file's landing (app.js, applyNavigationTarget), a pull request's
-     * open and its rows' skim (app.js, pullPageHostDeps), and Quick Search. A commit's
+     * open and its rows' skim (app.js, revealPullAddress), and Quick Search. A commit's
      * address is the Git panel's own landing (git-panel.js, restoreCommitLanding), which
      * pages its history before it can reveal the row.
      *
+     * *again* says the reader opened the item already shown again, as Quick Search for the
+     * file or pull request shown does. It belongs to this call, and nothing keeps it: the
+     * panel reveals the item although the address names what it already shows, where a
+     * step within that item reveals nothing.
+     *
      * @param {MetabrowserRevealRoute} route
-     * @param {{isCurrent?: () => boolean}} [how]
+     * @param {{isCurrent?: () => boolean, again?: boolean}} [how]
      * @returns {Promise<void>}
      */
     async function revealAtAddress(route, how = {}) {
@@ -520,7 +525,11 @@
       if (!plan.reveal || !panel?.reveal) {
         return;
       }
-      await panel.reveal({ scroll: plan.scroll, isCurrent: how.isCurrent ?? (() => true) });
+      await panel.reveal({
+        scroll: plan.scroll,
+        isCurrent: how.isCurrent ?? (() => true),
+        again: how.again === true,
+      });
     }
 
     function onHistory() {
