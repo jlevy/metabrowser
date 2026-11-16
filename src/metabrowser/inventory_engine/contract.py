@@ -80,7 +80,7 @@ import json
 import os
 import string
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
@@ -1106,17 +1106,12 @@ class GroupedTreeQuery:
             max_rows=self.max_rows,
             max_work=self.max_work,
             after=after,
-            filter=InventoryFilter(
-                extensions=self.filter.extensions,
-                filenames=self.filter.filenames,
-                type_families=self.filter.type_families,
-                recency_seconds=self.filter.recency_seconds,
+            # The shared filter, every field of it, with the group's own set.
+            filter=replace(
+                self.filter,
+                type_group=group.type_group,
                 band_within_seconds=group.band_within_seconds,
                 older_than_seconds=group.older_than_seconds,
-                type_group=group.type_group,
-                minimum_size=self.filter.minimum_size,
-                include_ignored=self.filter.include_ignored,
-                as_of_ns=self.filter.as_of_ns,
             ),
         )
 

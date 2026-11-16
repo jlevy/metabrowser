@@ -2490,14 +2490,9 @@ class _PythonInventoryStore:
         ignored_dirs = (
             {} if shared.include_ignored else self._effective_ignored_directories(entries)
         )
-        # With no filter set, every leaf passes it, so the pass skips the test.
-        unfiltered = shared.include_ignored and not (
-            shared.extensions
-            or shared.filenames
-            or shared.type_families
-            or shared.cutoff_ns is not None
-            or shared.minimum_size is not None
-        )
+        # With no filter set, every leaf passes it, so the pass skips the test. A field added
+        # to the filter is a filter set here too, so it is never skipped by mistake.
+        unfiltered = query.filter == InventoryFilter(as_of_ns=query.filter.as_of_ns)
         group_queries = tuple(query.group_query(group) for group in query.groups)
         listed = _ListedFolders(query.path, query.max_depth)
         shallow: dict[str, list[FsEntry]] = {}
