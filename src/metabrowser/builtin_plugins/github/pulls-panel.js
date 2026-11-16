@@ -9,11 +9,17 @@
 // the same functions from the command line.
 //
 // The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
-// role of its own, and its changed files hang off the item (pull-files-view.js): a chevron
-// box before the state icon, a `.tree-children[role="group"]` after the anchor, which the
-// anchor owns, and `aria-expanded` on it. A click opens the pull request and toggles its
-// files. Space toggles the files in place. Right expands or enters and Left collapses.
-// The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
+// role of its own. Its third line, the pull request's brief change line (row-lines.js), is the
+// row's one child item, in a group the anchor owns, and the row's changed files hang off that
+// item (pull-files-view.js): the chevron before the line, a `.tree-children[role="group"]`
+// after it, which it owns, and `aria-expanded` on it. A click on the row's title or number's
+// line opens the pull request and expands nothing; a click on the change line, its chevron
+// included, toggles the files. No row expands on its own: not on an open, a selection, or a
+// key's walk. Up and Down walk the pull requests; Right goes to a row's change line, where
+// Enter and Space toggle its files, Right opens them or goes to the first, Left closes them or
+// goes back to the row, Up goes back to the row, and Down goes into its open files or on to
+// the next row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is
+// drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -59,6 +65,12 @@ import {
 } from "./pull-stacks.js";
 import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
+import {
+  createRowLines,
+  PULL_FILES_SUMMARY_ROUTE,
+  rowLineHint,
+  rowLineInput,
+} from "./row-lines.js";
 import { createStackLines, STACK_CHANGE_ROUTE, stackLineInput } from "./stack-lines.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
@@ -120,6 +132,12 @@ export const DISPLAY_ROWS = 500;
 const PAGE_AHEAD_PX = 240;
 // Viewport neighbors; measured catalog-window evidence is recorded with the feature.
 export const PULL_ROWS_OVERSCAN = 40;
+// The height a row not yet measured is placed at: a pull request's closed row, its link's two
+// lines and its change line. Measured in headless Chrome 152 with KPress's faces at the nav's
+// 13 px type, from 180 to 420 px in both themes, 61 px whether the line waits or is shown
+// (41 px of link and 20 of change line; the two-line row it replaced was 43 px)
+// (tests/dom/github-pulls-row-lines-chrome.mjs).
+export const ROW_ESTIMATE_PX = 61;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
 // not see, and it is past macOS's default repeat of 90 ms, so a held key never waits it out.
@@ -215,6 +233,7 @@ const CHECKOUT_NOT_LISTED =
  *   avatar: string | null,
  *   updatedAt: string | null,
  *   meta: string,
+ *   head: string | null,
  * }} PullRow
  */
 
@@ -292,6 +311,8 @@ export function describeRow(row) {
     avatar: avatarUrl(row.author_avatar_url),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
     meta: `#${row.number} · ${author}`,
+    // The head commit the list last saw, which says when the row's change line is read again.
+    head: typeof row.head_oid === "string" ? row.head_oid : null,
   };
 }
 
@@ -602,6 +623,8 @@ function pinChanged(response) {
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
  *   warmComparisons?(numbers: number[]): void,
+ *   listingFiles?(numbers: number[]): void,
+ *   listedFiles?(numbers: number[], idle: boolean): void,
  * }} PullsDependencies
  */
 
@@ -791,6 +814,9 @@ export function createPullsController(deps, options = {}) {
   let prefetchTimer = null;
   /** @type {number[]} */
   let prefetchRows = [];
+  // The lane's files outcomes already heard, so each tells the rows' change lines once.
+  /** @type {Set<string>} */
+  const listedSeen = new Set();
   // Rows likely to be expanded next, whose changed files a prefetch names beside the open
   // row's and its neighbours': the rows the pointer or focus last rested on, newest first, and
   // the rows in view, in the list's order. A files ask sends them once the rows in view stay
@@ -2247,9 +2273,11 @@ export function createPullsController(deps, options = {}) {
     void deps
       .request("POST", PREFETCH_ROUTE, { body: { records, files, changed } })
       .then((response) => {
-        // A lane started or joined: follow it, so the row it reads breathes while it does.
+        // A lane started or joined: follow it, so the row it reads breathes while it does,
+        // and a row whose files it will list waits for them on its change line.
         if (response.status === 202) {
           filesHeldUntil = null;
+          deps.listingFiles?.(files);
           watchPrefetch();
         } else if (
           /** @type {{prefetch?: unknown} | null} */ (response.body)?.prefetch === "deferred"
@@ -2297,7 +2325,7 @@ export function createPullsController(deps, options = {}) {
       setPrefetchRows([]);
       return;
     }
-    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}, recent?: unknown[]} | null} */
     let report = null;
     try {
       const response = await deps.request("GET", PREFETCH_ROUTE, {});
@@ -2322,7 +2350,34 @@ export function createPullsController(deps, options = {}) {
     setPrefetchRows(
       running?.kind === "record" && typeof running.number === "number" ? [running.number] : [],
     );
-    if (running !== null || (Array.isArray(report?.queued) && report.queued.length > 0)) {
+    const busy = running !== null || (Array.isArray(report?.queued) && report.queued.length > 0);
+    if (report !== null) {
+      // The lists the lane has listed since the last report, which their rows' change lines
+      // read again; idle, every row still waiting for the lane reads its line again.
+      /** @type {number[]} */
+      const listed = [];
+      for (const entry of Array.isArray(report.recent) ? report.recent : []) {
+        const item =
+          /** @type {{kind?: unknown, number?: unknown, at?: unknown, outcome?: unknown}} */ (
+            entry
+          );
+        if (item?.kind === "files" && typeof item.number === "number") {
+          const key = `${item.number}:${String(item.at)}:${String(item.outcome)}`;
+          if (!listedSeen.has(key)) {
+            listedSeen.add(key);
+            listed.push(item.number);
+          }
+        }
+      }
+      // Past the lane's own record of recent outcomes, twice over.
+      for (const key of [...listedSeen].slice(0, Math.max(0, listedSeen.size - 32))) {
+        listedSeen.delete(key);
+      }
+      if (listed.length > 0 || !busy) {
+        deps.listedFiles?.(listed, !busy);
+      }
+    }
+    if (busy) {
       watchPrefetch();
     }
   }
@@ -3372,6 +3427,10 @@ export function mountPullsPanel(container, ctx, mb) {
    *   title: HTMLElement,
    *   icon: HTMLElement,
    *   meta: HTMLElement,
+   *   change: HTMLElement,
+   *   changeLine: HTMLElement,
+   *   changePending: HTMLElement | null,
+   *   changeKey: string,
    *   info: PullRow,
    *   key: string,
    *   at: number | null,
@@ -3412,7 +3471,10 @@ export function mountPullsPanel(container, ctx, mb) {
   /** A drawn row's treeitem by its key: a pull request's number, or a stack's row key. */
   const rowElement = (/** @type {number} */ key) =>
     key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
-  const rowWindow = createPullsWindow({ estimate: 41.5, overscan: PULL_ROWS_OVERSCAN });
+  const rowWindow = createPullsWindow({
+    estimate: ROW_ESTIMATE_PX,
+    overscan: PULL_ROWS_OVERSCAN,
+  });
   /** @type {Map<number, number>} */
   let rowIndices = new Map();
   /** @type {Map<string, HTMLElement>} */
@@ -3566,19 +3628,32 @@ export function mountPullsPanel(container, ctx, mb) {
         scrollRoot: tab.scrollRoot,
         chevron,
         href: (path) => tab.fileHref(number, path),
-        request: (method, route, options) =>
-          request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
+        async request(method, route, options) {
+          const answer = await request(mb.perf, method, route, {
+            ...options,
+            signal: options.signal ?? signal,
+          });
+          // The tree read its list: a change line summed from another refresh's reads again.
+          const body = /** @type {{generation?: unknown, complete?: unknown} | null} */ (
+            answer.body
+          );
+          if (method === "GET" && answer.status === 200 && body?.complete === true) {
+            rowLines?.heard(number, typeof body.generation === "string" ? body.generation : null);
+          }
+          return answer;
+        },
         formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
         page: () =>
           /** @type {import("./pull-files-tree.js").FilePage | null} */ (tab.pageFor(number)),
         open: ({ file, replace, jumped }) => {
           void tab.open({ number, tab: "files", file, replace, jumped });
         },
+        // Left from a file at the tree's top goes to the change line the tree hangs from.
         leave: () => {
-          const row = painted.get(number)?.row;
-          if (row !== undefined) {
+          const change = painted.get(number)?.change;
+          if (change !== undefined) {
             controller.focused(number);
-            row.focus({ preventScroll: true });
+            change.focus({ preventScroll: true });
           }
         },
         focusedIn: () => {
@@ -3596,7 +3671,7 @@ export function mountPullsPanel(container, ctx, mb) {
       trees.set(number, tree);
       const entry = painted.get(number);
       if (entry !== undefined) {
-        tree.attach(entry.item, entry.row);
+        tree.attach(entry.item, entry.change);
       }
       trimClosedTrees();
     }
@@ -3627,8 +3702,21 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
-  /** @param {number} number */
+  /**
+   * The reader opens or closes a row's files, by a press or a key on its change line: the row
+   * stays where it is, under the pointer or the focus, and the files open or close below it.
+   * A reveal's place gives way to it, as a reader's scroll ends one, so opening a row above
+   * the one a reveal placed does not move the row the reader pressed.
+   *
+   * @param {number} number
+   */
   function toggleRowFiles(number) {
+    const item = painted.get(number)?.item;
+    const view = tab.scrollRoot?.getBoundingClientRect();
+    if (item !== undefined && view !== undefined) {
+      revealedPlace = null;
+      readingPlace = { key: number, offset: item.getBoundingClientRect().top - view.top };
+    }
     setExpanded(number, expansion.toggle(number));
   }
 
@@ -3811,22 +3899,23 @@ export function mountPullsPanel(container, ctx, mb) {
     const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
     const meta = rowMeta(row, stack);
     const icon = pullStateIcon(row.state);
-    // The registry's chevron in the slot a folder's takes, since the row is a container.
-    const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
+    const groupId = `github-pull-change-${row.number}`;
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
-    // item: its level is the list's one, and `placeRows` tells its place.
+    // item: its level is the list's one, and `placeRows` tells its place. It owns its one
+    // child, its change line, which is always shown, so it is always expanded.
     const anchor = /** @type {HTMLAnchorElement} */ (
       h(
         "a",
         {
-          class: "github-pulls-row disclosure-toggle collapsed",
+          class: "github-pulls-row",
           href: row.href,
           role: "treeitem",
           "aria-level": "1",
-          "aria-expanded": "false",
+          "aria-expanded": "true",
+          "aria-owns": groupId,
           tabindex: "-1",
         },
-        [toggle, icon, title, updated, meta],
+        [icon, title, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -3836,9 +3925,31 @@ export function mountPullsPanel(container, ctx, mb) {
     if (row.number === anchorRow) {
       anchor.setAttribute("tabindex", "0");
     }
-    const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor]);
+    // The row's third line, its brief change line (`paintChange`), the row's one child: a
+    // row of the tree that opens and closes the changed files under it, as a folder's does,
+    // with the registry's chevron in the slot the row's own took. It opens no page, so it is
+    // not a link, and it is closed until the reader opens it.
+    const changeLine = h("span", { class: "github-pulls-change-line" });
+    const change = h(
+      "div",
+      {
+        class: "github-pulls-change disclosure-toggle collapsed",
+        role: "treeitem",
+        "aria-level": "2",
+        "aria-posinset": "1",
+        "aria-setsize": "1",
+        "aria-expanded": "false",
+        tabindex: "-1",
+      },
+      [h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]), changeLine],
+    );
+    change.dataset.number = String(row.number);
+    const group = h("div", { class: "github-pulls-change-group", role: "group", id: groupId }, [
+      change,
+    ]);
+    const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor, group]);
     // Its files, kept across a row built again for what it shows.
-    trees.get(row.number)?.attach(item, anchor);
+    trees.get(row.number)?.attach(item, change);
     return {
       item,
       row: anchor,
@@ -3847,11 +3958,66 @@ export function mountPullsPanel(container, ctx, mb) {
       title,
       icon,
       meta,
+      change,
+      changeLine,
+      changePending: null,
+      changeKey: "",
       info: row,
       key,
       at,
       label: when.label,
     };
+  }
+
+  /**
+   * A row's third line as it is now (row-lines.js): the pull request's brief change line,
+   * "21 A, 7 D, 15 M · +1,234 −567", the shell's one component for it, with no file total;
+   * the shell's pending placeholder while it is read or its list is listed, so nothing moves
+   * when it arrives; or nothing but the chevron where it cannot be had. The line's item is
+   * named in words, as a stack's row says its line (`rowLineHint`), and is a level under the
+   * row's.
+   *
+   * @param {PaintedRow} entry
+   * @param {number} level The row's level.
+   */
+  function paintChange(entry, level) {
+    entry.change.setAttribute("aria-level", String(level + 1));
+    const line = rowLines?.line({ number: entry.info.number, head: entry.info.head }) ?? {
+      phase: "none",
+    };
+    const shown =
+      line.phase === "shown"
+        ? `${line.summary.generation}:${JSON.stringify(line.summary.statuses)}:${line.summary.additions}:${line.summary.deletions}:${changedFilesModel === null ? 0 : 1}`
+        : line.phase;
+    if (entry.changeKey === shown) {
+      return;
+    }
+    entry.changeKey = shown;
+    let words = null;
+    if (line.phase === "shown") {
+      const said = mb.changeLine(
+        rowLineInput(line.summary, changedFilesModel?.statusBreakdown ?? null),
+      );
+      entry.changeLine.replaceChildren(...mb.changeLineNodes(said));
+      words = said.label;
+    } else if (line.phase === "waiting") {
+      // The shell's pending placeholder (`.tally-pending`), after the quiet period
+      // (`.mb-delayed-loading`), where the line will be; the name says nothing of it.
+      entry.changePending ??= h(
+        "span",
+        { class: "mb-delayed-loading github-pulls-change-pending", "aria-hidden": "true" },
+        [h("span", { class: "tally-pending" })],
+      );
+      if (
+        entry.changeLine.firstChild !== entry.changePending ||
+        entry.changeLine.childNodes.length !== 1
+      ) {
+        entry.changeLine.replaceChildren(entry.changePending);
+      }
+    } else {
+      entry.changeLine.replaceChildren();
+    }
+    entry.change.setAttribute("aria-label", rowLineHint(words));
   }
 
   /**
@@ -4123,8 +4289,9 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   function clearArrivalFlashes() {
-    for (const { row } of painted.values()) {
+    for (const { row, change } of painted.values()) {
       row.classList.remove("tree-item-flash-in");
+      change.classList.remove("tree-item-flash-in");
     }
   }
 
@@ -4167,7 +4334,7 @@ export function mountPullsPanel(container, ctx, mb) {
     const protectedRows = [currentRow, anchorRow, focused];
     const pieces = rowWindow.range(
       view === undefined ? 0 : view.top - listTop,
-      view === undefined ? DISPLAY_ROWS * 41.5 : view.bottom - listTop,
+      view === undefined ? DISPLAY_ROWS * ROW_ESTIMATE_PX : view.bottom - listTop,
       protectedRows,
     );
     const wanted = new Set(pieces.filter((part) => part.kind === "row").map((part) => part.number));
@@ -4231,6 +4398,7 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.item.dataset.level = String(placed.level);
       entry.row.setAttribute("aria-posinset", String(placed.posinset ?? part.index + 1));
       entry.row.setAttribute("aria-setsize", String(placed.setsize ?? placedSize));
+      paintChange(entry, placed.level);
       nodes.push(entry.item);
     }
     for (const [key, gap] of gaps) {
@@ -4255,6 +4423,15 @@ export function mountPullsPanel(container, ctx, mb) {
         ? [...paintedStacks.entries()]
             .sort(([left], [right]) => (rowIndices.get(left) ?? 0) - (rowIndices.get(right) ?? 0))
             .map(([, entry]) => entry.stack)
+        : [],
+      stackIdentity?.source ?? null,
+    );
+    // The pull requests drawn, in the list's order, whose third lines read their change lines.
+    rowLines?.want(
+      panelShown
+        ? [...painted.entries()]
+            .sort(([left], [right]) => (rowIndices.get(left) ?? 0) - (rowIndices.get(right) ?? 0))
+            .map(([number, entry]) => ({ number, head: entry.info.head }))
         : [],
       stackIdentity?.source ?? null,
     );
@@ -4298,13 +4475,16 @@ export function mountPullsPanel(container, ctx, mb) {
     ) {
       const top = Math.max(view.top, filters.getBoundingClientRect().bottom);
       for (const number of arrivals) {
-        const row = painted.get(number)?.row;
-        if (!row?.isConnected) {
+        const entry = painted.get(number);
+        const row = entry?.row;
+        if (entry === undefined || !row?.isConnected) {
           continue;
         }
         const box = row.getBoundingClientRect();
         if (box.bottom > box.top && box.bottom > top && box.top < view.bottom) {
+          // The row's three lines arrive together: its change line is under its title.
           row.classList.add("tree-item-flash-in");
+          entry.change.classList.add("tree-item-flash-in");
         }
       }
     }
@@ -4555,6 +4735,8 @@ export function mountPullsPanel(container, ctx, mb) {
   let warmer = null;
   /** @type {ReturnType<typeof createStackLines> | null} */
   let stackLines = null;
+  /** @type {ReturnType<typeof createRowLines> | null} */
+  let rowLines = null;
   // The hour's cap on the local reads the tab starts on its own, which its comparison warms
   // and its stack lines share (comparison-prefetch.js, `WARM_PER_HOUR`).
   const warmBudget = createWarmBudget(() => Date.now());
@@ -4651,6 +4833,8 @@ export function mountPullsPanel(container, ctx, mb) {
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
       warmComparisons: (numbers) => warmer?.want(numbers),
+      listingFiles: (numbers) => rowLines?.listing(numbers),
+      listedFiles: (numbers, idle) => rowLines?.listed(numbers, { idle }),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
@@ -4719,6 +4903,34 @@ export function mountPullsPanel(container, ctx, mb) {
           changed: () => queueWindow(),
         });
 
+  // Each row's brief change line, what its own list of changed files sums to (row-lines.js):
+  // read for the rows the list draws, in one request, when the browser is idle, from the
+  // cache alone, and drawn through the SDK's one component for it. An SDK without `whenIdle`
+  // or the component has no lines, and its rows' third lines hold the chevron alone.
+  rowLines =
+    typeof mb.whenIdle !== "function" ||
+    typeof mb.changeLine !== "function" ||
+    typeof mb.changeLineNodes !== "function"
+      ? null
+      : createRowLines({
+          async read(numbers, readSignal) {
+            const answer = await request(
+              mb.perf,
+              "GET",
+              `${PULL_FILES_SUMMARY_ROUTE}?numbers=${numbers.join(",")}`,
+              { signal: readSignal },
+            );
+            // The line's letters are the changed-files tree's, so its first paint has them.
+            changedFilesModel = (await loadChangedFiles().catch(() => null)) ?? changedFilesModel;
+            return answer;
+          },
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible" && panelShown,
+          now: () => Date.now(),
+          changed: () => queueWindow(),
+        });
+
   const unbindFilters = controls.bind(filters, {
     onChange(key, value, select) {
       if (key === FILTER_GROUP && select === "one") {
@@ -4760,6 +4972,44 @@ export function mountPullsPanel(container, ctx, mb) {
       : null;
 
   /** @param {EventTarget | null} target */
+  const changeOf = (target) =>
+    target instanceof Element
+      ? /** @type {HTMLElement | null} */ (target.closest(".github-pulls-change"))
+      : null;
+
+  /** The pull request whose change line has focus, or null. */
+  const focusedChange = () => {
+    const number = Number(changeOf(document.activeElement)?.dataset.number);
+    return Number.isInteger(number) && number > 0 && painted.has(number) ? number : null;
+  };
+
+  /** Focus *number*'s change line, which the walk's anchor stays the row of.
+   * @param {number} number */
+  function focusChange(number) {
+    const entry = painted.get(number);
+    if (entry === undefined) {
+      return false;
+    }
+    controller.focused(number);
+    entry.change.focus({ preventScroll: true });
+    entry.change.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+
+  /** Focus *number*'s row from its change line or its files, opening nothing.
+   * @param {number} number */
+  function focusRow(number) {
+    const row = painted.get(number)?.row;
+    if (row === undefined) {
+      return false;
+    }
+    controller.focused(number);
+    row.focus({ preventScroll: true });
+    row.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+
+  /** @param {EventTarget | null} target */
   const stackRowOf = (target) =>
     target instanceof Element
       ? /** @type {HTMLElement | null} */ (target.closest(".github-pulls-stack-row"))
@@ -4775,15 +5025,21 @@ export function mountPullsPanel(container, ctx, mb) {
         controller.setStackOpen(number);
         return;
       }
+      // A press on a row's change line, its chevron included, opens or closes its changed
+      // files, as a folder's row does, and opens no page.
+      const change = changeOf(event.target);
+      if (change !== null) {
+        const number = Number(change.dataset.number);
+        controller.focused(number);
+        toggleRowFiles(number);
+        return;
+      }
       const row = rowOf(event.target);
       // A new tab and a copied address are the browser's own.
       if (row !== null && isPlainClick(event)) {
         event.preventDefault();
-        const number = Number(row.dataset.number);
-        // One gesture, as a folder's in the Files tab: it opens the pull request and toggles
-        // its files.
-        toggleRowFiles(number);
-        controller.activate(number);
+        // The pull request opens; its changed files stay as they were.
+        controller.activate(Number(row.dataset.number));
       }
     },
     { signal },
@@ -4794,6 +5050,12 @@ export function mountPullsPanel(container, ctx, mb) {
       const stackRow = stackRowOf(event.target);
       if (stackRow !== null && !movingFocus) {
         controller.focused(stackRowKey(Number(stackRow.dataset.stack)));
+        return;
+      }
+      // A row's change line is its child: its row keeps the Tab stop, and nothing is read.
+      const change = changeOf(event.target);
+      if (change !== null) {
+        controller.focused(Number(change.dataset.number));
         return;
       }
       const row = rowOf(event.target);
@@ -4973,13 +5235,47 @@ export function mountPullsPanel(container, ctx, mb) {
       followCurrentFile(file === null);
     },
     setFilter: (/** @type {string} */ state) => controller.setFilter(state, { fromAddress: true }),
-    move: controller.move,
+    /**
+     * Up and Down walk the pull requests, and expand nothing. On a row's change line, Up goes
+     * back to its row, and Down into its open files, or else on to the next row.
+     *
+     * @param {-1 | 1} delta @param {{repeat?: boolean}} [how]
+     */
+    move(delta, how) {
+      const number = focusedChange();
+      if (number === null) {
+        return controller.move(delta, how);
+      }
+      if (delta < 0) {
+        return focusRow(number);
+      }
+      if (expansion.isExpanded(number)) {
+        const tree = treeFor(number).controller;
+        // Its files are still opening, hidden for their first read (FILES_OPEN_HOLD_MS): the
+        // key is the tree's, and does nothing until they show, rather than leaving the row.
+        if (tree.snapshot().opening) {
+          return true;
+        }
+        if (tree.enter()) {
+          return true;
+        }
+      }
+      return controller.move(delta, how);
+    },
     released() {
       controller.released();
       focused()?.released();
     },
-    activateAnchor: controller.activateAnchor,
-    /** Space toggles the focused pull request's files in place. @param {number} number */
+    /** Enter: on a row it opens the pull request; on its change line, its files open or close. */
+    activateAnchor() {
+      const number = focusedChange();
+      if (number !== null) {
+        toggleRowFiles(number);
+        return true;
+      }
+      return controller.activateAnchor();
+    },
+    /** Space on a row's change line toggles its files in place. @param {number} number */
     toggleFiles(number) {
       if (!painted.has(number)) {
         return false;
@@ -4990,10 +5286,20 @@ export function mountPullsPanel(container, ctx, mb) {
     /** Space on a stack's row opens or closes it. @param {number} number */
     toggleStack: (number) => controller.setStackOpen(number),
     /**
-     * Right on a pull request's row: its files open, or focus goes to the first. On a
-     * stack's row: it opens, or focus goes to its first pull request.
+     * Right on a pull request's row: focus goes to its change line, and nothing opens. On its
+     * change line: its files open, or focus goes to the first. On a stack's row: it opens, or
+     * focus goes to its first pull request.
      */
     expand() {
+      const line = focusedChange();
+      if (line !== null) {
+        if (expansion.expand(line)) {
+          setExpanded(line, true);
+        } else if (!treeFor(line).controller.enter()) {
+          setExpanded(line, true);
+        }
+        return true;
+      }
       const number = controller.snapshot().anchor;
       if (number === null) {
         return false;
@@ -5001,23 +5307,25 @@ export function mountPullsPanel(container, ctx, mb) {
       if (number < 0) {
         return controller.enterStack();
       }
-      if (expansion.expand(number)) {
-        setExpanded(number, true);
-      } else if (!treeFor(number).controller.enter()) {
-        setExpanded(number, true);
-      }
+      focusChange(number);
       return true;
     },
     /**
-     * Left on a pull request's row: its files close, or, closed, focus goes to the stack's
-     * row it is under. On a stack's row: it closes.
+     * Left on a pull request's change line: its files close, or, closed, focus goes back to
+     * its row. On a row: focus goes to the stack's row it is under. On a stack's row: it
+     * closes.
      */
     collapse() {
-      const number = controller.snapshot().anchor;
-      if (number !== null && number > 0 && expansion.collapse(number)) {
-        setExpanded(number, false);
+      const line = focusedChange();
+      if (line !== null) {
+        if (expansion.collapse(line)) {
+          setExpanded(line, false);
+        } else {
+          focusRow(line);
+        }
         return true;
       }
+      const number = controller.snapshot().anchor;
       if (number !== null) {
         controller.leaveToStack();
       }
@@ -5062,6 +5370,7 @@ export function mountPullsPanel(container, ctx, mb) {
       controller.dispose();
       warmer?.dispose();
       stackLines?.dispose();
+      rowLines?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }

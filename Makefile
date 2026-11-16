@@ -170,8 +170,10 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_stack_change.py \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_github_pull_files.py \
+	tests/test_github_pull_files_summary.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
 	tests/test_diff_view_file_session.py \
@@ -236,6 +238,7 @@ GOLDEN_RECORDERS := \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_stack_change.py \
+	tests/test_github_pull_files_summary.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_inert_toc.py \
 	tests/test_inert_html.py
@@ -256,6 +259,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_stack_change_golden.py \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \

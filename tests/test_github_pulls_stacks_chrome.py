@@ -6,7 +6,8 @@ keys do is browserless (``tests/dom/github-pulls-stack-groups-session.js``); wha
 browser can tell is held here: that a stack row's header and the stack menu's heading
 resolve to the same label tokens, gray, all caps, and tracked; where a stack row and the
 rows under it start; that both kinds of row hover and focus alike; that the option's chip
-keeps the toolbar's height; that real keys move focus onto and off a stack row; that the
+keeps the toolbar's height; that real keys move focus onto and off a stack row, and over a
+pull request's row and its change line, where its changed files open and close; that the
 groups list a stack's pull requests in the menu's order; and that the choice persists.
 
 It also holds the Pulls toolbar to the navigation toolbars' wrap rule (docs/design-system.md,

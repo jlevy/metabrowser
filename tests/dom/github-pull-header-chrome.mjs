@@ -987,14 +987,16 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   };
 }`;
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
-// github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
-// the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
-// chevron, the icon, the number's line, where a stack member's place comes before its
-// number (mb-dzsi), and the age; then the title alone, from the text column to the
-// row's end. Each row is a member, a level in under its stack's row. The age, the
-// chevron, the icon, and the title are read, from the row's top, before and after each
-// row's place arrives, the title's width with them: the place is on the number's line,
-// which stays one line, so nothing else moves and the row keeps its two lines (`grew`).
+// github-pulls-panel-session.js pins: the row's link, the state icon, the title, the age,
+// and the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
+// icon, the number's line, where a stack member's place comes before its number (mb-dzsi),
+// and the age; then the title alone, from the text column to the row's end. Under the link
+// is the row's third line, its change line (mb-d0a3), which holds the chevron in the first
+// icon slot, here with no line yet. Each row is a member, a level in under its stack's row.
+// The age, the chevron, the icon, and the title are read, from the row's top, before and
+// after each row's place arrives, the title's width with them: the place is on the number's
+// line, which stays one line, so nothing else moves, the link keeps its two lines (`grew`),
+// and the row its three (`itemGrew`).
 const PULLS_ROWS = `async (rows, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const state = window.__state ??= await import("/github/pull-state.js");
@@ -1027,8 +1029,7 @@ const PULLS_ROWS = `async (rows, width) => {
     const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     chevron.setAttribute("class", "toggle-chevron");
     chevron.setAttribute("viewBox", "0 0 24 24");
-    const anchor = h("a", { class: "github-pulls-row collapsed", href: "#", role: "treeitem" }, [
-      h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]),
+    const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "true" }, [
       state.pullStateIcon("open"),
       title,
       age,
@@ -1039,17 +1040,24 @@ const PULLS_ROWS = `async (rows, width) => {
         ]),
       ]),
     ]);
-    list.append(h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [anchor]));
-    return { anchor, place, number, title, age, row };
+    const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]);
+    const line = h("span", { class: "github-pulls-change-line" });
+    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", role: "treeitem", "aria-expanded": "false" }, [toggle, line]);
+    const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
+      anchor,
+      h("div", { class: "github-pulls-change-group", role: "group" }, [change]),
+    ]);
+    list.append(item);
+    return { item, anchor, change, toggle, line, place, number, title, age, row };
   });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
   // Each row's age and title line, the title's width with them, read from its row's top.
-  const titleLine = built.map(({ anchor, title, age }) => [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon"), title, age]);
+  const titleLine = built.map(({ anchor, toggle, title, age }) => [toggle, anchor.querySelector(".github-pull-state-icon"), title, age]);
   const read = () =>
     titleLine.map((nodes, at) => {
-      const top = built[at].anchor.getBoundingClientRect().top;
+      const top = built[at].item.getBoundingClientRect().top;
       return nodes.map((node) => {
         const r = node.getBoundingClientRect();
         return [r.left, r.top - top, r.width, r.height].map((value) => Math.round(value * 100) / 100);
@@ -1057,6 +1065,7 @@ const PULLS_ROWS = `async (rows, width) => {
     });
   const before = read();
   const heights = built.map(({ anchor }) => anchor.getBoundingClientRect().height);
+  const itemHeights = built.map(({ item }) => item.getBoundingClientRect().height);
   for (const { place, row } of built) {
     place.hidden = false;
     // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
@@ -1083,7 +1092,7 @@ const PULLS_ROWS = `async (rows, width) => {
   }
   await frames();
   const after = read();
-  return built.map(({ anchor, place, number, title, age, row }, at) => {
+  return built.map(({ item, anchor, change, toggle, line, place, number, title, age, row }, at) => {
     const moved = titleLine[at].flatMap((node, index) =>
       JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
         ? []
@@ -1101,7 +1110,9 @@ const PULLS_ROWS = `async (rows, width) => {
     const t = title.getBoundingClientRect();
     const style = getComputedStyle(anchor);
     const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
-    const glyphs = [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon")].map((node) => node.getBoundingClientRect());
+    const icon = anchor.querySelector(".github-pull-state-icon").getBoundingClientRect();
+    const chevron = toggle.getBoundingClientRect();
+    const third = change.getBoundingClientRect();
     const middle = (r) => (r.top + r.bottom) / 2;
     const round = (value) => Math.round(value * 100) / 100;
     // The author's floor, from its parts rather than its own min-width, which a flex item
@@ -1127,7 +1138,10 @@ const PULLS_ROWS = `async (rows, width) => {
       inside: [age, number, place].every((node) => node.getBoundingClientRect().right <= end) && nav.scrollWidth <= nav.clientWidth,
       cut: position.scrollWidth > position.clientWidth,
       grew: Math.round((box.height - heights[at]) * 100) / 100,
+      itemGrew: Math.round((item.getBoundingClientRect().height - itemHeights[at]) * 100) / 100,
       height: Math.round(box.height * 100) / 100,
+      // The row is three lines: the link's two, and the change line under the title.
+      threeLines: Math.abs(item.getBoundingClientRect().height - box.height - third.height) < 0.5 && third.top >= box.bottom - 0.5 && third.top >= t.bottom - 0.5,
       // The number's line is one line of the number's type.
       oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
       // The title runs to the row's end, under the age.
@@ -1135,10 +1149,15 @@ const PULLS_ROWS = `async (rows, width) => {
       // The title starts in the text column, after the chevron's and the icon's slots.
       titleFrom: round(t.left - inset),
       textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
-      // The chevron and the icon are on the number's line, centered on it (mb-3cbf).
-      glyphsOff: glyphs.map((r) => round(middle(r) - middle(meta))),
-      withNumber: glyphs.every((r) => r.height > 0 && r.top >= meta.top - 0.5 && r.bottom <= meta.bottom + 0.5 && r.bottom <= t.top + 0.5),
-      glyphsFrom: glyphs.map((r) => round(r.left - inset)),
+      // The icon is on the number's line, centered on it (mb-3cbf), in the second slot; the
+      // chevron is on the change line, under the title, in the first, and the change line's
+      // text column is the title's (mb-d0a3).
+      iconOff: round(middle(icon) - middle(meta)),
+      iconWithNumber: icon.height > 0 && icon.top >= meta.top - 0.5 && icon.bottom <= meta.bottom + 0.5 && icon.bottom <= t.top + 0.5,
+      iconFrom: round(icon.left - inset),
+      chevronOnThird: chevron.height > 0 && chevron.top >= third.top - 0.5 && chevron.bottom <= third.bottom + 0.5 && chevron.top >= t.bottom - 0.5,
+      chevronFrom: round(chevron.left - inset),
+      lineFrom: round(line.getBoundingClientRect().left - inset),
       // The author on the number's line, at its floor or wider and its name ending inside the
       // line, or off it, whole.
       author:
@@ -1999,11 +2018,16 @@ async function main() {
             !row.cut || !oneStack,
             JSON.stringify(row),
           );
-          // The number's line is one line at every width, so the row is always two (mb-lkkt):
-          // before, three stacks took a third line at 300 px and one stack at 180 px.
+          // The number's line is one line at every width, so the link is always two (mb-lkkt):
+          // before, three stacks took a third line at 300 px and one stack at 180 px. The
+          // row's third line is its change line (mb-d0a3), under the title.
           check(
-            `${where}: the number's line stays one line, and the row two`,
-            row.oneLine && row.grew === 0,
+            `${where}: the number's line stays one line, the link two, and the row three, its change line under the title and in the title's column`,
+            row.oneLine &&
+              row.grew === 0 &&
+              row.itemGrew === 0 &&
+              row.threeLines &&
+              Math.abs(row.lineFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           check(
@@ -2011,14 +2035,18 @@ async function main() {
             row.titleEnd && Math.abs(row.titleFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
-          // The chevron and the icon lead the number's line, in their slots (mb-3cbf); on
-          // the title's line they sat a line below it.
+          // The icon leads the number's line, in its slot (mb-3cbf); on the title's line it sat
+          // a line below it. The chevron is on the change line, under the title, in the first
+          // slot, and the line starts in the title's column (mb-d0a3); on the number's line it
+          // led the link.
           check(
-            `${where}: the chevron and the icon sit on the number's line, centered on it, in their slots`,
-            row.withNumber &&
-              row.glyphsOff.every((off) => Math.abs(off) < 0.5) &&
-              row.glyphsFrom[0] === 0 &&
-              Math.abs(row.glyphsFrom[1] - row.textColumn / 2) < 0.5,
+            `${where}: the icon sits on the number's line, centered on it, in the second slot, and the chevron on the change line under the title, in the first`,
+            row.iconWithNumber &&
+              Math.abs(row.iconOff) < 0.5 &&
+              Math.abs(row.iconFrom - row.textColumn / 2) < 0.5 &&
+              row.chevronOnThird &&
+              row.chevronFrom === 0 &&
+              Math.abs(row.lineFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           check(

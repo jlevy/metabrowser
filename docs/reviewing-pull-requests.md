@@ -71,8 +71,19 @@ available. A detail record whose metadata projection changed revalidates its
 representations once on an accepted refresh; later refreshes reuse conditional responses
 as usual. A failed refresh retains the displayed record.
 
-Click a PR row to open the PR and toggle its changed files.
-Right expands the tree, and Left collapses it.
+Each PR row has a third line, the PR’s brief change line, “21 A, 7 D, 15 M · +1,234
+−567”: how many files it adds, deletes, modifies, and renames, and its lines added and
+deleted, with no file total, so walking the list shows the size of each change.
+It sums the PR’s cached list of changed files, the same list its tree shows, and a stack
+of one PR shows the same line on its heading.
+It never asks GitHub: the lists come from what the Pulls tab already reads behind you
+for the rows in view and from trees you open, so a row whose files have not been listed
+yet shows its line once they are, and a gray placeholder holds its place meanwhile.
+
+The change line carries the chevron for the PR’s changed files, which start collapsed.
+Click a row’s title or number to open the PR; its files stay as they were.
+Click the chevron or the change line to expand or collapse the files.
+No row expands on its own, when you open it, select it, or walk the list.
 The tree shows cached files immediately when available and automatically lists them when
 needed: it says “Listing changed files…” until they arrive, however long GitHub takes,
 and then shows them.
@@ -85,9 +96,11 @@ list (no files)**, and a list Metabrowser no longer holds as **Show the updated 
 (not listed)**, while the files you see stay as they were last listed.
 Selecting a file opens **Changes** at that file.
 Use J, K, or the up and down arrows to walk rows without changing which trees are
-expanded. Enter opens the focused PR. Space expands or collapses its changed files in
-place. Keyboard walks keep focus in the tree and replace one browser history entry, so
-Back leaves the walk in one step.
+expanded. Enter opens the focused PR. Right moves to the row’s change line, where Enter
+or Space expands or collapses the files in place, Right expands them or moves into them,
+Left collapses them and then returns to the row, and Up returns to the row.
+Keyboard walks keep focus in the tree and replace one browser history entry, so Back
+leaves the walk in one step.
 The selected file follows the diff as you scroll; Back and Forward restore the selected
 file and reading position.
 

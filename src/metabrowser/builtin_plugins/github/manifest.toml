@@ -114,6 +114,13 @@ route = "pull-files"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_handler"
 methods = ["GET"]
 
+# What each named pull request's cached changed-files list sums to, by status and in lines,
+# for the brief change line its Pulls row shows. From the cache alone: no gh and no Git.
+[[data_hook]]
+route = "pull-files-summary"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_summary_handler"
+methods = ["GET"]
+
 # Start or join that list's refresh in the refresh coordinator. A POST with a JSON object
 # body naming its number, behind the same-origin guard; it returns at once.
 [[data_hook]]
