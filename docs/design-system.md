@@ -2073,6 +2073,10 @@ spare.
 - **Scroll.** A grouping that arrives at the top of the list keeps the top, so its first
   stack’s row shows; elsewhere the row the reader is reading keeps its place, and a
   stack’s row can be that row, so opening one keeps its header still.
+  A row a reveal scrolled to stays the row being read until the reader scrolls, at the
+  top too: stacks that arrive after the list’s first window regroup the list around it,
+  as far as the list’s top allows, rather than around the first row in view, which moved
+  the revealed row out of view.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
   stack’s row passed over, and the first pull requests drawn.
 
@@ -3440,10 +3444,13 @@ Each exception has a reason:
 - **A long folder draws only the page that holds the item.** A folder draws its first
   200 rows and holds the rest behind a row that shows them 200 at a time.
   When the item is among them, the reveal draws only the 200-row page that holds it.
-  The rows before that page stay behind a “Show 400 more” row above it, and the rows
-  after it behind the row that ends the folder.
-  Pressing the row above draws its next page where the row was, and the rows below it
-  stay in place, so the revealed row stays in view and the folder still reads in order.
+  The rows before that page stay behind a “Show N more” row above it, and the rows after
+  it behind one below it.
+  Pressing either row draws its next page where the row was, so the folder still reads
+  in order. When the selected row is below the row pressed, as the revealed one is below
+  the row above it, the rows below stay in place, so the selected row stays in view.
+  Otherwise the page grows down from the row, as at the end of a folder, and focus goes
+  to its first row: a reader reading down reads on into it.
   A reveal therefore costs one page however long the folder is.
   Drawing every page up to the item instead took 2.75 s for the last of 10,000 files,
   and the cost grew with the folder (`mountTreePageAt` in `app.js` records both
