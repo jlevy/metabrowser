@@ -1489,12 +1489,14 @@ record names waits until the reader takes it.
 A core whose read prepares no comparison, or that no read is running for, has nothing on
 its way, and only Changes asks for its comparison.
 A read that draws no summary, because it failed or its comparison is not a valid
-document, leaves the place empty until a read of the same comparison starts again, a
-Retry among them, so a placeholder never outlives its wait and every wait has one.
+document, leaves the place empty until a read of the same comparison starts again: at
+the page’s next paint, such as a switch of tab or a poll that repaints it, or a Retry,
+so a placeholder never outlives its wait and every wait has one.
 A summary already drawn stays while a newer comparison is read
-([Refreshing Content](#refreshing-content)). A pull request’s header shows it on every
-tab. A commit’s page never shows it: the shell stages that page out of sight until its
-diff has drawn the summary, so its place does not wait in view.
+([Refreshing Content](#refreshing-content)), and the newer one’s summary replaces it in
+one step. A pull request’s header shows it on every tab.
+A commit’s page never shows it: the shell stages that page out of sight until its diff
+has drawn the summary, so its place does not wait in view.
 Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 188.5 by
 11.05 px (14.5 em of the header’s type), at the row’s start and centred on its line, the
 row is 24 px before and after the summary arrives, and the tab bar under it does not
