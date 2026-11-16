@@ -34,17 +34,20 @@ A new acquisition needs a Git at or above the acquisition security floor
 `tests/fixtures/repository-cache/git-version-gates.json`). A source already in the cache
 is reused under any Git.
 
-`cache/origin.py` builds the only two commands that talk to an origin, for acquisition
-and refresh alike: `ls-remote --symref` to learn which branch the origin’s `HEAD` names,
-then one fetch of every branch and tag with explicit refspecs (`MIRROR_REFSPECS`). Both
-name the origin by URL and get `origin_git_args`: a protocol allowlist of `file` and
-`https`, the low-speed stall bound (`HTTP_LOW_SPEED_LIMIT_BYTES` for
-`HTTP_LOW_SPEED_TIME_S`), and whatever the provider adds for that URL. Curl’s stall
-bound does not cover a TLS handshake that never completes, so the first command against
-an `https` origin has its own deadline (`REMOTE_PROBE_TIMEOUT_S`); the fetch has only
-`GIT_ACQUISITION_TIMEOUT_S`, so a clone that keeps making progress is not stopped for
-taking long. `classify_remote_failure` turns Git’s text, which is only logged, into a
+`cache/origin.py` builds the two commands that acquisition and refresh run against an
+origin: `ls-remote --symref` to learn which branch the origin’s `HEAD` names, then one
+fetch of every branch and tag with explicit refspecs (`MIRROR_REFSPECS`). Both name the
+origin by URL and get `origin_git_args`: a protocol allowlist of `file` and `https`, the
+low-speed stall bound (`HTTP_LOW_SPEED_LIMIT_BYTES` for `HTTP_LOW_SPEED_TIME_S`), and
+whatever the provider adds for that URL. Curl’s stall bound does not cover a TLS
+handshake that never completes, so the first command against an `https` origin has its
+own deadline (`REMOTE_PROBE_TIMEOUT_S`); the fetch has only `GIT_ACQUISITION_TIMEOUT_S`,
+so a clone that keeps making progress is not stopped for taking long.
+`classify_remote_failure` turns Git’s text, which is only logged, into a
 `RemoteFailureState` a reader can act on.
+A third command talks to an origin outside acquisition and refresh: the pull-request ref
+fetch in `cache/pull_refs.py`, which [object recovery](#object-recovery) also uses, and
+which gets the same `origin_git_args`.
 
 Credentials belong to the provider:
 

@@ -820,7 +820,7 @@ it. Keep this terminal open.
 ```shell
 QA_PLAIN="$(mktemp -d "${TMPDIR:-/tmp}/mb-qa-plain.XXXXXX")"
 cp -R tests/manual-fixtures/. "${QA_PLAIN}/"
-cp docs/qa-v012-repository-library.md "${QA_PLAIN}/guide.md"
+cp docs/project/qa/qa-2026-09-19-v012-repository-library.md "${QA_PLAIN}/guide.md"
 cp images/metabrowser-overview.jpg "${QA_PLAIN}/photo.jpg"
 printf '<!doctype html>\n<title>Page</title>\n<h1>Hello</h1>\n<script>document.querySelector("h1").textContent = "Hello from the script"</script>\n' > "${QA_PLAIN}/page.html"
 awk 'BEGIN { for (i = 1; i <= 40000; i++) printf "line %06d: the quick brown fox jumps over the lazy dog, again and again\n", i }' > "${QA_PLAIN}/long.txt"

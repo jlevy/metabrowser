@@ -6,7 +6,7 @@ The Pulls tab lists the repository’s pull requests, and each pull request’s 
 its description, conversation, reviews, checks, and changes.
 What it fetches is cached, so a pull request you have read stays readable offline.
 
-![A pull request’s page with its Changes tab](../images/screenshot-pull-request.jpg)
+![A pull request’s page on its Conversation tab, with its changed files in the Pulls list](../images/screenshot-pull-request.jpg)
 
 Cloning needs Git, and reading pull requests from GitHub needs GitHub CLI (`gh`), signed
 in; [installation](installation.md#git-and-github-setup) says how to set them up.

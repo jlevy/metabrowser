@@ -29,8 +29,8 @@ The client half -- request coalescing and validator behavior as the browser
 actually experiences them -- is not visible from here. ``--browser-probe``
 prints the in-page probe, ``devtools/bench-browser-probe.js``: load it in an open
 folder view and call ``await metabrowser.bench.run({clients: 8})``. It reads the
-``Server-Timing`` header every route emits, because a request count cannot tell
-a shared computation from a repeated one, and reports per query shape whether
+``Server-Timing`` header every non-streaming route emits, because a request count
+cannot tell a shared computation from a repeated one, and reports per query shape whether
 validators work and what simultaneous clients cost.
 
 Usage::

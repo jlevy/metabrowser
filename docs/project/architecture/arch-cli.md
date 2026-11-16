@@ -45,9 +45,9 @@ mode on a local folder does not load the Git revision machinery it never uses.
 `cli/entrypoint.py` is the console-script boundary.
 It imports `cli/main.py` inside a `try`, so a Ctrl-C while Python is still importing
 exits with `INTERRUPTED_EXIT_CODE` (`cli/exit_codes.py`) and no traceback.
-`_run_cli` prints a `CLIError` as `Error: …` and exits with status 1, and silences a
-closed stdout or stderr so a pipe to `head` does not turn success into a flush error at
-exit.
+`cli/main.py`’s `_run_cli` prints a `CLIError` as `Error: …` and exits with status 1,
+and silences a closed stdout or stderr so a pipe to `head` does not turn success into a
+flush error at exit.
 
 ## The Serve Lifecycle
 

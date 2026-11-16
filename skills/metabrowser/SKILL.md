@@ -111,7 +111,7 @@ The page updates as files change, so the user can keep watching while you work.
   whether the run ended and how.
   Read the file itself for its newest lines
 - `/api/stream` and `/api/events` are server-sent-event streams that never finish;
-  `--api` gives up on them after a bounded wait, so do not issue them
+  `--api` refuses them as soon as their response headers arrive, so do not issue them
 
 ## Read Commits and Diffs
 

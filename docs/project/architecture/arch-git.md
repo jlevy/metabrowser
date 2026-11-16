@@ -173,7 +173,8 @@ A commit the repository lacks answers HTTP 404 `commit_not_found`, and a short I
 name answers 400 `revision_not_full`. The route never fetches: a GET starts no network
 work. On a served mirror the commit view can ask for the fetch such a commit waits for,
 `POST /api/source/refresh` with `{"for": "commit"}`; the functional row
-`git.unfetched-commit` in the map pins that sequence.
+`git.unfetched-commit` in the [parity registry](arch-parity-registry.md) pins that
+sequence.
 
 ## Answers Kept Under the Refs’ State
 
@@ -209,10 +210,11 @@ Pages already read are framed into a private spool and replayed by indexed seek,
 revisiting a page reads a file rather than walking again.
 
 The cursor is base64 JSON with a format version, the session ID, the scope fingerprint,
-the page number, and the page size.
-`decode_history_cursor` checks the exact key set, the version, bounded IDs, integers
-that are not `bool`, and a page size equal to the request’s own; every invalid shape
-decodes to `None`.
+the direction (`d`), the page number, and the page size.
+`decode_history_cursor` checks the exact key set, the version, bounded IDs, a known
+direction, and integers that are not `bool`; every invalid shape decodes to `None`.
+`HistorySessionRegistry.read_page` then refuses a cursor whose page size differs from
+the request’s own, raising the same `InvalidHistoryCursorError` an invalid shape gets.
 
 Each failure is typed, because each calls for a different recovery:
 

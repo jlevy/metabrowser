@@ -828,27 +828,30 @@ For a documentation agent, after step 1 and again after step 2:
   commands above, `--checkout`, what `borrowing objects from` means, the shallow note
   with `base_uncertain`, the printed suggestion, and `borrows` and `shallow` in the
   status envelope’s field list.
-- `docs/project/architecture/arch-repository-sources-and-provider-mirrors.md`: the
-  self-contained invariant under “Shared Repository Store” rewritten for two modes; the
-  `lender` field in the cache record contracts table; the overlay’s acquisition, the
-  sweep, and the healing order in the acquisition and refresh state machines; `borrows`
-  and `shallow` under “What a mirror’s page is called”; the merge-base certainty rule
-  under “Pull-request records”; a note under “Read path and performance” that the diff
-  commands pass neither `--no-ext-diff` nor `--no-textconv`, and what that means for a
-  served checkout.
-- `docs/project/architecture/arch-views-models-routes.md`: parity rows for the new
-  fields, states, and routes, with their goldens.
-- `SECURITY.md`, Content Trust Model: a named checkout as a read-only object source
-  whose configuration is never consulted and whose bytes are trusted as a served
-  folder’s are, with blob verification once it exists.
-- `docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md`: already points here
+- `docs/project/architecture/arch-repository-cache.md`,
+  `arch-mirror-acquisition-and-refresh.md`, and `arch-github-pull-requests.md`, which
+  replaced the retired `arch-repository-sources-and-provider-mirrors.md` this list first
+  named (the sections below are that document’s): the self-contained invariant under
+  “Shared Repository Store” rewritten for two modes; the `lender` field in the cache
+  record contracts table; the overlay’s acquisition, the sweep, and the healing order in
+  the acquisition and refresh state machines; `borrows` and `shallow` under “What a
+  mirror’s page is called”; the merge-base certainty rule under “Pull-request records”;
+  a note under “Read path and performance” that the diff commands pass neither
+  `--no-ext-diff` nor `--no-textconv`, and what that means for a served checkout.
+- `docs/project/architecture/arch-parity-registry.md`: parity rows for the new fields,
+  states, and routes, with their goldens.
+- `docs/project/architecture/arch-server-and-content.md`, Content Trust Model (moved
+  there from `SECURITY.md`): a named checkout as a read-only object source whose
+  configuration is never consulted and whose bytes are trusted as a served folder’s are,
+  with blob verification once it exists.
+- `docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md`: already points here
   from “The alternates option”, the Files changed case, and decision 4; its step 5 text
   is rewritten when step 4 above starts.
 - `docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md`: a one-line note under
   Principles that “No Git object is deleted in v1” applies to Metabrowser’s own store
   and that this plan says what an overlay borrows.
-- `docs/qa-v012-repository-library.md`: a part for the checkout scenario, including a
-  linked worktree, a shallow clone, and a pruned pull request.
+- `docs/project/qa/qa-2026-09-19-v012-repository-library.md`: a part for the checkout
+  scenario, including a linked worktree, a shallow clone, and a pruned pull request.
 - `CHANGELOG.md` for each step.
 - `docs/project/README.md`: this plan in the active list, done with this document.
 

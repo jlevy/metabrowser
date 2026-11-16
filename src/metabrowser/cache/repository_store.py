@@ -4,12 +4,12 @@ One store serves every subject of its repository: measured 2026-09-16, readers o
 different commits of one store ran concurrently with identical output, across ``repack``
 and ``gc`` runs (``explorations/repository-cache/README.md``).
 
-A store is a read-only mirror: acquisition fetches every object, nothing runs ``gc``,
-``prune``, or ``repack`` on it, and Metabrowser writes no ref of its own into it. A commit
-that is in the store therefore stays readable, so opening one only proves it is there and
-builds the :class:`~metabrowser.git.tree_source.GitRevisionSubject`. An overlay store
-fetches only what a named checkout cannot lend, and a borrowed object can go when that
-checkout changes (:mod:`metabrowser.cache.lender`). Nothing is written
+A store is a read-only mirror: nothing runs ``gc``, ``prune``, or ``repack`` on it, and
+Metabrowser writes no ref of its own into it. A full store's acquisition fetches every
+object, so a commit that is in a full store stays readable, and opening one only proves it
+is there and builds the :class:`~metabrowser.git.tree_source.GitRevisionSubject`. An
+overlay store fetches only what a named checkout cannot lend, and a borrowed object can go
+when that checkout changes (:mod:`metabrowser.cache.lender`). Nothing is written
 and no lock is held, which is also why a cache hit opens from a home the process cannot
 write. This module does not serve content or check out a worktree.
 

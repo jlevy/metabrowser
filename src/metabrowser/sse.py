@@ -1,9 +1,10 @@
-"""Server-Sent Events endpoint for live JSONL log + chart updates.
+"""Server-Sent Events endpoint for live JSONL log updates.
 
 Tree decoration and active-file badges arrive on ``/api/events``. This
 stream serves the one log a tab is *looking at*: it pushes the records
-appended to that file, so an open log or chart grows without refetching
-the file. ``docs/project/architecture/arch-live-delivery.md`` describes
+appended to that file, so the open Log view grows without refetching the
+file. Charts do not grow; they show the events there were when they
+loaded. ``docs/project/architecture/arch-live-delivery.md`` describes
 both channels.
 
 Wire format
@@ -14,7 +15,7 @@ The endpoint emits standard ``text/event-stream`` frames:
 * ``event: append`` — one JSON object containing a batch of newly
   appended events (parsed with the same single-pass parser as
   ``_parse_jsonl_file``) plus the new byte cursor. The client appends
-  to the rendered log and extends in-memory chart series. The same
+  them to its cached event list and to the visible Log view. The same
   complete-line cursor is the SSE event ID, so automatic reconnects
   continue from the last acknowledged record through ``Last-Event-ID``.
 * ``: heartbeat`` — a comment frame after ``_HEARTBEAT_INTERVAL_S``

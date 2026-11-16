@@ -6561,9 +6561,8 @@ function appendLiveEvents(path, batch) {
       if (typeof batch.cursor === "number") {
         cached.bytes_read = batch.cursor;
       }
-      // Append to the currently-rendered log tab if it's visible. Charts
-      // re-fetch on poll because series rebinning depends on the complete
-      // event timeline.
+      // Append to the currently-rendered log tab if it's visible. Charts are
+      // not extended: they show the events there were when the file loaded.
       var logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
         var tail = "";
