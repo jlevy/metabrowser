@@ -43,7 +43,7 @@ def test_server_time_instrument_logic() -> None:
         timeout=45,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "server-time instrument: 16 checks passed\n"
+    assert result.stdout == "server-time instrument: 22 checks passed\n"
 
 
 class _Lines(logging.Handler):

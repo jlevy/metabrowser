@@ -9,21 +9,27 @@ import path from "node:path";
 const HERE = import.meta.dirname;
 const LOOP = path.resolve(HERE, "../../explorations/performance-loop");
 const {
+  assetBytes,
   busyMs,
   checkRecord,
+  deliveryOf,
   formatRecord,
   inFlight,
   landingAssets,
   logPathOf,
   pairRows,
+  parseCpuTime,
   parseLog,
   parsePhases,
   parseRequestLine,
   parseServerTiming,
   pathFamily,
+  procStatTicks,
   serialAccount,
+  splitAtArrival,
   sumByFamily,
   sumRows,
+  wholeLinesLength,
   windowAccount,
 } = await import(path.join(LOOP, "server-time-sums.mjs"));
 
@@ -322,13 +328,136 @@ check("a record prints as tables, saying when a build logged its ends coarsely",
 });
 
 check("a record of another revision is refused by name, not read", () => {
-  const current = { instrument: "server-time/2" };
+  const current = { instrument: "server-time/3" };
   assert.equal(checkRecord(current), current);
+  // Revision 2 has the same tables and lacks only what revision 3 added.
+  const previous = { instrument: "server-time/2" };
+  assert.equal(checkRecord(previous), previous);
   assert.throws(
     () => checkRecord({ instrument: "server-time/1" }, "old.json"),
     /old\.json is a server-time\/1 record, which sums latency and has no busy time/,
   );
-  assert.throws(() => checkRecord({}, "x.json"), /x\.json is not a server-time\/2 record/);
+  assert.throws(() => checkRecord({}, "x.json"), /x\.json is not a server-time\/3 record/);
+});
+
+check("a window reads whole lines only, and the next one starts where they end", () => {
+  assert.equal(wholeLinesLength(Buffer.from("a\nb\nc")), 4);
+  assert.equal(wholeLinesLength(Buffer.from("a\n")), 2);
+  assert.equal(wholeLinesLength(Buffer.from("cut short")), 0);
+  assert.equal(wholeLinesLength(Buffer.alloc(0)), 0);
+  // A line cut three characters short still parses, as a wrong end: why it is never read.
+  const whole = line({ path: "/static/a.js", rounded: 12 }, " end_ms=12.4");
+  assert.equal(parseRequestLine(whole.slice(0, -3)).end_ms, 1);
+  const text = `${whole}\n${whole.slice(0, -3)}`;
+  const kept = Buffer.from(text).subarray(0, wholeLinesLength(Buffer.from(text)));
+  assert.deepEqual(
+    parseLog(kept.toString("utf8")).map((row) => row.end_ms),
+    [12.4],
+  );
+});
+
+check("rows that arrived before a window are left out of it and counted", () => {
+  const rows = parseLog(
+    [
+      line({ path: "/api/plugin/github/pulls", rounded: 400, t: "99.500" }, " end_ms=400.0"),
+      line({ path: "/static/a.js", rounded: 2, t: "100.000" }, " end_ms=2.0"),
+      line({ path: "/static/b.js", rounded: 2, t: "100.010" }, " end_ms=2.0"),
+    ].join("\n"),
+  );
+  const { inside, before } = splitAtArrival(rows, 100);
+  assert.deepEqual(
+    inside.map((row) => row.path),
+    ["/static/a.js", "/static/b.js"],
+  );
+  assert.deepEqual(
+    before.map((row) => row.path),
+    ["/api/plugin/github/pulls"],
+  );
+  // The open request's span would have reached 0.4 s back before the window.
+  assert.equal(sumRows(inside).busy_ms, 4);
+  assert.equal(sumRows(rows).busy_ms, 404);
+  assert.equal(splitAtArrival(rows, Number.NaN).inside.length, 3);
+});
+
+check("the server's CPU time is read from ps on macOS and procps, and from /proc", () => {
+  assert.equal(parseCpuTime("0:01.23"), 1230);
+  assert.equal(parseCpuTime("  12:34.56\n"), 754560);
+  assert.equal(parseCpuTime("00:00:01"), 1000);
+  assert.equal(parseCpuTime("1-02:03:04"), 93784000);
+  assert.equal(parseCpuTime(""), null);
+  assert.equal(parseCpuTime("n/a"), null);
+  // The command name can hold spaces and a parenthesis; utime and stime are fields 14, 15.
+  const stat = "4242 (metab (x) y) S 1 2 3 4 5 6 7 8 9 10 250 50 0 0 20 0 9 0";
+  assert.equal(procStatTicks(stat), 300);
+  assert.equal(procStatTicks("garbage"), null);
+});
+
+check("a window says how many bytes its assets crossed the wire as, and decoded to", () => {
+  assert.deepEqual(
+    assetBytes([
+      { family: "static", transfer_bytes: 900, decoded_bytes: 3000 },
+      { family: "plugin_static", transfer_bytes: 400, decoded_bytes: 400 },
+      { family: "data", transfer_bytes: 100, decoded_bytes: 100 },
+      { family: "static", transfer_bytes: null, decoded_bytes: null },
+    ]),
+    { count: 2, transfer_bytes: 1300, decoded_bytes: 3400 },
+  );
+  assert.deepEqual(assetBytes(undefined), { count: 0, transfer_bytes: 0, decoded_bytes: 0 });
+});
+
+check("an app's start that was sent gzip is labelled the compressed path", () => {
+  const app = ["--exit-on-eof"];
+  const sentGzip = { server_args: app, serial: { encodings: { gzip: 78, identity: 3 } } };
+  assert.equal(deliveryOf(sentGzip).mismatch, true);
+  const plain = {
+    server_args: app,
+    server_delivery: "off for loopback clients of this machine",
+    serial: { encodings: { identity: 81 } },
+  };
+  assert.equal(deliveryOf(plain).mismatch, false);
+  assert.equal(deliveryOf({ serial: sentGzip.serial }).mismatch, false, "the default start");
+  const record = (r) => ({
+    instrument: "server-time/3",
+    address: "/",
+    ...r,
+    serial: { ...r.serial, ...serialAccount([], []) },
+  });
+  assert.match(
+    formatRecord(record(sentGzip)),
+    /\n\nNOT THE APP'S START: delivery: asked uncompressed toward loopback \(the app's start\); serial answers gzip 78, identity 3\. /,
+  );
+  assert.match(
+    formatRecord(record(plain)),
+    /\n\ndelivery: asked uncompressed .*; serial answers identity 81; the server said "Compression: off for loopback clients of this machine"\n/,
+  );
+});
+
+check("a record prints the server's CPU, its memory before and after, and what it left out", () => {
+  const account = windowAccount(parseLog(LOG), TIMING);
+  const text = formatRecord({
+    instrument: "server-time/3",
+    address: "/view/a.md",
+    warmup: 2,
+    warmups: [
+      { settled: true, unsettled: [] },
+      { settled: false, unsettled: [{ url: "x" }] },
+    ],
+    landings: { landing: { settled: true, load_ms: 100, cpu_ms: 210, arrived_before: 2, account } },
+    serial: { encodings: { gzip: 1 }, cpu_ms: 30, ...serialAccount([], []) },
+    server_rss_kb_start: 100 * 1024,
+    server_rss_kb: 102.5 * 1024,
+  });
+  assert.match(
+    text,
+    /\nlanding: settled yes, load 100 ms, server CPU 210 ms, 2 logged rows from before the window left out\n/,
+  );
+  assert.match(text, /\n {2}assets sent: 1 with a browser record, 1 KB transferred, 0 KB decoded/);
+  assert.match(text, /1 of 2 warm-up landing\(s\) did not settle/);
+  assert.match(text, /; server CPU 30 ms/);
+  assert.match(
+    text,
+    /server resident: 100\.0 MB after the inventory, 102\.5 MB at the end \(\+2\.5 MB\)/,
+  );
 });
 
 check("the server's time is the union of the requests' spans, not their sum", () => {

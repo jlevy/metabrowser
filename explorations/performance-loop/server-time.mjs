@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// server-time/2: the server's time over one landing, by phase.
+// server-time/3: the server's time over one landing, by phase.
 //
 //   node explorations/performance-loop/server-time.mjs --metab /path/to/metab \
 //     --tree /path/to/folder [--path /view/README.md] [--warmup 0] \
@@ -14,14 +14,16 @@
 // the server answered in a window it reports the time the server was busy (the union of
 // the requests' spans), each phase's total, and the summed latency, from the log, which
 // is the one place the end of a streamed body is recorded; the `Server-Timing` headers
-// the browser saw are summed beside it as the start-of-response view. Then the measured
-// landing's asset requests are fetched again, one at a time, with the Accept-Encoding
-// Chrome sends: a warm serial reading, since the server has answered each once already.
+// the browser saw are summed beside it as the start-of-response view; and the server
+// process's CPU time over the window. Then the measured landing's asset requests are
+// fetched again, one at a time, with the Accept-Encoding Chrome sends: a warm serial
+// reading, since the server has answered each once already. The record says which
+// delivery the start produced, and labels an app's start that was sent gzip.
 // See README.md, "Server Time over a Landing".
 //
 // Untimed by design: nothing here repeats, pairs, or compares. A round that judges a
 // change runs it under its own protocol, back to back on both builds.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -31,14 +33,19 @@ import { parseArgs } from "node:util";
 import { buildProvenance, getJson, harnessProvenance } from "./provenance.mjs";
 import {
   checkRecord,
+  deliveryOf,
   formatRecord,
   INSTRUMENT,
   inFlight,
   landingAssets,
+  parseCpuTime,
   parseLog,
   parseServerTiming,
+  procStatTicks,
   SETTLING_EVENTS,
   serialAccount,
+  splitAtArrival,
+  wholeLinesLength,
   windowAccount,
 } from "./server-time-sums.mjs";
 import { launchBrowser, sleep } from "./transitions-recorder.mjs";
@@ -176,7 +183,13 @@ async function startServer({ metab, tree, work, serverArgs }) {
         try {
           const progress = await getJson(`${base}/api/index/progress`, 5000);
           if (progress.complete) {
-            return { child, base, logPath, stop };
+            // What the server said it sends a loopback client, on the banner line a build
+            // that has one prints after its address; null when it printed none.
+            const said = /^Compression: (.*)$/m.exec(fs.readFileSync(logPath, "utf8"));
+            const server = { child, base, logPath, stop, delivery: said?.[1].trim() ?? null };
+            server.cursor = 0;
+            readLog(server);
+            return server;
           }
         } catch (_error) {
           // Not listening yet.
@@ -191,19 +204,57 @@ async function startServer({ metab, tree, work, serverArgs }) {
   }
 }
 
-const logSize = (logPath) => fs.statSync(logPath).size;
-
-function logSince(logPath, offset) {
-  const fd = fs.openSync(logPath, "r");
+/**
+ * The whole lines the server has logged since *server*'s cursor, which then moves past
+ * them: a line still being written is left for the next read, and no line falls between
+ * two windows (review C of #455, C2).
+ */
+function readLog(server) {
+  const fd = fs.openSync(server.logPath, "r");
   try {
-    const length = logSize(logPath) - offset;
+    const length = fs.fstatSync(fd).size - server.cursor;
     const buffer = Buffer.alloc(Math.max(0, length));
-    fs.readSync(fd, buffer, 0, buffer.length, offset);
-    return buffer.toString("utf8");
+    const read = fs.readSync(fd, buffer, 0, buffer.length, server.cursor);
+    const whole = wholeLinesLength(buffer.subarray(0, read));
+    server.cursor += whole;
+    return buffer.subarray(0, whole).toString("utf8");
   } finally {
     fs.closeSync(fd);
   }
 }
+
+// Clock ticks per second for /proc/<pid>/stat, asked once; 100 on every Linux this runs on.
+let clockTicks = null;
+
+/**
+ * The process's user and system CPU time so far, in ms, or null: from /proc on Linux, and
+ * from `ps -o time=` elsewhere, to the hundredth of a second on macOS. The process's own,
+ * not its children's: a Git it ran is not counted.
+ */
+async function cpuMs(pid) {
+  try {
+    const ticks = procStatTicks(fs.readFileSync(`/proc/${pid}/stat`, "utf8"));
+    if (ticks !== null) {
+      clockTicks ??= Number(spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8" }).stdout) || 100;
+      return Math.round((ticks * 1000) / clockTicks);
+    }
+  } catch (_error) {
+    // Not Linux: ask ps.
+  }
+  return new Promise((resolve) => {
+    const ps = spawn("ps", ["-o", "time=", "-p", String(pid)], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let text = "";
+    ps.stdout.on("data", (chunk) => {
+      text += chunk;
+    });
+    ps.on("close", () => resolve(parseCpuTime(text)));
+    ps.on("error", () => resolve(null));
+  });
+}
+
+const cpuSpent = (before, after) => (before === null || after === null ? null : after - before);
 
 function residentKb(pid) {
   try {
@@ -283,17 +334,32 @@ async function land(browser, go) {
   return { settled, unsettled, ...JSON.parse(result.value) };
 }
 
+/**
+ * The log since the last read, split at *startS*: the rows that arrived in the window,
+ * and how many arrived before it and are left out. The read starts where the last one
+ * ended, so a straggler of the window before, logged after that window was read, is
+ * counted here as having arrived before this one rather than lost.
+ */
+function windowRows(server, startS) {
+  const { inside, before } = splitAtArrival(parseLog(readLog(server)), startS);
+  return { rows: inside, arrivedBefore: before.length };
+}
+
 async function measureWindow(server, browser, go) {
-  const offset = logSize(server.logPath);
+  const cpuBefore = await cpuMs(server.child.pid);
+  const startS = Date.now() / 1000;
   const timing = await land(browser, go);
   await sleep(LOG_SETTLE_MS);
-  const account = windowAccount(parseLog(logSince(server.logPath, offset)), timing.rows);
+  const cpuAfter = await cpuMs(server.child.pid);
+  const { rows, arrivedBefore } = windowRows(server, startS);
   return {
     settled: timing.settled,
     unsettled: timing.unsettled,
     dcl_ms: timing.dcl_ms === null ? null : Math.round(timing.dcl_ms),
     load_ms: timing.load_ms === null ? null : Math.round(timing.load_ms),
-    account,
+    cpu_ms: cpuSpent(cpuBefore, cpuAfter),
+    arrived_before: arrivedBefore,
+    account: windowAccount(rows, timing.rows),
   };
 }
 
@@ -337,17 +403,22 @@ function fetchOnce(base, assetPath, acceptEncoding) {
 }
 
 async function serialPass(server, assets, acceptEncoding) {
-  const offset = logSize(server.logPath);
+  const cpuBefore = await cpuMs(server.child.pid);
+  const startS = Date.now() / 1000;
   const encodings = {};
   for (const asset of assets) {
     const answer = await fetchOnce(server.base, asset.path, acceptEncoding);
     encodings[answer.encoding] = (encodings[answer.encoding] ?? 0) + 1;
   }
   await sleep(LOG_SETTLE_MS);
+  const cpuAfter = await cpuMs(server.child.pid);
+  const { rows, arrivedBefore } = windowRows(server, startS);
   return {
     accept_encoding: acceptEncoding,
     encodings,
-    ...serialAccount(assets, parseLog(logSince(server.logPath, offset))),
+    cpu_ms: cpuSpent(cpuBefore, cpuAfter),
+    arrived_before: arrivedBefore,
+    ...serialAccount(assets, rows),
   };
 }
 
@@ -381,15 +452,27 @@ async function run(options) {
     serverArgs: options.serverArgs,
   });
   try {
+    record.server_delivery = server.delivery;
+    // Once the inventory is complete and before any landing, so the end's reading less
+    // this one is what the landings left held (review B of #455, B9).
+    record.server_rss_kb_start = await residentKb(server.child.pid);
     const url = `${server.base}${options.path}`;
+    record.warmups = [];
     for (let i = 0; i < warmup; i++) {
       const browser = await freshBrowser(work, `warmup-${i}`);
       try {
-        await land(browser, () => browser.page.send("Page.navigate", { url }));
+        const { settled, unsettled } = await land(browser, () =>
+          browser.page.send("Page.navigate", { url }),
+        );
+        record.warmups.push({ settled, unsettled });
       } finally {
         await browser.close();
       }
     }
+    // The warm-ups' own rows are not the measured landing's. A straggler logged after
+    // this read is read with the landing and counted as having arrived before it.
+    await sleep(LOG_SETTLE_MS);
+    readLog(server);
     const browser = await freshBrowser(work, "measured");
     try {
       record.chrome = browser.version.product;
@@ -405,6 +488,7 @@ async function run(options) {
     const assets = landingAssets(record.landings.landing.account.rows);
     record.serial = await serialPass(server, assets, options["accept-encoding"]);
     record.server_rss_kb = await residentKb(server.child.pid);
+    record.delivery = deliveryOf(record);
   } finally {
     await server.stop();
   }

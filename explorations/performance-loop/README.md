@@ -1575,15 +1575,35 @@ For every request the server answered in a window it reports, by route family, o
 landing’s assets (`/static`, `/plugin-static`, `/kpress-static`), and over the assets
 requested before `DOMContentLoaded`, as the startup budgets’ probe selects them:
 
-- **`busy`, the server’s time**: the union of the requests’ spans, from arrival to the
-  end of the body. This is the figure that says what a landing cost the server.
+- **`busy`, the server’s wall-clock time**: the union of the requests’ spans, from
+  arrival to the end of the body, which is the time at least one request was open.
+  It says how long a landing kept the server answering.
+  It is not CPU time, and not the time the event loop was held: a render in a worker
+  thread counts in full while the loop is free for everything else.
 - **Each phase’s total** of `metabrowser.server_timing` (`read`, `render`, `git`,
-  `encode`, and any other a route names): work, wherever it ran, which attributes the
-  busy time and is what a change to one phase is judged on.
+  `encode`, and any other a route names): the wall-clock time spent in it, taken on the
+  request’s path around the work, so a phase around a thread includes the wait for a
+  pool thread (the module’s docstring states the convention).
+  It attributes the busy time.
+  It is not CPU time either: a change that moves work between the event loop and a
+  thread, as H115 (a) moves compression, changes what a phase’s span holds as well as
+  how long it is.
+- **`server CPU`**, on each window’s title line: the server process’s user and system
+  CPU time over the window, from `/proc` on Linux and from `ps` elsewhere, to the
+  hundredth of a second on macOS. It is the process’s own time, not its Git children’s.
+  A change that moves work off the event loop is read here and in `busy` together.
 - **`latency`, the summed latency**: every request’s time to its last byte, added up.
   Requests run side by side on one event loop, so each counts the others’ work again
   while it waits; it measures contention, and decides nothing on its own.
   `other` is the summed latency less the phases.
+
+Each window reads the log from where the last read ended, whole lines only, so a line
+being written is read whole by the next window.
+A row that arrived before the window began is left out of it and counted on its title
+line: a background request still open when the window began, or a straggler of the
+window before, whose whole span would otherwise count here.
+A warm-up’s rows are read and dropped before the measured landing, and each warm-up’s
+settling is kept in the record; one that did not settle is said above the tables.
 
 The end of a body comes from the request log’s `end_ms`, because `Server-Timing` is sent
 before a body and holds only what was done by then; the headers the browser saw are
@@ -1602,6 +1622,14 @@ order the browser asked for them, with Chrome’s `Accept-Encoding`, and reports
 busy time. That is a warm serial reading: the server has answered each asset once
 already, so a build that holds assets in memory (H115) is measured holding them.
 
+**Which delivery the start produced.** The record names what the start asked for and
+what it got: the serial pass’s encodings, and the line a build that has one prints after
+its address, `Compression: off for loopback clients of this machine`. A start given
+`--exit-on-eof` whose serial answers were gzipped, as one is from an SSH session, a
+Codespace, or a Dev Container, is labelled `NOT THE APP'S START` above the tables: it
+measured the compressed path.
+Each window also says how many bytes its assets crossed the wire as and decoded to.
+
 **Isolating H115’s two halves.** The default start, `--no-open`, compresses for every
 client, as `metab --remote`’s far server does.
 So the encoded asset store, H115 (a), is read as the branch against the control, both
@@ -1610,7 +1638,10 @@ started `-- --exit-on-eof` against the branch started as it is.
 With `--exit-on-eof` the instrument holds the server’s stdin open for as long as it
 runs, as the app does, since a closed stdin stops that server.
 The record also keeps the build’s provenance, Chrome’s version, the load average before
-and after, and the server’s resident memory at the end.
+and after, and the server’s resident memory once the inventory is complete and again at
+the end, with the difference, which is what the landings left held.
+This is revision 3 of the record (`server-time/3`); `--summarize` reads a revision 2
+record as it was taken, without its CPU times, first memory reading, or rows left out.
 
 It is untimed by design: one landing, no pairs, no comparison.
 A round that judges a change runs it under its own protocol on both builds, back to

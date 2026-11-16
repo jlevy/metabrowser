@@ -12,7 +12,14 @@ import { requestClass, routeFamily } from "./transitions-recorder.mjs";
 // Revision 2 reports the time the server was busy, the union of the requests' spans, and
 // calls revision 1's sum of every request's time to the end of its body what it is, the
 // summed latency: on one event loop each waiter counts the others' work again (#455 M2).
-export const INSTRUMENT = "server-time/2";
+// Revision 3 cuts each window's log at a line's end, leaves out the rows that arrived
+// before the window began and counts them, and adds the server's CPU time over each
+// window, its resident memory before the landings, each warm-up's settling, and the
+// delivery the start produced (review C of #455, C2; review B, B4 and B9; review A, A3).
+export const INSTRUMENT = "server-time/3";
+// Revisions this one reads: a revision 2 record has no CPU time, no first memory reading,
+// and windows that may hold rows from before them, and is printed as it is.
+const READABLE = new Set([INSTRUMENT, "server-time/2"]);
 
 /** Route families whose answers are the application's own assets. */
 export const ASSET_FAMILIES = ["static", "plugin_static", "kpress_static"];
@@ -79,6 +86,95 @@ export function parseRequestLine(line) {
     end_ms: precise ? Number(m[10]) : Number(m[3]),
     precise,
     phases: parsePhases(m[9]),
+  };
+}
+
+/**
+ * How many bytes of *buffer*, a slice of the log read from some offset, are whole lines:
+ * up to and including its last newline. A window reads only those, and the next window
+ * starts where they end, so a line the server was writing as the slice was read is read
+ * whole by the next window rather than parsed cut short (review C of #455, C2).
+ */
+export function wholeLinesLength(buffer) {
+  return buffer.lastIndexOf(0x0a) + 1;
+}
+
+/**
+ * *rows* split at *startS*, the window's start in the log's epoch seconds: the rows that
+ * arrived in the window, and the ones that arrived before it, such as background work
+ * still open when the window began, whose whole span would otherwise count in it.
+ */
+export function splitAtArrival(rows, startS) {
+  const inside = [];
+  const before = [];
+  for (const row of rows) {
+    (Number.isFinite(startS) && row.arrived_s < startS ? before : inside).push(row);
+  }
+  return { inside, before };
+}
+
+/**
+ * The CPU time `ps -o time=` prints, `[[dd-]hh:]mm:ss[.cc]`, in milliseconds, or null.
+ * macOS prints hundredths (`0:01.23`); procps prints whole seconds (`00:00:01`).
+ */
+export function parseCpuTime(text) {
+  const m = /^\s*(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)\s*$/.exec(String(text ?? ""));
+  if (m === null) {
+    return null;
+  }
+  const [days, hours, minutes, seconds] = [m[1], m[2], m[3], m[4]].map((v) => Number(v ?? 0));
+  return Math.round((((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000);
+}
+
+/** User plus system CPU of a `/proc/<pid>/stat` line, in clock ticks, or null. */
+export function procStatTicks(text) {
+  // The command name, in parentheses, can hold spaces; the fields after it are fixed.
+  const after = String(text ?? "").slice(String(text ?? "").lastIndexOf(")") + 2);
+  const fields = after.split(" ");
+  const utime = Number(fields[11]);
+  const stime = Number(fields[12]);
+  return Number.isFinite(utime) && Number.isFinite(stime) ? utime + stime : null;
+}
+
+/**
+ * The bytes a window's assets crossed the wire as, and their decoded size, from the
+ * browser's record of each logged asset request: what the start sent, read from what the
+ * browser received.
+ */
+export function assetBytes(accountRows) {
+  let count = 0;
+  let transfer = 0;
+  let decoded = 0;
+  for (const row of accountRows ?? []) {
+    if (!ASSET_FAMILIES.includes(row.family) || row.transfer_bytes == null) {
+      continue;
+    }
+    count += 1;
+    transfer += row.transfer_bytes;
+    decoded += row.decoded_bytes ?? 0;
+  }
+  return { count, transfer_bytes: transfer, decoded_bytes: decoded };
+}
+
+/**
+ * Which delivery a record's start asked for and which it got. `--exit-on-eof` asks for the
+ * macOS app's start, which sends a loopback client its answers uncompressed; the serial
+ * pass's encodings, and the banner line a build that has one prints, say what it got. An
+ * app's start that was sent gzip, as one started from an SSH session, a Codespace, or a
+ * Dev Container is, measured the compressed path, and `mismatch` says so.
+ */
+export function deliveryOf(record) {
+  const app = (record.server_args ?? []).includes("--exit-on-eof");
+  const encodings = record.serial?.encodings ?? {};
+  const gzip = encodings.gzip ?? 0;
+  const banner = record.server_delivery ?? null;
+  return {
+    asked: app ? "uncompressed toward loopback (the app's start)" : "compressed",
+    encodings,
+    banner,
+    // A build from before the banner line prints none on any start, so only the
+    // encodings received decide it.
+    mismatch: app && gzip > 0,
   };
 }
 
@@ -447,7 +543,7 @@ export function formatWindow(title, account) {
  */
 export function checkRecord(record, source = "the record") {
   const instrument = record?.instrument;
-  if (instrument === INSTRUMENT) {
+  if (READABLE.has(instrument)) {
     return record;
   }
   if (instrument === "server-time/1") {
@@ -461,20 +557,57 @@ export function checkRecord(record, source = "the record") {
   );
 }
 
+const kb = (bytes) => `${Math.round(bytes / 1024).toLocaleString("en-US")} KB`;
+const mb = (kib) => `${(kib / 1024).toFixed(1)} MB`;
+
+/** What the start asked for and got, as the line a reader checks before the tables. */
+export function formatDelivery(record) {
+  const d = deliveryOf(record);
+  const got = Object.entries(d.encodings)
+    .map(([name, n]) => `${name} ${n}`)
+    .join(", ");
+  const said = d.banner === null ? "" : `; the server said "Compression: ${d.banner}"`;
+  const line = `delivery: asked ${d.asked}; serial answers ${got || "none"}${said}`;
+  return d.mismatch
+    ? `NOT THE APP'S START: ${line}. This start was sent gzip, so it measured the compressed path; take it again outside a remote session`
+    : line;
+}
+
+/** A window's title line: settling, load, the server's CPU, and rows left out. */
+function windowTitle(name, landing) {
+  const parts = [`${name}: settled ${landing.settled ? "yes" : "no"}`];
+  parts.push(`load ${landing.load_ms ?? "?"} ms`);
+  if (landing.cpu_ms != null) {
+    parts.push(`server CPU ${landing.cpu_ms} ms`);
+  }
+  if (landing.arrived_before) {
+    parts.push(`${landing.arrived_before} logged rows from before the window left out`);
+  }
+  return parts.join(", ");
+}
+
 /** A whole record (the JSON server-time.mjs writes) as text. */
 export function formatRecord(record) {
   const out = [
     `${record.instrument} ${record.build?.version ?? "?"} at ${record.address}` +
       (record.server_args?.length ? ` (server ${record.server_args.join(" ")})` : "") +
       `, ${record.warmup ? `warm server: ${record.warmup} unrecorded landing(s) first` : "cold server"}`,
-    "busy is the server's time (the union of the requests' spans); latency sums every request's time to its last byte, so it counts each concurrent request's wait for the others again",
+    "busy is wall-clock time with at least one request open (the union of the requests' spans), not CPU time; a phase is the wall-clock time around its work, a thread's queue included; latency sums every request's time to its last byte, so it counts each concurrent request's wait for the others again",
   ];
-  for (const [name, landing] of Object.entries(record.landings ?? {})) {
+  if (record.serial) {
+    out.push(formatDelivery(record));
+  }
+  const unsettled = (record.warmups ?? []).filter((w) => !w.settled).length;
+  if (unsettled > 0) {
     out.push(
-      formatWindow(
-        `${name}: settled ${landing.settled ? "yes" : "no"}, load ${landing.load_ms ?? "?"} ms`,
-        landing.account,
-      ),
+      `${unsettled} of ${record.warmups.length} warm-up landing(s) did not settle; their stragglers arrived before the measured window and are left out of it`,
+    );
+  }
+  for (const [name, landing] of Object.entries(record.landings ?? {})) {
+    const sent = assetBytes(landing.account.rows);
+    out.push(
+      `${formatWindow(windowTitle(name, landing), landing.account)}\n` +
+        `  assets sent: ${sent.count} with a browser record, ${kb(sent.transfer_bytes)} transferred, ${kb(sent.decoded_bytes)} decoded`,
     );
   }
   if (record.serial) {
@@ -485,7 +618,17 @@ export function formatRecord(record) {
         `(${s.before_dcl.count} before DOMContentLoaded: ${s.before_dcl.busy_ms.toFixed(1)} ms); ` +
         Object.entries(s.totals.phases)
           .map(([name, ms]) => `${name} ${ms.toFixed(1)}`)
-          .join(", "),
+          .join(", ") +
+        (s.cpu_ms != null ? `; server CPU ${s.cpu_ms} ms` : ""),
+    );
+  }
+  if (record.server_rss_kb != null) {
+    const start = record.server_rss_kb_start;
+    out.push(
+      start == null
+        ? `server resident at the end: ${mb(record.server_rss_kb)}`
+        : `server resident: ${mb(start)} after the inventory, ${mb(record.server_rss_kb)} at the end ` +
+            `(${record.server_rss_kb >= start ? "+" : "-"}${mb(Math.abs(record.server_rss_kb - start))})`,
     );
   }
   return out.join("\n\n");
