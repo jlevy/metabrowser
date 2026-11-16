@@ -127,6 +127,36 @@ def test_a_streamed_body_reports_later_work_in_the_log_and_not_the_header() -> N
     assert float(logged.group(2)) > header["encode"]
 
 
+def test_the_verbose_log_gives_the_end_of_the_body_to_a_tenth_of_a_millisecond() -> None:
+    """The figure server-time.mjs sums over a page load, many answers of a millisecond or less."""
+
+    async def plain(_request: Request) -> Response:
+        return Response("x" * 4096)
+
+    capture = _Capture()
+    server.LOG.addHandler(capture)
+    try:
+        TestClient(_timed_app(plain)).get("/x", headers={"accept-encoding": "gzip"})
+    finally:
+        server.LOG.removeHandler(capture)
+    [line] = [message for message in capture.messages if "metabrowser request t=" in message]
+    logged = re.search(r"\((\d+) ms\) .* start_ms=(\d+) phases=\S+ end_ms=(\d+\.\d)$", line)
+    assert logged is not None, line
+    rounded, start, end = (float(group) for group in logged.groups())
+    assert end >= start - 0.5
+    assert abs(end - rounded) <= 0.5
+
+
+@pytest.mark.parametrize(
+    "address", ["/plugin-static/markdown/index.js", "/kpress-static/css/style-tokens.css"]
+)
+def test_a_plugin_or_kpress_asset_names_its_read(address: str, tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    answer = TestClient(server.app).get(address, headers={"accept-encoding": "gzip"})
+    assert answer.status_code == 200, address
+    assert "read" in _metrics(answer.headers["server-timing"]), address
+
+
 def test_a_streamed_body_past_any_entry_count_is_counted_in_full() -> None:
     """Review B of #372, B2: a list capped at 256 entries cut the total of a body gzipped
     in more chunks than that; per-name sums count every one."""
@@ -178,3 +208,63 @@ def test_a_response_with_no_phases_is_srv_alone() -> None:
 
     header = TestClient(_timed_app(plain)).get("/x").headers["server-timing"]
     assert re.fullmatch(r"srv;dur=[0-9.]+", header)
+
+
+# ── Git processes, counted beside the git time (H116) ──────────────────
+
+PROCESSES = re.compile(r'(?:^|, )git(?:;dur=[0-9.]+)?;desc="(\d+) process(?:es)?"(?:,|$)')
+
+
+def test_the_git_entry_says_how_many_processes_the_request_started() -> None:
+    record, token = server_timing.begin()
+    try:
+        assert server_timing.header_value(record, 5.0) == "srv;dur=5.0"
+        record.add("git", 3.25)
+        server_timing.git_process_started()
+        assert server_timing.header_value(record, 5.0) == (
+            'srv;dur=5.0, git;dur=3.2;desc="1 process"'
+        )
+        record.add("encode", 0.5)
+        server_timing.git_process_started()
+        assert server_timing.header_value(record, 5.0) == (
+            'srv;dur=5.0, git;dur=3.2;desc="2 processes", encode;dur=0.5'
+        )
+    finally:
+        server_timing.end(record, token)
+    server_timing.git_process_started()  # after its request, nothing
+    assert record.git_processes() == 2
+
+
+def test_processes_whose_time_another_phase_took_are_still_counted() -> None:
+    record, token = server_timing.begin()
+    try:
+        record.add("read", 1.0)
+        server_timing.git_process_started()
+        assert server_timing.header_value(record, 2.0) == (
+            'srv;dur=2.0, read;dur=1.0, git;desc="1 process"'
+        )
+    finally:
+        server_timing.end(record, token)
+
+
+def test_a_git_route_counts_the_processes_it_started(tmp_path: Path) -> None:
+    require_git()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.invalid",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.invalid",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+    }
+    (tmp_path / "a.txt").write_text("a\n")
+    for args in (["init", "-q"], ["add", "a.txt"], ["commit", "-qm", "one"]):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, env=env)
+    server._set_root_dir(tmp_path)
+    client = TestClient(server.app)
+    answer = client.get("/api/git/log")
+    assert answer.status_code == 200
+    counted = PROCESSES.search(answer.headers["server-timing"])
+    assert counted is not None, answer.headers["server-timing"]
+    assert int(counted.group(1)) >= 1
