@@ -1428,12 +1428,12 @@ async function main() {
   const cutHeader = cutPlace.find("diff-summary-toggle")[0];
   check(
     "a list cut short says the page's whole totals and how many it lists",
-    cutHeader?.text().includes("5 changed files") &&
-      cutHeader.text().includes("+15") &&
-      cutHeader.text().includes("−3") &&
-      cutHeader.text().includes("(2 listed)") &&
+    cutHeader?.reads().includes("5 changed files") &&
+      cutHeader.reads().includes("+15") &&
+      cutHeader.reads().includes("−3") &&
+      cutHeader.reads().includes("(2 listed)") &&
       cutHeader.find("diff-summary-breakdown").length === 0,
-    cutHeader?.text() ?? "",
+    cutHeader?.reads() ?? "",
   );
   check(
     "and names them for a screen reader",
@@ -1448,8 +1448,8 @@ async function main() {
   });
   check(
     "a list cut short says them without the shared tree too",
-    cutPlain.text().includes("5 changed files") && cutPlain.text().includes("(2 listed)"),
-    cutPlain.text(),
+    cutPlain.reads().includes("5 changed files") && cutPlain.reads().includes("(2 listed)"),
+    cutPlain.reads(),
   );
   const wholePlace = new FakeElement("div");
   mountDiffView(new FakeElement("div"), twoFiles, undefined, {
@@ -1459,8 +1459,8 @@ async function main() {
   });
   check(
     "a whole list says its own totals",
-    wholePlace.text().includes("2 changed files") && !wholePlace.text().includes("listed"),
-    wholePlace.text(),
+    wholePlace.reads().includes("2 changed files") && !wholePlace.reads().includes("listed"),
+    wholePlace.reads(),
   );
   await diffSummaryChecks(mountDiffView, twoFiles);
   await repeatedPathChecks(mountDiffView, twoFiles);
