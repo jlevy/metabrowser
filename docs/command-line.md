@@ -109,8 +109,29 @@ closes and the server stops itself.
 The server prints `Stopping Metabrowser: stdin closed.` and exits with status 0, and it
 stops the Git and `gh` processes it started.
 Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual.
+The flag also turns off compression toward clients on this machine; see
+[Compression](#compression).
 [The CLI architecture](project/architecture/arch-cli.md#stopping-when-stdin-closes)
 describes how the stop works and what it covers.
+
+### Compression
+
+The server gzips its answers for any client that accepts gzip, with one exception: a
+server started as the [macOS app](macos-app.md) starts it sends clients on this machine
+its answers uncompressed, since nothing crosses a network and gzip costs the server time
+on every answer. That is a server started with `--exit-on-eof` on a loopback address
+(`127.0.0.1`, the default, `::1`, or `localhost`), outside an SSH session, a Codespace,
+or a Dev Container. It says so as it starts, on a line after its address:
+`Compression: off for loopback clients of this machine`. Even then, a request from
+another address, or one carrying a header a proxy or CDN adds, is sent gzip.
+
+Every other server compresses for every client, including the one `--remote` starts and
+one behind an SSH tunnel, a port forward, or a proxy: such a client reaches the server
+from its own loopback, and the server cannot tell it from a local one.
+For the same reason, a client that reaches the app’s server through a forward on the Mac
+itself, such as an `ssh -L` into it, is sent uncompressed answers; that costs bytes on
+that link only, and the answers are the same.
+`metabrowser/delivery.py` names the environment variables and headers that decide it.
 
 ### Serving a Git Source
 
@@ -416,6 +437,8 @@ tunnels its port back, so the browser stays local and opens at a `localhost` add
 `ROOT` is not used; `--path` names the remote directory and is required.
 Ctrl-C closes the tunnel and stops the remote server, and the remote server also stops
 when the SSH connection drops.
+The remote server is started with `--no-open`, so what crosses the tunnel is gzipped
+([Compression](#compression)), whichever release either host runs.
 
 The remote host needs:
 

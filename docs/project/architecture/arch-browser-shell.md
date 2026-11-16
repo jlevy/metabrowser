@@ -267,11 +267,13 @@ and record it beside the constant that makes the decision.
 [`performance-budgets.toml`](../../../explorations/performance-loop/performance-budgets.toml)
 bound the eager tier, and `devtools/check_startup_scripts.py` applies both on every
 `make lint-check`: it renders a folder’s shell, compresses each script as the gzip
-middleware does, and runs the shell’s scripts browserlessly
+middleware does for a client it gzips for, and runs the shell’s scripts browserlessly
 (`tests/dom/shell-startup-requests.js`) to fail on any script one of them requests
 before `DOMContentLoaded`. When it fails, move code out of a startup script or behind
 the first usable tree; raising a ceiling needs a measurement showing the headroom is
-real.
+real. A server started for local use sends a loopback browser its scripts uncompressed,
+so `run.py record` reads the gate’s number from the scripts as the remote path sends
+them; the note beside the budget says why.
 
 | Asset | Tier | Decided at | Measurement |
 | --- | --- | --- | --- |

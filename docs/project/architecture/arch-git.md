@@ -38,6 +38,7 @@ It has two seams:
 
 - **`run_git`** runs a command to completion and returns its bounded stdout.
   Every request-scoped read uses it.
+  Given `stop_when`, it stops Git once Git has printed what the caller can use.
 - **`spawn_git_process`** returns a live process whose streams the caller owns, for a
   consumer that cannot wait, such as a history walk read page by page.
   It shares the executable lookup, environment, fixed arguments, and spawn-failure
@@ -60,6 +61,8 @@ policy would allow lazy fetch is refused.
 | No hanging prompt | `GIT_TERMINAL_PROMPT=0` and empty `GIT_ASKPASS` and `SSH_ASKPASS` | A credential prompt stalling a request |
 | Bounded output | Incremental reads capped at the policy’s `max_bytes` | An unbounded buffer from a hostile or huge repository |
 | Bounded time | The policy’s deadline, then terminate and reap | A wedged process outliving its request |
+| Early stop | `stop_when` sees each stdout read; once it says enough, terminate, then kill after a grace period, and `GitOutputCutError` carries what was printed | Git printing output its caller would throw away, such as a comparison’s patch past `MAX_LISTED_PATCH_BYTES` |
+| Counted spawns | Each successful spawn calls `server_timing.git_process_started()` | A request’s Git cost hidden from `Server-Timing`, whose `git` entry counts the processes it started |
 | No deadlock | stdout and stderr drained concurrently | Both pipes filling while one is unread |
 | No leaked paths | stderr is capped and only logged, through `loggable` | Absolute local paths reaching a response, or escape sequences reaching a terminal |
 
@@ -69,8 +72,8 @@ The bounds are `GIT_SUBPROCESS_TIMEOUT_S` and `GIT_SUBPROCESS_MAX_BYTES` in
 `settings.py`, and `GIT_ACQUISITION_TIMEOUT_S` in `process.py`.
 
 Failures are typed under `GitError`: `GitUnavailableError`, `GitCommandError`,
-`GitTimeoutError`, `GitOutputTooLargeError`, and `UnsupportedGitVersionError` for
-acquisition’s version floor.
+`GitTimeoutError`, `GitOutputTooLargeError` (with `GitOutputCutError` under it for a run
+stopped early), and `UnsupportedGitVersionError` for acquisition’s version floor.
 Callers branch on the type, so “Git is not installed” stays apart from “the command
 failed”. `GitError` is a `ContentReadError`, so a plugin hook reading a pinned blob
 catches one family for both kinds of source.

@@ -161,6 +161,11 @@ rows the audits found overtaken are retired or merged there.
    Every revision 6 protocol declares exp-087’s later-frame test before it measures.
 2. **Lane S beside Lane 0.** H115 and H116 are decided on server-side instruments, run
    on revision 5, and make every later background request cheaper.
+   H115 lands with #455 before exp-095 runs, so its encoded asset store is backed out
+   unless that round accepts it.
+   The revert criterion, the corrected reading of #455’s untimed table, and the no-store
+   arm are in the load-time plan’s
+   [exp-095 protocol](plan-2026-08-21-load-time-performance.md#the-exp-095-protocol-for-h115).
 3. **Lane C, ahead of Lane B.** H112 moves the most rows per timed series, and
    prediction has nothing to win until a return is cheap.
 4. **Lane P, then Lane D as one round:** H114, then H113 with H118.

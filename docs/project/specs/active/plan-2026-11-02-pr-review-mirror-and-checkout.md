@@ -98,7 +98,7 @@ The cache’s full mirror of the same repository holds 1,240 MB of objects
 | `git gc` in the store itself | Never runs (`gc.auto=0`); run by hand it passes `-l` to `repack`, so it neither copies the checkout’s objects in nor touches the checkout |
 | The checkout **moved** or **deleted** | Every read: `error: unable to normalize alternate object path` then `fatal: missing object`; a fetch fails too; with the alternates file removed, a fetch still fails because the store’s refs name objects it cannot read. Rewriting the alternates file restores every read; otherwise recovery is a new acquisition |
 | **No persistent store**: `GIT_ALTERNATE_OBJECT_DIRECTORIES` per process | Works per process; the next process without it answers `fatal: bad object`. Metabrowser scrubs this variable from every spawn (`git/process.py`, `_REPO_PINNING_GIT_VARS`) |
-| **Reading the checkout directly** with `--git-dir` | Same speed, but a commit the checkout lacks cannot be brought, and the checkout’s local configuration governs every read: on a replica whose configuration set `diff.external`, `git diff <tree> <tree>` under the isolated environment **ran the external command**, and `git status` ran `core.fsmonitor`. Through an overlay store neither ran. Metabrowser’s diff commands (`diff/adapters/git.py`, `git/detail.py`) pass neither `--no-ext-diff` nor `--no-textconv`, so this holds for them as written |
+| **Reading the checkout directly** with `--git-dir` | Same speed, but a commit the checkout lacks cannot be brought, and the checkout’s local configuration governs every read: on a replica whose configuration set `diff.external`, `git diff <tree> <tree>` under the isolated environment **ran the external command**, and `git status` ran `core.fsmonitor`. Through an overlay store neither ran. Metabrowser’s diff commands (`diff/adapters/git.py`, `git/detail.py`) pass no `--no-textconv` to the patch a page shows, so a checkout’s textconv drivers would run, and this holds for them as written; the adapter’s patch runs pass `--no-ext-diff`, and the comparison route’s listing run passes `--no-textconv` too |
 | **Reverse direction**: a full mirror exists and a checkout appears | A clonefile copy of the mirror (0.09 s) given the alternates file and `git repack -a -d -l` went from 1,241 MB to **896 KB in 6.3 s**, keeping the 110 objects the checkout lacks |
 | An overlay exists and the checkout is about to go | `git repack -a -d` in a store with a shallow boundary: **6.3 s and 346 MB** for the 204,345 objects its refs reach, then the alternates file is removed and `fsck` passes; `--unshallow` completes it for the 8.8 MB above. Without a boundary `repack -a` dies |
 | `git clone --reference <shallow checkout>` | Refuses: `reference repository … is shallow`. A manual alternates file is not checked |
@@ -642,9 +642,10 @@ The same rules in both scenarios, and one boundary the review sharpened.
   configuration. The replica set `diff.external`, `core.fsmonitor`, `core.hooksPath`, and
   `core.sshCommand`: direct reads with `--git-dir=<checkout>` ran the external diff,
   while the same reads through the overlay ran nothing.
-  Metabrowser’s own diff commands pass neither `--no-ext-diff` nor `--no-textconv`, so
-  reading a checkout directly would honor its drivers; this is why Files changed on a
-  folder server reads the overlay too.
+  Metabrowser’s own diff commands pass no `--no-textconv` to the patch a page shows (the
+  adapter’s patch runs pass `--no-ext-diff`, and only the comparison route’s listing run
+  passes `--no-textconv`), so reading a checkout directly would honor its textconv
+  drivers; this is why Files changed on a folder server reads the overlay too.
 - **No Git runs inside the checkout, ever.** `core.alternateRefsCommand=true` makes
   Git’s alternate-refs read a no-op, the negotiation tips come from files, and the
   remote’s identity comes from the configuration file as `discover_repository_context`
@@ -836,8 +837,9 @@ For a documentation agent, after step 1 and again after step 2:
   record contracts table; the overlay’s acquisition, the sweep, and the healing order in
   the acquisition and refresh state machines; `borrows` and `shallow` under “What a
   mirror’s page is called”; the merge-base certainty rule under “Pull-request records”;
-  a note under “Read path and performance” that the diff commands pass neither
-  `--no-ext-diff` nor `--no-textconv`, and what that means for a served checkout.
+  a note under “Read path and performance” that the diff commands pass no
+  `--no-textconv` to the patch a page shows, which runs and which flags pass, and what
+  that means for a served checkout.
 - `docs/project/architecture/arch-parity-registry.md`: parity rows for the new fields,
   states, and routes, with their goldens.
 - `docs/project/architecture/arch-server-and-content.md`, Content Trust Model (moved

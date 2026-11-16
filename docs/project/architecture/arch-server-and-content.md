@@ -21,7 +21,9 @@ with that build’s configuration inlined by `client_settings_dict` (`settings.p
 `_static_asset_url` stamps each local asset address with a digest of its bytes
 (`asset_stamps.py`), and only a request with the current stamp is answered immutable, so
 a browser keeps an asset only at an address that names its bytes.
-An already-open tab keeps the JavaScript it loaded until it reloads.
+`encoded_assets.py` holds an asset answered at its current stamp in memory, read and
+compressed once, within `MAX_ENCODED_ASSET_BYTES`. An already-open tab keeps the
+JavaScript it loaded until it reloads.
 
 `/api/*`, `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are
 therefore internal contracts, changed everywhere in one commit; see
@@ -41,7 +43,11 @@ Middleware runs outermost first, as `middleware` in `server.py` lists it:
 4. `_SlowRequestLogMiddleware` adds `Server-Timing` and logs slow requests; see
    [Real-Time Debugging](../../realtime-debugging.md).
 5. `TimedGZipMiddleware` (`server_timing.py`) compresses responses and times the
-   encoding. Event streams are never compressed.
+   encoding. Event streams are never compressed, and `delivery.py` decides, for this
+   layer and for stamped assets alike, which clients are sent gzip: every one that
+   accepts it, except a loopback client without proxy headers of a server started for
+   local use, as the macOS app starts it
+   ([Compression](../../command-line.md#compression)).
 
 Routes come from `routes` in `server.py`, `add_inventory_routes` in `events_route.py`,
 the Git, cache, source, and identity route tables, and each plugin’s routes.

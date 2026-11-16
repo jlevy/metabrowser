@@ -49,6 +49,11 @@ Two sources exist:
   It lists changes with one `git diff --raw --numstat -z`, and its patches come from a
   path-limited `git diff` fed through the patch-file parser, so Git’s own output must
   round-trip through the neutral model.
+  A comparison the diff plugin’s route asks for lists its files and prints its patch in
+  one run, within `MAX_LISTED_PATCH_BYTES`, and Git stops once the patch passes that
+  size. That run passes `--no-textconv`; where the configuration names a textconv driver,
+  the page’s files are diffed in a run of their own, with their drivers
+  (`diff/adapters/textconv.py` keeps that answer per configuration).
   On a store it reads blobs through the shared batch readers.
 
 ## Where Documents Come From
