@@ -98,9 +98,9 @@ all merged:
     change line is one component (`mb-9ekj`, its first half).
 
 Two more pieces of this work land as pull requests of their own on `main`, outside the
-stack ([Stack Order](#stack-order)): the brief change line in each Pulls stack heading,
-the second half of `mb-9ekj`, and one header design for a commit’s page and a pull
-request’s page (`mb-26zj`).
+stack, each adding its row to [Stack Order](#stack-order) and its phase: the brief
+change line in each Pulls stack heading, the second half of `mb-9ekj`, and one header
+design for a commit’s page and a pull request’s page (`mb-26zj`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -212,8 +212,9 @@ request must prove.
 
 ### Stack Order
 
-One native stack, linked with `gh stack link`, each pull request based on the one below
-it:
+Pull requests 1 to 28 are one native stack, linked with `gh stack link`, each based on
+the one below it. The rows after them are the pull requests of their own on `main` that
+finish the work, each of which adds its row here and its phase below:
 
 | # | Branch | Beads | Why it sits here |
 | --- | --- | --- | --- |
@@ -235,7 +236,7 @@ it:
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
-| 19 | `claude/pulls-rows-two-lines` | `mb-lkkt` | On pull request 18; lays a Pulls row out on two lines |
+| 19 | `claude/pulls-rows-two-lines` | `mb-lkkt`, `mb-3cbf` | On pull request 18; lays a Pulls row out on two lines |
 | 20 | `claude/diff-summary-top` | `mb-pb35` | On pull request 19; moves the Diff summary to the top of the commit and pull request pages, under the header whose rows pull requests 13 and 19 change |
 | 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 | 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
@@ -245,7 +246,6 @@ it:
 | 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 | 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
 | 28 | `claude/diff-summary-letters` | `mb-vb51`, `mb-khm6`, `mb-9ekj` (its first half) | On pull request 27 (#478), and merged on `main` once #478 had; rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, says a commit’s hover card in the same words, makes the brief change line after the file count one component, and resizes the pending placeholder pull request 25 holds in its row |
-| 30 | PR pending | `mb-26zj` | Not in the stack: a pull request of its own on `main`; gives a commit’s page and a pull request’s page one header design, the same title and metadata structure and type size, diverging only where a commit differs, over the headers pull requests 6, 20, and 25 leave |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
