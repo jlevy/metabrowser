@@ -1021,17 +1021,26 @@ kinds, trunk, and HEAD marks ([Branch Chips](#branch-chips)). The full summary m
 revision copyable; the compact summary keeps the familiar copy glyph noninteractive.
 
 The Diff summary is the commit page’s one statement of its changes, as on a pull
-request’s page, with the same header and words, collapsed until it is opened.
-The diff draws it in the summary’s place before the page is shown, so it is there at
-first paint, and it is there for a commit of one file too.
-Where the diff is not drawn, as when the diff plugin is absent or the comparison fails,
-the place is empty and takes no room; a failed comparison says so in the diff’s place.
-Measured in Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16
-px over the description, its place on the subject’s edge and its toggle hung 4 px into
-the gutter, as every Diff summary’s is; its header is one 24 px row at 560 px and wider
-and wraps to two lines at 420 px and three at 320 px, all before the page is shown;
-opened, its tree is under it and above the description; and an empty place takes no
-room. `tests/test_git_commit_summary_chrome.py` holds it.
+request’s page, with the same header and words, collapsed until it is opened; only a
+commit past the comparison’s bound on files says its count again, in the note that the
+diff is bounded.
+The diff draws it in the summary’s place before the page is shown, so it
+is there at first paint, and it is there for a commit of one file too.
+Until the diff draws it, and where the diff is not drawn, as when the diff plugin is
+absent or the comparison fails, the place says the commit’s totals in one line, worded
+as a diff’s line is where its tree did not load, “35 changed files +1,234 −3,423”; a
+failed comparison says so in the diff’s place.
+A detail with no count of files leaves the place empty, and it takes no room.
+The commit hands the diff its own totals, which the server counts over the whole commit
+before it caps the list of files, and for a list cut short at the comparison’s bound of
+2,000 files the summary’s header says those ([Diff Summary](#diff-summary)). Measured in
+Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16 px over the
+description, its place on the subject’s edge and its toggle hung 4 px into the gutter,
+as every Diff summary’s is; its header is one 24 px row at 560 px and wider and wraps to
+two lines at 420 px and three at 320 px, all before the page is shown; opened, its tree
+is under it and above the description; with no diff the totals line is one row under the
+identity; and an empty place takes no room.
+`tests/test_git_commit_summary_chrome.py` holds it.
 The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
 sits below the identity metadata.
 Its first row reports exact file-status families with Git’s letters and ends in “file”
@@ -1301,7 +1310,15 @@ changed, unmerged, and any other), in `--muted`; numbers use the shell’s numbe
 the totals are the [inline change stats](#inline-change-stats); and “(estimated)”
 follows totals that are not exact.
 Its accessible name says the same in words.
-A change set of no files has nothing to open, so its header is a line.
+A list cut short at its bound, on a page that knows the whole change set’s totals, as a
+commit’s page does from the commit’s own stats (`summaryTotals`), has a header of those
+totals with no breakdown, which would count only the files listed, and says how many
+files are listed: “5,000 changed files +15,000 −3,000 (2,000 listed)”; the tree holds
+the files listed. A list that is whole says its own totals, whatever the page gives.
+A host that cuts the breakdown short to keep the header on one line, as a pull request’s
+header does, gives the header its whole words as a tooltip while it is cut, and none
+while it is whole ([Tooltips Add Information](#tooltips-add-information)). A change set
+of no files has nothing to open, so its header is a line.
 Where the shared tree did not load, the header is the line main drew, “N changed files
 +A −D” in the shell’s number format, with no toggle; and a header whose tree did not
 load when pressed is marked `aria-disabled`, with a tooltip saying a press tries again,
@@ -1334,14 +1351,16 @@ Only Enter, Space, or a press on a file jumps the diff to that file, because the
 sits above the files and a jump on every step would scroll it away.
 On a pull request’s page the jump goes through the file’s address,
 `/pull/<n>/files/<path>`, the route a press on it in the Pulls tab takes, from any tab,
-so the address names it and Back returns; a patch file has no address for a place in its
-diff, so there the diff moves in place and the address stays the file’s. A path is its
-author’s text: a row shows it by the server’s display rule, with a control, format, or
-invisible character, such as a right-to-left override or a zero-width space, as U+FFFD,
-as the Pulls tab shows the same path, and the file bar the row goes to shows it the same
-way ([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the
-words, the rows, and the keys, and the paint’s measurement is in the views, models, and
-routes map (`diff.summary-paint`).
+so the address names it and Back returns; a path the address cannot spell, such as one
+with a backslash, opens Changes at the page’s own address and the diff goes to it once
+it mounts; a patch file has no address for a place in its diff, so there the diff moves
+in place and the address stays the file’s. A path is its author’s text: a row shows it
+by the server’s display rule, with a control, format, or invisible character, such as a
+right-to-left override or a zero-width space, as U+FFFD, as the Pulls tab shows the same
+path, and the file bar the row goes to shows it the same way
+([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the words,
+the rows, and the keys, and the paint’s measurement is in the views, models, and routes
+map (`diff.summary-paint`).
 
 ### Diff File Bar
 
@@ -1474,21 +1493,26 @@ The row is held at `--ui-row-height` from first paint, empty until the compariso
 read, and the summary’s header is one line, its breakdown cut short at its end, so the
 summary that arrives moves nothing; opened, its tree pushes the tabs down, as the reader
 asked. On every tab but Changes the page reads the comparison once it is idle, as it
-would for Changes; on Changes it draws the summary from what the diff read.
+would for Changes, and once it is shown, for a page opened out of sight; on Changes it
+draws the summary from what the diff read.
 It is drawn once for each comparison it shows and kept across tabs.
-Measured in Chrome 152 at 980 to 320 px, the row is 24 px from first paint; a summary of
-“35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving moved no row
-and not the tab bar, and kept its row’s 24 px on one line; the row starts on the
-header’s content edge, and its toggle hangs 4 px into the gutter, as every Diff
-summary’s does. The row adds its 24 px and one 6 px gap to the header.
+A newer comparison’s summary replaces it in one step; a read of the newer comparison
+that fails empties the row, at its height, rather than leave the older comparison’s
+counts there as the newer one’s, and the next paint reads it again.
+Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first paint;
+a summary of “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving
+moved no row and not the tab bar, and kept its row’s 24 px on one line, its breakdown
+cut short at 320 px with the whole header as its tooltip; the row starts on the header’s
+content edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
+The row adds its 24 px and one 6 px gap to the header.
 `tests/dom/github-pull-header-chrome.mjs` holds the measurement, and
-`tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, and disposal.
-A tab switch or a poll builds again only the header’s parts whose inputs changed: the
-title, the badge, the author, the branch chips, the row of ages, the labels, and each
-status control are kept while what they show is the same, so a repaint that leaves a
-control as it was does not take its focus, hover, or tooltip from the reader.
-`test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement` counts what
-each repaint builds.
+`tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
+disposal. A tab switch or a poll builds again only the header’s parts whose inputs
+changed: the title, the badge, the author, the branch chips, the row of ages, the
+labels, and each status control are kept while what they show is the same, so a repaint
+that leaves a control as it was does not take its focus, hover, or tooltip from the
+reader. `test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement` counts
+what each repaint builds.
 The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.
@@ -3783,7 +3807,7 @@ A tooltip earns its place by one of these:
 | What a letter, badge, or color abbreviates | A Git file’s status letter, a compression badge, a front-matter error |
 | The exact value behind a rounded or relative one | An age’s exact time on the pull request page; a tree row’s exact date, and a folder’s other total |
 | What a control does that its words do not say | The ref selector’s “Switch branch or tag”, the HTML preview’s “Open as full page” (its own tab, still sandboxed), a View file control’s commit, a freshness line’s “Press to refresh now”, a fallback layout’s reason |
-| The whole of something cut short | A chip’s full name, a crumb’s own name, a diff file bar’s path, the page title past its two lines |
+| The whole of something cut short | A chip’s full name, a crumb’s own name, a diff file bar’s path, the page title past its two lines, a pull request header’s Diff summary with its breakdown cut short |
 
 **The Pulls column has none.** A pull request’s row, a stack’s row, and their parts
 carry no tooltip: the state icon’s name, a stack place’s stacks, and a stack row’s

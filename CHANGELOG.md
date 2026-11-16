@@ -5,13 +5,21 @@ All notable changes to Metabrowser are documented here.
 ## Unreleased
 
 - A commit’s page and a pull request’s page each have one Diff summary, collapsed, at
-  the top of the page, and the counts of files and lines are its header.
+  the top of the page, and the counts of files and lines are its header; a patch file of
+  more than one file has it at the top of its diff.
   On a commit’s page it sits under the commit’s identity, in place of the `M`, `A`, and
   `D` file counts and the line totals, and it is there for a commit of one file too.
-  On a pull request’s page it is the header’s last row on every tab, not in Changes, and
-  a press on a file in it opens Changes at that file from any tab.
+  Until the commit’s diff draws it, and where the diff cannot be drawn, its place says
+  the commit’s totals in one line.
+  For a commit past the diff’s bound of 2,000 files, its header says the whole commit’s
+  totals and how many files its list holds, as “5,000 changed files +15,000 −3,000
+  (2,000 listed)”. On a pull request’s page it is the header’s last row on every tab,
+  not in Changes, and a press on a file in it opens Changes at that file from any tab.
   The row is there from the first paint, so the summary arriving moves nothing and the
   tab bar stays where it was; the header is one 24 px row and a 6 px gap taller.
+  Where the row cuts the summary short, its tooltip gives the whole of it, and a
+  comparison that cannot be read leaves the row empty rather than showing an older
+  comparison’s counts.
   The hover summary of a commit in the history keeps its two rows of counts.
   See [Diff Summary](docs/design-system.md#diff-summary).
 
@@ -294,8 +302,8 @@ All notable changes to Metabrowser are documented here.
   the text colour under the pointer.
   A document’s own `<details>` sections look as before.
 
-- A diff of more than one file now opens with a Diff summary, collapsed, in place of the
-  “41 changed files +6526 −555” line at its top: a header such as “35 changed files (2
+- A change set’s totals are now a Diff summary, collapsed, in place of the line a diff
+  opened with, “41 changed files +6526 −555”: a header such as “35 changed files (2
   added, 3 removed, 30 modified) +1,234 −3,423” that opens to the changed files as a
   tree by folder. The header lists only the statuses some file has, in one order (added,
   removed, modified, renamed, then the rest), writes its numbers in the shell’s format,
@@ -306,15 +314,13 @@ All notable changes to Metabrowser are documented here.
   in the Diff summary and in the Pulls tab alike, and a folder’s tooltip gives only what
   those counts leave out.
   Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
-  request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
-  move along the rows without moving the diff.
+  request’s page the address follows, as it does from the Pulls tab; the arrow keys move
+  along the rows without moving the diff.
   A name shows a control or invisible character, such as a right-to-left override, as
   U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
   counts now read in the shell’s number format.
   A path a patch lists more than once, as a file that became a symlink, is one row.
   If the tree cannot load, the totals line stays.
-  It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
-  commit summary’s totals, as before.
   Plugins can draw a tree of changed files with the shell’s own model,
   `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
 

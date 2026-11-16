@@ -451,8 +451,12 @@ visible. After the active renderer and optional `ready` promise settle, the shel
 transfers the staged content and its disposal ownership into the preview atomically.
 Renderers must scope DOM access and event ownership to the supplied container; the
 temporary stage is deliberately not an independently interactive or accessible view.
-Initial rendering must not move focus.
-Focus changes belong to user interaction after the view is installed.
+The built-in diff view has one exception: a host that passes `summaryHost` in the render
+context, as a commit’s page does for the place under its commit summary, has the diff
+draw its Diff summary in that element, outside the container.
+The host owns the element, and the diff’s `dispose()` releases the summary’s listeners
+and state ([Diff Summary](design-system.md#diff-summary)). Initial rendering must not
+move focus. Focus changes belong to user interaction after the view is installed.
 If navigation disposes the view before its direct or declared readiness settles, the
 shell immediately invokes the staged disposer, disposes a late handle when it arrives,
 and does not let that mount regain ownership.

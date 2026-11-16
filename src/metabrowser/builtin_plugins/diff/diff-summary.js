@@ -23,8 +23,9 @@
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
 // or a press on a file jumps; on a folder they toggle it. A host with an address for a file
-// takes the jump (diff-view.js `openFile`): a pull request's Changes opens
-// `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and the diff follows its address.
+// takes the jump (diff-view.js `openFile`): a pull request's page, whose header holds the
+// summary on every tab, opens `/pull/<n>/files/<path>`, as the Pulls tab's tree does, and
+// its diff follows the address.
 //
 // A path is text whoever made the change wrote: it is painted with textContent and reaches
 // no class, style, or markup, and what is painted is its display, the server's rule
