@@ -2149,7 +2149,8 @@ line: the pull request’s [brief change line](#brief-change-line), “21 A, 7 D
 The change line opens and closes the pull request’s changed-files tree, which hangs
 under it, connected by `aria-owns`, and starts collapsed.
 Clicking the row’s title or number’s line opens the page and expands nothing; clicking
-the chevron or the change line toggles the tree and opens no page.
+the chevron or the change line toggles the tree and opens no page, and the row stays
+under the pointer, even above a row a reveal placed, whose place gives way to the press.
 No row expands on its own: not when it opens, not when it is selected, and not on a
 key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
 its change. An address naming a changed file opens its owner’s tree if needed

@@ -834,10 +834,25 @@ async function main() {
         result.chevron.opened.length === result.title.opened.length,
       JSON.stringify(result.chevron),
     );
+    // The row pressed stays under the pointer: its files open below it, even above the row a
+    // reveal placed, #105, the open one, whose place gives way to the reader's press.
+    check(
+      `${at}: a press on the chevron leaves its change line where it was`,
+      result.chevron.change !== null &&
+        result.title.change !== null &&
+        Math.abs(result.chevron.change.top - result.title.change.top) <= TOLERANCE_PX,
+      JSON.stringify({ before: result.title.change, after: result.chevron.change }),
+    );
     // A press on the line closes them again.
     await pointAt('.github-pulls-change[data-number="106"] .change-line', true);
     await pause(250);
     result.line = await browser.evaluate(state);
+    check(
+      `${at}: a press on the change line closes the files and leaves it where it was`,
+      result.line.change !== null &&
+        Math.abs(result.line.change.top - result.title.change.top) <= TOLERANCE_PX,
+      JSON.stringify({ before: result.title.change, after: result.line.change }),
+    );
     check(
       `${at}: a press on the change line closes the files and opens no page`,
       result.line.expanded === "false" &&
