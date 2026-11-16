@@ -1347,14 +1347,11 @@ function groupedSectionsSettled() {
 // breathe: it reads the choice in the link's ink on the accent ground, and only primary
 // ink breathes (docs/design-system.md, "Refreshing Content"), so the dim and the scan row
 // say what is waiting.
-var _groupingPending = false;
-
 /**
  * @param {boolean} pending
  * @param {boolean} [first] whether the load on its way paints new sections
  */
 function setGroupingPending(pending, first = false) {
-  _groupingPending = pending;
   var grouped = filesPanelUsesGroupedSource();
   document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
   renderRegrouping(
