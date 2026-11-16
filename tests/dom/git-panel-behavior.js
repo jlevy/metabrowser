@@ -155,9 +155,13 @@ class FakeElement {
       this.appendChild(loading);
     }
     // The place the commit's Diff summary is drawn in, at the summary's top (mb-pb35).
-    if (this._html.includes('<div class="git-commit-diff-summary metabrowser-diff-host">')) {
+    if (
+      this._html.includes(
+        '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
+      )
+    ) {
       const summaryHost = new FakeElement("div", this.ownerDocument);
-      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host";
+      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host page-header-line";
       this.appendChild(summaryHost);
     }
     if (this._html.includes("git-commit-diff")) {
@@ -1084,7 +1088,8 @@ async function run() {
   assertContains(
     "detail: summary holds the Diff summary's place, with the commit's totals",
     previewHtml,
-    '<div class="git-commit-diff-summary metabrowser-diff-host"><div class="diff-summary">' +
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">' +
+      '<div class="diff-summary">' +
       '<span class="diff-summary-group"><span class="diff-summary-files">' +
       '<span class="summary-number">2</span> files changed</span> ' +
       '<span class="summary-punctuation" aria-hidden="true">·</span>' +
@@ -1137,7 +1142,7 @@ async function run() {
     '<div class="git-commit-revision-line page-header-line"><span class="git-commit-identity">' +
       '<span class="git-commit-revision"><span class="git-commit-sha">',
     '<div class="git-commit-ages page-header-line">Committed <span class="git-commit-age ',
-    '<div class="git-commit-diff-summary metabrowser-diff-host">',
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
   ].map((line) => previewHtml.indexOf(line, summaryStart));
   assertTrue(
     "detail: the header's lines are the author, the revision, the age, then the Diff summary",
@@ -1247,7 +1252,7 @@ async function run() {
   assertContains(
     "detail: an uncounted commit's place is empty",
     previewHtml,
-    '<div class="git-commit-diff-summary metabrowser-diff-host"></div>',
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line"></div>',
   );
   assertEqual(
     "detail: an uncounted commit's diff is given no totals",

@@ -3684,7 +3684,10 @@ declare global {
 
   /** How a person's identity is drawn where it stands (plugin-sdk-views.js, `actorIdentity`). */
   type MetabrowserActorIdentityOptions = {
-    /** The avatar's https address, which the caller vouches for; none draws the glyph. */
+    /** The avatar's https address, which the caller vouches for; none draws the glyph. It is
+     *  requested in anonymous CORS mode with no referrer, so its host must send
+     *  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
+     *  `avatars.githubusercontent.com`; any other image shows the glyph. */
     avatar?: string | null;
     /** When the avatar loads: lazy, unless the placement is built again on a repaint. */
     loading?: "lazy" | "eager";

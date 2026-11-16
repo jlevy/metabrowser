@@ -202,7 +202,9 @@ PR numbers use bold dark text, usernames use bold normal text ink at the surface
 normal size, and branch names use ref chips slightly smaller than the text around them,
 as in Git history. Hover or focus a copyable branch chip to reveal its copy control; it
 copies the full branch name.
-The author’s small circular avatar appears beside the username when available.
+The author’s small circular avatar appears beside the username when available; otherwise
+a neutral person icon holds its place, in the header and on the Conversation, and a
+Pulls row shows none.
 Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; condensed
 navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.

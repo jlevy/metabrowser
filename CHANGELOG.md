@@ -19,8 +19,9 @@ All notable changes to Metabrowser are documented here.
   A pull request’s author with no avatar on GitHub now shows it too, in the header and
   on the Conversation; a Pulls row still shows no icon for one.
   For plugin authors, `metabrowser.actorIdentity(name, options)` and
-  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does.
-  See [Page Headers](docs/design-system.md#page-headers) and
+  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does, and
+  `PLUGIN_SDK_VERSION` remains `0.7`. See
+  [Page Headers](docs/design-system.md#page-headers) and
   [Actor Identity](docs/design-system.md#actor-identity).
 
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s

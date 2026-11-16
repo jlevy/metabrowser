@@ -4506,8 +4506,9 @@ a.tab-btn {
    Headers"): its title, then its lines, each 6 px under the one before. Every line under
    the title is a `.page-header-line` at the body size, the Diff summary's row included (its
    header's own size is the diff plugin's, the same token), so the two pages read in one
-   type: an age in one keeps the line's size, not the age primitive's small one. A chip in a
-   line keeps its own size (Branch Chips, Label Colors), and a revision its one step down. */
+   type: an age in one keeps the line's size, not the age primitive's small one. The one
+   row that is not is a pull request's labels, a row of chips. A chip in a line keeps its
+   own size (Branch Chips, Label Colors), and a revision its one step down. */
 .page-header {
   display: flex;
   flex-direction: column;
@@ -6555,6 +6556,9 @@ pre.code-block.metabrowser-source-lines > code {
   border-radius: var(--radius-circle);
   color: var(--muted);
 }
+/* The avatar, or the person glyph in its place, fills the box. The glyph is the second
+   deliberate exception to --icon-glyph (docs/design-system.md, "One Glyph Size"): it stands
+   in for an avatar image, so it takes the image's 18 px box, not the 14 px glyph size. */
 .actor-avatar > :is(img, svg) {
   display: block;
   width: 100%;

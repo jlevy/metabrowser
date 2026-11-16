@@ -125,6 +125,8 @@ OKLCH structure, semantic ordering, and dark-theme surface contrast.
 One primitive produces every age: `MetabrowserFormatters.age()` returns a label and
 freshness class (`.age-live` … `.age-old`), and the shared class rule owns its hue,
 weight, small size, and tabular numerals.
+A line set at another size takes the age at its own: a [page header](#page-headers)’s
+lines, a full commit summary, and a Conversation card head set it at the body size.
 Dense navigation uses the compact style (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata
 and conversation cards use the relative style: `2h ago`, `just now`, or `in 2h` for a
 future timestamp. Unknown times have no age label.
@@ -427,14 +429,16 @@ Prefer truncation with an accessible full-value tooltip or allow a panel to scro
 
 A commit’s page and a pull request’s page open with one kind of header, a
 `.page-header`: the title, then its lines, each 6 px under the one before.
-Every line under the title is a `.page-header-line` at `--body-font-size`, and so is the
-Diff summary’s header, the last line; an age in a line takes the line’s size, not the
-age primitive’s small one.
-A chip in a line keeps its own size, a ref chip by the [chip ratio](#one-ratio), and a
-state badge and a label at theirs ([Label Colors](#label-colors)), and a revision sits
-its one step down ([Git Commit Summary](#git-commit-summary)). Before, the Diff summary
-was `--nav-font-size` on both pages, and a pull request’s row of ages and its status
-line `--ui-small-font-size`, a step or two under the lines above them.
+Every line under the title is a `.page-header-line` at `--body-font-size`, the Diff
+summary’s row, the last line, among them, whose header the diff plugin sets at the same
+token; the one row that is not is a pull request’s labels, a row of chips at a chip’s
+size. An age in a line takes the line’s size, not the age primitive’s small one
+([Age](#age)). A chip in a line keeps its own size, a ref chip by the
+[chip ratio](#one-ratio), and a state badge and a label at theirs
+([Label Colors](#label-colors)), and a revision sits its one step down
+([Git Commit Summary](#git-commit-summary)). Before, the Diff summary was
+`--nav-font-size` on both pages, and a pull request’s row of ages and its status line
+`--ui-small-font-size`, a step or two under the lines above them.
 
 The two headers share their parts in one order, and each keeps the lines only it has:
 
@@ -454,16 +458,19 @@ freshness of its own, so its age line is the time alone, and its refs stand wher
 request’s branches do, both saying where the change lives.
 A pull request has a state, which leads its row of ages, and the lines only a cached
 record has. `test_page_headers_set_every_line_under_the_title_at_the_body_size` in
-`tests/test_design_vocabulary.py` holds the classes, the order each page writes, and
-that no rule sets another size on a line.
-`tests/test_page_header_chrome.py` draws both headers in headless Chrome at 980, 560,
-and 360 px, each with its Diff summary drawn, and reads every line and every run of text
-in it at 14 px, both titles at 24 px on 30 px lines, two lines tall, and every line 6 px
-under the one before, the first 6 px under the title.
+`tests/test_design_vocabulary.py` holds that each page writes the classes on every line
+but the labels, and that no rule sets another size on a line.
+The order the lines come in is held by `tests/dom/git-panel-behavior.js` for the
+commit’s page and by `tests/test_page_header_chrome.py` for both, which draws both
+headers in headless Chrome at 980, 560, and 360 px, each with its Diff summary drawn,
+and reads every line but the labels as a page header’s line, every line and every run of
+text in it at 14 px, both titles at 24 px on 30 px lines, two lines tall, and every line
+6 px under the one before, the first 6 px under the title.
 Measured there, the commit’s author, revision, and age lines are 21, 21, and 21 px and
-its Diff summary 24 px; a pull request’s rows of ages and status are 21 px where they
-were 18, and its header is 235 px with no labels and 261 px with them, where it was 229
-px and 255 px.
+its Diff summary 24 px at 560 px and wider, where its header is one line, and 40 px at
+360 px, where it wraps ([Git Commit Summary](#git-commit-summary)); a pull request’s
+rows of ages and status are 21 px where they were 18, and its header is 235 px with no
+labels and 261 px with them, where it was 229 px and 255 px.
 
 ### Actor Identity
 
@@ -491,7 +498,9 @@ A commit’s page has no source of avatars of its own, so its author shows the g
 (`cli-ui-actor-identity.tryscript.md`), `test_a_person_is_one_identity_on_every_page` in
 `tests/test_design_vocabulary.py` that both pages draw through it, and
 `tests/test_page_header_chrome.py` that both boxes are 18 px, both names start 22 px in,
-and an avatar arriving in either box moves nothing.
+and a 40 px avatar arriving in either box moves nothing, which fails with the box left
+unsized. Showing a commit author’s GitHub avatar, resolved by the commit’s oid, is still
+to come (mb-rlp4).
 
 ### Count Summaries Bold Their Numbers
 
@@ -3156,10 +3165,14 @@ do not copy the filename matcher, SVG, or `ft-*` mapping into a component.
 The navigation tree, plugin views, and aggregate rows therefore change together when a
 file type is added.
 
-There is one deliberate exception, `.menu-seg svg` in the segmented theme and font
-choosers, where the glyph *is* the segment’s label rather than a mark beside text and so
-carries the weight of a word.
-It is documented at the rule.
+There are two deliberate exceptions, each documented at its rule.
+`.menu-seg svg`, in the segmented theme and font choosers, is the segment’s label rather
+than a mark beside text, and so carries the weight of a word.
+The person glyph in an [actor identity](#actor-identity)’s box,
+`.actor-avatar > :is(img, svg)`, stands in for an avatar image, so it takes the image’s
+box, `--actor-avatar-size` (18 px), and not the glyph size: at 14 px it would sit
+smaller than the avatar it replaces, and the box and the name after it would differ with
+and without an avatar.
 
 ### Every Icon-Only Control Is the Same Control
 

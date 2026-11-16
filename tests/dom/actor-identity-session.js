@@ -60,7 +60,7 @@ const glyph = mb
   .match(/<span class="actor-avatar" aria-hidden="true">(.*?)<\/span>/)[1];
 assert.match(
   glyph,
-  /^<svg [^>]*stroke="currentColor"[^>]*><path d="M18 20a6 6 0 0 0-12 0"\/><circle cx="12" cy="10" r="4"\/><circle cx="12" cy="12" r="10"\/><\/svg>$/,
+  /^<svg [^>]*stroke="currentColor"[^>]*><path d="M17\.925 20\.056a6 6 0 0 0-11\.851\.001"\/><circle cx="12" cy="11" r="4"\/><circle cx="12" cy="12" r="10"\/><\/svg>$/,
   "the glyph is Lucide's circle-user-round",
 );
 

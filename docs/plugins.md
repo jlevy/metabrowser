@@ -507,7 +507,10 @@ Useful helpers include:
   `actorIdentity` returns the element; its `avatar` is an https address you vouch for,
   which the box holds, and without one, or when the image fails, the box holds the
   host’s person glyph, so nothing moves when an avatar arrives or fails.
-  `loading` is `"lazy"` by default, `"eager"` for a placement you build again on a
+  The image is requested in anonymous CORS mode with no referrer, so its host must send
+  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
+  GitHub’s avatar host, `avatars.githubusercontent.com`; any other image shows the
+  glyph. `loading` is `"lazy"` by default, `"eager"` for a placement you build again on a
   repaint; `className` and `nameClass` add your classes to the identity and the name;
   and `placeholder: false` draws no box for a person with no avatar, for a dense list
   row. `actorIdentityHtml` writes the same markup with the glyph in its box, for a view

@@ -1016,16 +1016,19 @@
   }
 
   /**
-   * The neutral person in an avatar's box where there is no avatar: Lucide's, as the icon
-   * registry's glyphs are (icons.js), drawn in the box's muted ink. It is here, beside the
-   * one component that draws it, in this view bundle, and not in the registry, a startup
-   * script every folder's first paint fetches, where it cost 92 compressed bytes
-   * (devtools/check_startup_scripts.py, 2026-11-16).
+   * The neutral person in an avatar's box where there is no avatar: Lucide 1.17.0's
+   * `circle-user-round.svg`, at upstream commit 896aba0d195a4fec38ad7c4a90d00cb3389ebfea, as
+   * the icon registry's glyphs are Lucide's (icons.js), drawn in the box's muted ink. Its ISC
+   * copyright and license are the Lucide notice beside `destinationGlyphs` below, and
+   * NOTICE.md lists it. It is here, beside the one component that draws it, in this view
+   * bundle, and not in the registry, a startup script every folder's first paint fetches,
+   * where it cost 92 compressed bytes (devtools/check_startup_scripts.py, 2026-11-16).
    */
   const PERSON_GLYPH = // Lucide `circle-user-round`
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
-    ' stroke-linecap="round" stroke-linejoin="round"><path d="M18 20a6 6 0 0 0-12 0"/>' +
-    '<circle cx="12" cy="10" r="4"/><circle cx="12" cy="12" r="10"/></svg>';
+    ' stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M17.925 20.056a6 6 0 0 0-11.851.001"/><circle cx="12" cy="11" r="4"/>' +
+    '<circle cx="12" cy="12" r="10"/></svg>';
 
   function personGlyph() {
     return PERSON_GLYPH;
@@ -1044,6 +1047,10 @@
    * GitHub's avatars (`avatarUrl` in its pull-page.js); anything else draws the glyph. The
    * image says nothing the name beside it does not, so its text is empty, and it sends no
    * referrer and no credentials, its size and privacy attributes set before its `src`.
+   * Requested in anonymous CORS mode, it loads only from a host that sends
+   * `Access-Control-Allow-Origin`, and in a folder served untrusted only from GitHub's
+   * avatar host, which the page's policy admits (capabilities.py, `untrusted_shell_csp`);
+   * any other image shows the glyph.
    * When it loads is its placement's, lazy unless the caller asks for eager
    * (docs/design-system.md, "A Repaint Keeps Its Images"). `placeholder: false` draws no box
    * for a person with no avatar, for a dense list row whose avatar comes with its row.
@@ -1776,7 +1783,8 @@
   const destinationGlyphs = {
     github:
       '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg>',
-    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks.
+    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks, and
+     * circle-user-round.svg, the person in an actor identity's box (PERSON_GLYPH above).
      * https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
      * ISC License
      * Copyright (c) 2026 Lucide Icons and Contributors

@@ -57,9 +57,10 @@ independent of Metabrowser’s license.
   ([ISC License](https://github.com/lucide-icons/lucide/blob/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/LICENSE),
   [Lucide](https://github.com/lucide-icons/lucide)). The inline neutral issue and PR
   destination glyphs in `src/metabrowser/static/plugin-sdk-views.js` use
-  `circle-dot.svg` and `git-pull-request.svg` from release 1.17.0 at upstream commit
-  `896aba0d195a4fec38ad7c4a90d00cb3389ebfea`. Their copyright and license accompany the
-  glyphs in the distributed script.
+  `circle-dot.svg` and `git-pull-request.svg`, and the person glyph an author with no
+  avatar shows in the same script uses `circle-user-round.svg`, all from release 1.17.0
+  at upstream commit `896aba0d195a4fec38ad7c4a90d00cb3389ebfea`. Their copyright and
+  license accompany the glyphs in the distributed script.
 
 ## Runtime Dependencies
 
