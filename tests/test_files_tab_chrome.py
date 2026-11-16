@@ -344,12 +344,14 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "enter": "group: No grouping, checked",
         "enterEscaped": "group trigger",
     }, measured["focus"]
-    # Enter on a File type row picks it and the menu stays open; through the bar's rebuilds
-    # as the filter answers, focus stays on that row, checked, and unchecked again.
+    # Enter on a File type row picks it and the menu stays open; through the bar's rebuild
+    # for each pick, which the session waits for by count, focus stays on that row,
+    # checked, and unchecked again. A tally refresh's rebuild is pinned browserlessly.
     row = measured["typesRow"]
     assert row.startswith("types: ") and not row.endswith("checked"), row
     assert measured["typesPicked"] == f"{row}, checked", measured
     assert measured["typesUnpicked"] == row, measured
+    assert measured["typesRebuilds"] >= 2, measured
     assert measured["keyThreeOpens"] == {"menu": "types", "drawerOpen": "true"}
 
     # File type sections: Documentation first, each headed in the menu group pattern at

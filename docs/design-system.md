@@ -156,6 +156,13 @@ highlighted source, code blocks, Markdown inline code, and raw log payloads.
 Numeric alignment on its own does not justify monospace — byte counts, durations, and
 timestamps stay sans and use `--tabular-numerals`.
 
+One stack, `--app-mono`, serves all of it: `--font-mono` and KPress’s
+`--kpress-host-font-mono` hook both read it, so highlighted source and the code in a
+rendered Markdown document draw in the same face.
+The face still depends on the engine: SF Mono in WebKit (Safari and the macOS app), and
+Menlo in Chromium on a Mac unless the user installed SF Mono.
+The measurement behind that order sits beside the token in `static/styles.css`.
+
 The authoritative rule, the current list of deliberate exceptions, and the reasoning for
 each live in the `── Typography roles ──` block of `static/styles.css`, next to the
 tokens they govern. `tests/test_chrome_typography.py` enforces that list across the host
@@ -264,14 +271,16 @@ glyph itself.
 | `Delete` | `Delete` | Delete | `Delete` |
 | `F2` | `F2` | F2 | `F2` |
 | `Shift`, a single key only | `Shift` | Shift | `Shift` |
-| Control with `N` or `P` | `⌃N` on macOS and iOS, `Ctrl+N` elsewhere | Control N | `Control+N` |
+| Control with `N` or `P`, on macOS and iOS | `⌃N` | Control N | `Control+N` |
 
 `Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
 `appendKey()`, which renders a key that is not a binding, such as one named in a
 sentence. No binding may use it.
-A [Control chord](#control-chords) is one keycap, written as its platform writes it; the
-formatter reads the platform from the page’s navigator, and without one, as in a
-browserless session, writes `Ctrl+N`.
+A [Control chord](#control-chords) is bound only on macOS and iOS, so it is one keycap
+written as they write it.
+Alone or among alternatives, it is spoken as a visually hidden phrase, “Control N”, with
+the keycap hidden from assistive technology, since a screen reader may name `⌃` by its
+Unicode name rather than as Control.
 
 The `.kbd` text transform produces the visible caps treatment; source markup keeps the
 mixed-case label in this table.
@@ -301,10 +310,10 @@ A missing tab has no target, so its letter does nothing and stays reserved.
 #### Binding Grammar and Accessibility
 
 - Every shortcut is a single key, but for the two [Control chords](#control-chords),
-  Control-N and Control-P. A binding declares Control with `control: true`, and the
-  registry rejects it with any other key.
-  No binding uses Alt or Meta, and the registry rejects a binding that states any other
-  modifier policy, Shift included.
+  Control-N and Control-P, bound only on macOS and iOS. A binding declares Control with
+  `control: true`, and the registry rejects it with any other key or on any other
+  platform. No binding uses Alt or Meta, and the registry rejects a binding that states
+  any other modifier policy, Shift included.
 - Shift never changes what a key means: a letter matches in either case, a named key
   such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
   matches the digit typed or, failing that, its key on the digit row, so Shift+`1` is
@@ -1479,11 +1488,13 @@ The menu shows titles, ordinals, and PR numbers, ordered from stack top to base,
 the current member marked.
 Its links are created only when opened.
 Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
-On a selected PR, Control-N opens the next member toward the stack top and Control-P the
-previous one toward its base, with or without Shift; Help lists them in its Pull request
-stack group ([Control Chords](#control-chords)). A focused Pulls row keeps `J` and `K`
-for its own rows. Editors, dialogs, unknown membership, a header still held over the
-loading page, and inactive pages keep their normal keyboard behavior.
+On a selected PR on macOS and iOS, Control-N opens the next member toward the stack top
+and Control-P the previous one toward its base, with or without Shift; Help lists them
+in its Pull request stack group.
+On Windows and Linux those chords stay the browser’s, and the menu walks the stack
+([Control Chords](#control-chords)). A focused Pulls row keeps `J` and `K` for its own
+rows. Editors, dialogs, unknown membership, a header still held over the loading page,
+and inactive pages keep their normal keyboard behavior.
 Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
@@ -1816,9 +1827,10 @@ Space toggles the focused pull request’s changed files in place.
 Grouped by stack, a stack’s row is a stop of its own that opens nothing, and Enter,
 Space, Right, and Left open, close, enter, and leave it as a folder’s
 ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)). `J` and `K` move the
-rows with or without Shift; walking a pull request’s stack is Control-N and Control-P
-([The Pull Request Page](#the-pull-request-page)). Help reads the `pull-requests` and
-`pull-stack` groups of the shortcut registry, and no surface here names a key.
+rows with or without Shift; walking a pull request’s stack is Control-N and Control-P on
+macOS and iOS ([The Pull Request Page](#the-pull-request-page)). Help reads the
+`pull-requests` and `pull-stack` groups of the shortcut registry, and no surface here
+names a key.
 
 ## Stacks
 
@@ -1951,10 +1963,10 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 - **Reusable semantics.** Some letters are verbs that apply wherever their meaning does,
   as Vim’s motions do.
   `J` and `K` move down and up a row in every row list.
-  Control-N and Control-P go to the next and previous item one level up: today the pull
-  requests of a stack, and on any later page with its own next and previous, that
-  page’s. `V` and `S` switch a file between its rendered view and its source, whatever
-  its tabs are called.
+  Control-N and Control-P, on macOS and iOS, go to the next and previous item one level
+  up: today the pull requests of a stack, and on any later page with its own next and
+  previous, that page’s. `V` and `S` switch a file between its rendered view and its
+  source, whatever its tabs are called.
   A page with a natural next and previous uses Control-N and Control-P, a rendered view
   is always `V`, and no other meaning takes those keys.
 - **Numbers for situational items.** Links and one-off actions that depend on what the
@@ -1972,9 +1984,9 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button.
 - **One key, and Control only for next and previous.** Every shortcut is a single key
-  but Control-N and Control-P ([Control Chords](#control-chords)), Shift changes
-  nothing, and Command, Option, and every other Control chord stay the browser’s
-  ([Binding Grammar and Accessibility](#binding-grammar-and-accessibility)).
+  but Control-N and Control-P on macOS and iOS ([Control Chords](#control-chords)),
+  Shift changes nothing, and Command, Option, and every other Control chord stay the
+  browser’s ([Binding Grammar and Accessibility](#binding-grammar-and-accessibility)).
 
 ### Scopes and Collisions
 
@@ -2016,7 +2028,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 | `P` | The Pulls tab | The tab is drawn: a hosted origin | Letter, main tab |
 | `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus | Reusable |
-| `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields | Reusable, Control chord |
+| `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS | Reusable, Control chord |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown | Letter |
 | `W` | The branch or tag switcher | A mirror’s pin is served | Letter, GitHub’s convention |
 | `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown | Reusable, view tab |
@@ -2049,13 +2061,13 @@ Metabrowser menu, print, retry, and the freshness row’s Reload, rare.
 ### Browser and App Keys
 
 A key held with Command, Control, or Option belongs to the browser, and in the macOS app
-to the app’s menus, but for the two [Control chords](#control-chords) the keymap lists.
-No other shortcut uses one, and no page handler takes one: a handler that cancelled a
-chord would keep it from the browser, and the app’s web view hands every key to the page
-before its menus. `tests/test_modified_keys.py` lists each `keydown` handler and what
-leaves chords alone in it.
-The other exception is Option-Tab inside a dialog or an open menu: its focus trap keeps
-it, because Safari moves focus with Option-Tab.
+to the app’s menus, but for the two [Control chords](#control-chords) the keymap lists
+on macOS and iOS. No other shortcut uses one, and no page handler takes one: a handler
+that cancelled a chord would keep it from the browser, and the app’s web view hands
+every key to the page before its menus.
+`tests/test_modified_keys.py` lists each `keydown` handler and what leaves chords alone
+in it. The other exception is Option-Tab inside a dialog or an open menu: its focus trap
+keeps it, because Safari moves focus with Option-Tab.
 
 | Key | Meaning | Where |
 | --- | --- | --- |
@@ -2074,22 +2086,29 @@ and Command-\], and Restart Server is Command-Option-R.
 
 ### Control Chords
 
-Control-N and Control-P are the only chords the registry binds.
-They walk a pull request’s stack: Control-N to the next member toward the stack’s top,
-Control-P to the previous one toward its base.
+Control-N and Control-P are the only chords the registry binds, and only on macOS and
+iOS. They walk a pull request’s stack: Control-N to the next member toward the stack’s
+top, Control-P to the previous one toward its base.
+Held, a chord walks once, and its repeats are consumed without walking.
 
 - **Why these two.** The letters alone are worth more to the keymap than one walk
   through a stack: `N` is free, and `P` opens the Pulls tab.
   With Control they mean next and previous in Emacs, readline, and the macOS text
   system, which moves a field’s caret down and up a line with them, so the chords keep
   the meaning they have elsewhere.
-- **Why Control, and where it reaches the page.** On macOS, Command is the command key:
-  the macOS app’s menus and the browsers there give Control with `N` or `P` no command,
-  so both chords reach the page.
-  On Windows and Linux, Control is the browser’s command key.
-  Chrome keeps Ctrl+N for a new window, and a page never sees it, so there only Ctrl+P
-  walks the stack, in place of the browser’s Print while a stack’s pull request is open;
-  Print stays in the browser’s menu.
+- **Why Control, and only where it reaches the page.** On macOS and iOS, Command is the
+  command key: the macOS app’s menus and the browsers there give Control with `N` or `P`
+  no command, so both chords reach the page.
+  On Windows and Linux, Control is the browser’s command key: Ctrl+N opens a new window,
+  which a page never sees, and Ctrl+P prints.
+  Bound there, one chord would be listed for a key that does something else and the
+  other would take Print, a browser chord no page handler takes
+  ([Browser and App Keys](#browser-and-app-keys)). So neither is bound there: Help and
+  the Shift strip list neither, the browser keeps both, and the stack menu walks the
+  stack. The registry reads the platform from the page’s navigator, client hints first,
+  and refuses a chord where Control does not reach the page (`controlReachesPage()` in
+  `static/keyboard-shortcuts.js`); without a navigator, as in a browserless session, it
+  does not.
 - **What the registry allows.** A binding declares Control with `control: true`, and
   only with `N` or `P` (`CONTROL_CHORD_KEYS` in `static/keyboard-shortcuts.js`). The
   chord matches Control held alone: Alt or Meta with it makes another chord, and AltGr,
@@ -2098,12 +2117,12 @@ Control-P to the previous one toward its base.
   moves its caret with it.
   Shift changes nothing, as for every key.
   A chord reserves no letter, since a view’s key is one letter alone.
-- **How it is written.** Help, the Shift strip, and a badge write a chord as its
-  platform does, `⌃N` on macOS and iOS and `Ctrl+N` elsewhere; it is spoken “Control N”
-  and announced as `Control+N` ([Canonical Key Names](#canonical-key-names)).
+- **How it is written.** Help, the Shift strip, and a badge write a chord `⌃N`, as macOS
+  and iOS do; it is spoken “Control N”, a hidden phrase even for a chord alone, and
+  announced as `Control+N` ([Canonical Key Names](#canonical-key-names)).
 - **Another chord** is a design decision made here first.
-  It must keep the meaning its chord has elsewhere and take no command from the
-  platform, on macOS at least.
+  It must keep the meaning its chord has elsewhere and take no command from the browser
+  or the platform where it is bound.
   Command and Option stay the browser’s and the app’s.
 
 ### Help and the Reveal
@@ -3187,6 +3206,10 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
   and the tab bar between its tabs.
+  A segmented group in the cluster layout (below) is the one exception: it is one
+  control drawn over several lines, and what follows it starts a line of its own.
+  So where the Pulls Show group is the cluster, Reload takes a line under it even where
+  it would fit beside the cluster’s last chip.
 - **Line spacing.** A row’s lines are `--nav-toolbar-line-height` tall, a chip’s height,
   and `--nav-toolbar-gap` apart.
   That is also the gap between controls along a line and above the first line and below
@@ -3203,8 +3226,9 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   layout until it can ([Groups Or Dropdowns](#groups-or-dropdowns)). Whether it fits is
   measured on a copy in the joined layout, so the answer at one width is the same
   whichever layout the group shows, and the two cannot alternate near the break.
-  A change to its text is fitted before it paints, and a change of size in the next
-  frame, which a drag across the break shows for one frame.
+  A change to its text, or its toolbar shown again on its tab, is fitted before it
+  paints, and a change of size in the next frame, which a drag across the break shows
+  for one frame.
 - **Keys.** Wrapping keeps the controls’ order, so reading the lines top to bottom meets
   them in their Tab order, and their keyboard numbers stay theirs.
 
@@ -3227,10 +3251,11 @@ cluster below. At the narrowest pane, 179 px, with a filter set, the Files row i
 lines: Group by, then Show ignored, then Clear and the chevron.
 The measurements are beside the rules in `styles.css`. `tests/dom/nav-toolbar-wrap.mjs`
 holds a toolbar to this rule at every width from 179 to 420 px, in both font sets:
-`tests/test_files_tab_chrome.py` the Files row in every Group by and filter state, with
-its numbers, Tab order, and drawer at the narrowest;
-`tests/test_github_pulls_stacks_chrome.py` the Pulls filters with three- and four-digit
-tallies, and the Show group’s two layouts, its observers, and their disposal; and
+`tests/test_files_tab_chrome.py` the Files row in four Group by and filter states, no
+filter and a size filter under each Group by value, with its numbers, Tab order, and
+drawer at the narrowest; `tests/test_github_pulls_stacks_chrome.py` the Pulls filters
+with three- and four-digit tallies, and the Show group’s two layouts, its observers, the
+tab shown again after the pane narrowed behind it, and their disposal; and
 `tests/test_nav_metadata_chrome.py` the Commits tally and the tab bar.
 `tests/dom/filter-controls-behavior.js` holds the fit and its observers’ lifecycle
 without a browser.
@@ -3900,16 +3925,22 @@ The new catalog row still appears with its regular controls and selection behavi
 ### Regions Keep Their Boxes
 
 Every region’s box is decided by the first paint and does not depend on data that
-arrives later. Chrome that comes and goes moved more than content did: the filter bar 37
-px on every main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px,
-the Commits tab 78 px on every landing.
+arrives later, except a navigation toolbar in a pane too narrow for it (below).
+Chrome that comes and goes moved more than content did: the filter bar 37 px on every
+main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px, the Commits
+tab 78 px on every landing.
 So a region keeps its slot while its content is absent, and holds the height it will
 have: one toolbar slot at the top of the navigation that every main tab fills with its
-own toolbar at one height (the Files filters, the Commits tally, the Pulls filters), the
-Commits tab from the server at a repository’s root, a scrollbar gutter on the tree and
-the preview pane, the shortcut strip’s row, a view tab bar in every file, the print
-button’s and a run badge’s widths, the Pulls tab’s status and connection lines and its
-age column, and the pull request header’s rows.
+own toolbar at one height while each is one line (the Files filters, the Commits tally,
+the Pulls filters), the Commits tab from the server at a repository’s root, a scrollbar
+gutter on the tree and the preview pane, the shortcut strip’s row, a view tab bar in
+every file, the print button’s and a run badge’s widths, the Pulls tab’s status and
+connection lines and its age column, and the pull request header’s rows.
+In a pane too narrow for a toolbar’s controls the toolbar wraps instead of cutting them
+([Navigation Toolbars Wrap](#navigation-toolbars-wrap)), and the slot is as tall as the
+lines of the toolbar in front.
+There a tab switch can move the panel under the slot, and the Commits slot gains a line
+when its tally lands, if the tally is wider than the pane.
 Heights are in line units, or struts of the controls a row holds, never pixels measured
 in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
 is its data’s and arrives a moment after the rest, as the File Overview’s first rollup

@@ -18,9 +18,8 @@
 // "Groups in a Menu", "Menu Height", "Grouping the Files Tree", "One Glyph Size", and
 // "Navigation Toolbars Wrap"). The wrap is held to its rule by
 // tests/dom/nav-toolbar-wrap.mjs. The requests and sections themselves run browserlessly
-// in
-// tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked without
-// a browser in tests/dom/filter-controls-behavior.js.
+// in tests/dom/files-group-by-session.js. The pure rule, `menuMaxHeight`, is checked
+// without a browser in tests/dom/filter-controls-behavior.js.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -339,6 +338,19 @@ const GEAR = `(() => {
 const frames =
   "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
 
+// The bar's transitions run to their end, the drawer's grid track and the bar's row-gap
+// on --transition-fast among them. `getAnimations` brings style up to date first, so a
+// transition the last change started is among them.
+const BAR_SETTLED = `(async () => {
+  const bar = document.getElementById("nav-filter-bar");
+  const running = () =>
+    bar.getAnimations({ subtree: true }).filter((animation) => animation instanceof CSSTransition);
+  for (let now = running(); now.length > 0; now = running()) {
+    await Promise.all(now.map((animation) => animation.finished.catch(() => null)));
+  }
+  return true;
+})()`;
+
 const profiles = process.env.CHROME_PROFILES;
 if (!process.env.CHROME_BIN || !profiles) {
   throw new Error("CHROME_BIN and CHROME_PROFILES are required");
@@ -496,14 +508,14 @@ try {
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.narrowKeyThree = await browser.evaluate(OPEN_MENU);
   await press("Escape");
   await browser.waitFor(`!document.querySelector('.chip-menu[aria-expanded="true"]')`);
   result.narrowOpen = await browser.evaluate(NARROW);
   await browser.evaluate(`document.querySelector('[data-chip-key="drawer"]').click(), true`);
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "false"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.narrowClosed = await browser.evaluate(NARROW);
   await paneWidth(null);
   await browser.evaluate(frames);
@@ -584,19 +596,35 @@ try {
   // 3 is File type: it opens the closed drawer with its menu.
   await press("3");
   await browser.waitFor(`document.getElementById("filter-drawer").dataset.open === "true"`);
-  await sleep(400);
+  await browser.evaluate(BAR_SETTLED);
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
   result.focus.three = await browser.evaluate(FOCUS);
-  // A pick in the multi-select menu keeps it open, and the bar rebuilds as the filter and
-  // the tree's tallies answer: focus stays on the row picked, and on it again unpicked.
+  // A pick in the multi-select menu keeps it open, and the bar rebuilds under it,
+  // synchronously from the filter's change: focus stays on the row picked, and on it again
+  // unpicked. A MutationObserver counts the bar's rebuilds, so each read waits for the
+  // rebuild it is about instead of for a time. New tallies rebuild the bar asynchronously
+  // too (loadTree in app.js), but a file written here does not, because the root summary's
+  // refresh leaves the bar alone while a menu is open; a rebuild with a row focused is
+  // pinned browserlessly in tests/dom/key-reveal-session.js and filter-controls-behavior.js.
+  await browser.evaluate(`(() => {
+    window.filterBarRebuilds = 0;
+    new MutationObserver((records) => { window.filterBarRebuilds += records.length; })
+      .observe(document.getElementById("nav-filter-bar"), { childList: true });
+    return true;
+  })()`);
+  const rebuilds = () => browser.evaluate("window.filterBarRebuilds");
+  const rebuiltSince = (count) => browser.waitFor(`window.filterBarRebuilds > ${count}`, 30000);
   await press("ArrowDown");
   result.typesRow = await browser.evaluate(FOCUS);
+  let rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesPicked = await browser.evaluate(FOCUS);
+  rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesUnpicked = await browser.evaluate(FOCUS);
+  result.typesRebuilds = await rebuilds();
   await browser.waitFor(
     `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
     30000,

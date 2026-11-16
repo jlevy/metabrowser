@@ -948,6 +948,50 @@ try {
         await paneWidth(null);
         await settle();
       }
+      // Shown again after the pane crossed the break behind another tab, the group is
+      // fitted before the first frame paints it: at that frame's ResizeObserver delivery,
+      // after layout and before paint, it is already the cluster, whole, and the toolbar
+      // is the height it settles at, so the list under it does not jump a frame later.
+      await paneWidth(WIDEST);
+      await settle();
+      await click('.nav-tab-bar [data-tab="files"]');
+      await waitFor(`document.getElementById("nav-toolbar-pulls").hidden`);
+      await paneWidth(NARROWEST);
+      await settle();
+      const BAR_LOOK = `{
+        fit: group.getAttribute("data-fit"),
+        cut: group.scrollWidth > group.clientWidth,
+        height: Math.round(bar.getBoundingClientRect().height * 100) / 100,
+      }`;
+      const firstFrame = await evaluate(`new Promise((resolve) => {
+        const bar = document.getElementById("nav-toolbar-pulls");
+        const group = bar.querySelector(".chip-group");
+        const behind = group.getAttribute("data-fit");
+        const delivery = new ResizeObserver(() => {
+          delivery.disconnect();
+          resolve({ behind, ...${BAR_LOOK} });
+        });
+        document.querySelector('.nav-tab-bar [data-tab="pulls"]').click();
+        delivery.observe(bar);
+      })`);
+      await settle();
+      const settledShown = await evaluate(`(() => {
+        const bar = document.getElementById("nav-toolbar-pulls");
+        const group = bar.querySelector(".chip-group");
+        return ${BAR_LOOK};
+      })()`);
+      check(
+        `${set} fonts: Pulls shown again after the pane narrowed behind Files is the cluster in its first frame`,
+        firstFrame.behind === null &&
+          firstFrame.fit === "wrap" &&
+          !firstFrame.cut &&
+          firstFrame.height === settledShown.height &&
+          settledShown.fit === "wrap",
+        JSON.stringify({ firstFrame, settledShown }),
+      );
+      measured.wrap[`${set} fonts, shown again`] = { firstFrame, settledShown };
+      await paneWidth(null);
+      await settle();
     }
     await evaluate(`(${TALLIES})(null), true`);
     await evaluate(
@@ -984,8 +1028,13 @@ try {
       group.querySelector(".chip").textContent = "A";
       await frames();
       const mutatedAfter = group.getAttribute("data-fit");
+      host.hidden = true;
+      await frames();
+      host.hidden = false;
+      await frames();
+      const shownAfter = group.getAttribute("data-fit");
       host.remove();
-      return { bound, widened, narrowed, resizedAfter, mutatedAfter };
+      return { bound, widened, narrowed, resizedAfter, mutatedAfter, shownAfter };
     })()`);
     measured.wrapDisposal = disposal;
     check(
@@ -997,6 +1046,7 @@ try {
           narrowed: "wrap",
           resizedAfter: "wrap",
           mutatedAfter: "wrap",
+          shownAfter: "wrap",
         }),
       JSON.stringify(disposal),
     );

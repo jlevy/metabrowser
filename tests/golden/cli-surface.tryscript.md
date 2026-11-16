@@ -189,7 +189,13 @@ $ metab --help
 │                                                  closes, as it does when the │
 │                                                  process that started the    │
 │                                                  server and holds its stdin  │
-│                                                  exits, even by crashing.    │
+│                                                  exits, even by crashing. It │
+│                                                  also marks the macOS app's  │
+│                                                  start: on a loopback bind,  │
+│                                                  outside a remote session, a │
+│                                                  loopback client is then     │
+│                                                  sent its answers            │
+│                                                  uncompressed.               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Walk (--walk) ──────────────────────────────────────────────────────────────╮
 │ --stream       --all-at-once                          Streaming emits one    │
