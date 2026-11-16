@@ -272,6 +272,79 @@ function validateResolved(raw, where) {
 }
 
 /**
+ * A document's own keys, schema, and version.
+ *
+ * @param {unknown} raw
+ * @returns {Record<string, unknown>}
+ */
+function checkEnvelope(raw) {
+  const document = asObject(raw, "document");
+  forbidExtras(
+    document,
+    ["schema", "schema_version", "resolved", "manifest", "patches"],
+    "document",
+  );
+  require(document.schema === "file-diff-v1", "document: schema must be file-diff-v1");
+  require(document.schema_version === 1, "document: unsupported schema_version");
+  return document;
+}
+
+/**
+ * A document's manifest: its changes, totals, and bound.
+ *
+ * @param {unknown} value
+ * @returns {{manifest: Record<string, unknown>, ids: Set<string>}}
+ */
+function checkManifest(value) {
+  const manifest = asObject(value, "manifest");
+  forbidExtras(manifest, ["files", "totals", "truncated", "cursor"], "manifest");
+  const files = manifest.files;
+  require(Array.isArray(files), "manifest: files required");
+  /** @type {Set<string>} */
+  const ids = new Set();
+  for (const [index, change] of files.entries()) {
+    validateFileChange(change, `manifest.files[${index}]`);
+    const id = String(asObject(change, "change").id);
+    require(!ids.has(id), `manifest.files[${index}]: duplicate id ${id}`);
+    ids.add(id);
+  }
+  const totals = asObject(manifest.totals, "manifest.totals");
+  forbidExtras(totals, ["files", "additions", "deletions", "exact"], "manifest.totals");
+  requireInt(totals.files, "manifest.totals.files");
+  nullableCount(totals.additions, "manifest.totals.additions");
+  nullableCount(totals.deletions, "manifest.totals.deletions");
+  require("additions" in totals && "deletions" in totals, "manifest.totals: counts required");
+  require(typeof totals.exact === "boolean", "manifest.totals.exact: boolean");
+  require(typeof manifest.truncated === "boolean", "manifest.truncated: boolean");
+  const cursor = manifest.cursor === undefined ? null : manifest.cursor;
+  require(cursor === null || typeof cursor === "string", "manifest.cursor: null or string");
+  require((cursor !== null) === Boolean(manifest.truncated), "manifest: cursor iff truncated");
+  return { manifest, ids };
+}
+
+/**
+ * Validate a ChangeSetDocument's envelope and manifest, and not what it resolved or its
+ * patches, for a reader of the manifest alone: a page's Diff summary, which reads its list of
+ * files and totals from a comparison whose patches the route bounds at 8 MiB. Validating the
+ * whole of one, patches included, took a median of 16 ms on a 7.9 MB document in Node 24 at
+ * a load average of 19 (A5 of review A on #470).
+ *
+ * @param {unknown} raw
+ * @returns {{ok: true, manifest: Record<string, unknown>} | {ok: false, error: string}}
+ */
+export function validateManifest(raw) {
+  try {
+    const document = checkEnvelope(raw);
+    return { ok: true, manifest: checkManifest(document.manifest).manifest };
+  } catch (error) {
+    if (error instanceof FormatError) {
+      return { ok: false, error: error.message };
+    }
+    throw error;
+  }
+}
+
+/**
  * Validate a full ChangeSetDocument.
  *
  * @param {unknown} raw
@@ -279,37 +352,9 @@ function validateResolved(raw, where) {
  */
 export function validateDocument(raw) {
   try {
-    const document = asObject(raw, "document");
-    forbidExtras(
-      document,
-      ["schema", "schema_version", "resolved", "manifest", "patches"],
-      "document",
-    );
-    require(document.schema === "file-diff-v1", "document: schema must be file-diff-v1");
-    require(document.schema_version === 1, "document: unsupported schema_version");
+    const document = checkEnvelope(raw);
     validateResolved(document.resolved, "resolved");
-    const manifest = asObject(document.manifest, "manifest");
-    forbidExtras(manifest, ["files", "totals", "truncated", "cursor"], "manifest");
-    const files = manifest.files;
-    require(Array.isArray(files), "manifest: files required");
-    const ids = new Set();
-    for (const [index, change] of files.entries()) {
-      validateFileChange(change, `manifest.files[${index}]`);
-      const id = String(asObject(change, "change").id);
-      require(!ids.has(id), `manifest.files[${index}]: duplicate id ${id}`);
-      ids.add(id);
-    }
-    const totals = asObject(manifest.totals, "manifest.totals");
-    forbidExtras(totals, ["files", "additions", "deletions", "exact"], "manifest.totals");
-    requireInt(totals.files, "manifest.totals.files");
-    nullableCount(totals.additions, "manifest.totals.additions");
-    nullableCount(totals.deletions, "manifest.totals.deletions");
-    require("additions" in totals && "deletions" in totals, "manifest.totals: counts required");
-    require(typeof totals.exact === "boolean", "manifest.totals.exact: boolean");
-    require(typeof manifest.truncated === "boolean", "manifest.truncated: boolean");
-    const cursor = manifest.cursor === undefined ? null : manifest.cursor;
-    require(cursor === null || typeof cursor === "string", "manifest.cursor: null or string");
-    require((cursor !== null) === Boolean(manifest.truncated), "manifest: cursor iff truncated");
+    const { ids } = checkManifest(document.manifest);
     const patches = asObject(document.patches, "patches");
     for (const [fileId, patch] of Object.entries(patches)) {
       validateFilePatch(patch, `patches.${fileId}`);
@@ -389,13 +434,32 @@ export function changeSummaryRow(change, display) {
  * the manifest's totals and the statuses of the files it lists. Pure, so
  * tests/dom/diff-summary-session.js runs the call `renderDiffSummary` makes.
  *
+ * *whole* is the whole change set's totals, for a list cut short at its bound where the page
+ * knows more than the list, as a commit's page does from the commit's own stats (A3 of review
+ * A on #470). The header then says those, with no breakdown, which would count only the
+ * files listed, and how many files are listed (`listed`, null for a whole list).
+ *
  * @param {Record<string, unknown>} totals The manifest's totals.
  * @param {ReadonlyArray<Record<string, unknown>>} files The manifest's validated changes.
  * @param {MetabrowserChangedFilesTree} model
  * @param {(count: number) => string} formatCount The shell's number format.
+ * @param {{files: number, additions: number | null, deletions: number | null, exact: boolean} | null} [whole]
  */
-export function diffSummaryOf(totals, files, model, formatCount) {
+export function diffSummaryOf(totals, files, model, formatCount, whole = null) {
   const rows = files.map((change) => changeSummaryRow(change, model.displayPath));
+  if (whole !== null) {
+    const said = model.describeChanges(whole, [], formatCount);
+    const listed = formatCount(rows.length);
+    return {
+      rows,
+      said: {
+        ...said,
+        text: `${said.text} (${listed} listed)`,
+        label: `${said.label}; ${listed} listed`,
+      },
+      listed,
+    };
+  }
   /** @param {unknown} value */
   const lines = (value) => (typeof value === "number" ? value : null);
   const said = model.describeChanges(
@@ -408,13 +472,15 @@ export function diffSummaryOf(totals, files, model, formatCount) {
     rows.map((row) => row.status),
     formatCount,
   );
-  return { rows, said };
+  return { rows, said, listed: null };
 }
 
 /**
  * A change set's totals as one line, for a diff whose shared changed-files tree did not
  * load: what main's toolbar said, "41 changed files +6,526 −555", in the shell's number
- * format, with "(estimated)" for totals that are not exact. Pure.
+ * format, with "(estimated)" for totals that are not exact. `filesParts` is "41 changed
+ * files" in a count summary's parts, its number bold where it is painted, as the Diff
+ * summary's is. Pure.
  *
  * @param {Record<string, unknown>} totals
  * @param {(count: number) => string} formatCount
@@ -424,7 +490,8 @@ export function plainTotals(totals, formatCount) {
   /** @param {unknown} value */
   const count = (value) => (typeof value === "number" ? formatCount(value) : "?");
   return {
-    files: `${formatCount(files)} changed ${files === 1 ? "file" : "files"}`,
+    /** @type {MetabrowserCountParts} */
+    filesParts: [{ number: formatCount(files) }, ` changed ${files === 1 ? "file" : "files"}`],
     additions: `+${count(totals.additions)}`,
     deletions: `\u2212${count(totals.deletions)}`,
     estimated: totals.exact !== true,

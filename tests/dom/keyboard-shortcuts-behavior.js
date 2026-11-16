@@ -424,6 +424,30 @@ check(
     { physical: true },
   ),
 );
+// Home's `0` is on the digit row too: US Shift-0 types `)` and AZERTY's unshifted key `à`,
+// each matched by its key; AZERTY's Shift-0 types `0` itself.
+check(
+  "the physical pass matches 0 on the digit row: US Shift-0",
+  shortcuts.eventMatchesBinding(
+    keyboardEvent(")", { code: "Digit0", shiftKey: true }),
+    { key: "0" },
+    { physical: true },
+  ),
+);
+check(
+  "the physical pass matches 0 on the digit row: AZERTY's unshifted à",
+  shortcuts.eventMatchesBinding(
+    keyboardEvent("à", { code: "Digit0" }),
+    { key: "0" },
+    { physical: true },
+  ),
+);
+check(
+  "a typed 0 matches 0 by its key, with Shift or without",
+  shortcuts.eventMatchesBinding(keyboardEvent("0", { code: "Digit0", shiftKey: true }), {
+    key: "0",
+  }) && shortcuts.eventMatchesBinding(keyboardEvent("0", { code: "Digit0" }), { key: "0" }),
+);
 check(
   "the physical pass leaves a typed digit to its key",
   !shortcuts.eventMatchesBinding(

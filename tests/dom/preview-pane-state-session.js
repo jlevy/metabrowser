@@ -321,6 +321,28 @@ function failures() {
 
 // ── Shell scenarios: the real app.js wiring ───────────────────
 
+/**
+ * How a tree drawn for Home is drawn: as a fresh load of /view/ draws it, with the folders
+ * app.js's `homeTreeExpansion` opens on each kind of page, a folder's, which paints the
+ * root's rows itself, and a pin's, which does not and leaves them to the planner.
+ */
+function homeTreeDraw(sandbox) {
+  const opens = (expansion) =>
+    expansion === undefined
+      ? "the planner's folders"
+      : expansion.defaultExpandedPaths.size === 0
+        ? "no folder"
+        : [...expansion.defaultExpandedPaths].join(", ");
+  return (
+    "drawn as a fresh load of /view/ draws it: " +
+    `${opens(sandbox.homeTreeExpansion(true, true))} open on a folder's page, ` +
+    `${opens(sandbox.homeTreeExpansion(true, false))} on a pin's`
+  );
+}
+const HOME_TREE_DRAW =
+  "drawn as a fresh load of /view/ draws it: no folder open on a folder's page, " +
+  "the planner's folders on a pin's";
+
 /** One app.js declaration, bounded by its closing line at column zero. */
 function appDeclaration(pattern, label) {
   const match = appSource.match(pattern);
@@ -355,6 +377,9 @@ const SHELL_FUNCTIONS = [
   "initHomeHeading",
   "onHomeHeadingClick",
   "goHome",
+  "openHomeRoot",
+  "resetFilesTab",
+  "homeTreeExpansion",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
   "selectFile",
@@ -373,8 +398,12 @@ const SHELL_FUNCTIONS = [
   "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
+  "revealPullAddress",
   "applyPullHistoryLanding",
   "addressedView",
+  "addressedFilePath",
+  "revealFileRow",
+  "revealAddressedItem",
   "applyNavigationTarget",
   "navigateToPath",
   "openTreeRow",
@@ -394,8 +423,14 @@ const shellSource = [
   // Nor does any of them group the Files tree.
   appDeclaration(/^var _groupedRefresh = null;$/m, "Group by section refresh"),
 
-  // Leaving Files closes an open filter menu; none of these states opens one.
+  // Leaving Files closes an open filter menu; none of these states opens one but going
+  // home's, which opens the drawer and a menu, and sets filters, to see Home reset them.
   appDeclaration(/^var filterOpenMenu = null;$/m, "open filter menu"),
+  appDeclaration(/^var filterDrawerOpen = false;$/m, "filter drawer"),
+  // static/filter-state.js's, when a scenario's shell runs it as a startup script.
+  appDeclaration(/^var filterState = [^\n]*;$/m, "filter state"),
+  // Whether the tree load a reset begins draws the tree as a fresh load does.
+  appDeclaration(/^let _homeTreeDraw = false;$/m, "Home's tree draw"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
@@ -484,6 +519,8 @@ function createShell(pathname, network, options = {}) {
   const refused = options.refused ?? new Set();
   /** @type {string[]} */
   const renderedViews = [];
+  /** What the Files tab was asked to draw: its filter bar and its tree. @type {string[]} */
+  const filesDrawn = [];
   // The shown file's Source tab, in its bar; selecting it is the tab's own path,
   // selectPreviewTab, which a click and a key share.
   /** @type {string[]} */
@@ -777,6 +814,24 @@ function createShell(pathname, network, options = {}) {
     },
     resetTextChunkGrowth() {},
     responsePerfMeta: () => ({}),
+    // The Files tab's own drawing, which Home asks for (resetFilesTab): the filter bar,
+    // from the menu and drawer state app.js holds, and the tree, drawn again from the
+    // server's answer with the folders a first paint opens (loadTree). A change of filter
+    // reaches app.js's onFilterStateChange, which a scenario stands in for.
+    renderNavFilterBar() {
+      filesDrawn.push(
+        `the filter bar: drawer ${sandbox.filterDrawerOpen ? "open" : "closed"}, ` +
+          `menu ${sandbox.filterOpenMenu ?? "none"}`,
+      );
+    },
+    loadTree: async (treeOptions = {}) => {
+      filesDrawn.push(
+        treeOptions.asHome
+          ? `the tree, from the server's answer, ${homeTreeDraw(sandbox)}`
+          : "the tree, from the server's answer",
+      );
+      return true;
+    },
     selectPreviewTab(bar, tabId) {
       if (bar === tabBar) {
         tabClicks.push(`${preview.dataset.renderedPath}: ${tabId}`);
@@ -914,6 +969,7 @@ function createShell(pathname, network, options = {}) {
       }
     },
     fetches: (requested) => fetched.filter((entry) => entry === requested).length,
+    filesDrawn,
     outcome,
     pane,
     panelShows,
@@ -928,6 +984,10 @@ function createShell(pathname, network, options = {}) {
     refused,
     renderedViews,
     scriptRequests,
+    /** The view the pane shows: the Source tab a reader chose, or the file's default. */
+    shownView: () => (sourceTab.classList.contains("active") ? "source" : "default view"),
+    /** Choose the Source tab of what the pane shows, by its own path. */
+    chooseSource: () => sandbox.selectPreviewTab(tabBar, "source"),
     tabClicks,
     sandbox,
     sources,
@@ -1059,18 +1119,56 @@ async function mainTabShortcuts() {
 }
 
 async function goingHome() {
-  // The heading at the top of the nav goes home: the Files tab at the served root, from
-  // any tab, in the page. It used to be a plain link that loaded /view/ again, and a
-  // browser that reloads the neutral Commits entry, which has that address, keeps the
-  // entry's state, so the page came back as Commits.
+  // The folder's name at the top of the nav goes home, as `0` does: the served folder's
+  // home view as a fresh load of /view/ shows it, from any tab, in the page
+  // (docs/design-system.md, "Home"). Files comes to the front at the root, drawn again at
+  // its default view; every tab forgets where it was, so Pulls next opens its list; and
+  // the Files tab's filters, Group by, drawer, menu, and open folders are a fresh load's.
+  // It used to be a plain link that loaded /view/ again, and a browser that reloads the
+  // neutral Commits entry, which has that address, keeps the entry's state, so the page
+  // came back as Commits.
   const read = (path) =>
     Promise.resolve(jsonResponse({ kind: path === "" ? "folder" : "text", path }));
   const scroller = fakeElement({ scrollTop: 0 });
-  const shell = createShell("/view/notes.md", read, { scroller, pulls: true });
+  const shell = createShell("/view/notes.md", read, {
+    scroller,
+    pulls: true,
+    startupScripts: ["filter-state.js"],
+  });
   const { sandbox } = shell;
+  const filters = sandbox.filterState;
+  assert.ok(filters, "the shell runs static/filter-state.js");
+  // app.js's onFilterStateChange, which a change of filter reaches: it draws the bar, and
+  // the tree for the new filters, as a fresh load of /view/ draws it when Home's reset
+  // asked for that (_homeTreeDraw, which it reads and clears).
+  filters.subscribe((state) => {
+    const changed = Object.keys(filters.DEFAULTS).filter(
+      (key) => JSON.stringify(state[key]) !== JSON.stringify(filters.DEFAULTS[key]),
+    );
+    const asHome = vm.runInContext("_homeTreeDraw", sandbox);
+    shell.filesDrawn.push(
+      `the filter bar and the tree, for ${
+        changed.length === 0
+          ? "the default filters"
+          : changed.map((key) => `${key} ${JSON.stringify(state[key])}`).join(", ")
+      }${asHome ? `, ${homeTreeDraw(sandbox)}` : ""}`,
+    );
+  });
   const older = "b".repeat(40);
   sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
   sandbox.MetabrowserPullsNav = { routeChanged() {} };
+  // The Pulls tab's host registers its panel with a `home` of its own (pulls-nav.js), run
+  // by github-pulls-stack-groups-session.js. Here a stand-in records each call, so a step
+  // shows the tab controller ran every panel's reset; the Files panel's is resetFilesTab,
+  // whose drawing `filesDrawn` shows. Commits keeps nothing across a switch, and has none.
+  /** @type {string[]} */
+  const panelsHomed = [];
+  sandbox.mainTabs.register({
+    id: "pulls",
+    label: "Pulls",
+    onFirstShow: null,
+    home: () => panelsHomed.push("pulls"),
+  });
   sandbox.MetabrowserGitPanel = {
     cancelPending() {},
     // The panel's own listener, after the shell's: a commit's address shows the commit.
@@ -1100,15 +1198,46 @@ async function goingHome() {
       pushes: shell.writes.length,
     };
   }
+  /** The Files tab's own state: its filters, Group by, drawer, and open menu. */
+  function filesTab() {
+    return {
+      filters: plain(filters.get()),
+      drawer: sandbox.filterDrawerOpen ? "open" : "closed",
+      menu: sandbox.filterOpenMenu,
+    };
+  }
+  const freshFiles = {
+    filters: plain(filters.DEFAULTS),
+    drawer: "closed",
+    menu: null,
+  };
   async function home(fields) {
+    shell.filesDrawn.length = 0;
+    panelsHomed.length = 0;
+    const renders = shell.renderedViews.length;
     const kept = shell.clickHome(fields);
     await settle();
-    return { kept, ...at() };
+    return {
+      kept,
+      ...at(),
+      view: shell.shownView(),
+      drawn: shell.renderedViews.slice(renders),
+      files: filesTab(),
+      filesDrawn: shell.filesDrawn.slice(),
+      panelsHomed: panelsHomed.slice(),
+    };
   }
 
   const steps = {};
   scroller.scrollTop = 240;
-  steps["the page opens on a file, its tree scrolled"] = at();
+  // The reader groups the tree, filters it, and leaves the drawer and a menu open.
+  filters.set({ group: "type", size: "100k" });
+  sandbox.filterDrawerOpen = true;
+  sandbox.filterOpenMenu = "types";
+  steps["the page opens on a file, its tree scrolled, grouped, and filtered"] = {
+    ...at(),
+    files: filesTab(),
+  };
   shell.clickTab("git");
   await settle();
   const commits = at();
@@ -1119,8 +1248,14 @@ async function goingHome() {
   assert.equal(steps["home from Commits"].address, "/view/");
   assert.equal(steps["home from Commits"].state, null, "home is not the neutral Commits entry");
   assert.equal(steps["home from Commits"].pane, 'file ""', "home opens the served root");
+  assert.deepEqual(steps["home from Commits"].drawn, [": default view"], "at its default view");
   assert.equal(steps["home from Commits"].scroll, 0, "Files starts from the top");
   assert.equal(steps["home from Commits"].pushes, commits.pushes + 1, "home pushes one entry");
+  assert.deepEqual(steps["home from Commits"].files, freshFiles, "the Files tab is a fresh load's");
+  assert.deepEqual(steps["home from Commits"].panelsHomed, ["pulls"], "every panel's home runs");
+  assert.deepEqual(steps["home from Commits"].filesDrawn, [
+    `the filter bar and the tree, for the default filters, ${HOME_TREE_DRAW}`,
+  ]);
 
   shell.pop(commits.address, commits.state);
   await settle();
@@ -1141,14 +1276,39 @@ async function goingHome() {
   assert.equal(steps["home from Pulls"].tab, "files");
   assert.equal(steps["home from Pulls"].address, "/view/");
 
+  // The root it shows, at the view the reader chose and with the tree scrolled: Home draws
+  // it again at its default view, and the tree from the server's answer, as a fresh load.
   scroller.scrollTop = 500;
-  steps["home on the root it shows"] = await home();
+  shell.chooseSource();
+  assert.equal(shell.shownView(), "source");
+  steps["home on the root it shows, at its Source view"] = await home();
+  const rootShown = steps["home on the root it shows, at its Source view"];
   assert.equal(
-    steps["home on the root it shows"].pushes,
+    rootShown.pushes,
     steps["home from Pulls"].pushes,
     "home on the root pushes nothing",
   );
-  assert.equal(steps["home on the root it shows"].scroll, 0);
+  assert.equal(rootShown.scroll, 0);
+  assert.equal(rootShown.view, "default view", "the root is drawn again at its default view");
+  assert.deepEqual(rootShown.drawn, [": default view"]);
+  assert.deepEqual(rootShown.filesDrawn, [`the tree, from the server's answer, ${HOME_TREE_DRAW}`]);
+
+  // A pull request's Changes tab, its list scrolled: Home, then Pulls, opens the list at
+  // its top, as a fresh load's Pulls does, not the pull request at the tab the reader left.
+  shell.pop("/pull/7/files");
+  await settle();
+  scroller.scrollTop = 300;
+  steps["a pull request's Changes tab"] = at();
+  assert.equal(steps["a pull request's Changes tab"].tab, "pulls");
+  steps["home from a pull request's Changes tab"] = await home();
+  assert.equal(steps["home from a pull request's Changes tab"].tab, "files");
+  assert.equal(steps["home from a pull request's Changes tab"].address, "/view/");
+  shell.clickTab("pulls");
+  await settle();
+  steps["Pulls, after home"] = at();
+  assert.equal(steps["Pulls, after home"].address, "/pulls", "Pulls opens its list");
+  assert.equal(steps["Pulls, after home"].scroll, 0, "at the list's top");
+  await home();
 
   const before = at();
   const modified = {};
@@ -1162,7 +1322,17 @@ async function goingHome() {
   ]) {
     const after = await home(fields);
     modified[name] = after.kept ? "kept by the page" : "left to the browser";
-    assert.deepEqual({ ...after, kept: undefined }, { ...before, kept: undefined }, name);
+    const {
+      kept: _kept,
+      view: _view,
+      drawn,
+      files: _files,
+      filesDrawn,
+      panelsHomed: homed,
+      ...where
+    } = after;
+    assert.deepEqual(where, before, name);
+    assert.deepEqual([drawn, filesDrawn, homed], [[], [], []], `${name} draws nothing`);
   }
   steps["a click the browser keeps"] = modified;
 

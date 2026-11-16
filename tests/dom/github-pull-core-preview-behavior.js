@@ -604,6 +604,12 @@ async function run() {
   assert.equal(selectedChecks?.textContent, "Checks");
   assert.equal(selectedChecks?.getAttribute("href"), checksRoute);
   assert.match(checksBody.textContent, /1 success · 1 pending/);
+  // The summary's counts are a count summary's bold numbers, and its words are not
+  // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+  assert.deepEqual(
+    checksBody.querySelectorAll(".summary-number").map((number) => number.textContent),
+    ["1", "1"],
+  );
   assert.match(checksBody.textContent, /tests \(3\.13\)/);
   assert.match(checksBody.textContent, /Only some check runs are shown/);
   assert.match(checksBody.textContent, /Commit statuses could not be read/);

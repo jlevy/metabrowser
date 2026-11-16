@@ -1,5 +1,5 @@
 // Deferred shell controller for the Files, Commits, and Pulls tabs, and for going home
-// from the heading above them.
+// from the folder's name above them, or by `0`.
 (() => {
   // In tab order, each with its letter: F for Files, P for Pulls, H for commit History.
   // The letters name what each tab holds and mean the same wherever they are pressed
@@ -15,6 +15,83 @@
   function tabBindings(key) {
     return [{ key }];
   }
+
+  // How the reader reached what the address names (docs/design-system.md, "Navigation
+  // Reveals the Item"): an open in the page (Quick Search, a link, a key, the address
+  // bar's crumbs), the page loading at an address, Back or Forward, a row of the
+  // navigation itself, a tab's button or letter returning to the tab's destination, or a
+  // step within the item shown, such as a fragment.
+  /** @type {readonly MetabrowserRevealRoute[]} */
+  const REVEAL_ROUTES = Object.freeze(["open", "address", "history", "nav", "tab", "step"]);
+
+  /**
+   * The main tab that holds what an address names: Files for a file or folder, Commits
+   * for a commit or the neutral Commits entry, Pulls for a pull request or the list; null
+   * for an address no tab holds.
+   *
+   * @param {{pathname: string, search: string, hash: string}} address
+   * @param {{routes: Window["MetabrowserNavigationRoute"], isPullAddress: (pathname: string) => boolean, gitLanding: boolean}} how
+   * @returns {string | null}
+   */
+  function tabAtAddress(address, how) {
+    if (how.gitLanding) {
+      return "git";
+    }
+    const { pathname, search, hash } = address;
+    if (how.routes.parse(pathname, search, hash)) {
+      return "files";
+    }
+    if (how.routes.parseCommit(pathname)) {
+      return "git";
+    }
+    return how.isPullAddress(pathname) ? "pulls" : null;
+  }
+
+  /**
+   * The one rule for showing what an address names in the navigation pane: its tab comes
+   * to the front, and its panel opens the folders or stack that hold it, selects it, and
+   * scrolls it into view. Two routes differ. A tab's button or letter returns to the
+   * tab's destination with the panel as the reader left it, so its scroll is kept. A step
+   * within the item shown reveals nothing. No route moves focus: the panel selects, and
+   * focus stays where the reader is reading.
+   *
+   * @param {string | null} tab The tab that holds the item, `tabAtAddress`.
+   * @param {MetabrowserRevealRoute} route
+   * @param {string} active The tab in front.
+   * @returns {Readonly<{tab: string | null, switches: boolean, reveal: boolean, scroll: "nearest" | "keep"}>}
+   */
+  function revealPlan(tab, route, active) {
+    if (!REVEAL_ROUTES.includes(route)) {
+      throw new TypeError(`unknown reveal route: ${route}`);
+    }
+    if (tab === null) {
+      return Object.freeze({ tab: null, switches: false, reveal: false, scroll: "keep" });
+    }
+    const keeps = route === "tab" || route === "step";
+    return Object.freeze({
+      tab,
+      switches: tab !== active,
+      reveal: route !== "step",
+      scroll: keeps ? "keep" : "nearest",
+    });
+  }
+
+  /**
+   * The route of a Files landing the navigation controller applies, from its source and
+   * the landing a tab switch or a history step began, if one did. An open in the page is
+   * the reader's own, whatever landing came before it.
+   *
+   * @param {"startup" | "user" | "popstate"} source
+   * @param {MetabrowserRevealRoute | null} pending
+   * @returns {MetabrowserRevealRoute}
+   */
+  function landingRouteFor(source, pending) {
+    if (source === "user") {
+      return "open";
+    }
+    return pending ?? (source === "startup" ? "address" : "history");
+  }
+
   /** @param {MetabrowserMainTabsDeps} deps */
   function create(deps) {
     const navBar = document.querySelector(".nav-tab-bar");
@@ -28,6 +105,8 @@
         onFirstShow: null,
         onShow: () => deps.filesShown(),
         onHide: () => deps.filesHidden(),
+        reveal: (how) => deps.revealFile(how),
+        home: () => deps.resetFiles(),
       },
     ];
     /** @type {Set<string>} */
@@ -39,7 +118,10 @@
     const navPanelScroll = new Map();
     /** @type {Map<string, {href: string, state: unknown}>} */
     const mainTabDestinations = new Map();
-    let keepFilesScrollOnLanding = false;
+    // The route of a Files landing a tab switch or a history step began: the navigation
+    // controller applies it a task later, and reads it then (`landingRouteFor`).
+    /** @type {MetabrowserRevealRoute | null} */
+    let filesLandingRoute = null;
     let gitDiscoveryFinished = false;
 
     /** @param {string} panelId */
@@ -235,18 +317,11 @@
     }
 
     function mainTabAtAddress() {
-      if (deps.isGitHistoryLanding()) {
-        return "git";
-      }
-      const { pathname, search, hash } = window.location;
-      const routes = window.MetabrowserNavigationRoute;
-      if (routes.parse(pathname, search, hash)) {
-        return "files";
-      }
-      if (routes.parseCommit(pathname)) {
-        return "git";
-      }
-      return deps.isPullAddress(pathname) ? "pulls" : null;
+      return tabAtAddress(window.location, {
+        routes: window.MetabrowserNavigationRoute,
+        isPullAddress: deps.isPullAddress,
+        gitLanding: deps.isGitHistoryLanding(),
+      });
     }
 
     // Files and Pulls return to what they last showed. Commits keeps no destination: a
@@ -262,17 +337,28 @@
       }
     }
 
-    /** @param {string} panelId The panel whose remembered route is landing. */
-    function markMainTabLanding(panelId) {
+    /**
+     * A tab switch or a history step lands on *panelId*. A tab's own landing keeps the
+     * panel's saved scroll; Back and Forward reveal the item the address names, as any
+     * other route does (`revealPlan`).
+     *
+     * @param {string} panelId The panel whose route is landing.
+     * @param {"tab" | "history"} route
+     */
+    function markMainTabLanding(panelId, route) {
       const scroll = navPanelScroll.get(panelId);
-      keepFilesScrollOnLanding = panelId === "files" && scroll !== undefined;
+      const keep = revealPlan(panelId, route, activeNavPanelId).scroll === "keep";
+      const keepSaved = keep && scroll !== undefined;
+      // A first visit has no scroll to keep: it opens the tab's default destination.
+      filesLandingRoute =
+        panelId === "files" ? (keepSaved ? "tab" : route === "tab" ? "open" : route) : null;
       activateNavPanel(panelId);
       if (panelId === "pulls") {
-        window.MetabrowserPullsNav?.routeChanged({ preserveScroll: scroll !== undefined });
+        window.MetabrowserPullsNav?.routeChanged({ preserveScroll: keepSaved });
         const scroller = document.getElementById("tree-content");
-        if (scroller && scroll !== undefined) {
+        if (scroller && keepSaved) {
           // Marking the selected PR can reveal its row over the panel's saved scroll.
-          scroller.scrollTop = scroll;
+          scroller.scrollTop = /** @type {number} */ (scroll);
         }
       }
     }
@@ -310,7 +396,7 @@
       deps.cancelPreview();
       window.history.pushState(state, "", href);
       rememberMainTabAddress();
-      markMainTabLanding(panelId);
+      markMainTabLanding(panelId, "tab");
       if (panelId !== "pulls") {
         window.MetabrowserPullsNav?.routeChanged();
       }
@@ -379,23 +465,78 @@
     }
 
     /**
-     * The heading at the top of the nav goes home: the Files tab at the served root, from
-     * whichever tab is in front. It is the reader's own open of `/view/`, so it pushes one
-     * history entry, none when Files already shows the root, and Back returns to where the
-     * reader was. Files shows the top of its panel, where the root's rows begin.
+     * Home: the served folder's home view, as a fresh load of `/view/` shows it
+     * (docs/design-system.md, "Home"). The folder's name at the top of the nav and `0` come
+     * here, from whichever tab is in front. Every tab forgets where it was, as a page that
+     * has just loaded knows nowhere: Files and Pulls their destinations, and every panel
+     * its scroll, so Files shows the top of its panel, Pulls next opens its list, a pull
+     * request opened from it opens on Conversation, and Commits lands on its newest commit
+     * as it always does. Every panel then puts back what a fresh load draws in it, by its
+     * own `home`: Files its filters and tree, and Pulls its stacks, its rows' changed
+     * files, and its Tab stop. The shell then opens the root at its default view.
+     *
+     * It is the reader's own open of `/view/`, so it pushes one history entry, none when
+     * Files already shows the root at `/view/`, and Back returns to where the reader was:
+     * a pull request's page writes its place into its entry first.
      *
      * @returns {Promise<unknown>}
      */
     function goHome() {
       deps.flushPull();
-      rememberMainTabAddress();
-      // Another tab in front: the switch to Files puts back this offset.
-      navPanelScroll.set("files", 0);
+      gitOpenPending = false;
+      mainTabDestinations.clear();
+      navPanelScroll.clear();
+      for (const panel of navPanels) {
+        panel.home?.();
+      }
+      // The panels share one scroller, and the switch to Files keeps the offset of the
+      // panel it leaves: at its top, that panel keeps none of the reader's either.
       const scroller = document.getElementById("tree-content");
-      if (activeNavPanelId === "files" && scroller) {
+      if (scroller) {
         scroller.scrollTop = 0;
       }
-      return deps.openRoot();
+      return deps.openHome();
+    }
+
+    /**
+     * Show what the address names in the navigation pane, by the one rule (`revealPlan`):
+     * bring its tab to the front and have that tab's panel reveal it. Every route to an
+     * item comes here: a file's landing (app.js, applyNavigationTarget), a pull request's
+     * open and its rows' skim (app.js, revealPullAddress), and Quick Search. A commit's
+     * address is the Git panel's own landing (git-panel.js, restoreCommitLanding), which
+     * pages its history before it can reveal the row.
+     *
+     * *again* says the reader opened the item already shown again, as Quick Search for the
+     * file or pull request shown does. It belongs to this call, and nothing keeps it: the
+     * panel reveals the item although the address names what it already shows, where a
+     * step within that item reveals nothing.
+     *
+     * @param {MetabrowserRevealRoute} route
+     * @param {{isCurrent?: () => boolean, again?: boolean}} [how]
+     * @returns {Promise<void>}
+     */
+    async function revealAtAddress(route, how = {}) {
+      const plan = revealPlan(mainTabAtAddress(), route, activeNavPanelId);
+      if (plan.tab === null) {
+        return;
+      }
+      if (plan.switches) {
+        // A file claims the pane itself; what another tab showed there goes now, as a
+        // tab click's does. A pull request's page claims it as it opens.
+        if (plan.tab === "files") {
+          deps.cancelPreview();
+        }
+        activateNavPanel(plan.tab);
+      }
+      const panel = navPanels.find((candidate) => candidate.id === plan.tab);
+      if (!plan.reveal || !panel?.reveal) {
+        return;
+      }
+      await panel.reveal({
+        scroll: plan.scroll,
+        isCurrent: how.isCurrent ?? (() => true),
+        again: how.again === true,
+      });
     }
 
     function onHistory() {
@@ -407,7 +548,7 @@
       const switched = panel !== null && panel !== activeNavPanelId;
       if (switched) {
         deps.cancelPreview();
-        markMainTabLanding(panel);
+        markMainTabLanding(panel, "history");
       }
       rememberMainTabAddress();
       // The Files root and neutral Git history share a path.
@@ -434,24 +575,31 @@
         return restoreNeutralGitPanel();
       },
       home: goHome,
+      /**
+       * The route of the Files landing being applied (`landingRouteFor`). Read once: a
+       * landing a tab switch or a history step began is taken by its own application.
+       *
+       * @param {"startup" | "user" | "popstate"} source
+       */
+      landingRoute(source) {
+        const pending = filesLandingRoute;
+        filesLandingRoute = null;
+        return landingRouteFor(source, pending);
+      },
       onHistory,
       open: openMainTab,
       register: registerNavPanel,
       remember: rememberMainTabAddress,
       remove: removeNavPanel,
-      fileLanding() {
-        if (activeNavPanelId !== "files") {
-          deps.cancelPreview();
-          activateNavPanel("files");
-        }
-      },
-      takeFilesScroll() {
-        const preserve = keepFilesScrollOnLanding;
-        keepFilesScrollOnLanding = false;
-        return preserve;
-      },
+      reveal: revealAtAddress,
     });
   }
 
-  window.MetabrowserMainTabs = Object.freeze({ create });
+  window.MetabrowserMainTabs = Object.freeze({
+    create,
+    REVEAL_ROUTES,
+    landingRoute: landingRouteFor,
+    revealPlan,
+    tabAtAddress,
+  });
 })();

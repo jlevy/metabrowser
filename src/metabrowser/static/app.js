@@ -207,8 +207,16 @@ function parseTipNumber(value) {
   var n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
+// A count of files, "12,797 files", in a count summary's parts, which paint the number bold
+// and the word in the line's weight (docs/design-system.md, "Count Summaries Bold Their
+// Numbers"). `formatCount` is the parts joined.
+function formatCountParts(n) {
+  return [{ number: (n || 0).toLocaleString() }, n === 1 ? " file" : " files"];
+}
 function formatCount(n) {
-  return `${(n || 0).toLocaleString()} ${n === 1 ? "file" : "files"}`;
+  return formatCountParts(n)
+    .map((part) => (typeof part === "string" ? part : part.number))
+    .join("");
 }
 function countClass(n) {
   return window.MetabrowserFormatters.countClass(Number(n) || 0);
@@ -234,9 +242,13 @@ function countHtml(n, extraClass) {
  * address of controls instead — see headerAddressHtml.
  */
 function pathBaseHtml(path) {
+  return `<span class="path"><span class="path-base">${esc(pathBaseName(path))}</span></span>`;
+}
+
+/** The name `pathBaseHtml` shows: the last component of `path`, or all of it at a root. */
+function pathBaseName(path) {
   var trimmed = String(path == null ? "" : path).replace(/\/+$/, "");
-  var base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
-  return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
+  return trimmed.slice(trimmed.lastIndexOf("/") + 1) || trimmed;
 }
 
 /**
@@ -246,7 +258,14 @@ function pathBaseHtml(path) {
  * root there is the empty GitPath, which has no name to show.
  */
 function renderServedRootHeading(pathEl, root) {
-  if (pathEl && !isGitRevisionSource()) {
+  if (!pathEl || isGitRevisionSource()) {
+    return;
+  }
+  // Home draws the tree again, and with it this; rewriting the same name under a pointer
+  // resting on it would replace the nodes it is over for nothing. The name's text is
+  // compared, not markup: `esc` writes a quote as an entity, and the element's own
+  // serialization does not, so a name with one never compared equal.
+  if (pathEl.textContent !== pathBaseName(root)) {
     pathEl.innerHTML = pathBaseHtml(root);
   }
 }
@@ -1067,6 +1086,15 @@ let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
 // which preserves the first paint while still converging to the newer index.
 let _inlineTreeBaseline = null;
 let _rootTreeRequestsInFlight = 0;
+// Whether this server paints the tree's first rows from the page itself, as it does for a
+// folder (server.py, _INLINE_INITIAL_TREE_ROWS). A fresh load of `/view/` then paints the
+// root's rows alone and keeps them so through the fetch, so it opens no folder; a pin's
+// page has no inline rows, and its first paint opens the folders the planner chooses. Home
+// draws the tree as that load does (resetFilesTab).
+const _firstPaintInlinesTree = Array.isArray(window.METABROWSER_INITIAL_TREE?.tree);
+// Set by Home across the filter reset it makes, so the tree load that reset begins draws
+// the tree as a fresh load of `/view/` does; read and cleared by that load.
+let _homeTreeDraw = false;
 
 /**
  * Paint the inlined rows, if the shell carried any and nothing has painted yet.
@@ -1124,8 +1152,9 @@ function renderInitialTreeRows() {
  *
  * A discovery-completion refresh already has a useful keyed tree mounted. It
  * reconciles that tree in place instead of rebuilding the whole Files region.
+ * Home's load (`asHome`) draws the tree as a fresh load of `/view/` does.
  *
- * @param {{ reconcileMountedRoot?: boolean }} [options]
+ * @param {{ reconcileMountedRoot?: boolean, asHome?: boolean }} [options]
  */
 async function loadTree(options = {}) {
   if (filesPanelUsesGroupedSource()) {
@@ -1243,7 +1272,7 @@ async function loadTree(options = {}) {
         if (_inlineTreeBaseline || reconcileMountedRoot) {
           reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
         } else {
-          renderFilesFromTree();
+          renderFilesFromTree(options.asHome === true);
         }
         retryFailedExpandedSubtrees();
       }
@@ -1264,10 +1293,6 @@ async function loadTree(options = {}) {
 
 // ── Group by: loading and painting the sections ─────────────────
 
-// Which grouped request the panel shows, so an answer for a grouping or filter the reader
-// has since left is never painted over the current one.
-var _groupedRequestSerial = 0;
-
 function currentGroupedKey() {
   return treeFilterModel.groupedRequestKey(currentFilterSnapshot(), treeFilterSizeFloors());
 }
@@ -1275,58 +1300,146 @@ function currentGroupedKey() {
 /**
  * Load and paint the Group by sections. One request answers every group's count and its
  * first two levels (`/api/tree?group_by=`), the depth the ungrouped tree's first answer has.
+ * The load's lifecycle, which loads wait and which cancel, is `groupedLoads`.
  *
  * @param {{ preserve?: boolean }} [options] `preserve` refreshes the sections on screen in
  *   place, after files changed, rather than painting a new grouping.
  * @returns {Promise<boolean>} whether an answer was painted
  */
-async function loadGroupedTree(options = {}) {
-  var state = currentFilterSnapshot();
-  var key = currentGroupedKey();
-  var serial = ++_groupedRequestSerial;
-  setGroupingPending(true);
-  try {
-    return await loadGroupedTreeInner(state, key, serial, options);
-  } finally {
-    if (serial === _groupedRequestSerial) {
-      setGroupingPending(false);
-    }
-  }
+function loadGroupedTree(options = {}) {
+  return groupedLoads.load(currentGroupedKey(), {
+    refresh: options.preserve === true,
+    painted: queryHtml("#tab-files > .tree-section") !== null,
+  });
 }
 
-// While the groups are on their way the tree on screen stays, and the Group by trigger
-// breathes as refreshing text does (docs/design-system.md, "Refreshing Content"): an
-// answer inside --loading-state-delay shows nothing, and a large folder's second or so
-// says the choice was taken.
-var _groupingPending = false;
+// The Group by loads (tree-filter-model.js, createGroupedLoads): at most one on its way,
+// which a newer grouping or filter cancels and a refresh of its first sections waits for.
+// The shell supplies the request and the paint, the wait it shows, and the refresh.
+var groupedLoads = treeFilterModel.createGroupedLoads({
+  run: (load) => loadGroupedTreeInner(currentFilterSnapshot(), load),
+  pending: (load) => setGroupingPending(load !== null, load?.first === true),
+  refresh: () => requestGroupedRefresh(),
+});
 
-function setGroupingPending(pending) {
-  _groupingPending = pending;
-  queryHtml('[data-chip-menu-toggle="group"]')?.classList.toggle(
-    "mb-refreshing",
-    pending && filesPanelUsesGroupedSource(),
-  );
-  document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
+// Cancel the load on its way, when a newer grouping or filter supersedes it or the reader
+// leaves grouping: its request is aborted, its answer is never painted, and the wait it
+// showed ends at once. The server's pass, once begun, runs to its end regardless.
+function cancelGroupedLoad() {
+  groupedLoads.cancel();
 }
 
 /**
+ * Wait until no grouping's first sections are on their way. A reveal under Group by
+ * looks for its row in the sections, which a choice paints only when its groups come;
+ * looked for before, it would find none and land nowhere.
+ *
+ * @returns {Promise<void>}
+ */
+function groupedSectionsSettled() {
+  return groupedLoads.settled();
+}
+
+// While the groups are on their way the tree on screen stays, and the panel is busy. For a
+// choice's first sections, the tree on screen is the arrangement the reader left, so past
+// the quiet period it dims and the scan row says what is on its way (renderRegrouping);
+// an answer inside --loading-state-delay shows none of it. The Group by trigger does not
+// breathe: it reads the choice in the link's ink on the accent ground, and only primary
+// ink breathes (docs/design-system.md, "Refreshing Content"), so the dim and the scan row
+// say what is waiting.
+var _groupingPending = false;
+
+/**
+ * @param {boolean} pending
+ * @param {boolean} [first] whether the load on its way paints new sections
+ */
+function setGroupingPending(pending, first = false) {
+  _groupingPending = pending;
+  var grouped = filesPanelUsesGroupedSource();
+  document.getElementById("tab-files")?.setAttribute("aria-busy", String(pending));
+  renderRegrouping(
+    pending && grouped && first ? treeFilterModel.groupBy(currentFilterSnapshot()) : null,
+  );
+}
+
+// The grouping whose first sections are on their way, or null.
+/** @type {string | null} */
+var _regroupingBy = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+var _regroupingWordsTimer = null;
+
+// The quiet period, `--loading-state-delay` in styles.css, in milliseconds.
+function loadingStateDelayMs() {
+  var value = getComputedStyle(document.documentElement).getPropertyValue("--loading-state-delay");
+  var ms = Number.parseFloat(value);
+  return Number.isFinite(ms) ? ms : 50;
+}
+
+/**
+ * Show, or end, the wait for a grouping's first sections (docs/design-system.md, "Grouping
+ * the Files Tree", Waiting): the tree dims (`.tree-regrouping` in styles.css) and the scan
+ * row says "Grouping by file type…" in its spinner and words, both after the quiet period.
+ * A scan the row is already showing keeps its words through the quiet period, so an answer
+ * inside it changes nothing the polite live region would announce, and comes back when the
+ * wait ends.
+ *
+ * @param {string | null} by
+ */
+function renderRegrouping(by) {
+  _regroupingBy = by;
+  if (_regroupingWordsTimer !== null) {
+    clearTimeout(_regroupingWordsTimer);
+    _regroupingWordsTimer = null;
+  }
+  document.getElementById("tab-files")?.classList.toggle("tree-regrouping", by !== null);
+  var row = document.getElementById("index-progress");
+  if (!row) {
+    return;
+  }
+  if (by === null) {
+    row.classList.remove("mb-delayed-loading");
+    renderIndexProgress(indexProgressLastRendered);
+    return;
+  }
+  var text = row.querySelector(".index-progress-text");
+  var words = treeFilterModel.regroupingStatusText(by);
+  if (row.hidden === true) {
+    // Hidden until the quiet period passes (.mb-delayed-loading).
+    if (text) {
+      text.textContent = words;
+    }
+    row.classList.add("mb-delayed-loading");
+    row.hidden = false;
+    return;
+  }
+  row.classList.remove("mb-delayed-loading");
+  _regroupingWordsTimer = setTimeout(() => {
+    _regroupingWordsTimer = null;
+    if (text && _regroupingBy === by) {
+      text.textContent = words;
+    }
+  }, loadingStateDelayMs());
+}
+
+/**
+ * Fetch one load's groups and paint them, if it is still the load on its way and its
+ * grouping and filters are still the panel's.
+ *
  * @param {ReturnType<typeof currentFilterSnapshot>} state
- * @param {string} key
- * @param {number} serial
- * @param {{ preserve?: boolean }} options
+ * @param {MetabrowserPublicGroupedLoad} load
  * @returns {Promise<boolean>}
  */
-async function loadGroupedTreeInner(state, key, serial, options) {
-  var preserve = options.preserve === true && queryHtml("#tab-files > .tree-section") !== null;
-  var owns = () =>
-    serial === _groupedRequestSerial &&
-    filesPanelUsesGroupedSource() &&
-    key === currentGroupedKey();
+async function loadGroupedTreeInner(state, load) {
+  var key = load.key;
+  var preserve = !load.first;
+  var owns = () => load.current() && filesPanelUsesGroupedSource() && key === currentGroupedKey();
   var data;
   var sections;
   try {
     data = await fetchGroups(treeFilterModel.groupsUrl(state, treeFilterSizeFloors(), 2), {
       preserve,
+      signal: load.signal,
+      load,
     });
     sections = treeFilterModel.groupSections(data);
   } catch (error) {
@@ -1370,14 +1483,27 @@ async function loadGroupedTreeInner(state, key, serial, options) {
   return true;
 }
 
-// Grouping asks the server for every group at once, which on a large folder takes a pass
-// over the index per group: 0.7 s for File type on 100,000 files, where the ungrouped tree
-// took 0.12 s (measured in headless Chrome, 2026-11-15). So opening the Group by menu asks
-// for the groupings it offers ahead of the choice, and the choice takes the answer already
-// on its way (tree-filter-model.js, createGroupsPrefetch). An answer is kept only until a
-// file changes or GROUPS_PREFETCH_TTL_MS passes, and a refresh after a change always asks
-// again.
+// Grouping asks the server for every group at once, one pass over the index
+// (`GroupedTreeQuery`): about 0.1 s on 100,000 files, where the ungrouped tree's rows take
+// a few milliseconds (docs/design-system.md, "Grouping the Files Tree"). So the grouping a
+// reader is about to choose is asked for ahead, when the pointer presses its row or the
+// keyboard rests on it, and the choice takes the answer already on its way
+// (tree-filter-model.js, groupPrefetchUrl and createGroupsPrefetch). An answer is kept
+// until GROUPS_PREFETCH_TTL_MS passes; one a file change made stale still serves the
+// choice, which then refreshes, and a refresh always asks again.
 var GROUPS_PREFETCH_TTL_MS = 10000;
+
+// How long keyboard focus rests on a Group by row before it asks for that grouping ahead.
+// A row passed over on the way to another must ask for nothing: the server runs one
+// grouped pass at a time, so a pass for a row passed over delays the chosen one by its
+// whole length, and when passes overlapped one started 0, 100, or 250 ms ahead made the
+// chosen grouping take 1.96, 1.79, or 1.43 times as long (review B of #466, on 260,000
+// files). Pressing arrow keys walks rows about every 0.12-0.28 s (the keystroke-level
+// model's K for skilled to average typists), and a held arrow key here repeats every 30 ms,
+// so 300 ms passes over a walk; a choice comes after the reader has read the row, about
+// 1.35 s (the model's M), so a row rested on still asks a second ahead of the choice, more
+// than a pass takes on that folder (0.3-0.6 s).
+var GROUPS_PREFETCH_DWELL_MS = 300;
 
 /**
  * @param {string} url
@@ -1395,6 +1521,9 @@ function groupsRequest(url, signal) {
 var groupsPrefetch = treeFilterModel.createGroupsPrefetch({
   now: () => performance.now(),
   ttlMs: GROUPS_PREFETCH_TTL_MS,
+  dwellMs: GROUPS_PREFETCH_DWELL_MS,
+  setTimer: (callback, ms) => setTimeout(callback, ms),
+  clearTimer: (timer) => clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (timer)),
   start(url) {
     var controller = new AbortController();
     var answer = groupsRequest(url, controller.signal);
@@ -1405,23 +1534,83 @@ var groupsPrefetch = treeFilterModel.createGroupsPrefetch({
 });
 
 /**
+ * The answer a load paints: the one its press asked for ahead, if one is on its way, or a
+ * request of its own. A cancel of the load reaches either.
+ *
  * @param {string} url
- * @param {{ preserve?: boolean }} options
+ * @param {{ preserve?: boolean, signal?: AbortSignal, load?: MetabrowserPublicGroupedLoad }} options
  */
 function fetchGroups(url, options) {
   var kept = options.preserve ? null : groupsPrefetch.take(url);
-  return kept ?? groupsRequest(url);
+  if (!kept) {
+    return groupsRequest(url, options.signal);
+  }
+  options.signal?.addEventListener("abort", kept.abort, { once: true });
+  if (kept.stale) {
+    // Asked for before a file changed: it paints, as it comes sooner than a new answer
+    // would, and the sections then refresh once (createGroupedLoads).
+    options.load?.refreshAfter();
+  }
+  return kept.answer;
 }
 
-// Ask for each grouping the menu offers that the panel is not already showing.
-function prefetchGroupings() {
-  var state = currentFilterSnapshot();
-  groupsPrefetch.prefetch(
-    filterGroupOptions()
-      .filter((option) => option.value !== treeFilterModel.groupBy(state))
-      .map((option) =>
-        treeFilterModel.groupsUrl({ ...state, group: option.value }, treeFilterSizeFloors(), 2),
-      ),
+/**
+ * Ask ahead for the grouping whose Group by row the pointer pressed.
+ *
+ * @param {Event} event
+ */
+function prefetchPressedGrouping(event) {
+  var row = /** @type {Element | null} */ (event.target)?.closest?.(
+    '#filter-group-menu .chip-menu-item[data-chip-key="group"]',
+  );
+  var url = row ? groupingRowPrefetchUrl(row) : null;
+  if (url) {
+    groupsPrefetch.want(url);
+  }
+}
+
+/**
+ * Keyboard focus moved to a Group by row (filter-controls.js, onMenuFocus): ask for its
+ * grouping once focus has rested there (GROUPS_PREFETCH_DWELL_MS), and still is there.
+ * Focus alone is not intent: a rebuild of the bar puts focus back on the row that had it,
+ * which is no reader's move, and reports nothing.
+ *
+ * @param {string} key
+ * @param {string | null} value
+ */
+function restOnGroupingRow(key, value) {
+  if (key !== "group") {
+    return;
+  }
+  var url = treeFilterModel.groupPrefetchUrl(
+    value ?? "none",
+    currentFilterSnapshot(),
+    treeFilterSizeFloors(),
+  );
+  groupsPrefetch.rest(url, () => focusedGroupingValue() === (value ?? "none"));
+}
+
+// The grouping of the Group by row focus is on, "none" for No grouping, or null.
+function focusedGroupingValue() {
+  var row = document.activeElement?.closest?.(
+    '#filter-group-menu .chip-menu-item[data-chip-key="group"]',
+  );
+  if (!row) {
+    return null;
+  }
+  return row.hasAttribute("data-chip-any") ? "none" : row.getAttribute("data-chip-value");
+}
+
+/**
+ * The request a Group by row asks for ahead, if any (tree-filter-model.js, groupPrefetchUrl).
+ *
+ * @param {Element} row
+ */
+function groupingRowPrefetchUrl(row) {
+  return treeFilterModel.groupPrefetchUrl(
+    row.hasAttribute("data-chip-any") ? "none" : row.getAttribute("data-chip-value") || "",
+    currentFilterSnapshot(),
+    treeFilterSizeFloors(),
   );
 }
 
@@ -1434,10 +1623,28 @@ function failGroupedTree(reason) {
   }
 }
 
-/** @param {MetabrowserPublicTreeSection} section */
-function treeSectionCountText(section) {
-  // A group the source could not count (a truncated Git index) shows no count.
-  return section.files === null ? "" : formatCount(section.files);
+/**
+ * A section heading's inner markup: the group's name, then its file count beside it after
+ * the separator, as every heading's tally sits (docs/design-system.md, "Heading Tallies").
+ * The separator's dot is hidden from assistive technology, so the heading reads "Older
+ * 10,004 files". A group the source could not count (a truncated Git index) has no tally.
+ * A name too long for a narrow pane is cut short, and its tooltip then gives the whole
+ * of it; while the name is whole the tooltip repeats it, so it does not show
+ * (`tipAddsInformation`; docs/design-system.md, "Tooltips Add Information").
+ *
+ * @param {MetabrowserPublicTreeSection} section
+ */
+function treeSectionHeadingHtml(section) {
+  var label = `<span class="tree-section-label" data-tip-text="${esc(section.label)}">${esc(section.label)}</span>`;
+  if (section.files === null) {
+    return label;
+  }
+  var unit = section.files === 1 ? "file" : "files";
+  return (
+    label +
+    `<span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span> ` +
+    `<span class="heading-tally-figure">${esc(section.files.toLocaleString())}</span> ${unit}</span>`
+  );
 }
 
 /**
@@ -1474,8 +1681,7 @@ function treeSectionHtml(section, nodes, expandedPaths) {
     `<section class="tree-section" data-tree-group="${esc(section.key)}"` +
     ` aria-labelledby="${esc(headingId)}">` +
     `<div class="group-heading tree-section-heading" id="${esc(headingId)}">` +
-    `<span class="tree-section-label">${esc(section.label)}</span>` +
-    `<span class="tree-section-count">${esc(treeSectionCountText(section))}</span></div>` +
+    `${treeSectionHeadingHtml(section)}</div>` +
     `${treeSectionTreeHtml(section, nodes, expandedPaths)}</section>`
   );
 }
@@ -1610,9 +1816,9 @@ function refreshGroupedSections(sections, truncationHtml) {
     var element = mounted.get(section.key);
     mounted.delete(section.key);
     if (element) {
-      var count = element.querySelector(".tree-section-count");
-      if (count) {
-        count.textContent = treeSectionCountText(section);
+      var heading = element.querySelector(":scope > .tree-section-heading");
+      if (heading) {
+        heading.innerHTML = treeSectionHeadingHtml(section);
       }
       var tree = element.querySelector(':scope > [role="tree"]');
       var template = document.createElement("template");
@@ -1686,7 +1892,7 @@ function openedSectionFolders() {
 // tests/dom/tree-summary-line-session.js runs exactly what paints.
 // A function, not a constant: the shell can paint a tally before this line has run.
 function treeSummaryFormat() {
-  return { esc, formatCount, formatSize };
+  return { formatCountParts, formatSize };
 }
 function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
   return window.MetabrowserNavigationRoute.treeSummaryHtml(
@@ -1849,9 +2055,27 @@ var _filteredTreeTotals = null;
 // The tally row alone, so the recency source can reuse it verbatim.
 var _lastTreeSummaryHtml = "";
 
+/**
+ * The folders the Files tree opens when it is drawn for Home (*asHome*), as a fresh load of
+ * `/view/` opens them: none on a page that paints the root's rows itself
+ * (*firstPaintInlinesTree*, a folder's), and on a pin's page, which has no such rows, the
+ * planner's, as any other draw. `undefined` leaves the choice to the planner
+ * (renderTreeNodes), whose budget is the viewport's.
+ *
+ * @param {boolean} asHome
+ * @param {boolean} firstPaintInlinesTree
+ * @returns {{defaultExpandedPaths: Set<string>} | undefined}
+ */
+function homeTreeExpansion(asHome, firstPaintInlinesTree) {
+  return asHome && firstPaintInlinesTree ? { defaultExpandedPaths: new Set() } : undefined;
+}
+
 // Paint #tab-files from that cache. Returns false when nothing has
-// been fetched yet, so the caller can fall back to loadTree().
-function renderFilesFromTree() {
+// been fetched yet, so the caller can fall back to loadTree(). Drawn for Home
+// (`asHome`), the tree opens the folders a fresh load of `/view/` opens
+// (homeTreeExpansion).
+/** @param {boolean} [asHome] */
+function renderFilesFromTree(asHome = false) {
   if (!_lastTreeRender) {
     return false;
   }
@@ -1864,7 +2088,9 @@ function renderFilesFromTree() {
       pendingTreePageId = 0;
       var filesPanel = document.getElementById("tab-files");
       if (filesPanel) {
-        filesPanel.innerHTML = snapshot.chromeHtml + renderTreeNodes(snapshot.tree, true);
+        var expansion = homeTreeExpansion(asHome, _firstPaintInlinesTree);
+        filesPanel.innerHTML =
+          snapshot.chromeHtml + renderTreeNodes(snapshot.tree, true, expansion);
       }
     },
     { nodes: snapshot.tree ? snapshot.tree.length : 0 },
@@ -1889,13 +2115,13 @@ function treeNodeAsEntry(node) {
   };
 }
 
+// Every "more" row of the container: a reveal can leave one above the page it drew as
+// well as the one that ends the folder (mountTreePageAt).
 function removeDeferredPageForContainer(container) {
-  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
-  if (!sentinel) {
-    return;
+  for (const sentinel of queryHtmlAll(":scope > .tree-page-more[data-page-id]", container)) {
+    pendingTreePages.delete(sentinel.dataset.pageId);
+    sentinel.remove();
   }
-  pendingTreePages.delete(sentinel.dataset.pageId);
-  sentinel.remove();
 }
 
 // Reconcile one mounted tree container without replacing it. Every container
@@ -2029,6 +2255,13 @@ function ensureTreeTruncationNote(maxFiles) {
 // Header hover tooltip — same folder-tooltip HTML the tree uses, so
 // hovering the served-root path shows the same name / files / size /
 // mtime block a hovered folder row shows below. One helper, one design.
+//
+// It adds details and nothing else (docs/design-system.md, "Home"): the click is what the
+// name is for, and it reads as a link home without a line saying so. A press on the name
+// moves focus to it, in Chrome, and the focus transition that ends a tooltip would end
+// this one, or cancel it before it showed, so a click took it away. That focus is the
+// pointer's own click, not a reader moving focus, so it leaves the tooltip as the pointer
+// has it: shown while the pointer rests on the name, gone when it leaves.
 document.addEventListener("DOMContentLoaded", () => {
   const headerPath = queryHtml(".header-path");
   if (!headerPath) {
@@ -2040,10 +2273,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // here — as one tooltip. It used to be here and in a native `title` as
     // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
-      showTooltip(
-        `${esc(d.servedRoot || "")}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
-        headerPath,
-      );
+      showTooltip(`${esc(d.servedRoot || "")}${mirrorHeading("tip")}`, headerPath);
       return;
     }
     var folderTip = folderTooltipHtml(
@@ -2052,12 +2282,12 @@ document.addEventListener("DOMContentLoaded", () => {
       parseTipNumber(d.tipSize),
       parseTipNumber(d.tipMtime),
     );
-    showTooltip(
-      `${folderTip}${mirrorHeading("tip")}<div class="tip-detail">Go home: the root folder in the Files tab</div>`,
-      headerPath,
-    );
+    showTooltip(`${folderTip}${mirrorHeading("tip")}`, headerPath);
   });
   headerPath.addEventListener("mouseleave", hideTooltip);
+  headerPath.addEventListener("pointerdown", () => {
+    tooltipPressedAnchor = headerPath;
+  });
 });
 
 // Lookup table from "page-more" sentinel id to the deferred slice.
@@ -3066,7 +3296,17 @@ if (typeof window !== "undefined") {
     show: (html, anchor) => {
       showTooltip(html, anchor);
     },
-    hide: hideTooltip,
+    // What a view or a panel calls, through `mb.tooltip.hide()`, to take away a tooltip of
+    // its own content as it redraws or scrolls. The nav's header is the shell's chrome,
+    // which no view draws, so its tooltips are never one a view showed: a view's hide
+    // leaves them. Home redraws the folder overview and the Commits panel, whose hides
+    // took the folder's name's tooltip away under a click (docs/design-system.md, "Home").
+    hide: () => {
+      if (tooltipAnchor?.closest?.(".app-header")) {
+        return;
+      }
+      hideTooltip();
+    },
   };
 }
 
@@ -3187,7 +3427,30 @@ function hideTipText(e) {
 // creating a second visual layer around keyboard navigation.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
-document.addEventListener("focusin", hideTooltip);
+document.addEventListener("focusin", hideTooltipOnFocus);
+
+/**
+ * The element whose own press is under way, when it is one whose tooltip a click must not
+ * end: the folder's name (docs/design-system.md, "Home"). Set by its `pointerdown`, and
+ * read and cleared by the focus that press gives it.
+ *
+ * @type {HTMLElement | null}
+ */
+var tooltipPressedAnchor = null;
+
+/** @param {FocusEvent} event */
+function hideTooltipOnFocus(event) {
+  var pressed = tooltipPressedAnchor;
+  tooltipPressedAnchor = null;
+  if (pressed !== null && event.target === pressed) {
+    return;
+  }
+  hideTooltip();
+}
+// A press that gave no focus, as Safari's on a link, leaves nothing for the next focus.
+document.addEventListener("pointerup", () => {
+  tooltipPressedAnchor = null;
+});
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
@@ -3623,6 +3886,12 @@ function setRowExpanded(row, expanded) {
   return toggleTreeContainer(row);
 }
 
+// A "more" row's page arrives where the row was and grows down from there, and the row
+// that takes focus is the first it drew: a reader reading down reads on into it. A
+// reveal can leave "more" rows with rows after them (mountTreePageAt). When the selected
+// row, the reader's, is among those, the page grows up instead: the rows after it stay
+// where they are on screen, so the reader's row is not pushed out of view, and the row
+// that takes focus is the one nearest them.
 function mountNextTreePage(row) {
   var pageId = row.dataset.pageId;
   var page = pendingTreePages.get(pageId);
@@ -3632,17 +3901,25 @@ function mountNextTreePage(row) {
   }
   treeKeyboard?.prepareForMutation();
   pendingTreePages.delete(pageId);
+  var follower = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (follower && !selectedTreeRowFollows(row)) {
+    follower = null;
+  }
+  var scroller = document.getElementById("tree-content");
+  var followerTop = follower && scroller ? follower.getBoundingClientRect().top : null;
   var temporary = document.createElement("div");
   temporary.innerHTML = withTreeIdScope(page.options.section || "", () =>
     renderTreeNodes(nextBatch, false, page.options),
   );
   var nodes = Array.prototype.slice.call(temporary.childNodes);
   var firstMounted = null;
+  var lastMounted = null;
   for (var i = 0; i < nodes.length; i++) {
     var node = nodes[i];
     row.parentElement?.insertBefore(node, row);
-    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
-      firstMounted = node;
+    if (node.getAttribute?.("role") === "treeitem") {
+      firstMounted ??= node;
+      lastMounted = node;
     }
   }
   row.remove();
@@ -3650,7 +3927,29 @@ function mountNextTreePage(row) {
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
-  return firstMounted;
+  if (follower && scroller && followerTop !== null) {
+    scroller.scrollTop += follower.getBoundingClientRect().top - followerTop;
+  }
+  return follower ? lastMounted : firstMounted;
+}
+
+/**
+ * Whether the selected row of *row*'s tree comes after it: the reader's row is below it.
+ * Only its own tree's: the same file is selected in each tree that draws it.
+ *
+ * @param {HTMLElement} row
+ * @returns {boolean}
+ */
+function selectedTreeRowFollows(row) {
+  // Node.DOCUMENT_POSITION_FOLLOWING, spelled out so this needs no Node global.
+  var FOLLOWING = 4;
+  var tree = row.closest('[role="tree"]') ?? undefined;
+  for (const selected of queryHtmlAll(".tree-item.selected", tree)) {
+    if ((row.compareDocumentPosition(selected) & FOLLOWING) !== 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // The pointer activation contract. A folder row is a single target: it selects
@@ -3782,10 +4081,7 @@ function renderSelectionOutsideFilterNote(selectedPath) {
   var path = selectedPath === undefined ? currentPath : selectedPath;
   var existing = panel.querySelector(".tree-selection-note");
   var filtered = filterState ? filterHasConstraints(filterState.get()) : false;
-  var absent =
-    filtered &&
-    !!path &&
-    !panel.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
+  var absent = filtered && !!path && treeOmitsPath(panel, path);
   if (!absent) {
     existing?.remove();
     return;
@@ -3806,6 +4102,53 @@ function renderSelectionOutsideFilterNote(selectedPath) {
   } else {
     panel.insertAdjacentElement("afterbegin", note);
   }
+}
+
+/**
+ * Whether the tree in *panel* leaves *path* out, rather than holding it somewhere the
+ * reader has not opened. A folder the filter keeps but the reader closed, or whose rows
+ * are not read yet, may still hold it, and a page of a long folder not yet drawn may; then
+ * the tree cannot say. A folder above it that has no row at all is one the filter left out.
+ *
+ * @param {HTMLElement} panel
+ * @param {string} path
+ */
+function treeOmitsPath(panel, path) {
+  if (panel.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`)) {
+    return false;
+  }
+  var segments = path.split("/");
+  var current = "";
+  for (var i = 0; i < segments.length - 1; i++) {
+    current = current ? `${current}/${segments[i]}` : segments[i];
+    var folders = Array.from(
+      queryHtmlAll(`.tree-folder[data-path="${escapePathForSelector(current)}"]`, panel),
+    );
+    if (folders.length === 0) {
+      return !treePageHolds(current);
+    }
+    for (const folder of folders) {
+      var children = folder.nextElementSibling;
+      if (
+        !children ||
+        children.classList.contains("tree-children-collapsed") ||
+        children.querySelector(":scope > .tree-lazy-placeholder")
+      ) {
+        return false;
+      }
+    }
+  }
+  return !treePageHolds(path);
+}
+
+/** Whether a page of a long folder, not yet drawn, holds *path*'s row. @param {string} path */
+function treePageHolds(path) {
+  for (const page of pendingTreePages.values()) {
+    if (page.nodes.some((/** @type {{path: string}} */ node) => node.path === path)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ── Nav pane ────────────────────────────────────────────────────
@@ -4050,8 +4393,12 @@ function renderIndexProgress(meta) {
     return;
   }
   if (!indexProgressIsActive(meta)) {
-    el.hidden = true;
     indexProgressLastRendered = meta || null;
+    // While a grouping's sections are on their way the row says so (renderRegrouping),
+    // and shows the scan again when they come.
+    if (_regroupingBy === null) {
+      el.hidden = true;
+    }
     return;
   }
   // `meta.indexed_files` can be missing (server hasn't reported yet),
@@ -4061,6 +4408,10 @@ function renderIndexProgress(meta) {
   // right UX — a literal "~0 files scanned" reads as "scan stuck".
   var rawFiles = meta.indexed_files;
   var files = typeof rawFiles === "number" && rawFiles > 0 ? rawFiles : null;
+  if (_regroupingBy !== null) {
+    indexProgressLastRendered = { status: meta.status, indexed_files: files };
+    return;
+  }
   var text = el.querySelector(".index-progress-text");
   if (text) {
     text.textContent = files == null ? "Scanning…" : `~${files.toLocaleString()} files scanned`;
@@ -4413,19 +4764,23 @@ function attachMainTabs() {
       focusFilesRow: () => treeKeyboard?.focusCurrent() ?? false,
       isGitHistoryLanding,
       isPullAddress,
-      openRoot: () => navigateToPath(""),
+      openHome: openHomeRoot,
+      resetFiles: resetFilesTab,
       restore: () => navigationController.restore(),
+      revealFile: (how) => revealFileRow(addressedFilePath(), how),
       scrollShadow: () => navScrollShadowUpdate?.(),
     }) ?? null;
   return mainTabs;
 }
 
-// The heading at the top of the nav is home: main-tabs.js `home`. The link keeps its
-// `/view/` address for what a browser does with a link, so a modified or middle click,
-// its context menu, and copying it behave as they do on any link. A plain primary
-// activation, by pointer or by Enter, stays in the page. It used to load `/view/` again,
-// and a browser reloading the neutral Commits entry, which has that address, kept its
-// state and came back to Commits.
+// The folder's name at the top of the nav is Home (docs/design-system.md, "Home"), and `0`
+// runs the same path (shell-keymap.js). The link keeps its `/view/` address for what a
+// browser does with a link, so a modified or middle click, its context menu, and copying
+// it behave as they do on any link. A plain primary activation, by pointer or by Enter,
+// stays in the page, so the caches that make the app fast stay too: a reload of `/view/`
+// would draw the same page from nothing. It used to load `/view/` again, and a browser
+// reloading the neutral Commits entry, which has that address, kept its state and came
+// back to Commits.
 function initHomeHeading() {
   queryHtml(".header-path")?.addEventListener("click", onHomeHeadingClick);
 }
@@ -4446,11 +4801,19 @@ function onHomeHeadingClick(event) {
   goHome();
 }
 
-// Before the tab controller has loaded, the server's tab is in front: Files, unless the
-// page opened on a pull request's address. With Files in front this does what the
-// controller's `home` does, the tree at its top and the root opened, even on the root
-// already shown. Only a pull request's page waits for the controller, and a later choice
-// of the reader's cancels it, as a tab click does.
+/**
+ * Home: the served folder's home view, exactly as a fresh load of `/view/` shows it
+ * (docs/design-system.md, "Home"). The tab controller's `home` makes every tab forget where
+ * it was, has every panel put back what a fresh load draws in it, the Files tab by
+ * `resetFilesTab`, and opens the root at its default view (`openHomeRoot`).
+ *
+ * Before the tab controller has loaded, the server's tab is in front: Files, unless the
+ * page opened on a pull request's address, and no other panel has mounted. With Files in
+ * front this does what the controller's `home` does, the Files tab reset, the tree at its
+ * top, and the root drawn again, even on the root already shown. Only a pull request's
+ * page waits for the controller, and a later choice of the reader's cancels it, as a tab
+ * click does.
+ */
 function goHome() {
   if (mainTabs) {
     void mainTabs.home().catch((error) => {
@@ -4462,11 +4825,12 @@ function goHome() {
     queryHtml(".nav-tab-bar")?.querySelector(".tab-btn.active") ?? null
   );
   if ((front?.dataset.tab ?? "files") === "files") {
+    resetFilesTab();
     const scroller = document.getElementById("tree-content");
     if (scroller) {
       scroller.scrollTop = 0;
     }
-    void navigateToPath("").catch(console.error);
+    void openHomeRoot().catch(console.error);
     return;
   }
   const intent = ++mainTabIntent;
@@ -4478,6 +4842,52 @@ function goHome() {
       }
     })
     .catch(console.error);
+}
+
+/**
+ * The served root, drawn again at its default view, as a fresh load draws it. What the
+ * pane shows is released first, as a tab switch releases it, so the root already shown is
+ * drawn again from the file cache rather than kept at the view tab and the place the
+ * reader left it at; the old view stays on screen until the root's replaces it.
+ *
+ * @returns {Promise<unknown>}
+ */
+function openHomeRoot() {
+  cancelMainTabPreview();
+  return navigateToPath("");
+}
+
+/**
+ * The Files tab as a page that has just loaded draws it: every filter and Group by at its
+ * default, the filter drawer closed with no menu open, and the tree drawn again from the
+ * server's answer with the folders a first paint opens and no other. A change of filter
+ * draws the tree that way already (onFilterStateChange), so a reset that changes one
+ * leaves the drawing to it, and one that changes none asks for the tree itself. The
+ * subtree cache stays, so a folder the reader opens again opens at once.
+ */
+function resetFilesTab() {
+  var barChanged = filterOpenMenu !== null || filterDrawerOpen;
+  filterOpenMenu = null;
+  filterDrawerOpen = false;
+  if (!filterState) {
+    return;
+  }
+  var current = filterState.get();
+  var defaults = filterState.DEFAULTS;
+  var fresh = Object.keys(defaults).every(
+    (key) => JSON.stringify(current[key]) === JSON.stringify(defaults[key]),
+  );
+  if (!fresh) {
+    // Its listener draws the bar, closed, and the tree for the defaults.
+    _homeTreeDraw = true;
+    filterState.set({ ...defaults });
+    _homeTreeDraw = false;
+    return;
+  }
+  if (barChanged) {
+    renderNavFilterBar();
+  }
+  void loadTree({ asHome: true });
 }
 
 function initNavTabs() {
@@ -4516,6 +4926,7 @@ function initNavTabs() {
  */
 function shellKeymapShell() {
   return Object.freeze({
+    goHome,
     openFolder: navigateToFolder,
     selectPreviewTab,
     toggleFilterMenu,
@@ -5479,9 +5890,6 @@ function renderNavFilterBar() {
   // "Keys in a Menu").
   var restoreFocus = fc.keepFocus(bar);
   bar.innerHTML = main + drawer;
-  if (_groupingPending && filesPanelUsesGroupedSource()) {
-    queryHtml('[data-chip-menu-toggle="group"]', bar)?.classList.add("mb-refreshing");
-  }
   // An open menu is sized to its rows and the window now that it has geometry, before
   // the frame paints it.
   fc.fitOpenMenus(bar);
@@ -5534,13 +5942,14 @@ function closeFilterMenu() {
  * @param {boolean} open
  */
 function toggleFilterMenu(key, open) {
+  if (key === "group" && !open) {
+    // A row the keyboard is resting on asks for nothing once the menu closes.
+    groupsPrefetch.cancelRest();
+  }
   filterOpenMenu = open ? key : null;
   // The filters live in the drawer: a key that opens one opens the drawer with it.
   if (open && key !== "group") {
     filterDrawerOpen = true;
-  }
-  if (open && key === "group") {
-    prefetchGroupings();
   }
   renderNavFilterBar();
   if (key === "recency" && open) {
@@ -5627,9 +6036,11 @@ function initFilterBar() {
         return;
       }
       if (key === "group") {
-        filterState.set({ group: value === null ? "none" : value });
+        // Closed first, so the bar the change renders, before any of the work the choice
+        // starts, is the closed trigger reading the choice: it shows in the frame the
+        // choice is made, whatever the groups then take (mb-75l5).
         filterOpenMenu = null;
-        renderNavFilterBar();
+        filterState.set({ group: value === null ? "none" : value });
         return;
       }
       if (key === "recency" || key === "size") {
@@ -5640,11 +6051,22 @@ function initFilterBar() {
         renderNavFilterBar();
       }
     },
+    onMenuFocus: restOnGroupingRow,
     onClear: () => {
       filterOpenMenu = null;
       filterState.clear();
     },
   });
+  // The grouping a pointer presses is asked for ahead at once (prefetchPressedGrouping);
+  // one the keyboard rests on, after a dwell (onMenuFocus above).
+  const intentRoot = bar;
+  var unbindControls = filterBarUnbind;
+  intentRoot.addEventListener("pointerdown", prefetchPressedGrouping);
+  filterBarUnbind = () => {
+    unbindControls?.();
+    groupsPrefetch.cancelRest();
+    intentRoot.removeEventListener("pointerdown", prefetchPressedGrouping);
+  };
   // Seed the source tracking from the persisted state so the first
   // user change is compared against reality, not against null.
   _filterCursor = currentRecentFilterCursor();
@@ -5672,6 +6094,8 @@ function onFilterStateChange(state) {
   );
   _filterCursor = transition.current;
   if (transition.action === "load-recent") {
+    // Grouping left for the Recent list: the groups on their way are not wanted.
+    cancelGroupedLoad();
     loadRecent(transition.current);
     return;
   }
@@ -5713,6 +6137,8 @@ function onFilterStateChange(state) {
     // Abandon any recency fetch still in flight and drop the window it
     // was for. Otherwise a late response repaints the panel with the
     // old window's list under a trigger that now reads "Any age".
+    // The same for groups on their way: No grouping ends their wait at once.
+    cancelGroupedLoad();
     recentRecompute.cancel();
     if (recentInflight) {
       recentInflight.abort();
@@ -5728,7 +6154,10 @@ function onFilterStateChange(state) {
     // Refetch the authoritative tree. The first-paint cache can still carry
     // pending aggregates even after live events patched the visible DOM; using
     // it here reintroduced skeleton cells after progress polling had stopped.
-    loadTree();
+    // Home's reset draws it as a fresh load does (resetFilesTab).
+    var asHome = _homeTreeDraw;
+    _homeTreeDraw = false;
+    loadTree({ asHome });
     return;
   }
   applyTreeFilters();
@@ -5820,25 +6249,31 @@ function _renderFilteredTally(panel, state, count) {
     }
     return;
   }
-  var text;
-  if (filesPanelUsesRecentSource()) {
-    text = treeFilterModel.recentFilteredTallyText(count, {
-      totalMatching: recentTotalMatching,
-      totalMatchingExact: recentTotalMatchingExact,
-      truncated: recentTruncated,
-    });
-  } else {
-    text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}.`;
-  }
+  // Its numbers are bold, as the totals' are, so the two read against each other.
+  var parts = treeFilterModel.filteredTallyParts(
+    count,
+    filesPanelUsesRecentSource()
+      ? {
+          totalMatching: recentTotalMatching,
+          totalMatchingExact: recentTotalMatchingExact,
+          truncated: recentTruncated,
+        }
+      : null,
+  );
+  // The remark is one item of the line, its words and numbers in one span: painted
+  // straight into the flex line, each would be an item of its own, parted by the line's
+  // gap and read as runs of their own.
+  var remark = document.createElement("span");
+  remark.append(...window.MetabrowserFormatters.countPartsNodes(document, parts));
   if (existing) {
-    existing.textContent = text;
+    existing.replaceChildren(remark);
     return;
   }
   var summary = panel.querySelector(".tree-summary");
   var line = document.createElement("div");
   line.className = "tree-summary-filtered nav-metadata nav-metadata-note";
   line.setAttribute("role", "status");
-  line.textContent = text;
+  line.append(remark);
   if (summary) {
     summary.insertAdjacentElement("afterend", line);
   } else {
@@ -7364,7 +7799,7 @@ function fileStoreApplySnapshotInner(scope, entries) {
   // in-flight Recent request began. Even an empty snapshot can represent
   // removals, so it invalidates that response like a nonempty fs.change batch.
   recentContinuity.dirtyActiveRequest();
-  groupsPrefetch.clear();
+  groupsPrefetch.markChanged();
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
@@ -7411,8 +7846,9 @@ function fileStoreApplyChange(ops) {
 function fileStoreApplyChangeInner(ops) {
   if (ops.length > 0) {
     recentContinuity.dirtyActiveRequest();
-    // A grouping fetched ahead of a change no longer answers for the files.
-    groupsPrefetch.clear();
+    // A grouping asked for ahead of a change answers for the files as they were: a choice
+    // still takes it, and refreshes after (createGroupsPrefetch).
+    groupsPrefetch.markChanged();
   }
   invalidateSubtreeCaches(ops);
   invalidateFilePreviews(ops);
@@ -7888,20 +8324,31 @@ function _findChildContainerFor(parentRel, panelEl) {
   return children;
 }
 
-function _deferredTreePageForContainer(container) {
-  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
-  if (!sentinel) {
-    return null;
+// The container's deferred page that holds *path*, or with no path its last one. A
+// container has one "more" row at its end, and a reveal can leave another above the page
+// it drew (mountTreePageAt).
+function _deferredTreePageForContainer(container, path) {
+  var sentinels = Array.from(
+    queryHtmlAll(":scope > .tree-page-more[data-page-id]", container),
+  ).reverse();
+  for (const sentinel of sentinels) {
+    var pageId = sentinel.dataset.pageId;
+    var page = pendingTreePages.get(pageId);
+    if (
+      page &&
+      (path === undefined ||
+        page.nodes.some((/** @type {{path: string}} */ node) => node.path === path))
+    ) {
+      return { pageId: pageId, page: page, sentinel: sentinel };
+    }
   }
-  var pageId = sentinel.dataset.pageId;
-  var page = pendingTreePages.get(pageId);
-  return page ? { pageId: pageId, page: page, sentinel: sentinel } : null;
+  return null;
 }
 
 // Snapshot and change events include entries already held by a deferred page.
 // Refresh that pending copy instead of mounting it ahead of its sentinel.
 function _updateDeferredTreePageEntry(container, entry) {
-  var deferred = _deferredTreePageForContainer(container);
+  var deferred = _deferredTreePageForContainer(container, entry.path);
   if (!deferred) {
     return false;
   }
@@ -7931,14 +8378,33 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
   if (!container) {
     return;
   }
-  var rows = /** @type {HTMLElement[]} */ (
-    Array.from(container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"))
+  // The container's rows in order, each "more" row counting the rows it holds back.
+  var items = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item"))
   );
-  var setSize = Math.max(rows.length + page.nodes.length, Number(page.options.setSize) || 0);
+  var held = (/** @type {HTMLElement} */ item) =>
+    item.classList.contains("tree-page-more")
+      ? (pendingTreePages.get(item.dataset.pageId || "")?.nodes.length ?? 0)
+      : 1;
+  var setSize = Math.max(
+    items.reduce((total, item) => total + held(item), 0),
+    Number(page.options.setSize) || 0,
+  );
   page.options.setSize = setSize;
-  for (var index = 0; index < rows.length; index++) {
-    rows[index].dataset.treePosition = String(index + 1);
-    rows[index].dataset.treeSetSize = String(setSize);
+  var position = 0;
+  for (const item of items) {
+    item.dataset.treePosition = String(position + 1);
+    item.dataset.treeSetSize = String(setSize);
+    position += held(item);
+    // Every "more" row of the container tells the folder's total and draws its rows with
+    // it: a reveal can leave others than the one that ends the folder (mountTreePageAt).
+    var heldPage = item.classList.contains("tree-page-more")
+      ? pendingTreePages.get(item.dataset.pageId || "")
+      : undefined;
+    if (heldPage && heldPage !== page) {
+      heldPage.options.setSize = setSize;
+      _labelDeferredTreePage(item, heldPage);
+    }
   }
   if (page.nodes.length === 0) {
     var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
@@ -7947,14 +8413,19 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     scheduleTreeSynchronize(sentinelMutation);
     return;
   }
-  sentinel.dataset.treePosition = String(rows.length + 1);
-  sentinel.dataset.treeSetSize = String(setSize);
-  var labelId = sentinel.getAttribute("aria-labelledby") || "";
-  var label = document.getElementById(labelId);
-  if (label) {
-    label.textContent = `Show ${page.nodes.length} more (${setSize} total)`;
-  }
+  _labelDeferredTreePage(sentinel, page);
   scheduleTreeSynchronize(mutationSnapshot);
+}
+
+/**
+ * @param {HTMLElement} sentinel A "more" row.
+ * @param {{nodes: unknown[], options: Record<string, any>}} page What it holds back.
+ */
+function _labelDeferredTreePage(sentinel, page) {
+  var label = document.getElementById(sentinel.getAttribute("aria-labelledby") || "");
+  if (label) {
+    label.textContent = `Show ${page.nodes.length} more (${page.options.setSize} total)`;
+  }
 }
 
 function _removeDeferredTreePageEntries(path) {
@@ -8029,9 +8500,10 @@ function _insertRowSorted(container, entry, options, highlightChange) {
     }
   }
   if (anchor === null) {
-    // Insert before the page-more sentinel if present, else at the end.
-    var more = container.querySelector(":scope > .tree-page-more");
-    anchor = more || null;
+    // Insert before the page-more sentinel that ends the folder if present, else at the
+    // end. A reveal can leave others between the pages it drew, with rows after them.
+    var lastItem = Array.from(queryHtmlAll(":scope > .tree-item", container)).pop();
+    anchor = lastItem?.classList.contains("tree-page-more") ? lastItem : null;
   }
   for (var j = 0; j < nodes.length; j++) {
     var node = nodes[j];
@@ -8699,7 +9171,17 @@ async function openQuickSearchPull(number) {
     return { status: "cancelled" };
   }
   mainTabs?.remember();
+  const routes = window.MetabrowserPullRoute;
+  const naming = () => routes?.parsePull(window.location.pathname)?.number ?? null;
+  // The pull request shown, on its page or on any of its tabs or changed files.
+  const shown = naming() === number;
   const outcome = await host.open({ number, tab: "" });
+  // Quick Search for the pull request shown opens it again, and its row is revealed again,
+  // opening a stack the reader closed since. Its address names no other pull request, so
+  // the host's write reveals nothing (revealPullAddress).
+  if (outcome.status === "opened" && shown && naming() === number) {
+    void mainTabs?.reveal("open", { again: true });
+  }
   return outcome.status === "opened"
     ? { ...outcome, focusTarget: document.getElementById("preview-pane") }
     : outcome;
@@ -8756,21 +9238,48 @@ function pullPageHostDeps(routes) {
       }),
     mountList: (claim) => mountView(claim, "pull-request-list", {}),
     pathname: () => window.location.pathname,
+    // A pull request's page, one of its tabs, or one of its changed files, opened by a link,
+    // a key, or a row.
     pushHref: (href) => {
+      var before = window.location.pathname;
       mainTabIntent += 1;
       window.history.pushState(null, "", href);
       mainTabs?.remember();
-      mainTabs?.activate("pulls");
-      window.MetabrowserPullsNav?.routeChanged();
+      revealPullAddress(before, "open");
     },
-    // A key's skim replaces, as openTreeRow does.
+    // A key's skim through the Pulls tab's rows, or through a pull request's changed files,
+    // replaces, as openTreeRow does.
     replaceHref: (href) => {
+      var before = window.location.pathname;
       mainTabIntent += 1;
       window.history.replaceState(null, "", href);
       mainTabs?.remember();
-      window.MetabrowserPullsNav?.routeChanged();
+      revealPullAddress(before, "nav");
     },
   };
+}
+
+/**
+ * Show the pull request's address the page host just wrote, by the reveal rule
+ * (docs/design-system.md, "Navigation Reveals the Item"). An address that names another
+ * pull request than *before* did reveals that pull request's row, by *route*. One that
+ * names the same pull request, another tab of its page or one of its changed files, is a
+ * step within the item shown: the Pulls tab comes to the front if another is, and the
+ * list is told the address, which marks a changed file as current. A changed file of the
+ * pull request shown never reveals its row.
+ *
+ * @param {string} before The address's path before the host wrote this one.
+ * @param {"open" | "nav"} route
+ */
+function revealPullAddress(before, route) {
+  var routes = window.MetabrowserPullRoute;
+  var number = routes?.parsePull(window.location.pathname)?.number ?? null;
+  if (mainTabs && number !== null && number !== (routes?.parsePull(before)?.number ?? null)) {
+    void mainTabs.reveal(route);
+    return;
+  }
+  void mainTabs?.reveal("step");
+  window.MetabrowserPullsNav?.routeChanged();
 }
 
 // Back and forward between a page's tabs change no navigation target, so the host decides
@@ -8828,7 +9337,8 @@ async function applyNavigationTarget(target, context) {
   if (context.source === "user") {
     mainTabIntent += 1;
   }
-  const keepFilesScroll = mainTabs?.takeFilesScroll() ?? false;
+  // How the reader came: an open, a tab's landing, Back, or the page's own address.
+  const route = mainTabs?.landingRoute(context.source) ?? null;
   if (isGitHistoryLanding()) {
     if (context.source !== "user") {
       // The neutral Commits entry is the Git panel's, as a /commit/ address is: the
@@ -8874,9 +9384,11 @@ async function applyNavigationTarget(target, context) {
     showNavigationLanding();
     return { status: "cancelled" };
   }
-  mainTabs?.fileLanding();
-  window.MetabrowserPullsNav?.routeChanged();
   var path = target.path.replace(/\/$/, "");
+  // The file's tab comes to the front before the pane is read: a switch from another tab
+  // takes the pane from what that tab showed there.
+  void revealAddressedItem("step", { isCurrent: context.isCurrent });
+  window.MetabrowserPullsNav?.routeChanged();
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
   // the line-anchor module, which arrives with the view compositor. That load starts
@@ -8887,6 +9399,11 @@ async function applyNavigationTarget(target, context) {
   // fragment alone. After a failure, or once the Git panel owns the pane,
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
+    // A fragment or a line anchor is a step within the file shown, which reveals nothing.
+    // Opening the file shown again, as Quick Search does, reveals its row again.
+    if (context.source === "user" && !target.fragment && !target.query) {
+      await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
+    }
     // A line anchor added to the file shown opens its Source tab, as opening it does.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
     if (!context.isCurrent()) {
@@ -8899,7 +9416,7 @@ async function applyNavigationTarget(target, context) {
       status: "opened",
     };
   }
-  await revealInTree(path, { isCurrent: context.isCurrent, scroll: !keepFilesScroll });
+  await revealAddressedItem(route, { isCurrent: context.isCurrent });
   // A held arrow key opens only the row its walk stops on.
   var walk = treeKeyboard?.walking(path);
   if (walk) {
@@ -8916,6 +9433,66 @@ async function applyNavigationTarget(target, context) {
   return outcome;
 }
 
+/**
+ * Show the item the address names in the navigation pane (docs/design-system.md,
+ * "Navigation Reveals the Item"): main-tabs.js's `reveal` brings its tab to the front and
+ * has that tab's panel reveal it, by the one rule for every route. Before the tab
+ * controller has loaded, Files is the tab in front and reveals the file itself.
+ *
+ * The address is the one source of what is revealed, before the tab controller has
+ * loaded and after: the navigation controller writes a target's address before it
+ * applies the target, so the file a landing applies is the one the address names
+ * (addressedFilePath).
+ *
+ * @param {MetabrowserRevealRoute | null} route Null before the tab controller has loaded.
+ * @param {{isCurrent: () => boolean, again?: boolean}} how *again*: an open of the file
+ *   shown (main-tabs.js, `reveal`).
+ * @returns {Promise<void>}
+ */
+async function revealAddressedItem(route, how) {
+  if (mainTabs && route !== null) {
+    await mainTabs.reveal(route, how);
+  } else if (route !== "step") {
+    await revealFileRow(addressedFilePath(), {
+      scroll: "nearest",
+      isCurrent: how.isCurrent,
+      again: how.again === true,
+    });
+  }
+}
+
+/** The file or folder the address names, without a folder's trailing slash; "" for none. */
+function addressedFilePath() {
+  var target = window.MetabrowserNavigationRoute.parse(
+    window.location.pathname,
+    window.location.search,
+    window.location.hash,
+  );
+  return target ? target.path.replace(/\/$/, "") : "";
+}
+
+/**
+ * The Files panel's reveal: open the folders above *path*, and the page of a long folder
+ * that holds it, select its row, and scroll it into view unless *how* keeps the tree's
+ * place. A path the tree cannot show still takes the selection from the row that had it,
+ * so no other row stays selected under it, and when a filter hides it the tree says so
+ * (renderSelectionOutsideFilterNote).
+ *
+ * @param {string} path
+ * @param {MetabrowserRevealHow} how
+ * @returns {Promise<boolean>} Whether its row is shown.
+ */
+async function revealFileRow(path, how) {
+  var shown = await revealInTree(path, {
+    isCurrent: how.isCurrent,
+    scroll: how.scroll === "nearest",
+  });
+  if (!shown && how.isCurrent()) {
+    setSelectedPath(path || null);
+  }
+  return shown;
+}
+
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
 // and mark the target row selected. Returns true if the row exists.
 // Pair with selectFile() for the body; init() kicks off both legs in
@@ -8927,6 +9504,16 @@ async function revealInTree(path, options = {}) {
     return false;
   }
   if (!filesPanelUsesGroupedSource()) {
+    return revealWithin(document, path, options);
+  }
+  // The sections a choice is still loading are not on screen yet: the reveal lands once
+  // they paint.
+  await groupedSectionsSettled();
+  if (options.isCurrent && !options.isCurrent()) {
+    return false;
+  }
+  if (!filesPanelUsesGroupedSource()) {
+    // The reader left grouping while the sections were on their way.
     return revealWithin(document, path, options);
   }
   // Under Group by the row is in one section, and its folders may stand in several: open
@@ -9023,6 +9610,12 @@ async function revealWithin(
       `.tree-folder[data-path="${escapePathForSelector(current)}"]`,
       /** @type {HTMLElement} */ (scope),
     );
+    if (!folder && mountTreePageHolding(scope, current)) {
+      folder = queryHtml(
+        `.tree-folder[data-path="${escapePathForSelector(current)}"]`,
+        /** @type {HTMLElement} */ (scope),
+      );
+    }
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
@@ -9049,7 +9642,11 @@ async function revealWithin(
   if (!isCurrent()) {
     return false;
   }
-  var target = scope.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
+  var selector = `.tree-item[data-path="${escapePathForSelector(path)}"]`;
+  var target = scope.querySelector(selector);
+  if (!target && mountTreePageHolding(scope, path)) {
+    target = scope.querySelector(selector);
+  }
   if (!target) {
     return false;
   }
@@ -9059,6 +9656,89 @@ async function revealWithin(
   }
   synchronizeTreeNow();
   return true;
+}
+
+/**
+ * Draw the page of a long folder that holds *path*'s row. A folder draws its first
+ * TREE_PAGE_SIZE rows and holds the rest behind a "more" row, which draws them a page at
+ * a time. A reveal draws only the page that holds the row: the rows before that page
+ * stay behind the "more" row, and the rows after it go behind one of their own
+ * (docs/design-system.md, "Navigation Reveals the Item").
+ *
+ * @param {Document | HTMLElement} scope
+ * @param {string} path
+ * @returns {boolean} Whether a page holding it was mounted.
+ */
+function mountTreePageHolding(scope, path) {
+  for (const sentinel of queryHtmlAll(
+    ".tree-page-more[data-page-id]",
+    /** @type {HTMLElement} */ (scope),
+  )) {
+    var page = pendingTreePages.get(sentinel.dataset.pageId);
+    var index = page
+      ? page.nodes.findIndex((/** @type {{path: string}} */ node) => node.path === path)
+      : -1;
+    if (index >= TREE_PAGE_SIZE) {
+      return mountTreePageAt(sentinel, page, index - (index % TREE_PAGE_SIZE)) !== null;
+    }
+    if (index >= 0) {
+      return mountNextTreePage(sentinel) !== null;
+    }
+  }
+  return false;
+}
+
+/**
+ * Draw the page that starts *start* rows into what *sentinel* holds back, after the
+ * sentinel, which keeps the rows before that page, and the rows after it behind a "more"
+ * row of its own. Each of the two draws its page in place, as any "more" row does
+ * (mountNextTreePage), so pressing them draws the folder in order.
+ *
+ * The cost is one page's, however long the folder. Measured 2026-11-15 in headless
+ * Chrome 152 against a live server, with the folder's first page drawn, on a machine at
+ * load average 14: `revealFileRow` for the last of 10,000 files took 18 ms (median of
+ * five, at most 20 ms) and 28 ms to the second frame after, with the row selected and in
+ * view, against 17 ms for a row in the second page. Drawing every page up to the row
+ * instead, as pressing "more" until it appears would, took 204 ms for 2,000 files, 783 ms
+ * for 5,000, and 2.75 s for 10,000, most of it the layout of every row drawn.
+ *
+ * @param {HTMLElement} sentinel
+ * @param {{nodes: {path: string}[], options: Record<string, any>}} page
+ * @param {number} start A multiple of TREE_PAGE_SIZE within `page.nodes`.
+ * @returns {HTMLElement | null} The first row drawn.
+ */
+function mountTreePageAt(sentinel, page, start) {
+  var nodes = page.nodes;
+  var offset = Number(page.options.positionOffset) || 0;
+  treeKeyboard?.prepareForMutation();
+  page.nodes = nodes.slice(0, start);
+  var temporary = document.createElement("div");
+  temporary.innerHTML = withTreeIdScope(
+    page.options.section || "",
+    () =>
+      renderTreeNodes(nodes.slice(start, start + TREE_PAGE_SIZE), false, {
+        ...page.options,
+        positionOffset: offset + start,
+      }) +
+      deferredTreePageHtml(nodes.slice(start + TREE_PAGE_SIZE), {
+        ...page.options,
+        positionOffset: offset + start + TREE_PAGE_SIZE,
+      }),
+  );
+  _labelDeferredTreePage(sentinel, page);
+  var after = sentinel.nextElementSibling;
+  var firstMounted = null;
+  for (const node of Array.prototype.slice.call(temporary.childNodes)) {
+    sentinel.parentElement?.insertBefore(node, after);
+    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
+      firstMounted = node;
+    }
+  }
+  // A drawn page arrives without current filter decoration, as mountNextTreePage's does.
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  return firstMounted;
 }
 
 /**

@@ -271,10 +271,30 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     treeContent.querySelector("#tab-pulls").style.display = "none";
   }
   const hints = element(document, "div", { class: "nav-shortcut-hints", id: "nav-shortcut-hints" });
+  // The nav's header as server.py writes it: the folder's name, which is Home and `0`'s
+  // target, labelled "Home:" and its own text, in a header that anchors the badge.
+  const navHeader = element(
+    document,
+    "header",
+    { class: "app-header", "data-kbd-badge-anchor": "" },
+    element(
+      document,
+      "a",
+      {
+        "aria-labelledby": "header-home-label header-home",
+        class: "header-path",
+        href: "/view/",
+        id: "header-home",
+      },
+      "squares",
+    ),
+    element(document, "span", { hidden: "", id: "header-home-label" }, "Home:"),
+  );
   const navPane = element(
     document,
     "nav",
     { class: "tree-pane" },
+    navHeader,
     navBar,
     filterBar,
     treeContent,
@@ -305,6 +325,11 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
 
   // app.js shellKeymapShell: the state only app.js holds, and the paths its controls run.
   const shell = Object.freeze({
+    // app.js goHome, the folder's name's click; tests/dom/preview-pane-state-session.js
+    // runs it.
+    goHome() {
+      did.push("went home");
+    },
     openFolder(dir) {
       did.push(`opened the folder "${dir}"`);
     },
@@ -778,7 +803,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
           if (/^[A-Z0-9]$/.test(label)) {
             shellKeys.add(label.toLowerCase());
           }
-          if (/^[A-Z]$/.test(label)) {
+          // A letter, or `0`, Home: the one digit with a fixed meaning, whose row the
+          // design system's table gives like a letter's.
+          if (/^[A-Z0]$/.test(label) && !bindings.range) {
             shellCommands.add(`${label.toLowerCase()} ${id}: ${copy.action}`);
           }
           // A Control chord, written as a Mac writes it.
@@ -809,8 +836,9 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
 
   /**
    * Help's rows that bind a digit, each as its keys and whether they are a run. The
-   * numbers are positional, so the only such row is the one run 1 to 9: a row giving a
-   * digit a fixed meaning fails the session.
+   * numbers are positional, so such a row is the one run 1 to 9, or `0`, Home, the one
+   * digit with a fixed meaning: any other row giving a digit a fixed meaning fails the
+   * session.
    */
   function helpDigits() {
     const rows = shortcuts
@@ -822,7 +850,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
         range: command.bindings.range === true,
         action: command.copy.action,
       }));
-    const fixed = rows.filter((row) => !row.range);
+    const fixed = rows.filter((row) => !row.range && !(row.keys === "0" && row.action === "Home"));
     if (fixed.length > 0) {
       throw new Error(`Help gives a digit a fixed meaning: ${JSON.stringify(fixed)}`);
     }
@@ -1312,6 +1340,23 @@ const PARTS = {
     );
     plain.press("m");
     steps.push(plain.record("M shows the Treemap"));
+
+    // `0` is Home on any screen, with Shift too: US Shift-0 types `)`, which the registry
+    // matches by its digit-row key, as it does Shift with a number.
+    plain.open(files["data.json"]);
+    steps.push(
+      plain.record("0 goes home, through the folder's name's own path", {
+        pressed: { key: "0", handled: plain.press("0", { code: "Digit0" }) },
+      }),
+    );
+    steps.push(
+      plain.record("Shift-0, which types ) on a US keyboard, goes home too", {
+        pressed: {
+          key: ")",
+          handled: plain.press(")", { code: "Digit0", shiftKey: true }),
+        },
+      }),
+    );
 
     plain.open(files["session.jsonl"]);
     steps.push(plain.record("an agent log has Log, Charts, and Raw JSON"));

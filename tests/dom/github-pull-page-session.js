@@ -113,7 +113,15 @@ function summarize(model) {
       pull === null
         ? null
         : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action}: ${pull.head} → ${pull.base}`,
-    labels: pull === null ? [] : pull.labels,
+    // Each label's name, GitHub's color and the properties its chip is painted from, or
+    // "neutral", and its description, the chip's tooltip, or "no tip".
+    labels:
+      pull === null
+        ? []
+        : pull.labels.map(
+            (label) =>
+              `${label.name} ${label.color === null ? "neutral" : `#${label.color} ${label.style}`} ${label.tip === null ? "no tip" : `tip: ${label.tip}`}`,
+          ),
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
       (item) =>
@@ -675,6 +683,13 @@ function placeStory(runtime) {
   stage.entry = { block: 40, offset: 10, top: 90000 };
   reopen([300, 400]);
   step("a page with fewer blocks than the place shows its last", () => keeper.land());
+  keeper.readerMoved();
+
+  // A place deep in a header that was taller, an open Diff summary's rows, on a page that
+  // draws its header shorter: the first block, not that many pixels into the page.
+  stage.entry = { block: -1, offset: 0, top: 30000 };
+  reopen([300, 400]);
+  step("a place in a header now shorter shows the first block", () => keeper.land());
   keeper.readerMoved();
 
   for (const value of [{ block: "1", offset: 0, top: 0 }, { block: 1 }, "nonsense"]) {

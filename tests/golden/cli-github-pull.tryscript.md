@@ -71,7 +71,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -85,13 +85,13 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=[STORE]",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 7,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
+      "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -112,7 +112,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -254,7 +258,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -534,7 +540,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
+  "record_revision": "cd7f7b8cf1acb0f26e5f408cc8c314a4f95a625494c118afc57b4378d3dc9424",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -548,13 +554,13 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=[STORE]",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 9,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+      "repos/octo/demo/pulls/9": "W/\"bd0a1535019ba33ca5d652f1e47b79467f9530f4108d8188308766a528b0938a\"",
       "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
       "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
       "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
@@ -575,7 +581,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "unknown",
       "labels": [
-        "invalid"
+        {
+          "name": "invalid",
+          "color": "e4e669",
+          "description": null
+        }
       ],
       "author": null,
       "author_avatar_url": null,
@@ -643,7 +653,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -713,7 +725,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -744,6 +758,56 @@ Error: /api/plugin/github/pull?number=07 returned HTTP 400
 ? 1
 ```
 
+The Pulls tab reads a record marked `warm=1` to have its comparison ready before the
+reader opens it (mb-neg9). It is answered as any read is.
+The server leaves it out of the pull requests it last answered, which a prefetch’s
+`changed` refreshes after a scan, because the reader has not opened it;
+`tests/test_github_pull_manifests.py` holds that.
+`warm` takes only `1`.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=14&warm=1'
+api: /api/plugin/github/pull?number=14&warm=1
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 14,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": null,
+  "verified_at": null,
+  "verified_by": null,
+  "head_moved": false,
+  "checks_pending": false,
+  "record_revision": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "comparison_route": null,
+  "snapshot_route": null,
+  "rendered_route": null,
+  "record": null,
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=14&warm=0'
+api: /api/plugin/github/pull?number=14&warm=0
+status: 400
+{
+  "error": "\"warm\" is 1",
+  "code": "invalid_request"
+}
+Error: /api/plugin/github/pull?number=14&warm=0 returned HTTP 400
+? 1
+```
+
 A folder is no GitHub repository, so it has none to answer for: every route says so, and
 the page does.
 
@@ -771,7 +835,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -848,7 +914,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -885,7 +953,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -922,7 +992,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```
@@ -1127,7 +1199,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1158,7 +1232,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1198,7 +1274,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1229,7 +1307,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1270,7 +1350,9 @@ status: 200
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1402,7 +1484,7 @@ status: 200
 {
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
-  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+  "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
   "part": "body",
   "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
   "assets": {

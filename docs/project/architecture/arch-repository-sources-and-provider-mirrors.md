@@ -691,6 +691,14 @@ when every persistence attempt fails.
 and never fetches. Its initial answer hydrates eight ready files.
 The shared diff service retains its fifty-file default for other callers; encoded bodies
 and entity tags include the initial-file policy, while the manifest key is shared.
+A comparison asked for once is answered from the process’s memory after that, with no
+Git process, and its route names the pull request, both commits, the build, and the
+store, so its answer is immutable and a browser asks for it no more.
+`test_a_repeated_comparison_runs_no_git_and_a_moved_head_is_computed_afresh` in
+`tests/test_github_pull_manifests.py` holds both, and that a route naming another head,
+as a record whose head moved does, is computed.
+In the page, what was read is kept for the document rather than for one page
+([Comparisons the page keeps](arch-git-and-comparison-sources.md#comparisons-the-page-keeps)).
 
 It names its reader, always `gh:<login>`, because `gh api` refuses requests while signed
 out, and the account is read before and after the API reads so a record read across an
