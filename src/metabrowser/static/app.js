@@ -3302,30 +3302,30 @@ treePane.addEventListener(
     }
     var d = item.dataset;
     // The tooltip gives what the row does not show (docs/design-system.md,
-    // "Tooltips Add Information"): the exact date, and a folder's other total.
-    // The row shows the name, a file's size, and a folder's size or file count,
-    // whichever its chip holds, so the tooltip leaves those out.
+    // "Tooltips Add Information"): the exact date, a folder's other total, and
+    // the exact size behind one its chip rounds. The row shows the name, and a
+    // size or file count, whichever its chip holds, so the tooltip leaves out the
+    // name and what the chip shows exactly: a count, and a size under 1,024
+    // bytes, which formatBytes writes in whole bytes ("512 B").
     var includeName = false;
     var chip = item.querySelector(".tree-item-size");
     var shows = chip === null ? null : chip.classList.contains("count") ? "count" : "size";
+    var size = parseTipNumber(d.tipSize);
+    var chipRoundsSize = typeof size === "number" && size >= 1024;
+    var tipSize = shows === "size" && !chipRoundsSize ? undefined : size;
     var html;
     if (d.tipType === "dir") {
       html = folderTooltipHtml(
         d.tipName,
         shows === "count" ? undefined : parseTipNumber(d.tipFiles),
-        shows === "size" ? undefined : parseTipNumber(d.tipSize),
+        tipSize,
         parseTipNumber(d.tipMtime),
         includeName,
       );
     } else if (d.tipType === "symlink") {
       html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
-      html = fileTooltipHtml(
-        d.tipName,
-        shows === "size" ? undefined : parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-        includeName,
-      );
+      html = fileTooltipHtml(d.tipName, tipSize, parseTipNumber(d.tipMtime), includeName);
     }
     if (html) {
       showTooltip(html, item);

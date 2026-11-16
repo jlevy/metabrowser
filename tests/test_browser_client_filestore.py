@@ -277,14 +277,20 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
 
     listener_start = js.index('treePane.addEventListener(\n  "mouseenter"')
     listener_block = js[listener_start : listener_start + 2000]
-    # Every tree row already shows its name, a file's size, and a folder's size or count,
-    # so the hover tooltip omits them and gives the exact date and a folder's other total
-    # (mb-8mpo); tests/dom/files-tab-chrome.mjs reads it in Chrome.
+    # Every tree row already shows its name and a size or count, so the hover tooltip
+    # omits the name and what the chip shows exactly, and gives the exact date, a folder's
+    # other total, and the exact size behind one the chip rounds (mb-8mpo, mb-qg4z);
+    # tests/dom/files-tab-chrome.mjs reads it in Chrome.
     assert "var includeName = false" in listener_block
     assert "folderTooltipHtml(" in listener_block
     assert "fileTooltipHtml(" in listener_block
     assert 'shows === "count" ? undefined : parseTipNumber(d.tipFiles)' in listener_block
-    assert listener_block.count('shows === "size" ? undefined : parseTipNumber(d.tipSize)') == 2
+    assert 'typeof size === "number" && size >= 1024' in listener_block
+    assert 'shows === "size" && !chipRoundsSize ? undefined : size' in listener_block
+    # The folder's tooltip and the file's take that one size.
+    assert listener_block.count("tipSize,") == 2
+    assert "fileTooltipHtml(d.tipName, tipSize," in listener_block
+    assert listener_block.count("parseTipNumber(d.tipSize)") == 1
 
 
 def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
