@@ -3,15 +3,19 @@ type: is
 id: is-01m7gxa649tsf69zpw1hz2chk4
 title: "GitHub labels: a cached per-repository label catalog colors every chip on first paint"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-16T00:50:01.480Z
-updated_at: 2026-11-16T00:50:01.480Z
+updated_at: 2026-11-16T00:50:48.242Z
+started_at: 2026-11-16T00:50:48.240Z
 ---
 The user's report and request (2026-11-15), verbatim:
 
