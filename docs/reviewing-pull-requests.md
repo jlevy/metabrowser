@@ -129,8 +129,9 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), th
 list groups each native GitHub stack’s PRs under a **Stack #N** row, open by default,
 with the stack’s PRs under it from the stack’s top to its base and the PRs in no stack
 after the stacks. A stack’s row opens and closes like a folder.
-Each member row starts its second line with its place, such as **1/6 · #455 · jlevy**. A
-PR in two stacks sits under the first, and its place names the other stack by its
+Each member row’s first line shows its place before its number, such as **1/6 · #455 ·
+jlevy**, and its second line the title.
+A PR in two stacks sits under the first, and its place names the other stack by its
 number, such as **3/4 · ⧉300 2/2**. Until the stacks are known, or when they cannot be
 read, the list stays flat.
 

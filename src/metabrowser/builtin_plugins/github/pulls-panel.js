@@ -3573,11 +3573,12 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The number's line, a row's first: a stack member's place (`paintPlace`), the number,
-   * and the author, with the age at the row's end; the title has the second line to itself,
-   * to the row's end (github/styles.css, `.github-pulls-row`). A row names no branches: the
-   * page does, and the row's room goes to its title (docs/design-system.md, "The Pulls
-   * Tab"). The title comes first in the row's DOM, so its accessible name leads with it.
+   * The number's line, on a row's first after the chevron and the state icon: a stack
+   * member's place (`paintPlace`), the number, and the author, with the age at the row's
+   * end; the title has the second line to itself, from the text column to the row's end
+   * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
+   * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
+   * comes first in the row's DOM, so its accessible name leads with it.
    *
    * @param {PullRow} row
    * @param {HTMLElement} place The row's place, kept across the line built again.

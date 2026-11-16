@@ -444,11 +444,12 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
 
 
 def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() -> None:
-    """A pull request's row is two lines (mb-lkkt): the number's line, "1/4 · #113 · jlevy",
-    with the age at the row's end, then the chevron, the state icon, and the title, which
-    runs under the age to the row's end. The number's line is one line, so the row is always
-    two: the author leaves it whole onto a clipped second line rather than growing the row.
-    The DOM keeps the title first, so the row's accessible name leads with it.
+    """A pull request's row is two lines (mb-lkkt): the chevron and the state icon in their
+    slots, then the number's line, "1/4 · #113 · jlevy", with the age at the row's end; then
+    the title alone, from the text column under the age to the row's end. The chevron and
+    the icon sat on the title's line until mb-3cbf. The number's line is one line, so the row
+    is always two: the author leaves it whole onto a clipped second line rather than growing
+    the row. The DOM keeps the title first, so the row's accessible name leads with it.
     github-pulls-stacks-chrome.mjs and github-pull-header-chrome.mjs measure it."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
@@ -461,9 +462,12 @@ def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() ->
     assert "grid-row: 1;" in age and "grid-column: 4;" in age and "justify-self: end;" in age
     title = _rule(css, ".github-pulls-row > .github-pulls-title")
     assert "grid-row: 2;" in title and "grid-column: 3 / -1;" in title
+    # The chevron and the icon lead the first line, and only the title is on the second.
     for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 2)):
-        rule = _rule(css, f".github-pulls-row:not(.github-pulls-stack-row) > .{part}")
-        assert "grid-row: 2;" in rule and f"grid-column: {column};" in rule, part
+        rule = _rule(css, f".github-pulls-row > .{part}")
+        assert "grid-row: 1;" in rule and f"grid-column: {column};" in rule, part
+    second = re.findall(r"(?m)^(\.github-pulls-row[^{\n]*)\{[^}]*grid-row: 2;", css)
+    assert [selector.strip() for selector in second] == [".github-pulls-row > .github-pulls-title"]
     # The number's line and the age share a baseline.
     assert (
         ".github-pulls-row > :is(.github-pulls-meta, .github-pulls-title, .github-pulls-age)"

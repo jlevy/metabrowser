@@ -60,8 +60,9 @@ They land as one native GitHub stack of nineteen pull requests on `main`:
 18. **Consistency in docs:** what the same review found in the design system, the user
     docs, this plan, and the CHANGELOG, whose Unreleased block then reads as one change
     from 0.12.0 (`mb-vg55`).
-19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
-    age, and its second the whole title to the pane’s edge (`mb-lkkt`).
+19. **Pulls rows:** a Pulls row’s first line is its chevron, state icon, stack place,
+    number, author, and age, and its second the whole title alone to the pane’s edge
+    (`mb-lkkt`, `mb-3cbf`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -676,6 +677,12 @@ against 5 ms for the ungrouped tree.
   every width, its author giving way first and its place after; measured in Chrome from
   420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
   stylesheet’s tests.
+- [ ] `mb-3cbf`: the chevron and the state icon lead the first line, in their 14 px
+  slots and centered on the number’s line, and the title is alone on the second, from
+  the text column to the row’s end; the row stays 43 px, the stack row’s and members’
+  chevrons and an open pull request’s files keep their columns; measured in the same
+  Chrome tests, whose check of the glyphs’ line fails on the layout that put them on the
+  title’s line.
 
 ## Testing Strategy
 

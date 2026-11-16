@@ -402,18 +402,20 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
-    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The muted line under
-    # the title is alone on its line, so it neither shares a baseline nor is a box.
+    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The chevron and the
+    # state icon are boxes on the first line, centered, beside the number's line and the age,
+    # which share its baseline; the title is alone on the second (mb-lkkt, mb-3cbf).
     rows.append(
         (
             "Pull request row",
             ".github-pulls-row",
             el(
                 "github-pulls-row",
+                box("github-pulls-toggle"),
                 box("github-pull-state-icon"),
                 text("github-pulls-title"),
                 text("github-pulls-age age-min"),
-                el("github-pulls-meta"),
+                text("github-pulls-meta"),
             ),
         )
     )

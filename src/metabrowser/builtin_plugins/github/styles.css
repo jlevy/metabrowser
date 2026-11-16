@@ -844,14 +844,15 @@
 }
 /* The window bounds mounted PR rows; their full intrinsic height includes expanded
    file trees, so remounting a retained expansion preserves the scroll geometry. */
-/* Two lines and one target (mb-lkkt): the number's line first, a stack member's place, the
-   number, and the author, "1/4 · #N · jlevy", with the age at the row's end; then the
-   chevron, the state icon, and the title, which runs to the row's end, under the age, and
-   is cut there. A row is a container, so its chevron leads in the slot a folder's takes,
-   as its icon does (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). The row
-   centers its boxes; on the first line the number's line and the age share a baseline
-   (docs/design-system.md, "Row Text Shares a Baseline"), and the title is alone on its.
-   The DOM keeps the title first, so the row's accessible name leads with it. */
+/* Two lines and one target (mb-lkkt): first the chevron, the state icon, and the number's
+   line, a stack member's place, the number, and the author, "1/4 · #N · jlevy", with the
+   age at the row's end; then the title alone, from the text column after the two glyph
+   slots, under the age to the row's end, cut there. A row is a container, so its chevron
+   leads in the slot a folder's takes, as its icon does (`--tree-icon-slot`,
+   docs/design-system.md, "Container Rows"). The row centers its boxes; on the first line
+   the number's line and the age share a baseline (docs/design-system.md, "Row Text Shares
+   a Baseline"), and the title is alone on its. The DOM keeps the title first, so the row's
+   accessible name leads with it. */
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
@@ -970,7 +971,7 @@
   color: var(--text);
   font-size: var(--nav-font-size);
 }
-/* A stack member's place in its stack, before its number on the muted line, in the
+/* A stack member's place in its stack, before its number on the number's line, in the
    number's type and ink, "1/6" before "#N" (`.github-pulls-id`). Its own stack's position is
    bare, as the row sits under that stack's row, and another stack's is named by the Layers
    glyph. */
@@ -994,16 +995,18 @@
   justify-content: center;
   width: var(--tree-icon-slot);
 }
-/* The title's line: the chevron, the state icon, and the title, which runs under the age to
-   the row's end. A stack's row is one line, its own (`.github-pulls-stack-row`). */
-.github-pulls-row:not(.github-pulls-stack-row) > .github-pulls-toggle {
-  grid-row: 2;
+/* The first line's glyphs: the chevron and the state icon, centered on the number's line, as
+   a stack's row's chevron is on its one line (`.github-pulls-stack-row`). They sat on the
+   title's line until mb-3cbf. */
+.github-pulls-row > .github-pulls-toggle {
+  grid-row: 1;
   grid-column: 1;
 }
-.github-pulls-row:not(.github-pulls-stack-row) > .github-pull-state-icon {
-  grid-row: 2;
+.github-pulls-row > .github-pull-state-icon {
+  grid-row: 1;
   grid-column: 2;
 }
+/* The title's line: the title alone, from the text column, under the age to the row's end. */
 .github-pulls-row > .github-pulls-title {
   grid-row: 2;
   grid-column: 3 / -1;
