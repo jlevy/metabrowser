@@ -373,6 +373,7 @@ const MEASURE = `async (titles) => {
     out.quickSearchMatch = {
       ...read(matched),
       mark: mark ? { text: mark.textContent, ...style(mark) } : null,
+      marks: [...matched.querySelectorAll("mark")].map((node) => node.textContent),
     };
     palette.close?.();
     palette.dispose?.();
@@ -580,6 +581,8 @@ async function main() {
         JSON.stringify(rows?.prefixed),
       );
       // A Quick Search match in the prefix is marked there, as a match in a path is: bold.
+      // It is the title's one match, so the rest holds no mark: one there means a part's
+      // matches were placed from the wrong offset.
       const matched = measured.quickSearchMatch;
       check(
         "a Quick Search match in the prefix is marked in it, and the rest of the prefix is regular",
@@ -589,6 +592,11 @@ async function main() {
           matched.mark.weight === "700" &&
           matched.text === PULL,
         JSON.stringify(matched),
+      );
+      check(
+        "a Quick Search title's only marks are its matches",
+        JSON.stringify(matched?.marks) === JSON.stringify(["ledger"]),
+        JSON.stringify(matched?.marks),
       );
       if (process.env.MEASURE_OUT) {
         fs.writeFileSync(process.env.MEASURE_OUT, JSON.stringify(measured, null, 2));
