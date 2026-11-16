@@ -32,9 +32,11 @@
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base, commit] = process.argv.slice(2);
-// How long a page has to show what it is probed for. A page took 72 to 305 ms from its
-// navigation to its last probe, in CI and on a Mac at a load average of 7, so this is
-// generous; a probe that never shows fails by name well inside the test's 30 s run budget.
+// How long a page has to show what it is probed for. Each page's time from its navigation
+// to the end of its read, the figure to weigh this against, is on the session's stderr as
+// `<pass>, <path>: N ms`. A probe that never shows fails by name as it is found (`check`),
+// so it is named even when its waits, one per pass, carry the run past the test's budget:
+// the timeout's message includes this stderr.
 const PROBE_WAIT_MS = 4000;
 const PROBE_POLL_MS = 25;
 // How long Chrome is asked again for the faces of a text it reports none for, as it does
