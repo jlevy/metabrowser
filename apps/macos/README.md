@@ -399,6 +399,11 @@ the notarization steps skipped.
 
 ### Once per Mac
 
+For the first release, follow the owner steps in the
+[publishing plan](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)
+instead: they keep the identity and the notary profile in a release keychain that stays
+locked except during a release, and its runbook (`mb-63cx`) replaces this section.
+
 1. **A Developer ID Application certificate**, with its private key, in the login
    keychain. It needs the Apple Developer Program, and only the account holder can create
    one. `security find-identity -v -p codesigning` lists it as
@@ -419,13 +424,22 @@ the notarization steps skipped.
 
 ### Each Release
 
+The version change (`echo 0.1.0 > apps/macos/VERSION`) lands on `main` through a
+reviewed pull request; record that commit’s full SHA as `RELEASE_COMMIT`. After the
+owner approves it, create the `macos-v0.1.0` tag on GitHub at that SHA as
+[macOS App Releases](../../docs/publishing.md#macos-app-releases) describes, never by
+pushing it from a clone.
+Then build the approved commit:
+
 ```shell
-echo 0.1.0 > apps/macos/VERSION
-git commit -m "release(macos): 0.1.0" apps/macos/VERSION
-git tag -a macos-v0.1.0 -m "Metabrowser for macOS 0.1.0"
+git switch --detach "$RELEASE_COMMIT"
 make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
   APPLE_KEYCHAIN_PROFILE=metabrowser-notary
 ```
+
+The tag is permanent from then on: a failure that needs a change is released under the
+next version, and a transient one is retried at the same tag
+([Failure Handling](../../docs/publishing.md#failure-handling)).
 
 `scripts/release.sh` then runs, stopping at the first failure:
 
@@ -471,11 +485,10 @@ bounds the wait.
 `make macos-notarize FILE=build/Metabrowser-0.1.0-arm64.dmg` retries one
 step. `make macos-release NOTARIZE=0` rehearses every step without credentials.
 
-To publish, push the tag and attach the image and its checksum to a draft release, then
-review the draft and publish it:
+To publish, attach the image and its checksum to a draft release on the tag, then review
+the draft and publish it:
 
 ```shell
-git push origin macos-v0.1.0
 gh release create macos-v0.1.0 --draft --verify-tag --latest=false \
   --title "Metabrowser for macOS 0.1.0" \
   apps/macos/build/Metabrowser-0.1.0-arm64.dmg \

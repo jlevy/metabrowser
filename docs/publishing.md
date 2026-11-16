@@ -96,8 +96,8 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    The workflow checks out that exact tag, rejects non-semantic tags, and verifies that
    the derived package version matches before publishing.
    Its job runs only for a tag that starts with `v`, so a release of the macOS app,
-   tagged `macos-v<version>` ([apps/macos/README.md](../apps/macos/README.md)), never
-   reaches PyPI.
+   tagged `macos-v<version>` ([macOS App Releases](#macos-app-releases)), never reaches
+   PyPI.
 
 7. Watch the `Publish to PyPI` workflow through completion.
 
@@ -168,6 +168,40 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
 
+## macOS App Releases
+
+The native app is released on its own, under `macos-v<version>` tags, as a draft release
+that the owner publishes ([apps/macos/README.md](../apps/macos/README.md#each-release)).
+Its tag is created on GitHub before the draft, since a draft does not create its tag and
+`gh release create --verify-tag` refuses a missing one.
+One rule covers every app release:
+
+1. Record the approved, gated full commit SHA as `RELEASE_COMMIT`, as in
+   [Agent-Operated Releases](#agent-operated-releases).
+
+2. Confirm the tag is absent; this must fail with a 404:
+
+   ```shell
+   gh api repos/jlevy/metabrowser/git/ref/tags/macos-vX.Y.Z
+   ```
+
+3. Create the tag at that SHA, then confirm it resolves to `RELEASE_COMMIT`:
+
+   ```shell
+   gh api repos/jlevy/metabrowser/git/refs \
+     -f ref=refs/tags/macos-vX.Y.Z -f sha="$RELEASE_COMMIT"
+   gh api repos/jlevy/metabrowser/git/ref/tags/macos-vX.Y.Z --jq .object.sha
+   ```
+
+4. Create the draft on that tag with
+   `gh release create macos-vX.Y.Z --draft --verify-tag --latest=false` and the
+   release’s assets.
+
+Never push a tag from a clone: session git credentials are branch-scoped, and a tag made
+in a clone names whatever that clone has checked out rather than the approved SHA.
+Whether the agent or the owner runs these commands is open question Q8 of the
+[macOS publishing plan](project/specs/active/plan-2026-11-16-macos-app-publishing.md#open-questions).
+
 ## Release Notes
 
 Describe user-visible changes, compatibility notes, and important fixes.
@@ -177,13 +211,31 @@ unreleased consumer details.
 
 ## Failure Handling
 
+Treat a version as spent once its tag exists.
 PyPI releases are immutable.
-If publication succeeds with a defective artifact, fix the defect and publish a new
-patch version; do not delete and reuse the version.
+With immutable releases on, GitHub enforces the same for published releases: their tag
+“cannot be deleted while the release exists”, and once the release is deleted its tag
+name cannot be reused
+([Immutable releases](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/immutable-releases)).
+The
+[macOS publishing plan](project/specs/active/plan-2026-11-16-macos-app-publishing.md)
+has the owner turn them on before the app’s first release (its step O5), with a tag
+ruleset that stops `v*` and `macos-v*` tags being moved or deleted.
 
-If the workflow fails before publication, fix the workflow or trusted-publisher
-configuration on a branch, rerun `make verify`, and create the release only from the
-validated commit.
+- If publication succeeds with a defective artifact, on PyPI or in an app release, fix
+  the defect and publish a new patch version; do not delete and reuse the version.
+- If `publish.yml` fails for a transient reason, such as a network error or an outage,
+  or because of the trusted-publisher configuration on PyPI, fix that configuration if
+  needed and re-run the failed run, which checks out the same tag.
+- If it fails for a reason that needs a change to the code or the workflow, fix it on a
+  branch, rerun `make verify`, and release the next patch version from the validated
+  commit. A run takes its workflow from the tagged commit, so the existing tag cannot
+  pick up the fix.
+- The macOS app follows the same rule from the moment its `macos-v*` tag exists, which
+  is before anything is signed: a transient failure, such as a notary timeout, is
+  retried at the same tag, and a failure that needs a change, such as a rejected
+  notarization or a draft that fails its check, is fixed in a new commit released under
+  the next version.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
