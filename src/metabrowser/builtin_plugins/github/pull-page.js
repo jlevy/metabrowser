@@ -3761,6 +3761,20 @@ export function mountPullPage(container, ctx, mb) {
   // changed files. Its row is held from first paint, so the summary arriving with the
   // comparison moves nothing. Its class carries the diff plugin's styles for a summary.
   const summaryRow = h("div", { class: "github-pull-summary metabrowser-diff-host" });
+  // While the page waits for the comparison its summary is drawn from, the row holds the
+  // shell's pending placeholder (mb-onr2): the navigation tally's gray block and slow pulse
+  // (`.tally-pending`), after the quiet period (`.mb-delayed-loading`), where the summary's
+  // header will be. The reveal wrapper and the block are separate nodes, as a pending
+  // section's are, and kept across paints, so a wait's quiet period and pulse run once.
+  const summaryPending = h(
+    "span",
+    {
+      class: "mb-delayed-loading github-pull-summary-pending",
+      role: "status",
+      "aria-label": "Loading the summary of changes",
+    },
+    [h("span", { class: "tally-pending", "aria-hidden": "true" })],
+  );
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -4839,6 +4853,7 @@ export function mountPullPage(container, ctx, mb) {
     if (pull !== null || model.status !== "unavailable") {
       children.push(summaryRow);
     }
+    paintSummaryWait(model.comparison);
     placeChildren(header, children);
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
@@ -5375,8 +5390,10 @@ export function mountPullPage(container, ctx, mb) {
       // never waits for it after its comparison (docs/development.md, Asset Loading Tiers).
       void mb.loadChangedFilesTree().catch(() => {});
     },
-    // What it read is the page's Diff summary too, on every tab (mb-pb35).
+    // What it read is the page's Diff summary too, on every tab (mb-pb35), and a read that
+    // failed leaves its row empty, with no placeholder (mb-onr2).
     loaded: (comparison, payload) => showSummary(comparison, payload),
+    failed: (comparison) => summaryUnavailable(comparison),
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),
     isVisible: () => document.visibilityState === "visible",
@@ -5407,6 +5424,47 @@ export function mountPullPage(container, ctx, mb) {
     claim: 0,
     handle: /** @type {{dispose: () => void} | null} */ (null),
   };
+  /** The comparison whose read drew no Diff summary, whose row is left empty (mb-pb35). */
+  let summaryFailed = "";
+
+  /** @param {{left: string, right: string, route?: string}} comparison */
+  const comparisonKey = (comparison) =>
+    comparison.route ?? `${comparison.left}...${comparison.right}`;
+
+  /**
+   * The Diff summary's row while no summary is drawn in it: the pending placeholder while the
+   * page waits for *comparison*'s summary, and empty when the record names no comparison or
+   * its read drew none, so a placeholder never outlives its wait (mb-onr2). A summary drawn
+   * stays while a newer comparison is read, as content already shown does ("Refreshing
+   * Content"). The summary replaces the placeholder in the row, which keeps its height.
+   *
+   * @param {{left: string, right: string, route?: string} | null} comparison
+   */
+  function paintSummaryWait(comparison) {
+    if (summaryShown.handle !== null) {
+      return;
+    }
+    if (comparison !== null && comparisonKey(comparison) !== summaryFailed) {
+      if (summaryRow.firstChild !== summaryPending || summaryRow.childNodes.length !== 1) {
+        summaryRow.replaceChildren(summaryPending);
+      }
+    } else {
+      summaryPending.remove();
+    }
+  }
+
+  /**
+   * *comparison* was read, or could not be, and drew no Diff summary: its row is empty.
+   *
+   * @param {{left: string, right: string, route?: string}} comparison
+   */
+  function summaryUnavailable(comparison) {
+    if (listening.signal.aborted) {
+      return;
+    }
+    summaryFailed = comparisonKey(comparison);
+    paintSummaryWait(shown?.comparison ?? null);
+  }
 
   /**
    * Draw the page's Diff summary for *comparison* from what was read of it, once per
@@ -5418,8 +5476,12 @@ export function mountPullPage(container, ctx, mb) {
    * @param {unknown} raw
    */
   function showSummary(comparison, raw) {
-    const key = comparison.route ?? `${comparison.left}...${comparison.right}`;
-    if (listening.signal.aborted || raw === undefined || raw === null || summaryShown.key === key) {
+    const key = comparisonKey(comparison);
+    if (listening.signal.aborted || summaryShown.key === key) {
+      return;
+    }
+    if (raw === undefined || raw === null) {
+      summaryUnavailable(comparison);
       return;
     }
     const view =
@@ -5427,6 +5489,7 @@ export function mountPullPage(container, ctx, mb) {
         mb.getRegisteredView("diff", "diff")
       );
     if (typeof view?.summary !== "function") {
+      summaryUnavailable(comparison);
       return;
     }
     const claim = summaryShown.claim + 1;
@@ -5440,15 +5503,18 @@ export function mountPullPage(container, ctx, mb) {
         }
         if (handle === null) {
           summaryShown = { ...summaryShown, key: "" };
+          summaryUnavailable(comparison);
           return;
         }
         summaryShown.handle?.dispose();
         summaryShown = { key, claim, handle };
+        // In place of the placeholder or an older summary, in one step.
         summaryRow.replaceChildren(...stage.childNodes);
       },
       () => {
         if (summaryShown.claim === claim) {
           summaryShown = { ...summaryShown, key: "" };
+          summaryUnavailable(comparison);
         }
       },
     );
@@ -5475,6 +5541,9 @@ export function mountPullPage(container, ctx, mb) {
     );
     // Keep progress below the host so it cannot move the diff’s first row.
     body.replaceChildren(host, loading);
+    // Whether the diff read its document, which the page's Diff summary is drawn from: a
+    // diff that could not leaves the summary's row empty rather than pending (mb-onr2).
+    let documented = false;
     try {
       const raw = prefetch.take(comparison);
       await mb.ensureKindAssets("diff");
@@ -5484,6 +5553,7 @@ export function mountPullPage(container, ctx, mb) {
       const view = mb.getRegisteredView("diff", "diff");
       if (!view) {
         host.textContent = "The diff plugin is unavailable.";
+        summaryUnavailable(comparison);
         return;
       }
       const prefetched = await raw;
@@ -5517,7 +5587,10 @@ export function mountPullPage(container, ctx, mb) {
               ...(prefetched === undefined ? {} : { raw: prefetched }),
               // The page draws the Diff summary at its top; the diff draws none (mb-pb35).
               summary: false,
-              onDocument: (document_) => showSummary(comparison, document_),
+              onDocument: (document_) => {
+                documented = true;
+                showSummary(comparison, document_);
+              },
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
@@ -5535,6 +5608,9 @@ export function mountPullPage(container, ctx, mb) {
         loading.remove();
         handle?.dispose?.();
         return;
+      }
+      if (!documented) {
+        summaryUnavailable(comparison);
       }
       diffHandle = handle;
       watchCurrentFileAfterPaint(host, handle);
@@ -5576,6 +5652,9 @@ export function mountPullPage(container, ctx, mb) {
     } catch {
       if (!owns()) {
         return;
+      }
+      if (!documented) {
+        summaryUnavailable(comparison);
       }
       host.classList.remove("github-pull-diff-holding");
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);

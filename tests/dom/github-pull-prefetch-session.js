@@ -4,8 +4,9 @@
 // pull-request page asks: `want` on every paint of the Conversation tab, `take` when a diff
 // mounts, `dispose` when the page goes. Each step prints what it has sent, what it holds, what
 // a mount would be handed, and which answers it has told the page of, for the page's Diff
-// summary (`summarized`, mb-pb35). It asserts, and so prints nothing for, that a poll changes
-// nothing and that a disposed prefetch does nothing.
+// summary (`summarized`, mb-pb35), and which failed reads, so the summary's placeholder does
+// not outlive its wait (`failedTold`, mb-onr2). It asserts, and so prints nothing for, that a
+// poll changes nothing and that a disposed prefetch does nothing.
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -33,6 +34,7 @@ async function main() {
     const scheduled = [];
     let warmed = 0;
     const summarized = [];
+    const failedTold = [];
     const state = { visible };
     const prefetch = createComparisonPrefetch({
       load(comparison, signal) {
@@ -53,6 +55,9 @@ async function main() {
       loaded(comparison) {
         summarized.push(comparison.right);
       },
+      failed(comparison) {
+        failedTold.push(comparison.right);
+      },
       schedule(callback) {
         const handle = { callback, cancelled: false };
         scheduled.push(handle);
@@ -67,6 +72,7 @@ async function main() {
       prefetch,
       state,
       requests,
+      failedTold,
       idle() {
         for (const handle of scheduled.splice(0)) {
           if (!handle.cancelled) {
@@ -82,6 +88,7 @@ async function main() {
           ),
           assetsWarmed: warmed,
           summarized: [...summarized],
+          failedTold: [...failedTold],
         };
       },
     };
@@ -143,6 +150,8 @@ async function main() {
   say("a refreshed record moved the head: the old request is cancelled", movedHead);
   movedHead.idle();
   say("the new comparison is fetched", movedHead);
+  await tick();
+  assert(movedHead.failedTold.length === 0, "a cancelled request told the page it failed");
 
   const waitingOnOld = page();
   waitingOnOld.prefetch.want(first);
@@ -163,6 +172,17 @@ async function main() {
     handed: fromRefusal ?? null,
   });
 
+  const takenRefused = page();
+  takenRefused.prefetch.want(first);
+  takenRefused.idle();
+  const takenAnswer = takenRefused.prefetch.take(first);
+  takenRefused.requests[0].reject();
+  assert((await takenAnswer) === undefined, "a taken request that failed handed something");
+  say(
+    "a request a mount took fails: the diff asks and says why, and the page is told nothing",
+    takenRefused,
+  );
+
   const hidden = page({ visible: false });
   hidden.prefetch.want(first);
   hidden.idle();
@@ -178,6 +198,7 @@ async function main() {
   leaving.prefetch.dispose();
   say("the page goes: its request is cancelled and nothing is held", leaving);
   await tick();
+  assert(leaving.failedTold.length === 0, "a disposed prefetch told the page a read failed");
   leaving.prefetch.want(moved);
   leaving.idle();
   assert(leaving.requests.length === 1, "a disposed prefetch sent a request");

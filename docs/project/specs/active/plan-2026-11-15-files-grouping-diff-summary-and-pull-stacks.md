@@ -210,7 +210,7 @@ it:
 | 20 | `claude/diff-summary-top` | `mb-pb35` | On pull request 19; moves the Diff summary to the top of the commit and pull request pages, under the header whose rows pull requests 13 and 19 change |
 | 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 | 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
-| 25 | `claude/pull-header-status` | `mb-2u08` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, above the Diff summary row pull request 20 adds |
+| 25 | `claude/pull-header-status` | `mb-2u08`, `mb-onr2` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, and holds the pending placeholder in the Diff summary row pull request 20 adds |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -606,6 +606,16 @@ part of the same metadata lines”.
   row away in the one paint that changes the header and the body together.
   A label’s color, which the repository’s label set may bring later, changes no chip’s
   box.
+- **The Diff summary’s wait** (`mb-onr2`), the owner’s request of 2026-11-16: the
+  summary “takes a little longer to load on a PR view”, and while it does the page
+  should show “a gray block and the slight color changes (like we do in other parts of
+  the app consistently)”, “so that the layout doesn’t shift”.
+  The row holds the shell’s pending placeholder, the navigation tally’s block
+  (`.tally-pending`) after the quiet period (`.mb-delayed-loading`), from the row’s
+  start and as wide as a summary of one status; the summary replaces it in place, and a
+  read that draws none leaves the row empty, as pull request 20 left it.
+  A commit’s page stages its summary out of sight with its diff, so it does not wait in
+  view and needs none.
 
 ### API Changes
 
@@ -818,7 +828,7 @@ part of the same metadata lines”.
   the Diff summary, the Files totals and filter remark, the Commits tally, and the Pulls
   count, each number inline with its words.
 
-### Phase 25: Pull Request Header Lines (pull request 25)
+### Phase 25: Pull Request Header Lines and the Summary’s Wait (pull request 25)
 
 - [ ] `mb-2u08`: the freshness line is one of the header’s metadata lines, its Refresh,
   Fetch, and Switch to the head text actions, and a pull request with no labels has no
@@ -826,6 +836,11 @@ part of the same metadata lines”.
   420, and 360 px in both themes, with a header Chrome check that fails on the old
   layout, and pinned in the page mount session, the reserved-chrome and design
   vocabulary tests, and the design system.
+- [ ] `mb-onr2`: the header’s Diff summary row holds the shell’s pending placeholder
+  while its comparison is read, and is empty once a read draws none; the prefetch tells
+  the page of a failed read; measured in Chrome 152 at 560, 420, and 360 px in both
+  themes by the header Chrome session’s `summary-wait` part, which fails on the old
+  page, and pinned in the page mount and prefetch sessions and their goldens.
 
 ## Testing Strategy
 

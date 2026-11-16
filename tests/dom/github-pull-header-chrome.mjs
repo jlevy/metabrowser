@@ -14,7 +14,9 @@
 // start of a CI job, the slowest there, has a case of its own. Then the header at its widest
 // two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
-// the run badge (`badges`), and the label chips' colors in both themes (`labels`). With no
+// the run badge (`badges`), the label chips' colors in both themes (`labels`), and the Diff
+// summary's row while its comparison is read, as it arrives, and as it fails
+// (`summary-wait`). With no
 // part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
@@ -606,6 +608,145 @@ const RECORDS = [
   ["merged", { longNames: true, avatar: true }],
   ["current", { noLabels: true }],
 ];
+// In the page: the Diff summary's row while the page waits for its comparison, and as it
+// arrives or fails (mb-onr2). The page is the production one, its diff view a stand-in whose
+// prefetch is a read the session answers and whose summary is the diff plugin's own
+// mountDiffSummary, as the plugin's summary draws it. The row holds the shell's pending
+// placeholder, `.tally-pending`, after the quiet period, and the summary takes its place
+// moving nothing; a read that fails leaves the row empty, at its height.
+const SUMMARY_WAIT = `async (width, theme, outcome) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const diff = (window.__diff ??= await import("/diff/diff-view.js"));
+  const body = structuredClone(recorded.current.body);
+  document.documentElement.dataset.theme = theme;
+  window.fetch = async () => new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  let answer = null;
+  const read = new Promise((resolve, reject) => {
+    answer = { resolve, reject };
+  });
+  const kinds = [...Array(2).fill("added"), ...Array(3).fill("deleted"), ...Array(30).fill("modified")];
+  const files = kinds.map((kind, at) => ({
+    kind,
+    ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+    ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
+    additions: 30,
+    deletions: 90,
+  }));
+  const comparison = { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } };
+  const view = {
+    prefetch: () => read,
+    summary: async (slot, ctx) =>
+      diff.mountDiffSummary(slot, ctx.raw, mb, { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} }),
+  };
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: (callback) => {
+        const id = setTimeout(callback, 0);
+        return () => clearTimeout(id);
+      },
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => {},
+      getRegisteredView: () => view,
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      titleNodes: mb.titleNodes,
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await Promise.resolve();
+  const header = container.querySelector(".github-pull-header");
+  const row = header.querySelector(".github-pull-summary");
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => node.getBoundingClientRect();
+  const wrapper = () => row.querySelector(".github-pull-summary-pending");
+  // Inside the quiet period: the placeholder is in the row and not yet seen.
+  const quiet = wrapper() ? getComputedStyle(wrapper()).visibility : null;
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const delay = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--loading-state-delay"));
+  await new Promise((resolve) => setTimeout(resolve, delay * 2));
+  await frames();
+  const contentLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+  const places = () => ({
+    rows: [...header.children].map((child) => [
+      child.tagName === "H1" ? "title" : [...child.classList].find((c) => c.startsWith("github-pull-")).slice(12),
+      round(box(child).top - box(header).top),
+      round(box(child).height),
+    ]),
+    tabBar: round(box(container.querySelector(".tab-bar")).top - box(header).top),
+  });
+  const block = row.querySelector(".tally-pending");
+  const probe = document.createElement("span");
+  probe.style.background = "var(--tally-skeleton-bg)";
+  header.append(probe);
+  const skeleton = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  const waiting = {
+    quiet,
+    shown: block ? getComputedStyle(block).visibility : null,
+    pulse: block ? getComputedStyle(block).animationName : null,
+    ground: block ? getComputedStyle(block).backgroundColor === skeleton : false,
+    left: block ? round(box(block).left - contentLeft) : null,
+    width: block ? round(box(block).width) : null,
+    height: block ? round(box(block).height) : null,
+    em: block ? round(parseFloat(getComputedStyle(block).fontSize)) : null,
+    centre: block ? round((box(block).top + box(block).bottom) / 2 - (box(row).top + box(row).bottom) / 2) : null,
+    row: round(box(row).height),
+    places: places(),
+  };
+  if (outcome === "fails") {
+    answer.reject(new Error("refused"));
+  } else {
+    answer.resolve(comparison);
+  }
+  const deadline = performance.now() + 5000;
+  const settled = () =>
+    outcome === "fails" ? row.querySelector(".tally-pending") === null : row.querySelector(".diff-summary") !== null;
+  while (!settled() && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await frames();
+  const summary = row.querySelector(".diff-summary");
+  const chevron = row.querySelector(".diff-summary-chevron svg, .diff-summary-chevron");
+  const words = row.querySelector(".diff-summary-files");
+  const arrived = {
+    placeholder: row.querySelector(".tally-pending") !== null,
+    summary: summary !== null,
+    children: row.children.length,
+    row: round(box(row).height),
+    places: places(),
+    toggleLeft: summary ? round(box(summary).left - contentLeft) : null,
+    chevronLeft: chevron ? round(box(chevron).left - contentLeft) : null,
+    wordsLeft: words ? round(box(words).left - contentLeft) : null,
+    textRight: (() => {
+      if (!summary) return null;
+      const range = document.createRange();
+      range.selectNodeContents(summary);
+      return round(range.getBoundingClientRect().right - contentLeft);
+    })(),
+  };
+  handle.dispose();
+  delete document.documentElement.dataset.theme;
+  return { waiting, arrived };
+}`;
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
 // the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
@@ -998,7 +1139,15 @@ const nearColor = (value, wanted) =>
   channels(value)?.every(
     (channel, at) => Math.abs(channel - wanted[at]) <= (at === 3 ? 0.005 : 1),
   ) ?? false;
-const PARTS = ["launch", ...Object.keys(HEADER_PARTS), "offers", "pulls", "badges", "labels"];
+const PARTS = [
+  "launch",
+  ...Object.keys(HEADER_PARTS),
+  "offers",
+  "pulls",
+  "badges",
+  "labels",
+  "summary-wait",
+];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
   const name = at < 0 ? "all" : process.argv[at + 1];
@@ -1057,6 +1206,7 @@ async function main() {
         lap(`${faces.length} faces loaded`);
       }
       const offersDrawn = new Set();
+      const summaryWaits = [];
       const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
       for (const width of widths) {
         const seen = {};
@@ -1256,6 +1406,61 @@ async function main() {
       }
       if (runs("badges")) {
         lap("the run badge");
+      }
+      if (runs("summary-wait")) {
+        for (const theme of ["light", "dark"]) {
+          for (const width of [560, 420, 360]) {
+            const where = `${theme}, ${width} px`;
+            const drawn = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "arrives")`,
+            );
+            const { waiting, arrived } = drawn;
+            check(
+              `${where}: while the comparison is read, the Diff summary's row holds the pending placeholder, unseen in the quiet period`,
+              waiting.quiet === "hidden" &&
+                waiting.shown === "visible" &&
+                waiting.pulse === "tally-pending-pulse" &&
+                waiting.ground === true,
+              JSON.stringify(waiting),
+            );
+            check(
+              `${where}: the placeholder is on the row's line, from the row's start, as wide as a summary of one status`,
+              waiting.left !== null &&
+                Math.abs(waiting.left) <= 0.5 &&
+                Math.abs(waiting.centre) <= 0.5 &&
+                Math.abs(waiting.width - 17 * waiting.em) <= 0.5 &&
+                Math.abs(waiting.height - 0.85 * waiting.em) <= 0.5 &&
+                Math.abs(waiting.row - 24) <= 0.5,
+              JSON.stringify(waiting),
+            );
+            check(
+              `${where}: the summary takes the placeholder's place, and nothing in the header or under it moves`,
+              !arrived.placeholder &&
+                arrived.summary &&
+                arrived.children === 1 &&
+                Math.abs(arrived.row - waiting.row) <= 0.5 &&
+                JSON.stringify(arrived.places) === JSON.stringify(waiting.places),
+              JSON.stringify({ waiting, arrived }),
+            );
+            const failed = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "fails")`,
+            );
+            check(
+              `${where}: a read that fails leaves the row empty, at its height, and moves nothing`,
+              failed.waiting.shown === "visible" &&
+                !failed.arrived.placeholder &&
+                !failed.arrived.summary &&
+                failed.arrived.children === 0 &&
+                JSON.stringify(failed.arrived.places) === JSON.stringify(failed.waiting.places),
+              JSON.stringify(failed),
+            );
+            summaryWaits.push({ where, waiting, arrived });
+          }
+        }
+        process.stderr.write(
+          `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
+        );
+        lap("the Diff summary's wait");
       }
       if (runs("labels")) {
         const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));

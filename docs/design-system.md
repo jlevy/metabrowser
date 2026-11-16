@@ -1374,12 +1374,30 @@ for one file too; and a pull request’s page as its header’s last row
 ([Layout](#layout)), which the page draws from the comparison it reads, through the diff
 view’s `summary`, while its Changes diff draws none (`summary: false`). Elsewhere, as in
 a patch file, a diff of more than one file opens with it in the toolbar beside the
-layout control. Its header is one row-like disclosure toggle that leads with the
-registry’s chevron in the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2
-added, 3 removed, 30 modified) +1,234 −3,423”. The breakdown lists only the statuses
-some file has, in one order (added, removed, modified, renamed, then copied, type
-changed, unmerged, and any other), in `--muted`; numbers use the shell’s number format
-and are bold, the file count’s and each status’s, with the words regular
+layout control. While a page waits for the comparison its summary is drawn from, the
+summary’s place holds the shell’s pending placeholder: the navigation tally’s gray block
+and slow pulse (`.tally-pending`), shown only after the quiet period
+(`.mb-delayed-loading`, `--loading-state-delay`), in the header’s type, centred on its
+row’s line from the row’s start, and as wide as a summary of one status, so the summary
+takes its place and nothing moves
+([Loading States Are Shapes, Not Sentences](#loading-states-are-shapes-not-sentences)).
+A read that draws no summary, because it failed or its comparison is not a valid
+document, leaves the place empty, so a placeholder never outlives its wait, and a
+summary already drawn stays while a newer comparison is read
+([Refreshing Content](#refreshing-content)). A pull request’s header shows it on every
+tab. A commit’s page never shows it: the shell stages that page out of sight until its
+diff has drawn the summary, so its place does not wait in view.
+Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 221 by 11.05
+px, at the row’s start and centred on its line, the row is 24 px before and after the
+summary arrives, and the tab bar under it does not move (mb-onr2).
+`tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds that, and
+`tests/dom/github-pull-page-mount-behavior.js` which of them the row holds in each
+state. Its header is one row-like disclosure toggle that leads with the registry’s
+chevron in the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2 added, 3
+removed, 30 modified) +1,234 −3,423”. The breakdown lists only the statuses some file
+has, in one order (added, removed, modified, renamed, then copied, type changed,
+unmerged, and any other), in `--muted`; numbers use the shell’s number format and are
+bold, the file count’s and each status’s, with the words regular
 ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)); the totals
 are the [inline change stats](#inline-change-stats); and “(estimated)” follows totals
 that are not exact. Its accessible name says the same in words.
@@ -1592,10 +1610,10 @@ Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px l
 row stood between it and the row of ages, 32 px under that row, and the header was 263
 px in every state (mb-2u08). The header’s last row is the pull request’s
 [Diff summary](#diff-summary), on every tab, so its counts are at the page’s top and not
-inside Changes. The row is held at `--ui-row-height` from first paint, empty until the
-comparison is read, and the summary’s header is one line, its breakdown cut short at its
-end, so the summary that arrives moves nothing; opened, its tree pushes the tabs down,
-as the reader asked.
+inside Changes. The row is held at `--ui-row-height` from first paint, holding the
+[pending placeholder](#diff-summary) while the comparison is read, and the summary’s
+header is one line, its breakdown cut short at its end, so the summary that arrives
+moves nothing; opened, its tree pushes the tabs down, as the reader asked.
 On every tab but Changes the page reads the comparison once it is idle, as it would for
 Changes; on Changes it draws the summary from what the diff read.
 It is drawn once for each comparison it shows and kept across tabs.

@@ -147,6 +147,24 @@
 .github-pull-summary > .diff-summary-body {
   align-self: stretch;
 }
+/* While the page waits for the comparison, the row holds the shell's pending placeholder
+   (mb-onr2; docs/design-system.md, "Diff Summary"): the navigation tally's gray block and slow
+   pulse (`.tally-pending`), shown after the quiet period (`.mb-delayed-loading`), in the
+   summary header's type, centred on the row's line from the row's start, and as wide as a
+   summary of one status. The summary takes its place in the row, which keeps its height, so
+   nothing moves. Measured in Chrome 152, a summary header of one status, from "1 changed file
+   (1 modified) +3 −1" to "8 changed files (8 modified) +120 −30", is 17.4 to 18.4 em of its
+   type, its text ending 16.6 to 17.6 em from the row's start; of three statuses, 30.4 em. */
+.github-pull-summary-pending {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  min-height: var(--ui-row-height);
+  font-size: var(--nav-font-size);
+}
+.github-pull-summary-pending > .tally-pending {
+  width: min(100%, 17em);
+}
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
    widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
    closed. One line in every state: the badge's box and the ages' line are both 18 px in

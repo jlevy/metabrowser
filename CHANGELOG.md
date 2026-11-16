@@ -9,7 +9,12 @@ All notable changes to Metabrowser are documented here.
   labels where the pull request has them.
   Its Refresh or Fetch and Switch to the head are text actions, as Browse code is, in
   place of bordered buttons that made the line 26 px.
-  See [The Pull Request Page](docs/design-system.md#layout).
+  While the page reads the comparison its Diff summary is drawn from, the summary’s row
+  shows the gray, slowly pulsing block the Commits tally shows while it counts, after
+  the same short quiet period, and the summary takes its place without moving anything;
+  a comparison that cannot be read leaves the row empty, as it was.
+  See [The Pull Request Page](docs/design-system.md#layout) and
+  [Diff Summary](docs/design-system.md#diff-summary).
 
 - Every count summary bolds its numbers and keeps its words regular.
   The numbers are now bold in the Diff summary’s header, “**8** changed files (**8**

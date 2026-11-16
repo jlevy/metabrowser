@@ -23,6 +23,7 @@
  *   load(comparison: ComparisonEnds, signal: AbortSignal): Promise<unknown>,
  *   warm(): void,
  *   loaded?(comparison: ComparisonEnds, payload: unknown): void,
+ *   failed?(comparison: ComparisonEnds): void,
  *   schedule(callback: () => void): unknown,
  *   cancel(handle: unknown): void,
  *   isVisible(): boolean,
@@ -94,6 +95,11 @@ export function createComparisonPrefetch(deps) {
       () => {
         if (entry.phase === "fetching") {
           entry.phase = "failed";
+          // A read no mount waits on failed: the page's Diff summary has nothing to wait for
+          // (mb-onr2). A mount that took it asks for itself and says why itself.
+          if (current === entry && !disposed) {
+            deps.failed?.(comparison);
+          }
         }
         return undefined;
       },
