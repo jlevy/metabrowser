@@ -1,16 +1,18 @@
-// Control-N and Control-P in a real engine (mb-lnqj): how the platform's Chrome names the
-// chord, and real key events through the registry's one document listener.
+// Control-N and Control-P in a real engine (mb-lnqj): whether the platform's Chrome binds
+// the chords, and real key events through the registry's one document listener.
 //
 // The browserless sessions stub the navigator and build each key event by hand, so this
 // loads the production registry (static/keyboard-shortcuts.js) and the Pulls tab's keys
-// (static/pulls-nav.js) into a blank page, registers the production stack pair against a
+// (static/pulls-nav.js) into a blank page, registers the production keys against a
 // stand-in stack, and presses keys through the DevTools input domain, which delivers them
-// to the page as real `keydown` events. It reports what each press did to the stack,
-// whether the page cancelled it, and how Help writes the chord on this platform.
+// to the page as real `keydown` events. The chords are bound only where Control reaches
+// the page, macOS and iOS, as this Chrome's navigator says. It reports whether Control
+// reaches the page here, what each press did to the stack, whether the page cancelled it,
+// and how Help writes the chord where it is bound.
 //
 // The browser's own shortcuts are out of its reach: protocol input goes to the page
-// without passing the browser's accelerators, so whether Chrome on Windows and Linux keeps
-// Ctrl+N for a new window cannot be shown here (docs/design-system.md, "Control Chords").
+// without passing the browser's accelerators, so what Chrome on Windows and Linux does
+// with Ctrl+N and Ctrl+P cannot be shown here (docs/design-system.md, "Control Chords").
 //
 // Usage: node control-chords-chrome.mjs, with CHROME_BIN set, and CHROME_PROFILES naming
 // where Chrome's profile goes (tests/dom/chrome-session.mjs).
@@ -57,6 +59,7 @@ try {
           ctrlKey: event.ctrlKey,
           altKey: event.altKey,
           metaKey: event.metaKey,
+          repeat: event.repeat,
           prevented: event.defaultPrevented,
         };
       }
@@ -80,7 +83,7 @@ try {
   })()`);
 
   /** Press one letter with `modifiers`, where `focus` says, and say what it did. */
-  async function press(letter, modifiers, focus = null) {
+  async function press(letter, modifiers, focus = null, autoRepeat = false) {
     await chrome.evaluate(
       focus === null
         ? "document.activeElement?.blur(); true"
@@ -99,6 +102,7 @@ try {
       key,
       code,
       windowsVirtualKeyCode,
+      autoRepeat,
       ...(text === undefined ? {} : { text }),
     });
     await chrome.send("Input.dispatchKeyEvent", {
@@ -119,6 +123,7 @@ try {
     "Control-N": await press("n", CONTROL),
     "Control-P": await press("p", CONTROL),
     "Control-Shift-N": await press("n", CONTROL | SHIFT),
+    "Control-P held": await press("p", CONTROL, null, true),
     "N alone": await press("n", 0),
     "P alone": await press("p", 0),
     "Control-Alt-N, as AltGr": await press("n", CONTROL | ALT),
@@ -127,12 +132,13 @@ try {
     "Control-P in a text area": await press("p", CONTROL, "area"),
   };
   const written = await chrome.evaluate(`(() => {
-    const presented = window.registry.present("pulls.stack.top").bindings;
+    const presented = window.registry.present("pulls.stack.top")?.bindings;
     return {
       platform: navigator.userAgentData?.platform || navigator.platform,
-      visible: presented.visible,
-      spoken: presented.spoken,
-      aria: presented.ariaKeyshortcuts,
+      reaches: window.registry.controlReachesPage(),
+      visible: presented?.visible ?? null,
+      spoken: presented?.spoken ?? null,
+      aria: presented?.ariaKeyshortcuts ?? null,
     };
   })()`);
   console.log(JSON.stringify({ presses, written }));

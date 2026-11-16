@@ -316,7 +316,7 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer; and
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
-  Chrome’s input and reads how its navigator has Help write them.
+  Chrome’s input and reads whether its navigator binds them, as on a Mac, or not.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
@@ -556,16 +556,16 @@ surface. Author, action, and age must share a baseline while branch chips stay s
 On a PR in a known stack, open the position menu.
 Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
 click, and keyboard selection.
-Use Control-P toward the base and Control-N toward the top, with and without Shift;
-preserve the selected PR tab and clear the old file selection.
-Check that `N` alone does nothing there and `P` alone focuses the Pulls list rather than
-walking the stack, that Help and the Shift strip write the chords `⌃N` and `⌃P` on a Mac
-and `Ctrl+N` and `Ctrl+P` elsewhere, and, on a keyboard with AltGr, that AltGr with `N`
-or `P` types its character.
-With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row and not the
-stack. Confirm endpoint handling, that an editor or open dialog retains its keys, and
-that Control-N and Control-P in Quick Search’s field move its caret on macOS. On Windows
-and Linux, Chrome keeps Ctrl+N for a new window, so check Ctrl+P alone there.
+On a Mac, use Control-P toward the base and Control-N toward the top, with and without
+Shift, and hold one to see it walk once; preserve the selected PR tab and clear the old
+file selection. Check that `N` alone does nothing there and `P` alone focuses the Pulls
+list rather than walking the stack, and that Help and the Shift strip write the chords
+`⌃N` and `⌃P`. With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row
+and not the stack. Confirm endpoint handling, that an editor or open dialog retains its
+keys, and that Control-N and Control-P in Quick Search’s field move its caret on macOS.
+On Windows and Linux, check that Help and the Shift strip list neither chord, that
+Ctrl+N opens a new window and Ctrl+P the browser’s Print, and that the position menu
+walks the stack.
 
 ### Quick Search and Main Tabs
 
@@ -587,8 +587,8 @@ After Git discovery, check Files, Pulls, and Commits order and their letters in 
 with no `⌘` beside them.
 Check that `F`, `P`, and `H` open each tab with and without Shift, that `R` opens
 nothing, and that Command or Ctrl with a letter or digit is left to the browser, but for
-Control-N and Control-P on a stack’s pull request, so Command or Ctrl with a digit still
-switches browser tabs.
+Control-N and Control-P on a stack’s pull request on a Mac, so Command or Ctrl with a
+digit still switches browser tabs.
 In a plain folder, check that `F` still opens Files and that `P` and `H` leave the
 selection alone. [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the full
 scheme.

@@ -294,6 +294,8 @@ async function heldTabKeys(page) {
     console,
     document: globalThis.document,
     HTMLElement: LiveElement,
+    // A Mac's: the stack's Control chords are bound only where Control reaches the page.
+    navigator: { platform: "MacIntel" },
     METABROWSER_SETTINGS: {
       RESERVED_SHELL_KEYS: Object.fromEntries([..."fphtjkuw123456789"].map((key) => [key, null])),
     },

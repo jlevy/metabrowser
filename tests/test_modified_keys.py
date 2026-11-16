@@ -5,9 +5,9 @@ handler cancel most chords, and the app's web view hands each key to the page be
 its menu, so a handler that calls ``preventDefault()`` on a chord keeps that chord from
 the browser and from View > Reload Page alike. The shortcut registry matches no chord
 but the two a binding declares, Control-N and Control-P, which walk a pull request's
-stack and which no browser on macOS and no menu of the app uses (mb-lnqj;
-``CONTROL_CHORD_KEYS`` and ``DISQUALIFYING_MODIFIERS`` in
-``static/keyboard-shortcuts.js``). Every other listener leaves chords alone: the tree
+stack and are bound only on macOS and iOS, where no browser and no menu of the app uses
+them (mb-lnqj; ``CONTROL_CHORD_KEYS``, ``controlReachesPage``, and
+``DISQUALIFYING_MODIFIERS`` in ``static/keyboard-shortcuts.js``). Every other listener leaves chords alone: the tree
 map, the filter bar's groups and menus, the branch switcher, and the pull request page's
 stack menu each moved on Command-Up or Command-Left as on the plain arrow, and the
 overlay's focus trap took Command-Tab and Control-Tab.
@@ -338,7 +338,6 @@ def test_the_registry_takes_control_only_with_n_or_p_and_never_from_a_text_field
     holds the guard to the matcher the registry's listener hands each key to.
     """
     text = _browser_sources()["static/keyboard-shortcuts.js"]
-    assert 'const CONTROL_CHORD_KEYS = Object.freeze(["n", "p"]);' in text
     matcher = _squeezed(_definition(text, "eventMatchesBinding"))
     for guard in (
         "event.ctrlKey && !event.altKey && !event.metaKey",

@@ -2,9 +2,9 @@
 
 (() => {
   /**
-   * One key, or Control with one of the letters `CONTROL_CHORD_KEYS` names. A binding
-   * states no other modifier policy (docs/design-system.md, "Binding Grammar and
-   * Accessibility" and "Control Chords").
+   * One key, or Control with one of the letters `CONTROL_CHORD_KEYS` names, registered
+   * only where `controlReachesPage()`. A binding states no other modifier policy
+   * (docs/design-system.md, "Binding Grammar and Accessibility" and "Control Chords").
    *
    * @typedef {object} ShortcutBinding
    * @property {string} key
@@ -92,13 +92,17 @@
   /** @type {readonly ("altKey" | "ctrlKey" | "metaKey")[]} */
   const DISQUALIFYING_MODIFIERS = Object.freeze(["altKey", "ctrlKey", "metaKey"]);
   // The letters a binding may hold with Control, the one chord the registry binds: N and
-  // P, next and previous, as in Emacs, readline, and the macOS text system. On macOS no
-  // browser or app command is Control with a letter, so the chord reaches the page;
-  // elsewhere Control is the browser's command key, and Chrome keeps Ctrl+N for a new
-  // window (docs/design-system.md, "Control Chords"). Adding a letter is a design
-  // decision, made there first.
+  // P, next and previous, as in Emacs, readline, and the macOS text system. A chord is
+  // bound only where it reaches the page, macOS and iOS (`controlReachesPage`), where
+  // no browser or app command is Control with a letter; elsewhere Control is the
+  // browser's command key, Ctrl+N a new window and Ctrl+P Print, and stays the browser's
+  // (docs/design-system.md, "Control Chords"). Adding a letter is a design decision,
+  // made there first.
   /** @type {readonly string[]} */
   const CONTROL_CHORD_KEYS = Object.freeze(["n", "p"]);
+  // How a Control chord is written, `⌃N`, as macOS and iOS write it: the only platforms
+  // where one is bound.
+  const CONTROL_GLYPH = "⌃";
   // Scopes that are always active below the activated ones, in order. `plugin` holds the
   // keys plugin views attach through static/plugin-shortcuts.js, below every shell key.
   const PERMANENT_SCOPES = Object.freeze(["global", "view-tabs", "plugin"]);
@@ -258,7 +262,8 @@
     }
     // Control is declared, never implied, and only with the letters the rule names.
     if (control !== true || !CONTROL_CHORD_KEYS.includes(key)) {
-      throw new TypeError(`Shortcut bindings take Control only with N or P: ${binding.key}`);
+      const letters = CONTROL_CHORD_KEYS.map((letter) => letter.toUpperCase()).join(" or ");
+      throw new TypeError(`Shortcut bindings take Control only with ${letters}: ${binding.key}`);
     }
     return Object.freeze({ control: true, key });
   }
@@ -270,11 +275,12 @@
   }
 
   /**
-   * Whether the platform writes Control as `⌃`, as macOS and iOS do. Read from the page's
-   * navigator as a chord is described; without one, as in a browserless session, it is
-   * the `Ctrl+` of every other platform.
+   * Whether a Control chord reaches the page: on macOS and iOS, where Command is the
+   * command key and no browser or app command is Control with a letter. Elsewhere Control
+   * is the browser's command key, so no chord is bound there. Read from the page's
+   * navigator, client hints first; without one, as in a browserless session, it is false.
    */
-  function writesControlAsGlyph() {
+  function controlReachesPage() {
     const navigator =
       /** @type {{platform?: unknown, userAgentData?: {platform?: unknown}} | undefined} */ (
         window.navigator
@@ -284,9 +290,8 @@
   }
 
   /**
-   * A binding's names: its key's, or for a Control chord the platform's way of writing
-   * it, `⌃N` on macOS and `Ctrl+N` elsewhere, spoken "Control N", and `Control+N` for
-   * `aria-keyshortcuts`.
+   * A binding's names: its key's, or for a Control chord `⌃N`, as macOS and iOS write it,
+   * spoken "Control N", and `Control+N` for `aria-keyshortcuts`.
    *
    * @param {ShortcutBinding} binding
    * @returns {Readonly<{aria: string, spoken: string, visible: string}>}
@@ -300,7 +305,7 @@
     return Object.freeze({
       aria: `Control+${key.aria}`,
       spoken: `Control ${key.spoken}`,
-      visible: writesControlAsGlyph() ? `⌃${key.visible}` : `Ctrl+${key.visible}`,
+      visible: `${CONTROL_GLYPH}${key.visible}`,
     });
   }
 
@@ -489,9 +494,10 @@
 
   /**
    * One keycap per alternative, joined by "or", or a run's two ends joined by a dash.
-   * An alternative is one keycap, a Control chord's included, written as the platform
-   * writes it, `⌃N`; a group of them is spoken as one visually hidden phrase, such as
-   * "T or slash" or "1 to 9", with its keycaps and separators hidden.
+   * An alternative is one keycap, a Control chord's included, `⌃N`; a group of them is
+   * spoken as one visually hidden phrase, such as "T or slash" or "1 to 9", with its
+   * keycaps and separators hidden. A chord alone is spoken so too, "Control N", since a
+   * screen reader may name `⌃` by its Unicode name rather than as Control.
    *
    * @param {Document} hostDocument
    * @param {HTMLElement} container
@@ -499,7 +505,9 @@
    */
   function appendBinding(hostDocument, container, presentation) {
     const alternatives = presentation.visible.length > 1;
-    if (alternatives) {
+    const phrased =
+      alternatives || presentation.visible.some((label) => label.startsWith(CONTROL_GLYPH));
+    if (phrased) {
       const spoken = hostDocument.createElement("span");
       spoken.className = "visually-hidden";
       spoken.textContent = presentation.spoken;
@@ -514,7 +522,7 @@
         container.append(separator);
       }
       const keycap = createKeycap(hostDocument, label);
-      if (alternatives) {
+      if (phrased) {
         keycap.setAttribute("aria-hidden", "true");
       }
       container.append(keycap);
@@ -731,6 +739,14 @@
         throw new Error("Shortcut registry is disposed");
       }
       validateCommand(descriptor);
+      // A chord is bound only where it reaches the page; elsewhere it stays the browser's,
+      // and its caller registers none (`controlReachesPage`).
+      if (
+        descriptor.bindings.some((binding) => normalizeBinding(binding).control) &&
+        !controlReachesPage()
+      ) {
+        throw new TypeError(`Control chords are bound only on macOS and iOS: ${descriptor.id}`);
+      }
       if (commands.has(descriptor.id)) {
         throw new TypeError(`Duplicate shortcut command id: ${descriptor.id}`);
       }
@@ -1566,6 +1582,7 @@
       attachNumbered,
       attachTarget,
       batch,
+      controlReachesPage,
       describeBindings,
       describeKey,
       dispose,
@@ -1596,6 +1613,7 @@
     appendBinding,
     appendKey,
     bindingSignature,
+    controlReachesPage,
     create,
     describeBindings,
     describeKey,

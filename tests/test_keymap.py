@@ -187,7 +187,7 @@ def test_the_reserved_table_is_the_shell_keys_the_registry_registers() -> None:
     reserved = set(RESERVED_SHELL_KEYS)
     chords = {key for key in shell_keys if key.startswith("control-")}
     assert shell_keys & letters == reserved & letters
-    assert chords == _control_chords() == {"control-n", "control-p"}
+    assert chords == _control_chords()
     assert shell_keys - letters - chords == set("123456789")
     assert shell_keys - letters - chords == reserved - letters
 

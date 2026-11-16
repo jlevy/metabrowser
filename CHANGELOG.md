@@ -11,12 +11,12 @@ All notable changes to Metabrowser are documented here.
   See [Keyboard Shortcuts](docs/design-system.md#keyboard-shortcuts).
 
 - Walking a pull request’s stack is now Control-N, to the next member toward the stack’s
-  top, and Control-P, to the previous one toward its base, so `N` and `P` alone are
-  free. Help and the Shift strip write them `⌃N` and `⌃P` on a Mac and `Ctrl+N` and
-  `Ctrl+P` elsewhere. A text field keeps both, since macOS moves its caret with them, and
-  AltGr with `N` or `P` still types its character.
-  On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
-  the stack. For plugin authors, a manifest view may now take `N` as its key.
+  top, and Control-P, to the previous one toward its base, on macOS and iOS, so `N` and
+  `P` alone are free. Help and the Shift strip write them `⌃N` and `⌃P`, and holding one
+  walks once. A text field keeps both, since macOS moves its caret with them.
+  On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
+  Help lists neither and the stack menu walks the stack there.
+  For plugin authors, a manifest view may now take `N` as its key.
   See [Control Chords](docs/design-system.md#control-chords).
 
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s

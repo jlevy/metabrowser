@@ -211,6 +211,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     removeEventListener: (type, listener, options) =>
       browserWindow.removeEventListener(type, listener, options),
     setTimeout: (callback, delayMs) => clock.schedule(callback, delayMs),
+    // A Mac's navigator: the stack's Control chords are bound only where Control reaches
+    // the page (static/keyboard-shortcuts.js, `controlReachesPage`), and
+    // pulls-nav-session.js shows Windows and Linux binding none.
+    navigator: { platform: "MacIntel" },
   };
   context.window = context;
   context.globalThis = context;
@@ -746,9 +750,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
           if (/^[A-Z]$/.test(label)) {
             shellCommands.add(`${label.toLowerCase()} ${id}: ${copy.action}`);
           }
-          // A Control chord, as a platform without the ⌃ glyph writes it: this session's
-          // window has no navigator.
-          const chord = /^Ctrl\+([A-Z])$/.exec(label);
+          // A Control chord, written as a Mac writes it.
+          const chord = /^⌃([A-Z])$/.exec(label);
           if (chord) {
             shellKeys.add(`control-${chord[1].toLowerCase()}`);
             shellCommands.add(`control-${chord[1].toLowerCase()} ${id}: ${copy.action}`);
