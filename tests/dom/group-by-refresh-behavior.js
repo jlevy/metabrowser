@@ -7,6 +7,10 @@
 //   before it paints, a level at a time, so it paints every one of them open at once; a
 //   fetch that fails is asked for once, and the paint still runs.
 // - A refresh another one overtakes while its folders are on their way paints nothing.
+// - The wait for a choice's first sections (renderRegrouping): with the scan row hidden,
+//   its words are set at once and shown past the quiet period by CSS; with the row already
+//   showing a scan, the scan's words stay through the quiet period, so an answer inside it
+//   changes none of them, and the wait's end clears the timer and paints the scan again.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -211,6 +215,74 @@ function session(setup) {
       ["groups", false],
       ["painted", 1],
     ]);
+  }
+  // The wait's words on the scan row (renderRegrouping).
+  {
+    const lifted = ["renderRegrouping", "loadingStateDelayMs"].map(lift).join("\n");
+    const timers = new Map();
+    let nextTimer = 1;
+    const classes = new Set();
+    const text = { textContent: "~1,200 files scanned" };
+    const row = {
+      hidden: false,
+      classList: {
+        add: (name) => classes.add(name),
+        remove: (name) => classes.delete(name),
+        toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)),
+      },
+      querySelector: () => text,
+    };
+    const painted = [];
+    const sandbox = {
+      _regroupingBy: null,
+      _regroupingWordsTimer: null,
+      indexProgressLastRendered: { status: "scanning" },
+      treeFilterModel: {
+        regroupingStatusText: (by) =>
+          by === "age" ? "Grouping by age…" : "Grouping by file type…",
+      },
+      renderIndexProgress: (meta) => painted.push(meta.status),
+      document: {
+        documentElement: {},
+        getElementById: (id) => (id === "index-progress" ? row : { classList: { toggle() {} } }),
+      },
+      getComputedStyle: () => ({ getPropertyValue: () => " 50ms" }),
+      setTimeout: (callback, ms) => {
+        timers.set(nextTimer, { callback, ms });
+        nextTimer += 1;
+        return nextTimer - 1;
+      },
+      clearTimeout: (id) => timers.delete(id),
+      Number,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(`${lifted}\nthis.renderRegrouping = renderRegrouping;`, sandbox);
+    const fire = () => {
+      const due = [...timers.values()];
+      timers.clear();
+      for (const timer of due) {
+        timer.callback();
+      }
+      return due.map((timer) => timer.ms);
+    };
+    // A choice answered inside the quiet period, with a scan on the row: no word changes.
+    sandbox.renderRegrouping("type");
+    assert.equal(text.textContent, "~1,200 files scanned");
+    assert.deepEqual([...classes], []);
+    sandbox.renderRegrouping(null);
+    assert.deepEqual(fire(), []);
+    assert.equal(text.textContent, "~1,200 files scanned");
+    assert.deepEqual(painted, ["scanning"]);
+    // One that outlasts it: the words change once the quiet period passes.
+    sandbox.renderRegrouping("age");
+    assert.deepEqual(fire(), [50]);
+    assert.equal(text.textContent, "Grouping by age…");
+    // With the row hidden, the words are set at once, and CSS shows them past the delay.
+    sandbox.renderRegrouping(null);
+    row.hidden = true;
+    sandbox.renderRegrouping("type");
+    assert.equal(text.textContent, "Grouping by file type…");
+    assert.deepEqual([row.hidden, [...classes], fire()], [false, ["mb-delayed-loading"], []]);
   }
   console.log("group by refresh OK");
 })().catch((error) => {
