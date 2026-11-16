@@ -693,6 +693,24 @@ The answer is kept only while every configuration file Git reads is unchanged, a
 at all where it cannot be sure which those are (`textconv.py`), so such a folder asks
 every time. Where a driver is named, the page’s files are diffed in a run of their own,
 with their drivers, as before: 3 processes, and 4 for the first.
+`diff.submodule=diff` counts as a named driver, since Git diffs a changed submodule in a
+child `git diff` that runs the submodule’s own drivers.
+Git before 2.42 has no `git var GIT_CONFIG_SYSTEM`: a server’s very first comparison
+asks it instead to list its system file alone, one process more (5), and its answers are
+then kept as a newer Git’s are; a system file that holds no entry names itself nowhere,
+so every comparison asks `git config` again, 3 processes.
+A page whose files Git pairs otherwise in a run limited to their paths takes the whole
+patch within `MAX_LISTED_PATCH_BYTES` in a run of its own, one process more, wherever
+the listing run’s patch was not kept: from a kept manifest, from another request’s
+listing, or from a pull request’s own loader.
+The one run has half the read deadline; past it the listing and the page run apart, so a
+commit only the one run is slow on still answers within one deadline.
+
+What the pairs cannot see: they are serial requests from one client, so a cost that
+falls on other requests, such as a parse that holds the GIL, does not show in them, and
+the counts above depend on the Git version and on whether the served folder’s
+configuration names a driver, neither of which a result records yet.
+A round that times H116 records both beside its pairs.
 
 `--check-repo` with `--check-control` and `--check-candidate` adds a correctness check
 between pairs, untimed: a scratch clone the timed servers never serve, whose refs it

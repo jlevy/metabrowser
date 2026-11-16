@@ -1350,7 +1350,7 @@ def _signal(proc: asyncio.subprocess.Process, signum: int) -> None:
 
 # How long a run stopped early has to exit on SIGTERM before it is sent SIGKILL. Git's
 # handlers for SIGTERM and SIGPIPE remove the lock files it holds and exit; SIGKILL leaves
-# them, as a textconv cache's notes ref lock showed in review (#449, L4).
+# them, as a textconv cache's notes ref lock showed in review (fixed in 1f251b068).
 _STOP_GRACE_S: Final[float] = 0.5
 _STOP_SIGNAL: Final[int] = signal.SIGTERM
 

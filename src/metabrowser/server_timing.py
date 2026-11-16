@@ -28,7 +28,7 @@ succeeds, inside a phase or not, so the count is every process and not only thos
 gets a ``git`` entry with the description alone (H116). Work a request joins rather than
 starts is counted where it started: a comparison's listing that another request is already
 computing (``builtin_plugins/diff/comparison_cache.py``) is counted in that request, while it
-is open, and not in the one that waits for it, which says nothing of it (review of #449, L3).
+is open, and not in the one that waits for it, which says nothing of it.
 
 **What the header can say.** A response's headers are sent before its body, so
 ``Server-Timing`` holds ``srv``, the time to the start of the response, and the phases

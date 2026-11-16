@@ -114,7 +114,17 @@ magnitude: the listing of a 1,635-file comparison took 0.79 s, the same run with
 patch 1.11 s, so Git printed the patch at about 130 MB/s and a run stopped at this bound
 spends about 2 ms past its listing; 329 of this repository's newest 400 commits list and
 patch within it (median 41 KB, 90th percentile 817 KB). Whatever is printed of files a page
-does not ask for is work thrown away, at most this much."""
+does not ask for is work thrown away, at most this much.
+
+What it trades: a process start saved for every comparison within it, against what a run
+past it prints and throws away, and the patch each request then holds, at most this much
+(a page parses only its own sections' headers, :func:`_sections_by_position`). By the
+figures above a stopped run wastes about 2 ms against the 17 ms it then fails to save, so
+the break-even is near 2 MiB, and 1 MiB would take the 90th percentile. 256 KiB is a
+conservative choice under those untimed figures, not a swept optimum: H116's timed round
+sweeps 256 KiB, 1 MiB and 2 MiB and records the result here (bead ``mb-foi8``). The same
+bound decides whether a page Git pairs otherwise alone is answered from the whole patch
+(:meth:`GitDiffSource._whole_patch_within_bound`), so every path to a page answers alike."""
 
 _NULL_OID = "0" * 40
 _STATUS_KINDS = {

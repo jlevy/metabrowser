@@ -383,8 +383,7 @@ def test_a_listing_longer_than_the_bound_is_still_read_whole(
     repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Read in pieces smaller than the listing's two final NULs are apart, and a bound far
-    smaller than the listing: the listing is never cut, so it is never listed again (#449,
-    L2)."""
+    smaller than the listing: the listing is never cut, so it is never listed again."""
     root, _base, target = repo
     monkeypatch.setattr(git_process, "_READ_CHUNK_BYTES", 7)
     monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", 10)
@@ -722,7 +721,7 @@ def test_a_textconv_driver_is_run_only_as_the_page_ran_it(
     assert {c["availability"] for c in manifest if c["new"]["path"].endswith(".pdf")} == {"binary"}
 
 
-# ── A page Git pairs otherwise alone (review of #449, L1) ──────────────
+# ── A page Git pairs otherwise alone ────────────────────────────────────
 
 
 def _commit_of(root: Path, files: dict[bytes, bytes]) -> str:
