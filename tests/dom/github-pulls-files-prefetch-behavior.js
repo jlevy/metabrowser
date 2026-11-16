@@ -229,10 +229,13 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
   }
 
   const opened = [];
+  /** Each ask of the page's comparison warmer, the numbers it named. */
+  const warmAsks = [];
   return {
     server,
     now: () => now,
     timers,
+    warmAsks,
     deps: {
       request,
       schedule,
@@ -249,6 +252,9 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
         opened.push(route.number);
       },
       filterChanged() {},
+      warmComparisons(numbers) {
+        warmAsks.push(numbers);
+      },
     },
     /** The reader's tree of *number*'s files, with when its rows were first drawn. */
     tree(module, number) {
@@ -594,6 +600,60 @@ const stories = {
       return held.now() + 20_000;
     });
     assert.deepEqual(facts.pendingThenDeferred, { sentWhile: 0, sentAfter: 0 });
+  },
+
+  // ── The comparisons a reader opens next are warmed ───────────
+  // A pull request opened from the list names itself and its neighbours in the list to the
+  // page's comparison warmer (comparison-prefetch.js): itself first, so its page joins a warm
+  // of it already on its way. A row the pointer or focus rests on comes next, the two newest
+  // rests ahead of the neighbours. Once the stacks are known, the open pull request's
+  // neighbours in its stack follow the rests, base side last: the members a Control-N or
+  // Control-P reaches. A hidden panel names nothing.
+  async comparisons({ panel, inView }, facts) {
+    const { createStackIndex } = await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-stacks.js")).href
+    );
+    const seen = rig();
+    const controller = panel.createPullsController(seen.deps, { filter: "open" });
+    await controller.start({ shown: true });
+    await seen.advance(0);
+    const opened = inView[3];
+    controller.activate(opened);
+    await seen.advance(panel.OPEN_WAIT_MS);
+    facts.warmOnOpen = { opened, named: seen.warmAsks.at(-1) };
+    assert.deepEqual(facts.warmOnOpen.named, [opened, inView[2], inView[4]]);
+    controller.peek(inView[8]);
+    controller.peek(inView[9]);
+    await seen.advance(0);
+    facts.warmOnRest = seen.warmAsks.at(-1);
+    assert.deepEqual(facts.warmOnRest, [opened, inView[9], inView[8], inView[2], inView[4]]);
+    const stack = [inView[12], opened, inView[15]];
+    controller.setStacks(
+      createStackIndex({
+        source: panelAnswer.source,
+        reader: panelAnswer.reader,
+        reason: null,
+        fresh_for_s: 60,
+        refreshing: false,
+        stacks: [{ number: 286, pulls: stack }],
+      }),
+    );
+    await seen.advance(0);
+    facts.warmWithStack = { stack, named: seen.warmAsks.at(-1) };
+    assert.deepEqual(facts.warmWithStack.named.slice(0, 5), [
+      opened,
+      inView[9],
+      inView[8],
+      inView[15],
+      inView[12],
+    ]);
+    const before = seen.warmAsks.length;
+    controller.setShown(false);
+    controller.peek(inView[10]);
+    await seen.advance(0);
+    facts.warmAsksWhileHidden = seen.warmAsks.length - before;
+    assert.equal(facts.warmAsksWhileHidden, 0);
+    controller.dispose();
   },
 
   // ── A metadata admission still unanswered counts as reader work ──

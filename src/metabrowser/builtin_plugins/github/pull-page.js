@@ -34,7 +34,7 @@
 // stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
-import { createComparisonPrefetch } from "./comparison-prefetch.js";
+import { createComparisonPrefetch, diffComparisonLoader } from "./comparison-prefetch.js";
 import {
   createStackIndex,
   memberRoute,
@@ -1395,28 +1395,47 @@ export function describePull(envelope, page) {
       model.message = page.error ?? page.comparisonRefusal ?? null;
     }
   }
-  const comparison = record.comparison;
-  if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
+  const comparison = pullComparison(envelope);
+  if (comparison !== null) {
     model.comparison = {
-      left: comparison.base,
-      right: comparison.head,
-      ...(typeof envelope.comparison_route === "string"
-        ? { route: envelope.comparison_route }
-        : {}),
-      // Where View file opens a file of either end without changing the served pin.
-      ...(typeof envelope.snapshot_route === "string"
-        ? { snapshot_route: envelope.snapshot_route }
-        : {}),
-      // Where Changes asks for one Markdown file's rendered redline.
-      ...(typeof envelope.rendered_route === "string"
-        ? { rendered_route: envelope.rendered_route }
-        : {}),
+      ...comparison,
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
       headMoved: model.headOffer !== null,
     };
   }
   return model;
+}
+
+/**
+ * The comparison an envelope's record names, with the routes that answer it, or null. The
+ * page reads it for its Diff summary and Changes, and the Pulls tab to warm it ahead of a
+ * click (comparison-prefetch.js, `createComparisonWarmer`). Pure.
+ *
+ * @param {unknown} envelope
+ * @returns {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string} | null}
+ */
+export function pullComparison(envelope) {
+  const shaped = /** @type {Record<string, any> | null} */ (
+    envelope !== null && typeof envelope === "object" ? envelope : null
+  );
+  const comparison = shaped?.record?.comparison;
+  if (!comparison || typeof comparison.base !== "string" || typeof comparison.head !== "string") {
+    return null;
+  }
+  return {
+    left: comparison.base,
+    right: comparison.head,
+    ...(typeof shaped?.comparison_route === "string" ? { route: shaped.comparison_route } : {}),
+    // Where View file opens a file of either end without changing the served pin.
+    ...(typeof shaped?.snapshot_route === "string"
+      ? { snapshot_route: shaped.snapshot_route }
+      : {}),
+    // Where Changes asks for one Markdown file's rendered redline.
+    ...(typeof shaped?.rendered_route === "string"
+      ? { rendered_route: shaped.rendered_route }
+      : {}),
+  };
 }
 
 /**
@@ -5361,29 +5380,7 @@ export function mountPullPage(container, ctx, mb) {
   const prefetch = createComparisonPrefetch({
     // The diff plugin spells the address, so the request `mountDiff` would make is this
     // one, byte for byte, and the browser's cache answers a Back from it.
-    async load(comparison, signal) {
-      await mb.ensureKindAssets("diff");
-      signal.throwIfAborted();
-      const view =
-        /** @type {{prefetch?: (comparison: object, signal: AbortSignal) => Promise<unknown>} | null} */ (
-          mb.getRegisteredView("diff", "diff")
-        );
-      if (typeof view?.prefetch !== "function") {
-        throw new Error("the diff view has no prefetch");
-      }
-      return view.prefetch(
-        {
-          left: comparison.left,
-          right: comparison.right,
-          base_policy: "merge_base",
-          ...(comparison.route === undefined ? {} : { route: comparison.route }),
-          ...(comparison.rendered_route === undefined
-            ? {}
-            : { rendered_route: comparison.rendered_route }),
-        },
-        signal,
-      );
-    },
+    load: diffComparisonLoader(mb),
     warm() {
       void mb.ensureKindAssets("diff").catch(() => {});
       // The shared changed-files tree every diff draws its paths and summary with, so Changes
@@ -5391,8 +5388,19 @@ export function mountPullPage(container, ctx, mb) {
       void mb.loadChangedFilesTree().catch(() => {});
     },
     // What it read is the page's Diff summary too, on every tab (mb-pb35), and a read that
-    // failed leaves its row empty, with no placeholder (mb-onr2).
-    loaded: (comparison, payload) => showSummary(comparison, payload),
+    // failed leaves its row empty, with no placeholder (mb-onr2). A comparison the document
+    // keeps is handed over in the paint that shows its record, so the summary is drawn in
+    // that paint once the diff's view is registered, as it is after any first read (mb-neg9).
+    loaded(comparison, payload) {
+      if (mb.getRegisteredView("diff", "diff")) {
+        showSummary(comparison, payload);
+      } else {
+        void mb.ensureKindAssets("diff").then(
+          () => showSummary(comparison, payload),
+          () => summaryUnavailable(comparison),
+        );
+      }
+    },
     failed: (comparison) => summaryUnavailable(comparison),
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),

@@ -145,6 +145,12 @@ A files ask made while another prefetch is on its way waits for its answer and i
 checked again when that answer comes, so a walk, a metadata read, or a hold that began
 meanwhile keeps it from being sent.
 
+The panel also names to the page’s comparison warmer the pull requests whose comparison
+to have ready before they are opened (mb-neg9): the two rows the pointer or focus last
+rested on, newest first, then the open pull request’s neighbours in its stacks, then the
+anchored row’s neighbours in the list, never the open one, and nothing while it is
+hidden.
+
 This browserless session runs the production panel and file-tree controllers on a
 virtual clock against a stand-in server whose GitHub list takes 1.5 s.
 
@@ -240,6 +246,36 @@ $ node tests/dom/github-pulls-files-prefetch-behavior.js
     "sentWhile": 0,
     "sentAfter": 0
   },
+  "warmOnOpen": {
+    "opened": 103,
+    "named": [
+      103,
+      104,
+      102
+    ]
+  },
+  "warmOnRest": [
+    103,
+    97,
+    98,
+    104,
+    102
+  ],
+  "warmWithStack": {
+    "stack": [
+      94,
+      103,
+      91
+    ],
+    "named": [
+      103,
+      97,
+      98,
+      91,
+      94
+    ]
+  },
+  "warmAsksWhileHidden": 0,
   "admissionHeld": {
     "asks": 0
   },

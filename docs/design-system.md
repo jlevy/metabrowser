@@ -1458,6 +1458,28 @@ way ([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds
 words, the rows, and the keys, and the paint’s measurement is in the views, models, and
 routes map (`diff.summary-paint`).
 
+A pull request’s page reads its comparison once while Metabrowser is open, not once a
+visit: what it reads is kept for the document (`createComparisonKeep` in
+`builtin_plugins/github/comparison-prefetch.js`), keyed by the comparison’s route, which
+names both commits, so a pull request opened again draws its Diff summary in the paint
+that shows its record, with no request, no wait for the browser to be idle, and no
+placeholder, and its Changes mounts from the same answer (mb-neg9). A record whose head
+or base moved names another route, which is read anew.
+The Pulls tab reads ahead the comparisons of the pull requests a reader is likely to
+open next ([The Pulls Tab](#the-pulls-tab)), so a first visit to one of them draws it at
+once too. Before, every visit read the comparison again once the browser was idle, and a
+page is not idle while it draws its record: measured in headless Chrome 152 on the
+GitHub stand-in at a load average of 9 to 12, moving between pull requests of 26 to 121
+files from the Pulls tab, a revisit’s summary arrived 22 to 50 ms after the click, and
+175 to 238 ms at four times slower CPU, most of it the wait for idle; with no
+`requestIdleCallback`, as the app’s WebKit has none, the wait is for 250 ms with no
+input after a press (docs/development.md, “Idle Work”), and a revisit’s arrived 253 to
+256 ms after it. Now a revisit’s summary arrives with its record: 13 to 20 ms after the
+click, 57 to 73 ms at four times slower CPU, and 16 to 19 ms with no
+`requestIdleCallback`; and a first visit to a row the pointer rested on for 250 ms, 13
+to 55 ms after the click, where it was 283 to 343 ms.
+`tests/dom/github-pull-prefetch-session.js` holds that a second visit sends no request.
+
 ### Diff File Bar
 
 The bar shows its path, and a rename’s two, by the server’s display rule, as the
@@ -1995,6 +2017,19 @@ Counts name the files fetched and say when the list is partial or capped; the ro
 not depend on hydrated diff documents.
 The measured expansion and overscan choices are beside `AUTO_EXPAND_FILES` and
 `FILE_ROWS_OVERSCAN` in the GitHub plugin.
+
+The tab also has ready, behind the reader, the comparison of each pull request it is
+likely to open next, so its page draws the [Diff summary](#diff-summary) at once: the
+open pull request, the two rows the pointer or focus last rested on, the open pull
+request’s neighbours in its stacks, which Control-N and Control-P reach, and the rows
+above and below it, at most `WARM_COMPARISONS`, five, an ask (`createComparisonWarmer`
+in `builtin_plugins/github/comparison-prefetch.js`). They are read one at a time when
+the browser is idle and only once no page is reading one, each a record from the cache
+and a comparison from the repository store, with no GitHub request, at most
+`WARM_PER_HOUR`, 120, an hour; a comparison already kept or on its way is not asked for
+again. Its cost is beside the constants.
+`tests/dom/github-pulls-files-prefetch-behavior.js` holds which pull requests the tab
+names, and `tests/dom/github-pull-prefetch-session.js` what the warmer reads.
 
 ### A Pull Request’s State
 

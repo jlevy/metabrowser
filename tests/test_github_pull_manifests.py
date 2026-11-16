@@ -19,6 +19,7 @@ from metabrowser.builtin_plugins.github import pull_manifest
 from metabrowser.builtin_plugins.github.pull_record import Comparison, PullRecord
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import ResolvedComparison
+from metabrowser.git import process as git_process
 from metabrowser.git.process import GitLocation, RepositoryStoreTarget
 from metabrowser.http_caching import store_tag
 from tests.diff_fixture_repo import git
@@ -73,6 +74,45 @@ def test_fetch_prepares_a_manifest_that_a_fresh_server_reuses(
         client.get(route.replace("base_policy=merge_base", "base_policy=direct")).status_code == 400
     )
     assert client.get(route.replace("left=", "revision=HEAD&left=")).status_code == 400
+
+
+def test_a_repeated_comparison_runs_no_git_and_a_moved_head_is_computed_afresh(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pull request's comparison seen once is answered from memory while its route names it
+    (mb-neg9): the second request starts no Git process, sends the same bytes, and is
+    immutable, so a browser asks for it no more. A route naming another head, as a record
+    whose head moved does, is another comparison, and is computed."""
+
+    stand, client = pinned_pull
+    _fresh(monkeypatch)
+    spawned: list[tuple[str, ...]] = []
+    real = git_process.spawn_git_process
+
+    async def counted(args: Any, **kwargs: Any) -> Any:
+        spawned.append(tuple(args))
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(git_process, "spawn_git_process", counted)
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    stand.calls()
+    spawned.clear()
+    first = client.get(route)
+    assert first.status_code == 200
+    assert spawned, "a first comparison ran no Git"
+    spawned.clear()
+    again = client.get(route)
+    assert again.status_code == 200 and again.content == first.content
+    assert spawned == [], f"a repeated comparison ran Git: {spawned}"
+    assert again.headers["cache-control"] == "private, max-age=31536000, immutable"
+    assert again.headers["etag"] == first.headers["etag"]
+    head = stand.origin["fork_head"]
+    earlier = stand.origin["fork_earlier"]
+    moved = client.get(route.replace(f"right={head}", f"right={earlier}"))
+    assert moved.status_code == 200
+    assert spawned, "a comparison at another head was answered without Git"
+    assert moved.headers["etag"] != first.headers["etag"]
+    assert stand.calls() == [], "a comparison GET fetched the network"
 
 
 @pytest.mark.parametrize("damage", ["json", "digest", "identity", "schema", "oversize"])

@@ -28,6 +28,7 @@
 // from GitHub reaches a class, a style, or markup. The only markup parsed is the shell's own
 // chip group and icons.
 
+import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -38,6 +39,7 @@ import {
   h,
   isPlainClick,
   isEnvelope as isPullEnvelope,
+  pullComparison,
   REFRESH_ASK_MS,
   relativeAge,
   SLOW_POLL_MS,
@@ -46,6 +48,7 @@ import {
   createStackIndex,
   groupByStack,
   stackCaption,
+  stackMembership,
   stackRowKey,
   watchStacks,
 } from "./pull-stacks.js";
@@ -127,6 +130,10 @@ export const PEEK_MS = 60;
 // Records read ahead and not yet opened. A record is at most MAX_PULL_RECORD_BYTES, and a
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
+// How long a warm of a likely next pull request's comparison waits for the browser to be
+// free. It is speculative, so it waits behind the page's own idle work, whose bound is
+// 300 ms, and this bounds it only for a page that is never free.
+const WARM_IDLE_TIMEOUT_MS = 1000;
 const FETCHING = "Fetching pull requests…";
 // Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
 // first 1,183 files of django/django#15387 made 1,503 rows; 3,000 stress files made
@@ -585,6 +592,7 @@ function pinChanged(response) {
  *   }): unknown,
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
+ *   warmComparisons?(numbers: number[]): void,
  * }} PullsDependencies
  */
 
@@ -2093,6 +2101,74 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
+   * The anchored row's neighbours, the pull requests a key reaches next, a stack's row passed
+   * over: the rows as they are drawn and walked, grouped by stack or not.
+   *
+   * @returns {number[]}
+   */
+  function neighbours() {
+    const order = grouping();
+    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
+    /** @type {number[]} */
+    const near = [];
+    for (let index = at - 1; index >= 0; index -= 1) {
+      if (order.keys[index] > 0) {
+        near.push(order.keys[index]);
+        break;
+      }
+    }
+    const after = order.keys.slice(at + 1).find((key) => key > 0);
+    if (after !== undefined) {
+      near.push(after);
+    }
+    return near;
+  }
+
+  /**
+   * Warm the comparisons of the pull requests the reader is likely to open next, in the
+   * document's keep (comparison-prefetch.js, `createComparisonWarmer`), so a page opened on
+   * one draws its Diff summary, and its Changes, with no wait: the open pull request first,
+   * so a warm of it already on its way is its page's rather than a second request, then the
+   * rows the pointer or focus last rested on, newest first, the open pull request's
+   * neighbours in each of its stacks, which Control-N and Control-P reach, and the anchored
+   * row's neighbours in the list. Only while shown, visible, and online; each is local work,
+   * a record from the cache and a comparison from the repository store, with no GitHub
+   * call, so the budget's floor and the lane's caps do not hold it, and the warmer's own do.
+   */
+  function warmAhead() {
+    const list = held();
+    if (
+      deps.warmComparisons === undefined ||
+      !live() ||
+      !online() ||
+      list.envelope === null ||
+      list.envelope.reason === "not_github" ||
+      list.rows.length === 0
+    ) {
+      return;
+    }
+    const identity = { source: list.envelope.source, reader: list.envelope.reader };
+    const stacked =
+      current === null
+        ? []
+        : stackMembership(stackIndex, identity, current).flatMap((stack) => {
+            const at = stack.pulls.indexOf(current ?? 0);
+            return [stack.pulls[at + 1], stack.pulls[at - 1]].filter(
+              (number) => number !== undefined,
+            );
+          });
+    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    deps.warmComparisons([
+      ...new Set([
+        ...(current === null ? [] : [current]),
+        ...restedRows.filter(listed),
+        ...stacked,
+        ...neighbours(),
+      ]),
+    ]);
+  }
+
+  /**
    * Ask the server to refresh, behind the reader, what they are likely to open next: the
    * anchored row's neighbours and the top of the list, and the changed files of the rows the
    * pointer or focus last rested on, the open row, its neighbours, and the rows in view.
@@ -2127,24 +2203,9 @@ export function createPullsController(deps, options = {}) {
       };
       return true;
     }
-    // The rows as they are drawn and walked, grouped by stack or not: the anchor's
-    // neighbours are the pull requests a key reaches next, a stack's row passed over, and the
-    // top is the first pull requests drawn.
     const order = grouping();
     const pulls = order.keys.filter((key) => key > 0);
-    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
-    /** @type {number[]} */
-    const near = [];
-    for (let index = at - 1; index >= 0; index -= 1) {
-      if (order.keys[index] > 0) {
-        near.push(order.keys[index]);
-        break;
-      }
-    }
-    const after = order.keys.slice(at + 1).find((key) => key > 0);
-    if (after !== undefined) {
-      near.push(after);
-    }
+    const near = neighbours();
     const top = pulls.slice(0, PREFETCH_TOP_ROWS);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
@@ -2681,6 +2742,7 @@ export function createPullsController(deps, options = {}) {
     });
     // A row opens once the reader stops on it, a walk included, so its neighbours are next.
     prefetch(false);
+    warmAhead();
   }
 
   function cancelReads() {
@@ -2897,6 +2959,8 @@ export function createPullsController(deps, options = {}) {
       current = number;
       deps.markCurrent(previous, number);
       showCurrent(number);
+      // Back, a link, or a stack walk on the page: its neighbours are next all the same.
+      warmAhead();
     },
     move,
     /** The key that was walking was let go: open what it stopped on. */
@@ -2970,6 +3034,7 @@ export function createPullsController(deps, options = {}) {
             PREFETCH_RESTED,
           );
           askFiles(0);
+          warmAhead();
         }
       }
     },
@@ -2984,6 +3049,8 @@ export function createPullsController(deps, options = {}) {
       if (!disposed && index !== stackIndex) {
         stackIndex = index;
         regroup();
+        // The open pull request's stack neighbours may be known only now.
+        warmAhead();
       }
     },
     setStackOpen,
@@ -3069,6 +3136,23 @@ export function createPullsController(deps, options = {}) {
       clearWalk();
       cancelReads();
       peeked.clear();
+    },
+    /**
+     * The envelope of *number*'s record as a peek read it, waiting for one on its way, or
+     * null, so a warm of its comparison does not read the record a second time.
+     *
+     * @param {number} number
+     * @returns {Promise<unknown>}
+     */
+    knownRecord(number) {
+      const had = peeked.get(number);
+      if (had !== undefined) {
+        return Promise.resolve(had.body);
+      }
+      if (reading?.number === number) {
+        return reading.done.then((answer) => answer?.body ?? null);
+      }
+      return Promise.resolve(null);
     },
     snapshot: () => ({
       filter,
@@ -4312,6 +4396,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   // A key moved the focus, and not a reader arriving at a row: a walk reads nothing per row.
   let movingFocus = false;
+  /** @type {ReturnType<typeof createComparisonWarmer> | null} */
+  let warmer = null;
 
   const controller = createPullsController(
     {
@@ -4395,9 +4481,38 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
+      warmComparisons: (numbers) => warmer?.want(numbers),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
+  // The comparisons of the pull requests a reader opens next, kept for the document so their
+  // pages draw the Diff summary at once (comparison-prefetch.js). A record is the peek's when
+  // a peek read it, and otherwise one cache read, which never asks GitHub. Warming is idle
+  // work, so an SDK without `whenIdle`, as a session's that drives the panel alone is, has
+  // none, as one without `shortcuts` has no numbered controls below.
+  warmer =
+    typeof mb.whenIdle !== "function"
+      ? null
+      : createComparisonWarmer({
+          async read(number, readSignal) {
+            let envelope = await controller.knownRecord(number);
+            if (envelope === null) {
+              const response = await request(mb.perf, "GET", `${PULL_ROUTE}?number=${number}`, {
+                signal: readSignal,
+              });
+              envelope = response.status === 200 ? response.body : null;
+            }
+            return isPullEnvelope(envelope) &&
+              /** @type {{number?: unknown}} */ (envelope).number === number
+              ? pullComparison(envelope)
+              : null;
+          },
+          load: diffComparisonLoader(mb),
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible",
+          now: () => Date.now(),
+        });
 
   const unbindFilters = controls.bind(filters, {
     onChange(key, value, select) {
@@ -4723,6 +4838,7 @@ export function mountPullsPanel(container, ctx, mb) {
       unbindFilters();
       stacks.dispose();
       controller.dispose();
+      warmer?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }
