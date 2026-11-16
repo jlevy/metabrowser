@@ -3,9 +3,9 @@ type: is
 id: is-01m7jh9bqp0hsbgkjzyvrevjan
 title: 'PR #464 B4: a live update corrects the total of only one "more" row'
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 2
+version: 3
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,7 +13,11 @@ parent_id: is-01m7hcjm7dvfsqanbt2jtdyxfy
 hold: null
 hold_until: null
 created_at: 2026-11-16T15:58:20.405Z
-updated_at: 2026-11-16T15:58:30.196Z
+updated_at: 2026-11-16T16:33:04.077Z
 started_at: 2026-11-16T15:58:30.194Z
+closed_at: 2026-11-16T16:33:04.076Z
+close_reason: "fixed in 288a055: every more row of the container gets the folder's total in its page's setSize and label; session step fails without it. https://github.com/jlevy/metabrowser/pull/464#issuecomment-6922472756"
+resolution: null
+duplicate_of: null
 ---
 Low. Review B (follow-up, round 2) on PR #464: https://github.com/jlevy/metabrowser/pull/464#pullrequestreview-5922595963. src/metabrowser/static/app.js:7988-7992 and :8009 (_synchronizeDeferredTreePage renumbers every row but writes the total into only the page it was given). Rows a stale page draws get a total one short (renderTreeNodes, :2295). Fix: write the total into every "more" row of the container, its page's options.setSize and its label.

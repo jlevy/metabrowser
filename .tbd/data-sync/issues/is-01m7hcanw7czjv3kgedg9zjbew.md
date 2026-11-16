@@ -5,7 +5,7 @@ title: "Stack #446 (merge): review every layer and merge into main"
 kind: task
 status: in_progress
 priority: 1
-version: 26
+version: 28
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -33,10 +33,12 @@ child_order_hints:
   - is-01m7jgg4b9taqwxcfevgd9c6gc
   - is-01m7jjcfgz5r5ykt72449xb6as
   - is-01m7jk552r4jya1wfe0p9acfmn
+  - is-01m7jk9hy6f3g3196x9v98rn7h
+  - is-01m7jk9jrrvx502cp9gf9029cx
 hold: null
 hold_until: null
 created_at: 2026-11-16T05:12:26.236Z
-updated_at: 2026-11-16T16:30:59.664Z
+updated_at: 2026-11-16T16:33:24.758Z
 started_at: 2026-11-16T05:12:33.015Z
 ---
 Owner, 2026-11-15: "is the current app restarted with all the changes? Are all PRs reviewed? Make sure they follow our standard process of being reviewed, and then you should proceed with merging." Layers #444-#456 had Review A round 1, addressed. #457-#472 need senior reviews; #466 a dedicated performance review.
