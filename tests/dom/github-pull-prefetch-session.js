@@ -144,17 +144,25 @@ async function main() {
 
   const beforeIdle = page();
   beforeIdle.prefetch.want(first);
-  const nothing = await beforeIdle.prefetch.take(first);
+  const clicked = beforeIdle.prefetch.take(first);
   beforeIdle.idle();
-  say("a click before the browser was idle: the diff asks for itself, and only once", beforeIdle, {
-    handed: nothing ?? null,
-  });
+  say(
+    "a click before the browser was idle: the comparison is read now, through the keep, and only once",
+    beforeIdle,
+  );
+  beforeIdle.requests[0].resolve({ document: "first" });
+  say("it arrives and the diff is handed it", beforeIdle, { handed: await clicked });
 
   const direct = page();
-  const direct_ = await direct.prefetch.take(first);
+  const directTaken = direct.prefetch.take(first);
   direct.prefetch.want(first);
   direct.idle();
-  say("a page opened on Files changed sends nothing here", direct, { handed: direct_ ?? null });
+  say(
+    "a page opened on Changes reads its comparison through the keep, and a later Conversation sends nothing more",
+    direct,
+  );
+  direct.requests[0].resolve({ document: "first" });
+  say("it arrives and the diff is handed it", direct, { handed: await directTaken });
 
   const movedHead = page();
   movedHead.prefetch.want(first);
@@ -277,6 +285,25 @@ async function main() {
   say("its Changes is handed the same answer", revisit, { handed: handedAgain ?? null });
   revisit.prefetch.dispose();
 
+  // A pull request first opened on Changes (a file pressed in the Pulls tab's tree, `G`, or
+  // a link): its read went through the keep, so its next visit is drawn from it too.
+  const changesFirst = keepNow();
+  const openedOnChanges = page({ keep: changesFirst });
+  const changesTaken = openedOnChanges.prefetch.take(first);
+  openedOnChanges.requests[0].resolve({ document: "first" });
+  await changesTaken;
+  await tick();
+  openedOnChanges.prefetch.dispose();
+  const afterChanges = page({ keep: changesFirst });
+  afterChanges.prefetch.want(first);
+  say(
+    "a pull request first opened on Changes, opened again on Conversation: drawn from the keep, with no request and no wait",
+    afterChanges,
+    { waitingForIdle: afterChanges.waiting(), kept: changesFirst.snapshot().kept },
+  );
+  assert(afterChanges.requests.length === 0, "a visit after Changes read the comparison again");
+  afterChanges.prefetch.dispose();
+
   const hiddenRevisit = page({ keep: shared, visible: false });
   hiddenRevisit.prefetch.want(moved);
   say("a page behind another tab draws a kept summary too: it costs nothing", hiddenRevisit);
@@ -311,6 +338,69 @@ async function main() {
   await tick();
   say("the first page went; the request it shared answers the second", joining);
   joining.prefetch.dispose();
+
+  // Between an answer and its measurement, a task later, the request stands for it: a visit
+  // in that window joins it rather than sending its own.
+  const measuredLater = createComparisonKeep();
+  const answering = page({ keep: measuredLater });
+  answering.prefetch.want(first);
+  answering.idle();
+  answering.requests[0].resolve({ document: "first" });
+  await answering.prefetch.take(first);
+  const inTheWindow = page({ keep: measuredLater });
+  inTheWindow.prefetch.want(first);
+  say(
+    "an answer arrived and is not yet measured: a visit then joins its request, and sends none",
+    inTheWindow,
+    { keep: measuredLater.snapshot() },
+  );
+  assert(inTheWindow.requests.length === 0, "a visit before the measurement sent a request");
+  await tick();
+  say("a task later it is measured and kept; the visit that joined is drawn from it", inTheWindow, {
+    keep: measuredLater.snapshot(),
+  });
+  answering.prefetch.dispose();
+  inTheWindow.prefetch.dispose();
+
+  // A page waiting for idle is taken while a warm of the same comparison is on its way: the
+  // mount joins that request, and once the warmer and the page have both gone, no asker is
+  // left, so the request is abandoned.
+  const abandoned = keepNow();
+  const waitingPage = page({ keep: abandoned });
+  waitingPage.prefetch.want(first);
+  const lonelyLoads = [];
+  const lonelyIdle = [];
+  const lonely = createComparisonWarmer({
+    keep: abandoned,
+    read: () => Promise.resolve({ comparison: first, freshForMs: 60_000 }),
+    load(_comparison, signal) {
+      return new Promise((_resolve, reject) => {
+        lonelyLoads.push(signal);
+        signal.addEventListener("abort", () => reject(new DOMException("gone", "AbortError")));
+      });
+    },
+    schedule(callback) {
+      lonelyIdle.push(callback);
+      return callback;
+    },
+    cancel() {},
+    isVisible: () => true,
+    now: () => 0,
+  });
+  lonely.want([5]);
+  lonelyIdle.shift()();
+  await tick();
+  const takenWhileWaiting = waitingPage.prefetch.take(first);
+  lonely.dispose();
+  waitingPage.prefetch.dispose();
+  assert((await takenWhileWaiting) === undefined, "a mount let go of was handed something");
+  steps.push({
+    step: "a page waiting for idle is taken while a warm of its comparison is on its way; the warmer and the page go: the request is abandoned",
+    warmRequests: lonelyLoads.length,
+    sharedRequestAborted: lonelyLoads.every((signal) => signal.aborted),
+    pending: abandoned.snapshot().pending,
+  });
+  assert(lonelyLoads[0]?.aborted === true, "a request no asker waits on was left running");
 
   const bounded = keepNow({ maxChars: 70, entryChars: 40 });
   for (const [index, right] of ["b1", "b2", "b3"].entries()) {
@@ -347,7 +437,12 @@ async function main() {
     keep: warmKeep,
     read(number, signal) {
       return new Promise((resolve, reject) => {
-        reads.push({ number, signal, answer: () => resolve(records[number] ?? null) });
+        reads.push({
+          number,
+          signal,
+          // The record's freshness window, `fresh_for_s`, as its envelope gives it.
+          answer: () => resolve({ comparison: records[number] ?? null, freshForMs: 60_000 }),
+        });
         signal.addEventListener("abort", () => reject(new DOMException("gone", "AbortError")));
       });
     },
@@ -419,13 +514,22 @@ async function main() {
   await tick();
   await warmIdle();
   warmLine("the one being read is kept, and a record with no comparison is passed over");
-  clock += prefetchModule.WARM_RECHECK_MS;
+  warmer.want([11]);
+  warmLine("asked again within the window, the record with no comparison is not read again");
+  assert(reads.length === 3, "a record with no comparison was read again within its window");
+  clock += 60_000;
   warmer.want([8]);
   await warmIdle();
   reads.at(-1).answer();
   await tick();
   warmLine("past the record's freshness window it is read again, and the keep answers: no request");
   assert(loads.length === 2, "a kept comparison was asked for again");
+  warmer.want([12, 13]);
+  warmer.want([]);
+  warmLine("an empty ask, as a panel hidden, parked, or offline makes, empties the queue");
+  assert(warmer.snapshot().queue.length === 0, "an empty ask left the queue");
+  await warmIdle();
+  assert(reads.length === 4, "a warm was read after an empty ask");
   warmer.want([12]);
   warmer.dispose();
   await warmIdle();
@@ -440,7 +544,8 @@ async function main() {
   const behindIdle = [];
   const behind = createComparisonWarmer({
     keep: behindKeep,
-    read: (number) => Promise.resolve({ left: "base", right: `head${number}` }),
+    read: (number) =>
+      Promise.resolve({ comparison: { left: "base", right: `head${number}` }, freshForMs: 60_000 }),
     load(comparison) {
       behindLoads.push(comparison.right);
       return Promise.resolve({ document: comparison.right });
@@ -476,11 +581,18 @@ async function main() {
   // The hourly cap: past WARM_PER_HOUR comparisons asked for, the lane asks for none, and
   // an hour later it asks again.
   const capped = [];
+  const cappedReads = [];
   const cappedIdle = [];
   let cappedClock = 0;
   const cappedWarmer = createComparisonWarmer({
     keep: keepNow(),
-    read: (number) => Promise.resolve({ left: "base", right: `head${number}` }),
+    read(number) {
+      cappedReads.push(number);
+      return Promise.resolve({
+        comparison: { left: "base", right: `head${number}` },
+        freshForMs: 60_000,
+      });
+    },
     load(comparison) {
       capped.push(comparison.right);
       return Promise.resolve({ document: comparison.right });
@@ -505,6 +617,10 @@ async function main() {
   }
   assert(capped.length === prefetchModule.WARM_PER_HOUR, "the lane asked past its hourly cap");
   assert(
+    cappedReads.length === prefetchModule.WARM_PER_HOUR,
+    "the lane read a record past its hourly cap",
+  );
+  assert(
     cappedWarmer.snapshot().recent.at(-1) === `${prefetchModule.WARM_PER_HOUR + 1}: hourly cap`,
     "the lane did not say the cap held it",
   );
@@ -516,6 +632,63 @@ async function main() {
     "an hour later the lane asked nothing",
   );
   cappedWarmer.dispose();
+
+  // An outcome that leaves nothing in the keep holds for the record's window too: ten asks a
+  // second apart, each naming the same three pull requests, read each record once.
+  async function repeatedAsks(kind) {
+    const repeatKeep = keepNow({ maxChars: 70, entryChars: 40 });
+    const repeatReads = [];
+    const repeatLoads = [];
+    const repeatIdle = [];
+    let repeatClock = 0;
+    const repeated = createComparisonWarmer({
+      keep: repeatKeep,
+      read(number) {
+        repeatReads.push(number);
+        return Promise.resolve({
+          comparison: kind === "no comparison" ? null : { left: "base", right: `head${number}` },
+          freshForMs: 60_000,
+        });
+      },
+      load(comparison) {
+        repeatLoads.push(comparison.right);
+        return kind === "refused"
+          ? Promise.reject(new Error("409"))
+          : Promise.resolve({ document: kind === "too large to keep" ? "z".repeat(60) : "ok" });
+      },
+      schedule(callback) {
+        repeatIdle.push(callback);
+        return callback;
+      },
+      cancel() {},
+      isVisible: () => true,
+      now: () => repeatClock,
+    });
+    for (let ask = 0; ask < 10; ask += 1) {
+      repeated.want([31, 32, 33]);
+      while (repeatIdle.length > 0) {
+        repeatIdle.shift()();
+        await tick();
+      }
+      repeatClock += 1000;
+    }
+    const outcome = {
+      recordReads: repeatReads.length,
+      comparisonRequests: repeatLoads.length,
+      kept: repeatKeep.snapshot().kept,
+      recent: repeated.snapshot().recent,
+    };
+    repeated.dispose();
+    assert(repeatReads.length === 3, `${kind}: a record was read again within its window`);
+    return outcome;
+  }
+  steps.push({
+    step: "ten asks a second apart, each naming the same three pull requests: each is read once, whatever its outcome",
+    answersKept: await repeatedAsks("kept"),
+    noComparison: await repeatedAsks("no comparison"),
+    refused: await repeatedAsks("refused"),
+    tooLargeToKeep: await repeatedAsks("too large to keep"),
+  });
 
   console.log(JSON.stringify({ steps }, null, 2));
 }

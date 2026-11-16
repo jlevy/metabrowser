@@ -1362,7 +1362,7 @@ async function headerSummary(page) {
       clearTimeout() {},
     };
     globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
-    const steps = { summaries: [], renders: [], reads: 0 };
+    const steps = { summaries: [], renders: [], reads: 0, markdown: [] };
     const diffView = {
       prefetch: async () => {
         steps.reads += 1;
@@ -1370,6 +1370,14 @@ async function headerSummary(page) {
           throw new Error("refused");
         }
         return raw;
+      },
+      // The first screen's rendered Markdown, which the page asks for itself (mb-neg9).
+      prefetchMarkdown: async (comparison, read, signal) => {
+        steps.markdown.push({
+          rendered: typeof comparison.rendered_route,
+          read: read === raw,
+          signal,
+        });
       },
       summary: async (slot, ctx) => {
         steps.summaries.push(ctx.raw === raw ? "the comparison read" : "another");
@@ -1462,6 +1470,14 @@ async function headerSummary(page) {
   await settle();
   assert.deepEqual(conversation.steps.summaries, ["the comparison read"]);
   tell("the comparison read", conversation.row());
+  // Once idle again, the page asks for the first screen's Markdown itself, apart from the
+  // comparison the document keeps, under a signal of its own that its leaving aborts.
+  assert.equal(conversation.steps.markdown.length, 0, "Markdown asked for before idle");
+  conversation.idle();
+  await settle();
+  const [asked] = conversation.steps.markdown;
+  assert.equal(conversation.steps.markdown.length, 1, "the first screen's Markdown asked once");
+  assert.deepEqual([asked.rendered, asked.read, asked.signal.aborted], ["string", true, false]);
   window.location.pathname = "/pull/7/files";
   conversation.handle.land({ tab: "files" });
   await settle();
@@ -1470,6 +1486,7 @@ async function headerSummary(page) {
   tell("Changes", conversation.row());
   conversation.handle.dispose();
   assert.deepEqual(conversation.steps.summaries, ["the comparison read", "disposed"]);
+  assert.equal(asked.signal.aborted, true, "a page that went left its Markdown asked for");
 
   const checks = await mount("checks");
   tell("Checks, the comparison not yet read", checks.row());
@@ -1491,6 +1508,13 @@ async function headerSummary(page) {
   assert.deepEqual(changes.steps.summaries, ["the comparison read"], "from what Changes read");
   tell("opened on Changes, from what its diff read", changes.row());
   changes.handle.dispose();
+
+  // Changes read its comparison through the document's keep, so Conversation draws it next.
+  const afterChanges = await mount("", { revisit: true });
+  assert.deepEqual(afterChanges.steps.summaries, ["the comparison read"], "drawn from the keep");
+  assert.equal(afterChanges.steps.reads, 0, "a visit after Changes read its comparison again");
+  tell("opened again on Conversation after Changes, before any idle", afterChanges.row());
+  afterChanges.handle.dispose();
 
   const refused = await mount("", { read: "fails" });
   tell("a read that will fail, not yet answered", refused.row());
