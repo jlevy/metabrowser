@@ -9,7 +9,7 @@ regular file. Git reads the borrowed objects as the store's own, under the store
 configuration, and never the checkout's.
 
 The rules of what may lend, and why the store's refs are never seeded from it, are in
-``docs/project/architecture/arch-repository-sources-and-provider-mirrors.md``. A lender
+``docs/project/architecture/arch-mirror-acquisition-and-refresh.md``. A lender
 is the reader's own word: a checkout found by walking up from the working directory is
 offered as a suggestion and never borrowed from, because a directory the reader merely
 stands in can be made to pass as one.

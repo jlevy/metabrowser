@@ -720,8 +720,7 @@ All notable changes to Metabrowser are documented here.
   Python keeps GitHub’s blue, and no other family’s color changes.
   The type registry gains `chroma_ratio`, the chroma counterpart of `lightness_rank`,
   which likewise requires a `deviation`, and the registry projection carries it.
-  See
-  [Declared deviations](docs/project/architecture/file-rollup-format/file-rollup-format.md#declared-deviations).
+  See [Declared deviations](docs/design-system.md#declared-deviations).
 
 - The type registry’s schema version is now `5` and its projection is
   `file-type-registry-v5`, because `chroma_ratio` changes its structure.

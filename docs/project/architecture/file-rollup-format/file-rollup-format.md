@@ -214,82 +214,11 @@ contributes to a particular rollup.
 A family ID can also define a shared presentation key such as `family:javascript`.
 Icons, byte formatting, and disclosure state remain outside the type registry.
 
-#### Why a hue and not a color
-
-A hue is tool-neutral and a color is not.
-Lightness and chroma are properties of the surface a consumer paints on — a light
-background wants one range, a dark background another, and a printed page a third — so a
-registry that named finished colors would be naming one consumer’s theme.
-A hue is the part that identifies the family, and it is the same everywhere.
-
-Two rules govern the hue, and `devtools/check_file_type_colors.py` holds both:
-
-- A family that names a `linguist` language takes that language’s color converted to
-  oklch, hue unchanged, including where two of GitHub’s own colors are close together.
-  Moving a familiar hue to win a distance metric costs more than the collision does.
-  The one way past this rule is a [declared deviation](#declared-deviations).
-- A family GitHub names no color for takes a hue whose painted color is clear of every
-  other family’s by a stated perceptual distance.
-  `--suggest` prints the widest gap for a new one.
-
-#### Why `linguist_color` is not only provenance
-
-A hue on its own cannot carry a palette this size.
-Fifty-six families average 6.4 degrees of spacing, at or under the just-noticeable
-difference when lightness and chroma are held constant, and GitHub’s own colors are
-separated mostly by the two dimensions a constant tone discards: html and svelte differ
-by 0.65 degrees of hue but by 0.032 of lightness and 0.040 of chroma.
-Painted at one tone they come out as the same color.
-
-So a consumer is expected to state a lightness *band* and a chroma *band* rather than
-one value of each, and to place each family inside them using `linguist_color`: the
-family’s **rank** among the upstream lightnesses, and its normalized position among the
-upstream chromas. Rank rather than a linear map, because upstream lightness piles up in
-the middle of its range and a linear map would re-crowd the palette where it is already
-tightest. Ranking keeps the order GitHub chose without importing its extremes.
-A family with no `linguist_color` sits at the centre of both bands; its hue was chosen
-to be clear, so it needs no help from the other axes.
-
-Bands are the consumer’s to choose, and the trade they make is explicit: a stacked-bar
-segment can read slightly heavier than a same-size neighbour, which a constant tone
-prevented, so a band should be narrow enough to keep that small.
-Where the sRGB gamut cannot hold the chosen chroma at some hue, reduce chroma rather
-than accepting a browser’s own gamut mapping, which moves lightness and hue.
-
-#### Declared deviations
-
-Deriving from GitHub’s colour separates most of what a fixed tone collapsed, and not all
-of it.
-Two languages can be near-identical upstream in all three dimensions, and GitHub’s
-own placement can put a family the reader looks at constantly on top of a better-known
-neighbour.
-For those, a family may depart from where its upstream colour puts it, and the
-departure is a declaration rather than a silent edit.
-
-A deviating family keeps `linguist` and `linguist_color`, so its provenance stays
-auditable, and adds `deviation`: prose saying why it left.
-It may also set `lightness_rank`, which replaces the rank its upstream colour would earn
-and may fall outside `[0, 1]` to leave the band altogether, and `chroma_ratio`, which
-replaces the chroma ratio its upstream colour would earn and stays inside `[0, 1]`.
-Either one without `deviation` is refused, because moving a family’s place in the band
-is exactly the change that should never read as a typo.
-
-Most deviations nudge a hue out of a collision and keep the colour a reader knows: Swift
-stays orange and Markdown stays blue.
-TypeScript is the exception, and leaves GitHub’s colour for another one: GitHub makes
-TypeScript and Python both blue, a shade apart, so at the user’s request TypeScript is a
-saturated yellow and Python keeps GitHub’s blue.
-It declares a rank above the band, because a yellow at the band’s lightness is mustard,
-and the chroma band’s top, because the ratio its upstream blue earned gave the yellow
-less chroma than JavaScript’s on the dark theme.
-`devtools/check_file_type_colors.py` names TypeScript as the one family whose deviation
-may leave its colour rather than nudge it, and fails a deviation that moves a hue that
-far without being named.
-
-The rule a deviating family trades into is the one a house hue already has: its painted
-colour must clear every other family by the consumer’s perceptual floor, in every theme.
-It does not get to be closer to something else than a colour chosen from a free gap
-would be.
+A registry names each family’s hue and leaves its lightness and chroma to the consumer,
+because those belong to the surface it paints on.
+How Metabrowser paints a family from these fields, and the rules the recommended
+definitions’ hues follow, are in its design system’s
+[File-Type Colors](https://github.com/jlevy/metabrowser/blob/main/docs/design-system.md#file-type-colors).
 
 ### Kind Fields
 

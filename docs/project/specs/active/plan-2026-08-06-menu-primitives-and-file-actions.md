@@ -55,7 +55,7 @@ Rename and trash are the proof that the vocabulary is real, not the reason to bu
 ## Non-Goals
 
 - In-browser text editing, save proposals, or drafts — those belong to the
-  [editor plugin editing contract](../../architecture/arch-editor-plugin-editing-contract.md)
+  [editor plugin editing contract](plan-2026-07-17-editor-plugin-editing-contract.md)
 - Plugin-contributed actions and plugin-defined mutations; the registry is designed so
   the SDK can expose it later, but the SDK surface is not part of this plan
 - Submenus, cascading menus, and menu bars
@@ -626,7 +626,7 @@ not a public-facing server, and loopback binding alone does not make mutation sa
 - [Design system](../../../design-system.md)
 - [Core architecture](../../../architecture.md)
 - [Trusted-local file editing](plan-2026-07-16-trusted-local-file-editing.md)
-- [Editor plugin editing contract](../../architecture/arch-editor-plugin-editing-contract.md)
+- [Editor plugin editing contract](plan-2026-07-17-editor-plugin-editing-contract.md)
 - [Supply-chain security](../../../../SUPPLY-CHAIN-SECURITY.md)
 
 <!-- This document follows common-doc-guidelines.md.

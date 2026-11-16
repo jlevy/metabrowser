@@ -4,8 +4,8 @@
 // whether or not anything uses it, and that cost is invisible in a request
 // count. Libraries that are large, narrowly used, or both are published as
 // named bundles instead and fetched the first time a consumer asks for one.
-// See docs/development.md "Asset Loading Tiers" for which tier an asset
-// belongs in and why.
+// See "Asset Loading Tiers" in docs/project/architecture/arch-browser-shell.md
+// for which tier an asset belongs in and why.
 //
 // The server publishes the bundles as window.METABROWSER_ASSET_BUNDLES:
 // a name maps to the ordered scripts that define it. An entry can promise the

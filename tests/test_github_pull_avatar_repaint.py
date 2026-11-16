@@ -19,7 +19,7 @@ button did in headless Chrome. A kept node put back in the same task loses its f
 so `detached` counts them: placing the header's parts with `replaceChildren` built
 nothing and detached all 42. A changed input builds its part again and only that part,
 and moves no other. This checks node lifecycle and attributes, not paint;
-docs/design-system.md, "A Repaint Keeps Its Images", has the measurements.
+explorations/performance-loop/design-rule-measurements.md has the measurements.
 """
 
 from __future__ import annotations

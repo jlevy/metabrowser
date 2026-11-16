@@ -568,9 +568,9 @@ after.
 
 - [End-to-end load time, from the CLI to first paint](../specs/active/plan-2026-08-21-load-time-performance.md)
   — the hypothesis registry these candidates extend
-- [State and delivery](../architecture/arch-state-and-delivery.md) — the inventory’s
-  concurrency model, which F2 touches
-- [High-performance file roll-up engine](../research/research-2026-08-06-file-rollup-engine.md)
+- [State and delivery](../architecture/arch-inventory-engine-python.md#concurrency-and-the-interpreter-lock)
+  — the inventory’s concurrency model, which F2 touches
+- [High-performance file roll-up engine](../research/archive/research-2026-08-06-file-rollup-engine.md)
   — prior art on aggregate representation, relevant to H42
 
 ## Status Addendum — 2026-08-22

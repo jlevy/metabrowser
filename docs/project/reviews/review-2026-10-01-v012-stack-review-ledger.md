@@ -220,8 +220,8 @@ tbd show mb-79t3
 - **Stack order** is that of GitHub stack #218
   (`gh api repos/jlevy/metabrowser/stacks/218 --jq '[.pull_requests[].number]'`), which
   the chain command under Pins in the
-  [QA runbook](../../qa-v012-repository-library.md#pins) also prints; each head was
-  checked to contain the head below it.
+  [QA runbook](../qa/qa-2026-09-19-v012-repository-library.md#pins) also prints; each
+  head was checked to contain the head below it.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

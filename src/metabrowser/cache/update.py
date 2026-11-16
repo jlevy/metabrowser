@@ -16,7 +16,7 @@ checked after it, and a fold, or a clash the retry still meets, puts every ref b
 and is reported as ``ref_case_collision``.
 
 Locks follow the refresh machine in
-``docs/project/architecture/arch-repository-sources-and-provider-mirrors.md``:
+``docs/project/architecture/arch-mirror-acquisition-and-refresh.md``:
 
 - the network work holds no hierarchy lock;
 - the store's fetch side lock, ``locks/stores/<store-key>.fetch.lock``, is tried

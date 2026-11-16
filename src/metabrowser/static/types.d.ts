@@ -3909,7 +3909,7 @@ declare global {
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
-    /** Container kinds by extension; see arch-nav-containers.md. */
+    /** Container kinds by extension; see arch-plugin-system.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
       /** This build's tag, which a request names to be told its answer cannot change. */

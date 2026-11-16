@@ -61,8 +61,8 @@ BINARY_PREVIEW_MAX_BYTES = int(
     os.environ.get("METABROWSER_BINARY_PREVIEW_MAX_BYTES", str(32 * 1024 * 1024))
 )
 # Default request size, used when a caller does not ask for one. The view
-# itself opens with a smaller first chunk and grows from there; this is the
-# fallback for direct callers.
+# names its own first chunk (``FIRST_CHUNK_BYTES`` in ``bytes-view.js``) and
+# grows from there; this is the fallback for direct callers.
 BINARY_PREVIEW_CHUNK_BYTES = int(
     os.environ.get("METABROWSER_BINARY_PREVIEW_BYTES", str(1024 * 1024))
 )

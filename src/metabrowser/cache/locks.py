@@ -1,7 +1,9 @@
 """The fixed lock hierarchy and side locks of the ``f01`` cache.
 
 Locks are BSD ``flock`` on lock files under ``locks/``, never POSIX record locks,
-which vanish when a process closes any descriptor for the file. The hierarchy, frozen in
+which vanish when a process closes any descriptor for the file. Measured 2026-09-16
+(``explorations/repository-cache/README.md``): a killed ``flock`` holder released at once,
+and a ``lockf`` lock vanished when an unrelated descriptor closed. The hierarchy, frozen in
 ``tests/fixtures/repository-cache/state-machines.json``, is:
 
 1. the application-home lock, for layout migration and brief global enumeration;

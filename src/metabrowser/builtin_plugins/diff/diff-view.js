@@ -3397,8 +3397,8 @@ export function mountDiffView(container, document_, api, options = {}) {
   }
   return {
     /**
-     * Go to the file a path names: see `FileJump`, and docs/large-content-rendering.md
-     * ("Going to a file") for what it promises.
+     * Go to the file a path names: see `FileJump`, and
+     * docs/project/architecture/arch-diff-pipeline.md, "Hydration", for what it promises.
      *
      * @param {string} path
      */

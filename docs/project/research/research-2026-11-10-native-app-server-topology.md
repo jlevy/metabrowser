@@ -730,7 +730,7 @@ cold OS file cache; MCP servers running outside each agent’s sandbox.
 
 - Earlier briefs:
   [Native macOS App for Metabrowser](research-2026-11-08-macos-app-packaging.md),
-  [Desktop App Packaging](research-2026-08-16-desktop-app-packaging.md)
+  [Desktop App Packaging](archive/research-2026-08-16-desktop-app-packaging.md)
 - Repository: [Views, Models, and Routes](../architecture/arch-views-models-routes.md),
   [rendering large content](../../large-content-rendering.md), `apps/macos/README.md`,
   `skills/metabrowser/SKILL.md`
