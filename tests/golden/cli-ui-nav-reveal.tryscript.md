@@ -28,8 +28,12 @@ focus. `files tree` lifts `app.js`’s tree reveal and its page mounting verbati
 stand-in tree whose renderer pages as production’s does, 200 rows and then a “more” row:
 closed folders open, and in a folder of 1,400 files only the page that holds the row is
 drawn, with the pages before and after it behind rows of their own, which draw in order
-where they are. A reveal that cannot show its row leaves no other row selected, and the
-tree says a file is outside the filter only when the filter is what hides it.
+where they are. One above the reader’s row grows up and gives focus to the row nearest
+it; one below grows down and gives focus to its first row, after a second reveal in the
+folder too. A file that arrives while the page is open counts in every one of the
+folder’s “more” rows, and one that sorts last goes last.
+A reveal that cannot show its row leaves no other row selected, and the tree says a file
+is outside the filter only when the filter is what hides it.
 `pulls list` runs the Pulls tab’s controller over the recorded lists and stack snapshot:
 an address naming a pull request in a closed stack opens the stack, the same pull
 request named again moves nothing unless it was opened again, which reveals it and ends
@@ -481,6 +485,153 @@ $ node tests/dom/nav-reveal-session.js
       "long folder": [
         "f0000–f1199",
         "Show 200 more (1400 total)"
+      ]
+    },
+    {
+      "step": "a long folder again, a file in its fifth page",
+      "path": "long/f0905.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [
+        "long/f0905.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "then one in its third: only its page is drawn, above the first's",
+      "path": "long/f0405.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0405.txt"
+      ],
+      "scrolled": [
+        "long/f0405.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 200 more (1400 total)",
+        "f0400–f0599",
+        "Show 200 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "the row below the reader's, pressed: its page grows down, and focus goes to its first row",
+      "path": "long/f0405.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0405.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 200 more (1400 total)",
+        "f0400–f0999",
+        "Show 400 more (1400 total)"
+      ],
+      "focus goes to": "long/f0600.txt"
+    },
+    {
+      "step": "a file arrives within a drawn page: each 'more' row counts it",
+      "path": "long/f0405.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0405.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 200 more (1401 total)",
+        "f0400–f0650",
+        "f0650a",
+        "f0651–f0999",
+        "Show 400 more (1401 total)"
+      ]
+    },
+    {
+      "step": "the row above the reader's, pressed: the rows it draws count the arrival, and focus goes to the row nearest the reader's",
+      "path": "long/f0405.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0405.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0650",
+        "f0650a",
+        "f0651–f0999",
+        "Show 400 more (1401 total)"
+      ],
+      "focus goes to": "long/f0399.txt",
+      "totals the rows give": [
+        "1401"
+      ]
+    },
+    {
+      "step": "a file in the folder's last page",
+      "path": "long/f1350.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f1350.txt"
+      ],
+      "scrolled": [
+        "long/f1350.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0650",
+        "f0650a",
+        "f0651–f0999",
+        "Show 200 more (1401 total)",
+        "f1200–f1399"
+      ]
+    },
+    {
+      "step": "a file that sorts last arrives: it goes last, after the page drawn",
+      "path": "long/f1350.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f1350.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0650",
+        "f0650a",
+        "f0651–f0999",
+        "Show 200 more (1402 total)",
+        "f1200–f1399",
+        "zzz"
       ]
     },
     {

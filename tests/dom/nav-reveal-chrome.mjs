@@ -571,7 +571,57 @@ try {
   }
   phase("J through a pull request's files");
 
-  // 13. A file a filter hides: the tree selects nothing else and says why.
+  // 13. Two reveals in one long folder, the second above the first: the "more" row below
+  // the second's page, pressed by a reader reading down to it, draws its page down from
+  // there, with its first row in view and focused, and the row the reader left in view.
+  await load(`${base}/view/long/f905.txt`);
+  await revealed("a long folder's fifth page by its address", fileRow("long/f905.txt"), "files");
+  await quickSearch("f405", "f405");
+  phase("quick search: a second page of a long folder");
+  await revealed("Quick Search, a second page of a long folder", fileRow("long/f405.txt"), "files");
+  await longIs("two reveals in one long folder: each draws only its page", [
+    "f000–f199",
+    "Show 200 more (1000 total)",
+    "f400–f599",
+    "Show 200 more (1000 total)",
+    "f800–f999",
+  ]);
+  const MORE_BELOW = `document.querySelector('#tab-files .tree-item[data-path="long/f599.txt"]').nextElementSibling`;
+  await evaluate(`${MORE_BELOW}.scrollIntoView({ block: "nearest" })`);
+  await frames();
+  await evaluate(`${MORE_BELOW}.click()`);
+  await waitFor(
+    `document.querySelector(${JSON.stringify(fileRow("long/f600.txt"))}) !== null`,
+    `the "more" row below the reader's draws its page`,
+  );
+  await frames();
+  const below = await evaluate(PANE(fileRow("long/f600.txt")));
+  const left = await evaluate(PANE(fileRow("long/f599.txt")));
+  const focusedRow = await evaluate(`document.activeElement?.dataset?.path ?? null`);
+  const pressedBelow = JSON.stringify({ f600: below.row, f599: left.row, focusedRow });
+  check(
+    `the "more" row below the reader's: its first row is in view`,
+    below.row?.inView === true,
+    pressedBelow,
+  );
+  check(
+    `the "more" row below the reader's: its first row has focus`,
+    focusedRow === "long/f600.txt",
+    pressedBelow,
+  );
+  check(
+    `the "more" row below the reader's: the row above it stays in view`,
+    left.row?.inView === true,
+    pressedBelow,
+  );
+  await longIs(`the "more" row below the reader's: in order`, [
+    "f000–f199",
+    "Show 200 more (1000 total)",
+    "f400–f999",
+  ]);
+  phase("the row below a second reveal");
+
+  // 14. A file a filter hides: the tree selects nothing else and says why.
   await load(`${base}/view/README.md`);
   await revealed("before the filter", fileRow("README.md"), "files");
   await evaluate(`window.metabrowser.filterState.set({ types: [".md"] })`);
@@ -596,7 +646,7 @@ try {
   await shot("filtered");
   await evaluate(`window.metabrowser.filterState.set({ types: null })`);
 
-  // 14. A commit's address, halfway down a 300-commit history.
+  // 15. A commit's address, halfway down a 300-commit history.
   await load(`${historyBase}/commit/${deepCommit}`);
   phase("commit");
   await revealed(
