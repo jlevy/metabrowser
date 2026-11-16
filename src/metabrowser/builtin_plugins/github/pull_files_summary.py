@@ -56,10 +56,10 @@ if TYPE_CHECKING:
 
 PULL_FILES_SUMMARY_ROUTE: Final = "/api/plugin/github/pull-files-summary"
 # The pull requests one request may name: the rows a Pulls window mounts, those in view and
-# PULL_ROWS_OVERSCAN (40) each way, 100 in a pane 1,200 px tall at 61 px a row; a taller pane's
-# rest are named in the next request. Measured 2026-11-16 in-process at a load average of 45 to 58, 100 numbers took 0.7 to
-# 1.0 ms once their lists were summed, a stat each, and as long when none was cached; an
-# answer was 293 to 411 bytes a listed pull request, 330 at the median, and 202 for one with
+# PULL_ROWS_OVERSCAN (40) each way, 100 in a pane 1,200 px tall at 61 px a row; a taller
+# pane's rest are named in the next request. Measured 2026-11-16 in-process at a load average
+# of 45 to 58, 100 numbers took 0.7 to 1.0 ms once their lists were summed, a stat each, and
+# as long when none was cached; an answer was 293 to 411 bytes a listed pull request, 330 at the median, and 202 for one with
 # none. The whole list, which `GET pull-files` answers, was 150 bytes to 50 KB, 4.2 KB at the
 # median, and 6.4 MB at the bound.
 MAX_SUMMARY_NUMBERS: Final = 100
