@@ -43,6 +43,8 @@ async function run() {
   // What each diff the page mounts is given, and the routes the page asks the shell to open.
   const rendered = [];
   const opened = [];
+  // How each Diff summary the page draws opens a file.
+  const summaryOpens = [];
   const mount = (
     initial,
     assets,
@@ -75,6 +77,8 @@ async function run() {
           async render(_host, context) {
             rendered.push(context);
             await renderReady;
+            // What the diff read, for the page's Diff summary at its top (mb-pb35).
+            context.onDocument?.({ read: true });
             return {
               scrollToFile(file) {
                 jumps.push(file);
@@ -82,6 +86,10 @@ async function run() {
               },
               dispose() {},
             };
+          },
+          async summary(_slot, context) {
+            summaryOpens.push(context.openFile);
+            return { dispose() {} };
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -118,11 +126,15 @@ async function run() {
   rendering.resolve();
   await page.whenFilesReady();
   assert.equal(pending(), null, "the diff owns progress after its initial render");
-  // A file the diff's Diff summary opens takes the route a press on it in the Pulls tab's tree
-  // takes (`tab.open` in pulls-panel.js), so the address names it, `/pull/7/files/<path>`.
-  const changesView = rendered.at(-1);
-  assert.equal(typeof changesView?.openFile, "function", "Changes gives the diff a file's address");
-  changesView.openFile("src/app.txt");
+  // A file the page's Diff summary opens takes the route a press on it in the Pulls tab's tree
+  // takes (`tab.open` in pulls-panel.js), so the address names it, `/pull/7/files/<path>`. The
+  // diff draws no summary of its own, so it is given no way to a file's address (A9 of review A
+  // on #470).
+  await settle();
+  assert.equal(rendered.at(-1)?.openFile, undefined, "Changes draws no summary of its own");
+  const openFile = summaryOpens.at(-1);
+  assert.equal(typeof openFile, "function", "the page's summary opens a file at its address");
+  openFile("src/app.txt");
   assert.deepEqual(opened.at(-1), {
     number: 7,
     tab: "files",
@@ -133,7 +145,7 @@ async function run() {
   assert.deepEqual(abandoned, [], "a fileless visit must not consume the abandoned file");
   // A path the route cannot spell has no address, so the diff goes to it in place (A6 of
   // review A on #448).
-  changesView.openFile("docs\\notes.md");
+  openFile("docs\\notes.md");
   await settle();
   assert.equal(opened.at(-1).file, "docs\\notes.md");
   assert.deepEqual(abandoned, ["docs\\notes.md"], "an unaddressable file is jumped to in place");

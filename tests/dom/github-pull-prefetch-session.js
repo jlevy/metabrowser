@@ -1,7 +1,8 @@
-// Browserless session: Files changed fetched from Conversation, through the production module.
+// Browserless session: a pull request's comparison read before Changes asks, through the
+// production module.
 //
 // builtin_plugins/github/comparison-prefetch.js loads whole. A scripted page asks it what the
-// pull-request page asks: `want` on every paint of the Conversation tab, `take` when a diff
+// pull-request page asks: `want` on every paint of every tab but Changes, `take` when a diff
 // mounts, `dispose` when the page goes. Each step prints what it has sent, what it holds, what
 // a mount would be handed, and which answers it has told the page of, for the page's Diff
 // summary (`summarized`, mb-pb35), and which failed reads, so the summary's placeholder does
@@ -180,10 +181,26 @@ async function main() {
   refused.requests[0].reject();
   await tick();
   const fromRefusal = await refused.prefetch.take(first);
-  say("a refused request is not retried and not an error: the diff asks and says why", refused, {
-    handed: fromRefusal ?? null,
-  });
-  // A comparison whose read failed is read again only after another's, and then told again.
+  say(
+    "a refused request is not an error: the page is told, and the diff asks and says why",
+    refused,
+    { handed: fromRefusal ?? null },
+  );
+
+  // The page's Diff summary waits on this read on every tab but Changes, so a read that failed
+  // is asked for again at the next paint (A1 of review A on #470).
+  const retried = page();
+  retried.prefetch.want(first);
+  retried.idle();
+  retried.requests[0].reject();
+  await tick();
+  retried.prefetch.want(first);
+  retried.idle();
+  retried.requests[1].resolve({ document: "first" });
+  await tick();
+  say("a refused request is asked again at the page's next paint", retried);
+  // A comparison a mount took after its read failed is the diff's: it is read again only
+  // after another's, and then told again.
   refused.prefetch.want(first);
   refused.prefetch.want(moved);
   refused.prefetch.want(first);
@@ -202,6 +219,15 @@ async function main() {
     "a request a mount took fails: the diff asks and says why, and the page is told nothing",
     takenRefused,
   );
+
+  const lateRefusal = page();
+  lateRefusal.prefetch.want(first);
+  lateRefusal.idle();
+  lateRefusal.prefetch.want(moved);
+  lateRefusal.requests[0].reject();
+  await tick();
+  assert(lateRefusal.failedTold.length === 0, "a cancelled request's refusal was told to the page");
+  lateRefusal.prefetch.dispose();
 
   const hidden = page({ visible: false });
   hidden.prefetch.want(first);

@@ -1,11 +1,14 @@
-// Files changed, fetched before it is asked for.
+// A pull request's comparison, read on every tab but Changes before Changes asks for it.
 //
-// The Conversation page knows the comparison the moment the record arrives, and the reader's
-// next click is usually Files changed. Principle 6 of the design system says to fetch it now
-// unless the cost is real and known, so this is what the cost is:
+// The page knows the comparison the moment the record arrives. Its header's Diff summary is
+// drawn from what is read here, on Conversation and Checks (mb-pb35), and the reader's next
+// click is often Changes, which is then handed the same answer. Principle 6 of the design
+// system says to fetch it now unless the cost is real and known, so this is what the cost is:
 //
 // - One request per comparison a page shows, sent when the browser is idle, so it does not
-//   queue ahead of an interaction. The server keeps the answer, so it is computed once.
+//   queue ahead of an interaction. The server keeps the answer, so it is computed once. A
+//   read that failed is asked again at the page's next paint, which is no sooner than its
+//   next record or tab, so a refusal cannot loop.
 // - Measured 2026-11-02 in Node 24 at load 14, the same V8 Chrome has, on real first pages:
 //   parsing took 3 ms for 1.0 MB and 49 ms for the largest real page, 13.6 MB of fifty files
 //   of a +442,186-line pull request, which holds 26 MB of heap until the click. The route's
@@ -14,7 +17,8 @@
 //   otherwise load with the first diff.
 //
 // A record that refreshes repaints the page, so `want` is asked again every poll: it is a
-// no-op for the same comparison, and a record that moved its head cancels the old request.
+// no-op for the same comparison unless its read failed, and a record that moved its head
+// cancels the old request.
 
 /**
  * @typedef {{left: string, right: string, route?: string, rendered_route?: string}} ComparisonEnds
@@ -97,7 +101,8 @@ export function createComparisonPrefetch(deps) {
         if (entry.phase === "fetching") {
           entry.phase = "failed";
           // A read no mount waits on failed: the page's Diff summary has nothing to wait for
-          // (mb-onr2). A mount that took it asks for itself and says why itself.
+          // (mb-onr2), and is not left showing an earlier comparison's (A1 of review A on
+          // #470). A mount that took it asks for itself and says why itself.
           if (current === entry && !disposed) {
             deps.failed?.(comparison);
           }
@@ -109,13 +114,14 @@ export function createComparisonPrefetch(deps) {
 
   return Object.freeze({
     /**
-     * The page shows this comparison, and the reader is not looking at it.
+     * The page shows this comparison, and the reader is not looking at it. A comparison whose
+     * read failed is asked for again.
      *
      * @param {ComparisonEnds} comparison
      */
     want(comparison) {
       const key = keyOf(comparison);
-      if (disposed || current?.key === key || !deps.isVisible()) {
+      if (disposed || (current?.key === key && current.phase !== "failed") || !deps.isVisible()) {
         return;
       }
       release();

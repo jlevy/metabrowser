@@ -136,10 +136,10 @@
      list is the server's _FONT_SETS registry. Two sets today:
        clean  - KPress's vendored faces everywhere: Source Sans 3 for chrome +
                 embedded UI, PT Serif for embedded prose. The @font-face rules
-                come from KPress's style-tokens.css, linked once in <head>, so
-                the woff2 files download a single time and are shared by the
-                chrome and the embedded document (no second copy, no FOUT once
-                preloaded).
+                come from KPress's style-tokens.css, linked once in <head> (the
+                plugin SDK does not link it again), so the woff2 files download
+                a single time and are shared by the chrome and the embedded
+                document (no second copy, no FOUT once preloaded).
        system - the platform UI sans + platform serif (macOS: system-ui and
                 ui-serif "New York"); no web fonts are fetched.
      Clean is the default and lives in this :root base; each additional set is a
@@ -151,7 +151,21 @@
   --app-sans-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --app-serif-system: ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--app-sans-clean);
-  --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  /* One monospace stack for all code, the shell's and the embedded document's:
+     --font-mono here and KPress's --kpress-host-font-mono hook (bridged below)
+     both read it, so highlighted source and Markdown code draw in one face. The
+     name is host-only because KPress redeclares --font-mono inside .kpress, where
+     a bridge through it would resolve to KPress's own stack.
+     What it draws, measured on macOS 26.5 on 2026-11-15: WebKit (Safari and the
+     macOS app) maps ui-monospace to SF Mono. Chromium (Chrome 152, Arc) ignores
+     ui-monospace and cannot reach the system's SF Mono by name, so it draws an
+     SF Mono the user installed, else Menlo. Menlo precedes Consolas so a Mac
+     with Microsoft Office's Consolas still draws Menlo in Chromium; WebKit never
+     offers user-installed fonts to web content. Consolas serves Windows and
+     Liberation Mono Linux. */
+  --app-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: var(--app-mono);
 
   /* ── Typography roles: which face, where ─────────────────────────
      Chrome is sans. Content is mono. The line between them is what the
@@ -245,16 +259,18 @@
 
   /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
      document rendering. The default "clean" font set keeps KPress's vendored
-     faces (PT Serif prose / Source Sans UI), so family hooks stay unset and
-     fall back to those stacks. `[data-app-font="system"]` (below) bridges the
-     families to platform stacks; `data-prose-font="sans"` bridges just
-     --kpress-host-font-prose to --prose-sans-font. Embedded document colors
-     use KPress's public --kpress-doc-* seam in the scoped bridge below. */
+     faces (PT Serif prose / Source Sans UI), so the prose and sans family hooks
+     stay unset and fall back to those stacks. `[data-app-font="system"]`
+     (below) bridges them to platform stacks; `data-prose-font="sans"` bridges
+     just --kpress-host-font-prose to --prose-sans-font. The mono hook is always
+     bridged, to --app-mono, so document code matches the shell's. Embedded
+     document colors use KPress's public --kpress-doc-* seam in the scoped
+     bridge below. */
+  --kpress-host-font-mono: var(--app-mono);
   /* No --kpress-measure here. KPress declares it on
-     `:root, .kpress, .kpress-page-main, .kpress-tooltip` and its stylesheet
-     loads after this one, so a value set here is overwritten on :root and
-     shadowed on .kpress — it reached nothing, in either scope. The reading
-     width lives in --doc-measure below, a name KPress does not declare, and is
+     `:root, .kpress, .kpress-page-main, .kpress-tooltip`, so a value set here
+     is shadowed on .kpress, the element that consumes it. The reading width
+     lives in --doc-measure below, a name KPress does not declare, and is
      bridged onto --kpress-measure at the .kpress scope further down. */
   --kpress-print-page-margin: 0.65in;
   --kpress-print-font-size: 11pt;
@@ -402,8 +418,8 @@
      words around it keep their line's weight, so the counts read at a glance. Every
      count numeral takes this token, `.summary-number`, `.git-commit-file-status`, and
      `.heading-tally-figure`, and not --pull-number-weight, which is a pull request's
-     number's (docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-roa9;
-     test_count_summaries_bold_their_numbers_through_one_token). */
+     number's (docs/design-system.md, "Count Summaries Bold Their Numbers" and "Heading
+     Tallies"; mb-roa9; test_count_summaries_bold_their_numbers_through_one_token). */
   --count-numeral-weight: var(--weight-bold);
 
   /* All-caps label style (shared by tabs, table headers, stat labels,
@@ -1674,15 +1690,17 @@ summary {
 }
 /* ── Heading tally — how many a heading's group or section holds ──
    It sits beside the heading's name, after the " · " separator, on the heading's line,
-   never at the far end (docs/design-system.md, "Heading Tallies"):
-     <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span>
-       <span class="heading-tally-figure">10,004</span> files</span>
-   Any heading takes it, a .group-heading or a .section-heading. It is a figure, not part
-   of the name, so the heading's caps, tracking, and weight are for the name alone: the
-   tally is regular, muted, and untracked at the heading's size, with its numeral bold at
-   the numbers' weight, --pull-number-weight. Its spaces are preserved, so the separator
-   keeps them where the heading lays its parts out as flex items, and it never wraps. The
-   dot is hidden from assistive technology: the heading reads "Older 10,004 files". */
+   never at the far end (docs/design-system.md, "Heading Tallies"). Its markup is one
+   line, and follows the name with nothing between them, since its spaces are kept:
+     <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span> <span class="heading-tally-figure">10,004</span> files</span>
+   A .group-heading or a .section-heading takes it. It is a figure, not part of the
+   name, so the heading's caps, tracking, and weight are for the name alone: the tally is
+   regular, muted, and untracked at the heading's size, its numeral bold at a count's
+   numeral weight, --count-numeral-weight. Its spaces are preserved, so the separator
+   keeps them where the heading lays its parts out as flex items, and the tally itself
+   never wraps. Cutting the name short is the use site's: a flex heading whose name
+   shrinks with an ellipsis, as .tree-section-label does. The dot is hidden from
+   assistive technology: the heading reads "Older 10,004 files". */
 .heading-tally {
   flex: none;
   color: var(--muted);
@@ -1693,7 +1711,7 @@ summary {
   white-space: pre;
 }
 .heading-tally-figure {
-  font-weight: var(--pull-number-weight);
+  font-weight: var(--count-numeral-weight);
 }
 /* ── Fold expander — a run of content withheld until asked for ───
    The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
@@ -2910,10 +2928,12 @@ html[data-prose-font="sans"] .kpress-prose h2,
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
+/* The row's one slot: the glyph's width, and the icon box's height, as a file identity in
+   the slot is (`.tree-item-icon.file-identity-icon`, below). */
 .tree-item-icon {
   flex-shrink: 0;
   width: var(--tree-icon-slot);
-  height: 16px;
+  height: var(--icon-box);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5784,8 +5804,7 @@ pre.code-block.metabrowser-source-lines > code {
    the -2px focus ring, and the current row's highlight. A plugin sets only how far in a
    row's depth puts it, `--changed-file-indent`. The rows are drawn a window at a time,
    each placed at its index. These are the shell's rules, in its eager stylesheet, because
-   they are a few declarations; the tree's model loads on demand. Before the shared set the
-   Diff summary's rows started 2px left of the Pulls tree's (8px padding against 10px).
+   they are a few declarations; the tree's model loads on demand.
      .changed-file-row     a folder's or a file's row (a folder's also .disclosure-toggle)
      .changed-file-toggle  a folder's chevron, in the tree's icon slot
      .changed-file-name    the name, cut short at the row's end
@@ -6420,6 +6439,11 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: 8ch;
   flex-grow: 1;
   flex-shrink: 1000;
+  /* A commit's subject is a title, bold as a title is wherever it appears, so a
+     conventional-commit prefix that starts it reads regular against the rest
+     (docs/design-system.md, "Titles"). The row keeps its 22px and the subject its one
+     line: the bolder face is only wider, so a long subject is cut short sooner. */
+  font-weight: var(--weight-bold);
 }
 
 .git-graph-meta {

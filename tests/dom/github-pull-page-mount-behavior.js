@@ -1332,9 +1332,13 @@ async function headerShape(page) {
  */
 async function mountScripted(page, tab, options = {}) {
   const tasks = [];
+  const listeners = [];
   globalThis.document = {
-    visibilityState: "visible",
-    addEventListener() {},
+    // A page opened out of sight, which `show` brings into view.
+    visibilityState: options.hidden ? "hidden" : "visible",
+    addEventListener(type, callback) {
+      listeners.push({ type, callback });
+    },
     removeEventListener() {},
     createElement: (tag) => new Element(tag),
     importNode: () => new Element("svg"),
@@ -1347,39 +1351,52 @@ async function mountScripted(page, tab, options = {}) {
     },
     clearTimeout() {},
   };
-  // The pull route answers what `serve` last gave it, and nothing new before that.
+  // The pull route answers what `serve` last gave it, or `poll`'s answer once, and nothing
+  // new before that.
   let served = null;
+  let polled = null;
   // A description's Markdown never answers when *markdown* waits, so a held first paint
   // runs to its bound, which `idle` runs too.
   globalThis.fetch = async (route) => {
     if (options.markdown === "waits" && route.startsWith("/api/plugin/github/pull-markdown")) {
       return new Promise(() => {});
     }
-    return served !== null && route.startsWith("/api/plugin/github/pull?")
-      ? { status: 200, headers: { get: () => null }, json: async () => served }
+    const body = route.startsWith("/api/plugin/github/pull?") ? (polled ?? served) : null;
+    if (body === polled) {
+      polled = null;
+    }
+    return body !== null
+      ? { status: 200, headers: { get: () => null }, json: async () => body }
       : { status: 304, headers: { get: () => null } };
   };
+  // The recorded comparison's read is `raw`; another's says its head's first seven digits.
   const raw = { comparison: "read" };
-  const steps = { summaries: [], renders: [] };
+  const shown = recorded.current.body.record.comparison.head;
+  // The heads whose read the server refuses.
+  const refused = new Set();
+  const steps = { summaries: [], renders: [], opened: [], jumps: [], openFile: null };
   const diffDoes =
     typeof options.diff === "function" ? options.diff : () => options.diff ?? "reads";
   const diffView = {
-    prefetch: async () => {
-      if (options.read === "fails") {
+    prefetch: async (comparison) => {
+      if (options.read === "fails" || refused.has(comparison.right)) {
         throw new Error("refused");
       }
-      return raw;
+      return comparison.right === shown ? raw : { comparison: comparison.right.slice(0, 7) };
     },
     summary: async (slot, ctx) => {
-      steps.summaries.push(ctx.raw === raw ? "the comparison read" : "another");
+      const said = ctx.raw === raw ? "the comparison read" : ctx.raw.comparison;
+      steps.summaries.push(said);
+      steps.openFile = ctx.openFile;
       if (options.summary === "declines") {
         return null;
       }
       const header = new Element("button");
       header.className = "diff-summary diff-summary-toggle";
       header.classes.add("diff-summary");
+      header.textContent = said;
       slot.append(header);
-      return { dispose: () => steps.summaries.push("disposed") };
+      return { dispose: () => steps.summaries.push(`disposed ${said}`) };
     },
     render: async (_host, ctx) => {
       const does = diffDoes(ctx.comparison.right, steps.renders.length);
@@ -1393,11 +1410,18 @@ async function mountScripted(page, tab, options = {}) {
       if (does === "reads") {
         ctx.onDocument?.(raw);
       }
-      return { dispose() {} };
+      return {
+        dispose() {},
+        scrollToFile(path) {
+          steps.jumps.push(path);
+          return { kind: "jumped", path };
+        },
+      };
     },
   };
   const container = new Element("main");
-  const handle = page.mountPullPage(
+  let handle = null;
+  handle = page.mountPullPage(
     container,
     {
       number: 7,
@@ -1408,6 +1432,22 @@ async function mountScripted(page, tab, options = {}) {
             initial: { etag: null, body: options.body ?? recorded.current.body },
             fetchAfterMs: 60_000,
           },
+      // With *routes*, the route opener as pull-route.js's `open` answers: a route whose file
+      // it cannot spell, as one with a backslash, is refused, and a tab of the page shown is
+      // set.
+      ...(options.routes
+        ? {
+            open: (route) => {
+              steps.opened.push(route);
+              if (route.file?.includes("\\")) {
+                return Promise.reject(new Error("the route cannot spell this path"));
+              }
+              window.location.pathname = `/pull/7/${route.tab}`;
+              handle.setTab(route.tab);
+              return Promise.resolve({ status: "opened" });
+            },
+          }
+        : {}),
     },
     {
       perf,
@@ -1426,16 +1466,33 @@ async function mountScripted(page, tab, options = {}) {
   );
   await settle();
   const row = () => container.querySelector(".github-pull-summary");
-  const idle = () => {
+  // The timers run at once; awaited, so do the answers they started.
+  const idle = async () => {
     for (const task of tasks.splice(0)) {
       task();
     }
+    await settle();
   };
   /** The pull route answers *body* from the next poll on, which `idle` runs. */
   const serve = (body) => {
     served = body;
   };
-  return { handle, row, steps, idle, serve, container };
+  /** The next poll answers with *body*, once, and the timers run until it has. */
+  const poll = async (body) => {
+    polled = body;
+    await idle();
+  };
+  /** A page opened out of sight is shown. */
+  const show = async () => {
+    document.visibilityState = "visible";
+    for (const { type, callback } of listeners) {
+      if (type === "visibilitychange") {
+        callback();
+      }
+    }
+    await idle();
+  };
+  return { handle, row, steps, idle, serve, poll, show, refused, container };
 }
 
 // The pull request's Diff summary is the header's last row, on every tab (mb-pb35). Its row
@@ -1498,7 +1555,10 @@ async function headerSummary(page) {
   assert.deepEqual(conversation.steps.summaries, ["the comparison read"], "drawn once");
   tell("Changes", conversation.row());
   conversation.handle.dispose();
-  assert.deepEqual(conversation.steps.summaries, ["the comparison read", "disposed"]);
+  assert.deepEqual(conversation.steps.summaries, [
+    "the comparison read",
+    "disposed the comparison read",
+  ]);
 
   const checks = await mount("checks");
   tell("Checks, the comparison not yet read", checks.row());
@@ -1508,6 +1568,84 @@ async function headerSummary(page) {
   tell("Checks, the comparison read", checks.row());
   checks.handle.dispose();
 
+  // A poll that brings a new comparison draws its summary in place of the old one. A read of
+  // it that is refused empties the row, at its held height, rather than leave the old
+  // comparison's counts there as the new one's, and the next paint asks again (A1 of review A
+  // on #470).
+  const shownHead = recorded.current.body.record.comparison.head;
+  const polledBody = structuredClone(recorded.current.body);
+  const polledHead = "e".repeat(40);
+  polledBody.record.comparison.head = polledHead;
+  polledBody.record.pull.head.sha = polledHead;
+  polledBody.comparison_route = polledBody.comparison_route.replace(
+    `right=${shownHead}`,
+    `right=${polledHead}`,
+  );
+  const polling = await mount("");
+  await polling.idle();
+  assert.equal(polling.row().textContent, "the comparison read");
+  polling.refused.add(polledHead);
+  await polling.poll(polledBody);
+  await polling.idle();
+  assert.equal(polling.row().children.length, 0, "a refused read of the new comparison empties it");
+  assert.deepEqual(polling.steps.summaries, [
+    "the comparison read",
+    "disposed the comparison read",
+  ]);
+  polling.refused.delete(polledHead);
+  window.location.pathname = "/pull/7/checks";
+  polling.handle.land({ tab: "checks" });
+  await polling.idle();
+  assert.equal(polling.row().textContent, "eeeeeee", "the next paint reads it again, and draws it");
+  const switched = await mount("");
+  await switched.idle();
+  await switched.poll(polledBody);
+  await switched.idle();
+  assert.equal(switched.row().textContent, "eeeeeee", "an accepted read replaces the old summary");
+  assert.deepEqual(switched.steps.summaries, [
+    "the comparison read",
+    "eeeeeee",
+    "disposed the comparison read",
+  ]);
+  polling.handle.dispose();
+  switched.handle.dispose();
+
+  // A page opened out of sight reads nothing until it is shown, and then draws its summary on
+  // Checks as on Conversation (A2 of review A on #470).
+  for (const tab of ["", "checks"]) {
+    const behind = await mount(tab, { hidden: true });
+    await behind.idle();
+    assert.deepEqual(behind.steps.summaries, [], "a hidden page reads nothing");
+    await behind.show();
+    assert.deepEqual(behind.steps.summaries, ["the comparison read"], `shown on "${tab}"`);
+    assert.equal(behind.row().children.length, 1);
+    behind.handle.dispose();
+  }
+
+  // A press on a file in the summary opens Changes at the file's address; a file with no
+  // address, pressed on Conversation, where no diff is mounted, opens Changes and goes to the
+  // file once its diff mounts (A8 of review A on #470).
+  const pressed = await mount("", { routes: true });
+  await pressed.idle();
+  pressed.steps.openFile("docs/notes.md");
+  assert.deepEqual(pressed.steps.opened.at(-1), {
+    number: 7,
+    tab: "files",
+    file: "docs/notes.md",
+    replace: false,
+    jumped: false,
+  });
+  window.location.pathname = "/pull/7";
+  pressed.handle.land({ tab: "" });
+  await settle();
+  pressed.steps.openFile("docs\\notes.md");
+  await settle();
+  assert.deepEqual(pressed.steps.opened.slice(-2), [
+    { number: 7, tab: "files", file: "docs\\notes.md", replace: false, jumped: false },
+    { number: 7, tab: "files", replace: false, jumped: false },
+  ]);
+  assert.deepEqual(pressed.steps.jumps, ["docs\\notes.md"], "the diff goes to it once mounted");
+  pressed.handle.dispose();
   const changes = await mount("files");
   await settle();
   assert.deepEqual(changes.steps.renders, [{ summary: false, onDocument: "function" }]);

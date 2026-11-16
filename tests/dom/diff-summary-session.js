@@ -83,12 +83,19 @@ let rowOf = () => {
 let diffModel = null;
 
 /**
- * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. `numbers` are
- * the counts it paints bold, each apart from its words (docs/design-system.md, "Count
- * Summaries Bold Their Numbers"): the file count, then each status's.
+ * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes, with the page's
+ * whole totals (*whole*) where the list is cut short. `numbers` are the counts it paints bold,
+ * each apart from its words (docs/design-system.md, "Count Summaries Bold Their Numbers"): the
+ * file count, then each status's.
  */
-function header(_model, manifest) {
-  const { said } = diffModel.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
+function header(_model, manifest, whole = null) {
+  const { said, listed } = diffModel.diffSummaryOf(
+    manifest.totals,
+    manifest.files,
+    shared,
+    formatCount,
+    whole,
+  );
   return {
     text: said.text,
     label: said.label,
@@ -96,6 +103,7 @@ function header(_model, manifest) {
     numbers: [...said.filesParts, ...said.breakdownParts].flatMap((part) =>
       typeof part === "string" ? [] : [part.number],
     ),
+    ...(listed === null ? {} : { listed }),
   };
 }
 
@@ -170,6 +178,14 @@ async function main() {
     manifestOf([change("modified", "a.txt", 1, 1), change("modified", "b/c.txt", 1, 0)]),
   );
   stories["no files"] = header(model, manifestOf([]));
+  // A list cut short at its bound, on a page that knows the whole change set's totals, as a
+  // commit's page does from the commit's own stats: those, with no breakdown of the files
+  // listed alone, and how many are listed (A3 of review A on #470).
+  stories["a list cut short, with the page's whole totals"] = header(
+    model,
+    { ...kindsManifest, truncated: true, cursor: "manifest-cap" },
+    { files: 5000, additions: 152340, deletions: 30211, exact: true },
+  );
 
   // The tree as it opens: every folder open, a chain of single folders as one row, and each
   // folder with the counts of its files rolled up, the binary ones left out and counted.

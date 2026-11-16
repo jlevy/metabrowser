@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -224,6 +225,25 @@ def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[repo
 
 
 @pytest.fixture(autouse=True)
+def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no parsed label set and no unwritten outcome, as a new process.
+
+    ``pull_labels`` keeps both per process, by home and source, and the fixtures share one
+    source, so a set one test parsed or a refusal it remembered would reach the next. A
+    process that never imported it holds neither, and is not made to import it here.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_labels")
+        if loaded is not None:
+            loaded.forget()
+
+    forget()
+    yield
+    forget()
+
+
+@pytest.fixture(autouse=True)
 def _restore_environment() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Put back whatever a test, or the code it ran, changed in ``os.environ``.
 
@@ -384,3 +404,14 @@ def _isolated_configuration(tmp_path: Path) -> Generator[None, None, None]:  # p
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "metabrowser-config"))
         yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_delivery() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """A test that runs a serve mode says it serves for local use; the next one starts
+    from the default, which compresses for every client (metabrowser.delivery)."""
+    from metabrowser import delivery
+
+    delivery.serve_locally(False)
+    yield
+    delivery.serve_locally(False)

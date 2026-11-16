@@ -178,6 +178,7 @@ const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 // The repository's list of pull requests, whose scan says which records GitHub changed.
 const CATALOG_REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
+const LABELS_REFRESH_ROUTE = "/api/plugin/github/labels-refresh";
 // How the server says, on a 200 and a 304 alike, when the record was last checked and how.
 const VERIFIED_HEADER = "x-metabrowser-verified";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
@@ -512,7 +513,7 @@ export function labelChip(label) {
  * @param {unknown} entries
  * @returns {Map<string, RepositoryLabel>}
  */
-export function knownLabels(entries) {
+function knownLabels(entries) {
   /** @type {Map<string, RepositoryLabel>} */
   const known = new Map();
   for (const entry of list(entries)) {
@@ -525,6 +526,26 @@ export function knownLabels(entries) {
     }
   }
   return known;
+}
+
+/**
+ * Whether the record or core the envelope shows names a label without a usable color that
+ * `repository_labels` has no entry for, as a record cached before label colors does while
+ * the repository's set lacks it (`mb-varu`).
+ *
+ * @param {PullEnvelope} envelope
+ * @returns {boolean}
+ */
+function labelsMissing(envelope) {
+  const pull = envelope.record !== null ? envelope.record.pull : envelope.core_preview?.pull;
+  const known = knownLabels(envelope.repository_labels);
+  return list(pull?.labels).some((value) => {
+    const label =
+      value !== null && typeof value === "object"
+        ? /** @type {Record<string, unknown>} */ (value)
+        : {};
+    return labelColorProperties(label.color) === null && !known.has(text(label.name));
+  });
 }
 
 /**
@@ -671,7 +692,10 @@ function timeline(record) {
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
-      review: { state, label: state in REVIEW_STATES ? REVIEW_STATES[state] : state.toLowerCase() },
+      review: {
+        state,
+        label: Object.hasOwn(REVIEW_STATES, state) ? REVIEW_STATES[state] : state.toLowerCase(),
+      },
     });
   }
   // A pending review has no time and sorts last; ties keep comments before reviews,
@@ -1719,6 +1743,12 @@ export function createPullController(deps, options) {
   // The last answer said the catalog vouched while its next scan ran: the page reads again
   // in a fast poll, so a change that scan publishes is refreshed then, not a slow poll later.
   let catalogScanning = false;
+  // A label the page shows without its color, which the envelope has no entry for, asks
+  // for the repository's label set once a page (`mb-varu`); the server reads it only when
+  // it is absent or due. Once the set's job started or was joined, the page reads again in
+  // a fast poll, which says from then on whether the job still runs (`labels_pending`).
+  let labelsAsked = false;
+  let labelsComing = false;
   /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
   let askTimer = null;
   /** @type {string | null} */
@@ -2015,6 +2045,7 @@ export function createPullController(deps, options) {
       // The repository's labels are being read, so a chip still drawn without its color
       // takes it at once (`mb-varu`).
       envelope.labels_pending === true ||
+      labelsComing ||
       catalogScanning
     );
   }
@@ -2144,6 +2175,7 @@ export function createPullController(deps, options) {
    */
   function take(response, request) {
     catalogScanning = false;
+    labelsComing = false;
     if (response.status === 200 && isEnvelope(response.body)) {
       if (accept(response.body, request)) {
         etag = response.etag;
@@ -2225,6 +2257,7 @@ export function createPullController(deps, options) {
    */
   function afterRead(fastMs) {
     scheduleNext(fastMs);
+    askForLabels();
     fetchForReader();
     fetchSelectedChanges();
     // Decided before the paint, so a record that just went stale is painted refreshing and
@@ -2233,6 +2266,40 @@ export function createPullController(deps, options) {
     render();
     deps.timelineStateChanged?.();
     fetchIdleChanges();
+  }
+
+  /**
+   * Ask once for the repository's label set when the page shows a label named alone that
+   * the envelope has no entry for, at once on the first read that shows it, and not while
+   * the set's job already runs. The server reads the set only when it is absent or due; a
+   * job it started or joined makes the next read a fast poll.
+   */
+  function askForLabels() {
+    if (
+      labelsAsked ||
+      disposed ||
+      envelope === null ||
+      envelope.labels_pending === true ||
+      !deps.isVisible() ||
+      !online() ||
+      !labelsMissing(envelope)
+    ) {
+      return;
+    }
+    labelsAsked = true;
+    void (async () => {
+      let started = false;
+      try {
+        const response = await deps.request("POST", LABELS_REFRESH_ROUTE, { body: {} });
+        started = response.status === 202;
+      } catch {
+        // The chips keep their neutral color; the page's next visit asks again.
+      }
+      if (started && !disposed) {
+        labelsComing = true;
+        scheduleNext();
+      }
+    })();
   }
 
   /**
@@ -5490,13 +5557,35 @@ export function mountPullPage(container, ctx, mb) {
       open({ number, tab: "files", file: path, replace: false, jumped: false })
     );
     if (opened && typeof opened.then === "function") {
-      void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+      void Promise.resolve(opened).then(undefined, () => goToFileInPlace(path));
     } else {
-      jumpTo(path);
+      goToFileInPlace(path);
     }
   }
 
-  /** The comparison the page's Diff summary shows, and its mount. */
+  /**
+   * Go to a changed file that has no address: the diff jumps to it in place, or, with no diff
+   * mounted, as on Conversation and Checks, Changes opens at the page's own address and its
+   * diff goes to the file once it mounts (`landFile`), so the press is not lost (A8 of review
+   * A on #470).
+   *
+   * @param {string} path
+   */
+  function goToFileInPlace(path) {
+    if (listening.signal.aborted || diffHandle !== null) {
+      jumpTo(path);
+      return;
+    }
+    wantedFile = path;
+    void Promise.resolve(open({ number, tab: "files", replace: false, jumped: false })).catch(
+      () => {},
+    );
+  }
+
+  /**
+   * The page's Diff summary: the comparison it is drawn for, or being drawn for, the claim of
+   * its latest draw, and the mount in the row.
+   */
   let summaryShown = {
     key: "",
     claim: 0,
@@ -5544,7 +5633,12 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * *comparison* was read, or could not be, and drew no Diff summary: its row is empty.
+   * *comparison* was read, or could not be, and drew no Diff summary: its row is empty, the
+   * placeholder gone with its wait (mb-onr2). A summary of an earlier comparison is not left
+   * in the row either, where it would read as this one's (A1 of review A on #470), when
+   * *comparison* is the one the page shows; the next read of it draws it. A draw of this
+   * comparison already under way answers for itself, and a failure of another comparison, as
+   * an older one Changes shows while it is repaired, empties nothing.
    *
    * @param {{left: string, right: string, route?: string}} comparison
    */
@@ -5552,7 +5646,12 @@ export function mountPullPage(container, ctx, mb) {
     if (listening.signal.aborted) {
       return;
     }
-    summaryFailed = comparisonKey(comparison);
+    const key = comparisonKey(comparison);
+    summaryFailed = key;
+    const current = shown?.comparison ?? null;
+    if (current !== null && comparisonKey(current) === key && summaryShown.key !== key) {
+      clearSummary();
+    }
     paintSummaryWait(shown);
   }
 
@@ -5572,11 +5671,19 @@ export function mountPullPage(container, ctx, mb) {
     paintSummaryWait(shown);
   }
 
+  /** Empty the summary's row, which keeps its held height, so nothing moves. */
+  function clearSummary() {
+    summaryShown.handle?.dispose();
+    summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
+    summaryRow.replaceChildren();
+  }
+
   /**
    * Draw the page's Diff summary for *comparison* from what was read of it, once per
    * comparison, whichever read comes first: the prefetch, on any tab but Changes, or the
    * Changes diff's own. It is drawn out of sight and put in the header's held row in one
-   * step, so it moves nothing; a newer comparison's replaces it the same way.
+   * step, so it moves nothing; a newer comparison's replaces it the same way. One that draws
+   * nothing, or fails, empties the row rather than leave an earlier comparison's there.
    *
    * @param {{left: string, right: string, route?: string}} comparison
    * @param {unknown} raw
@@ -5608,7 +5715,7 @@ export function mountPullPage(container, ctx, mb) {
           return;
         }
         if (handle === null) {
-          summaryShown = { ...summaryShown, key: "" };
+          clearSummary();
           summaryUnavailable(comparison);
           return;
         }
@@ -5618,12 +5725,24 @@ export function mountPullPage(container, ctx, mb) {
         summaryRow.replaceChildren(...stage.childNodes);
       },
       () => {
-        if (summaryShown.claim === claim) {
-          summaryShown = { ...summaryShown, key: "" };
+        if (!listening.signal.aborted && summaryShown.claim === claim) {
+          clearSummary();
           summaryUnavailable(comparison);
         }
       },
     );
+  }
+
+  /**
+   * The comparison is read on every tab but Changes, which reads it itself: the page's Diff
+   * summary is drawn from it (mb-pb35). A page opened out of sight asks once it is shown.
+   *
+   * @param {PullModel} model
+   */
+  function wantComparison(model) {
+    if (model.pull !== null && model.tab !== "files" && model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
   }
 
   /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
@@ -5702,12 +5821,6 @@ export function mountPullPage(container, ctx, mb) {
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
-              // A file the Diff summary opens goes to its address, `/pull/<n>/files/<path>`,
-              // the route a press on it in the Pulls tab's tree takes, so the address names it
-              // and Back returns to where the reader was.
-              // A path the route cannot spell, as one with a backslash, which Git allows in a
-              // name, has no address: the diff goes to it in place instead.
-              openFile: openChangedFile,
             }),
           { number },
         )
@@ -5983,11 +6096,7 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
-    // The comparison is read on every tab but Changes, which reads it itself: the page's
-    // Diff summary is drawn from it (mb-pb35).
-    if (model.comparison !== null) {
-      prefetch.want(model.comparison);
-    }
+    wantComparison(model);
     if (model.tab === "checks") {
       const key = JSON.stringify([
         "checks",
@@ -6007,9 +6116,6 @@ export function mountPullPage(container, ctx, mb) {
         paintChecks(model, model.pull);
       }
       return;
-    }
-    if (model.comparison !== null) {
-      prefetch.want(model.comparison);
     }
     if (hold === "delayed" || key === null) {
       return;
@@ -6579,12 +6685,10 @@ export function mountPullPage(container, ctx, mb) {
       controller.onVisibilityChange();
       followTimeline();
       // A page opened behind another tab is not prefetched until it is looked at: the
-      // wish is not recorded while hidden, so it is asked again when shown.
-      if (document.visibilityState === "visible" && shown?.tab === "") {
-        const comparison = shown?.comparison ?? null;
-        if (comparison !== null) {
-          prefetch.want(comparison);
-        }
+      // wish is not recorded while hidden, so it is asked again when shown, on every tab
+      // that paints it (A2 of review A on #470).
+      if (document.visibilityState === "visible" && shown !== null) {
+        wantComparison(shown);
       }
     },
     { signal: listening.signal },

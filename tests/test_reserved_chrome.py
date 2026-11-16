@@ -463,7 +463,8 @@ def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() ->
     the title alone, from the text column under the age to the row's end. The chevron and
     the icon sat on the title's line until mb-3cbf. The number's line is one line, so the row
     is always two: the author leaves it whole onto a clipped second line rather than growing
-    the row. The DOM keeps the title first, so the row's accessible name leads with it.
+    the row. The DOM keeps the title the row's first text, so its accessible name gives the
+    state icon's label and then the title, before the number's line.
     github-pulls-stacks-chrome.mjs and github-pull-header-chrome.mjs measure it."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")

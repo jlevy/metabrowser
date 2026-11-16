@@ -215,7 +215,7 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # token changed, were loaded back to back against main, cold, on a folder's page, in
 # headless Chrome 152 on 2026-11-12. First row, as the paired median ratio with its 95%
 # bootstrap interval:
-#   loopback, 30 pairs           1.07x (1.03-1.14), +6.6 ms
+#   loopback, 30 pairs           1.07x (1.03-1.14), +6.6 ms (before H115, gzipped)
 #   10 ms, 100 Mbps, 20 pairs    0.99x (0.95-1.11), -0.7 ms
 #   80 ms, 20 Mbps, 10 pairs     1.04x (1.03-1.04), +19.4 ms
 # That is a rough cut, not the careful 1.1x: the host was loaded (load average 56-92 on
@@ -236,17 +236,38 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # neither decides which scripts are startup scripts. Re-derive the ceiling rather than
 # raise it: it is measured from 174 KB, and a server that stops compressing on every
 # request changes the loopback cost.
+# What the number is, since H115: the startup scripts as the remote path sends them.
+# `run.py record` reads each script the page requested before DOMContentLoaded again
+# from the measured server, compresses it as the server compresses for a client it
+# gzips for (level 6, metabrowser.delivery; `metab --remote` keeps that), and adds the
+# 300 bytes Resource Timing gives a response, which is the quantity the 220 KB above was
+# measured in. A server started for local use sends a loopback browser its scripts
+# uncompressed, so the browser's own transfer there is their decoded size; `record` keeps
+# it as `startup_script_loopback_transfer_kb`, which no budget reads.
+# The loopback row above was measured while the server gzipped every answer to every
+# client, as is the sentence on what loopback costs; neither describes the macOS app's
+# start since H115, which sends its scripts uncompressed and unbudgeted, about 630 KB
+# (review B of #455, B10). The ceiling now rests on the two remote rows.
+# devtools/check_startup_scripts.py gives the same number from the shell on every lint.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220
 policy = "gate"
 required = true
-description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+description = "Startup JavaScript before DOMContentLoaded as the remote path transfers it, gzipped at level 6 with 300 bytes a response, excluding the separately reported vendor-prefetch tier."
 
 # The exact 300,000-file cold trace measured ordinary shell CSS server work at
 # 20.9 ms and an unprepared first KPress stylesheet request at 196.6 ms. This
 # ceiling leaves more than three times the healthy observation while rejecting
 # the deferred-import cost that held first paint.
+# Since H115 the figure is a larger quantity for a stamped /static stylesheet: its
+# `srv` now includes the whole read and compression, which the store finishes before
+# the headers leave, where a streamed file response sent them after its first 64 KiB
+# chunk. The 20.9 ms above predates that. In one untimed landing each (review B of
+# #455, B5), /static/styles.css read `srv` 9.2 ms before H115, 20.9 ms compressed and
+# 15.6 ms on the macOS app's start after it, with its end of body 25, 21.2 and 15.8 ms.
+# A comparison across H115 reads stylesheets by end of body (server-time.mjs's `end_ms`,
+# or Resource Timing's `responseEnd`), not by this figure.
 [metrics.startup_style_server_ms_max]
 category = "loading"
 maximum = 75
