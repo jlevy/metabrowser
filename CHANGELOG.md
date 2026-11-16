@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Every count summary bolds its numbers and keeps its words regular: the Diff summary’s
+  header, “**8** changed files (**8** modified)”, on a commit’s page, in a pull
+  request’s header, and in a patch’s toolbar; the Files totals and the filter’s
+  “Filtered to” line; the Commits tally; the Pulls count; a pull request’s Checks
+  summary; and a commit’s files outside the served folder.
+  A size is bold with its unit, as in “(**324.1 MB**)”, and what a screen reader hears
+  is unchanged. See
+  [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers).
+
+- A diff’s toolbar no longer draws a rule under the Split | Unified chooser, on a
+  commit’s page, on a pull request’s Changes, and in a patch: the first file’s own
+  border is the one line between the chooser and the files.
+
 - An opened Diff summary no longer scrolls in a box of its own: its tree of files is as
   tall as its rows, and the page scrolls past it to the diff, drawing only the rows in
   view. Its first level starts one indentation step in from the summary’s header, and

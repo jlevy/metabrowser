@@ -335,7 +335,8 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
 /** The shell's text helpers the Files totals are written with (app.js). */
 type MetabrowserTreeSummaryFormat = {
   esc(value: unknown): string;
-  formatCount(n: number): string;
+  /** A count of files as a count summary paints it: "12,797" and "files", apart. */
+  formatCountParts(n: number): MetabrowserCountedWords;
   formatSize(bytes: number): string;
 };
 
@@ -404,7 +405,7 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   ): string;
   treeSummaryCountHtml(
     files: number | null | undefined,
-    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatCount">,
+    format: Pick<MetabrowserTreeSummaryFormat, "esc" | "formatCountParts">,
   ): string;
   treeSummarySizeHtml(
     bytes: number | null | undefined,
@@ -1813,6 +1814,15 @@ type MetabrowserTreeFilterModel = {
     action: "apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent";
     current: MetabrowserRecentFilterCursor;
   }>;
+  /** The Files filter's remark in parts, each number apart from its words, to paint bold. */
+  filteredTallyParts(
+    count: number,
+    recent: {
+      totalMatching: number;
+      totalMatchingExact: boolean;
+      truncated: boolean;
+    } | null,
+  ): Array<string | { number: string }>;
   recentFilteredTallyText(
     count: number,
     options: {
@@ -3488,9 +3498,14 @@ declare global {
     | MetabrowserChangedFilesFolderRow
     | MetabrowserChangedFilesFileRow;
 
+  /** A count and the words after it, "35" and "changed files", painted apart. */
+  type MetabrowserCountedWords = { count: string; words: string };
+
   type MetabrowserChangedFilesSummary = {
     files: string;
     breakdown: string;
+    fileCount: MetabrowserCountedWords;
+    statusCounts: MetabrowserCountedWords[];
     additions: string;
     deletions: string;
     estimated: boolean;

@@ -2,11 +2,11 @@
 // folder of patches, the shell's own page, and the diff plugin's header and tree.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
-//     node tests/dom/diff-summary-chrome.mjs METAB ROOT PORT STATE_DIR
+//     node tests/dom/diff-summary-chrome.mjs METAB ROOT PORT STATE_DIR COMMIT
 //
-// tests/test_changed_file_rows_chrome.py writes the folder, owns the profile and STATE_DIR,
-// runs this in a process group of its own, which Chrome and the server join, and judges the
-// one JSON line it prints.
+// tests/test_changed_file_rows_chrome.py writes the folder, a Git repository whose COMMIT
+// changes several files, owns the profile and STATE_DIR, runs this in a process group of its
+// own, which Chrome and the server join, and judges the one JSON line it prints.
 //
 // What it measures is layout, which no browserless DOM computes (docs/design-system.md,
 // "Diff Summary"; mb-hi4l): where the header's chevron and words start, and where each row
@@ -18,11 +18,18 @@
 // the tree's. This is the summary in a patch's toolbar; under a commit's identity and in a
 // pull request's header, the commit summary and pull request header Chrome sessions
 // measure its indentation.
+//
+// It also reads the chrome around the diff (`CHROME` below), on the patch and on COMMIT's
+// page, where the toolbar holds the layout control alone: that the toolbar draws no rule
+// and the first file card starts the cards' gap below it ("Diff Layout Control"; mb-a073),
+// and the computed weight of every run of text in the count summaries the page shows, the
+// Diff summary's header, the Files totals, and the Commits tally, so a number reads bold
+// and a word regular ("Count Summaries Bold Their Numbers"; mb-roa9).
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
-const [metab, root, port, state] = process.argv.slice(2);
+const [metab, root, port, state, commit] = process.argv.slice(2);
 const base = `http://127.0.0.1:${port}`;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const started = Date.now();
@@ -111,6 +118,53 @@ const LAYOUT = `(() => {
   };
 })()`;
 
+// In the page: the diff's toolbar against the first file card, and each count summary's runs
+// of text, each with its computed weight and whether it is a bold number (`.summary-number`),
+// a change stat, or an age, which carry weights of their own.
+const CHROME = `(() => {
+  const round = (value) => Math.round(value * 100) / 100;
+  const toolbar = document.querySelector(".metabrowser-diff-host .diff-toolbar");
+  const card = document.querySelector(".metabrowser-diff-host .diff-file");
+  const style = getComputedStyle(toolbar);
+  const runs = (selector) => {
+    const line = document.querySelector(selector);
+    if (line === null) {
+      return null;
+    }
+    const found = [];
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.textContent.trim() === "") {
+        continue;
+      }
+      const parent = node.parentElement;
+      found.push({
+        text: node.textContent,
+        weight: getComputedStyle(parent).fontWeight,
+        number: parent.classList.contains("summary-number"),
+        own: parent.closest(".diff-summary-stats, .git-history-summary-age") !== null,
+      });
+    }
+    return found;
+  };
+  return {
+    toolbar: {
+      holds: [...toolbar.children].map((child) => child.classList[0]),
+      rule: [style.borderBottomStyle, style.borderBottomWidth].join(" "),
+      position: style.position,
+      paddingBottom: style.paddingBottom,
+      gapToCard: round(card.getBoundingClientRect().top - toolbar.getBoundingClientRect().bottom),
+      cardMarginTop: getComputedStyle(card).marginTop,
+      cardRule: getComputedStyle(card).borderTopWidth,
+    },
+    counts: {
+      summary: runs(".diff-summary"),
+      files: runs(".tree-summary.nav-metadata"),
+      commits: runs(".git-history-summary"),
+    },
+  };
+})()`;
+
 /** Open *patch*, then its Diff summary, and read it once its travel is over. */
 async function openSummary(browser, patch) {
   await browser.send("Page.navigate", { url: `${base}/view/${patch}` });
@@ -118,8 +172,14 @@ async function openSummary(browser, patch) {
     `document.querySelector(".diff-summary-toggle") !== null && document.querySelector(".diff-file-bar") !== null`,
     30000,
   );
+  // The Files totals, once counted.
+  await browser.waitFor(
+    `document.querySelector(".tree-summary.nav-metadata") !== null && document.querySelector(".tree-summary.nav-metadata .tally-pending") === null`,
+    30000,
+  );
   await browser.evaluate(frames);
   const collapsed = await browser.evaluate(LAYOUT);
+  collapsed.chrome = await browser.evaluate(CHROME);
   await browser.evaluate(`document.querySelector(".diff-summary-toggle").click(), true`);
   await browser.waitFor(
     `document.querySelector('.diff-summary-body [role="treeitem"]') !== null`,
@@ -227,6 +287,17 @@ try {
     return { drawn: rows.length, inView: inView.length, missing, viewRows: last - first + 1 };
   })()`);
   phase("long");
+
+  // A commit's page: the Diff summary at its top, the toolbar holding the layout control
+  // alone, and the Commits tally beside it, once counted.
+  await browser.send("Page.navigate", { url: `${base}/commit/${commit}` });
+  await browser.waitFor(
+    `document.querySelector(".metabrowser-diff-host .diff-file") !== null && document.querySelector(".diff-summary-toggle") !== null && document.querySelector(".git-history-summary-count") !== null && document.querySelector(".git-history-summary .tally-pending") === null`,
+    30000,
+  );
+  await browser.evaluate(frames);
+  result.commit = await browser.evaluate(CHROME);
+  phase("commit");
   result.errors = errors;
 } finally {
   await chrome?.close();

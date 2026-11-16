@@ -32,14 +32,19 @@
   --diff-summary-toggle-pull: 4px;
 }
 
+/* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
+   12 px margin below, is the line between the toolbar and the files, and on a commit's or a
+   pull request's page, where the toolbar holds the layout control alone, a rule there drew
+   a second line 12 px above it. Where the toolbar leads with the Diff summary, its header is
+   the tree's root, and the tree opens under it as it does at a page's top, with no line
+   between them. The toolbar is not sticky, so nothing scrolls under it. */
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px var(--pane-header-padding-x);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   min-height: var(--ui-row-height);
-  border-bottom: 1px solid var(--border);
 }
 
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change

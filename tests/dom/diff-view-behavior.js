@@ -70,8 +70,14 @@ class FakeElement {
     this.classList = new FakeClassList(this);
   }
 
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
   append(...nodes) {
-    for (const node of nodes) {
+    for (const given of nodes) {
+      let node = given;
+      if (typeof given === "string") {
+        node = new FakeElement("#text");
+        node.textContent = given;
+      }
       node.parentNode = this;
       this.children.push(node);
     }
@@ -181,6 +187,13 @@ class FakeElement {
       .filter(Boolean)
       .join("\n");
   }
+
+  /** The element's text as a document reads it: its leaves' text, in order, joined. */
+  reads() {
+    return this.children.length === 0
+      ? this.textContent
+      : this.children.map((child) => child.reads()).join("");
+  }
 }
 
 function check(label, condition, detail = "") {
@@ -227,20 +240,6 @@ class LaidOutElement extends FakeElement {
     if (name === "class") {
       this.className = String(value);
     }
-  }
-
-  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
-  append(...nodes) {
-    super.append(
-      ...nodes.map((node) => {
-        if (typeof node !== "string") {
-          return node;
-        }
-        const text = new FakeElement("#text");
-        text.textContent = node;
-        return text;
-      }),
-    );
   }
 
   replaceChildren(...nodes) {
@@ -364,7 +363,7 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
     if (header === undefined) {
       return;
     }
-    const said = header.text();
+    const said = header.reads();
     check(
       "the header says what the change set holds, in the shell's number format",
       said.includes("2 changed files") &&
@@ -372,6 +371,16 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
         said.includes("+1,201") &&
         said.includes("−1"),
       said,
+    );
+    // Its counts are the shell's bold numbers and its words are not (docs/design-system.md,
+    // "Count Summaries Bold Their Numbers"); the line totals are the bold change stats.
+    const numbers = header.find("summary-number").map((number) => number.reads());
+    check(
+      "the header's counts, and only its counts, are bold numbers",
+      JSON.stringify(numbers) === JSON.stringify(["2", "1", "1"]) &&
+        header.find("diff-summary-files")[0]?.children[1]?.reads() === " changed files" &&
+        header.find("diff-stat-add")[0]?.reads() === "+1,201",
+      JSON.stringify(numbers),
     );
     check(
       "the header names it all for a screen reader",
@@ -1315,12 +1324,17 @@ async function main() {
   const plain = many.find("diff-summary")[0];
   check(
     "a change set without the shared tree keeps its totals line",
-    plain?.text().includes("2 changed files") &&
-      plain.text().includes("+1") &&
-      plain.text().includes("\u22121") &&
+    plain?.reads().includes("2 changed files") &&
+      plain.reads().includes("+1") &&
+      plain.reads().includes("\u22121") &&
       plain.find("diff-summary-toggle").length === 0 &&
       !plain.classList.contains("diff-summary-toggle"),
-    plain?.text() ?? "",
+    plain?.reads() ?? "",
+  );
+  check(
+    "the totals line's file count is a bold number, as the Diff summary's is",
+    JSON.stringify(plain?.find("summary-number").map((number) => number.reads())) ===
+      JSON.stringify(["2"]),
   );
   const hosted = new FakeElement("div");
   mountDiffView(hosted, twoFiles, undefined, { showSummary: false, changedFiles: sharedTree });
@@ -1371,8 +1385,8 @@ async function main() {
     "a page draws a Diff summary on its own from the document",
     slot.children.length === 1 &&
       drawn.classList.contains("diff-summary-toggle") &&
-      drawn.text().includes("2 changed files"),
-    drawn?.text() ?? "",
+      drawn.reads().includes("2 changed files"),
+    drawn?.reads() ?? "",
   );
   standalone.dispose();
   await diffSummaryChecks(mountDiffView, twoFiles);

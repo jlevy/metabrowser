@@ -19,7 +19,9 @@ The header lists only the statuses some file has, in one order: added, removed,
 modified, renamed, then the rest.
 Counts use the shell’s number format, the minus sign is U+2212, and “(estimated)”
 follows totals that are not exact.
-A screen reader is told the same in words.
+`numbers` are the counts the header paints bold, the file count and then each status’s,
+each apart from its words, which stay regular (`docs/design-system.md`, “Count Summaries
+Bold Their Numbers”). A screen reader is told the same in words.
 In the tree, every folder carries the line counts of the files under it, open or closed,
 and says how many of them have no counts, as a binary file has none.
 A chain of single folders is one row.
@@ -37,8 +39,9 @@ The arrow keys move along the rows, Right and Left open, close, and step into or
 a folder, and only Enter, Space, or a press on a file jumps the diff to it, since the
 tree sits above the files a jump scrolls to.
 `invariants` are relations the session holds: the breakdown counts each file once, each
-folder’s counts are the sums of its files’, the root’s are the manifest’s totals, and
-every file row names a path the diff finds it by.
+folder’s counts are the sums of its files’, the root’s are the manifest’s totals, every
+file row names a path the diff finds it by, and the header’s counted parts read as its
+words.
 
 ```console
 $ node tests/dom/diff-summary-session.js
@@ -47,12 +50,28 @@ $ node tests/dom/diff-summary-session.js
     "the reader's example": {
       "text": "35 changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423",
       "label": "35 changed files: 2 added, 3 removed, 30 modified; 1,234 lines added, 3,423 deleted",
-      "estimated": false
+      "estimated": false,
+      "numbers": [
+        "35",
+        "2",
+        "3",
+        "30"
+      ]
     },
     "every kind, in the header's order": {
       "text": "11 changed files (3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged)  +669 −60",
       "label": "11 changed files: 3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged; 669 lines added, 60 deleted",
-      "estimated": false
+      "estimated": false,
+      "numbers": [
+        "11",
+        "3",
+        "1",
+        "3",
+        "1",
+        "1",
+        "1",
+        "1"
+      ]
     },
     "each change as a row": [
       "modified -> modified README.md",
@@ -70,17 +89,34 @@ $ node tests/dom/diff-summary-session.js
     "a change set whose totals are not exact": {
       "text": "11 changed files (3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged)  +? −? (estimated)",
       "label": "11 changed files: 3 added, 1 removed, 3 modified, 1 renamed, 1 copied, 1 type changed, 1 unmerged; line counts unknown, estimated",
-      "estimated": true
+      "estimated": true,
+      "numbers": [
+        "11",
+        "3",
+        "1",
+        "3",
+        "1",
+        "1",
+        "1",
+        "1"
+      ]
     },
     "one status, one file of it": {
       "text": "2 changed files (2 modified)  +2 −1",
       "label": "2 changed files: 2 modified; 2 lines added, 1 deleted",
-      "estimated": false
+      "estimated": false,
+      "numbers": [
+        "2",
+        "2"
+      ]
     },
     "no files": {
       "text": "0 changed files  +0 −0",
       "label": "0 changed files; 0 lines added, 0 deleted",
-      "estimated": false
+      "estimated": false,
+      "numbers": [
+        "0"
+      ]
     },
     "the tree as it opens": [
       "v assets/ (2; 2 files without line counts)",
@@ -312,7 +348,8 @@ $ node tests/dom/diff-summary-session.js
     "each folder's lines are the sum of its files' known lines": true,
     "the root's lines are the manifest's totals": true,
     "every file row jumps to a path the diff finds it by": true,
-    "a closed tree's rows are the top level": true
+    "a closed tree's rows are the top level": true,
+    "the header's counted parts read as its words": true
   }
 }
 ? 0

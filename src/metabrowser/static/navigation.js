@@ -750,7 +750,7 @@
    * @param {{files?: unknown, size: number, ignored_files?: number, ignored_size?: number} | null | undefined} summary
    * @param {number | null | undefined} fallbackFiles
    * @param {number | null | undefined} fallbackSize
-   * @param {{esc(value: unknown): string, formatCount(n: number): string, formatSize(bytes: number): string}} format
+   * @param {{esc(value: unknown): string, formatCountParts(n: number): MetabrowserCountedWords, formatSize(bytes: number): string}} format
    * @returns {string}
    */
   function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format) {
@@ -763,15 +763,17 @@
       );
     }
     const tracked =
-      `<span class="tree-summary-tracked">${format.esc(format.formatCount(summary.files))}</span>` +
-      `<span class="tree-summary-bytes">(${format.esc(format.formatSize(summary.size))})</span>`;
+      `<span class="tree-summary-tracked">${filesHtml(summary.files, format)}</span>` +
+      `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span>`;
     let ignored = "";
     if ((summary.ignored_files ?? 0) > 0) {
+      // The count and its word are one item of the line, so the line's gap does not
+      // part them.
       ignored =
         '<span class="tree-summary-ignored">' +
         '<span class="tree-summary-plus">+</span>' +
-        `${format.esc((summary.ignored_files ?? 0).toLocaleString())} ignored` +
-        `<span class="tree-summary-bytes">(${format.esc(format.formatSize(summary.ignored_size ?? 0))})</span>` +
+        `<span>${summaryNumberHtml((summary.ignored_files ?? 0).toLocaleString(), format)} ignored</span>` +
+        `<span class="tree-summary-bytes">${sizeHtml(summary.ignored_size ?? 0, format)}</span>` +
         "</span>";
     }
     return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
@@ -781,10 +783,10 @@
    * The fallback's file count, as the live root aggregate patches it.
    *
    * @param {number | null | undefined} files
-   * @param {{esc(value: unknown): string, formatCount(n: number): string}} format
+   * @param {{esc(value: unknown): string, formatCountParts(n: number): MetabrowserCountedWords}} format
    */
   function treeSummaryCountHtml(files, format) {
-    return treeSummaryFigureHtml(files, "count", (n) => format.esc(format.formatCount(n)));
+    return treeSummaryFigureHtml(files, "count", (n) => filesHtml(n, format));
   }
 
   /**
@@ -794,7 +796,41 @@
    * @param {{esc(value: unknown): string, formatSize(bytes: number): string}} format
    */
   function treeSummarySizeHtml(bytes, format) {
-    return treeSummaryFigureHtml(bytes, "size", (n) => `(${format.esc(format.formatSize(n))})`);
+    return treeSummaryFigureHtml(bytes, "size", (n) => sizeHtml(n, format));
+  }
+
+  /**
+   * A count summary's number: bold, in the shell's `.summary-number`, while the words
+   * around it keep the line's weight (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers").
+   *
+   * @param {string} text The number as written, "12,797" or "394.6 MB".
+   * @param {{esc(value: unknown): string}} format
+   */
+  function summaryNumberHtml(text, format) {
+    return `<span class="summary-number">${format.esc(text)}</span>`;
+  }
+
+  /**
+   * A count of files in the Files totals' words, "12,797 files", its number bold.
+   *
+   * @param {number} files
+   * @param {{esc(value: unknown): string, formatCountParts(n: number): MetabrowserCountedWords}} format
+   */
+  function filesHtml(files, format) {
+    const { count, words } = format.formatCountParts(files);
+    return `${summaryNumberHtml(count, format)} ${format.esc(words)}`;
+  }
+
+  /**
+   * A size in the Files totals' words, "(394.6 MB)": the figure with its unit bold, as one
+   * number, and the parentheses in the line's weight.
+   *
+   * @param {number} bytes
+   * @param {{esc(value: unknown): string, formatSize(bytes: number): string}} format
+   */
+  function sizeHtml(bytes, format) {
+    return `(${summaryNumberHtml(format.formatSize(bytes), format)})`;
   }
 
   /**

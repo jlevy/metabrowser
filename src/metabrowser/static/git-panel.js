@@ -1926,7 +1926,12 @@
     const count = state.summary.commitCount;
     const countSpan = document.createElement("span");
     countSpan.className = "git-history-summary-count";
-    countSpan.textContent = `${count.toLocaleString()} ${count === 1 ? "commit" : "commits"}`;
+    // The number bold and its word in the line's weight, as every count summary reads
+    // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    const number = document.createElement("span");
+    number.className = "summary-number";
+    number.textContent = count.toLocaleString();
+    countSpan.replaceChildren(number, ` ${count === 1 ? "commit" : "commits"}`);
     const firstCommitAt = state.summary.firstCommitAt;
     const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
     if (!firstAge || firstCommitAt === null) {
@@ -2597,7 +2602,11 @@
     if (external.length) {
       html += '<div class="git-commit-files">';
       html += '<div class="git-commit-files-summary">';
-      html += `${external.length} file${external.length === 1 ? "" : "s"} outside this folder`;
+      // A count summary of the list under it: its number bold (docs/design-system.md,
+      // "Count Summaries Bold Their Numbers").
+      html += `<span class="summary-number">${external.length}</span> file${
+        external.length === 1 ? "" : "s"
+      } outside this folder`;
       html += "</div>";
       html += external.map(renderFileRow).join("");
       html += "</div>";

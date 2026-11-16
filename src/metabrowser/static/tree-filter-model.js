@@ -1138,23 +1138,48 @@
   }
 
   /**
-   * Format the filtered Recent tally without presenting a retained-page lower
-   * bound as an exact result. An untruncated response can become non-exact
-   * after an unscoped live change, so exactness—not truncation—owns the `+`.
+   * The Files filter's remark under the totals, "Filtered to 1,234 files.", in its parts:
+   * the words as strings and each number as `{number}`, which the remark paints bold, as
+   * every count summary does (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers"). *recent* is the Recent source's response, or null for the tree, whose count
+   * is a subtree total and exact.
+   *
+   * Recent's tally does not present a retained-page lower bound as an exact result. An
+   * untruncated response can become non-exact after an unscoped live change, so
+   * exactness—not truncation—owns the `+`, which is part of its number.
+   *
+   * @param {number} count
+   * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean} | null} recent
+   * @returns {Array<string | {number: string}>}
+   */
+  function filteredTallyParts(count, recent) {
+    if (recent !== null && !recent.totalMatchingExact && !recent.truncated) {
+      return ["Filtered to ", { number: `${count.toLocaleString()}+` }, " files."];
+    }
+    const parts = [
+      "Filtered to ",
+      { number: count.toLocaleString() },
+      ` ${count === 1 ? "file" : "files"}`,
+    ];
+    if (recent?.truncated) {
+      const totalSuffix = recent.totalMatchingExact ? "" : "+";
+      const total = `${recent.totalMatching.toLocaleString()}${totalSuffix}`;
+      parts.push(" of ", { number: total }, " matching");
+    }
+    parts.push(".");
+    return parts;
+  }
+
+  /**
+   * The filtered Recent tally as it reads: `filteredTallyParts`, joined.
    *
    * @param {number} count
    * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean}} options
    */
   function recentFilteredTallyText(count, options) {
-    if (!options.totalMatchingExact && !options.truncated) {
-      return `Filtered to ${count.toLocaleString()}+ files.`;
-    }
-    let text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
-    if (options.truncated) {
-      const totalSuffix = options.totalMatchingExact ? "" : "+";
-      text += ` of ${options.totalMatching.toLocaleString()}${totalSuffix} matching`;
-    }
-    return `${text}.`;
+    return filteredTallyParts(count, options)
+      .map((part) => (typeof part === "string" ? part : part.number))
+      .join("");
   }
 
   /**
@@ -1821,6 +1846,7 @@
     recentEntryMatches,
     recentFilterCursor,
     recentFilterTransition,
+    filteredTallyParts,
     recentFilteredTallyText,
     recentRepairDisposition,
     recentRequestDisposition,

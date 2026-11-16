@@ -756,6 +756,19 @@ like the nested indentations.”
   toolbar, a commit’s page, and a pull request’s header; pinned in the changed-file
   rows, commit summary, and header Chrome tests and the diff view session.
 
+### Phase 23: Toolbar Rule and Bold Counts (pull request 23)
+
+- [ ] `mb-a073`: the diff’s toolbar draws no rule under the Split | Unified chooser, on
+  a commit’s page, a pull request’s Changes, and a patch, where the Diff summary’s
+  header is its tree’s root; the first file card’s border, 12 px below, is the one line;
+  measured in Chrome on a patch and a commit’s page.
+- [ ] `mb-roa9`: every count summary bolds its numbers, `.summary-number`, and keeps its
+  words regular, stated once in the design system (“Count Summaries Bold Their
+  Numbers”): the Diff summary’s header and fallback line, the Files totals and filter
+  remark, the Commits tally, the Pulls count, a pull request’s Checks summary, and a
+  commit’s files outside the folder; held without a browser per surface and in Chrome on
+  the Diff summary, the Files totals, and the Commits tally.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -803,7 +816,8 @@ This plan moves to `docs/project/specs/done/` when pull request 22 merges.
   `mb-novh`, the Conversation’s rhythm and headings; `mb-z57p`, the title prefixes;
   `mb-6y0g`; `mb-9qob`, the label colors; `mb-navs` and `mb-75l5`, Group by’s speed and
   feedback on a large folder; `mb-r5jr`, the consistency pass, with `mb-xlla` and
-  `mb-vg55`; and `mb-hi4l`, the Diff summary in the page’s flow.
+  `mb-vg55`; `mb-hi4l`, the Diff summary in the page’s flow; and `mb-a073` and
+  `mb-roa9`, the diff toolbar’s rule and the count summaries’ bold numbers.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).

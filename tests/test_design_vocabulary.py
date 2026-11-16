@@ -2124,6 +2124,44 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         assert shell[number]["font-weight"] == "var(--pull-number-weight)", number
 
 
+def test_count_summaries_bold_their_numbers_through_one_token() -> None:
+    """A count summary's numbers are bold, its words regular ("Count Summaries Bold Their
+    Numbers"; mb-roa9).
+
+    One token, `--count-numeral-weight`, sets a count's numeral's weight, and one shell
+    class, `.summary-number`, takes it and nothing else, so a number keeps its line's ink
+    and size; no stylesheet restyles it. Each surface that paints a count summary puts its
+    numbers in it: the browserless sessions named in the design system hold the markup,
+    and tests/test_changed_file_rows_chrome.py reads 700 for the numbers and 400 for the
+    words in Chrome.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Count Summaries Bold Their Numbers" in doc
+    shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert shell_css.count("--count-numeral-weight:") == 1
+    assert "--count-numeral-weight: var(--weight-bold);" in shell_css
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".summary-number"] == {"font-weight": "var(--count-numeral-weight)"}
+    for sheet in [STATIC / "styles.css", *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/styles.css")]:
+        for selector, _declarations in _rules_of(sheet):
+            assert selector == ".summary-number" or "summary-number" not in selector, (
+                sheet,
+                selector,
+            )
+    painters = {
+        "builtin_plugins/diff/diff-view.js": 'el("span", "summary-number", entry.count)',
+        "static/navigation.js": '<span class="summary-number">',
+        "static/app.js": 'number.className = "summary-number";',
+        "static/git-panel.js": 'number.className = "summary-number";',
+        "builtin_plugins/github/pulls-panel.js": '{ class: "github-pulls-total summary-number" }',
+        "builtin_plugins/github/pull-page.js": 'h("span", { class: "summary-number" }',
+    }
+    for path, painted in painters.items():
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        assert painted in source, path
+
+
 def test_merges_read_source_to_target_in_one_notation() -> None:
     """Every merge reads source → target, through `mergeRefs` ("Merge Direction")."""
 

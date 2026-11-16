@@ -33,6 +33,18 @@ patch five folders deep and on one of 600 files, and this holds (mb-hi4l):
 
 Before, the first level started 4 px in from the header, with nested levels 16 px apart, and
 the tree scrolled in a box at most 60vh tall.
+
+The served folder is a Git repository too, and on the patch and on a commit's page, where
+the diff's toolbar holds the layout control alone, the session reads the chrome around the
+diff, and this holds:
+
+- the toolbar draws no rule under itself, and the first file card, with its own border,
+  starts the cards' gap, 12 px, below it (docs/design-system.md, "Diff Layout Control";
+  mb-a073); before, a 1px rule ran 12 px above the card's border;
+- in the Diff summary's header, the Files totals, and the Commits tally, every number is a
+  bold number, ``.summary-number``, at 700, and every word, parenthesis, and separator is at
+  400, the line's weight ("Count Summaries Bold Their Numbers"; mb-roa9); before, the
+  numbers were at 400, and only the change stats were bold.
 Where text starts and what a hover paints are layout and paint, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
 """
@@ -43,6 +55,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -50,7 +63,7 @@ from typing import Any
 import pytest
 
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
-from tests.required_tools import require_chrome, require_node
+from tests.required_tools import require_chrome, require_git, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "changed-file-rows-chrome.mjs"
 # A cold Chrome start in CI has taken 28.2 s (tests/test_github_pull_header_chrome.py); the
@@ -168,6 +181,89 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
+def _git(root: Path, *args: str) -> str:
+    """Run git in *root* with a pinned identity and none of the caller's Git settings."""
+
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Fixture Author",
+            "GIT_AUTHOR_EMAIL": "author@example.invalid",
+            "GIT_COMMITTER_NAME": "Fixture Committer",
+            "GIT_COMMITTER_EMAIL": "committer@example.invalid",
+            "GIT_CONFIG_GLOBAL": str(root / ".gitconfig-absent"),
+            "GIT_CONFIG_SYSTEM": str(root / ".gitconfig-absent"),
+        }
+    )
+    done = subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True, text=True, env=env
+    )
+    return done.stdout.strip()
+
+
+def _commit_of_several_files(root: Path) -> str:
+    """Make *root* a repository whose second commit adds one file, deletes one, and changes two."""
+
+    for path in ("src/one.py", "src/two.py", "docs/three.md", "old.txt"):
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text("x\n", encoding="utf-8")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "add", "src", "docs", "old.txt")
+    _git(root, "commit", "-q", "-m", "base")
+    for path in ("src/one.py", "src/two.py"):
+        (root / path).write_text("x\ny\n", encoding="utf-8")
+    (root / "src/four.py").write_text("new\n", encoding="utf-8")
+    (root / "old.txt").unlink()
+    _git(root, "add", "-A", "src", "old.txt")
+    _git(root, "commit", "-q", "-m", "change")
+    return _git(root, "rev-parse", "HEAD")
+
+
+# The weight of a count summary's bold number, `--weight-bold`, and of its words, the line's.
+BOLD, REGULAR = "700", "400"
+
+
+def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str]:
+    """What breaks the count-summary rule in one line's runs of text, as Chrome computes them.
+
+    Every number is a bold number, `.summary-number`, at `--weight-bold`; every other run, a
+    word, a parenthesis, or a separator, is at the line's regular weight; a change stat or
+    an age keeps the weight of its own primitive.
+    """
+
+    if not runs:
+        return [f"{where}: no line"]
+    broken = []
+    for run in runs:
+        if run["own"]:
+            continue
+        if run["number"]:
+            if run["weight"] != BOLD:
+                broken.append(f"{where}: number {run['text']!r} at {run['weight']}")
+        elif re.search(r"\d", run["text"]):
+            broken.append(f"{where}: {run['text']!r} holds a number outside a bold number")
+        elif run["weight"] != REGULAR:
+            broken.append(f"{where}: word {run['text']!r} at {run['weight']}")
+    if not any(run["number"] for run in runs):
+        broken.append(f"{where}: no bold number")
+    return broken
+
+
+def _toolbar_draws_no_rule(toolbar: dict[str, Any], where: str) -> list[str]:
+    """What breaks the diff toolbar's rule: no line under it, and the cards' gap to the first card."""
+
+    broken = []
+    if toolbar["rule"].split()[-1] != "0px":
+        broken.append(f"{where}: the toolbar draws a rule, {toolbar['rule']}")
+    if toolbar["position"] != "static":
+        broken.append(f"{where}: the toolbar is {toolbar['position']}")
+    if abs(toolbar["gapToCard"] - float(toolbar["cardMarginTop"].removesuffix("px"))) > TOLERANCE:
+        broken.append(f"{where}: the first card is {toolbar['gapToCard']} px below the toolbar")
+    if toolbar["cardRule"] != "1px":
+        broken.append(f"{where}: the first card draws no border of its own")
+    return broken
+
+
 @pytest.mark.timeout(APP_LIFECYCLE_S + 10)
 def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     tmp_path: Path, chrome_profile: Path
@@ -188,10 +284,21 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     # 600 files three folders deep: a tree some thirty times the window's height.
     long = [f"m{n % 23}/n{n % 5}/o{n % 2}/f{n:03d}.txt" for n in range(600)]
     (served / "long.patch").write_text(_patch(long), encoding="utf-8")
+    # The served folder is a repository too, for a commit's page (mb-a073, mb-roa9).
+    require_git()
+    commit = _commit_of_several_files(served)
     state = tmp_path / "state"
     state.mkdir()
     result = run_in_own_group(
-        [require_node(), str(APP_SESSION), str(_METAB), str(served), str(_free_port()), str(state)],
+        [
+            require_node(),
+            str(APP_SESSION),
+            str(_METAB),
+            str(served),
+            str(_free_port()),
+            str(state),
+            commit,
+        ],
         timeout_s=APP_TIMEOUT_S,
         env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
     )
@@ -253,3 +360,27 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     assert [key["id"] for key in keys] == ["a/", "a/b/", "a/b/c/", "a/b/c/d/"], keys
     for key in keys:
         assert key["focusVisible"] and key["ring"] == RING, key
+
+    # The diff's toolbar draws no rule under itself: the first card's border, the cards' gap
+    # below it, is the line, on a patch, where the toolbar leads with the Diff summary, and
+    # on a commit's page, where it holds the layout control alone (mb-a073). Before, both
+    # drew a 1px rule 12 px above the card's.
+    patch = measured["nested"]["collapsed"]["chrome"]
+    commit_page = measured["commit"]
+    assert patch["toolbar"]["holds"] == ["diff-summary", "diff-layout-control"], patch
+    assert commit_page["toolbar"]["holds"] == ["diff-layout-control"], commit_page
+    broken = _toolbar_draws_no_rule(patch["toolbar"], "patch") + _toolbar_draws_no_rule(
+        commit_page["toolbar"], "commit"
+    )
+    # Every number of a count summary is bold and every word regular (mb-roa9): the Diff
+    # summary's header on the patch and on the commit's page, the Files totals, and the
+    # Commits tally. Before, only the line totals, the change stats, were bold.
+    broken += _counts_read_bold(patch["counts"]["summary"], "patch's Diff summary")
+    broken += _counts_read_bold(patch["counts"]["files"], "Files totals")
+    broken += _counts_read_bold(commit_page["counts"]["summary"], "commit's Diff summary")
+    broken += _counts_read_bold(commit_page["counts"]["commits"], "Commits tally")
+    assert broken == [], (broken, patch, commit_page)
+    # The commit's header bolds its file count and each status's: 4 changed files, 1 added,
+    # 1 removed, 2 modified.
+    numbers = [run["text"] for run in commit_page["counts"]["summary"] if run["number"]]
+    assert numbers == ["4", "1", "1", "2"], commit_page["counts"]["summary"]

@@ -1282,12 +1282,15 @@ async function paintStory(panel, selection = false) {
     );
     const total = status.firstElementChild;
     // The count is the shell's metadata line, set as the Files and Commits totals are: the
-    // number in the line's regular weight, and the repository name in its text role.
+    // number bold, as every count summary's (docs/design-system.md, "Count Summaries Bold
+    // Their Numbers"), the words in the line's weight, and the repository name in its text
+    // role.
     assert(
       status.classList.contains("nav-metadata") &&
         total.childNodes[0].localName === "span" &&
+        total.childNodes[0].classList.contains("summary-number") &&
         total.childNodes[0].textContent === "102",
-      "the exact repository number keeps the line's weight",
+      "the exact repository number is a count summary's bold number",
     );
     assert(
       total.childNodes[1].nodeName === "#text" &&
@@ -1295,7 +1298,7 @@ async function paintStory(panel, selection = false) {
         total.childNodes[2].localName === "strong" &&
         total.childNodes[2].classList.contains("repository-name") &&
         total.childNodes[2].textContent === "octo/demo",
-      "only the repository name is bold in the label",
+      "the words keep the line's weight, and the repository name is bold in its role",
     );
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {

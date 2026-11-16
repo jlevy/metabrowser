@@ -403,11 +403,64 @@ Keep these roles distinct:
 - filenames are the identity of a row and carry bold weight at full contrast, while the
   parent path beside them is context and stays regular weight and muted;
 - byte counts, durations, timestamps, and numeric table columns use tabular numerals;
+- the numbers of a count summary are bold, and its words regular
+  ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers));
 - code uses monospaced text without forcing prose into a code style, and paths stay in
   the sans navigation face.
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
+
+### Count Summaries Bold Their Numbers
+
+A count summary is a line of chrome that says what a list, a tree, or a change set
+holds, in numbers and words: “8 changed files (8 modified)”, “15,458 files (324.1 MB)”,
+“3,310 commits begun 4mo ago”.
+In every one, each number is bold and the words around it keep the line’s weight, so the
+counts read at a glance and two of them read against each other.
+One token sets the weight, `--count-numeral-weight` in the shell’s stylesheet, which is
+`--weight-bold`, the weight of the [inline change stats](#inline-change-stats) and of a
+[pull request’s number](#pull-request-numbers); every count’s numeral takes it, and none
+borrows `--pull-number-weight`, which is a pull request’s number’s. A count summary’s
+number is the shell’s `.summary-number` in `static/styles.css`, which sets that weight
+alone: the number keeps its line’s size and ink, muted in a muted half or note.
+A number is the whole figure: its grouping and decimal marks, a sign, a lower bound’s
+“+”, and a size’s unit, “394.6 MB”. Parentheses, separators, and words stay regular, and
+an age keeps the [age primitive](#age), which has a weight of its own.
+The line’s text and accessible name are unchanged: the span adds no words, and a header
+with an `aria-label`, as the Diff summary’s, keeps it.
+
+| Count summary | Where its numbers are painted |
+| --- | --- |
+| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, from `describeChanges` (`fileCount`, `statusCounts`); its line totals are the inline change stats, bold already |
+| The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
+| The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `paintCountParts` in `static/app.js` |
+| The Commits tally | `renderHistorySummary` in `static/git-panel.js` |
+| The Pulls count, “448 PRs on owner/repo” | `.github-pulls-total` in the GitHub plugin’s `pulls-panel.js` |
+| A pull request’s Checks summary, “3 success · 1 failure” | `paintChecks` in the GitHub plugin’s `pull-page.js` |
+| A commit’s files outside the served folder, “2 files outside this folder” | `renderCommitDetail` in `static/git-panel.js` |
+| A commit’s hover card, “28 M 4 A files” and “+1921 −160 lines” | Bold already, by `.git-commit-file-status` and the commit’s change stats ([Git Commit Summary](#git-commit-summary)) |
+
+The rule does not reach a number that is not a count summary’s:
+
+- row metadata, as the right-aligned size and count of a tree row, which the size and
+  count chips set by their own threshold;
+- a control’s label or a chip’s tally, as “Show 40 more” or the Pulls filters’ “Open
+  30”;
+- prose, a notice, or a status sentence, as “wants to merge 6 commits”, a Quick Search
+  status, or “This commit changes 900 files; the diff below is bounded.”, where a number
+  is text and keeps its line’s weight, as a pull request’s number does in prose;
+- a progress line, as “~1,200 files scanned”, or a Pulls row’s file list while it fills
+  or stops; and
+- a labelled value, as a stat card’s, which has its own type.
+
+`tests/dom/diff-view-behavior.js`, `tests/dom/tree-summary-line-session.js`,
+`tests/dom/tree-filter-model-behavior.js`, `tests/dom/git-panel-behavior.js`,
+`tests/dom/github-pulls-panel-session.js`, and
+`tests/dom/github-pull-core-preview-behavior.js` hold each surface’s numbers apart from
+its words without a browser, and `tests/dom/diff-summary-chrome.mjs` reads their
+computed weights in Chrome on a patch’s Diff summary, a commit’s, and the Files totals
+and Commits tally beside it.
 
 ### KPress Base-Size Boundary
 
@@ -1297,10 +1350,11 @@ layout control. Its header is one row-like disclosure toggle that leads with the
 registry’s chevron in the tree’s icon slot, `--tree-icon-slot`: “35 changed files (2
 added, 3 removed, 30 modified) +1,234 −3,423”. The breakdown lists only the statuses
 some file has, in one order (added, removed, modified, renamed, then copied, type
-changed, unmerged, and any other), in `--muted`; numbers use the shell’s number format;
-the totals are the [inline change stats](#inline-change-stats); and “(estimated)”
-follows totals that are not exact.
-Its accessible name says the same in words.
+changed, unmerged, and any other), in `--muted`; numbers use the shell’s number format
+and are bold, the file count’s and each status’s, with the words regular
+([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)); the totals
+are the [inline change stats](#inline-change-stats); and “(estimated)” follows totals
+that are not exact. Its accessible name says the same in words.
 A change set of no files has nothing to open, so its header is a line.
 Where the shared tree did not load, the header is the line main drew, “N changed files
 +A −D” in the shell’s number format, with no toggle; and a header whose tree did not
@@ -1444,6 +1498,17 @@ shared semantic model without re-fetching or re-running syntax highlighting.
 A diff too narrow for Split draws Unified, and the control shows what is drawn, with a
 tip on **Split** saying why; the stored choice is not touched, so Split returns when
 there is room, and choosing **Split** there draws it with a sideways scroll.
+
+The diff’s toolbar, which holds the control, draws no rule under itself.
+The first file card’s own border, at the cards’ 12 px gap below the toolbar’s padding,
+is the line between the toolbar and the files.
+On a commit’s page and a pull request’s Changes, where the toolbar holds the control
+alone, a rule there drew a second line 12 px above the card’s. In a patch’s toolbar the
+[Diff summary](#diff-summary)’s header is its tree’s root, and the tree opens under it
+with no line between them, as it does at a page’s top.
+The toolbar is not sticky, so nothing scrolls under it that a rule would separate.
+`tests/dom/diff-summary-chrome.mjs` reads in Chrome that a patch’s toolbar and a
+commit’s draw no rule and that the first card starts 12 px below them.
 
 ## The Pull Request Page
 
@@ -1972,7 +2037,7 @@ holds the one helper and the one rule in source.
 | Stack place | `.github-pulls-place`, before the number on the number’s line and at its size, “1/6 · #455”, with what it shows set in [Stacks](#stacks); on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), and its count where a row’s age is; its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
-| Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total in the line’s regular weight and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
+| Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
 | Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |
 | Connection | The second, muted line of the navigation metadata line, one live status: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures, which wraps only when it is longer than the pane | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
@@ -3553,7 +3618,7 @@ default font set / system font set:
 | Pulls: Show and Reload; Open 100, Closed 2, All 102 | 276 / 308 px |
 | Pulls: Show and Reload; four-digit tallies | 303 / 341 px |
 | Commits: “5 commits begun 3mo ago” | 179 / 186 px |
-| Commits: “123,456 commits begun 12mo ago” | 211 / 238 px |
+| Commits: “123,456 commits begun 12mo ago”, its count bold | 214 / 242 px |
 
 The Pulls Show group is joined from 218 / 245 px with three-digit tallies (Open 100,
 Closed 200, All 300) and from 244 / 278 px with four (1,234, 5,678, 6,912), and the
@@ -3586,7 +3651,9 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   A remark on the line above it — a filter’s count, a connection’s state or remedy —
   adds `.nav-metadata-note`, which mutes it and changes nothing else.
   Inside a line, spans carry only what they mean: the gitignored half is muted, an age
-  is the [age primitive](#age), and a repository name is `.repository-name`.
+  is the [age primitive](#age), a repository name is `.repository-name`, and a count’s
+  number is bold, `.summary-number`
+  ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)).
 - **Box.** The navigation column’s inset, `--pane-header-padding-x`, and
   `--nav-metadata-padding-y` above and below, with the band’s rule,
   `--nav-metadata-rule-width`, under it.

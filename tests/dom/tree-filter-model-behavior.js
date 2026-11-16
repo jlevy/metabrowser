@@ -271,6 +271,38 @@ assertEqual(
   }),
   "Filtered to 5 files of 12+ matching.",
 );
+// The remark's numbers are apart from its words, which it paints bold, as every count
+// summary does (docs/design-system.md, "Count Summaries Bold Their Numbers"); a lower
+// bound's `+` is part of its number.
+assertEqual(
+  "the tree's remark has its count apart from its words",
+  model.filteredTallyParts(1234, null),
+  ["Filtered to ", { number: "1,234" }, " files", "."],
+);
+assertEqual("the tree's remark of one file", model.filteredTallyParts(1, null), [
+  "Filtered to ",
+  { number: "1" },
+  " file",
+  ".",
+]);
+assertEqual(
+  "a truncated non-exact Recent remark has both numbers apart, each with its bound",
+  model.filteredTallyParts(5, {
+    totalMatching: 1200,
+    totalMatchingExact: false,
+    truncated: true,
+  }),
+  ["Filtered to ", { number: "5" }, " files", " of ", { number: "1,200+" }, " matching", "."],
+);
+assertEqual(
+  "a non-exact untruncated Recent remark's lower bound is its number",
+  model.filteredTallyParts(3, {
+    totalMatching: 3,
+    totalMatchingExact: false,
+    truncated: false,
+  }),
+  ["Filtered to ", { number: "3+" }, " files."],
+);
 
 assertEqual(
   "a shallow catalog upsert is covered by root-depth-2 fs.change",

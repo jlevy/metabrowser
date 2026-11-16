@@ -398,6 +398,12 @@
      and the ref selector (docs/design-system.md, "Pull Request Numbers";
      mb-vrvs). */
   --pull-number-weight: var(--weight-bold);
+  /* A count's numeral in a count summary, "8" of "8 changed files": bold, while the
+     words around it keep their line's weight, so the counts read at a glance. Every
+     count numeral takes this token, `.summary-number` among them, and not
+     --pull-number-weight, which is a pull request's number's (docs/design-system.md,
+     "Count Summaries Bold Their Numbers"; mb-roa9). */
+  --count-numeral-weight: var(--weight-bold);
 
   /* All-caps label style (shared by tabs, table headers, stat labels,
      section labels, and the embedded-document TOC title). Same size as
@@ -3731,8 +3737,9 @@ a.tab-btn {
    toolbar of text wraps as text, the toolbar rows' rule for their controls
    (`.nav-toolbar-row`). Measured in headless Chrome on 2026-11-15, "5 commits begun
    3mo ago" is one line from 179 px (the narrowest pane) in the default font set and
-   from 186 px in the system set, and "123,456 commits begun 12mo ago" from 211 and
-   238 px. */
+   from 186 px in the system set, and "123,456 commits begun 12mo ago", its count bold
+   (`.summary-number`; mb-roa9), from 214 and 242 px, where it was 211 and 238 px with
+   its count regular. */
 .nav-toolbar > .nav-metadata {
   flex: 1 1 auto;
   min-width: 0;
@@ -6444,6 +6451,16 @@ pre.code-block.metabrowser-source-lines > code {
 .repository-name {
   color: var(--text);
   font-weight: var(--weight-bold);
+}
+
+/* A number in a count summary, "8 changed files (8 modified)", "15,458 files (324.1 MB)",
+   "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
+   line's weight, so the counts read at a glance. It sets the weight alone: the number
+   keeps its line's ink, muted in a muted half, and its size. Every count summary in the
+   shell and the built-in plugins puts each of its numbers in one (docs/design-system.md,
+   "Count Summaries Bold Their Numbers"; mb-roa9). */
+.summary-number {
+  font-weight: var(--count-numeral-weight);
 }
 
 /* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",

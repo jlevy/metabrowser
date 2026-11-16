@@ -236,7 +236,7 @@ try {
   // The spans git-panel.js (renderHistorySummary) writes, with a large, old repository's text.
   const LONG_TALLY = `(() => {
     document.querySelector("#nav-toolbar-git .git-history-summary").innerHTML =
-      '<span class="git-history-summary-count">123,456 commits</span>' +
+      '<span class="git-history-summary-count"><span class="summary-number">123,456</span> commits</span>' +
       '<span class="git-history-summary-first"><span>begun</span>' +
       '<span class="git-history-summary-age age-old">12mo</span><span>ago</span></span>';
   })()`;

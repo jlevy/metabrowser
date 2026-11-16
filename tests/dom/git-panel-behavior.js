@@ -237,9 +237,16 @@ class FakeElement {
     this.children.push(child);
     return child;
   }
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
   append(...nodes) {
     for (const node of nodes) {
-      this.appendChild(node);
+      if (typeof node === "string") {
+        const text = new FakeElement("#text", this.ownerDocument);
+        text.textContent = node;
+        this.appendChild(text);
+      } else {
+        this.appendChild(node);
+      }
     }
   }
   replaceChildren(...nodes) {
@@ -1066,6 +1073,11 @@ async function run() {
   // Files the server cannot open are still reported; hiding them would
   // misreport what the commit changed.
   assertContains("detail: names files outside the folder", previewHtml, "outside this folder");
+  assertContains(
+    "detail: the count of files outside the folder is a bold number",
+    previewHtml,
+    '<div class="git-commit-files-summary"><span class="summary-number">1</span> file outside this folder</div>',
+  );
   assertContains("detail: lists the outside file", previewHtml, "outside.js");
   assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");
   await internals.renderCommitDetail({
@@ -5240,6 +5252,17 @@ async function run() {
     assertTrue("tally: the summary loads on its own request", summaryRequested);
     const container = document.getElementById("tab-git");
     assertContains("tally: commit count renders", container.textContent, "10,345 commits");
+    // The count is a count summary's bold number, its word in the line's weight
+    // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    const tallyCount = container.querySelector(".git-history-summary-count");
+    assertEqual(
+      "tally: the count is the bold number, apart from its word",
+      tallyCount?.children.map((node) => [node.className, node.textContent]),
+      [
+        ["summary-number", "10,345"],
+        ["", " commits"],
+      ],
+    );
     assertContains("tally: begun wording renders", container.textContent, "begun");
     const tallyAge = container.querySelector(".git-history-summary-age");
     assertTrue("tally: age value is present", tallyAge !== null);

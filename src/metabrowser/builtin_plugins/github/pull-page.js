@@ -5245,12 +5245,18 @@ export function mountPullPage(container, ctx, mb) {
           : h("p", { class: "github-pull-quiet" }, ["Checks and statuses have not been fetched."]),
       );
     } else if (summary !== null) {
+      // "3 success · 1 failure": a count summary, its numbers bold (docs/design-system.md,
+      // "Count Summaries Bold Their Numbers").
       checksSection.append(
-        h("p", { class: "github-pull-quiet" }, [
-          Object.entries(summary.counts)
-            .map(([tone, count]) => `${count} ${tone}`)
-            .join(" · "),
-        ]),
+        h(
+          "p",
+          { class: "github-pull-quiet" },
+          Object.entries(summary.counts).flatMap(([tone, count], at) => [
+            ...(at === 0 ? [] : [" · "]),
+            h("span", { class: "summary-number" }, [String(count)]),
+            ` ${tone}`,
+          ]),
+        ),
       );
       const rows = h("ul", { class: "github-pull-checks" });
       for (const item of summary.items) {

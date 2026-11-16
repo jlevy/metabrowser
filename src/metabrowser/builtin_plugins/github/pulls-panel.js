@@ -4206,7 +4206,9 @@ export function mountPullsPanel(container, ctx, mb) {
           model.countNumber === null || model.countSuffix === null
             ? [repository]
             : [
-                h("span", { class: "github-pulls-total" }, [model.countNumber]),
+                // The number bold, as every count summary's (docs/design-system.md, "Count
+                // Summaries Bold Their Numbers"), and the words in the line's weight.
+                h("span", { class: "github-pulls-total summary-number" }, [model.countNumber]),
                 model.countSuffix,
                 repository,
               ],

@@ -643,16 +643,28 @@
    * which the header says as "(estimated)"; `text` is the whole line as it reads; and
    * `label` is what a screen reader is told, with the signs said as words.
    *
+   * `fileCount` and `statusCounts` are `files` and `breakdown` in their counted parts, each
+   * number apart from its words, so a header paints the numbers bold and the words regular
+   * (docs/design-system.md, "Count Summaries Bold Their Numbers"): `files` is
+   * `fileCount.count` and `fileCount.words` with a space between, and `breakdown` is each
+   * status count so written, joined by ", ".
+   *
    * @param {{files: number, additions: number | null, deletions: number | null, exact: boolean}} totals
    * @param {Iterable<string>} statuses One per file listed.
    * @param {(count: number) => string} formatCount
    * @returns {MetabrowserChangedFilesSummary}
    */
   function describeChanges(totals, statuses, formatCount) {
-    const files = `${formatCount(totals.files)} changed ${totals.files === 1 ? "file" : "files"}`;
-    const breakdown = statusBreakdown(statuses)
-      .map((entry) => `${formatCount(entry.count)} ${entry.word}`)
-      .join(", ");
+    const fileCount = {
+      count: formatCount(totals.files),
+      words: `changed ${totals.files === 1 ? "file" : "files"}`,
+    };
+    const statusCounts = statusBreakdown(statuses).map((entry) => ({
+      count: formatCount(entry.count),
+      words: entry.word,
+    }));
+    const files = `${fileCount.count} ${fileCount.words}`;
+    const breakdown = statusCounts.map((entry) => `${entry.count} ${entry.words}`).join(", ");
     const added = totals.additions === null ? "?" : formatCount(totals.additions);
     const deleted = totals.deletions === null ? "?" : formatCount(totals.deletions);
     const additions = `+${added}`;
@@ -666,7 +678,17 @@
         : `${added} ${totals.additions === 1 ? "line" : "lines"} added, ${deleted} deleted`;
     const named = breakdown === "" ? files : `${files}: ${breakdown}`;
     const label = `${named}; ${lines}${estimated ? ", estimated" : ""}`;
-    return { files, breakdown, additions, deletions, estimated, text, label };
+    return {
+      files,
+      breakdown,
+      fileCount,
+      statusCounts,
+      additions,
+      deletions,
+      estimated,
+      text,
+      label,
+    };
   }
 
   /**

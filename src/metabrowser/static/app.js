@@ -210,6 +210,12 @@ function parseTipNumber(value) {
 function formatCount(n) {
   return `${(n || 0).toLocaleString()} ${n === 1 ? "file" : "files"}`;
 }
+// `formatCount` in its two parts, "12,797" and "files", for a count summary, which paints
+// the number bold and the word in the line's weight (docs/design-system.md, "Count
+// Summaries Bold Their Numbers").
+function formatCountParts(n) {
+  return { count: (n || 0).toLocaleString(), words: n === 1 ? "file" : "files" };
+}
 function countClass(n) {
   return window.MetabrowserFormatters.countClass(Number(n) || 0);
 }
@@ -1844,7 +1850,7 @@ function openedSectionFolders() {
 // tests/dom/tree-summary-line-session.js runs exactly what paints.
 // A function, not a constant: the shell can paint a tally before this line has run.
 function treeSummaryFormat() {
-  return { esc, formatCount, formatSize };
+  return { esc, formatCountParts, formatSize };
 }
 function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
   return window.MetabrowserNavigationRoute.treeSummaryHtml(
@@ -6004,6 +6010,23 @@ function _applyTreeSourceFilters(panel, state) {
   renderSelectionOutsideFilterNote();
 }
 
+// A count summary's parts in *element*: the words as text and each number in the
+// shell's `.summary-number`, bold (docs/design-system.md, "Count Summaries Bold Their
+// Numbers"). Its text is the parts joined, as a screen reader reads it.
+function paintCountParts(element, parts) {
+  element.replaceChildren(
+    ...parts.map((part) => {
+      if (typeof part === "string") {
+        return part;
+      }
+      var number = document.createElement("span");
+      number.className = "summary-number";
+      number.textContent = part.number;
+      return number;
+    }),
+  );
+}
+
 // How many files the filter is actually showing, as a second line
 // under the tally. Rendered whenever anything is filtered, not only
 // when a response was capped: "how many am I looking at" is the
@@ -6022,25 +6045,26 @@ function _renderFilteredTally(panel, state, count) {
     }
     return;
   }
-  var text;
-  if (filesPanelUsesRecentSource()) {
-    text = treeFilterModel.recentFilteredTallyText(count, {
-      totalMatching: recentTotalMatching,
-      totalMatchingExact: recentTotalMatchingExact,
-      truncated: recentTruncated,
-    });
-  } else {
-    text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}.`;
-  }
+  // Its numbers are bold, as the totals' are, so the two read against each other.
+  var parts = treeFilterModel.filteredTallyParts(
+    count,
+    filesPanelUsesRecentSource()
+      ? {
+          totalMatching: recentTotalMatching,
+          totalMatchingExact: recentTotalMatchingExact,
+          truncated: recentTruncated,
+        }
+      : null,
+  );
   if (existing) {
-    existing.textContent = text;
+    paintCountParts(existing, parts);
     return;
   }
   var summary = panel.querySelector(".tree-summary");
   var line = document.createElement("div");
   line.className = "tree-summary-filtered nav-metadata nav-metadata-note";
   line.setAttribute("role", "status");
-  line.textContent = text;
+  paintCountParts(line, parts);
   if (summary) {
     summary.insertAdjacentElement("afterend", line);
   } else {

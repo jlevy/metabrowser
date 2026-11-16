@@ -82,10 +82,19 @@ let rowOf = () => {
 /** diff-model.js, once it has loaded. */
 let diffModel = null;
 
-/** The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. */
+/**
+ * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. `numbers` are
+ * the counts it paints bold, each apart from its words (docs/design-system.md, "Count
+ * Summaries Bold Their Numbers"): the file count, then each status's.
+ */
 function header(_model, manifest) {
   const { said } = diffModel.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
-  return { text: said.text, label: said.label, estimated: said.estimated };
+  return {
+    text: said.text,
+    label: said.label,
+    estimated: said.estimated,
+    numbers: [said.fileCount.count, ...said.statusCounts.map((entry) => entry.count)],
+  };
 }
 
 /** A manifest of *files*, with totals summed as the comparison sums them. */
@@ -358,6 +367,16 @@ async function main() {
       return row.path === (entry.new ?? entry.old).path;
     }),
     "a closed tree's rows are the top level": compact.rows().every((row) => row.depth === 0),
+    "the header's counted parts read as its words": [exampleManifest, kindsManifest].every(
+      (manifest) => {
+        const { said } = model.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
+        const written = (entry) => `${entry.count} ${entry.words}`;
+        return (
+          written(said.fileCount) === said.files &&
+          said.statusCounts.map(written).join(", ") === said.breakdown
+        );
+      },
+    ),
   };
   for (const [name, holds] of Object.entries(invariants)) {
     if (holds !== true) {
