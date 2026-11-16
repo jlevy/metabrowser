@@ -93,8 +93,10 @@ All notable changes to Metabrowser are documented here.
 - A commit’s or pull request’s title that starts with a conventional-commit prefix, such
   as `feat(ledger):` or `fix:`, sets the prefix at regular weight and the rest of the
   title bold, wherever the title appears: a Pulls row, the pull request page’s title,
-  its stack menu, its Conversation’s commits, Quick Search, a commit’s page, and its
-  tooltip. A Commits tab row’s subject is regular, so there the prefix looks as before.
+  its stack menu, its Conversation’s commits, Quick Search, a Commits tab row, a
+  commit’s page, and its tooltip.
+  A Commits tab row’s subject, regular until now, is bold, as a title is everywhere
+  else, so a long one is cut short a little sooner.
   A prefix counts only when it is 16 characters or fewer, colon included, and its type
   is lowercase; any other title looks as before.
   For plugin authors, `metabrowser.titleNodes(title)` draws a title the same way.

@@ -410,8 +410,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   Conversation’s commits, Quick Search’s pull requests, the Commits tab’s rows, a
   commit’s page, and its tooltip.
   Quick Search has no commit results.
-  A Commits tab row’s subject is regular, and keeps that weight: the prefix there looks
-  as the rest does, which is reported to the owner rather than changed.
+  A Commits tab row’s subject, regular before, is bold, so the rule shows there too (see
+  Open Questions); the row keeps its 22 px and its one line, measured in headless Chrome
+  before and after.
 - **Records:** the rule is stated once in `docs/design-system.md`, “Titles”, beside
   “Pull Request Numbers”.
   The split is a session owner, `shell.title-prefix`, and the weights a paint exemption,
@@ -554,6 +555,13 @@ This plan moves to `docs/project/specs/done/` when pull request 13 merges.
   The question was: should an open folder also show its line counts?
   This plan leaves that to the implementer, kept consistent with the Files tab’s folder
   tallies.
+- **A Commits tab row’s weight (answered from the request, `mb-z57p`):** a Commits tab
+  row’s subject is bold, as every other title is, so its prefix reads regular against
+  the rest. The owner asked for the rule “anywhere it’s a commit title or a PR title”,
+  and that “Regular commit messages that don’t match that regex should just be bold as
+  usual”. The question was: the subject was regular, so its prefix looked as the rest
+  did; should it turn bold so the rule shows there?
+  The owner may reverse this.
 
 ## References
 

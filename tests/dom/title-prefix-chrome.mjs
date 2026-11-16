@@ -27,8 +27,9 @@
 // - a commit's page and its tooltip, by renderCommitSummary and renderCommitTooltip.
 //
 // On each, a title with a prefix and one with none are read, and a title cut short keeps
-// all of itself: a Pulls row's ends in an ellipsis with the whole title its text, and the
-// pull request's heading clamped at two lines carries the whole title in its tooltip.
+// all of itself: a Pulls row's and a Commits tab row's end in an ellipsis with the whole
+// title their text, the Commits tab row still 22 px tall, and the pull request's heading
+// clamped at two lines carries the whole title in its tooltip.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -411,9 +412,23 @@ const MEASURE = `async (titles) => {
     await until(() => tab.querySelectorAll(".git-graph-subject").length === 2, "the history rows");
     await frames();
     const subjects = [...tab.querySelectorAll(".git-graph-subject")];
+    // Each subject with its row's box and its own: a bold subject is wider than a regular
+    // one, so it is cut short sooner, but the row keeps its height and the subject its line.
+    const fit = (node) => {
+      if (!node) return null;
+      const text = document.createRange();
+      text.selectNodeContents(node);
+      return {
+        ...read(node),
+        rowHeight: node.closest(".git-graph-row").getBoundingClientRect().height,
+        lineHeight: node.getBoundingClientRect().height,
+        width: node.clientWidth,
+        textWidth: text.getBoundingClientRect().width,
+      };
+    };
     out.commitsRow = {
-      prefixed: read(subjects.find((node) => node.textContent === COMMIT)),
-      plain: read(subjects.find((node) => node.textContent === COMMIT_PLAIN)),
+      prefixed: fit(subjects.find((node) => node.textContent === COMMIT)),
+      plain: fit(subjects.find((node) => node.textContent === COMMIT_PLAIN)),
     };
     tab.replaceChildren();
   }
@@ -446,15 +461,15 @@ const MEASURE = `async (titles) => {
   return out;
 }`;
 
-// Each surface, the prefix each of its titles has, and the weight its rest keeps: bold where
-// a title is bold, and the Commits tab's rows, whose subjects are regular, regular.
+// Each surface, the prefix each of its titles has, and the weight its rest keeps: bold, as a
+// title is wherever it appears.
 const SURFACES = [
   ["pullsRow", "a Pulls row", PULL, PULL_PLAIN, "feat(ledger):", "700"],
   ["pullTitle", "the pull request page's title", PULL, PULL_PLAIN, "feat(ledger):", "700"],
   ["stackMember", "a stack menu's member", PULL, PULL_PLAIN, "feat(ledger):", "700"],
   ["timelineCommit", "a Conversation commit", COMMIT, COMMIT_PLAIN, "fix(git):", "700"],
   ["quickSearch", "a Quick Search pull request", PULL, PULL_PLAIN, "feat(ledger):", "700"],
-  ["commitsRow", "a Commits tab row", COMMIT, COMMIT_PLAIN, "fix(git):", "400"],
+  ["commitsRow", "a Commits tab row", COMMIT, COMMIT_PLAIN, "fix(git):", "700"],
   ["commitPage", "a commit's page", COMMIT, COMMIT_PLAIN, "fix(git):", "700"],
   ["commitTooltip", "a commit's tooltip", COMMIT, COMMIT_PLAIN, "fix(git):", "700"],
 ];
@@ -546,6 +561,23 @@ async function main() {
           clamped.tip?.startsWith(clamped.text) &&
           clamped.tip === `${clamped.text} #7`,
         JSON.stringify(clamped),
+      );
+      // A Commits tab row's bold subject keeps the row's height and its one line, and a
+      // subject too long for the row is still cut short with an ellipsis.
+      const rows = measured.commitsRow;
+      check(
+        "a Commits tab row keeps its 22 px and its subject one line",
+        [rows?.prefixed, rows?.plain].every(
+          (subject) => subject?.rowHeight === 22 && subject.lineHeight <= subject.rowHeight,
+        ),
+        JSON.stringify(rows),
+      );
+      check(
+        "a Commits tab row's long subject is cut short with an ellipsis, whole in its text",
+        rows?.prefixed?.clipped === true &&
+          rows.prefixed.overflow === "ellipsis" &&
+          rows.prefixed.text === COMMIT,
+        JSON.stringify(rows?.prefixed),
       );
       // A Quick Search match in the prefix is marked there, as a match in a path is: bold.
       const matched = measured.quickSearchMatch;

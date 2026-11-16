@@ -6267,6 +6267,11 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: 8ch;
   flex-grow: 1;
   flex-shrink: 1000;
+  /* A commit's subject is a title, bold as a title is wherever it appears, so a
+     conventional-commit prefix that starts it reads regular against the rest
+     (docs/design-system.md, "Titles"). The row keeps its 22px and the subject its one
+     line: the bolder face is only wider, so a long subject is cut short sooner. */
+  font-weight: var(--weight-bold);
 }
 
 .git-graph-meta {

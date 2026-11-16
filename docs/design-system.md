@@ -1806,8 +1806,8 @@ optional `!`, and the colon:
 - Whitespace and more of the title follow the colon.
   `fix:keep` and a title that ends at its colon have no prefix.
 
-A merge commit, a `Revert "…"` title, and every title that does not match are drawn
-exactly as before: the same element holding the same text.
+A merge commit, a `Revert "…"` title, and every title that does not match have no
+prefix: the same element holds the same text, all of it at the title’s own weight.
 
 One function splits a title, `titlePrefix` in `static/formatters.js`, and `titleNodes`
 and `titleHtml` beside it draw the prefix in a `span.title-prefix`; plugins draw with
@@ -1824,7 +1824,7 @@ tooltip that gives the whole of a title cut short all work on all of it.
 | A stack menu’s member | `.github-pull-stack-member-title` | Bold |
 | A Conversation commit | `.github-pull-commit-subject` | Bold |
 | A Quick Search pull request | `.search-palette-label` | Bold; a match in the prefix is marked bold, as a match in a path is |
-| A Commits tab row | `.git-graph-subject` | Regular, the row’s own weight, so the prefix looks as the rest does |
+| A Commits tab row | `.git-graph-subject` | Bold, as every title is; the row keeps its 22 px, and a long subject is cut short a little sooner |
 | A commit’s page | `.git-commit-subject.page-heading` | Bold |
 | A commit’s tooltip | `.git-commit-summary-compact .git-commit-subject` | Bold |
 
