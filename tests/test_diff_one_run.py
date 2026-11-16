@@ -635,6 +635,77 @@ def test_every_byte_a_name_can_hold_answers_alike(
     assert one_run == 2
 
 
+def _superproject(tmp_path: Path) -> tuple[Path, str]:
+    """A commit that changes a submodule, adds and deletes a gitlink, turns a file into one
+    and one into a file, among files on either side of them. ``sub`` is a real submodule,
+    so ``diff.submodule=log`` and ``diff`` have commits to read; the other gitlinks name
+    the same commits with no repository behind them."""
+    inner = tmp_path / "inner"
+    inner.mkdir()
+    git(inner, "init", "-q", "-b", "main")
+    (inner / "inner.txt").write_text("one\n")
+    git(inner, "add", "-A")
+    git(inner, "commit", "-qm", "inner one")
+    first = git(inner, "rev-parse", "HEAD").decode().strip()
+    (inner / "inner.txt").write_text("two\n")
+    (inner / "more.txt").write_text("more\n")
+    git(inner, "add", "-A")
+    git(inner, "commit", "-qm", "inner two")
+    second = git(inner, "rev-parse", "HEAD").decode().strip()
+
+    root = tmp_path / "super"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    for name, body in (("a.txt", "alpha\n"), ("m.txt", "middle\n"), ("z.txt", "zulu\n")):
+        (root / name).write_text(body)
+    (root / "becomes").write_text("a file, then a gitlink\n")
+    git(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(inner), "sub")
+    git(root, "-C", "sub", "checkout", "-q", first)
+    for path in ("gone", "was"):
+        git(root, "update-index", "--add", "--cacheinfo", f"160000,{first},{path}")
+    git(root, "add", "a.txt", "m.txt", "z.txt", "becomes", "sub", ".gitmodules")
+    git(root, "commit", "-qm", "base")
+
+    for name in ("a.txt", "m.txt", "z.txt"):
+        (root / name).write_text(f"{name} changed\n")
+    git(root, "-C", "sub", "checkout", "-q", second)
+    git(root, "update-index", "--force-remove", "gone")
+    git(root, "update-index", "--add", "--cacheinfo", f"160000,{second},fresh")
+    git(root, "rm", "-q", "--cached", "becomes")
+    (root / "becomes").unlink()
+    git(root, "update-index", "--add", "--cacheinfo", f"160000,{first},becomes")
+    git(root, "update-index", "--force-remove", "was")
+    (root / "was").write_text("a gitlink, then a file\n")
+    git(root, "add", "a.txt", "m.txt", "z.txt", "sub", "was")
+    git(root, "commit", "-qm", "target")
+    return root, git(root, "rev-parse", "HEAD").decode().strip()
+
+
+@pytest.mark.parametrize("submodule", ["short", "log", "diff"])
+def test_gitlinks_answer_alike_in_every_submodule_format(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, submodule: str
+) -> None:
+    """Gitlinks are where a patch's sections and the listing's records stop being one for
+    one: with ``log`` a changed submodule's section is a ``Submodule`` line and no ``diff
+    --git`` header, and with ``diff`` it is the sections of the submodule's own files."""
+    root, target = _superproject(tmp_path)
+    git(root, "config", "diff.submodule", submodule)
+    _assert_one_run_is_the_two(root, {"revision": target}, monkeypatch)
+    monkeypatch.undo()
+    (_, answer), (_, _) = _both(root, {"revision": target}, _every_ask)
+    kinds = {
+        (f["kind"], (f["old"] or {}).get("entry_type"), (f["new"] or {}).get("entry_type"))
+        for f in json.loads(answer)["manifest"]["files"]
+    }
+    assert {
+        ("modified", "submodule", "submodule"),
+        ("added", None, "submodule"),
+        ("deleted", "submodule", None),
+        ("type_changed", "file", "submodule"),
+        ("type_changed", "submodule", "file"),
+    } <= kinds
+
+
 def test_binary_files_and_a_nul_past_gits_binary_check_answer_alike(tmp_path: Path) -> None:
     """Git reads the first 8000 bytes for a NUL, so a later one is in the patch, as text."""
     root = tmp_path / "binary"
