@@ -1607,6 +1607,7 @@ _NOT_TOGGLES: dict[str, str] = {
     "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
+    "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "server.py": "the settings gear is an icon-only menu button with no chevron",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose

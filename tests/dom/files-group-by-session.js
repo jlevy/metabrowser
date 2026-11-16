@@ -102,10 +102,10 @@ function choose(label, patch) {
 check("a page starts ungrouped", model.groupBy(filter.get()) === "none", filter.get());
 check("ungrouped is the tree source", cursor.source === "tree", cursor);
 
-// File type: one request for every group's counts and first two levels.
+// By file type: one request for every group's counts and first two levels.
 check(
-  "choosing File type loads the groups",
-  choose("File type", { group: "type" }) === "load-groups",
+  "choosing By file type loads the groups",
+  choose("By file type", { group: "type" }) === "load-groups",
 );
 // The answer becomes sections in the server's order, each named for the group it holds.
 const sections = model.groupSections(answer);
@@ -181,8 +181,8 @@ check("Clear reloads the groups without the filters", cleared.action === "load-g
 check("Clear keeps Group by", filter.get().group === "type", filter.get());
 check("Clear shows ignored entries again", filter.get().showIgnored === true, filter.get());
 
-// Age: the same request with the other grouping.
-check("choosing Age loads the groups", choose("Age", { group: "age" }) === "load-groups");
+// By age: the same request with the other grouping.
+check("choosing By age loads the groups", choose("By age", { group: "age" }) === "load-groups");
 // Which band a file falls in, where the shell reveals a row without asking the server.
 const windows = sandbox.METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS;
 transcript.ageBands = Object.fromEntries(
@@ -346,8 +346,8 @@ check(
   clock = 2_000;
   step("open it again", () => prefetch.prefetch(["age", "type"]));
   step("open it while grouped by type", () => prefetch.prefetch(["age"]));
-  step("choose Age", () => prefetch.take("age"));
-  step("choose Age again", () => prefetch.take("age"));
+  step("choose By age", () => prefetch.take("age"));
+  step("choose By age again", () => prefetch.take("age"));
   step("open the menu", () => prefetch.prefetch(["age", "type"]));
   clock = 20_000;
   step("open it after the TTL", () => prefetch.prefetch(["age", "type"]));

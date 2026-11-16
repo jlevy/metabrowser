@@ -5196,12 +5196,14 @@ function filterKeySlotsHtml() {
     .join("");
 }
 
-// Group by's choices beside "No grouping". A Git revision has no mtime, so it offers no
-// Age, as it offers no Modified within.
+// Group by's choices beside "No grouping", each read the same on its row and on the closed
+// trigger, and each with the letter that chooses it while the menu is open: the first of
+// the word naming its value (docs/design-system.md, "Keys in a Menu"). A Git revision has
+// no mtime, so it offers no By age, as it offers no Modified within.
 function filterGroupOptions() {
   var options = [
-    { value: "age", label: "Age", summary: "By age" },
-    { value: "type", label: "File type", summary: "By file type" },
+    { value: "age", label: "By age", key: "a" },
+    { value: "type", label: "By file type", key: "t" },
   ];
   return isGitRevisionSource() ? options.filter((option) => option.value !== "age") : options;
 }
@@ -5345,6 +5347,7 @@ function renderNavFilterBar() {
       options: filterGroupOptions(),
       value: treeFilterModel.groupBy(st),
       anyLabel: "No grouping",
+      anyKey: "n",
       anyValue: "none",
       open: filterOpenMenu === "group",
       menuId: "filter-group-menu",
@@ -5396,6 +5399,11 @@ function renderNavFilterBar() {
     typeMenu +
     sizeMenu +
     "</div></div>";
+  // The rebuild replaces the control that has focus: a menu row, its trigger, a checkbox.
+  // Focus goes back to the same control, or to the trigger of a menu the rebuild closed,
+  // so a key, a pick, or a tally refresh never drops it on the page (docs/design-system.md,
+  // "Keys in a Menu").
+  var restoreFocus = fc.keepFocus(bar);
   bar.innerHTML = main + drawer;
   if (_groupingPending && filesPanelUsesGroupedSource()) {
     queryHtml('[data-chip-menu-toggle="group"]', bar)?.classList.add("mb-refreshing");
@@ -5405,6 +5413,7 @@ function renderNavFilterBar() {
   fc.fitOpenMenus(bar);
   // The rebuild replaced the triggers that the file type and modified-within keys badge.
   shellKeymap?.syncFilters();
+  restoreFocus();
 }
 
 // Flip the drawer's open state on the existing nodes. Re-rendering

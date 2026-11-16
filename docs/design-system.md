@@ -2010,6 +2010,9 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   up, and `S` is Source.
 - **Numbers are scoped to the screen.** The live numbered controls, the navigation
   pane’s before the main pane’s, top to bottom, are `1` to `9` in that order.
+- **An open menu’s letters are its own.** While a menu whose rows have letters is open
+  and has focus, those letters choose its rows, ahead of the shell’s; everywhere else
+  the shell’s letters hold ([Keys in a Menu](#keys-in-a-menu)).
 
 ### The Keymap
 
@@ -2566,8 +2569,10 @@ neither can pick several things.
 Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
 `.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
 same rule as every other floating menu: Escape or outside interaction.
-The trigger uses the shared Lucide disclosure chevron at the standard chrome glyph size,
-rotated downward; do not substitute a text caret or shrink it to fit the label.
+Opening one puts focus on its checked row, and closing it gives focus back to the
+trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+disclosure chevron at the standard chrome glyph size, rotated downward; do not
+substitute a text caret or shrink it to fit the label.
 
 A dropdown declares its kind the same way a group does, and for the same reason: `one`
 gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemcheckbox`
@@ -2683,8 +2688,10 @@ Clear sits beside the chevron and shows while any filter is set, Show ignored in
 it resets them all, Show ignored back on, and keeps the grouping.
 
 - **Values.** No grouping is the default and shows the one tree.
-  Age splits by modification time and File type by the registry’s display groups.
-  A Git revision has no modification times, so it offers no Age.
+  By age splits by modification time and By file type by the registry’s display groups.
+  Each row reads as the closed trigger does when it is chosen, so the menu and the
+  trigger never name one value two ways.
+  A Git revision has no modification times, so it offers no By age.
 - **Groups.** Age groups are disjoint bands cut from Modified within’s windows: Live,
   then Past hour, Past day, Past week, and Past month, each holding only what the
   windows before it do not, then Older.
@@ -2703,14 +2710,15 @@ it resets them all, Show ignored back on, and keeps the grouping.
   the browser as `fileTypes.displayGroups`. The registry keeps its own order, Code
   first, because a group’s `order` is part of the File Rollup Format’s fingerprinted
   definitions that rollups and conformance fixtures follow.
-- **Symbolic links.** Grouping keeps them, as No grouping does: File type puts a link in
-  Other, since a link has no file type, and Age places it by its own modification time.
-  A file filter set beside the grouping leaves links out, as it does without one.
+- **Symbolic links.** Grouping keeps them, as No grouping does: By file type puts a link
+  in Other, since a link has no file type, and By age places it by its own modification
+  time. A file filter set beside the grouping leaves links out, as it does without one.
   On a Git pin a link is a blob, counted and grouped by its name as a file is.
 - **Keys.** The drawer’s filters keep their numbers while it is closed.
   Its triggers are inert then, so the numbers sit on stand-ins beside the chevron, in
   the order the triggers take when it opens, and a filter’s number opens the drawer with
-  its menu.
+  its menu. Group by’s rows take `N`, `A`, and `T` while its menu is open and has focus
+  ([Keys in a Menu](#keys-in-a-menu)).
 - **Persistence.** The choice is transient view state, as the filters are: every page
   starts with No grouping.
 - **Waiting.** The tree on screen stays while the groups load, and the Group by trigger
@@ -3646,6 +3654,65 @@ Measured in headless Chrome on the Files type filter: every row is 29 px and the
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.
+
+### Keys in a Menu
+
+**Opening a menu puts focus in it, so its keys work at once.** Every way a filter
+dropdown opens comes to one path, `filterControls.focusMenu`: its trigger’s click,
+Enter, and Space, `↓` or `↑` on its trigger, and a filter’s number, which opens the
+drawer that holds it too.
+Focus lands on the checked row, or on the first row when none is checked, so `↑`, `↓`,
+`Home`, `End`, Enter, Escape, and the rows’ letters below act on the next key.
+`W`’s branch list is the precedent: it opens with focus in its filter box.
+
+- **Closing.** Escape, a second click on the trigger, and a choice that closes a
+  single-select menu give focus back to the trigger.
+  Focus the reader moved elsewhere in the page stays there, and an Escape that a surface
+  above the menu took, such as Quick Search’s or Help’s, closes only that surface: the
+  topmost closes first.
+- **Staying.** A pick in a multi-select menu leaves it open with focus on the row
+  picked, and a rebuild of the bar while a row or a trigger has focus, such as a tally
+  refresh, puts focus back on the same control, or on the trigger of a menu the rebuild
+  closed: the bar calls `filterControls.keepFocus` around every rebuild.
+
+**An open menu that has focus can also give each of its rows a letter, and the letter
+chooses the row.** Group by’s rows are the first to have them: `N` for No grouping, `A`
+for By age, and `T` for By file type.
+
+- **Which letter.** A row’s letter is the first letter of the word that names its value:
+  No, age, and type. It is declared beside the row’s label, as `key` on an option and
+  `anyKey` for the any-row, rather than derived, so renaming a row never moves its key.
+  Two rows of one menu never share a letter; when two declare one, the first keeps it.
+  A menu that gives one row a letter gives every row one, its any-row included.
+- **When it is live.** Only while the menu is open and focus is in it, on its trigger or
+  a row. The rows’ commands sit in the menu’s own scope, active while it is open and
+  above the shell’s, so there a row’s letter outranks the shell’s, as a text field’s
+  typing does: in Group by’s menu `T` chooses By file type, where elsewhere it is Quick
+  Search. Quick Search keeps `/` there, a letter the menu does not declare still reaches
+  the shell, and every letter is the shell’s again once the menu closes or focus leaves
+  it.
+- **What it does.** A letter runs the row’s click path,
+  `filterControls.activateMenuRow`, never a synthesized click, so it does what a click
+  on the row does: a single-select menu closes on the choice, and a multi-select menu
+  stays open.
+- **How it is shown.** As every other key is: the row carries the letter as its
+  `aria-keyshortcuts`; holding Shift badges each row with its keycap and lists the
+  letters in the revealed strip, which then shows only the keys that still reach another
+  command, Quick Search by `/` alone; and Help lists them in its Menus group, “Available
+  while the menu is open and has focus.”, each by the row’s label and the menu it is in.
+- **Where.** The shell’s keymap reads the letters from the navigation pane’s filter bar
+  (`syncMenuLetters` in `static/shell-keymap.js`), so only its menus take them.
+
+`tests/dom/key-reveal-session.js` runs both on the production registry, keymap, and
+filter controls: where focus lands for each way a menu opens and closes, through a pick
+and a rebuild, and for the letters the Help group, the badges and the strip, each
+letter’s choice, and `T` as Quick Search with the menu closed or focus outside it.
+`tests/dom/filter-controls-behavior.js` pins the focus path on a rendered bar, the rows’
+markup, and the click path a letter shares, and
+`tests/dom/keyboard-shortcuts-behavior.js` the scope’s precedence and what the live
+surfaces show. `tests/test_files_tab_chrome.py` reads `document.activeElement` in Chrome
+after each number, `↓` and Enter on a trigger, each letter, Escape, and a pick in File
+type as the bar rebuilds.
 
 ## Structured Data and Tables
 

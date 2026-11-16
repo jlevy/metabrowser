@@ -112,6 +112,9 @@ function describe(target) {
   if (target.classList.contains("folder-crumb")) {
     return `${labelOf(target)} crumb`;
   }
+  if (target.classList.contains("chip-menu-item")) {
+    return `${target.querySelector(".menu-item-label")?.textContent} row`;
+  }
   return target.getAttribute("aria-label") || labelOf(target);
 }
 
@@ -291,6 +294,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   let palette = null;
   let selector = null;
   let filterOpenMenu = null;
+  // Group by's value, which its menu's rows choose.
+  let groupBy = "none";
   // The filter drawer starts closed, as the shell's does, and a filter's number opens it.
   let filterDrawerOpen = false;
   const stack = { inStack: false };
@@ -323,8 +328,22 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       did.push(`${open ? "opened" : "closed"} the ${key} menu`);
     },
   });
-  // initFilterBar: a trigger's click, Escape, and a press outside run toggleFilterMenu.
-  context.metabrowser.filterControls.bind(filterBar, { onMenuToggle: shell.toggleFilterMenu });
+  // initFilterBar: a trigger's click, Escape, and a press outside run toggleFilterMenu; a
+  // row's click, and its letter through filterControls.activateMenuRow, run onMenuPick, which
+  // for Group by sets the value and closes the menu, as a single-select pick does, and for
+  // File type leaves it open, as a multi-select one does. Either renders the bar again,
+  // as the filter state's subscriber does in app.js.
+  context.metabrowser.filterControls.bind(filterBar, {
+    onMenuPick(key, value) {
+      did.push(`chose ${value ?? "the any-row"} in the ${key} menu`);
+      if (key === "group") {
+        groupBy = value ?? "none";
+        filterOpenMenu = null;
+      }
+      renderFilters();
+    },
+    onMenuToggle: shell.toggleFilterMenu,
+  });
 
   /** The end of every install of main-pane content: app.js finishRetainedPullPage. */
   function installed() {
@@ -470,7 +489,8 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
    * renderNavFilterBar: Group by on the row and, in the open drawer, the two filter
    * dropdowns, from the production filter controls, so the triggers, panels, and checked
    * rows the filter numbers reach are that module's markup. A pin has no modified-within
-   * filter. The options are a stand-in for the tallies.
+   * filter and no By age, as filterGroupOptions leaves out. The options are a stand-in
+   * for the tallies.
    */
   function renderFilters() {
     const controls = context.metabrowser.filterControls;
@@ -503,6 +523,7 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       value: null,
     });
     const group = controls.menuGroupHtml({
+      anyKey: "n",
       anyLabel: "No grouping",
       anyValue: "none",
       key: "group",
@@ -510,11 +531,11 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       menuId: "filter-group-menu",
       open: filterOpenMenu === "group",
       options: [
-        { label: "Age", value: "age" },
-        { label: "File type", value: "type" },
-      ],
+        { key: "a", label: "By age", value: "age" },
+        { key: "t", label: "By file type", value: "type" },
+      ].filter((option) => !pin || option.value !== "age"),
       select: "one",
-      value: "none",
+      value: groupBy,
     });
     // The row end's stand-ins number the closed, inert drawer's filters (app.js,
     // filterKeySlotsHtml).
@@ -525,11 +546,14 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
           ` aria-label="${key === "recency" ? "Modified within" : "File type"}"></span>`,
       )
       .join("");
+    // The rebuild keeps focus on the control that had it, as app.js's does.
+    const restoreFocus = controls.keepFocus(filterBar);
     filterBar.innerHTML =
       `<div class="nav-filter-bar-main">${group}<span class="nav-filter-bar-end">${slots}</span></div>` +
       `<div class="filter-drawer" id="filter-drawer" data-open="${filterDrawerOpen}"${filterDrawerOpen ? "" : " inert"}>` +
       `<div class="filter-drawer-row">${recency}${types}</div></div>`;
     keymap?.syncFilters();
+    restoreFocus();
   }
 
   /** startSourceRefSelector: a mirror's pin mounts the selector and keeps its handle. */
@@ -734,7 +758,13 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       .flatMap((command) => command.commandIds);
     for (const id of ids) {
       const { bindings, copy, scope } = shortcuts.present(id);
-      if (scope !== "view-tabs" && scope !== "help" && scope !== "quick-file") {
+      // A menu's row letters are its own, in its own scope, and never the shell's.
+      if (
+        scope !== "view-tabs" &&
+        scope !== "help" &&
+        scope !== "quick-file" &&
+        !scope.startsWith("menu:")
+      ) {
         // A run, the situational numbers, is written by its ends and binds every key
         // between them.
         const labels = bindings.range
@@ -901,6 +931,44 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     };
   }
 
+  /**
+   * Where focus is, for the filter bar's keys: a menu row as `menuFocus` says, a trigger by
+   * its menu, the body, or an element no longer in the page, which a browser would report
+   * as the body.
+   */
+  function filterFocus() {
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      return "body";
+    }
+    if (!active.isConnected) {
+      return "a replaced element";
+    }
+    const trigger = active.getAttribute("data-chip-menu-toggle");
+    return menuFocus() ?? (trigger ? `the ${trigger} trigger` : describe(active));
+  }
+
+  /** One Help group's rows, each as its keys, action, and description. */
+  function helpGroup(id) {
+    return (
+      shortcuts
+        .snapshot("help", { includeInactive: true })
+        .find((group) => group.id === id)
+        ?.commands.map((command) => [
+          command.bindings.visible.join(" or "),
+          command.copy.action,
+          command.copy.description,
+        ]) ?? null
+    );
+  }
+
+  /** A filter dropdown's trigger. */
+  const trigger = (key) => filterBar.querySelector(`[data-chip-menu-toggle="${key}"]`);
+
+  /** The words on Group by's closed trigger. */
+  const groupTrigger = () =>
+    filterBar.querySelector('[data-chip-menu-toggle="group"]')?.textContent.trim() ?? null;
+
   // ── Input ─────────────────────────────────────────────────────
   const focused = () => document.activeElement ?? document.body;
   function key(type, name, init = {}) {
@@ -937,6 +1005,10 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     measure,
     menuFocus,
     drawerOpen,
+    filterFocus,
+    groupTrigger,
+    helpGroup,
+    trigger,
     mountSelector,
     open,
     openCommit,
@@ -1093,9 +1165,117 @@ const PARTS = {
     );
     plain.press("ArrowDown");
     const next = plain.menuFocus();
+    // A pick in the multi-select menu renders the bar again and leaves the menu open:
+    // focus stays on the row picked, so the next key still works.
+    plain.document.activeElement.click();
+    const picked = plain.filterFocus();
+    // So does any other rebuild while a row has focus, as a tally refresh is.
+    plain.renderFilters();
+    const rebuilt = plain.filterFocus();
     plain.press("Escape");
+    const escaped = plain.filterFocus();
     plain.document.body.focus();
-    steps.push(plain.record("↓ moves to the next row, and Escape closes the menu", { next }));
+    steps.push(
+      plain.record(
+        "↓ moves to the next row, a pick or a rebuild keeps focus there, and Escape closes the menu onto its trigger",
+        { next, picked, rebuilt, escaped },
+      ),
+    );
+
+    // Every way a dropdown opens puts focus in it the same way, through the filter
+    // controls' one path: a number, a trigger's click (Enter and Space click it), and ↓ on
+    // the trigger; Escape, a second click, and a choice that closes it give focus back to
+    // the trigger (docs/design-system.md, "Keys in a Menu").
+    plain.press("2");
+    const byNumber = plain.filterFocus();
+    plain.press("Escape");
+    const byNumberEscaped = plain.filterFocus();
+    plain.trigger("group").focus();
+    plain.press("ArrowDown");
+    const byArrow = plain.filterFocus();
+    plain.press("Escape");
+    const byArrowEscaped = plain.filterFocus();
+    plain.trigger("group").click();
+    const byClick = plain.filterFocus();
+    plain.trigger("group").click();
+    const byClickClosed = plain.filterFocus();
+    plain.document.body.focus();
+    steps.push(
+      plain.record(
+        "each way a menu opens focuses its checked row, and each way it closes its trigger",
+        {
+          byNumber,
+          byNumberEscaped,
+          byArrow,
+          byArrowEscaped,
+          byClick,
+          byClickClosed,
+        },
+      ),
+    );
+
+    // Group by's rows take the letters they declare, N, A, and T, while its menu is open
+    // and has focus, and Help lists them under Menus (docs/design-system.md, "Keys in a
+    // Menu"). Each runs the row's click path.
+    steps.push(
+      plain.record("Help lists Group by's letters under Menus", {
+        menus: plain.helpGroup("menus"),
+      }),
+    );
+    plain.press("1");
+    steps.push(
+      plain.record("1 opens Group by and focuses its checked row, whose letters are live", {
+        focus: plain.filterFocus(),
+      }),
+    );
+    revealOn(plain);
+    steps.push(plain.record("Shift held in the open menu badges its rows' letters"));
+    plain.shiftUp();
+    const chooseAge = { key: "a", handled: plain.press("a") };
+    steps.push(
+      plain.record("A chooses By age and closes the menu", {
+        pressed: chooseAge,
+        trigger: plain.groupTrigger(),
+        focus: plain.filterFocus(),
+      }),
+    );
+    plain.document.body.focus();
+    const closedT = { key: "t", handled: plain.press("t") };
+    steps.push(
+      plain.record("with the menu closed, T is Quick Search", {
+        pressed: closedT,
+        focus: plain.document.activeElement.getAttribute("role"),
+      }),
+    );
+    plain.press("Escape");
+    plain.press("1");
+    const checkedAge = plain.filterFocus();
+    const chooseType = { key: "t", handled: plain.press("t") };
+    steps.push(
+      plain.record("1 focuses By age, the checked row, and T chooses By file type", {
+        focus: checkedAge,
+        pressed: chooseType,
+        trigger: plain.groupTrigger(),
+      }),
+    );
+    // Focus outside the open menu: its letters wait, and T is Quick Search's.
+    plain.press("1");
+    plain.document.body.focus();
+    const outsideT = { key: "t", handled: plain.press("t") };
+    steps.push(
+      plain.record("with focus outside the open menu, T is Quick Search", {
+        pressed: outsideT,
+        focus: plain.document.activeElement.getAttribute("role"),
+        trigger: plain.groupTrigger(),
+      }),
+    );
+    plain.press("Escape");
+    plain.press("1");
+    const chooseNone = { key: "n", handled: plain.press("n") };
+    plain.document.body.focus();
+    steps.push(
+      plain.record("N chooses No grouping", { pressed: chooseNone, trigger: plain.groupTrigger() }),
+    );
 
     plain.open(files["README.md"]);
     steps.push(
@@ -1349,6 +1529,7 @@ const PARTS = {
       ["Quick Search's field", page, () => page.press("t")],
       ["Help", page, () => page.press("?", { shiftKey: true })],
       ["the file type filter's open menu", page, () => page.press("3")],
+      ["the Group by menu, whose rows have letters", page, () => page.press("1")],
       [
         "a pull request in a stack",
         stacked,
@@ -1580,6 +1761,9 @@ const PARTS = {
     steps.push(
       pinned.record("Help lists the numbers once, as positional", {
         helpDigits: pinned.helpDigits(),
+        // A pin has no By age, so Group by's letters are N and T (app.js,
+        // filterGroupOptions).
+        menus: pinned.helpGroup("menus"),
       }),
     );
     pinned.shiftUp();

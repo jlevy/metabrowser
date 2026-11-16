@@ -8,8 +8,9 @@
 
 ## Overview
 
-Nine changes from the owner’s requests of 2026-11-15. They land as one native GitHub
-stack of nine pull requests on `main`:
+Nine changes from the owner’s requests of 2026-11-15, and a follow-up on the Files Group
+by menu from the same day.
+They land as one native GitHub stack of ten pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -29,6 +30,9 @@ stack of nine pull requests on `main`:
    `P`, and `P` then opens the Pulls tab.
 9. **Narrow toolbars:** the navigation’s toolbars and its tab bar wrap when the pane is
    too narrow for them, by one design-system rule with a set line height (`mb-nm4z`).
+10. **Group by menu:** its rows read “By age” and “By file type”, as its closed trigger
+    does (`mb-4mir`); `A`, `T`, and `N` choose them while it is open (`mb-ibo4`); and
+    every key that opens a menu puts focus in it (`mb-spqw`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -44,7 +48,8 @@ request must prove.
     stays inside the window.
 - **Files Group by** (`mb-sogv`):
   - “Group by” leads the Files filter row, and Show ignored follows it (`mb-x1h6`). Its
-    values are No grouping (the default), Age, and File type.
+    values are No grouping (the default), By age, and By file type, which read the same
+    in the menu and on its closed trigger (`mb-4mir`).
   - The three filters (Modified within, File type, Minimum file size) move into the
     chevron drawer.
   - When grouping is on, the tree splits into headed sections.
@@ -143,6 +148,7 @@ it:
 | 7 | `claude/sans-h2-upright` | `mb-l4vm` | Stacked to serialize merges, with no code dependency on the layer below; extends #438’s prose-face rule and Chrome session |
 | 8 | `claude/keymap-ctrl-np` | `mb-lnqj`, `mb-6rfu` | Stacked to serialize merges; changes the Pulls tab’s stack keys that pull request 5 documents |
 | 9 | `claude/nav-toolbar-wrap` | `mb-nm4z` | On pull request 8; wraps the Files row pull request 2 made and the Pulls toolbar pull request 5 changed |
+| 10 | `claude/menu-keys` | `mb-4mir`, `mb-ibo4`, `mb-spqw` | On pull request 9; changes the Group by menu that pull request 2 adds, on the Files filter row as pull requests 4 and 9 left it |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -173,7 +179,7 @@ it:
 - **Age groups:** disjoint bands built from the age filter’s windows: Live; then Past
   hour, Past day, Past week and Past month, each holding only what the earlier windows
   don’t; then Older. A Git revision source has no modification times, so it doesn’t offer
-  Age.
+  By age.
 - **File type groups:** the taxonomy’s groups, with Documentation before Code, then
   Data, Archives and Media in their current order, and Other last for files in no group.
   The order is defined in one place and shared by every surface that lists the groups.
@@ -186,6 +192,12 @@ it:
 - **Keys:** the filter shortcuts keep working once the filters move into the drawer.
   Group by, on the row, is `1`, and the drawer’s filters keep their numbers whether or
   not the drawer is open; a filter’s number opens the drawer with its menu.
+  With the menu open and focused, `N`, `A`, and `T` choose No grouping, By age, and By
+  file type (`mb-ibo4`), in the menu’s own scope, so `T` is Quick Search everywhere
+  else; the convention is one section of `docs/design-system.md`, “Keys in a Menu”.
+  Every way a filter menu opens, a number or a key on its trigger, focuses its checked
+  row through one path in the filter controls, and Escape gives focus back to the
+  trigger (`mb-spqw`).
 - **Section semantics:** a Files section takes the `.group-heading` look and names its
   section and its tree through `aria-labelledby`; it keeps the tree’s own semantics, a
   `role="tree"` per section, and takes no `role="group"`, which in a tree means a tree
@@ -425,6 +437,18 @@ The owner’s follow-ups of 2026-11-15 to pull request 6, each its own bead:
   line spacing, the segmented group’s cluster fallback, and the Files, Pulls, and
   Commits Chrome tests sweeping every pane width in both font sets.
 
+### Phase 10: The Group By Menu (pull request 10)
+
+- [ ] `mb-4mir`: Group by’s rows read “By age” and “By file type”, as its trigger does,
+  pinned in Chrome and in the Group by session’s golden.
+- [ ] `mb-ibo4`: Group by’s rows take `N`, `A`, and `T` while it is open and has focus,
+  shown by the Shift reveal and in Help’s Menus group, with one menu-key convention in
+  the design system; the key reveal session and its golden, and a Chrome check.
+- [ ] `mb-spqw`: every key that opens a menu focuses its checked row through one path in
+  the filter controls, and Escape gives focus back to the trigger; the key reveal
+  session and the filter controls behavior test, and a Chrome check of
+  `document.activeElement`.
+
 ## Testing Strategy
 
 - **Parity:** follow `AGENTS.md`. Data semantics belong to a route or model reached
@@ -450,7 +474,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 9 merges.
+This plan moves to `docs/project/specs/done/` when pull request 10 merges.
 
 ## Open Questions
 
@@ -468,7 +492,8 @@ This plan moves to `docs/project/specs/done/` when pull request 9 merges.
 
 - **Beads:** epic `mb-eevh`; `mb-s6vu`, `mb-1wfn`, `mb-sogv`, `mb-m5dd`, `mb-epw2`,
   `mb-cm61`, `mb-g3ao`, `mb-l4vm`, `mb-lnqj`, `mb-6rfu`; `mb-x1h6`, a follow-up to
-  `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`.
+  `mb-sogv`; `mb-nm4z`, a follow-up to `mb-x1h6`; `mb-4mir`, `mb-ibo4`, and `mb-spqw`,
+  follow-ups on the Group by menu.
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).
