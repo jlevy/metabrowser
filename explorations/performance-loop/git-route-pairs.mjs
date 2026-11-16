@@ -3,6 +3,8 @@
 //
 //   node explorations/performance-loop/git-route-pairs.mjs \
 //     --control http://127.0.0.1:8910 --candidate http://127.0.0.1:8911 --n 15 --out FILE \
+//     [--comparison REV ... [--comparisons-only]] \
+//     [--control-trace DIR --candidate-trace DIR] \
 //     [--check-repo PATH --check-control http://127.0.0.1:8912 \
 //      --check-candidate http://127.0.0.1:8913]
 //
@@ -15,6 +17,22 @@
 // request started, in ms from the run's start (`at_ms`), so a sample can be placed against
 // the server's five-second repository-identity period; each check records its own start
 // and end the same way. exp-081 is the round that added the times.
+//
+// Each `--comparison REV` adds the diff plugin's comparison of that commit with its first
+// parent, `/api/plugin/diff/comparison?revision=REV`, to the routes, paired the same way;
+// `--comparisons-only` times those alone. Before a comparison's pairs, one unrecorded
+// request of each build without gzip says whether the two answer it byte for byte
+// (`answers_equal`). H116 is the hypothesis that added them.
+//
+// Each sample also records the Git processes its request started (`git_processes`) and
+// the `git` time (`git_ms`), read from the `git` entry of Server-Timing, which counts them
+// in its description, `git;dur=41.2;desc="2 processes"`; a build from before that entry
+// says nothing, and both are null. For such a build, `--control-trace` and
+// `--candidate-trace` name the directory each server's GIT_TRACE2_EVENT names, where Git
+// writes a file a process: a sample then records the files that appeared while its
+// request ran (`trace_processes`) and their commands (`trace_commands`). A process the
+// server started on its own while the request ran is counted with it, and its command
+// says so. Tracing writes as Git runs, so a traced server is for counting, never timing.
 //
 // The check, when asked for, runs between pairs and is not timed. Its repository is a
 // scratch clone the timed servers never serve, with loose refs, served by both builds.
@@ -36,13 +54,25 @@ const { values } = parseArgs({
     candidate: { type: "string" },
     n: { type: "string", default: "15" },
     out: { type: "string" },
+    comparison: { type: "string", multiple: true, default: [] },
+    "comparisons-only": { type: "boolean", default: false },
+    "control-trace": { type: "string" },
+    "candidate-trace": { type: "string" },
     "check-repo": { type: "string" },
     "check-control": { type: "string" },
     "check-candidate": { type: "string" },
   },
 });
 const n = Number.parseInt(values.n, 10);
-const ROUTES = ["/api/git/log?limit=250", "/api/git/summary", "/api/git/refs"];
+const COMPARISONS = values.comparison.map(
+  (rev) => `/api/plugin/diff/comparison?revision=${encodeURIComponent(rev)}`,
+);
+const ROUTES = [
+  ...(values["comparisons-only"]
+    ? []
+    : ["/api/git/log?limit=250", "/api/git/summary", "/api/git/refs"]),
+  ...COMPARISONS,
+];
 const CHECK_ROUTES = [
   "/api/git/refs",
   "/api/git/summary",
@@ -54,18 +84,73 @@ const CHECK_ROUTES = [
 const T0 = performance.now();
 const at = (t) => Math.round((t - T0) * 10) / 10;
 
-async function once(base, route) {
+/** The `git` entry of a Server-Timing value: its time, and the processes it counts. */
+function gitTiming(header) {
+  const entry = (header ?? "")
+    .split(",")
+    .map((metric) => metric.trim())
+    .find((metric) => metric === "git" || metric.startsWith("git;"));
+  const dur = entry ? /;dur=([0-9.]+)/.exec(entry) : null;
+  const desc = entry ? /;desc="(\d+) process(?:es)?"/.exec(entry) : null;
+  return {
+    git_ms: dur ? Number(dur[1]) : null,
+    git_processes: desc ? Number(desc[1]) : null,
+  };
+}
+
+const TRACES = { control: values["control-trace"], candidate: values["candidate-trace"] };
+
+/** The files in a trace directory, by name. */
+function traced(dir) {
+  return dir ? new Set(fs.readdirSync(dir)) : null;
+}
+
+/** The commands of the trace files that appeared in *dir* since *before*. */
+function newProcesses(dir, before) {
+  if (!dir) {
+    return {};
+  }
+  const commands = [...fs.readdirSync(dir)]
+    .filter((name) => !before.has(name))
+    .sort()
+    .map((name) => {
+      const text = fs.readFileSync(`${dir}/${name}`, "utf8");
+      return /"event":"cmd_name"[^\n]*?"name":"([^"]+)"/.exec(text)?.[1] ?? "?";
+    });
+  return { trace_processes: commands.length, trace_commands: commands };
+}
+
+async function once(base, route, label) {
+  const before = traced(TRACES[label]);
   const started = performance.now();
   const response = await fetch(`${base}${route}`, { headers: { "accept-encoding": "gzip" } });
   const body = await response.arrayBuffer();
   const ms = performance.now() - started;
+  const timing = response.headers.get("server-timing");
   return {
     at_ms: at(started),
     ms: Math.round(ms * 100) / 100,
     status: response.status,
     bytes: body.byteLength,
     etag: response.headers.get("etag") !== null,
-    server_timing: response.headers.get("server-timing"),
+    server_timing: timing,
+    ...gitTiming(timing),
+    ...newProcesses(TRACES[label], before),
+  };
+}
+
+/** Whether the two builds answer *route* byte for byte, unpacked, with their statuses. */
+async function sameAnswer(route) {
+  const bodies = {};
+  for (const [label, base] of Object.entries(servers)) {
+    const response = await fetch(`${base}${route}`, { headers: { "accept-encoding": "identity" } });
+    bodies[label] = { status: response.status, body: Buffer.from(await response.arrayBuffer()) };
+  }
+  return {
+    answers_equal:
+      bodies.control.status === bodies.candidate.status &&
+      bodies.control.body.equals(bodies.candidate.body),
+    statuses: { control: bodies.control.status, candidate: bodies.candidate.status },
   };
 }
 
@@ -159,12 +244,15 @@ const result = {
 for (const route of ROUTES) {
   const entry = { warmup: {}, samples: { control: [], candidate: [] } };
   for (const [label, base] of Object.entries(servers)) {
-    entry.warmup[label] = await once(base, route);
+    entry.warmup[label] = await once(base, route, label);
+  }
+  if (COMPARISONS.includes(route)) {
+    entry.answer = await sameAnswer(route);
   }
   for (let pair = 1; pair <= n; pair += 1) {
     const order = pair % 2 === 1 ? ["control", "candidate"] : ["candidate", "control"];
     for (const label of order) {
-      entry.samples[label].push(await once(servers[label], route));
+      entry.samples[label].push(await once(servers[label], route, label));
     }
     if (checkRepo) {
       result.checks.push({ route, pair, ...(await check()) });
@@ -189,7 +277,15 @@ for (const [route, entry] of Object.entries(result.routes)) {
       max: Math.max(...ms),
       statuses: [...new Set(entry.samples[label].map((s) => s.status))],
       etag: entry.samples[label].every((s) => s.etag),
+      // The Git processes each request started, as the build counts them and as traced.
+      git_processes: [...new Set(entry.samples[label].map((s) => s.git_processes))],
+      ...(TRACES[label]
+        ? { trace_processes: [...new Set(entry.samples[label].map((s) => s.trace_processes))] }
+        : {}),
     };
+  }
+  if (entry.answer) {
+    summary.answers_equal = entry.answer.answers_equal;
   }
   // The pair rule: each pair's control over candidate time, and how many are beyond 1.3x.
   const ratios = entry.samples.control.map((c, i) => c.ms / entry.samples.candidate[i].ms);
