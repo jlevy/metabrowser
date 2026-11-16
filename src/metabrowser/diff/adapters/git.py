@@ -77,6 +77,7 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     as_location,
     failure_detail,
+    read_chunk_bytes,
     run_git_at,
 )
 from metabrowser.git.shallow import PARENT_UNAVAILABLE, merge_base_answer, recorded_parents
@@ -553,13 +554,18 @@ class GitDiffSource:
         a line, reading each name as ``--verify`` does unless the name has what
         ``_NOT_LISTED`` names, which no name reaching here has. A name that does not resolve
         ends the run, and so does any answer that is not one ID a name: None leaves every
-        name to :meth:`_rev_parse`, whose refusal names the revision that failed.
+        name to :meth:`_rev_parse`, whose refusal names the revision that failed. A run that
+        times out is refused as one at a time refuses it, by the first name, without
+        waiting out a second deadline.
         """
         try:
             out = await run_git_at(
                 ["rev-parse", *(f"{revision}^{{commit}}" for revision in revisions)],
                 self._location,
             )
+        except GitTimeoutError as exc:
+            # One name at a time would wait as long again, and refuse the first name so.
+            raise DiffSourceError(f"unknown revision {revisions[0]!r}") from exc
         except GitError as exc:
             log.debug("rev-parse of %d names failed: %s", len(revisions), failure_detail(exc))
             return None
@@ -709,10 +715,16 @@ class GitDiffSource:
         not started only to be thrown away. Otherwise the run starts at once, since
         ``--numstat`` runs no driver and its listing is the manifest whatever the answer,
         and the answer is checked, or asked, beside it. A run that fails is None, so the
-        runs that answer are the ones that always did, in their own words, but for a
-        timeout, which they would only repeat. A run past :data:`MAX_LISTED_PATCH_BYTES` of
-        patch is stopped there: its listing is the manifest, and the patch is left to
-        :meth:`hydrate`'s run. The output is split and parsed once, off the event loop.
+        runs that answer are the ones that always did, in their own words. That includes a
+        run that takes more than half the read deadline: it does both runs' work, the
+        patch's pass over each pair after the listing's, and Git prints its listing only
+        at the end, so a listing that would finish in time alone is listed again, and one
+        that cannot is refused after a deadline and a half. A listing past the read cap is
+        refused as the listing run would refuse it, after this one run: its cap is raised
+        by the patch's bound and one read, so it overflows only where the listing alone
+        would. A run past :data:`MAX_LISTED_PATCH_BYTES` of patch is stopped there: its
+        listing is the manifest, and the patch is left to :meth:`hydrate`'s run. The output
+        is split and parsed once, off the event loop.
         """
         if kept_textconv_named(self._location) is True:
             if await textconv_named(self._location):
@@ -725,7 +737,7 @@ class GitDiffSource:
         except GitOutputCutError as exc:
             cut = await asyncio.to_thread(self._listed_from, exc.prefix, cut=True)
             return None if cut is None else cut[0]
-        except GitTimeoutError:
+        except GitOutputTooLargeError:
             raise
         except GitError as exc:
             log.info("the listing with its patch failed, listing alone: %s", failure_detail(exc))
@@ -740,10 +752,14 @@ class GitDiffSource:
 
     def _listed_from(self, out: bytes, *, cut: bool) -> tuple[ChangeSetManifest, bytes] | None:
         """The manifest and the patch of one listing run's output, or None
-        (:func:`_listing_and_patch`)."""
+        (:func:`_listing_and_patch`). A listing past the read cap is refused as the listing
+        run refuses it."""
         split = _listing_and_patch(out, cut=cut)
         if split is None:
             return None
+        cap = self._location.read_policy.max_bytes
+        if split.listing_bytes > cap:
+            raise GitOutputTooLargeError(f"git diff listed more than {cap} bytes on stdout")
         return self._manifest_of(split.records, split.numstat), split.patch
 
     def _manifest_from(self, listed: bytes) -> ChangeSetManifest:
@@ -1201,10 +1217,18 @@ class GitDiffSource:
                 *([] if pathspec is None else ["--", *pathspec]),
             ],
             self._location,
-            # The listing as the listing run bounded it, and the patch after it as above.
+            # The listing as the listing run bounded it, the patch after it as above, and the
+            # read that passes the bound, so the run overflows only past the listing's cap.
             max_bytes=(
-                self._location.read_policy.max_bytes + MAX_LISTED_PATCH_BYTES if listing else None
+                self._location.read_policy.max_bytes
+                + MAX_LISTED_PATCH_BYTES
+                + read_chunk_bytes()
+                + 1
+                if listing
+                else None
             ),
+            # Both runs' work under one run's deadline: half of it (_list_with_patch).
+            timeout_s=self._location.read_policy.timeout_s / 2 if listing else None,
             stop_when=stop_when,
         )
 

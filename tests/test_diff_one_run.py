@@ -13,6 +13,7 @@ import dataclasses
 import json
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,7 @@ from metabrowser.git import process as git_process
 from metabrowser.git.process import (
     GitCommandError,
     GitLocation,
+    GitOutputTooLargeError,
     GitTimeoutError,
     as_location,
     repository_store_target,
@@ -418,33 +420,131 @@ def test_the_bound_of_a_page_is_spent_alike_from_the_one_runs_patch(
             assert first["too_large"] and first["deferred"]
 
 
-def test_a_listing_run_that_times_out_is_not_run_again(
-    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The listing run would only time out again, after as long, rename detection and all
-    (#449, M1): the timeout is the answer, which the route says as a 504."""
-    root, _base, target = repo
+def _stalling_git(tmp_path: Path, pattern: str) -> str:
+    """A Git that never answers when its arguments match the shell *pattern*."""
     real = git_process.git_executable()
     assert real is not None
-    slow = tmp_path / "slow-git"
-    slow.write_text(
-        '#!/bin/sh\nfor a in "$@"; do [ "$a" = diff ] && sleep 2 </dev/null >/dev/null 2>&1; '
-        f'done\nexec {real} "$@"\n'
+    stalling = tmp_path / "stalling-git"
+    stalling.write_text(
+        f'#!/bin/sh\ncase " $* " in {pattern}) exec sleep 30 ;; esac\nexec {real} "$@"\n'
     )
-    slow.chmod(0o755)
+    stalling.chmod(0o755)
+    return str(stalling)
+
+
+def _deadline(monkeypatch: pytest.MonkeyPatch, seconds: float) -> None:
+    policy = dataclasses.replace(git_process.READ_POLICY, timeout_s=seconds)
+    monkeypatch.setattr(git_process, "READ_POLICY", policy)
+
+
+def test_a_one_run_past_half_the_deadline_leaves_the_comparison_to_the_separate_runs(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one run does both runs' work, the listing's pass over each pair and then the
+    patch's, under one deadline, so a commit whose listing alone fits it could time out;
+    the separate runs answered it. The one run has half the deadline, and the separate runs
+    each a whole one: here only the one run is slow, and the comparison is answered within
+    one deadline, as it was before."""
+    root, _base, target = repo
+    today = _answer(_Today(root), {"revision": target})
+    _warm(root)
+    stalling = _stalling_git(tmp_path, '*" --raw "*" -p "*')
+    monkeypatch.setattr(git_process, "git_executable", lambda: stalling)
+    _deadline(monkeypatch, 4.0)
+    began = time.monotonic()
+    processes, answer = _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})
+    took = time.monotonic() - began
+    assert answer == today[1]
+    assert processes == 4, "rev-parse, the one run, stopped, then the listing and the page"
+    assert 2.0 <= took < 4.0, f"answered in {took:.2f} s, against a deadline of 4 s"
+
+
+def test_a_listing_that_cannot_finish_is_refused_after_a_deadline_and_a_half(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Half a deadline for the one run, then a whole one for the listing alone, which is
+    refused as it was before H116, and the route says so as a 504."""
+    root, _base, target = repo
     _warm(root)
     source = GitDiffSource(root, patch_with_listing=True)
     resolved = asyncio.run(source.resolve({"revision": target}))
-    monkeypatch.setattr(git_process, "git_executable", lambda: str(slow))
-    quick = dataclasses.replace(git_process.READ_POLICY, timeout_s=0.5)
-    monkeypatch.setattr(git_process, "READ_POLICY", quick)
+    stalling = _stalling_git(tmp_path, '*" diff "*')
+    monkeypatch.setattr(git_process, "git_executable", lambda: stalling)
+    _deadline(monkeypatch, 1.0)
     record, token = server_timing.begin()
+    began = time.monotonic()
     try:
         with pytest.raises(GitTimeoutError):
             asyncio.run(source.manifest(resolved))
     finally:
         server_timing.end(record, token)
-    assert record.git_processes() == 1, "the listing run alone, not the listing run again"
+    took = time.monotonic() - began
+    assert record.git_processes() == 2, "the one run, then the listing run alone"
+    assert 1.5 <= took < 2.0, f"refused after {took:.2f} s, against two deadlines of 1 s"
+
+
+def test_a_rev_parse_that_times_out_is_refused_without_waiting_again(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One name at a time would wait out a second deadline for the same refusal."""
+    root, base, target = repo
+    stalling = _stalling_git(tmp_path, '*" rev-parse "*')
+    monkeypatch.setattr(git_process, "git_executable", lambda: stalling)
+    _deadline(monkeypatch, 0.5)
+    for intent in ({"revision": target}, {"left": base, "right": target}):
+        today = _answer(_Today(root), intent, lambda _manifest: [])
+        together = _answer(GitDiffSource(root, patch_with_listing=True), intent, lambda _m: [])
+        assert (
+            together
+            == today
+            == (1, json.dumps({"refused": f"unknown revision {next(iter(intent.values()))!r}"}))
+        )
+
+
+def test_a_listing_past_the_read_cap_is_refused_as_the_listing_run_refuses_it(
+    repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Read in pieces of 7 bytes, with a patch bound of 10: a cap below the listing is
+    refused after the one run alone, which raises its own cap by the bound and one read so
+    that it overflows only where the listing run would; a cap the listing just fits is
+    answered."""
+    root, _base, target = repo
+    _warm(root)
+    printed = _Printed(monkeypatch)
+    today = _Today(root)
+    resolved = asyncio.run(today.resolve({"revision": target}))
+    printed.runs.clear()
+    asyncio.run(today.manifest(resolved))
+    ((_, listing),) = printed.runs
+    monkeypatch.undo()
+    monkeypatch.setattr(git_process, "_READ_CHUNK_BYTES", 7)
+    monkeypatch.setattr(adapter, "MAX_LISTED_PATCH_BYTES", 10)
+    run = adapter.run_git_at
+
+    def outcome(source: GitDiffSource, cap: int) -> tuple[str, int]:
+        diffs: list[list[str]] = []
+
+        async def counted(args: Sequence[str], location: GitLocation, **kwargs: Any) -> bytes:
+            if "diff" in args:
+                diffs.append(list(args))
+            return await run(args, location, **kwargs)
+
+        with pytest.MonkeyPatch.context() as patched:
+            patched.setattr(adapter, "run_git_at", counted)
+            policy = dataclasses.replace(git_process.READ_POLICY, max_bytes=cap)
+            patched.setattr(git_process, "READ_POLICY", policy)
+            try:
+                manifest = asyncio.run(source.manifest(resolved))
+            except GitOutputTooLargeError:
+                return "refused", len(diffs)
+        return manifest.model_dump_json(), len(diffs)
+
+    for cap in (len(listing) // 2, len(listing) - 1, len(listing)):
+        before = outcome(_Today(root), cap)
+        after = outcome(GitDiffSource(root, patch_with_listing=True), cap)
+        assert after[0] == before[0], cap
+        assert after[1] == 1, f"one diff run at a cap of {cap}"
+    assert before[0] != "refused"
 
 
 def test_a_listing_run_that_fails_leaves_the_comparison_to_todays_runs(
