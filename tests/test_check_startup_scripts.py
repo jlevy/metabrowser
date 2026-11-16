@@ -276,6 +276,20 @@ def test_the_computed_size_is_the_body_the_application_sends() -> None:
         assert len(response.content) == script.decoded_bytes, script.url_path
 
 
+def test_the_check_measures_with_delivery_and_refuses_a_middleware_that_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One computation of what a gzip client is sent (review A of #455, A8): the check's is
+    # metabrowser.delivery's, and a middleware set apart from it stops the check.
+    from metabrowser import delivery
+
+    body = b"const x = 1;\n" * 400
+    assert check.sent_body_bytes(body) == delivery.sent_size(body)
+    monkeypatch.setattr(delivery, "GZIP_LEVEL", delivery.GZIP_LEVEL + 1)
+    with pytest.raises(SystemExit, match="they must agree"):
+        check.sent_body_bytes(body)
+
+
 # The probe's own selection and rounding, run on Resource Timing entries: the functions
 # probe.js defines ahead of its body, which is what a browser capture evaluates.
 _PROBE_ARITHMETIC = """

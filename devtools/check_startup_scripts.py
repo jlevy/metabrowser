@@ -59,7 +59,6 @@ Loading Tiers" in ``docs/development.md``.
 from __future__ import annotations
 
 import asyncio
-import gzip
 import json
 import shutil
 import subprocess
@@ -263,12 +262,24 @@ def _gzip_settings() -> tuple[int, int]:
 
 
 def sent_body_bytes(content: bytes) -> int:
-    """How many bytes the application sends for *content* to a client that accepts gzip."""
+    """How many bytes the application sends for *content* to a client that accepts gzip.
+
+    One computation, :func:`metabrowser.delivery.sent_size`, which ``run.py record`` and
+    the asset store use too; the middleware's own settings are checked against it, so a
+    middleware that compressed at another level or floor stops the check rather than
+    being measured as if it did not (review A of #455, A8).
+    """
+
+    from metabrowser import delivery
 
     level, minimum_size = _gzip_settings()
-    if len(content) < minimum_size:
-        return len(content)
-    return len(gzip.compress(content, compresslevel=level))
+    if (level, minimum_size) != (delivery.GZIP_LEVEL, delivery.GZIP_MINIMUM_SIZE):
+        raise SystemExit(
+            f"the gzip middleware compresses at level {level} above {minimum_size} bytes, "
+            f"but metabrowser.delivery says level {delivery.GZIP_LEVEL} above "
+            f"{delivery.GZIP_MINIMUM_SIZE}; they must agree"
+        )
+    return delivery.sent_size(content)
 
 
 def measure_paths(url_paths: list[str]) -> list[StartupScript]:

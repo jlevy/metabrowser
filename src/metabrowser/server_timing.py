@@ -21,6 +21,15 @@ A phase opened inside another one adds nothing, so a ``git`` call inside a ``rea
 not counted twice. Phases that run side by side, as ``asyncio.gather`` runs them, are
 each counted in full, so their sum can exceed the request's own time.
 
+**What a phase measures.** A phase is wall-clock time, not CPU time, and it is taken on
+the request's path around the work it names: a phase around
+``await asyncio.to_thread(...)`` includes the wait for a pool thread and for the event
+loop to resume the request, and one on the event loop, such as the gzip middleware's
+``encode``, holds the loop for its whole span. Every route times a phase this way, the
+asset store (:mod:`metabrowser.encoded_assets`) included, so one phase name means one
+quantity in every family (review B of #455, B4). Timing inside the thread instead would
+leave out the queueing a loaded pool adds, which is part of what the request waited for.
+
 **Git processes.** Beside the times, a record counts the Git processes the request
 started: :func:`git_process_started` is called by ``git/process.py`` each time a spawn
 succeeds, inside a phase or not, so the count is every process and not only those the

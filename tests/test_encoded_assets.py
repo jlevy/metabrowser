@@ -8,9 +8,13 @@ the bytes and headers the middleware would have given it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import gzip
-from collections.abc import Iterator
+import threading
+import time
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from starlette.applications import Starlette
@@ -20,7 +24,14 @@ from starlette.responses import Response
 from starlette.routing import Mount, Route
 from starlette.testclient import TestClient
 
-from metabrowser import delivery, encoded_assets, kpress_adapter, server, server_timing
+from metabrowser import (
+    asset_stamps,
+    delivery,
+    encoded_assets,
+    kpress_adapter,
+    server,
+    server_timing,
+)
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, content_digest
 from metabrowser.encoded_assets import AssetChanged, EncodedAssetResponse, EncodedAssets
 from tests.test_server_timing import _metrics  # pyright: ignore[reportPrivateUsage]
@@ -299,3 +310,209 @@ def test_an_asset_given_its_bytes_reads_nothing_and_has_them_as_its_body(
         EncodedAssetResponse(
             key="both", identity=body, load=lambda: body, headers={}, media_type=None
         )
+
+
+# Concurrency at the route, over raw ASGI against the application, middleware and all
+# (review C of #455, C4): the store's single flight is tested on LoadingCache itself, and
+# these hold that the routes share it as the store says.
+
+
+async def _asgi_get(path: str, headers: dict[str, str]) -> tuple[int | None, dict[str, str], bytes]:
+    """GET *path* from ``server.app`` as a client elsewhere: status, headers, raw body."""
+    route, _, query = path.partition("?")
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": route,
+        "raw_path": route.encode(),
+        "query_string": query.encode(),
+        "root_path": "",
+        "headers": [
+            (b"host", b"127.0.0.1"),
+            *((name.encode(), value.encode()) for name, value in headers.items()),
+        ],
+        "client": ("192.0.2.1", 50000),
+        "server": ("127.0.0.1", 8411),
+    }
+    asked = False
+
+    async def receive() -> dict[str, object]:
+        nonlocal asked
+        if not asked:
+            asked = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+    status: int | None = None
+    sent_headers: dict[str, str] = {}
+    body = bytearray()
+
+    async def send(message: dict[str, object]) -> None:
+        nonlocal status
+        if message["type"] == "http.response.start":
+            status = cast("int", message["status"])
+            for name, value in cast("list[tuple[bytes, bytes]]", message.get("headers", [])):
+                sent_headers[name.decode("latin-1").lower()] = value.decode("latin-1")
+        elif message["type"] == "http.response.body":
+            body.extend(cast("bytes", message.get("body", b"")))
+
+    with contextlib.suppress(RuntimeError):
+        # A failed load is answered 500 by the error middleware, which then raises again.
+        await server.app(scope, receive, send)
+    return status, sent_headers, bytes(body)
+
+
+def _gated_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[str], threading.Event, threading.Event]:
+    """Count the /static route's reads; each waits for the returned *release* to be set."""
+    reads: list[str] = []
+    started = threading.Event()
+    release = threading.Event()
+    original = asset_stamps.file_loader
+
+    def gated(path: Path, digest: str, digest_of: Callable[[bytes], str]) -> Callable[[], bytes]:
+        load = original(path, digest, digest_of)
+
+        def read() -> bytes:
+            reads.append(digest)
+            started.set()
+            assert release.wait(30), "the test never released the read"
+            return load()
+
+        return read
+
+    monkeypatch.setattr(asset_stamps, "file_loader", gated)
+    return reads, started, release
+
+
+def _joined(monkeypatch: pytest.MonkeyPatch, store: EncodedAssets, method: str) -> list[str]:
+    """The keys every caller of the store's *method* asked for, as each one arrives."""
+    callers: list[str] = []
+    original = getattr(store, method)
+
+    async def counted(key: str, *args: object) -> bytes:
+        callers.append(key)
+        return cast("bytes", await original(key, *args))
+
+    monkeypatch.setattr(store, method, counted)
+    return callers
+
+
+async def _until(condition: Callable[[], bool]) -> None:
+    deadline = time.monotonic() + 30
+    while not condition():
+        assert time.monotonic() < deadline, "the requests never reached the store"
+        await asyncio.sleep(0.001)
+
+
+def test_concurrent_first_requests_share_one_read_and_one_compression(
+    client: TestClient,
+    store: EncodedAssets,
+    compressions: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads, _started, release = _gated_reads(monkeypatch)
+    release.set()
+    address, content = _stamped_static("app.js")
+
+    async def land() -> list[tuple[int | None, dict[str, str], bytes]]:
+        return await asyncio.gather(*(_asgi_get(address, GZIP) for _ in range(20)))
+
+    answers = asyncio.run(land())
+    assert [status for status, _, _ in answers] == [200] * 20
+    assert {gzip.decompress(body) for _, _, body in answers} == {content}
+    assert len({body for _, _, body in answers}) == 1, "one encoding, sent to every client"
+    assert len(reads) == 1 and compressions == [len(content)]
+    timings = [set(_metrics(headers["server-timing"])) for _, headers, _ in answers]
+    assert sum("read" in names for names in timings) == 1, "only the request that read says so"
+    assert sum("encode" in names for names in timings) == 1
+
+
+def test_a_cancelled_first_request_leaves_its_load_to_the_others(
+    client: TestClient,
+    store: EncodedAssets,
+    compressions: list[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads, started, release = _gated_reads(monkeypatch)
+    arrived = _joined(monkeypatch, store, "identity")
+    address, content = _stamped_static("app.js")
+    key = address.rsplit("=", 1)[1]
+
+    async def land() -> list[tuple[int | None, dict[str, str], bytes]]:
+        first = asyncio.create_task(_asgi_get(address, GZIP))
+        await _until(started.is_set)
+        others = [asyncio.create_task(_asgi_get(address, GZIP)) for _ in range(3)]
+        await _until(lambda: len(arrived) == 4)
+        first.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await first
+        release.set()
+        return await asyncio.gather(*others)
+
+    answers = asyncio.run(land())
+    assert [status for status, _, _ in answers] == [200] * 3
+    assert {gzip.decompress(body) for _, _, body in answers} == {content}
+    assert len(reads) == 1
+    assert store.holds(key, "identity") and store.holds(key, "gzip")
+
+
+def test_a_failed_compression_fails_its_waiters_keeps_nothing_and_is_tried_again(
+    client: TestClient, store: EncodedAssets, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+    original = delivery.gzip_bytes
+    attempts: list[int] = []
+
+    def fails_once(content: bytes) -> bytes:
+        attempts.append(len(content))
+        if len(attempts) == 1:
+            started.set()
+            assert release.wait(30), "the test never released the compression"
+            raise RuntimeError("compression failed")
+        return original(content)
+
+    monkeypatch.setattr(delivery, "gzip_bytes", fails_once)
+    arrived = _joined(monkeypatch, store, "gzipped")
+    address, content = _stamped_static("app.js")
+    key = address.rsplit("=", 1)[1]
+
+    async def land() -> list[tuple[int | None, dict[str, str], bytes]]:
+        waiting = [asyncio.create_task(_asgi_get(address, GZIP)) for _ in range(2)]
+        await _until(lambda: started.is_set() and len(arrived) == 2)
+        release.set()
+        return await asyncio.gather(*waiting)
+
+    failed = asyncio.run(land())
+    assert [status for status, _, _ in failed] == [500, 500], "both waiters share the failure"
+    assert store.holds(key, "identity") and not store.holds(key, "gzip")
+    status, headers, body = asyncio.run(_asgi_get(address, GZIP))
+    assert status == 200 and headers["content-encoding"] == "gzip"
+    assert gzip.decompress(body) == content
+    assert len(attempts) == 2 and store.holds(key, "gzip")
+
+
+def test_a_load_every_waiter_left_still_finishes_and_is_kept(
+    client: TestClient, store: EncodedAssets, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reads, started, release = _gated_reads(monkeypatch)
+    address, content = _stamped_static("app.js")
+    key = address.rsplit("=", 1)[1]
+
+    async def land() -> None:
+        alone = asyncio.create_task(_asgi_get(address, GZIP))
+        await _until(started.is_set)
+        alone.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await alone
+        release.set()
+        await _until(lambda: store.holds(key, "identity"))
+
+    asyncio.run(land())
+    assert len(reads) == 1 and store.held_bytes == len(content)
