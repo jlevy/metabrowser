@@ -213,6 +213,7 @@ it:
 | 25 | `claude/pull-header-status` | `mb-2u08`, `mb-onr2` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, and holds the pending placeholder in the Diff summary row pull request 20 adds |
 | 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 | 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
+| 28 | `claude/diff-summary-letters` | `mb-vb51` | On pull request 27 (#478); rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, and resizes the pending placeholder pull request 25 holds in its row |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -903,6 +904,18 @@ it, and ideally cached it up front”.
   on the GitHub stand-in before and after, pinned in the prefetch session and the Pulls
   prefetch behavior session and their goldens, each of which fails on the old code, and
   a server test that a repeated comparison runs no Git.
+
+### Phase 28: Diff Summary Letters (pull request 28)
+
+- [ ] `mb-vb51`: the Diff summary’s header reads “19 files changed · 10 A, 5 D, 4 M ·
+  +1,234 −567”, each status the letter its rows carry in its status’s color, the dots
+  and commas muted, and its accessible name in words; one rule in the design system, a
+  count summary’s separators and list punctuation muted (`.summary-punctuation`) and
+  painted from the shared count parts, which a pull request’s Checks summary takes too;
+  the pull request header’s pending placeholder re-measured in headless Chrome to 14.5
+  em; pinned in the Diff summary session and golden, the diff view session, and the
+  design vocabulary test, and in Chrome in both themes by the changed-file rows test and
+  the header session’s `summary-wait` part, each of which fails on the old wording.
 
 ## Testing Strategy
 
