@@ -172,6 +172,10 @@ Source views are entity-escaped before insertion, and Markdown renders through K
 its sanitized mode, which strips scripts, event-handler attributes, and `javascript:`
 URLs. Plugin discovery never treats the served root as a plugin source; see
 [Plugins](../../plugins.md).
+A render’s `diagnostics` are what the reader’s Diagnostics disclosure shows, faults the
+author can fix, such as a broken anchor; what the sanitizer removed (`html_sanitized*`)
+is answered apart, in `sanitizer_diagnostics`, for `--api` and debugging
+(`kpress_adapter.is_sanitizer_diagnostic`).
 
 KPress’s sanitized mode is a document renderer’s policy: it keeps stylesheets, images,
 SVG and its `url()` paint servers, classes, `data-*` attributes its own scripts act on,
