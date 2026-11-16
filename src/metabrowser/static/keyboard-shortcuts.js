@@ -872,19 +872,23 @@
      * carries one keycap, and every other target carries none. At rest no target
      * carries one, so nothing about a target's text or layout changes then. Each
      * target's liveness is read once a pass: a ready command's first live target is
-     * both what makes it live and the one its badge goes on.
+     * both what makes it live and the one its badge goes on. A badge names a key that
+     * reaches its command now (`reachableBindings`), as the strip does: a key a live
+     * command in a layer above holds is that one's, so a view tab's A goes unbadged
+     * while an open menu's A is live.
      */
     function reconcileBadges() {
       const activeScopes = new Set(activeLayers());
       for (const [commandId, records] of targets) {
         const entry = commands.get(commandId);
-        const chosen =
+        const binding =
           revealed && entry && entryIsReady(entry, activeScopes)
-            ? firstLiveTarget(commandId)
-            : null;
+            ? reachableBindings(entry)[0]
+            : undefined;
+        const chosen = binding ? firstLiveTarget(commandId) : null;
         for (const record of records) {
-          if (record === chosen && entry) {
-            mountBadge(record, entry.descriptor.bindings[0]);
+          if (record === chosen && binding) {
+            mountBadge(record, binding);
           } else {
             unmountBadge(record);
           }
@@ -1453,6 +1457,26 @@
     }
 
     /**
+     * The bindings that reach a command now: its own, less any key a live command in an
+     * active layer above holds (`heldAbove`). A situational command's numbers are
+     * positional and keep every binding. A Control chord is another key than its letter
+     * alone, so a menu's N never hides Control+N. The strip and the badges both read it,
+     * so neither names a key that would run something else.
+     *
+     * @param {ShortcutEntry} entry
+     * @returns {readonly Readonly<ShortcutBinding>[]}
+     */
+    function reachableBindings(entry) {
+      const own = entry.descriptor.bindings;
+      if (entry.descriptor.situational) {
+        return own;
+      }
+      return own.filter(
+        (binding) => binding.control === true || !heldAbove(entry.descriptor.scope, binding.key),
+      );
+    }
+
+    /**
      * A surface's commands by group. `live` keeps only the commands that would run
      * now (`isLive`), which the `reveal` surface always does: it shows what the keys
      * under a held Shift reach, so a key a live command above holds (`heldAbove`) is
@@ -1486,12 +1510,7 @@
         // command shows without it, and a command left with none is not shown.
         if (live && !entry.descriptor.situational) {
           const own = entry.descriptor.bindings;
-          // A Control chord is another key than its letter alone (`heldAbove`), so a menu's
-          // N never hides Control+N.
-          const reachable = own.filter(
-            (binding) =>
-              binding.control === true || !heldAbove(entry.descriptor.scope, binding.key),
-          );
+          const reachable = reachableBindings(entry);
           if (reachable.length === 0) {
             continue;
           }

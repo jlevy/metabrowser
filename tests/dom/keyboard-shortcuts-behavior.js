@@ -1502,6 +1502,74 @@ batched.dispose();
   menuRegistry.dispose();
 }
 
+// A view tab may hold a menu's letter, since only the shell's letters are reserved. While
+// the open menu's A is live and Shift is held, A reaches the row, so only the row is
+// badged A, and the tab's badge returns when the menu closes.
+{
+  const { FakeDocument, element, keyEvent } = require("./key-reveal-dom.js");
+  const tree = new FakeDocument();
+  const badgeRegistry = shortcuts.create({ document: tree });
+  const chose = [];
+  const viewTab = element(tree, "button", { class: "tab-btn", "data-tab": "age" }, "Ages");
+  const row = element(tree, "button", { class: "menu-row", "data-menu-key": "a" }, "By age");
+  tree.body.append(viewTab, row);
+  badgeRegistry.register(
+    command({
+      bindings: [{ key: "a" }],
+      copy: { action: "Ages", description: "Show the Ages view.", hint: "Ages" },
+      group: "view-tabs",
+      handler: () => chose.push("Ages") > 0,
+      id: "view-tabs.a",
+      scope: "view-tabs",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  badgeRegistry.register(
+    command({
+      bindings: [{ key: "a" }],
+      copy: {
+        action: "By age",
+        description: "Choose By age in the Group by menu.",
+        hint: "By age",
+      },
+      group: "menus",
+      handler: () => chose.push("By age") > 0,
+      id: "menu.group.a",
+      scope: "menu:group",
+      surfaces: { help: "always", reveal: "always" },
+      targeted: true,
+    }),
+  );
+  badgeRegistry.attachTarget("view-tabs.a", viewTab);
+  badgeRegistry.attachTarget("menu.group.a", row);
+  const badgeOn = (target) => target.querySelector(".kbd-badge")?.textContent ?? null;
+  const pressA = () => tree.dispatchEvent(keyEvent("keydown", "a", { target: tree.body }));
+  badgeRegistry.setRevealed(true);
+  equal(
+    "with the menu closed the view tab is badged A",
+    [badgeOn(viewTab), badgeOn(row)],
+    ["A", null],
+  );
+  const closeMenu = badgeRegistry.activateScope("menu:group");
+  equal(
+    "while the menu's A is live, only its row is badged A",
+    [badgeOn(viewTab), badgeOn(row)],
+    [null, "A"],
+  );
+  pressA();
+  closeMenu();
+  equal(
+    "once the menu closes the view tab is badged A again",
+    [badgeOn(viewTab), badgeOn(row)],
+    ["A", null],
+  );
+  pressA();
+  equal("A reaches the row while the menu is open, the tab after", chose, ["By age", "Ages"]);
+  badgeRegistry.setRevealed(false);
+  badgeRegistry.dispose();
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;
