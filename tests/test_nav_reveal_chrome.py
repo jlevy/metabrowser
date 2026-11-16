@@ -7,9 +7,11 @@ tab in front, selected, and inside the navigation pane's scroller, and that focu
 where the reader was (docs/design-system.md, "Navigation Reveals the Item").
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh`` whose ``gh stack``
-answers two native stacks, #286 (pull requests 7 to 10) and #300 (5 and 10), with a deep
-folder, a document linking into it, and a folder longer than the tree draws at once; and,
-on a second server, a repository with 300 commits, for a commit's address.
+answers two native stacks, #286 (pull requests 7 to 10) and #300 (5 and 10), and whose
+pull request 106 has 250 changed files, with a deep folder, a document linking into it,
+and a folder longer than the tree draws at once; and, on a second server, a repository
+with 300 commits, for a commit's address. A step within the pull request shown, another
+tab of its page or one of its changed files, is checked to move nothing.
 ``tests/dom/nav-reveal-chrome.mjs`` drives each route in the running app.
 ``METABROWSER_NAV_REVEAL_SHOTS`` names a directory for its screenshots.
 

@@ -376,7 +376,11 @@ try {
   // with the list as the reader left it: the reveal ends that kept place, and opens the
   // stack the reader closed since.
   await load(`${base}/pull/7`);
-  await revealed("a pull request's address, before its tab's button", pullRow(7), "pulls");
+  // Step 8 holds the address's own reveal; here the list only has to mark #7.
+  await waitFor(
+    `${activeIs("pulls")} && document.querySelector(${JSON.stringify(pullRow(7))})?.getAttribute("aria-current") === "page"`,
+    "#7 is the current pull request",
+  );
   await evaluate(`${tabButton("files")}.click()`);
   await waitFor(activeIs("files"), "the Files tab's button");
   await evaluate(`${tabButton("pulls")}.click()`);
