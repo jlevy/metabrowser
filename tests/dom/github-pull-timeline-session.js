@@ -563,6 +563,69 @@ async function run() {
     assert.equal(transient.hasTimer(TIMELINE_RETRY_MS), false, "the retry budget is exhausted");
     transient.handle.dispose();
   }
+
+  // Every review's heading is its author, "reviewed", and its age, and a chip after the age
+  // only for a state the verb does not say (mb-novh): Approved, Changes requested, and
+  // Dismissed as GitHub marks them, and a state GitHub adds later as itself. A plain review
+  // (COMMENTED) and a pending one have no chip. The recorded record has only a plain review
+  // and an approval, and this fixture's pending review, so the other states are added here,
+  // with one named as an Object.prototype property is, which is a state like any other.
+  const stated = fixture();
+  const approval = stated.record.reviews[1];
+  for (const [id, state] of [
+    [16, "CHANGES_REQUESTED"],
+    [17, "DISMISSED"],
+    [18, "ESCALATED"],
+    [19, "constructor"],
+  ]) {
+    stated.record.reviews.push({ ...approval, id, state, body: `A ${state} review.` });
+  }
+  const states = mount(mountPullPage, stated);
+  await states.handle.ready;
+  await settle();
+  states.frame();
+  /** @type {Record<string, string>} */
+  const reviewHeadings = {};
+  for (const card of states.body().children) {
+    if (!card.classes.has("github-pull-review")) {
+      continue;
+    }
+    const head = card.querySelector(":scope > .github-pull-card-head");
+    const chips = head.querySelectorAll(".github-pull-badge");
+    for (const chip of chips) {
+      assert.ok(chip.classes.has("file-header-badge"), "a review's chip is the shell's badge");
+    }
+    // The heading as read, each chip in brackets.
+    const heading = head.children
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : part.classes.has("github-pull-badge")
+            ? `[${part.textContent}]`
+            : part.textContent,
+      )
+      .join("");
+    const review = card.querySelector(":scope > .github-pull-text").getAttribute("data-part");
+    reviewHeadings[review] = heading;
+    const state = stated.record.reviews.find(
+      (one) => `review/${one.timeline_id || one.id}` === review,
+    )?.state;
+    assert.deepEqual(
+      chips.map((chip) => chip.getAttribute("data-state")),
+      state === "COMMENTED" || state === "PENDING" ? [] : [state],
+      `the chip of ${review} names its state, ${state}, for its ink`,
+    );
+  }
+  assert.deepEqual(reviewHeadings, {
+    [`review/${wideId}`]: "maintainer reviewed 1d ago",
+    "review/16": "maintainer reviewed 1d ago [Changes requested]",
+    "review/17": "maintainer reviewed 1d ago [Dismissed]",
+    "review/18": "maintainer reviewed 1d ago [Escalated]",
+    "review/19": "maintainer reviewed 1d ago [Constructor]",
+    "review/3279967139": "maintainer reviewed 1d ago [Approved]",
+    "review/15": "maintainer reviewed (pending)",
+  });
+  states.handle.dispose();
   return {
     interleaved: interleaved.slice(0, 8),
     appended: appended.slice(original.length),
@@ -577,6 +640,7 @@ async function run() {
     transientRetryIsBoundedAndKeepsPartial: true,
     supersededRowsRetired: true,
     keptCommitRowsRetellAges: true,
+    reviewHeadings,
   };
 }
 
