@@ -3623,11 +3623,12 @@ function setRowExpanded(row, expanded) {
   return toggleTreeContainer(row);
 }
 
-// A "more" row's page arrives where the row was. Most such rows end their folder, and
-// the page grows down from there. One a reveal left above the page it drew
-// (mountTreePageAt) has rows after it: its page grows up from there, and the rows after
-// it stay where they are on screen, so the revealed row is not pushed out of view, and
-// the row that takes focus is the one nearest them.
+// A "more" row's page arrives where the row was and grows down from there, and the row
+// that takes focus is the first it drew: a reader reading down reads on into it. A
+// reveal can leave "more" rows with rows after them (mountTreePageAt). When the selected
+// row, the reader's, is among those, the page grows up instead: the rows after it stay
+// where they are on screen, so the reader's row is not pushed out of view, and the row
+// that takes focus is the one nearest them.
 function mountNextTreePage(row) {
   var pageId = row.dataset.pageId;
   var page = pendingTreePages.get(pageId);
@@ -3638,6 +3639,9 @@ function mountNextTreePage(row) {
   treeKeyboard?.prepareForMutation();
   pendingTreePages.delete(pageId);
   var follower = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (follower && !selectedTreeRowFollows(row)) {
+    follower = null;
+  }
   var scroller = document.getElementById("tree-content");
   var followerTop = follower && scroller ? follower.getBoundingClientRect().top : null;
   var temporary = document.createElement("div");
@@ -3664,6 +3668,25 @@ function mountNextTreePage(row) {
     scroller.scrollTop += follower.getBoundingClientRect().top - followerTop;
   }
   return follower ? lastMounted : firstMounted;
+}
+
+/**
+ * Whether the selected row of *row*'s tree comes after it: the reader's row is below it.
+ * Only its own tree's: the same file is selected in each tree that draws it.
+ *
+ * @param {HTMLElement} row
+ * @returns {boolean}
+ */
+function selectedTreeRowFollows(row) {
+  // Node.DOCUMENT_POSITION_FOLLOWING, spelled out so this needs no Node global.
+  var FOLLOWING = 4;
+  var tree = row.closest('[role="tree"]') ?? undefined;
+  for (const selected of queryHtmlAll(".tree-item.selected", tree)) {
+    if ((row.compareDocumentPosition(selected) & FOLLOWING) !== 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // The pointer activation contract. A folder row is a single target: it selects
@@ -8018,6 +8041,15 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     item.dataset.treePosition = String(position + 1);
     item.dataset.treeSetSize = String(setSize);
     position += held(item);
+    // Every "more" row of the container tells the folder's total and draws its rows with
+    // it: a reveal can leave others than the one that ends the folder (mountTreePageAt).
+    var heldPage = item.classList.contains("tree-page-more")
+      ? pendingTreePages.get(item.dataset.pageId || "")
+      : undefined;
+    if (heldPage && heldPage !== page) {
+      heldPage.options.setSize = setSize;
+      _labelDeferredTreePage(item, heldPage);
+    }
   }
   if (page.nodes.length === 0) {
     var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
@@ -8026,12 +8058,19 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     scheduleTreeSynchronize(sentinelMutation);
     return;
   }
-  var labelId = sentinel.getAttribute("aria-labelledby") || "";
-  var label = document.getElementById(labelId);
-  if (label) {
-    label.textContent = `Show ${page.nodes.length} more (${setSize} total)`;
-  }
+  _labelDeferredTreePage(sentinel, page);
   scheduleTreeSynchronize(mutationSnapshot);
+}
+
+/**
+ * @param {HTMLElement} sentinel A "more" row.
+ * @param {{nodes: unknown[], options: Record<string, any>}} page What it holds back.
+ */
+function _labelDeferredTreePage(sentinel, page) {
+  var label = document.getElementById(sentinel.getAttribute("aria-labelledby") || "");
+  if (label) {
+    label.textContent = `Show ${page.nodes.length} more (${page.options.setSize} total)`;
+  }
 }
 
 function _removeDeferredTreePageEntries(path) {
@@ -8107,9 +8146,9 @@ function _insertRowSorted(container, entry, options, highlightChange) {
   }
   if (anchor === null) {
     // Insert before the page-more sentinel that ends the folder if present, else at the
-    // end. A reveal can leave another above the page it drew, before the rows it holds.
-    var more = Array.from(queryHtmlAll(":scope > .tree-page-more", container)).pop();
-    anchor = more || null;
+    // end. A reveal can leave others between the pages it drew, with rows after them.
+    var lastItem = Array.from(queryHtmlAll(":scope > .tree-item", container)).pop();
+    anchor = lastItem?.classList.contains("tree-page-more") ? lastItem : null;
   }
   for (var j = 0; j < nodes.length; j++) {
     var node = nodes[j];
@@ -8871,8 +8910,8 @@ function pullPageHostDeps(routes) {
  * pull request than *before* did reveals that pull request's row, by *route*. One that
  * names the same pull request, another tab of its page or one of its changed files, is a
  * step within the item shown: the Pulls tab comes to the front if another is, and the
- * list is told the address, which marks a changed file as current. A changed file's
- * address never reveals the pull request's row.
+ * list is told the address, which marks a changed file as current. A changed file of the
+ * pull request shown never reveals its row.
  *
  * @param {string} before The address's path before the host wrote this one.
  * @param {"open" | "nav"} route
@@ -9321,10 +9360,7 @@ function mountTreePageAt(sentinel, page, start) {
         positionOffset: offset + start + TREE_PAGE_SIZE,
       }),
   );
-  var label = document.getElementById(sentinel.getAttribute("aria-labelledby") || "");
-  if (label) {
-    label.textContent = `Show ${start} more (${page.options.setSize} total)`;
-  }
+  _labelDeferredTreePage(sentinel, page);
   var after = sentinel.nextElementSibling;
   var firstMounted = null;
   for (const node of Array.prototype.slice.call(temporary.childNodes)) {

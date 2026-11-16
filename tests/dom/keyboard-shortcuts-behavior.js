@@ -1481,7 +1481,8 @@ batched.dispose();
       .some((group) => group.id === "menus" && group.commands[0].id === "menu.group.t"),
   );
   // A menu's N is the letter alone: Control-N is another key, so a stack's walk keeps it
-  // on the strip while the menu's N is live.
+  // on the strip while the menu's N is live. On a Mac, where a chord is bound.
+  sandbox.navigator = { platform: "MacIntel" };
   menuRegistry.register(
     command({
       bindings: [{ key: "n", control: true }],
