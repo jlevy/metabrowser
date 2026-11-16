@@ -129,6 +129,28 @@ assertEqual(
   false,
 );
 
+// ── The chevron's badge ─────────────────────────────────────────
+
+// The badge counts the filters behind the chevron, one each however many types are
+// chosen. Show ignored sits on the row beside Group by and shows its own state, so the
+// badge leaves it out, and Group by is no filter at all (mb-x1h6). Clear, which also
+// resets Show ignored, counts it in filterState.activeCount (files-group-by-session.js).
+assertEqual(
+  "the badge counts the drawer's filters and nothing else",
+  [
+    snapshot({}),
+    snapshot({ recency: "1h" }),
+    snapshot({ types: [".md", ".py", ".txt"] }),
+    snapshot({ size: "1m" }),
+    snapshot({ recency: "24h", types: [".md"], size: "10m" }),
+    snapshot({ showIgnored: false }),
+    snapshot({ showIgnored: false, size: "100k", group: "type" }),
+    snapshot({ group: "age" }),
+  ].map((state) => model.drawerFilterCount(state)),
+  [0, 1, 1, 1, 3, 0, 1, 0],
+);
+assertEqual("no state at all sets no filter", model.drawerFilterCount(null), 0);
+
 // ── Recent selection and request continuity ─────────────────────────────
 
 const passAll = { rowMatches: () => true };
@@ -204,9 +226,16 @@ assertEqual(
   2,
 );
 
+// The Recent remark as it reads: its parts joined, as a screen reader hears the line.
+const tallyText = (count, recent) =>
+  model
+    .filteredTallyParts(count, recent)
+    .map((part) => (typeof part === "string" ? part : part.number))
+    .join("");
+
 assertEqual(
   "an exact untruncated Recent tally names the visible count",
-  model.recentFilteredTallyText(1, {
+  tallyText(1, {
     totalMatching: 1,
     totalMatchingExact: true,
     truncated: false,
@@ -215,7 +244,7 @@ assertEqual(
 );
 assertEqual(
   "a deep invalidation marks an originally untruncated Recent tally as a lower bound",
-  model.recentFilteredTallyText(1, {
+  tallyText(1, {
     totalMatching: 1,
     totalMatchingExact: false,
     truncated: false,
@@ -224,7 +253,7 @@ assertEqual(
 );
 assertEqual(
   "an empty non-exact Recent tally still discloses uncertainty",
-  model.recentFilteredTallyText(0, {
+  tallyText(0, {
     totalMatching: 0,
     totalMatchingExact: false,
     truncated: false,
@@ -233,7 +262,7 @@ assertEqual(
 );
 assertEqual(
   "a truncated exact Recent tally names its provider total",
-  model.recentFilteredTallyText(5, {
+  tallyText(5, {
     totalMatching: 12,
     totalMatchingExact: true,
     truncated: true,
@@ -242,12 +271,44 @@ assertEqual(
 );
 assertEqual(
   "a truncated non-exact Recent tally marks the provider total as a lower bound",
-  model.recentFilteredTallyText(5, {
+  tallyText(5, {
     totalMatching: 12,
     totalMatchingExact: false,
     truncated: true,
   }),
   "Filtered to 5 files of 12+ matching.",
+);
+// The remark's numbers are apart from its words, which it paints bold, as every count
+// summary does (docs/design-system.md, "Count Summaries Bold Their Numbers"); a lower
+// bound's `+` is part of its number.
+assertEqual(
+  "the tree's remark has its count apart from its words",
+  model.filteredTallyParts(1234, null),
+  ["Filtered to ", { number: "1,234" }, " files", "."],
+);
+assertEqual("the tree's remark of one file", model.filteredTallyParts(1, null), [
+  "Filtered to ",
+  { number: "1" },
+  " file",
+  ".",
+]);
+assertEqual(
+  "a truncated non-exact Recent remark has both numbers apart, each with its bound",
+  model.filteredTallyParts(5, {
+    totalMatching: 1200,
+    totalMatchingExact: false,
+    truncated: true,
+  }),
+  ["Filtered to ", { number: "5" }, " files", " of ", { number: "1,200+" }, " matching", "."],
+);
+assertEqual(
+  "a non-exact untruncated Recent remark's lower bound is its number",
+  model.filteredTallyParts(3, {
+    totalMatching: 3,
+    totalMatchingExact: false,
+    truncated: false,
+  }),
+  ["Filtered to ", { number: "3+" }, " files."],
 );
 
 assertEqual(
@@ -423,7 +484,7 @@ assertEqual(
     prefixHelper: typeof model.removeRecentEntriesByPrefix,
     recompute: typeof model.createRecentRecomputeScheduler,
     replacementHelper: typeof model.recentReplacementNeedsBackfill,
-    tally: typeof model.recentFilteredTallyText,
+    tally: typeof model.filteredTallyParts,
     unseenHelper: typeof model.recentUnseenBeforeMayMatch,
   },
   {

@@ -167,10 +167,9 @@ For code that is large, narrowly used, or both.
 
 The tier applies to data as well as code.
 A bulk payload that only one surface reads follows the same rule as a library that only
-one view calls.
-A pull request’s Conversation prepares the initial Changes comparison and
-the diff plugin’s modules; `builtin_plugins/github/comparison-prefetch.js` records what
-that costs.
+one view calls. A pull request’s page prepares the initial Changes comparison, which its
+header’s Diff summary reads on every tab, and the diff plugin’s modules;
+`builtin_plugins/github/comparison-prefetch.js` records what that costs.
 
 ### The Lazy Loading Mechanism
 
@@ -273,7 +272,10 @@ nothing still spends that budget.
 renders a folder’s shell through the application and counts every `<script src>` in it,
 whatever its attributes, compresses each file as the application’s gzip middleware does,
 and adds the 300 bytes Resource Timing reports for a response’s headers, which is how
-the browser arrives at the number the gate reads.
+the browser arrives at the number the gate reads when the server compresses toward it.
+A server started for local use sends a loopback browser its scripts uncompressed, so
+`run.py record` reads the gate’s number the same way, from the scripts the page
+requested, as the remote path sends them; the note beside the budget says why.
 Its module documentation records the two agreeing, script for script.
 A script can also ask for another one, which no tag shows and the gate still counts.
 So the check runs the shell’s own scripts without a browser
@@ -303,6 +305,8 @@ These are the ones with a measurement on record, and where it is:
 | Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | The step that places a Markdown render | On demand, in the Markdown plugin’s module tree at the first Markdown render, a folder’s README included | `builtin_plugins/markdown/place-rendered.js` | the comment at its head |
 | A diff’s View file controls | On demand, at the first diff that has them: a pinned page’s, or a pull request’s Changes beside a checkout; a served folder’s commit diffs never request them | `viewFileOpener` in `builtin_plugins/diff/index.js` | the comment beside it |
+| The changed-files tree every diff and the Pulls tab draw changed files with | On demand: a diff asks beside its comparison, a pull request’s page warms it with the diff plugin on every tab, for its header’s Diff summary and for Changes, and the Pulls tab asks as it mounts | `changed-files-tree` in `on_demand_script_bundles`, reached through `metabrowser.loadChangedFilesTree()` | 8,715 compressed bytes (9,015 transferred); a cold load with the cache off took 4.1 and 4.6 ms (medians of 9 and 7, at most 8.7), its fetch 3.1 to 3.4 ms, in headless Chrome 152 from 127.0.0.1 on 2026-11-15 |
+| The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | the comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | A pull request’s rendered Markdown layer | On demand, requested beside the comparison for a comparison that names a rendered route, and by Conversation’s prefetch; mounted only when the manifest lists a Markdown file | `markdownLayer` in `builtin_plugins/diff/index.js` | a cold import took 1.2-4.2 ms from 127.0.0.1 (review C of #349, 10 imports) |
 
 What would move next, if the budget tightens or a startup script has to grow, measured

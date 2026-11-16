@@ -402,18 +402,20 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
-    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The muted line under
-    # the title is alone on its line, so it neither shares a baseline nor is a box.
+    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The chevron and the
+    # state icon are boxes on the first line, centered, beside the number's line and the age,
+    # which share its baseline; the title is alone on the second (mb-lkkt, mb-3cbf).
     rows.append(
         (
             "Pull request row",
             ".github-pulls-row",
             el(
                 "github-pulls-row",
+                box("github-pulls-toggle"),
                 box("github-pull-state-icon"),
                 text("github-pulls-title"),
                 text("github-pulls-age age-min"),
-                el("github-pulls-meta"),
+                text("github-pulls-meta"),
             ),
         )
     )
@@ -505,12 +507,14 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     assert "transition: none" in instant, "the instant disclosure travels"
     assert styles.index(".tree-children-instant {") > styles.index(".tree-children {")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    reveal = app[app.index("async function revealInTree(") :]
+    # revealInTree reveals within a scope (the panel, or a Group by section) through
+    # revealWithin, which opens the folders.
+    reveal = app[app.index("async function revealWithin(") :]
     reveal = reveal[: reveal.index("\n}\n")]
     assert "setFolderExpanded(folder, true, { instant })" in reveal, (
         "navigation's reveal of a path animates the folders it opens"
     )
-    assert "instant = true }" in reveal.splitlines()[0], "a reveal the reader caused travels"
+    assert "instant = true }" in reveal[: reveal.index(") {")], "a reveal the reader caused travels"
     # A landing's reveal answers no input, and its folders travelling moved the tree less.
     landing = app[app.index("    revealInTree(initialPath, {") :]
     assert "instant: false" in landing[: landing.index("});")]
@@ -763,11 +767,49 @@ def test_colors_are_declared_in_oklch() -> None:
     ]
     for sheet in sheets:
         text = sheet.read_text(encoding="utf-8")
+        if sheet.parent.name == "github":
+            text = _without_label_formula(text)
         for notation in (r"hsla?\(", r"rgba?\(", r"#[0-9a-fA-F]{3,8}\b"):
             found = re.findall(notation, text)
             assert not found, (
                 f"{sheet.name} declares colors as {found[0]!r}; every color is written in oklch"
             )
+
+
+_LABEL_RULE = re.compile(
+    r'\.github-pull-label\[data-color\](?::where\(\[data-theme="dark"\] \*\))? \{[^}]*\}'
+)
+
+
+def _without_label_formula(text: str) -> str:
+    """The GitHub plugin's stylesheet without GitHub's label formula, the one exception.
+
+    A label's color is GitHub's data, six hex digits of sRGB, and the formula is
+    github.com's, written in ``rgb()`` and ``hsl()`` of the label's own custom properties
+    (docs/design-system.md, "Label Colors"): in oklch it would not paint what github.com
+    paints. Its two rules are taken out whole, so a color anywhere else in the sheet is
+    still found; and each color they write is computed from a ``--github-label-`` property, never
+    a literal.
+    """
+
+    rules = _LABEL_RULE.findall(text)
+    assert len(rules) == 2, "the label formula is a light rule and a dark one"
+    for rule in rules:
+        assert not re.search(r"#[0-9a-fA-F]{3,8}\b", rule), rule
+        calls = [_call_at(rule, found.start()) for found in re.finditer(r"(?:rgba?|hsla?)\(", rule)]
+        assert calls and all("var(--github-label-" in call for call in calls), rule
+    return _LABEL_RULE.sub("", text)
+
+
+def _call_at(text: str, start: int) -> str:
+    """The function call that starts at *start* in *text*, to its balancing parenthesis."""
+
+    depth = 0
+    for at in range(text.index("(", start), len(text)):
+        depth += {"(": 1, ")": -1}.get(text[at], 0)
+        if depth == 0:
+            return text[start : at + 1]
+    raise AssertionError(f"an unbalanced call: {text[start:]}")
 
 
 def test_ref_colors_are_themed_and_distinguished_by_hue() -> None:
@@ -818,9 +860,9 @@ def test_branch_chips_are_blue_and_never_a_merged_pull_requests_purple() -> None
     history = (REPO_ROOT / "src/metabrowser/git/history.py").read_text(encoding="utf-8")
     assert 'const HEAD_LANE_COLOR = "var(--git-ref-remote)";' in graph
     assert '_HEAD_LANE_COLOR = "var(--git-ref-remote)"' in history
-    for page in ("pull-page.js", "pulls-panel.js"):
-        source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / page).read_text(encoding="utf-8")
-        assert 'kind: "remote"' in source, f"{page}'s branches lost the remote chip"
+    # The pull request's page names its branches; a Pulls row names none.
+    source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")
+    assert 'kind: "remote"' in source, "pull-page.js's branches lost the remote chip"
 
 
 def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
@@ -897,14 +939,12 @@ _CHIP_TYPE_AND_BOX = frozenset(
 _CHIP_FORM_ROOM = {".git-ref-tag": {"padding-left"}, ".git-ref-copyable": {"padding-right"}}
 
 
-# The boxes a chip sits in, in every context: a merge's grid and the Pulls row's wrapper
-# around it, a history row's ref group, a commit summary's identity and ref groups, and
+# The boxes a chip sits in, in every context: a merge's grid, a history row's ref group, a commit summary's identity and ref groups, and
 # the ref selector's label and row name. None sets a size, so the chip scales from the
 # text beside it.
 _CHIP_CONTAINERS = frozenset(
     {
         "merge-refs",
-        "github-pulls-merge",
         "git-graph-refs",
         "git-commit-identity",
         "git-commit-refs",
@@ -989,7 +1029,6 @@ def test_each_context_assigns_its_chip_kind() -> None:
         "A commit’s summary",
         "A commit’s tooltip",
         "A pull request’s header",
-        "A Pulls row",
         "The ref selector’s button and list",
     ):
         assert f"| {context} |" in section, f"the table lost {context!r}"
@@ -1009,8 +1048,9 @@ def test_each_context_assigns_its_chip_kind() -> None:
     assert panel.count("refChipHtml(") == 1, "git history draws chips only in renderRefBadges"
     assert "renderRefBadges(commit.refs || [])" in panel
     assert 'renderRefBadges(commit.refs, compact ? false : "inline")' in panel
-    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD.
-    for name in ("pull-page.js", "pulls-panel.js"):
+    # A merge's two branches are the hosted repository's: remote, never trunk or HEAD. The
+    # pull request's page draws them; a Pulls row names no branches.
+    for name in ("pull-page.js",):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         calls = re.findall(r"mb\.mergeRefs\((.*?)\n\s*\),?\n", source, re.S)
         assert len(calls) == 1, f"{name} draws one merge"
@@ -1066,18 +1106,34 @@ def test_git_commit_summary_is_one_component() -> None:
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
     assert "renderCommitSummary(detail, { compact: true })" in panel
+    # The commit page's change counts are its one Diff summary, which its diff draws in the
+    # summary's place (mb-pb35); only the compact summary, in a tooltip, draws its own, one
+    # line in the Diff summary's words and paint (mb-khm6). Until the diff draws it, and where
+    # it is not drawn, the place holds the commit's totals (A6 of review A on #470).
+    assert (
+        "html += compact\n"
+        "      ? renderCommitChangeStats(stats)\n"
+        '      : `<div class="git-commit-diff-summary metabrowser-diff-host">'
+        "${renderCommitTotals(stats)}</div>`;"
+    ) in panel
+    assert panel.count('class="git-commit-diff-summary metabrowser-diff-host"') == 1
+    assert 'preview.querySelector(".git-commit-diff-summary")' in panel
+    commit_place = _rule(styles, ".git-commit-diff-summary")
+    assert "flex-direction: column" in commit_place
+    assert "align-items: flex-start" in commit_place
     for component_part in (
         'const subjectClass = compact ? "git-commit-subject"',
         'class="git-commit-meta"',
         'class="git-commit-identity"',
-        'class="git-commit-file-statuses"',
+        'class="git-commit-change-line"',
         'class="git-commit-change-stats"',
         'class="git-commit-refs"',
         'class="git-commit-body page-card chrome-prose"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     change_stats = _rule(styles, ".git-commit-change-stats")
-    stats_rows = _rule(styles, ".git-commit-file-statuses,\n.git-commit-line-stats")
+    change_line = _rule(styles, ".git-commit-change-line")
+    line_stats = _rule(styles, ".change-line-stats")
     compact = _rule(styles, ".git-commit-summary-compact")
     meta = _rule(styles, ".git-commit-meta")
     summary_sha = _rule(styles, ".git-commit-sha")
@@ -1088,14 +1144,16 @@ def test_git_commit_summary_is_one_component() -> None:
     summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
-    assert "display: grid" in change_stats
-    assert "white-space: nowrap" in change_stats
-    assert "display: inline-flex" in stats_rows
+    assert "display: flex" in change_line
+    assert "flex-wrap: wrap" in change_line
+    assert "display: inline-flex" in line_stats
+    assert "white-space: nowrap" in line_stats
     # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
     assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
     assert "white-space: pre-wrap" in summary_body
     for rule in (
+        change_stats,
         meta,
         compact_subject,
         compact_meta,
@@ -1128,7 +1186,15 @@ def test_navigation_tooltips_are_pointer_only() -> None:
     assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
     assert 'document.addEventListener("focusin", showTipText)' not in app
     assert 'document.addEventListener("focusout", hideTipText)' not in app
-    assert 'document.addEventListener("focusin", hideTooltip)' in app
+    # Any focus transition hides the tooltip, but the focus a press on the folder's name
+    # gives it: that is the pointer's click, which neither shows nor hides the name's
+    # tooltip (docs/design-system.md, "Home"; tests/test_folder_home_chrome.py).
+    assert 'document.addEventListener("focusin", hideTooltipOnFocus)' in app
+    on_focus = app[app.index("function hideTooltipOnFocus(") :]
+    on_focus = on_focus[: on_focus.index("\n}\n")]
+    assert "if (pressed !== null && event.target === pressed) {" in on_focus
+    assert on_focus.rstrip().endswith("hideTooltip();")
+    assert app.count("tooltipPressedAnchor = headerPath;") == 1
     assert 'element.addEventListener("focus", () =>' not in panel
     assert "dismissHoverTooltip();" in panel
 
@@ -1405,7 +1471,7 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     # Later than the rest fill it ties with, or a joined chip answers the pointer with
     # nothing, and earlier than the selected fill, which outranks it either way.
     chip_rest = styles.index(".chip-group > .chip {")
-    wrapped_rest = styles.index('.chip-group[data-layout="wrap"] > .chip {')
+    wrapped_rest = styles.index('.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {')
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
     ring = "outline: 2px solid var(--link)"
@@ -1588,10 +1654,17 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-view.js": (
         '"fold-expander diff-fold-control disclosure-toggle"',
         '"diff-file-bar disclosure-toggle"',
+        '"diff-summary diff-summary-toggle disclosure-toggle collapsed"',
+    ),
+    "diff/diff-summary.js": (
+        '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
     ),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
-    "github/pulls-panel.js": ('"github-pulls-row disclosure-toggle collapsed"',),
-    "github/pull-files-view.js": ('"github-pull-folder-row disclosure-toggle"',),
+    "github/pulls-panel.js": (
+        '"github-pulls-row disclosure-toggle collapsed"',
+        '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
+    ),
+    "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
     "github/pull-page.js": (
         '"btn github-pull-stack-trigger disclosure-toggle"',
         '{ class: "fold-expander disclosure-toggle" }',
@@ -1602,6 +1675,7 @@ _NOT_TOGGLES: dict[str, str] = {
     "tree-keyboard-navigation.js": "reflects aria-expanded on the tree rows app.js builds",
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
+    "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
     "server.py": "the settings gear is an icon-only menu button with no chevron",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
@@ -1629,13 +1703,23 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
     "diff/diff-view.js": (
         ('shellIcon("toggle")', '"fold-expander diff-fold-control disclosure-toggle"'),
         ('shellIcon("toggle")', '"diff-file-bar disclosure-toggle"'),
+        ('shellIcon("toggle")', '"diff-summary diff-summary-toggle disclosure-toggle collapsed"'),
+    ),
+    "diff/diff-summary.js": (
+        (
+            "host.chevron()",
+            '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
+        ),
     ),
     "diff/diff-markdown.js": (
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
-    "github/pulls-panel.js": (("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),),
+    "github/pulls-panel.js": (
+        ("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),
+        ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
+    ),
     "github/pull-files-view.js": (
-        ("host.chevron()", '"github-pull-folder-row disclosure-toggle"'),
+        ("host.chevron()", '"changed-file-row github-pull-folder-row disclosure-toggle"'),
     ),
     "github/pull-page.js": (
         ('h( "summary"', '"btn github-pull-stack-trigger disclosure-toggle"'),
@@ -1646,7 +1730,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
 # A glyph built far from its builder: a folder row's parts are made by one function and
 # put in the row by another.
 _GLYPH_FAR_FROM_BUILDER: frozenset[tuple[str, str]] = frozenset(
-    {("github/pull-files-view.js", "host.chevron()")}
+    {("github/pull-files-view.js", "host.chevron()"), ("diff/diff-summary.js", "host.chevron()")}
 )
 # The classes the registered toggles are made of. A stylesheet that gives one of them a
 # selectable `user-select` reopens the toggle, whether or not its selector also names
@@ -1671,8 +1755,12 @@ _TOGGLE_CLASSES: frozenset[str] = frozenset(
         "fold-expander",
         "diff-fold-control",
         "diff-file-bar",
+        "diff-summary-toggle",
+        "diff-summary-folder",
         "github-pulls-row",
+        "github-pulls-stack-row",
         "github-pull-folder-row",
+        "changed-file-row",
         "btn",
         "github-pull-stack-trigger",
     }
@@ -1997,7 +2085,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert 'entry.title.classList.toggle("mb-refreshing", on);' in panel
     assert 'entry.row.setAttribute("aria-busy"' not in panel, "a usable row is never busy"
     files = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(encoding="utf-8")
-    assert 'class: "github-pull-file-name mb-refreshing-text"' in files
+    assert 'class: "changed-file-name github-pull-file-name mb-refreshing-text"' in files
     assert 'group.classList.toggle("mb-refreshing-group", next.refreshing);' in files
     assert '"aria-busy"' not in files, "the usable tree group is never busy"
     assert "spinner.hidden = !next.loading;" in files
@@ -2015,7 +2103,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
     # selected row, and for a stack member at rest, hovered and current.
     assert "A pull request’s title is always bold in normal text ink" in doc
-    assert 'h("span", { class: "github-pulls-title" }, [row.title])' in panel
+    assert 'h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title))' in panel
     assert 'h("span", { class: "github-pull-stack-member-title" })' in page
     titles = (".github-pulls-title", ".github-pull-stack-member-title")
     for title in titles:
@@ -2024,16 +2112,247 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
         if selector not in titles and any(title in selector for title in titles):
             assert not {"color", "font-weight"} & declarations.keys(), selector
-    # The page's heading and a search result's label already are; the number beside a
-    # title keeps its regular weight.
+    # The page's heading and a search result's label already are.
     assert 'class: "page-heading github-pull-title' in page
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".page-heading"]["font-weight"] == "var(--weight-bold)"
     label = shell[".search-palette-label"]
     assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
-    assert github[".github-pull-number"]["font-weight"] == "var(--weight-normal)"
-    for number in (".github-pulls-number", ".github-pull-stack-member-number"):
-        assert "font-weight" not in github[number], number
+    # A pull request's number is bold wherever it names the pull request, the weight of a
+    # stack's position, through one token (mb-vrvs): one rule in the GitHub plugin for the
+    # title's, a Pulls row's, and a stack member's, and the shell's Quick Search result
+    # and ref selector; no other rule sets a number's weight. In headless Chrome each
+    # computes to 700 (github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs).
+    assert "### Pull Request Numbers" in doc
+    shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert shell_css.count("--pull-number-weight:") == 1
+    assert "--pull-number-weight: var(--weight-bold);" in shell_css
+    numbers = (".github-pull-number", ".github-pulls-number", ".github-pull-stack-member-number")
+    weighted = [
+        (selector, declarations["font-weight"])
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if "font-weight" in declarations and any(number in selector for number in numbers)
+    ]
+    assert weighted == [(number, "var(--pull-number-weight)") for number in numbers], weighted
+    for number in (".search-palette-pull-number", ".source-ref-selector-pull-number"):
+        assert shell[number]["font-weight"] == "var(--pull-number-weight)", number
+
+
+# A count's numeral and a pull request's number are both bold, each through a token of its
+# own, so the two may part (docs/design-system.md, "Count Summaries Bold Their Numbers" and
+# "Pull Request Numbers"): the selectors that take each.
+_COUNT_NUMERALS = frozenset({".summary-number", ".heading-tally-figure"})
+_PULL_NUMBERS = frozenset(
+    {
+        ".github-pull-number",
+        ".github-pulls-number",
+        ".github-pull-stack-member-number",
+        ".github-pull-stack-position",
+        ".github-pull-stack-member-position",
+        ".search-palette-pull-number",
+        ".source-ref-selector-pull-number",
+    }
+)
+# A class a source gives a count summary's number beside `.summary-number`, as the Pulls
+# count's `.github-pulls-total`.
+_SUMMARY_NUMBER_CLASSES = re.compile(
+    r"""class(?:Name)?\s*[:=]\s*["']([^"']*\bsummary-number\b[^"']*)["']"""
+)
+
+
+def _token_uses(token: str) -> set[tuple[str, str]]:
+    """(selector, property) for every declaration in every stylesheet that reads *token*."""
+
+    return {
+        (selector, name)
+        for sheet in _stylesheets()
+        for selector, declarations in _rules_of(sheet)
+        for name, value in declarations.items()
+        if f"var({token})" in value
+    }
+
+
+def test_count_summaries_bold_their_numbers_through_one_token() -> None:
+    """A count summary's numbers are bold, its words regular ("Count Summaries Bold Their
+    Numbers"; mb-roa9).
+
+    One token, `--count-numeral-weight`, sets a count's numeral's weight: every count
+    numeral's rule reads it, and nothing else does; `--pull-number-weight` is read by the
+    pull request numbers' rules alone. One shell class, `.summary-number`, takes the token
+    and nothing else, so a number keeps its line's ink and size, and no stylesheet restyles
+    it, by its own class or by a class a source gives it beside that one. Each surface that
+    paints a count summary puts its numbers in it: the browserless sessions named in the
+    design system hold the markup, and tests/test_changed_file_rows_chrome.py and
+    tests/test_nav_metadata_chrome.py read 700 for the numbers and 400 for the words in
+    Chrome.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Count Summaries Bold Their Numbers" in doc
+    shell_css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert shell_css.count("--count-numeral-weight:") == 1
+    assert "--count-numeral-weight: var(--weight-bold);" in shell_css
+    assert _token_uses("--count-numeral-weight") == {
+        (numeral, "font-weight") for numeral in _COUNT_NUMERALS
+    }
+    assert _token_uses("--pull-number-weight") == {
+        (number, "font-weight") for number in _PULL_NUMBERS
+    }
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".summary-number"] == {"font-weight": "var(--count-numeral-weight)"}
+    beside = {
+        f".{name}"
+        for source in _browser_sources()
+        for found in _SUMMARY_NUMBER_CLASSES.finditer(source.read_text(encoding="utf-8"))
+        for name in found.group(1).split()
+        if name != "summary-number"
+    }
+    assert beside == {".github-pulls-total"}, beside
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            assert selector == ".summary-number" or "summary-number" not in selector, (
+                sheet,
+                selector,
+            )
+            for name in beside:
+                if re.search(re.escape(name) + r"(?![\w-])", selector):
+                    assert "font-weight" not in declarations, (sheet, selector)
+            # The Checks summary's numbers are spans in a quiet paragraph; nothing styles a
+            # paragraph's descendants' weight there.
+            if re.search(r"\.github-pull-quiet(?![\w-])\s*[\s>+~]\s*\S", selector):
+                assert "font-weight" not in declarations, (sheet, selector)
+    painters = {
+        "static/formatters.js": "{ className: SUMMARY_NUMBER_CLASS, text: part.number",
+        "static/navigation.js": "window.MetabrowserFormatters.countPartsHtml(parts)",
+        "static/app.js": "window.MetabrowserFormatters.countPartsNodes(document, parts)",
+        "static/git-panel.js": "window.MetabrowserFormatters.countPartsNodes(document, [",
+        "builtin_plugins/diff/diff-view.js": "words.append(...paint(parts));",
+        "builtin_plugins/github/pulls-panel.js": '{ class: "github-pulls-total summary-number" }',
+        "builtin_plugins/github/pull-page.js": "mb.countPartsNodes(counted)",
+    }
+    for path, painted in painters.items():
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        assert painted in source, path
+    formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
+    assert 'const SUMMARY_NUMBER_CLASS = "summary-number";' in formatters
+
+
+# A count summary's one painter, and how each surface reaches it: the shell through
+# formatters.js, a plugin through the SDK's `countPartsNodes` (A3 of review A on #479).
+_PUNCTUATION_PAINTERS = {
+    "static/formatters.js": (
+        'const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";',
+        'const FILE_CHANGE_STATUS_CLASS = "file-change-status";',
+        'const VISUALLY_HIDDEN_CLASS = "visually-hidden";',
+        'attributes: [["aria-hidden", "true"]],',
+        '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
+        "{ status: entry.status, letter: entry.letter },",
+        'const CHANGE_LINE_CLASS = "change-line";',
+        "{ statuses: entries, additions: totals.additions, deletions: totals.deletions },",
+    ),
+    "static/plugin-sdk.js": (
+        "return global.MetabrowserFormatters.countPartsNodes(global.document, parts);",
+        "countPartsNodes: countPartsNodes,",
+        "return global.MetabrowserFormatters.changeLineNodes(global.document, line, options);",
+        "changeLine: changeLine,",
+        "changeLineNodes: changeLineNodes,",
+    ),
+    "static/changed-files-tree.js": (
+        "return formatters().changeSummary(totals, statusBreakdown(statuses), formatCount);",
+        'letter: STATUS_BADGES[/** @type {keyof typeof STATUS_BADGES} */ (status)] ?? "?",',
+    ),
+    "static/git-panel.js": (
+        "const said = formatters.changeSummary(",
+        "formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])",
+        "formatters.changeLineHtml(said.line)",
+        'const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });',
+    ),
+    "builtin_plugins/diff/diff-view.js": (
+        'const SUMMARY_SEPARATOR = Object.freeze({ separator: "·" });',
+        'const LINE_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
+        "const countPartsNodes = api?.countPartsNodes;",
+        '...paint.changeLineNodes(said.line, named ? {} : { spoken: ", " }),',
+        '...paint.changeLineNodes(paint.changeLine(said.change), { spoken: ", " }),',
+    ),
+    "builtin_plugins/github/pull-page.js": (
+        'const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
+        'h("p", { class: "github-pull-quiet" }, mb.countPartsNodes(counted))',
+    ),
+}
+# A class only the one painter writes: no other source spells one as a class of its own.
+_PAINTED_CLASSES = re.compile(
+    r"""["'](summary-number|summary-punctuation|file-change-status|change-line(?:-[a-z]+)?)["']"""
+)
+
+
+def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -> None:
+    """A count summary's separators and list punctuation are muted, and a status letter takes
+    its status's ink ("Count Summaries Bold Their Numbers"; mb-vb51).
+
+    One shell class, `.summary-punctuation`, sets the muted ink and nothing else, and no
+    stylesheet restyles it; a status letter in a count summary is the shell's status
+    primitive, `.file-change-status`, whose inks `test_file_status_ink_is_shared_and_legible`
+    holds. What a change set's summary says is one function, `changeSummary`, which the Diff
+    summary's model and a commit's hover card both say it through, and its parts have one
+    painter, formatters.js's, which a plugin reaches through the SDK's `countPartsNodes`:
+    the Diff summary and the Checks summary paint none of those classes themselves.
+    tests/dom/count-parts-session.js pins each kind's markup, tests/dom/diff-view-behavior.js
+    the Diff summary's header and fallback line, tests/dom/git-panel-behavior.js the hover
+    card, and tests/test_changed_file_rows_chrome.py and tests/dom/git-commit-summary-chrome.mjs
+    read their inks in Chrome.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "`.summary-punctuation`" in doc
+    assert "test_count_summaries_mute_their_punctuation_and_ink_their_status_letters" in doc
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".summary-punctuation"] == {"color": "var(--muted)"}
+    for sheet in _stylesheets():
+        for selector, _ in _rules_of(sheet):
+            assert selector == ".summary-punctuation" or "summary-punctuation" not in selector, (
+                sheet,
+                selector,
+            )
+    for path, painted in _PUNCTUATION_PAINTERS.items():
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        for text in painted:
+            assert text in source, (path, text)
+    for path in ("builtin_plugins/diff/diff-view.js", "builtin_plugins/github/pull-page.js"):
+        source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
+        assert _PAINTED_CLASSES.findall(source) == [], path
+    # The Diff summary's breakdown is in its line's ink: only its marks, and the
+    # "(estimated)" note that qualifies its totals, are muted. Each dot is one item with the
+    # group before it, spaced by the line's one gap, on a toggle and on a line alike.
+    diff_css = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
+    assert ".metabrowser-diff-host .diff-summary-breakdown" not in diff_css
+    assert diff_css[".metabrowser-diff-host .diff-summary-note"] == {"color": "var(--muted)"}
+    assert diff_css[".metabrowser-diff-host .diff-summary-group"] == {
+        "display": "inline-flex",
+        "align-items": "baseline",
+        "column-gap": "inherit",
+    }
+    assert diff_css[".metabrowser-diff-host .diff-summary"]["column-gap"] == "6px"
+    assert "column-gap" not in diff_css[".metabrowser-diff-host .diff-summary-toggle"]
+    # The hover card's change line is spaced as the Diff summary's is.
+    assert shell[".git-commit-change-group"] == {
+        "display": "inline-flex",
+        "align-items": "baseline",
+        "column-gap": "inherit",
+    }
+    assert shell[".git-commit-change-line"]["column-gap"] == "6px"
+    # The brief change line is one shell component, spaced as the Diff summary is, its
+    # statuses and their dot one item (mb-9ekj).
+    assert shell[".change-line"] == {
+        "display": "inline-flex",
+        "flex-wrap": "wrap",
+        "align-items": "baseline",
+        "column-gap": "6px",
+    }
+    assert shell[".change-line-group"] == {
+        "display": "inline-flex",
+        "align-items": "baseline",
+        "column-gap": "inherit",
+    }
 
 
 def test_merges_read_source_to_target_in_one_notation() -> None:
@@ -2054,10 +2373,14 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
         r"chip\(target, \"merge-refs-target\"\),?\s*\)",
         views,
     ), "the group is the source, the arrow, then the target"
-    # Both pages draw their merge with it, head first. Neither draws a ref chip of its own,
-    # so neither can compose two around a connector, nor writes the left arrow; the sessions
-    # of both pages hold the rendered order, the arrow, and the literal refs.
-    for name, side in (("pull-page.js", "pull"), ("pulls-panel.js", "row")):
+    # The page draws its merge with it, head first, and draws no ref chip of its own, so it
+    # cannot compose two around a connector, nor writes the left arrow; its session holds
+    # the rendered order, the arrow, and the literal refs. A Pulls row names no branches.
+    panel_source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / "pulls-panel.js").read_text(
+        encoding="utf-8"
+    )
+    assert "mergeRefs" not in panel_source, "a Pulls row names no branches"
+    for name, side in (("pull-page.js", "pull"),):
         source = (REPO_ROOT / BUILTIN_PLUGINS / "github" / name).read_text(encoding="utf-8")
         assert re.search(
             rf"mb\.mergeRefs\(\s*\{{\s*name:\s*{side}\.headRef\b[^}}]*\}},\s*"
@@ -2083,31 +2406,36 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert "font-size" not in group, "the arrow and chips take the text around the merge"
     assert ".merge-refs > .git-ref" not in shell, "a merge places its chips; it never sizes them"
     assert shell[".merge-refs-arrow"] == {"color": "var(--muted)", "white-space": "pre"}
-    # The Pulls tab's muted line wraps rather than clips: a line of text with an ellipsis
-    # loses the arrow in Chrome when it overflows. The author and the branches each carry
-    # their separator, breaks fall at their floors, and a separator that starts a line lies
-    # in the one-separator offset the row clips.
+    # The Pulls tab's number's line names no branches (the pull request's page does) and is
+    # one line (mb-lkkt): the author carries its separator, a break falls at its floor onto a
+    # second line its box clips, one line of the number's type tall, and a separator that
+    # starts a line lies in the one-separator offset the box clips.
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     meta = github[".github-pulls-meta"]
-    assert (meta["min-width"], meta["overflow"]) == ("0", "hidden")
+    assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
+    assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
+    assert github[".github-pulls-by"]["font-size"] == "var(--ui-small-font-size)"
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
     assert line["margin-inline-start"] == "calc(-1 * var(--github-pulls-sep))"
-    assert github[".github-pulls-number"]["margin-inline-start"] == ("var(--github-pulls-sep)")
+    assert github[".github-pulls-id"]["margin-inline-start"] == ("var(--github-pulls-sep)")
     assert github[".github-pulls-sep"]["width"] == "var(--github-pulls-sep)"
-    for part in (".github-pulls-by", ".github-pulls-merge"):
-        rule = github[part]
-        assert (rule["flex"], rule["max-width"]) == ("1 1 0", "max-content"), part
+    by_rule = github[".github-pulls-by"]
+    assert (by_rule["flex"], by_rule["max-width"]) == ("1 1 0", "max-content")
+    assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
     assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
-    avatar = github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"]
-    assert avatar == "calc(var(--github-pulls-sep) + 18px + 4px + 1.75em)", "a name beside it"
+    avatar = " ".join(github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"].split())
+    assert avatar == (
+        "calc( var(--github-pulls-sep) + var(--github-pull-avatar-size) +"
+        " var(--github-pull-identity-gap) + 1.75em )"
+    ), "a name beside it"
+    # The floor counts the avatar and its gap, through the two tokens that size them (mb-xlla).
     assert (github[".github-pull-avatar"]["width"], github[".github-pull-identity"]["gap"]) == (
-        "18px",
-        "4px",
+        "var(--github-pull-avatar-size)",
+        "var(--github-pull-identity-gap)",
     ), "the floor counts the avatar and its gap"
-    assert "min-width" not in github[".github-pulls-merge"], "its floor is the merge's own"
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
     assert ".github-pulls-who" not in github
@@ -2135,7 +2463,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert 'class: "page-heading github-pull-title' in page
     assert (
         github[".github-pull-title-with-state"]["grid-template-columns"]
-        == "auto minmax(0, max-content) auto"
+        == "auto minmax(0, 1fr) auto"
     ), "the number is a track of its own, after the title it is never clamped with"
     title_icon = github[".github-pull-title > .github-pull-state-icon"]
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
@@ -2144,7 +2472,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
     # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus, at its row's size.
+    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
+    # check's are at their row's size; a commit hash is one step below its row (below).
     for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
         action = f"{place} .github-pull-external-action"
         assert github[action] == {"color": "var(--muted)"}, action
@@ -2154,11 +2483,44 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
-    # A hash matches its 12 px row; the ramp's next step below is the 10 px micro size.
-    assert github[".github-pull-commit"]["font-size"] == "var(--ui-small-font-size)"
-    assert github[".github-pull-commit .git-commit-sha"]["font-size"] == (
-        "var(--ui-small-font-size)"
+    # A conversation commit is said in a card head's type ("Conversation Timeline"): its
+    # when is no quieter than a comment's, its age is the head's, and its hash takes a
+    # revision's own size, one step below the text beside it. The sizes and the line they
+    # draw are measured in Chrome by tests/test_github_pull_timeline_chrome.py.
+    commit = github[".github-pull-commit"]
+    assert commit["font-size"] == github[".github-pull-card-head"]["font-size"]
+    # Its box is its line, so its text is the rhythm from the events beside it (mb-w7rt).
+    assert "min-height" not in commit and commit["padding"].startswith("0 ")
+    # The rhythm is the Conversation's, and only its events carry it: the body keeps the
+    # page's gap, as the Files and Checks tabs and a section or note below an event do, and
+    # each event stands the rest of the rhythm below whatever is before it.
+    assert github[".github-pull-body"]["gap"] == "var(--github-pull-gap)"
+    assert github[".github-pull-body > * + .github-pull-event"] == {
+        "margin-block-start": "calc(var(--github-pull-rhythm) - var(--github-pull-gap))"
+    }
+    # Under Review comments the rhythm is between its cards only: its heading sits at the
+    # section's gap over the first, as every section's heading does (mb-xlla).
+    assert ".github-pull-threads" not in github
+    assert github[".github-pull-threads > .github-pull-card + .github-pull-card"] == {
+        "margin-block-start": "calc(var(--github-pull-rhythm) - var(--github-pull-gap))"
+    }
+    assert ".github-pull-commit .git-commit-sha" not in github
+    assert (
+        github[".github-pull-commit .github-pull-age"]
+        == (github[".github-pull-card-head .github-pull-age"])
     )
+    # The row's when is a plain span in the row's type; the Chrome test holds its ink.
+    assert 'h("span", {}, ["committed ", age(event.committed_at)])' in page
+    # The events the line joins: the description, each comment and review, and each commit.
+    assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
+    # Their heads keep an avatar's slot for an author without one; the header and Pulls
+    # rows do not ask for it.
+    assert page.count("{ slot: true }") == 2, "the description's head and a card's"
+    slot = github[".github-pull-avatar-slot"]
+    avatar = github[".github-pull-avatar"]
+    assert (slot["width"], slot["height"]) == (avatar["width"], avatar["height"])
+    node = github[".github-pull-commit::after"]
+    assert (node["border-radius"], node["background"]) == ("var(--radius-circle)", "var(--muted)")
     # A button that moves the pin looks as a link does: no primitive's border or fill.
     action = github[".github-pull-text-action"]
     assert (action["color"], action["border"], action["background"]) == (
@@ -2169,6 +2531,11 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "github-pull-browse" not in page and '"Browse code"' in page
     assert page.count('class: "github-pull-text-action"') == 1
     assert '"github-pull-file github-pull-text-action"' in page
+    # The status line's Refresh or Fetch and Switch to the head are text actions too: the
+    # line is one of the header's metadata lines, and a bordered .btn made it 26 px where
+    # the row of ages above it is 18 (mb-2u08).
+    assert '"github-pull-text-action github-pull-refresh"' in page
+    assert '"github-pull-text-action github-pull-switch"' in page
     # A <button> is an atomic inline box whatever its display, so the link and the plain
     # path are one too: a wrapped path then puts the badge after it on the next line in every
     # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
@@ -2304,6 +2671,192 @@ def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> 
         assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
 
 
+def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
+    """The one wait that dims what is shown has its own token, and dims nothing twice.
+
+    "Refreshing Content" says content already shown is never covered by progress, and names
+    the one exception: a Group by choice's first sections, where the tree on screen is the
+    arrangement the reader left ("Grouping the Files Tree", Waiting). It dims through
+    `--loading-dim-opacity`, used nowhere else, and every tree row the dimmed content
+    token already dims is held at that token under the wait rather than multiplied by it.
+    tests/test_files_tab_chrome.py measures both in Chrome (mb-xlla).
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "`--loading-dim-opacity`" in doc
+    sheets = [STATIC / "styles.css", *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    uses = sum(
+        sheet.read_text(encoding="utf-8").count("var(--loading-dim-opacity)") for sheet in sheets
+    )
+    assert uses == 2, "the dim's keyframe and the hold's are its only uses"
+    dim = re.search(r"@keyframes tree-regrouping-dim \{(.*?)\n\}", styles, re.DOTALL)
+    hold = re.search(r"@keyframes tree-regrouping-hold \{(.*?)\n\}", styles, re.DOTALL)
+    assert dim is not None and "opacity: var(--loading-dim-opacity);" in dim[1]
+    assert hold is not None and (
+        "opacity: min(1, calc(var(--dimmed-content-opacity) / var(--loading-dim-opacity)));"
+        in hold[1]
+    )
+    rules = _rules_of(STATIC / "styles.css")
+    held = next(
+        selector
+        for selector, body in rules
+        if body.get("animation", "").startswith("tree-regrouping-hold ")
+    )
+    assert held.startswith("#tab-files.tree-regrouping :is(") and held.endswith(")"), held
+    holds = {
+        name.strip()
+        for name in held.removeprefix("#tab-files.tree-regrouping :is(")[:-1].split(",")
+    }
+    dimmed = {
+        selector.removeprefix(".tree-item")
+        for selector, body in rules
+        if body.get("opacity") == "var(--dimmed-content-opacity)"
+        and selector.startswith(".tree-item.")
+    }
+    assert dimmed and dimmed == holds, (dimmed, holds)
+
+
+def test_tabular_figures_are_the_token_everywhere() -> None:
+    """Every stylesheet sets tabular figures through `--tabular-numerals`, never the literal.
+
+    The token is one place to change how figures align; a literal beside it is a second.
+    """
+
+    sheets = [STATIC / "styles.css", *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]
+    for sheet in sheets:
+        for selector, body in _rules_of(sheet):
+            assert body.get("font-variant-numeric") != "tabular-nums", (sheet.name, selector)
+
+
+def test_no_badge_rule_names_a_review_state_that_has_no_badge() -> None:
+    """A review state whose verb says it all draws no chip, so no rule can style one.
+
+    `REVIEW_STATES` in pull-page.js maps a plain review (COMMENTED) and a pending one to null
+    (docs/design-system.md, "Conversation Timeline", Headings); a `.github-pull-badge` rule
+    for either could never match and reads as a chip that exists.
+    """
+
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    states = re.search(r"const REVIEW_STATES = Object\.freeze\(\{(.*?)\}\);", page, re.DOTALL)
+    assert states is not None
+    unbadged = re.findall(r"^\s*([A-Z_]+): null,", states[1], re.MULTILINE)
+    assert set(unbadged) == {"COMMENTED", "PENDING"}, unbadged
+    github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
+    for state in unbadged:
+        assert f'.github-pull-badge[data-state="{state}"]' not in github, state
+
+
+def test_both_trees_of_changed_files_use_the_shells_rows() -> None:
+    """The Pulls tab's changed files and the Diff summary draw the shell's one row set.
+
+    The class set is `static/styles.css`'s `.changed-file-row` and its parts, beside the
+    Files tree's rows; each plugin's stylesheet sets only its depth's indent, and no plugin
+    restyles a row's box, hover, or ring, which is how the Diff summary's copy drifted to an
+    8px inset and a rounded, outset ring (mb-xlla). `tests/test_changed_file_rows_chrome.py`
+    measures the two trees row for row in Chrome.
+    """
+
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    row = shell[".changed-file-row"]
+    assert row["padding"] == "2px 12px 2px calc(10px + var(--changed-file-indent, 0px))"
+    assert row["border-left"] == "2px solid transparent"
+    assert row["height"] == "var(--ui-row-height)"
+    assert shell[".changed-file-row:hover"] == {"background": "var(--hover-bg)"}
+    assert shell[".changed-file-row:focus-visible"]["outline-offset"] == "-2px"
+    assert shell[".changed-file-toggle"]["width"] == "var(--tree-icon-slot)"
+    sources = ("diff/diff-summary.js", "github/pull-files-view.js")
+    for source in sources:
+        text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
+        for part in (
+            "changed-file-row",
+            "changed-file-toggle",
+            "changed-file-name",
+            "changed-file-stats",
+        ):
+            # A class string that holds the shared class as one of its names.
+            assert re.search(rf'"(?:[\w-]+ )*{part}(?: [\w-]+)*"', text), (source, part)
+    owned = {"--changed-file-indent", "scroll-margin-block-start", "color"}
+    for sheet, classes in (
+        ("diff/styles.css", ("diff-summary-row",)),
+        ("github/styles.css", ("github-pull-file-row", "github-pull-folder-row")),
+    ):
+        for selector, body in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / sheet):
+            subject = selector.split()[-1]
+            named = any(re.search(rf"\.{name}(?![\w-])", subject) for name in classes)
+            if named and "::" not in subject:
+                assert set(body) <= owned, (sheet, selector, body)
+    # The Diff summary's header hovers and rings as its rows do: square, the ring inside.
+    diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
+    toggle = ".metabrowser-diff-host .diff-summary-toggle"
+    assert diff[toggle]["border-radius"] == "0"
+    assert diff[toggle + ":focus-visible"]["outline-offset"] == "-2px"
+    # A folder's tooltip gives what its sums leave out, the counts alone.
+    for source in sources:
+        text = (REPO_ROOT / BUILTIN_PLUGINS / source).read_text(encoding="utf-8")
+        assert "element.dataset.tipText = missing;" in text, source
+        assert "${row.name}, ${missing}" not in text, source
+
+
+def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
+    """A size two rules share is one token, and what is made of it is derived from it.
+
+    The tree's icon slot is the glyph's width, `--tree-icon-slot: var(--icon-glyph)`, and the
+    chevron centered in it is `--toggle-chevron-size`; a menu's, a palette's, and a file
+    identity's icon box is `--icon-box`, and the tree's slot is that box's height. The
+    Conversation timeline's avatar and the gap after it are `--github-pull-avatar-size` and
+    `--github-pull-identity-gap`, and the commit row's start, the line's x, the empty slot,
+    and the authors' floors are derived from them (mb-xlla).
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "--tree-icon-slot: var(--icon-glyph);" in styles
+    for token in ("--toggle-chevron-size", "--icon-box"):
+        assert re.search(rf"^\s*{token}:", styles, re.MULTILINE), token
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    chevron = shell[".toggle-chevron"]
+    assert (chevron["width"], chevron["height"]) == ("var(--toggle-chevron-size)",) * 2
+    centered = "calc((var(--tree-icon-slot) - var(--toggle-chevron-size)) / 2)"
+    assert shell[".tree-folder > .tree-toggle"]["margin-inline"] == centered
+    assert shell[".tree-container > .tree-toggle"]["margin"] == f"0 {centered}"
+    for box in (".menu-item-icon", ".search-palette-icon", ".file-identity-icon"):
+        assert (shell[box]["width"], shell[box]["height"]) == ("var(--icon-box)",) * 2, box
+    # A tree row's slot is the glyph's width and the icon box's height.
+    icon = shell[".tree-item-icon"]
+    assert (icon["width"], icon["height"]) == ("var(--tree-icon-slot)", "var(--icon-box)")
+    github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
+    parsed = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    rules = dict(parsed)
+    # The page and the Pulls tab both draw authors, so both roots declare the two tokens.
+    declared: dict[str, set[str]] = {}
+    for selector, body in parsed:
+        declared.setdefault(selector, set()).update(body)
+    for root in (".github-pull", ".github-pulls"):
+        assert {"--github-pull-avatar-size", "--github-pull-identity-gap"} <= declared[root], root
+    for selector in (".github-pull-avatar", ".github-pull-avatar-slot"):
+        assert (
+            rules[selector]["width"]
+            == rules[selector]["height"]
+            == ("var(--github-pull-avatar-size)")
+        ), selector
+    assert rules[".github-pull-identity"]["gap"] == "var(--github-pull-identity-gap)"
+    assert rules[".github-pull-event"]["--github-pull-rail"] == (
+        "calc(var(--github-pull-text-inset) + var(--github-pull-avatar-size) / 2)"
+    )
+    for selector in (
+        ".github-pull-commit",
+        ".github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar)",
+        ".github-pulls-by:has(.github-pull-avatar)",
+    ):
+        geometry = " ".join(
+            rules[selector].get("padding", rules[selector].get("min-width", "")).split()
+        )
+        assert "var(--github-pull-avatar-size)" in geometry, selector
+        assert "var(--github-pull-identity-gap)" in geometry, selector
+    # No avatar size or gap is written as a pixel literal in a rule.
+    assert "18px + 4px" not in github and "+ 9px" not in github
+
+
 # A serif face, named directly, as a family, or through the token KPress reads it from.
 _SERIF = re.compile(
     r"--kpress-(?:host-)?font-prose\b|--app-serif-system\b|(?<!sans-)\bserif\b|\bgeorgia\b",
@@ -2319,6 +2872,7 @@ _FACE_ROOTS = {
     ":root": {
         "--font-sans": "var(--app-sans-clean)",
         "--prose-sans-font": "var(--app-sans-clean)",
+        "--kpress-host-font-mono": "var(--app-mono)",
         "--kpress-host-font-size-base": "var(--document-body-font-size)",
     },
     'html[data-app-font="system"]': {
@@ -2398,6 +2952,26 @@ def test_serif_is_only_for_documents() -> None:
             assert not faces, f"{where} sets a face token: {sorted(faces)}"
     assert roots == _FACE_ROOTS
     assert documents == _DOCUMENT_FACES
+    # An h2 is upright wherever the prose face is sans: the one rule that sets its style
+    # keys on each selector that points the prose hook at sans, and on nothing else, so a
+    # third such place cannot arrive without it.
+    style_rules = _rules_of(styles)
+    sans_hooks = {
+        selector
+        for selector, declarations in style_rules
+        if declarations.get("--kpress-host-font-prose") == "var(--prose-sans-font)"
+    }
+    upright = [
+        (selector, declarations)
+        for selector, declarations in style_rules
+        if selector.endswith(".kpress-prose h2") and "font-style" in declarations
+    ]
+    assert sans_hooks, "no rule points the prose hook at sans"
+    assert {selector for selector, _ in upright} == {
+        f"{hook} .kpress-prose h2" for hook in sans_hooks
+    }
+    for selector, declarations in upright:
+        assert declarations == {"font-style": "normal"}, selector
     builders = {
         path.relative_to(source).as_posix(): path.read_text(encoding="utf-8").count("chrome-prose")
         for path in sorted([*STATIC.glob("*.js"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.js")])
@@ -2896,3 +3470,117 @@ def test_revealed_strip_overlays_the_panel_without_reflowing_it() -> None:
         "color": "var(--kbd-badge-color)",
     }
     assert rules[".nav-shortcut-reveal .shortcut-binding-separator"] == {"color": "var(--text)"}
+
+
+# ── Heading tallies are one node sequence ──────────────────────────
+#
+# docs/design-system.md, "Heading Tallies". The tally keeps its white space
+# (`white-space: pre`), so its markup is whitespace-sensitive, and it is built twice: as
+# an HTML string in the shell and as `h()` nodes in the GitHub plugin. Every source that
+# builds a `.heading-tally` is found, each build is held to the one node sequence (a
+# space, the hidden dot, a space, the figure, and an optional unit, with no white space
+# between the name and the tally), and the builders found are held to the design
+# system's table of headings that carry one. A builder is the nearest `function` before
+# the tally; review holds that it is the heading's builder.
+
+_TALLY_CLASS = re.compile(r"""["']heading-tally["']""")
+# The shell's HTML string, with its template literals joined: the tally, then its unit.
+_TALLY_HTML = re.compile(
+    r'<span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span>'
+    r' <span class="heading-tally-figure">\$\{[^`]+?\}</span>(?: \$\{\w+\}| \w+)?</span>'
+)
+# A plugin's `h()` nodes.
+_TALLY_NODES = re.compile(
+    r'h\("span", \{ class: "heading-tally" \}, \[\s*" ",\s*'
+    r'h\("span", \{ class: "heading-tally-dot", "aria-hidden": "true" \}, \["·"\]\),\s*" ",\s*'
+    r'h\("span", \{ class: "heading-tally-figure" \}, \[[^\]]*\]\),\s*(?:"[^"]*",\s*)?\]\)'
+)
+_TALLY_ROW = re.compile(r"(?m)^\| [^|]+ \| `(?P<builder>\w+)` in `(?P<path>[^`]+)` \| [^|]+ \|$")
+
+
+def _joined_templates(text: str) -> str:
+    """*text* with each concatenation of two template literals joined into one."""
+
+    return re.sub(r"`\s*\+\s*`", "", text)
+
+
+def _heading_tally_problems(key: str, text: str) -> tuple[set[str], list[str]]:
+    """The builders in *text* that build a `.heading-tally`, and what is wrong with each."""
+
+    text = _joined_templates(text)
+    builds = [*_TALLY_HTML.finditer(text), *_TALLY_NODES.finditer(text)]
+    builders: set[str] = set()
+    problems: list[str] = []
+    for found in _TALLY_CLASS.finditer(text):
+        at = found.start()
+        build = next((build for build in builds if build.start() <= at < build.end()), None)
+        line = text.count("\n", 0, at) + 1
+        if build is None:
+            problems.append(f"{key}:{line} builds a .heading-tally out of the one sequence")
+            continue
+        if build.start() != at - len("<span class=") and not build.group().startswith("h("):
+            problems.append(f"{key}:{line} is not the tally's own element")
+            continue
+        before = text[: build.start()]
+        # Nothing but the name before it: no white space in the same literal, and no
+        # whitespace-only string node.
+        if build.group().startswith("<span"):
+            if not re.search(r"(?:>|\+\s*`)$", before):
+                problems.append(f"{key}:{line} puts white space between the name and the tally")
+        elif re.search(r'"\s*",\s*$', before):
+            problems.append(f"{key}:{line} puts a white-space node between the name and the tally")
+        names = re.findall(r"\bfunction\s+(\w+)\s*\(", before)
+        if not names:
+            problems.append(f"{key}:{line} builds a .heading-tally outside any function")
+            continue
+        builders.add(names[-1])
+    return builders, problems
+
+
+def test_every_heading_tally_is_the_one_node_sequence() -> None:
+    """Each source that builds a heading's tally builds the same nodes, and is listed."""
+
+    found: set[tuple[str, str]] = set()
+    problems: list[str] = []
+    for source in _browser_sources():
+        key = source.relative_to(REPO_ROOT).as_posix()
+        builders, wrong = _heading_tally_problems(key, source.read_text(encoding="utf-8"))
+        found |= {(key, builder) for builder in builders}
+        problems += wrong
+    assert problems == []
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    section = doc.split("\n### Heading Tallies\n", 1)[1].split("\n### ", 1)[0]
+    listed = {(row["path"], row["builder"]) for row in _TALLY_ROW.finditer(section)}
+    assert listed, "the Heading Tallies table is missing"
+    assert found == listed
+    # The numeral's weight is a count's, through its own token, not a pull request number's.
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert styles.count("--count-numeral-weight:") == 1
+    assert "--count-numeral-weight: var(--weight-bold);" in styles
+    assert "font-weight: var(--count-numeral-weight);" in _rule(styles, ".heading-tally-figure")
+    assert "white-space: pre;" in _rule(styles, ".heading-tally")
+
+
+def test_a_heading_tally_out_of_sequence_fails() -> None:
+    """White space before the tally, a missing dot, or a tally built elsewhere fails."""
+
+    key = "static/app.js"
+    text = (STATIC / "app.js").read_text(encoding="utf-8")
+    builders, problems = _heading_tally_problems(key, text)
+    assert (builders, problems) == ({"treeSectionHeadingHtml"}, [])
+    tally = '`<span class="heading-tally"> '
+    assert text.count(tally) == 1
+    spaced = text.replace("label +\n    " + tally, "label +\n    ` " + tally[1:])
+    assert spaced != text
+    assert _heading_tally_problems(key, spaced)[1]
+    undotted = text.replace('<span class="heading-tally-dot" aria-hidden="true">·</span> ', "")
+    assert _heading_tally_problems(key, undotted)[1]
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    builders, problems = _heading_tally_problems("github/pull-page.js", page)
+    assert (builders, problems) == ({"reviewThreads"}, [])
+    named = '        "Review comments",\n'
+    assert page.count(named) == 1
+    padded = page.replace(named, named + '        " ",\n')
+    assert _heading_tally_problems("github/pull-page.js", padded)[1]
+    elsewhere = text + '\nconst stray = `<span class="heading-tally">3</span>`;\n'
+    assert _heading_tally_problems(key, elsewhere)[1]

@@ -150,7 +150,7 @@
    * Reconcile one strip layer with a snapshot. The resting strip names one way into each
    * command and makes the controls it owns buttons; the revealed layer, `actions: false`
    * with `bindings: "all"`, is a reminder only, every binding of an item that coalesces
-   * several, as `N` or `P`, and at most `limit` items.
+   * several, as Control-N or Control-P, and at most `limit` items.
    *
    * @param {HTMLElement} host
    * @param {readonly HelpGroupPresentation[]} snapshot

@@ -38,6 +38,14 @@ class Element {
       toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name)),
     };
   }
+  // A class written as `className`, as the shell's painter of count summaries writes it, is
+  // the element's classes, as a page's are.
+  get className() {
+    return [...this.classes].join(" ");
+  }
+  set className(value) {
+    this.classes = new Set(String(value).split(" ").filter(Boolean));
+  }
   get ownerDocument() {
     return globalThis.document;
   }
@@ -189,6 +197,34 @@ const perf = {
     }
   },
 };
+// What a page reads of a comparison is kept for the document (mb-neg9), in module state that
+// outlives a mount. Each mount here is a fresh load of the page, with an empty keep, unless
+// it is mountScripted's revisit in the same document, so no story takes what another kept,
+// whatever order they run in (B10 of review B on #478).
+const comparisonPrefetchUrl = pathToFileURL(
+  path.join(root, "src/metabrowser/builtin_plugins/github/comparison-prefetch.js"),
+).href;
+
+/**
+ * The pull page module at *url*, whose `mountPullPage` mounts a fresh load of the page, its
+ * document's keep empty, and whose `revisitPullPage` mounts it again in the same document.
+ *
+ * @param {string} url
+ * @returns {Promise<Record<string, any>>}
+ */
+async function importPage(url) {
+  const page = await import(url);
+  const { documentComparisons } = await import(comparisonPrefetchUrl);
+  return {
+    ...page,
+    mountPullPage(...args) {
+      documentComparisons.clear();
+      return page.mountPullPage(...args);
+    },
+    revisitPullPage: page.mountPullPage,
+  };
+}
+
 async function settle() {
   for (let turn = 0; turn < 10; turn += 1) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -333,8 +369,8 @@ async function markdownOwnership() {
   for (const delayed of ["inert", "styles"]) {
     for (const transition of ["response", "replace", "metadata", "tab", "dispose"]) {
       // Kept renders and loaded styles belong to the module, so each story has its own.
-      const page = await import(
-        `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?${delayed}-${transition}`
+      const page = await importPage(
+        `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?${delayed}-${transition}`,
       );
       const timers = new Map();
       globalThis.document = {
@@ -662,7 +698,7 @@ async function tabKeys(page) {
     HTMLElement: LiveElement,
     // `serialize_reserved_shell_keys()` in src/metabrowser/keymap.py, as the shell serves it.
     METABROWSER_SETTINGS: {
-      RESERVED_SHELL_KEYS: Object.fromEntries([..."frhtjknpuw123456789"].map((key) => [key, null])),
+      RESERVED_SHELL_KEYS: Object.fromEntries([..."fphtjkuw123456789"].map((key) => [key, null])),
     },
   };
   shell.window = shell;
@@ -1087,8 +1123,9 @@ async function checkRows(page) {
 async function headerAges(page) {
   const said = async (name, ageLabel) => {
     const { container, handle } = await mountOn(page, recorded[name].body, "", ageLabel);
+    // The ages follow the state's badge on their row (mb-4ydo).
     const line = container
-      .querySelector(".github-pull-header")
+      .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
     const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
     const link = line.children.find((node) => node.tag === "a");
@@ -1134,12 +1171,14 @@ async function headerAges(page) {
 }
 
 // The header's box is decided at first paint: the same rows, in the same order, whatever
-// the pull request carries and whichever tab shows, and while its record is on its way.
-// Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
-// row is there. A stack's chip has its slot at the labels row's end, held by a strut until
-// one arrives; the state row holds a strut of its own; and Refresh has its slot at the
-// status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
-// late chip moves nothing.
+// the pull request carries and whichever tab shows, and while its record is on its way,
+// but for the labels row, which a pull request with no labels does not have (mb-2u08). It
+// is held while the record is on its way, since the record may bring labels. Each row's
+// height is its stylesheet's (tests/test_reserved_chrome.py); here, that every row it has
+// is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
+// strut until one arrives, which holds that row at a chip's height; and Refresh has its
+// slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs
+// measures that a late chip moves nothing.
 async function headerShape(page) {
   const rows = (container) =>
     container
@@ -1161,13 +1200,32 @@ async function headerShape(page) {
     })(),
     "three labels": (() => {
       const body = structuredClone(recorded.current.body);
-      body.record.pull.labels = ["bug", "enhancement", "needs review"];
+      body.record.pull.labels = [
+        { name: "bug", color: "d73a4a", description: "Something isn't working" },
+        { name: "enhancement", color: "a2eeef", description: null },
+        { name: "needs review", color: null, description: null },
+      ];
+      return body;
+    })(),
+    // A record cached before label colors names its labels alone; the envelope carries the
+    // repository's set's entry for the one it holds (`mb-varu`).
+    "labels named alone": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.record.pull.labels = [
+        { name: "bug", color: null, description: null },
+        { name: "needs review", color: null, description: null },
+      ];
+      body.repository_labels = [
+        { name: "bug", color: "d73a4a", description: "Something isn't working" },
+      ];
       return body;
     })(),
     merged: recorded.merged.body,
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
   };
+  // The variants whose record names no labels.
+  const NO_LABELS = new Set(["no labels, a title of three lines", "merged"]);
   for (const [name, body] of Object.entries(variants)) {
     for (const tab of ["", "files", "checks"]) {
       const { container, handle } = await mountOn(page, body, tab, age);
@@ -1180,13 +1238,66 @@ async function headerShape(page) {
       const refresh = end.children.at(-1);
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(
-        labels.children.at(-1),
+        meta.children.at(-1),
         stacks,
-        `${name} ${tab}: the stack slot ends the labels`,
+        `${name} ${tab}: the stack slot ends the author's row`,
       );
+      if (NO_LABELS.has(name)) {
+        assert.equal(labels, null, `${name} ${tab}: no labels, no labels row`);
+      } else {
+        assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
+      }
+      if (name === "three labels") {
+        // A label with GitHub's color carries it and the properties github/styles.css
+        // paints it from; one with a description has it as its tooltip; one without a
+        // color is the neutral chip, and one without a description has no tooltip.
+        assert.deepEqual(
+          container
+            .querySelectorAll(".github-pull-label")
+            .map((chip) => [
+              chip.textContent,
+              chip.getAttribute("data-color"),
+              chip.getAttribute("style"),
+              chip.getAttribute("data-tip-text"),
+            ]),
+          [
+            [
+              "bug",
+              "d73a4a",
+              "--github-label-r:215;--github-label-g:58;--github-label-b:74;--github-label-h:354;--github-label-s:66;--github-label-l:54",
+              "Something isn't working",
+            ],
+            [
+              "enhancement",
+              "a2eeef",
+              "--github-label-r:162;--github-label-g:238;--github-label-b:239;--github-label-h:181;--github-label-s:71;--github-label-l:79",
+              null,
+            ],
+            ["needs review", null, null, null],
+          ],
+          `${tab}: each chip's color, properties, and tooltip`,
+        );
+      }
+      if (name === "labels named alone") {
+        // The one the repository's set holds is colored and titled from it on first paint.
+        assert.deepEqual(
+          container
+            .querySelectorAll(".github-pull-label")
+            .map((chip) => [
+              chip.textContent,
+              chip.getAttribute("data-color"),
+              chip.getAttribute("data-tip-text"),
+            ]),
+          [
+            ["bug", "d73a4a", "Something isn't working"],
+            ["needs review", null, null],
+          ],
+          `${tab}: a label named alone takes the repository's color and description`,
+        );
+      }
       assert.ok(
-        meta.children.at(-1).classes.has("github-pull-stack-strut"),
-        `${name} ${tab}: a strut holds the state row at a chip's height`,
+        stacks.children.length !== 1 || stacks.children[0].classes.has("github-pull-stack-strut"),
+        `${name} ${tab}: a strut holds the author's row at a chip's height`,
       );
       assert.ok(
         stacks.children.length > 0 && !stacks.hidden,
@@ -1196,18 +1307,33 @@ async function headerShape(page) {
         refresh.classes.has("github-pull-refresh"),
         `${name} ${tab}: Refresh's slot ends the status row`,
       );
+      // A text action, a line tall, so the status line is a metadata line (mb-2u08).
+      assert.ok(
+        refresh.classes.has("github-pull-text-action") && !refresh.classes.has("btn"),
+        `${name} ${tab}: Refresh is a text action`,
+      );
       assert.ok(
         container.querySelector(".tab-bar"),
         `${name} ${tab}: the tab bar is under the header from first paint`,
       );
       assert.equal(header.parentNode.children.indexOf(header), 0);
       shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
+      assert.equal(
+        rows(container).join(" "),
+        NO_LABELS.has(name)
+          ? "title meta branches opened status summary"
+          : "title meta branches opened labels status summary",
+        `${name} ${tab}: the header's rows`,
+      );
       handle.dispose();
     }
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta quiet labels status"]),
+    new Set([
+      "title meta branches opened labels status summary",
+      "title meta branches opened status summary",
+    ]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.
@@ -1227,6 +1353,625 @@ async function headerShape(page) {
   title.events.get("pointerenter")();
   assert.equal(title.dataset.tipText, undefined, "a whole two-line title has no tooltip");
   handle.dispose();
+}
+
+// The recorded comparison's read, one object for every mount, so a revisit drawn from the
+// document's keep is told apart from another comparison's read.
+const SCRIPTED_RAW = { comparison: "read" };
+
+/**
+ * The production page mounted on a scripted diff view, its pull route answering what
+ * `serve` gives it, and every timer and idle callback a task that `idle` runs.
+ * *read* says whether the prefetch's read of a comparison answers or fails, and *summary*
+ * whether the diff view's summary draws or declines. *diff* says what the Changes diff does
+ * with each comparison it is asked to draw, by its head and the how-manyth render it is:
+ * reads it, reads nothing, throws, which offers the page's Retry, or is still reading.
+ * *body* is the record in hand, and *cold* mounts it with none, as a direct load does.
+ * *markdown* "waits" holds the description's Markdown unanswered. *revisit* mounts it again
+ * in the same document, keeping what earlier mounts read; any other mount is a fresh load,
+ * with an empty keep (`importPage`). *hidden* opens it out of sight, which `show` brings
+ * into view. With *routes*, the page opens its routes as pull-route.js's `open` answers.
+ *
+ * @param {Record<string, any>} page
+ * @param {string} tab
+ * @param {{read?: "answers" | "fails", summary?: "draws" | "declines", diff?: "reads" | "fails" | ((right: string, attempt: number) => "reads" | "fails" | "throws" | "waits"), body?: unknown, cold?: boolean, markdown?: "waits", revisit?: boolean, hidden?: boolean, routes?: boolean}} [options]
+ */
+async function mountScripted(page, tab, options = {}) {
+  const tasks = [];
+  const listeners = [];
+  globalThis.document = {
+    // A page opened out of sight, which `show` brings into view.
+    visibilityState: options.hidden ? "hidden" : "visible",
+    addEventListener(type, callback) {
+      listeners.push({ type, callback });
+    },
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: `/pull/7${tab ? `/${tab}` : ""}` },
+    setTimeout: (callback) => {
+      tasks.push(callback);
+      return Symbol();
+    },
+    clearTimeout() {},
+  };
+  // The pull route answers what `serve` last gave it, or `poll`'s answer once, and nothing
+  // new before that.
+  let served = null;
+  let polled = null;
+  // A description's Markdown never answers when *markdown* waits, so a held first paint
+  // runs to its bound, which `idle` runs too.
+  globalThis.fetch = async (route) => {
+    if (options.markdown === "waits" && route.startsWith("/api/plugin/github/pull-markdown")) {
+      return new Promise(() => {});
+    }
+    const body = route.startsWith("/api/plugin/github/pull?") ? (polled ?? served) : null;
+    if (body === polled) {
+      polled = null;
+    }
+    return body !== null
+      ? { status: 200, headers: { get: () => null }, json: async () => body }
+      : { status: 304, headers: { get: () => null } };
+  };
+  // The recorded comparison's read is `raw`; another's says its head's first seven digits.
+  const raw = SCRIPTED_RAW;
+  const shown = recorded.current.body.record.comparison.head;
+  // The heads whose read the server refuses.
+  const refused = new Set();
+  const steps = {
+    summaries: [],
+    renders: [],
+    reads: 0,
+    opened: [],
+    jumps: [],
+    openFile: null,
+    markdown: [],
+  };
+  const diffDoes =
+    typeof options.diff === "function" ? options.diff : () => options.diff ?? "reads";
+  const diffView = {
+    prefetch: async (comparison) => {
+      steps.reads += 1;
+      if (options.read === "fails" || refused.has(comparison.right)) {
+        throw new Error("refused");
+      }
+      return comparison.right === shown ? raw : { comparison: comparison.right.slice(0, 7) };
+    },
+    // The first screen's rendered Markdown, which the page asks for itself (mb-neg9).
+    prefetchMarkdown: async (comparison, read, signal) => {
+      steps.markdown.push({
+        rendered: typeof comparison.rendered_route,
+        read: read === raw,
+        signal,
+      });
+    },
+    summary: async (slot, ctx) => {
+      const said = ctx.raw === raw ? "the comparison read" : ctx.raw.comparison;
+      steps.summaries.push(said);
+      steps.openFile = ctx.openFile;
+      if (options.summary === "declines") {
+        return null;
+      }
+      const header = new Element("button");
+      header.className = "diff-summary diff-summary-toggle";
+      header.classes.add("diff-summary");
+      header.textContent = said;
+      slot.append(header);
+      return { dispose: () => steps.summaries.push(`disposed ${said}`) };
+    },
+    render: async (_host, ctx) => {
+      const does = diffDoes(ctx.comparison.right, steps.renders.length);
+      steps.renders.push({ summary: ctx.summary, onDocument: typeof ctx.onDocument });
+      if (does === "throws") {
+        throw new Error("the diff could not load");
+      }
+      if (does === "waits") {
+        return new Promise(() => {});
+      }
+      if (does === "reads") {
+        ctx.onDocument?.(raw);
+      }
+      return {
+        dispose() {},
+        scrollToFile(path) {
+          steps.jumps.push(path);
+          return { kind: "jumped", path };
+        },
+      };
+    },
+  };
+  const container = new Element("main");
+  let handle = null;
+  const mountPage = options.revisit === true ? page.revisitPullPage : page.mountPullPage;
+  handle = mountPage(
+    container,
+    {
+      number: 7,
+      tab,
+      reader: options.cold
+        ? null
+        : {
+            initial: { etag: null, body: options.body ?? recorded.current.body },
+            fetchAfterMs: 60_000,
+          },
+      // With *routes*, the route opener as pull-route.js's `open` answers: a route whose file
+      // it cannot spell, as one with a backslash, is refused, and a tab of the page shown is
+      // set.
+      ...(options.routes
+        ? {
+            open: (route) => {
+              steps.opened.push(route);
+              if (route.file?.includes("\\")) {
+                return Promise.reject(new Error("the route cannot spell this path"));
+              }
+              window.location.pathname = `/pull/7/${route.tab}`;
+              handle.setTab(route.tab);
+              return Promise.resolve({ status: "opened" });
+            },
+          }
+        : {}),
+    },
+    {
+      perf,
+      ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => {},
+      getRegisteredView: () => diffView,
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: () => "now",
+      navigation: { href: () => "/view/", async open() {} },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await settle();
+  const row = () => container.querySelector(".github-pull-summary");
+  // The timers run at once; awaited, so do the answers they started.
+  const idle = async () => {
+    for (const task of tasks.splice(0)) {
+      task();
+    }
+    await settle();
+  };
+  /** The pull route answers *body* from the next poll on, which `idle` runs. */
+  const serve = (body) => {
+    served = body;
+  };
+  /** The next poll answers with *body*, once, and the timers run until it has. */
+  const poll = async (body) => {
+    polled = body;
+    await idle();
+  };
+  /** A page opened out of sight is shown. */
+  const show = async () => {
+    document.visibilityState = "visible";
+    for (const { type, callback } of listeners) {
+      if (type === "visibilitychange") {
+        callback();
+      }
+    }
+    await idle();
+  };
+  return { handle, row, steps, idle, serve, poll, show, refused, container };
+}
+
+// The pull request's Diff summary is the header's last row, on every tab (mb-pb35). Its row
+// is held, empty, from first paint; the page draws the summary in it from the comparison the
+// prefetch reads, through the diff view's `summary`, once per comparison; the Changes diff
+// draws none of its own (`summary: false`) and hands the page what it read
+// (`onDocument`), which draws nothing more for the same comparison; on Checks the
+// comparison is read for it too; and the page's disposal disposes it. The summary's own
+// header and tree are the diff plugin's, pinned in tests/dom/diff-summary-session.js.
+// The header's Diff summary row (mb-pb35), and what it holds while it waits (mb-onr2): the
+// shell's pending placeholder while a comparison is on its way, from a core preview whose
+// selected read prepares it, or a record whose comparison the page asked to prepare, through
+// the read of the comparison the record names, on Changes the mounted diff's; the summary
+// in its place once read; and nothing once a read draws none, until a read of the same
+// comparison starts again, so a placeholder never outlives its wait and every wait has one.
+// Each state the row passes through is told, in order, for the golden.
+async function headerSummary(page) {
+  const mount = (tab, options) => mountScripted(page, tab, options);
+  /** What the row holds: the placeholder, a summary, or nothing. */
+  const holds = (row) => {
+    if (row.children.length === 0) {
+      return "nothing";
+    }
+    const [only] = row.children;
+    if (row.children.length === 1 && only.classes.has("github-pull-summary-pending")) {
+      // The shell's primitives: the quiet period's reveal, and in it the tally's block.
+      assert.ok(only.classes.has("mb-delayed-loading"), "shown after the quiet period");
+      assert.equal(only.getAttribute("role"), "status");
+      assert.equal(only.getAttribute("aria-label"), "Loading the summary of changes");
+      assert.equal(only.children.length, 1);
+      assert.ok(only.children[0].classes.has("tally-pending"), "the navigation tally's block");
+      assert.equal(only.children[0].getAttribute("aria-hidden"), "true");
+      return "the pending placeholder";
+    }
+    if (row.children.length === 1 && only.classes.has("diff-summary")) {
+      return "the summary";
+    }
+    return `${row.children.length} other nodes`;
+  };
+  const told = [];
+  const tell = (step, row) => told.push(`${step}: ${holds(row)}`);
+
+  const conversation = await mount("");
+  const header = conversation.row().parentNode;
+  assert.equal(header.children.at(-1), conversation.row(), "the summary ends the header");
+  assert.ok(conversation.row().classes.has("metabrowser-diff-host"), "with the diff's styles");
+  tell("Conversation, the comparison not yet read", conversation.row());
+  const placeholder = conversation.row().children[0];
+  // A repaint while the comparison is on its way keeps the placeholder, so its quiet period
+  // and pulse run once. Landing again on the tab shown repaints nothing, as the controller
+  // skips a model it has painted; a switch of tab repaints the page and runs no timer, so
+  // the comparison is still unread (B9 of review B on #478).
+  const paints = () => perfEntries.filter((label) => label === "githubPull:render").length;
+  const paintsBefore = paints();
+  window.location.pathname = "/pull/7/checks";
+  conversation.handle.land({ tab: "checks" });
+  await settle();
+  window.location.pathname = "/pull/7";
+  conversation.handle.land({ tab: "" });
+  await settle();
+  assert.equal(paints(), paintsBefore + 2, "each switch of tab repaints the page");
+  assert.equal(conversation.steps.reads, 0, "the comparison is still on its way");
+  assert.equal(conversation.row().children[0], placeholder, "a repaint keeps the placeholder");
+  conversation.idle();
+  await settle();
+  assert.deepEqual(conversation.steps.summaries, ["the comparison read"]);
+  tell("the comparison read", conversation.row());
+  // Once idle again, the page asks for the first screen's Markdown itself, apart from the
+  // comparison the document keeps, under a signal of its own that its leaving aborts.
+  assert.equal(conversation.steps.markdown.length, 0, "Markdown asked for before idle");
+  conversation.idle();
+  await settle();
+  const [markdownAsk] = conversation.steps.markdown;
+  assert.equal(conversation.steps.markdown.length, 1, "the first screen's Markdown asked once");
+  assert.deepEqual(
+    [markdownAsk.rendered, markdownAsk.read, markdownAsk.signal.aborted],
+    ["string", true, false],
+  );
+  window.location.pathname = "/pull/7/files";
+  conversation.handle.land({ tab: "files" });
+  await settle();
+  assert.deepEqual(conversation.steps.renders, [{ summary: false, onDocument: "function" }]);
+  assert.deepEqual(conversation.steps.summaries, ["the comparison read"], "drawn once");
+  tell("Changes", conversation.row());
+  conversation.handle.dispose();
+  assert.deepEqual(conversation.steps.summaries, [
+    "the comparison read",
+    "disposed the comparison read",
+  ]);
+  assert.equal(markdownAsk.signal.aborted, true, "a page that went left its Markdown asked for");
+
+  const checks = await mount("checks");
+  tell("Checks, the comparison not yet read", checks.row());
+  checks.idle();
+  await settle();
+  assert.deepEqual(checks.steps.summaries, ["the comparison read"], "read for it on Checks too");
+  tell("Checks, the comparison read", checks.row());
+  checks.handle.dispose();
+
+  const revisit = await mount("", { revisit: true });
+  assert.deepEqual(revisit.steps.summaries, ["the comparison read"], "drawn from the keep");
+  assert.equal(revisit.steps.reads, 0, "a revisit read its comparison again");
+  tell("the same pull request again in this document, before any idle", revisit.row());
+  revisit.handle.dispose();
+
+  // A poll that brings a new comparison draws its summary in place of the old one. A read of
+  // it that is refused empties the row, at its held height, rather than leave the old
+  // comparison's counts there as the new one's, and the next paint asks again (A1 of review A
+  // on #470).
+  const shownHead = recorded.current.body.record.comparison.head;
+  const polledBody = structuredClone(recorded.current.body);
+  const polledHead = "e".repeat(40);
+  polledBody.record.comparison.head = polledHead;
+  polledBody.record.pull.head.sha = polledHead;
+  polledBody.comparison_route = polledBody.comparison_route.replace(
+    `right=${shownHead}`,
+    `right=${polledHead}`,
+  );
+  const polling = await mount("");
+  await polling.idle();
+  assert.equal(polling.row().textContent, "the comparison read");
+  polling.refused.add(polledHead);
+  await polling.poll(polledBody);
+  await polling.idle();
+  assert.equal(polling.row().children.length, 0, "a refused read of the new comparison empties it");
+  assert.deepEqual(polling.steps.summaries, [
+    "the comparison read",
+    "disposed the comparison read",
+  ]);
+  polling.refused.delete(polledHead);
+  window.location.pathname = "/pull/7/checks";
+  polling.handle.land({ tab: "checks" });
+  await polling.idle();
+  assert.equal(polling.row().textContent, "eeeeeee", "the next paint reads it again, and draws it");
+  const switched = await mount("");
+  await switched.idle();
+  await switched.poll(polledBody);
+  await switched.idle();
+  assert.equal(switched.row().textContent, "eeeeeee", "an accepted read replaces the old summary");
+  assert.deepEqual(switched.steps.summaries, [
+    "the comparison read",
+    "eeeeeee",
+    "disposed the comparison read",
+  ]);
+  polling.handle.dispose();
+  switched.handle.dispose();
+
+  // A page opened out of sight reads nothing until it is shown, and then draws its summary on
+  // Checks as on Conversation (A2 of review A on #470).
+  for (const tab of ["", "checks"]) {
+    const behind = await mount(tab, { hidden: true });
+    await behind.idle();
+    assert.deepEqual(behind.steps.summaries, [], "a hidden page reads nothing");
+    await behind.show();
+    assert.deepEqual(behind.steps.summaries, ["the comparison read"], `shown on "${tab}"`);
+    assert.equal(behind.row().children.length, 1);
+    behind.handle.dispose();
+  }
+
+  // A press on a file in the summary opens Changes at the file's address; a file with no
+  // address, pressed on Conversation, where no diff is mounted, opens Changes and goes to the
+  // file once its diff mounts (A8 of review A on #470).
+  const pressed = await mount("", { routes: true });
+  await pressed.idle();
+  pressed.steps.openFile("docs/notes.md");
+  assert.deepEqual(pressed.steps.opened.at(-1), {
+    number: 7,
+    tab: "files",
+    file: "docs/notes.md",
+    replace: false,
+    jumped: false,
+  });
+  window.location.pathname = "/pull/7";
+  pressed.handle.land({ tab: "" });
+  await settle();
+  pressed.steps.openFile("docs\\notes.md");
+  await settle();
+  assert.deepEqual(pressed.steps.opened.slice(-2), [
+    { number: 7, tab: "files", file: "docs\\notes.md", replace: false, jumped: false },
+    { number: 7, tab: "files", replace: false, jumped: false },
+  ]);
+  assert.deepEqual(pressed.steps.jumps, ["docs\\notes.md"], "the diff goes to it once mounted");
+  pressed.handle.dispose();
+  const changes = await mount("files");
+  await settle();
+  assert.deepEqual(changes.steps.renders, [{ summary: false, onDocument: "function" }]);
+  assert.deepEqual(changes.steps.summaries, ["the comparison read"], "from what Changes read");
+  tell("opened on Changes, from what its diff read", changes.row());
+  changes.handle.dispose();
+
+  // Changes read its comparison through the document's keep, so Conversation draws it next.
+  const afterChanges = await mount("", { revisit: true });
+  assert.deepEqual(afterChanges.steps.summaries, ["the comparison read"], "drawn from the keep");
+  assert.equal(afterChanges.steps.reads, 0, "a visit after Changes read its comparison again");
+  tell("opened again on Conversation after Changes, before any idle", afterChanges.row());
+  afterChanges.handle.dispose();
+
+  const refused = await mount("", { read: "fails" });
+  tell("a read that will fail, not yet answered", refused.row());
+  refused.idle();
+  await settle();
+  assert.deepEqual(refused.steps.summaries, []);
+  tell("the read fails", refused.row());
+  assert.equal(refused.steps.reads, 1);
+  // A failed read is asked for again at the page's next paint, which a poll that retitles
+  // the record is, and waited for again: landing on the tab shown is no paint (B9 of review B
+  // on #478).
+  const retitled = structuredClone(recorded.current.body);
+  retitled.record.pull.title = "Count to two in the app, retitled";
+  await refused.poll(retitled);
+  assert.equal(
+    refused.container.querySelector(".github-pull-title").children[1].textContent,
+    "Count to two in the app, retitled",
+    "the poll repainted the page",
+  );
+  tell("a repaint after it failed, its read asked again", refused.row());
+  await refused.idle();
+  assert.equal(refused.steps.reads, 2, "the repaint read the comparison again");
+  tell("that read fails too", refused.row());
+  refused.handle.dispose();
+
+  const declined = await mount("", { summary: "declines" });
+  declined.idle();
+  await settle();
+  assert.deepEqual(declined.steps.summaries, ["the comparison read"]);
+  tell("a comparison the summary draws nothing for", declined.row());
+  declined.handle.dispose();
+
+  const unread = await mount("files", { diff: "fails" });
+  await settle();
+  assert.deepEqual(unread.steps.summaries, []);
+  tell("opened on Changes, whose diff reads no comparison", unread.row());
+  unread.handle.dispose();
+
+  const loading = await mount("", { body: recorded.absent.body });
+  tell("the record on its way", loading.row());
+  loading.handle.dispose();
+
+  const none = structuredClone(recorded.current.body);
+  delete none.record.comparison;
+  const nameless = await mount("", { body: none });
+  nameless.idle();
+  await settle();
+  tell("a record that names no comparison", nameless.row());
+  nameless.handle.dispose();
+
+  // A core preview, the description the selected refresh's core read staged while it reads
+  // the record (served_pull.py): "pending" when that read prepares the comparison too, as a
+  // server with a store does; "no_store" when it does not, and "not_started" for a prepared
+  // core no read is running for, both of which only Changes asks for.
+  const full = recorded.current.body;
+  const core = (state, refreshing) => ({
+    ...structuredClone(full),
+    state: refreshing ? "pending" : "absent",
+    reason: refreshing ? null : "not_cached",
+    refreshing,
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    core_preview: {
+      source: full.source,
+      number: 7,
+      reader: full.record.reader,
+      observed_at: full.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: structuredClone(full.record.pull),
+      comparison_state: state,
+    },
+  });
+  const preparing = await mount("", { body: core("pending", true) });
+  tell("a core preview whose read prepares its comparison", preparing.row());
+  const waited = preparing.row().children[0];
+  preparing.serve(full);
+  preparing.idle();
+  await settle();
+  assert.equal(
+    preparing.row().children[0],
+    waited,
+    "the record keeps the core's placeholder: one quiet period and one pulse",
+  );
+  tell("its record lands, the comparison not yet read", preparing.row());
+  preparing.idle();
+  await settle();
+  assert.deepEqual(preparing.steps.summaries, ["the comparison read"]);
+  tell("the comparison read", preparing.row());
+  preparing.handle.dispose();
+  for (const [said, body] of [
+    ["a core preview whose read prepares no comparison", core("no_store", true)],
+    ["a prepared core no read is running for", core("not_started", false)],
+    ["a core preview whose read prepared nothing and ended", core("pending", false)],
+  ]) {
+    const cored = await mount("", { body });
+    tell(said, cored.row());
+    cored.handle.dispose();
+  }
+
+  // A stale record whose comparison is not in the store, which the page asked the server to
+  // prepare (`prepare_comparison`), as the idle work of Conversation does.
+  const unstored = structuredClone(recorded.stale.body);
+  unstored.record.comparison = null;
+  unstored.record.unavailable = { comparison: "no_store" };
+  const asked = await mount("", {
+    body: { ...structuredClone(unstored), refreshing: true, preparing_comparison: true },
+  });
+  tell("a record whose comparison the page asked to prepare", asked.row());
+  asked.serve(unstored);
+  asked.idle();
+  await settle();
+  tell("the preparation ends with no comparison", asked.row());
+  asked.handle.dispose();
+  const unasked = await mount("", { body: unstored });
+  tell("a record whose comparison nothing prepares", unasked.row());
+  unasked.handle.dispose();
+
+  // On Changes the row waits on the mounted diff's read, not the record's comparison: a
+  // diff that read nothing leaves it empty while the record names a newer comparison no one
+  // reads yet, and the reader taking it starts that read.
+  const moved = structuredClone(full);
+  const newer = "9".repeat(40);
+  moved.record.comparison.head = newer;
+  moved.record.pull.head.sha = newer;
+  moved.comparison_route = moved.comparison_route.replace(/right=[0-9a-f]+/, `right=${newer}`);
+  const offered = await mount("files", {
+    diff: (right) => (right === newer ? "reads" : "fails"),
+  });
+  tell("Changes, its diff reads no comparison", offered.row());
+  offered.serve(moved);
+  offered.idle();
+  await settle();
+  const offer = offered.container.querySelector(".github-pull-newer");
+  assert.ok(offer, "a record with a moved head offers the newer changes");
+  tell("a record with a moved head lands, offering the newer changes", offered.row());
+  offer.events.get("click")();
+  tell("the reader takes them, their diff not yet read", offered.row());
+  await settle();
+  tell("their diff reads the comparison", offered.row());
+  offered.handle.dispose();
+
+  // A Retry starts the read of the comparison that failed again: the row waits for it.
+  const retried = await mount("files", {
+    diff: (_right, attempt) => (attempt === 0 ? "throws" : "reads"),
+  });
+  tell("Changes, its diff throws", retried.row());
+  const retry = retried.container.querySelectorAll(".btn").find((button) => {
+    return button.textContent === "Retry";
+  });
+  assert.ok(retry, "a diff that threw offers Retry");
+  retry.events.get("click")();
+  tell("Retry, the diff not yet read", retried.row());
+  await settle();
+  tell("the diff reads the comparison", retried.row());
+  retried.handle.dispose();
+
+  // A record that names no comparison takes Changes' diff away, and the wait on its read.
+  const reading = await mount("files", { diff: () => "waits" });
+  tell("Changes, its diff still reading", reading.row());
+  reading.serve(none);
+  reading.idle();
+  await settle();
+  tell("the record then names no comparison", reading.row());
+  reading.handle.dispose();
+  return told;
+}
+
+// A page mounted with no record in hand holds its cold header and tab column for the shell's
+// quiet period (`github-pull-cold`), and the first header that has a record lifts the hold. A
+// record that lands while the header waits for the conversation's held first paint keeps
+// them unseen until that paint (`github-pull-cold-held`). A page with its record in hand
+// holds nothing. tests/dom/github-pull-header-chrome.mjs (`cold-landing`) measures what
+// each looks like and that a landing in the quiet period moves nothing; here, which the
+// page carries in each state, told in order for the golden.
+async function coldHold(page) {
+  const told = [];
+  const tell = (step, container) => {
+    const header = container.querySelector(".github-pull-header");
+    const column = container.querySelector(".tab-bar")?.parentNode ?? null;
+    const of = (node) =>
+      node === null
+        ? "out"
+        : ["github-pull-cold", "github-pull-cold-held"]
+            .filter((name) => node.classes.has(name))
+            .join(" ") || "shown";
+    told.push(`${step}: header ${of(header)}, tab column ${of(column)}`);
+  };
+  const conversation = await mountScripted(page, "", { cold: true, markdown: "waits" });
+  tell("mounted with no record in hand", conversation.container);
+  conversation.serve(recorded.current.body);
+  conversation.idle();
+  await settle();
+  assert.equal(
+    conversation.container.querySelector(".github-pull-title").textContent,
+    "Pull request #7",
+    "the header waits with the conversation's first paint",
+  );
+  tell("its record lands, the header waiting for the conversation", conversation.container);
+  conversation.idle();
+  await settle();
+  assert.equal(
+    conversation.container.querySelector(".github-pull-title").children[1].textContent,
+    "Count to two in the app",
+    "the conversation's first paint draws the record's header",
+  );
+  tell("the conversation's first paint, at its bound", conversation.container);
+  conversation.handle.dispose();
+  const changes = await mountScripted(page, "files", { cold: true });
+  tell("on Changes, mounted with no record in hand", changes.container);
+  changes.serve(recorded.current.body);
+  changes.idle();
+  await settle();
+  tell("its record lands", changes.container);
+  changes.handle.dispose();
+  const opened = await mountScripted(page, "");
+  tell("mounted with its record in hand", opened.container);
+  opened.handle.dispose();
+  return told;
 }
 
 async function run() {
@@ -1266,8 +2011,8 @@ async function run() {
     }
   };
   globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
-  const page = await import(
-    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
+  const page = await importPage(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href,
   );
   const initial = recorded.current;
   for (const failure of ["assets", "render"]) {
@@ -1365,27 +2110,38 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The state row is the badge, the details, and a strut; the stack's slot is not on it,
-    // so a late chip takes no room from the sentence or the merge.
-    const [stateBadgeSlot, details, stateStrut] = meta.children;
-    const stateBadge = stateBadgeSlot.children[0];
+    // The author's row is the details, then the stack's slot at its end (mb-cf0l), which holds
+    // a strut while no stack is known: a late chip lands in the row's empty end.
+    const [details, stackSlot] = meta.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
-    assert.ok(stateStrut.classes.has("github-pull-stack-strut"));
-    assert.equal(meta.children.length, 3);
+    assert.ok(stackSlot.classes.has("github-pull-stacks"));
+    assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
+    assert.equal(meta.children.length, 2);
+    // The state's badge leads the row of ages, under the branches (mb-4ydo).
+    const opened = container.querySelector(".github-pull-opened");
     assert.equal(
-      container.querySelector(".github-pull-labels").children.at(-1),
-      container.querySelector(".github-pull-stacks"),
+      title.parentNode.children.indexOf(opened),
+      title.parentNode.children.indexOf(meta) + 2,
     );
+    const [stateBadgeSlot, ages] = opened.children;
+    assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
+    assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
+    const stateBadge = stateBadgeSlot.children[0];
+    assert.equal(meta.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
+    // The author's sentence is the row; the branches have the line below to themselves.
+    assert.ok(details.children.at(-1).classes.has("github-pull-action"));
+    assert.equal(details.textContent, "forker wants to merge 2 commits");
     // Merge Direction: the header names the branches head → base, through the shared group,
-    // after the action the row cuts short first.
-    assert.ok(details.children.at(-2).classes.has("github-pull-action"));
+    // on a line of their own under the sentence.
+    const branches = container.querySelector(".github-pull-branches");
     assert.equal(
-      details.textContent,
-      "forker wants to merge 2 commits: forker:count-to-two → octo:topic",
+      title.parentNode.children.indexOf(branches),
+      title.parentNode.children.indexOf(meta) + 1,
     );
-    const merge = details.children.find((node) => node.className === "merge-refs");
+    assert.equal(branches.textContent, "forker:count-to-two → octo:topic");
+    const merge = branches.children.find((node) => node.className === "merge-refs");
     assert.equal(merge.getAttribute("dir"), "ltr");
     const [source, arrow, target] = merge.children;
     assert.equal(source.dataset.tipText, "forker:count-to-two");
@@ -1703,6 +2459,8 @@ async function run() {
     fetchPluginData: async () => {
       throw Object.assign(new Error("comparison failed"), { status: failureStatus });
     },
+    // The shared changed-files tree, which the SDK loads from the shell's bundle.
+    loadChangedFilesTree: async () => require("./changed-files-tree-fixture.js").changedFilesTree(),
   };
   const logError = console.error;
   console.error = (...args) => errors.push(args);
@@ -1826,6 +2584,8 @@ async function run() {
   await checkRows(page);
   await headerAges(page);
   await headerShape(page);
+  const headerSummarySteps = await headerSummary(page);
+  const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
   for (const label of [
     "githubPull:decode",
@@ -1849,6 +2609,8 @@ async function run() {
     checkRows: true,
     headerAges: true,
     headerShape: true,
+    headerSummary: headerSummarySteps,
+    coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,
   };
 }

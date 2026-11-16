@@ -214,6 +214,14 @@ const FILE_TYPES = {
     { id: "data", label: "Data" },
     { id: "other", label: "Other" },
   ],
+  // The order the app lists groups in, Documentation first (file_type_filters.py,
+  // FILE_TYPE_GROUP_DISPLAY_ORDER): File Overview's rows and bars follow it.
+  displayGroups: [
+    { id: "docs", label: "Documentation" },
+    { id: "code", label: "Code" },
+    { id: "data", label: "Data" },
+    { id: "other", label: "Other" },
+  ],
   families: [
     { id: "typescript", label: "TypeScript", groupId: "code", extensions: [".ts"] },
     { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
@@ -756,7 +764,7 @@ const rollupError = (status) =>
     // The file list says the same of a capped index. Its count helper writes the noun, and
     // the route may not name the limit.
     const noteHtml = vm.runInNewContext(
-      `${["formatCount", "treeTruncationNoteHtml"].map(lift).join("\n")}
+      `${["formatCountParts", "formatCount", "treeTruncationNoteHtml"].map(lift).join("\n")}
        treeTruncationNoteHtml;`,
     );
     const note = (maxFiles) => noteHtml(maxFiles).replace(/<[^>]*>/g, "");

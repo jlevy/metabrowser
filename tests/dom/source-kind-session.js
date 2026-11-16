@@ -53,17 +53,21 @@ const PRODUCTION_MODULES = [
   "plugin-sdk.js",
   "filter-state.js",
   "filter-controls.js",
+  "tree-filter-model.js",
 ];
 
 // Gates and helpers lifted verbatim from app.js.
 const LIFTED = [
   "esc",
   "pathBaseHtml",
+  "pathBaseName",
   "isGitRevisionSource",
   "renderServedRootHeading",
   "rootTallyFromTopLevel",
   "treeNodeDisplayName",
   "filesPanelUsesRecentSource",
+  "filterGroupOptions",
+  "filterKeySlotsHtml",
   "startIndexProgressPolling",
   "startInventoryEventStream",
   "renderNavFilterBar",
@@ -82,6 +86,7 @@ var ICONS = { toggle: "" };
 var FILTER_SIZE_OPTIONS = [{ value: "1m", label: ">1M" }];
 var filterState = window.metabrowser.filterState;
 var filterControls = window.metabrowser.filterControls;
+var treeFilterModel = window.MetabrowserTreeFilterModel;
 var quickFileCatalogFeed = {
   start() {
     __probe.catalogFeedStarts += 1;
@@ -123,7 +128,13 @@ function createContext() {
     intervals: [],
     progressRefreshes: 0,
   };
-  const navFilterBar = { innerHTML: "" };
+  // The bar the shell renders into: its markup, and no menu open to fit.
+  const navFilterBar = {
+    innerHTML: "",
+    querySelectorAll() {
+      return [];
+    },
+  };
   const document = {
     addEventListener() {},
     createElement() {
@@ -258,9 +269,31 @@ function observe(kind) {
   // The tree's first load settles the heading, as the shell does.
   const heading = { innerHTML: servedHeading };
   sandbox.renderServedRootHeading(heading, root);
+  // Home settles it again over the same name, which is not written again: not over a
+  // name with a quote either, which `esc` writes as an entity and a browser serializes as
+  // itself. The stand-in reads back as an element does: its text, and markup that escapes
+  // only `&`, `<`, and `>` in text.
+  for (const name of [root ?? "", '/srv/o\'checkout "q"']) {
+    const text = sandbox.pathBaseName(name);
+    let writes = 0;
+    const shown = {
+      textContent: text,
+      get innerHTML() {
+        const markup = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return `<span class="path"><span class="path-base">${markup}</span></span>`;
+      },
+      set innerHTML(_markup) {
+        writes += 1;
+      },
+    };
+    sandbox.renderServedRootHeading(shown, name);
+    assert(writes === 0, `${kind}: the heading ${JSON.stringify(text)} was written again`);
+  }
 
   sandbox.renderNavFilterBar();
   const navFilterControls = chipKeys(navFilterBar.innerHTML);
+  // Group by offers Age only where the source has mtimes.
+  const groupByOptions = sandbox.filterGroupOptions().map((option) => option.value);
   sandbox.filterState.set({ recency: "24h" });
   const filesPanelUsesRecentSource = sandbox.filesPanelUsesRecentSource();
   sandbox.startIndexProgressPolling();
@@ -289,6 +322,7 @@ function observe(kind) {
         catalogFeedCanStart: sandbox.catalogFeedCanStart,
       },
       navFilterControls,
+      groupByOptions,
     },
   };
 }
@@ -307,6 +341,10 @@ assert(
 assert(
   folder.gates.filesPanelUsesRecentSource && !pin.gates.filesPanelUsesRecentSource,
   "Recent must answer a bounded window on a folder and never on a pin",
+);
+assert(
+  folder.gates.groupByOptions.join() === "age,type" && pin.gates.groupByOptions.join() === "type",
+  "Group by must offer Age on a folder and never on a pin, which has no mtimes",
 );
 assert(
   folder.gates.indexProgress.refreshes === 1 && pin.gates.indexProgress.refreshes === 0,

@@ -33,11 +33,28 @@ const { pathToFileURL } = require("node:url");
   assert.deepEqual(stackCaption(index, identity, 8), {
     text: "2/3",
     hint: "Stack #286, position 2 of 3",
+    parts: [{ position: "2/3", stack: null }],
   });
+  // A badge names every stack but its first, by the Layers glyph and its number, so two
+  // positions never read alike (docs/design-system.md, "Stacks"); under a stack's row, that
+  // stack comes first.
   assert.deepEqual(stackCaption(index, identity, 9), {
-    text: "3/3 · 1/2",
+    text: "3/3 · 900 1/2",
     hint: "Stack #286, position 3 of 3; Stack #900, position 1 of 2",
+    parts: [
+      { position: "3/3", stack: null },
+      { position: "1/2", stack: 900 },
+    ],
   });
+  assert.deepEqual(stackCaption(index, identity, 9, 900), {
+    text: "1/2 · 286 3/3",
+    hint: "Stack #900, position 1 of 2; Stack #286, position 3 of 3",
+    parts: [
+      { position: "1/2", stack: null },
+      { position: "3/3", stack: 286 },
+    ],
+  });
+  assert.deepEqual(stackCaption(index, identity, 8, 286), stackCaption(index, identity, 8));
   assert.equal(stackCaption(index, { ...identity, reader: "gh:other" }, 8), null);
 
   assert.deepEqual(

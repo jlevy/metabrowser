@@ -321,7 +321,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": true,
-  "record_revision": "ea0fa3cbb88d81b8a290275b28e1ae59117b955f960a2d8d66975cfb2cd06bed",
+  "record_revision": "a619ab340be40ab8fd05eb4905d2177ec7594b9a4aa6c3806baa7d70b397ea4a",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -335,13 +335,13 @@ status: 200
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 1,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/1": "W/\"0901414d9d464ab9048852bce525b9e6cb0b517c8fbc4718510e17a7eb03e469\"",
+      "repos/octo/demo/pulls/1": "W/\"be1470595a6128d72ae596f8a3c82aeaf42e40a434826ed7420b4fd06702aabd\"",
       "repos/octo/demo/issues/1/comments?per_page=100&page=1": "W/\"bd0a3bbed985060704932aa5f94799ce1984041953fa6bceca70fcdfca07da0d\"",
       "repos/octo/demo/pulls/1/reviews?per_page=100&page=1": "W/\"b29824a2b64c489c7be4fce170608fb273df404b41aadcbee5817247f896cc5b\"",
       "repos/octo/demo/pulls/1/comments?per_page=100&page=1": "W/\"5a360c97d34af3baf109ab34e0de37f425d3c28b1ae7494bbe7f24fb075f268b\"",
@@ -362,7 +362,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -501,7 +505,9 @@ status: 200
       "comparison": "base_uncertain"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 ? 0
 ```

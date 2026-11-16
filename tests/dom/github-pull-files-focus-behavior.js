@@ -148,6 +148,8 @@ async function run() {
     const view = mountFileTree({
       decorateExternalLink:
         require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+      formatCount: (count) => count.toLocaleString("en-US"),
       number: 7,
       autoExpandFiles: 3000,
       current: null,
@@ -330,6 +332,8 @@ async function offerFocus(mountFileTree, detail) {
     const view = mountFileTree({
       decorateExternalLink:
         require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+      formatCount: (count) => count.toLocaleString("en-US"),
       number: 7,
       autoExpandFiles: 3000,
       current: null,
@@ -536,6 +540,8 @@ async function refreshingPaint(mountFileTree) {
   let answerAsk = () => {};
   const view = mountFileTree({
     decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+    tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     number: 7,
     autoExpandFiles: 3000,
     current: null,
@@ -575,6 +581,16 @@ async function refreshingPaint(mountFileTree) {
     };
   };
   const asked = painted();
+  // A folder row ends with the line counts of its files, rolled up, in the shell's number
+  // format, and says them to a screen reader (mb-epw2).
+  const folder = list.children.find((row) => row.dataset.id === "src/");
+  const stats = folder?.children.find((part) => part.classes.has("github-pull-file-stats"));
+  assert.deepEqual(
+    stats?.children.map((part) => part.children.map((text) => text.textContent).join("")),
+    ["+2", "\u22120"],
+    "a folder row shows its files' line counts rolled up",
+  );
+  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 added, 0 deleted");
   answerAsk({ status: 202, etag: null, body: { files: listing("stale", true, false) } });
   await settle();
   const running = painted();
@@ -612,6 +628,8 @@ async function walkClaims(mountFileTree) {
   const claims = [];
   const view = mountFileTree({
     decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+    tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     number: 7,
     autoExpandFiles: 3000,
     current: null,

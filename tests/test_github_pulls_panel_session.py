@@ -653,10 +653,15 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
 def test_optional_native_stack_state_is_shared_and_owned() -> None:
     assert run_session("github-pull-stacks-behavior.js") == {
         "rowCaptions": {
-            "single": {"text": "2/3", "hint": "Stack #286, position 2 of 3"},
+            "single": {
+                "text": "2/3",
+                "hint": "Stack #286, position 2 of 3",
+                "parts": [{"position": "2/3", "stack": None}],
+            },
             "shared": {
-                "text": "3/3 · 1/2",
+                "text": "3/3 · 900 1/2",
                 "hint": "Stack #286, position 3 of 3; Stack #900, position 1 of 2",
+                "parts": [{"position": "3/3", "stack": None}, {"position": "1/2", "stack": 900}],
             },
             "foreign": None,
         },
@@ -785,6 +790,32 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         refresh()
         empty = read("empty")
         assert empty["complete"] and empty["stacks"] == [] and empty["state"] == "current"
+        # Two stacks that share pull request 8, which the Pulls tab's stack groups place
+        # once (tests/dom/github-pulls-stack-groups-session.js). Recorded last, so the
+        # answers above keep their tags.
+        clock[0] += timedelta(seconds=301)
+        answers["api"][endpoint] = ok(
+            endpoint,
+            [
+                {
+                    "number": number,
+                    "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
+                    "base": {"ref": "main"},
+                    "open": True,
+                    "pull_requests": [{"number": n} for n in pulls],
+                }
+                for number, pulls in ((286, (6, 7, 8)), (290, (8, 9, 10)))
+            ],
+        )
+        seed_catalog(
+            repository,
+            [generated_item(n) | {"title": f"Stack change {n}"} for n in range(6, 11)],
+            fetched_at=utc_stamp(clock[0]),
+        )
+        install()
+        refresh()
+        shared = read("shared")
+        assert [stack["pulls"] for stack in shared["stacks"]] == [[6, 7, 8], [8, 9, 10]]
     check_recording(
         "github-stacks-responses.json",
         _session_tags(recorded),

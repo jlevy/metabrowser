@@ -79,6 +79,16 @@ $ grep -E '^        "(id|loading)":' inert.txt
         "loading": "stylesheet"
         "id": "css/print.css",
         "loading": "stylesheet"
+        "id": "css/print-fonts.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-italic.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-italic.css",
+        "loading": "stylesheet"
         "id": "fonts/pt-serif-latin-400-normal.woff2",
         "loading": "resource"
         "id": "fonts/pt-serif-latin-700-normal.woff2",
@@ -90,6 +100,40 @@ $ grep -E '^        "(id|loading)":' inert.txt
         "id": "fonts/source-sans-3-latin-wght-normal.woff2",
         "loading": "resource"
         "id": "fonts/source-sans-3-latin-wght-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-quotes.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
 ? 0
 ```
@@ -124,6 +168,16 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "loading": "stylesheet"
         "id": "css/print.css",
         "loading": "stylesheet"
+        "id": "css/print-fonts.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-italic.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-italic.css",
+        "loading": "stylesheet"
         "id": "js/runtime.js",
         "loading": "module"
         "id": "js/tooltips.js",
@@ -147,6 +201,40 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "id": "fonts/source-sans-3-latin-wght-normal.woff2",
         "loading": "resource"
         "id": "fonts/source-sans-3-latin-wght-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-quotes.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
 ? 0
 ```

@@ -246,7 +246,7 @@ rendered view, `s` for a source view, and otherwise a letter of the label, as
 Write it in either case: it is stored and served lowercase, as `views[].key` in the
 `/api/file` envelope, and compared without case.
 The manifest loader refuses a key that is not one ASCII letter, or that the shell
-reserves: `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`, in every kind.
+reserves: `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`, in every kind.
 A key belongs to one view of a kind.
 When two views of one kind declare the same key, as two plugins that add views to one
 kind can, the first view in tab order keeps it, the later view is served without a key,
@@ -451,8 +451,12 @@ visible. After the active renderer and optional `ready` promise settle, the shel
 transfers the staged content and its disposal ownership into the preview atomically.
 Renderers must scope DOM access and event ownership to the supplied container; the
 temporary stage is deliberately not an independently interactive or accessible view.
-Initial rendering must not move focus.
-Focus changes belong to user interaction after the view is installed.
+The built-in diff view has one exception: a host that passes `summaryHost` in the render
+context, as a commit’s page does for the place under its commit summary, has the diff
+draw its Diff summary in that element, outside the container.
+The host owns the element, and the diff’s `dispose()` releases the summary’s listeners
+and state ([Diff Summary](design-system.md#diff-summary)). Initial rendering must not
+move focus. Focus changes belong to user interaction after the view is installed.
 If navigation disposes the view before its direct or declared readiness settles, the
 shell immediately invokes the staged disposer, disposes a late handle when it arrives,
 and does not let that mount regain ownership.
@@ -519,6 +523,25 @@ Useful helpers include:
   `sizeHtml`. `formatAge(epochSeconds, {style: "relative"})` returns labels such as
   `2h ago`, `just now`, or `in 2h`; its default compact style suits dense navigation.
   Both styles return the same freshness-class vocabulary;
+- `titleNodes(title)` for a commit’s or a pull request’s title, as the nodes its element
+  holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
+  which the host draws at regular weight, then the rest, which keeps the element’s
+  weight; a title with no prefix is its text alone ([Titles](design-system.md#titles));
+- `countPartsNodes(parts)` for a count summary, such as “3 success · 1 failure”, as the
+  nodes its element holds, painted as the host paints every count summary: the parts are
+  words as strings, `{number}`, drawn bold, `{punctuation}` for a list’s comma and
+  `{separator}` for the dot between a line’s groups, both drawn gray, the dot hidden
+  from assistive technology with an optional `spoken` said in its place, and
+  `{status, letter}` for a file change status, its letter drawn in the status’s color
+  ([Count Summaries Bold Their Numbers](design-system.md#count-summaries-bold-their-numbers));
+- `changeLine(change)` and `changeLineNodes(line, options)` for a brief change line, “10
+  A, 5 D, 4 M · +1,234 −567”, the host’s one component for a change set’s statuses and
+  line totals: `changeLine` builds it from `{statuses, additions, deletions}`, each
+  status `{status, letter, word, count}` in the order shown and a count `null` where it
+  is not known, in the host’s number format, and returns its parts, its `text`, and its
+  `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
+  with `{spoken: ", "}` on a line whose name does not say it in words
+  ([Brief Change Line](design-system.md#brief-change-line));
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -527,8 +550,10 @@ Useful helpers include:
   `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
   `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
   `groups`, `families`, and `kinds` expose their immutable descriptors.
-  `classify(name, ext)` returns registry identities and evidence for one file.
-  `matchExtension(ext)` returns the matching family and canonical suffix,
+  `displayGroups` holds the same groups in the order the app lists them for a reader,
+  Documentation first; a view that lists groups uses it, and `groups` keeps the
+  registry’s order. `classify(name, ext)` returns registry identities and evidence for
+  one file. `matchExtension(ext)` returns the matching family and canonical suffix,
   `canonicalExtension(ext)` preserves unknown extensions, `groupForFile(name, ext)`
   includes whole-filename evidence, and `distributionKeyForExtension(ext)` returns the
   shared family or raw palette key.
@@ -554,6 +579,42 @@ A view that draws tabs of its own uses the host’s primitive, `.tab-btn` in a `
 and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet may
 position them but does not restyle them; see
 [The Tab Bar](design-system.md#the-tab-bar).
+
+A menu a view draws on the host’s `.menu` surface heads each group of its rows with the
+host’s pattern: a `.menu-group` with `role="group"` and `aria-labelledby` naming its
+`.group-heading`, which draws its own divider and starts on the menu’s row inset.
+A menu whose rows are all one group is named from that heading instead, through the
+menu’s own `aria-labelledby`. `filterControls.bind` fits a dropdown to its rows and the
+window when its trigger opens it and when the window resizes; a view that renders one
+open another way calls `filterControls.fitOpenMenus(root)` after rendering.
+See [Groups in a Menu](design-system.md#groups-in-a-menu) and
+[Menu Height](design-system.md#menu-height).
+
+`filterControls.bind` also moves focus with a dropdown.
+Every way its trigger opens the menu (a click, Enter, Space, `↓`, or `↑`) focuses the
+checked row, or else the first.
+Escape, a second click on the trigger, or a choice that closes the menu gives focus back
+to the trigger. An Escape that a surface above has already handled, as Quick Search and
+Help do, leaves the menu open.
+A view that opens a menu from its own state focuses it with
+`filterControls.focusMenu(root, key)`. A view that rebuilds the markup it bound calls
+`filterControls.keepFocus(root)` before the rebuild and the function it returns after,
+so focus goes back to the control that had it, or to the trigger of a menu the rebuild
+closed. `filterControls.activateMenuRow(row)` chooses a row as a click on it does.
+A row’s `key` option, and the menu’s `anyKey`, name the letter that chooses that row
+while the menu is open and has focus, as a `data-menu-key` attribute on the row.
+Only the shell reads that attribute, and only in the Files filter bar, so in a plugin’s
+menu the letter does nothing yet.
+See [Keys in a Menu](design-system.md#keys-in-a-menu).
+
+A view whose toolbar stands in the navigation’s toolbar slot, as the Pulls tab’s does,
+gives its row of controls the host’s `nav-toolbar-row` class, which wraps the row
+between its controls when the pane is too narrow for one line and spaces its lines by
+the toolbar’s tokens; a control that ends the row takes the line’s end with
+`margin-inline-start: auto`. Bound there, `filterControls.bind` keeps each joined group
+fitted to its line: one the line cannot hold takes the cluster layout until it can, and
+`filterControls.fitJoinedGroups(root)` fits them at once.
+See [Navigation Toolbars Wrap](design-system.md#navigation-toolbars-wrap).
 
 A view that shows a message about the content, such as a description or a comment, plain
 or as Markdown, puts the host’s `chrome-prose` class on the element that holds the text,
@@ -626,6 +687,13 @@ path.
   navigation target and forwards an optional abort signal.
 - `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
 - `loadKpressAssets()` loads the KPress browser assets once.
+- `loadChangedFilesTree()` loads the shell’s tree of a change set’s files once, on
+  demand, and resolves with it: folders built from paths with their line counts rolled
+  up, the visible rows with a chain of single folders as one row, which folders are
+  open, a change set’s header text, and `displayPath`, the server’s display rule for a
+  path whose list carries no display of its own.
+  A diff’s Diff summary and the Pulls tab’s changed files both draw with it;
+  `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
   `{ path, query?, fragment? }` target.
@@ -778,8 +846,8 @@ The handle, lifetime, and liveness rules below apply to it as to a letter.
 - A letter the shell reserves is refused without an error, so a view keeps working if
   the shell reserves another letter later.
   The reserved letters are the ones manifest view keys may not take (see
-  [Views](#views)): `F`, `R`, `H`, `T`, `J`, `K`, `N`, `P`, `U`, and `W`. The digits `1`
-  to `9` are reserved too, and only `numbered: true` reaches them.
+  [Views](#views)): `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`. The digits `1` to `9`
+  are reserved too, and only `numbered: true` reaches them.
   A refused control has no key, and the browser console shows one warning for its id.
 - A letter that two shown controls hold is settled when it is pressed: a shell key wins
   over a plugin key, and between plugins the one attached earlier wins.

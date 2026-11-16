@@ -1,0 +1,192 @@
+// Control-N and Control-P in a real engine (mb-lnqj): whether the chords are bound under
+// a Mac's navigator and a Linux one's, and real key events through the registry's one
+// document listener.
+//
+// The browserless sessions stub the navigator and build each key event by hand, so this
+// loads the production registry (static/keyboard-shortcuts.js) and the Pulls tab's keys
+// (static/pulls-nav.js) into a blank page, registers the production keys against a
+// stand-in stack, and presses keys through the DevTools input domain, which delivers them
+// to the page as real `keydown` events. The chords are bound only where Control reaches
+// the page, macOS and iOS, as the page's navigator says. It runs the presses twice, each
+// in a fresh document, whatever machine Chrome runs on: first with the navigator
+// overridden to name a Mac, then to name Linux (`Emulation.setUserAgentOverride`, set
+// before the page loads). For each it reports the platform the page read, whether Control
+// reaches the page, what each press did to the stack, whether the page cancelled it, and
+// how Help writes the chord where it is bound.
+//
+// The override changes what the page's navigator says, not how this Chrome delivers keys:
+// the events are this machine's Chrome's either way. The browser's own shortcuts are out
+// of its reach: protocol input goes to the page without passing the browser's
+// accelerators, so what Chrome on Windows and Linux does with Ctrl+N and Ctrl+P cannot be
+// shown here (docs/design-system.md, "Control Chords").
+//
+// Usage: node control-chords-chrome.mjs, with CHROME_BIN set, and CHROME_PROFILES naming
+// where Chrome's profile goes (tests/dom/chrome-session.mjs).
+// tests/test_control_chords_chrome.py owns that directory and removes it, and runs this
+// in a process group of its own, which Chrome joins.
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { launchChrome } from "./chrome-session.mjs";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const SOURCES = ["keyboard-shortcuts.js", "pulls-nav.js"].map((name) =>
+  fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", name), "utf8"),
+);
+// The DevTools input domain's modifier bits.
+const ALT = 1;
+const CONTROL = 2;
+const META = 4;
+const SHIFT = 8;
+// The navigator each run's page reads: `platform` is `navigator.platform`, and the
+// metadata's is `navigator.userAgentData.platform`, which Chrome exposes only in a secure
+// context, so about:blank here reads the first.
+const PLATFORMS = {
+  mac: {
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    platform: "MacIntel",
+    metadata: "macOS",
+  },
+  linux: {
+    userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+    platform: "Linux x86_64",
+    metadata: "Linux",
+  },
+};
+
+const profiles = process.env.CHROME_PROFILES;
+if (!process.env.CHROME_BIN || !profiles) {
+  throw new Error("CHROME_BIN and CHROME_PROFILES are required");
+}
+const chrome = await launchChrome(process.env.CHROME_BIN, { profiles });
+
+/** Load a fresh blank document whose navigator names `name`'s platform, and press keys. */
+async function run(name) {
+  const { userAgent, platform, metadata } = PLATFORMS[name];
+  await chrome.send("Emulation.setUserAgentOverride", {
+    userAgent,
+    platform,
+    userAgentMetadata: {
+      brands: [],
+      platform: metadata,
+      platformVersion: "",
+      architecture: "x86",
+      model: "",
+      mobile: false,
+    },
+  });
+  // The mark is on the document before this navigation, so waiting for it to be gone
+  // waits for a new document: nothing a previous run registered survives into this one.
+  await chrome.evaluate("window.previousRun = true; true");
+  await chrome.send("Page.navigate", { url: "about:blank" });
+  await chrome.waitFor("!window.previousRun && document.readyState === 'complete'");
+  await chrome.evaluate(
+    `document.body.innerHTML = '<input id="field"><textarea id="area"></textarea>'; true`,
+  );
+  for (const source of SOURCES) {
+    await chrome.evaluate(`${source}\ntrue`);
+  }
+  await chrome.evaluate(`(() => {
+    window.moves = [];
+    window.lastKey = null;
+    // Heard after the registry's capture listener has decided the key.
+    window.addEventListener("keydown", (event) => {
+      if (!["Alt", "Control", "Meta", "Shift"].includes(event.key)) {
+        window.lastKey = {
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          metaKey: event.metaKey,
+          repeat: event.repeat,
+          prevented: event.defaultPrevented,
+        };
+      }
+    });
+    const registry = window.MetabrowserKeyboardShortcuts.create({ document });
+    const declined = () => false;
+    const stack = {
+      hasStack: () => true,
+      moveStack(delta) {
+        window.moves.push(delta);
+        return true;
+      },
+    };
+    for (const name of ["activateAnchor", "activateFile", "collapse", "expand", "fileLeft",
+      "fileRight", "move", "moveFile", "toggleFiles", "toggleStack"]) {
+      stack[name] = declined;
+    }
+    window.MetabrowserPullsNav.registerKeys(stack, registry);
+    window.registry = registry;
+    return true;
+  })()`);
+
+  /** Press one letter with `modifiers`, where `focus` says, and say what it did. */
+  async function press(letter, modifiers, focus = null, autoRepeat = false) {
+    await chrome.evaluate(
+      focus === null
+        ? "document.activeElement?.blur(); true"
+        : `document.getElementById(${JSON.stringify(focus)}).focus(); true`,
+    );
+    const before = await chrome.evaluate("window.moves.length");
+    const shifted = (modifiers & SHIFT) !== 0;
+    const key = shifted ? letter.toUpperCase() : letter;
+    const code = `Key${letter.toUpperCase()}`;
+    const windowsVirtualKeyCode = letter.toUpperCase().charCodeAt(0);
+    // A plain letter types its character; a chord types none.
+    const text = modifiers & (ALT | CONTROL | META) ? undefined : key;
+    await chrome.send("Input.dispatchKeyEvent", {
+      type: text === undefined ? "rawKeyDown" : "keyDown",
+      modifiers,
+      key,
+      code,
+      windowsVirtualKeyCode,
+      autoRepeat,
+      ...(text === undefined ? {} : { text }),
+    });
+    await chrome.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      modifiers,
+      key,
+      code,
+      windowsVirtualKeyCode,
+    });
+    const after = await chrome.evaluate("window.moves.slice()");
+    return {
+      moved: after.slice(before),
+      heard: await chrome.evaluate("window.lastKey"),
+    };
+  }
+
+  const presses = {
+    "Control-N": await press("n", CONTROL),
+    "Control-P": await press("p", CONTROL),
+    "Control-Shift-N": await press("n", CONTROL | SHIFT),
+    "Control-P held": await press("p", CONTROL, null, true),
+    "N alone": await press("n", 0),
+    "P alone": await press("p", 0),
+    "Control-Alt-N, as AltGr": await press("n", CONTROL | ALT),
+    "Control-Command-P": await press("p", CONTROL | META),
+    "Control-N in a field": await press("n", CONTROL, "field"),
+    "Control-P in a text area": await press("p", CONTROL, "area"),
+  };
+  const written = await chrome.evaluate(`(() => {
+    const presented = window.registry.present("pulls.stack.top")?.bindings;
+    return {
+      platform: navigator.userAgentData?.platform || navigator.platform,
+      reaches: window.registry.controlReachesPage(),
+      visible: presented?.visible ?? null,
+      spoken: presented?.spoken ?? null,
+      aria: presented?.ariaKeyshortcuts ?? null,
+    };
+  })()`);
+  return { presses, written };
+}
+
+try {
+  await chrome.send("Page.enable");
+  const mac = await run("mac");
+  const linux = await run("linux");
+  console.log(JSON.stringify({ mac, linux }));
+} finally {
+  await chrome.close();
+}

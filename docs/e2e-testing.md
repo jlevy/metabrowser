@@ -305,13 +305,23 @@ Strict mode is off on a developer machine, which can add these:
   transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
   and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
   the Folder Overview’s labels start at several window widths; the layout checks in
-  `tests/test_github_pull_header_chrome.py`, `tests/test_github_pull_text_chrome.py`,
+  `tests/test_git_commit_summary_chrome.py`, `tests/test_github_pull_header_chrome.py`,
+  `tests/test_github_pull_text_chrome.py`, `tests/test_github_pulls_stacks_chrome.py`,
   `tests/test_nav_metadata_chrome.py`, and `tests/test_staged_fonts_chrome.py`;
-  `tests/test_prose_faces_chrome.py`, which reads the face documents and chrome prose
-  are drawn in under each reading font and font set; and
+  `tests/test_github_pull_timeline_chrome.py`, which reads a pull request’s Conversation
+  timeline’s type, spacing, and line from the boxes Chrome lays out and the pixels it
+  paints; `tests/test_prose_faces_chrome.py`, which reads the face documents and chrome
+  prose are drawn in under each reading font and font set;
   `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer Chrome kept
-  under the trusted profile after the folder is served `--untrusted`. The CI runners
-  have Chrome, so CI runs them.
+  under the trusted profile after the folder is served `--untrusted`;
+  `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
+  fold of unchanged blocks closed, open, and under the pointer;
+  `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
+  Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
+  host, and reads that only the Mac’s binds them; and
+  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
+  computed weight, face, size, and ink on every title surface.
+  The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
   then so the group ID cannot pass to another process.
@@ -550,10 +560,16 @@ surface. Author, action, and age must share a baseline while branch chips stay s
 On a PR in a known stack, open the position menu.
 Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
 click, and keyboard selection.
-Use `P` toward the base and `N` toward the top, with and without Shift; preserve the
-selected PR tab and clear the old file selection.
-With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row and not the
-stack. Confirm endpoint handling and that an editor or open dialog retains its keys.
+On a Mac, use Control-P toward the base and Control-N toward the top, with and without
+Shift, and hold one to see it walk once; preserve the selected PR tab and clear the old
+file selection. Check that `N` alone does nothing there and `P` alone focuses the Pulls
+list rather than walking the stack, and that Help and the Shift strip write the chords
+`⌃N` and `⌃P`. With a Pulls row focused, check that Shift+`J` and Shift+`K` move the row
+and not the stack. Confirm endpoint handling, that an editor or open dialog retains its
+keys, and that Control-N and Control-P in Quick Search’s field move its caret on macOS.
+On Windows and Linux, check that Help and the Shift strip list neither chord, that
+Ctrl+N opens a new window and Ctrl+P the browser’s Print, and that the position menu
+walks the stack.
 
 ### Quick Search and Main Tabs
 
@@ -573,10 +589,11 @@ In a plain folder, the dialog should still say Quick Search and search only file
 
 After Git discovery, check Files, Pulls, and Commits order and their letters in Help,
 with no `⌘` beside them.
-Check that `F`, `R`, and `H` open each tab with and without Shift, and that Command or
-Ctrl with a letter or digit is left to the browser, so Command or Ctrl with a digit
-still switches browser tabs.
-In a plain folder, check that `F` still opens Files and that `R` and `H` leave the
+Check that `F`, `P`, and `H` open each tab with and without Shift, that `R` opens
+nothing, and that Command or Ctrl with a letter or digit is left to the browser, but for
+Control-N and Control-P on a stack’s pull request on a Mac, so Command or Ctrl with a
+digit still switches browser tabs.
+In a plain folder, check that `F` still opens Files and that `P` and `H` leave the
 selection alone. [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the full
 scheme.
 

@@ -215,32 +215,32 @@ $ node tests/dom/file-overview-session.js
     "opened": {
       "details": "true",
       "caption": "Share of Total (1,000 files)",
-      "distribution": "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% Other 34.7% Details Code TypeScript 60 files 6% Python 33 files 3.3% JavaScript 25 files 2.5% 1 more 8 files 0.8% Documentation Markdown 150 files 15% Data JSON 240 files 24% YAML 170 files 17% Other Other types 253 files 25.3% No extension 40 files 4% Log files 21 files 2.1%",
+      "distribution": "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% Other 34.7% Details Documentation Markdown 150 files 15% Code TypeScript 60 files 6% Python 33 files 3.3% JavaScript 25 files 2.5% 1 more 8 files 0.8% Data JSON 240 files 24% YAML 170 files 17% Other Other types 253 files 25.3% No extension 40 files 4% Log files 21 files 2.1%",
       "step": "Details opened"
     },
     "bySize": {
       "details": "true",
       "caption": "Share of Total (1,000 B)",
-      "distribution": "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% Other 13% Details Code TypeScript 200 B 20% Python 150 B 15% JavaScript 120 B 12% 1 more 5 B 0.5% Documentation Markdown 300 B 30% Data JSON 100 B 10% YAML 50 B 5% Other Other types 30 B 3% Log files 25 B 2.5% No extension 20 B 2%",
+      "distribution": "Markdown 30% TypeScript 20% Python 15% JavaScript 12% JSON 10% Other 13% Details Documentation Markdown 300 B 30% Code TypeScript 200 B 20% Python 150 B 15% JavaScript 120 B 12% 1 more 5 B 0.5% Data JSON 100 B 10% YAML 50 B 5% Other Other types 30 B 3% Log files 25 B 2.5% No extension 20 B 2%",
       "step": "measure changed to bytes"
     },
     "unignored": {
       "details": "true",
       "caption": "Share of Files (920 B)",
-      "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Documentation Markdown 300 B 32.6% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
+      "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details Documentation Markdown 300 B 32.6% Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
       "step": "Show ignored turned off"
     },
     "refreshed": {
       "details": "true",
       "caption": "Share of Files (920 B)",
-      "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Documentation Markdown 300 B 32.6% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
+      "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details Documentation Markdown 300 B 32.6% Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
       "step": "rollup refreshed"
     },
     "rescanning": "skeleton",
     "rescanned": {
       "details": "true",
       "caption": "Share of Files (920 B)",
-      "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Documentation Markdown 300 B 32.6% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
+      "distribution": "Markdown 32.6% TypeScript 21.7% Python 16.3% JavaScript 13% YAML 5.4% Other 10.9% Details Documentation Markdown 300 B 32.6% Code TypeScript 200 B 21.7% Python 150 B 16.3% JavaScript 120 B 13% 1 more 5 B 0.5% Data YAML 50 B 5.4% JSON 20 B 2.2% Other Other types 30 B 3.3% Log files 25 B 2.7% No extension 20 B 2.2%",
       "step": "a rescan answered"
     },
     "reclosed": {

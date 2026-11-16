@@ -603,7 +603,29 @@ async function run() {
     .find((tab) => tab.getAttribute("aria-selected") === "true");
   assert.equal(selectedChecks?.textContent, "Checks");
   assert.equal(selectedChecks?.getAttribute("href"), checksRoute);
-  assert.match(checksBody.textContent, /1 success · 1 pending/);
+  // "1 success · 1 pending": its dot held to the count before it by a no-break space, and a
+  // comma said in the hidden dot's place, as the paragraph has no name in words (mb-vb51).
+  assert.match(checksBody.textContent, /1 success\u00a0·, {2}1 pending/);
+  const checksLine = checksBody
+    .querySelectorAll(".github-pull-quiet")
+    .find((line) => line.querySelectorAll(".summary-number").length > 0);
+  assert.deepEqual(
+    [".summary-punctuation", ".visually-hidden"].flatMap((selector) =>
+      checksLine
+        .querySelectorAll(selector)
+        .map((mark) => [selector, mark.textContent, mark.getAttribute("aria-hidden")]),
+    ),
+    [
+      [".summary-punctuation", "·", "true"],
+      [".visually-hidden", ", ", null],
+    ],
+  );
+  // The summary's counts are a count summary's bold numbers, and its words are not
+  // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+  assert.deepEqual(
+    checksBody.querySelectorAll(".summary-number").map((number) => number.textContent),
+    ["1", "1"],
+  );
   assert.match(checksBody.textContent, /tests \(3\.13\)/);
   assert.match(checksBody.textContent, /Only some check runs are shown/);
   assert.match(checksBody.textContent, /Commit statuses could not be read/);

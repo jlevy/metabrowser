@@ -134,8 +134,13 @@ class PageElement {
     };
   }
 
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
   append(...nodes) {
-    for (const node of nodes) {
+    for (const given of nodes) {
+      const node = typeof given === "string" ? new PageElement("#text") : given;
+      if (typeof given === "string") {
+        node.textContent = given;
+      }
       node.parentNode = this;
       this.children.push(node);
     }
@@ -315,6 +320,11 @@ globalThis.window = {
       assert(kind === "diff" && view === "diff", "the plugin registers its one view");
       diffView = spec;
     },
+    // The shared changed-files tree, which the SDK loads from the shell's bundle.
+    loadChangedFilesTree: async () => require("./changed-files-tree-fixture.js").changedFilesTree(),
+    // The shell's painters of a count summary and a brief change line, which the Diff summary is
+    // drawn with.
+    ...require("./changed-files-tree-fixture.js").shellPainters(),
     // The plugin-data transport: the recorded answer for exactly this request.
     async fetchPluginData(plugin, name, params) {
       const request = pluginRoute(plugin, name, params);

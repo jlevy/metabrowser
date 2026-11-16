@@ -918,13 +918,14 @@ line. Open that address with the browser’s developer tools open.
 13. **The Shift key reveal, and its three provisional numbers.** With focus on a tree
     row, hold Shift alone: after about a fifth of a second a keycap appears on the Files
     tab (`F`), the Commits tab (`H`), the view tabs of the open file, and the header’s
-    Up (`U`), and the two filters show `1` (Modified within) and `2` (File type).
+    Up (`U`), Group by shows `1`, and the stand-ins beside the drawer’s chevron show `2`
+    (Modified within) and `3` (File type).
     The header’s Copy has no keycap.
     The strip lists Help, Quick Search, the tabs, and Up.
     Release Shift: all of them go.
     Type `?`, a capital, and Shift+`↑` at your normal speed: no keycap flashes.
     Hold Shift and press `H`: Commits opens with its first row focused, and the keycaps
-    follow; press `F`: the filters get `1` and `2` back.
+    follow; press `F`: Group by and the filters get `1`, `2`, and `3` back.
     Click while holding Shift, or scroll: the keycaps go.
     Check 14 looks at how they are drawn.
 
@@ -1679,26 +1680,31 @@ The banner prints
 `Serving https://github.com/octo/demo at http://127.0.0.1:8475/pull/7`. Open that
 address.
 
-1. The page shows **Count to two in the app #7** with an **Open** badge,
-   `forker wants to merge 2 commits: forker:count-to-two → octo:topic`, the opened and
-   updated times, **View on GitHub**, **Browse code**, and the `enhancement` label.
-   The Pulls list in the navigation pane gives each row’s branches the same way, head →
-   base (`forker:count-to-two → topic` on #7’s row), and narrowing the pane shortens the
-   branch names with an ellipsis, then moves them to a line of their own, whole.
-   The status line reads `Fetched … via GitHub CLI`. The records were fetched on
-   2026-09-17, so the page refreshes the record by itself: nothing spins, nothing says
-   `may be out of date`, and no **Refresh** is offered meanwhile; the age gently
-   breathes (it stays still with the system’s reduced-motion setting on) until it reads
-   `Fetched just now via GitHub CLI`. The freshness row at the foot of the navigation
-   pane refreshes on its own and links **Pull request #7**.
+1. The page shows **Count to two in the app**, with **#7** at the header’s right edge;
+   under it `forker wants to merge 2 commits`; then `forker:count-to-two → octo:topic`
+   on a line of its own; then an **Open** badge before the opened and updated times,
+   **View on GitHub**, and **Browse code**; and then the `enhancement` label.
+   The label is white on its indigo, `#2700af`, in the light theme and a light indigo on
+   a tint of it in the dark theme, as github.com draws it, and hovering it shows its
+   description, “A label’s description is its chip’s tooltip”.
+   Narrowing the pane cuts the author’s sentence short and shortens the branch names
+   with an ellipsis, each row staying one line.
+   The Pulls list in the navigation pane names no branches: #7’s row holds its title and
+   age, then `#7 · forker`. The status line reads `Fetched … via GitHub CLI`. The
+   records were fetched on 2026-09-17, so the page refreshes the record by itself:
+   nothing spins, nothing says `may be out of date`, and no **Refresh** is offered
+   meanwhile; the age gently breathes (it stays still with the system’s reduced-motion
+   setting on) until it reads `Fetched just now via GitHub CLI`. The freshness row at
+   the foot of the navigation pane refreshes on its own and links **Pull request #7**.
 2. The description shows as plain text at first, then after a moment as Markdown
-   (**two** in bold). The conversation lists, in time order, maintainer’s **reviewed**
-   review, the comment `Thanks. CI is green; one question inline.`, and the **approved**
-   review `Looks right.`
-3. **Review comments (2)** shows `src/app.txt` with an **outdated** badge and its diff
-   hunk, then forker’s reply on `src/app.txt:2`. Open **Checks** at `/pull/7/checks`. It
-   reads `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the
-   Read the Docs status.
+   (**two** in bold). The conversation lists, in time order, maintainer’s plain review,
+   headed “maintainer reviewed …” with no chip, the comment
+   `Thanks. CI is green; one question inline.`, and the review `Looks right.`, whose
+   heading ends in an **approved** chip.
+3. **Review comments · 2**, in the label capitals, shows `src/app.txt` with an
+   **outdated** badge and its diff hunk, then forker’s reply on `src/app.txt:2`. Open
+   **Checks** at `/pull/7/checks`. It reads `2 success · 1 pending`, with
+   `tests (3.13)`, `docs` (in progress), and the Read the Docs status.
    Each links out in a new tab.
    The tab also says `No conflicts with the base branch`.
 4. Return to **Conversation** and click **Changes**. The address becomes
@@ -1726,13 +1732,13 @@ address.
    head and offers **Switch to the head**. The startup fallback and explicit switch
    cases are also exercised by `tests/golden/cli-ui-github-pull-page.tryscript.md`.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
-   and the header reads
-   `ghost wants to merge 1 commit: spam (deleted fork) → octo:topic`, with github.com’s
-   words for a closed pull request; there is no conversation, and Changes compares from
-   the recorded `base.sha`. Serve pull request 8 (`--serve 8 8475`): **Say more in the
-   guide** is **Merged**, the header reads `octo merged 1 commit: guide-more → topic`,
-   naming who merged it rather than its author, and **Checks** reads
-   `2 success · 1 skipped`, with `docs` labeled skipped.
+   and the header reads `ghost wants to merge 1 commit` over
+   `spam (deleted fork) → octo:topic`, with github.com’s words for a closed pull
+   request; there is no conversation, and Changes compares from the recorded `base.sha`.
+   Serve pull request 8 (`--serve 8 8475`): **Say more in the guide** is **Merged**, the
+   header reads `octo merged 1 commit` over `guide-more → topic`, naming who merged it
+   rather than its author, and **Checks** reads `2 success · 1 skipped`, with `docs`
+   labeled skipped.
 9. A hostile comment. Stop the server, add `HOSTILE_COMMENT` from
    `tests/github_pull_fixture.py` to pull request 7’s comments in
    `"${QA_PR}/fake-gh-scenario.json"` (rebuild that entry with the fixture’s `ok()`, so
@@ -1744,6 +1750,18 @@ address.
    no `/kpress-static/` script, and no iframe.
    Application-owned author avatars may request the fixed
    `avatars.githubusercontent.com` host.
+10. A record cached before label colors.
+    Stop the server, and in pull request 7’s record, `sources/*/pulls/7.json` in the
+    home under `"${QA_PR}"`, set `projection_version` to `1` and `pull.labels` to
+    `["enhancement", "deleted-on-github"]`, the names alone, as a 0.12.0 build cached
+    it. Serve 7 again with the browser’s network panel open.
+    The chips are neutral at first, the page sends one
+    `POST /api/plugin/github/labels-refresh`, and within a few seconds `enhancement`
+    turns indigo with its tooltip, while `deleted-on-github` stays neutral and nothing
+    in the header moves.
+    Stop the server, write the record’s labels as names alone again (its own refresh has
+    rewritten it), and serve 7 once more: `enhancement` is indigo with its tooltip on
+    first paint, and the page sends no `labels-refresh` for it.
 
 **Pass:** every step as described; no console errors.
 Only application-owned avatars may load from `avatars.githubusercontent.com`; check and
@@ -1835,20 +1853,21 @@ order, conditional pages without `Link`, cache-only reads and missing-tool backo
 2. Revisit with a warm snapshot.
    Cached GET/304 reads run no `gh`; no row starts its own stack fetch.
    Remove optional tooling only in the controlled test environment and confirm that core
-   PR reading works, matching cached badges remain, and refreshes back off.
-   An account/source mismatch must hide those badges.
+   PR reading works, matching cached stack groups and places remain, and refreshes back
+   off. An account/source mismatch must hide those groups and places.
 
-3. On narrow and wide screens, check dark PR numbers, bold normal-text-color usernames
-   and consistently colored branch chips in the list, header and conversation.
+3. On narrow and wide screens, check bold dark PR numbers, bold normal-text-color
+   usernames and consistently colored branch chips in the header and conversation.
    Sidebar usernames match the repository summary’s small metadata size; page actors,
    actions and ages share their larger baseline.
    Commit authors use the same name style.
    Reload sits flush right beside Open, Closed, All and remains in the keyboard tab
    order; the update age stays below the repository summary.
-   The list’s stack icon and position sit beside its PR number.
-   The page’s stack menu sits immediately right of its state badge.
-   Menu rows read **1/6** · title · #123, with only the position bold; the menu fits the
-   pane and retains focus through refresh.
+   The list groups a stack’s members under its **Stack #N** row; a member’s place, such
+   as **1/6**, comes before its PR number with no stack icon, and no row names branches.
+   The page’s stack button sits at the right end of the author’s row, under the PR
+   number. Menu rows read **1/6** · title · #123, the position, title, and number bold;
+   the menu fits the pane and retains focus through refresh.
    View on GitHub uses the GitHub brand icon before the label.
    Cold Conversation and Changes show aligned gray pulsing blocks; cached refresh keeps
    content and focus. Check reduced motion, late stack arrival, expanded trees and scroll

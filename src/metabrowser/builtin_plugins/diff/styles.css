@@ -26,24 +26,155 @@
   );
   --diff-fold-row-height: max(var(--ui-row-height), calc(1.5 * var(--ui-small-font-size) + 2px));
   --diff-notice-row-height: calc(1.5 * var(--body-font-size) + 2 * var(--diff-notice-padding-y));
+  /* How far the Diff summary's header pulls left of where it is placed, so its hover ground
+     reaches past its chevron (`.diff-summary-toggle`). Its tree's rows take it back out, so
+     their first level starts one --tree-indent in from the header (below). */
+  --diff-summary-toggle-pull: 4px;
 }
 
+/* The toolbar draws no rule under itself (mb-a073): the first file card's own border, its
+   12 px margin below, is the line between the toolbar and the files, and on a commit's or a
+   pull request's page, where the toolbar holds the layout control alone, a rule there would
+   draw a second line 12 px above it. Where the toolbar leads with the Diff summary, its
+   header is the tree's root, and the tree opens under it as it does at a page's top, with
+   no line between them. The toolbar is not sticky, so nothing scrolls under it. */
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px;
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   min-height: var(--ui-row-height);
-  border-bottom: 1px solid var(--border);
 }
 
+/* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
+   set holds and is the disclosure toggle of its files as a tree by folder. The header is a
+   row-like trigger, so it leads with the registry's chevron in the tree's icon slot. Its text
+   is one size, so its parts share a line box and need no baseline opt-in. */
 .metabrowser-diff-host .diff-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: 6px;
   font-size: var(--nav-font-size);
   color: var(--text);
+}
+
+/* The header's hover and focus ring are the tree rows' under it (`.changed-file-row`):
+   square, and the ring drawn 2px inside the box, so the header and its rows hover and
+   focus as one tree. */
+.metabrowser-diff-host .diff-summary-toggle {
+  flex: 0 1 auto;
+  min-height: var(--ui-row-height);
+  margin: 0 0 0 calc(-1 * var(--diff-summary-toggle-pull));
+  padding: 0 6px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.metabrowser-diff-host .diff-summary-toggle:hover {
+  background: var(--hover-bg);
+}
+
+.metabrowser-diff-host .diff-summary-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+
+.metabrowser-diff-host .diff-summary-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+
+/* The header is its file count, "19 files changed", and the dot after it, one item of its
+   line (`.diff-summary-group`), then the shell's brief change line, "10 A, 5 D, 4 M ·
+   +1,234 −567" (`.change-line`, static/styles.css), the one component for it: its statuses'
+   letters in their statuses' ink (`.file-change-status`), its commas and dots the shell's
+   muted punctuation (`.summary-punctuation`), and its line totals the inline change stats.
+   Each dot is one item with the group before it, so a header that wraps breaks after a dot
+   and no line starts with one; the group's gap is the line's, and the change line's is the
+   same 6 px, so every dot is spaced alike on both sides, on a toggle and on a line alike.
+   The "(estimated)" after totals that are not exact, and the "(N listed)" of a list cut
+   short, are muted, qualifiers of the totals, as their marks are.
+   tests/dom/git-commit-summary-chrome.mjs holds that no line starts with a dot at any width
+   from 60 to 400 px, 1 px apart, where the commit page's header wraps, and that one does
+   with these groups dissolved. */
+.metabrowser-diff-host .diff-summary-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
+}
+
+.metabrowser-diff-host .diff-summary-note {
+  color: var(--muted);
+}
+
+/* The tree, under the toolbar: the nav panel's tree rows, as tall as they are, in the page's
+   flow, with no scroll bar of their own. Rows are drawn a window at a time, those in the
+   window's view, each one row tall at its index, as the Pulls tab draws a pull request's
+   files (diff-summary.js, SUMMARY_ROWS_OVERSCAN, says what that costs). The box travels on
+   the disclosure recipe; it clips what its height has not reached yet, and never scrolls. */
+.metabrowser-diff-host .diff-summary-body {
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: clip;
+  border-bottom: 1px solid var(--border);
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
+}
+
+.metabrowser-diff-host .diff-summary-body-collapsed {
+  height: 0;
+  border-bottom-width: 0;
+  visibility: hidden;
+}
+
+.metabrowser-diff-host .diff-summary-rows {
+  position: relative;
+  max-width: 56rem;
+  margin: 4px 0;
+}
+
+/* Where the header starts, from the tree's left edge: in a diff's toolbar, which the tree
+   opens under, the toolbar's padding; at the top of a commit's or a pull request's page,
+   where the tree opens right under the header, nothing. */
+.metabrowser-diff-host .diff-summary-body {
+  --diff-summary-header-inset: 0px;
+}
+.metabrowser-diff-host .diff-toolbar + .diff-summary-body {
+  --diff-summary-header-inset: var(--pane-header-padding-x);
+}
+
+/* A row is the shell's changed-file row (static/styles.css, `.changed-file-row`), the Pulls
+   tab's tree's too, so the two trees draw one row; here is only its depth's indent. The
+   header is the tree's root, so its first level starts one --tree-indent in from it, as a
+   folder's rows start one step in from the folder, and each level adds the step. A row's
+   content starts on the row inset, --pane-header-padding-x past the row's edge; the header
+   starts --diff-summary-header-inset in and pulls --diff-summary-toggle-pull left of that;
+   so the rows give back the difference. Measured in Chrome
+   (tests/test_changed_file_rows_chrome.py, tests/test_git_commit_summary_chrome.py,
+   tests/test_github_pull_header_chrome.py): in a patch's toolbar, under a commit's identity,
+   and in a pull request's header, a first-level row's chevron and name start 16px right of
+   the header's chevron and words, and each level 16px further. Before, they started 4px
+   right of them in the toolbar, and already 16px right of them at the top of a page. */
+.metabrowser-diff-host .diff-summary-row {
+  --changed-file-indent: calc(
+    (var(--diff-summary-depth, 0) + 1) *
+    var(--tree-indent) +
+    var(--diff-summary-header-inset) -
+    var(--diff-summary-toggle-pull) -
+    var(--pane-header-padding-x)
+  );
 }
 
 .metabrowser-diff-host .diff-layout-control {
@@ -502,9 +633,39 @@
   }
 }
 
-.metabrowser-diff-host .diff-markdown-context > summary {
+/* A fold of unchanged blocks is a place in the document, not a box in it: one quiet line
+   that opens to the blocks it holds, set as the blocks around them are. It is a
+   `<details>` inside the comparison's `article.kpress`, so KPress's document disclosure box
+   (a border, a block margin, and a rule under an open summary) is undone here, and the
+   face it sets is given back to the article, so the blocks the fold holds inherit what
+   their neighbours do. KPress's stylesheets may load before or after this one (a pull
+   request's description or an earlier Markdown document loads them first; a direct
+   visit to Changes loads them after), so these selectors outrank KPress's in either
+   order, its hover colour included. Context rows also carry `.diff-markdown-context`,
+   hence `details`. The label's chevron starts on the blocks' text edge, past their
+   change gutter, and the label brightens to the text colour under the pointer, as the
+   shell's document disclosures do (docs/design-system.md, "Fold Expanders").
+   tests/test_diff_markdown_fold_chrome.py measures it closed, open, and hovered. */
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-feature-settings: inherit;
+}
+
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary {
   cursor: pointer;
+  border: 0;
+  background: none;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   padding: 4px var(--content-padding-x);
+  padding-inline-start: calc(var(--content-padding-x) + var(--diff-change-gutter-width));
+}
+
+.metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary:hover {
+  color: var(--text);
 }

@@ -28,6 +28,7 @@
 // from GitHub reaches a class, a style, or markup. The only markup parsed is the shell's own
 // chip group and icons.
 
+import { createComparisonWarmer, diffComparisonLoader } from "./comparison-prefetch.js";
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
@@ -38,11 +39,19 @@ import {
   h,
   isPlainClick,
   isEnvelope as isPullEnvelope,
+  pullComparison,
   REFRESH_ASK_MS,
   relativeAge,
   SLOW_POLL_MS,
 } from "./pull-page.js";
-import { createStackIndex, stackCaption, watchStacks } from "./pull-stacks.js";
+import {
+  createStackIndex,
+  groupByStack,
+  stackCaption,
+  stackMembership,
+  stackRowKey,
+  watchStacks,
+} from "./pull-stacks.js";
 import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
 
@@ -121,6 +130,13 @@ export const PEEK_MS = 60;
 // Records read ahead and not yet opened. A record is at most MAX_PULL_RECORD_BYTES, and a
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
+// How long a warm of a likely next pull request's comparison waits for the browser to be
+// free, which bounds it only for a page that is never free. Idle callbacks run in the order
+// they were asked for, and on an open the warm is asked for before the page has read its
+// record, so this timeout does not put it behind the page: what does is that the warm waits
+// for every comparison read on its way to end before it sends its own (`quiet` in
+// comparison-prefetch.js).
+const WARM_IDLE_TIMEOUT_MS = 1000;
 const FETCHING = "Fetching pull requests…";
 // Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
 // first 1,183 files of django/django#15387 made 1,503 rows; 3,000 stress files made
@@ -180,7 +196,8 @@ const CHECKOUT_NOT_LISTED =
  */
 
 /**
- * What a row shows. Text only.
+ * What a row shows. Text only. A row names no branches: the pull request's page does, and
+ * the row's room goes to its title (docs/design-system.md, "The Pulls Tab").
  *
  * @typedef {{
  *   number: number,
@@ -190,11 +207,7 @@ const CHECKOUT_NOT_LISTED =
  *   title: string,
  *   author: string,
  *   avatar: string | null,
- *   baseRef: string,
- *   headRef: string,
- *   headLabel: string,
  *   updatedAt: string | null,
- *   refs: string,
  *   meta: string,
  * }} PullRow
  */
@@ -219,8 +232,24 @@ const CHECKOUT_NOT_LISTED =
  *   progress: string | null,
  *   github: string | null,
  *   live: string,
+ *   stacks: StackGrouping,
  * }} PullsModel
  */
+
+/**
+ * The Pulls tab's rows grouped by stack, in their order: each stack's row, its pull
+ * requests under it, and then every pull request in no stack. The tab always groups once
+ * its stacks are known; `rows` is null while the list is flat, before then or with no
+ * listed pull request in a stack. `version` changes whenever the rows do.
+ *
+ * @typedef {{
+ *   rows: import("./pull-stacks.js").GroupedRow[] | null,
+ *   version: number,
+ * }} StackGrouping
+ */
+
+/** @type {StackGrouping} */
+const NO_GROUPING = Object.freeze({ rows: null, version: 0 });
 
 /** @param {unknown} value */
 function text(value) {
@@ -239,38 +268,14 @@ export function repositoryName(source) {
 }
 
 /**
- * One side of a row's branches, as the page's header names it: a bare branch when head and
- * base are one repository, and `owner:branch` when the head is another's.
- *
- * @param {Record<string, any>} row
- * @param {string | null} repository
- */
-function rowHead(row, repository) {
-  const head = text(row.head_ref);
-  const from =
-    typeof row.head_repository !== "string"
-      ? `${head} (deleted fork)`
-      : row.head_repository.toLowerCase() === repository?.toLowerCase()
-        ? head
-        : `${row.head_repository.split("/")[0]}:${head}`;
-  return from;
-}
-
-/**
  * What one row of the route shows. Pure.
  *
  * @param {Record<string, any>} row
- * @param {string | null} repository
  * @returns {PullRow}
  */
-export function describeRow(row, repository) {
+export function describeRow(row) {
   const state = displayState(row);
   const author = text(row.author) || "ghost";
-  const headLabel = rowHead(row, repository);
-  const baseRef = text(row.base_ref);
-  const headRef = text(row.head_ref);
-  // Source → target, as `mb.mergeRefs` draws it (docs/design-system.md, "Merge Direction").
-  const refs = `${headLabel} → ${baseRef}`;
   return {
     number: row.number,
     href: `/pull/${row.number}`,
@@ -279,12 +284,8 @@ export function describeRow(row, repository) {
     title: text(row.title),
     author,
     avatar: avatarUrl(row.author_avatar_url),
-    baseRef,
-    headRef,
-    headLabel,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
-    refs,
-    meta: `#${row.number} · ${author} · ${refs}`,
+    meta: `#${row.number} · ${author}`,
   };
 }
 
@@ -383,6 +384,7 @@ function watchPaused(envelope) {
  *   online?: boolean,
  *   requesting?: boolean,
  *   refreshingRows?: number[],
+ *   stacks?: StackGrouping,
  * }} page
  * @returns {PullsModel}
  */
@@ -408,6 +410,7 @@ export function describePulls(envelope, page) {
     progress: null,
     github: null,
     live: "",
+    stacks: page.stacks ?? NO_GROUPING,
   };
   const online = page.online !== false;
   if (envelope === null) {
@@ -522,6 +525,25 @@ function isEnvelope(value) {
 }
 
 /**
+ * What the Pulls tab says of a pull request the address names that its list does not hold.
+ * A list read only part of the way, newest first, may hold an older one further down, so
+ * it says only what it has loaded (*read*: whether the list has read as far as *number*).
+ *
+ * @param {number} number
+ * @param {string} filter
+ * @param {boolean} read
+ */
+export function outsideText(number, filter, read) {
+  const label = LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (filter)];
+  if (!read) {
+    return `#${number} is not among the pull requests loaded.`;
+  }
+  return filter === "all" || label === undefined
+    ? `#${number} is not in this list.`
+    : `#${number} is not listed under ${label}.`;
+}
+
+/**
  * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard answers it
  * by reloading the page onto the commit now served, so the list says nothing of its own for it,
  * whatever order the events arrive in: a page Back restores polls before the guard's check, and
@@ -558,6 +580,7 @@ function pinChanged(response) {
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
+ *   markOutside?(text: string | null): void,
  *   open(route: {
  *     number: number,
  *     tab: string,
@@ -572,6 +595,7 @@ function pinChanged(response) {
  *   }): unknown,
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
+ *   warmComparisons?(numbers: number[]): void,
  * }} PullsDependencies
  */
 
@@ -627,6 +651,13 @@ function contentOf(envelope) {
 /**
  * The filters, windows, polling, and selection of one panel.
  *
+ * Its rows are grouped by stack (`groupByStack` in pull-stacks.js) once the stacks are known
+ * for the list's own reader, and are in the list's order until then: a stack's row, "Stack #N",
+ * then its pull requests, then every pull request in no stack. The keys walk the rows as
+ * they are drawn. A stack's row is a row of the tree as a folder is: J and K stop on it and
+ * open nothing, Enter and Space open or close it, Right opens it or goes to its first pull
+ * request, and Left closes it, or from a pull request in it goes to it.
+ *
  * @param {PullsDependencies} deps
  * @param {{filter?: string, current?: number | null, checkout?: boolean}} [options]
  */
@@ -640,8 +671,16 @@ export function createPullsController(deps, options = {}) {
   /** @type {number | null} */
   let current = options.current ?? null;
   let revealCurrent = true;
+  /**
+   * What the list says of a current pull request it does not hold (`noteOutside`).
+   * @type {string | null}
+   */
+  let outside = null;
   /** The row that takes Tab: the current one, or else the first. @type {number | null} */
   let anchor = null;
+  // Whether the reader put the anchor where it is, by a key, a focus, or a press. A grouped
+  // list's default anchor is its first row, a stack's row once the stacks arrive.
+  let anchorChosen = false;
   let shown = false;
   let disposed = false;
   let polling = false;
@@ -768,6 +807,66 @@ export function createPullsController(deps, options = {}) {
   /** @returns {HeldList} */
   function held() {
     return /** @type {HeldList} */ (lists.get(filter));
+  }
+
+  // Grouping by stack. The stacks are the shared optional snapshot's, which the panel hands
+  // on as they arrive (`setStacks`); the stacks the reader closed are this panel's.
+  // `grouping()` is the rows' order, recomputed only when one of its inputs moves.
+  let stackIndex = createStackIndex(null);
+  /** The stacks the reader closed, by number. @type {Set<number>} */
+  const closedStacks = new Set();
+  let groupingInputs = 0;
+  /**
+   * @type {{
+   *   key: string, version: number,
+   *   rows: import("./pull-stacks.js").GroupedRow[] | null, closed: import("./pull-stacks.js").StackGroupRow[],
+   *   keys: number[], at: Map<number, number>,
+   * } | null}
+   */
+  let grouped = null;
+
+  /** The list's rows as they are drawn and walked: its own order, or grouped by stack. */
+  function grouping() {
+    const list = held();
+    const envelope = list.envelope;
+    const identity =
+      envelope === null ? null : { source: envelope.source, reader: envelope.reader };
+    const setSize = envelope?.total ?? Math.max(envelope?.fetched ?? 0, list.rows.length);
+    const key = JSON.stringify([filter, list.version, groupingInputs, identity, setSize]);
+    if (grouped?.key === key) {
+      return grouped;
+    }
+    const numbers = list.rows.map((row) => row.number);
+    const answer = groupByStack(numbers, stackIndex, identity, {
+      collapsed: closedStacks,
+      setSize,
+    });
+    // Stacks unknown, another reader's, or holding no listed pull request group nothing
+    // (`groupByStack` places a row only by the list's own reader's membership).
+    const rows = answer.stacks > 0 ? answer.rows : null;
+    const keys = rows === null ? numbers : rows.map((row) => row.key);
+    grouped = {
+      key,
+      version: (grouped?.version ?? 0) + 1,
+      rows,
+      closed: (rows ?? []).flatMap((row) => (row.kind === "stack" && !row.expanded ? [row] : [])),
+      keys,
+      at: new Map(keys.map((row, index) => [row, index])),
+    };
+    return grouped;
+  }
+
+  /** The row of a closed stack that holds pull request *number*, if one does. @param {number} number */
+  function closedStackOf(number) {
+    return grouping().closed.find((row) => row.members.includes(number)) ?? null;
+  }
+
+  /** The stack a drawn pull request's row sits under, if any. @param {number} number */
+  function stackOfRow(number) {
+    const order = grouping();
+    const at = order.at.get(number);
+    const row = at === undefined ? undefined : order.rows?.[at];
+    return row?.kind === "pull" ? row.stack : null;
   }
 
   const visible = () => !parked && deps.isVisible();
@@ -986,7 +1085,7 @@ export function createPullsController(deps, options = {}) {
         queueCores();
         return;
       }
-      const rows = envelope.rows.map((row) => describeRow(row, repositoryName(envelope.source)));
+      const rows = envelope.rows.map((row) => describeRow(row));
       prepareBatch(rows, "all", envelope.generation, contentOf(envelope), "background");
     } catch {
       if (!controller.signal.aborted) {
@@ -1347,7 +1446,9 @@ export function createPullsController(deps, options = {}) {
 
   function model() {
     const list = held();
+    const order = grouping();
     return describePulls(list.envelope, {
+      stacks: { rows: order.rows, version: order.version },
       filter,
       rows: list.rows,
       rowsVersion: list.version,
@@ -1374,11 +1475,16 @@ export function createPullsController(deps, options = {}) {
     const envelope = held().envelope;
     const identity =
       envelope === null ? null : { source: envelope.source, reader: envelope.reader };
-    const key = JSON.stringify([{ ...next, rows: null }, identity, held().content]);
+    const key = JSON.stringify([
+      { ...next, rows: null, stacks: { ...next.stacks, rows: null } },
+      identity,
+      held().content,
+    ]);
     if (key !== painted || arrivals.length > 0) {
       painted = key;
       deps.render(next, identity, arrivals);
     }
+    noteOutside();
   }
 
   function clearTimer() {
@@ -1433,8 +1539,7 @@ export function createPullsController(deps, options = {}) {
    * @param {string | null} source
    */
   function holdRows(list, rows, source) {
-    const repository = repositoryName(source);
-    const next = rows.map((row) => describeRow(row, repository));
+    const next = rows.map((row) => describeRow(row));
     if (source !== null) {
       noteListed(source, next);
     }
@@ -1503,19 +1608,82 @@ export function createPullsController(deps, options = {}) {
     return true;
   }
 
-  /** The anchor follows the rows: the current one if it is held, and otherwise the first. */
-  function settleAnchor() {
-    const list = held();
+  /**
+   * The anchor follows the rows: the current one if it is drawn, and otherwise the first. A
+   * stack's row the reader moved to keeps it until the address moves (*follow*), since no
+   * page stands for it; a pull request hidden in a closed stack is held by the stack's row;
+   * and a grouped list's anchor no reader chose is its first row, a stack's.
+   *
+   * @param {boolean} [follow]
+   */
+  function settleAnchor(follow = false) {
+    const order = grouping();
+    const hiddenIn = (/** @type {number | null} */ number) => {
+      const stack = number === null || number < 0 ? null : closedStackOf(number);
+      return stack === null ? null : stack.key;
+    };
     const next =
-      current !== null && list.keys.has(current)
-        ? current
-        : anchor !== null && list.keys.has(anchor)
-          ? anchor
-          : (list.rows[0]?.number ?? null);
+      !follow && anchor !== null && anchor < 0 && order.at.has(anchor)
+        ? anchor
+        : current !== null && order.at.has(current)
+          ? current
+          : (hiddenIn(current) ??
+            (anchor !== null && order.at.has(anchor) && (anchorChosen || order.rows === null)
+              ? anchor
+              : null) ??
+            hiddenIn(anchor) ??
+            order.keys[0] ??
+            null);
     if (next !== anchor) {
       const previous = anchor;
       anchor = next;
       deps.markAnchor(previous, next, false);
+    }
+  }
+
+  /**
+   * Show the current pull request's row: a closed stack that holds it opens, as a file the
+   * address names opens its folders, and the row scrolls into view; a row the list has not
+   * reached yet is chased, and one it does not hold is noted (`noteOutside`).
+   *
+   * @param {number | null} number
+   */
+  function showCurrent(number) {
+    const hidden = number === null ? null : closedStackOf(number);
+    if (hidden !== null) {
+      closedStacks.delete(hidden.stack.number);
+      groupingInputs += 1;
+      render();
+    }
+    settleAnchor(true);
+    if (number !== null && held().keys.has(number)) {
+      if (revealCurrent) {
+        deps.reveal(number);
+      }
+    } else {
+      chaseCurrent();
+    }
+    noteOutside();
+  }
+
+  /**
+   * Say so when the current pull request is not in the list, rather than leave the reader
+   * looking for its row: the filter leaves it out, or All has not listed it. Only once the
+   * list has its rows, and not while a chase may still reach it.
+   */
+  function noteOutside() {
+    const list = held();
+    // The rows are newest first, and *nextAfter* is where the next window starts.
+    const unread = current !== null && list.nextAfter !== null && current < list.nextAfter;
+    const settled =
+      current !== null &&
+      list.envelope !== null &&
+      !list.keys.has(current) &&
+      !(filter === "all" && unread && list.rows.length < list.displayLimit);
+    const next = settled && current !== null ? outsideText(current, filter, !unread) : null;
+    if (next !== outside) {
+      outside = next;
+      deps.markOutside?.(next);
     }
   }
 
@@ -1936,6 +2104,84 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
+   * The anchored row's neighbours, the pull requests a key reaches next, a stack's row passed
+   * over: the rows as they are drawn and walked, grouped by stack or not.
+   *
+   * @returns {number[]}
+   */
+  function neighbours() {
+    const order = grouping();
+    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
+    /** @type {number[]} */
+    const near = [];
+    for (let index = at - 1; index >= 0; index -= 1) {
+      if (order.keys[index] > 0) {
+        near.push(order.keys[index]);
+        break;
+      }
+    }
+    const after = order.keys.slice(at + 1).find((key) => key > 0);
+    if (after !== undefined) {
+      near.push(after);
+    }
+    return near;
+  }
+
+  /**
+   * Warm the comparisons of the pull requests the reader is likely to open next, in the
+   * document's keep (comparison-prefetch.js, `createComparisonWarmer`), so a page opened on
+   * one draws its Diff summary, and its Changes, with no wait: the open pull request first,
+   * so a warm of it already on its way is its page's rather than a second request, then the
+   * rows the pointer or focus last rested on, newest first, the open pull request's
+   * neighbours in each of its stacks, which Control-N and Control-P reach, and the anchored
+   * row's neighbours in the list. Only while shown, visible, and online (`stopWarming`);
+   * each is local work, a record from the cache and a comparison from the repository store,
+   * with no GitHub call, so the budget's floor and the lane's caps do not hold it, and the
+   * warmer's own do. Its record reads are not views, so they add nothing to the records the
+   * server's lane refreshes after a scan.
+   */
+  function warmAhead() {
+    const list = held();
+    if (
+      deps.warmComparisons === undefined ||
+      !live() ||
+      !online() ||
+      list.envelope === null ||
+      list.envelope.reason === "not_github" ||
+      list.rows.length === 0
+    ) {
+      return;
+    }
+    const identity = { source: list.envelope.source, reader: list.envelope.reader };
+    const stacked =
+      current === null
+        ? []
+        : stackMembership(stackIndex, identity, current).flatMap((stack) => {
+            const at = stack.pulls.indexOf(current ?? 0);
+            return [stack.pulls[at + 1], stack.pulls[at - 1]].filter(
+              (number) => number !== undefined,
+            );
+          });
+    const listed = (/** @type {number} */ number) => list.keys.has(number);
+    deps.warmComparisons([
+      ...new Set([
+        ...(current === null ? [] : [current]),
+        ...restedRows.filter(listed),
+        ...stacked,
+        ...neighbours(),
+      ]),
+    ]);
+  }
+
+  /**
+   * A panel that is hidden, parked, or offline warms nothing more: its queue is emptied, and
+   * only the warm being read goes on.
+   */
+  function stopWarming() {
+    deps.warmComparisons?.([]);
+  }
+
+  /**
    * Ask the server to refresh, behind the reader, what they are likely to open next: the
    * anchored row's neighbours and the top of the list, and the changed files of the rows the
    * pointer or focus last rested on, the open row, its neighbours, and the rows in view.
@@ -1970,11 +2216,10 @@ export function createPullsController(deps, options = {}) {
       };
       return true;
     }
-    const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
-    const near = [at - 1, at + 1]
-      .filter((index) => index >= 0 && index < list.rows.length)
-      .map((index) => list.rows[index].number);
-    const top = list.rows.slice(0, PREFETCH_TOP_ROWS).map((row) => row.number);
+    const order = grouping();
+    const pulls = order.keys.filter((key) => key > 0);
+    const near = neighbours();
+    const top = pulls.slice(0, PREFETCH_TOP_ROWS);
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
     const listed = (/** @type {number} */ number) => list.keys.has(number);
@@ -2234,9 +2479,8 @@ export function createPullsController(deps, options = {}) {
           list.etag = null;
           return;
         }
-        const repository = repositoryName(response.body.source);
         const fresh = response.body.rows
-          .map((row) => describeRow(row, repository))
+          .map((row) => describeRow(row))
           .filter((row) => !list.keys.has(row.number))
           .slice(0, list.displayLimit - list.rows.length);
         for (const row of fresh) {
@@ -2511,6 +2755,7 @@ export function createPullsController(deps, options = {}) {
     });
     // A row opens once the reader stops on it, a walk included, so its neighbours are next.
     prefetch(false);
+    warmAhead();
   }
 
   function cancelReads() {
@@ -2554,13 +2799,105 @@ export function createPullsController(deps, options = {}) {
     cancelReads();
     filter = name;
     prioritizeFilter = shown;
-    settleAnchor();
+    settleAnchor(true);
     painted = null;
     render();
     if (how.fromAddress !== true) {
       deps.filterChanged(name);
     }
     void poll(true);
+  }
+
+  /** The rows changed shape: draw them, then settle the anchor on what is drawn. */
+  function regroup() {
+    groupingInputs += 1;
+    render();
+    settleAnchor();
+  }
+
+  /**
+   * Open or close a stack's row; *open* undefined turns it. Whether it changed.
+   *
+   * @param {number} number
+   * @param {boolean} [open]
+   */
+  function setStackOpen(number, open) {
+    const isOpen = !closedStacks.has(number);
+    const wanted = open ?? !isOpen;
+    if (disposed || wanted === isOpen) {
+      return false;
+    }
+    if (wanted) {
+      closedStacks.delete(number);
+    } else {
+      closedStacks.add(number);
+    }
+    regroup();
+    return true;
+  }
+
+  /** Move the anchor to a row by a key: it takes focus, and nothing opens. @param {number} key */
+  function anchorAt(key) {
+    anchorChosen = true;
+    if (anchor !== key) {
+      const previous = anchor;
+      anchor = key;
+      deps.markAnchor(previous, key, true);
+    }
+  }
+
+  /**
+   * Move the row selection by a key. Work is the two rows that change, and the pane opens
+   * the row at once for a single press, or for a held key when it stops. A stack's row is a
+   * stop of its own, as a folder is in the Files tree: it takes focus and opens nothing.
+   *
+   * @param {-1 | 1} delta
+   * @param {{repeat?: boolean}} [how]
+   * @returns {boolean} Whether the key was the list's, so nothing else scrolls for it.
+   */
+  function move(delta, how = {}) {
+    const list = held();
+    const order = grouping();
+    if (disposed || order.keys.length === 0) {
+      return false;
+    }
+    const at = anchor === null ? -1 : (order.at.get(anchor) ?? -1);
+    const target = at + delta;
+    if (target < 0) {
+      return true;
+    }
+    if (target >= order.keys.length) {
+      void extendDisplay();
+      return true;
+    }
+    const key = order.keys[target];
+    anchorChosen = true;
+    // Keep rows arriving ahead of a walk, so a held key does not stall on the window's end.
+    if (order.keys.length - target <= 2 && list.nextAfter !== null) {
+      void loadWindow();
+    }
+    if (key < 0) {
+      clearWalk();
+      anchorAt(key);
+      return true;
+    }
+    const number = key;
+    const previous = anchor;
+    anchor = number;
+    deps.markAnchor(previous, number, true);
+    const wasCurrent = current === number;
+    setCurrentRow(number);
+    if (how.repeat === true) {
+      clearWalk();
+      walkingTo = number;
+      walkTimer = deps.schedule(() => {
+        walkTimer = null;
+        void openRow(number, REFRESH_ASK_MS, true);
+      }, WALK_SETTLE_MS);
+    } else {
+      void openRow(number, REFRESH_ASK_MS, true, wasCurrent);
+    }
+    return true;
   }
 
   return Object.freeze({
@@ -2591,6 +2928,7 @@ export function createPullsController(deps, options = {}) {
         clearTimer();
         cancelReads();
         queueCores();
+        stopWarming();
         return;
       }
       if (revealCurrent && current !== null && held().keys.has(current)) {
@@ -2602,10 +2940,13 @@ export function createPullsController(deps, options = {}) {
     prepareVisible,
     /**
      * The address says which pull request's page holds the pane. Not a selection: the row
-     * only follows it, and no fetch starts.
+     * only follows it, and no fetch starts. The current number named again moves nothing,
+     * as another tab of its page or one of its changed files does, unless *again* says the
+     * reader opened the pull request shown again: then its stack opens and its row scrolls
+     * into view (docs/design-system.md, "Navigation Reveals the Item").
      *
      * @param {number | null} number
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, options = {}) {
       if (disposed) {
@@ -2615,6 +2956,10 @@ export function createPullsController(deps, options = {}) {
         revealCurrent = false;
       }
       if (number === current) {
+        if (options.again === true && number !== null) {
+          revealCurrent = true;
+          showCurrent(number);
+        }
         return;
       }
       revealCurrent = !options.preserveScroll;
@@ -2628,59 +2973,32 @@ export function createPullsController(deps, options = {}) {
       const previous = current;
       current = number;
       deps.markCurrent(previous, number);
-      settleAnchor();
-      if (number !== null && held().keys.has(number)) {
-        if (revealCurrent) {
-          deps.reveal(number);
-        }
-      } else {
-        chaseCurrent();
-      }
+      showCurrent(number);
+      // Back, a link, or a stack walk on the page: its neighbours are next all the same.
+      warmAhead();
     },
     /**
-     * Move the row selection by a key. Work is the two rows that change, and the pane opens
-     * the row at once for a single press, or for a held key when it stops.
-     *
-     * @param {-1 | 1} delta
-     * @param {{repeat?: boolean}} [how]
-     * @returns {boolean} Whether the key was the list's, so nothing else scrolls for it.
+     * Home (static/main-tabs.js, `goHome`): the rows as a fresh load of `/view/` draws them,
+     * from the rows held and with no read. Every stack opens, and the Tab stop goes to the
+     * first row as no reader chose it. The address Home opens names no pull request, which
+     * `setCurrent` hears next and which keeps that row.
      */
-    move(delta, how = {}) {
-      const list = held();
-      if (disposed || list.rows.length === 0) {
-        return false;
+    home() {
+      if (disposed) {
+        return;
       }
-      const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
-      const target = at + delta;
-      if (target < 0) {
-        return true;
+      closedStacks.clear();
+      anchorChosen = false;
+      groupingInputs += 1;
+      render();
+      const first = grouping().keys[0] ?? null;
+      if (first !== anchor) {
+        const previous = anchor;
+        anchor = first;
+        deps.markAnchor(previous, first, false);
       }
-      if (target >= list.rows.length) {
-        void extendDisplay();
-        return true;
-      }
-      const number = list.rows[target].number;
-      const previous = anchor;
-      anchor = number;
-      deps.markAnchor(previous, number, true);
-      const wasCurrent = current === number;
-      setCurrentRow(number);
-      // Keep rows arriving ahead of a walk, so a held key does not stall on the window's end.
-      if (list.rows.length - target <= 2 && list.nextAfter !== null) {
-        void loadWindow();
-      }
-      if (how.repeat === true) {
-        clearWalk();
-        walkingTo = number;
-        walkTimer = deps.schedule(() => {
-          walkTimer = null;
-          void openRow(number, REFRESH_ASK_MS, true);
-        }, WALK_SETTLE_MS);
-      } else {
-        void openRow(number, REFRESH_ASK_MS, true, wasCurrent);
-      }
-      return true;
     },
+    move,
     /** The key that was walking was let go: open what it stopped on. */
     released() {
       if (walkTimer !== null && walkingTo !== null) {
@@ -2699,6 +3017,7 @@ export function createPullsController(deps, options = {}) {
       }
       const wasCurrent = current === number;
       setCurrentRow(number);
+      anchorChosen = true;
       if (anchor !== number) {
         const previous = anchor;
         anchor = number;
@@ -2706,10 +3025,14 @@ export function createPullsController(deps, options = {}) {
       }
       void openRow(number, 0, false, wasCurrent);
     },
-    /** Open the anchor row on Enter. */
+    /** Open the anchor row on Enter; on a stack's row, open or close the stack. */
     activateAnchor() {
       if (disposed || anchor === null) {
         return false;
+      }
+      if (anchor < 0) {
+        setStackOpen(-anchor);
+        return true;
       }
       const wasCurrent = current === anchor;
       setCurrentRow(anchor);
@@ -2722,7 +3045,8 @@ export function createPullsController(deps, options = {}) {
      * @param {number} number
      */
     focused(number) {
-      if (!disposed && anchor !== number && held().keys.has(number)) {
+      if (!disposed && anchor !== number && grouping().at.has(number)) {
+        anchorChosen = true;
         const previous = anchor;
         anchor = number;
         deps.markAnchor(previous, number, false);
@@ -2746,11 +3070,53 @@ export function createPullsController(deps, options = {}) {
             PREFETCH_RESTED,
           );
           askFiles(0);
+          warmAhead();
         }
       }
     },
     /** The reader neared the end of the displayed rows. */
     reachedEnd: () => extendDisplay(),
+    /**
+     * The shared stack snapshot changed (pull-stacks.js, `watchStacks`).
+     *
+     * @param {import("./pull-stacks.js").StackIndex} index
+     */
+    setStacks(index) {
+      if (!disposed && index !== stackIndex) {
+        stackIndex = index;
+        regroup();
+        // The open pull request's stack neighbours may be known only now.
+        warmAhead();
+      }
+    },
+    setStackOpen,
+    /** Right on a stack's row: open it, or go to its first pull request. */
+    enterStack() {
+      if (disposed || anchor === null || anchor >= 0) {
+        return false;
+      }
+      if (!setStackOpen(-anchor, true)) {
+        move(1);
+      }
+      return true;
+    },
+    /** Left on a stack's row closes it; on a pull request in a stack it goes to the stack. */
+    leaveToStack() {
+      if (disposed || anchor === null) {
+        return false;
+      }
+      if (anchor < 0) {
+        setStackOpen(-anchor, false);
+        return true;
+      }
+      const stack = stackOfRow(anchor);
+      if (stack === null) {
+        return false;
+      }
+      clearWalk();
+      anchorAt(stackRowKey(stack));
+      return true;
+    },
     /** A press of Reload asks the repository's existing catalog job. */
     reload() {
       if (!live() || model().connection?.reload !== true || refreshReads.size > 0) {
@@ -2769,6 +3135,7 @@ export function createPullsController(deps, options = {}) {
     },
     onOffline() {
       cancelWarmTimer();
+      stopWarming();
       cancelCoreRetry();
       stopPrefetchWatch();
       warmRead?.abort();
@@ -2785,6 +3152,7 @@ export function createPullsController(deps, options = {}) {
       if (!visible()) {
         clearTimer();
         cancelReads();
+        stopWarming();
         return;
       }
       warmPaused = false;
@@ -2795,6 +3163,7 @@ export function createPullsController(deps, options = {}) {
       parked = true;
       clearTimer();
       cancelReads();
+      stopWarming();
     },
     resume() {
       parked = false;
@@ -2806,6 +3175,23 @@ export function createPullsController(deps, options = {}) {
       clearWalk();
       cancelReads();
       peeked.clear();
+    },
+    /**
+     * The envelope of *number*'s record as a peek read it, waiting for one on its way, or
+     * null, so a warm of its comparison does not read the record a second time.
+     *
+     * @param {number} number
+     * @returns {Promise<unknown>}
+     */
+    knownRecord(number) {
+      const had = peeked.get(number);
+      if (had !== undefined) {
+        return Promise.resolve(had.body);
+      }
+      if (reading?.number === number) {
+        return reading.done.then((answer) => answer?.body ?? null);
+      }
+      return Promise.resolve(null);
     },
     snapshot: () => ({
       filter,
@@ -2819,6 +3205,8 @@ export function createPullsController(deps, options = {}) {
       peeked: [...peeked.keys()],
       walkingTo,
       timer: timer === null ? null : pollDelay() === FAST_POLL_MS ? "fast" : "slow",
+      grouped: grouping().rows !== null,
+      closedStacks: [...closedStacks].sort((left, right) => left - right),
     }),
   });
 }
@@ -2936,6 +3324,13 @@ export function mountPullsPanel(container, ctx, mb) {
     connectionText,
     connectionHelp,
   ]);
+  // A pull request the address names that the list does not hold: a line of the band, as
+  // the Files tree's outside-filter note is, there only while it has something to say
+  // (docs/design-system.md, "Navigation Reveals the Item").
+  const outsideNote = h("p", {
+    class: "github-pulls-outside nav-metadata nav-metadata-note",
+    role: "status",
+  });
   const foot = h("div", { class: "github-pulls-foot" });
   // Below the last row held, while more are read or fetched: the nav's scan indicator, its
   // spinner and words (`.index-progress` in styles.css), after the shared quiet period.
@@ -2947,9 +3342,12 @@ export function mountPullsPanel(container, ctx, mb) {
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
-  // at the slot's height, so the list starts where the Files tree does.
+  // at the slot's height, so the list starts where the Files tree does. There they are a
+  // toolbar row, which wraps between its controls in a narrow pane, Reload last and at the
+  // line's end (`.nav-toolbar-row` in the shell's styles.css).
   const toolbar = nav.toolbar ?? null;
   if (toolbar) {
+    filters.classList.add("nav-toolbar-row");
     toolbar.replaceChildren(filters);
     container.replaceChildren(status, connection, list, empty, foot, live);
   } else {
@@ -2972,7 +3370,6 @@ export function mountPullsPanel(container, ctx, mb) {
    *   key: string,
    *   at: number | null,
    *   label: string,
-   *   releaseCopies: () => void,
    * }} PaintedRow
    */
   /** @type {Map<number, PaintedRow>} */
@@ -2982,16 +3379,52 @@ export function mountPullsPanel(container, ctx, mb) {
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
-  /** The rows last painted, in their order: an append leaves them as they were. @type {PullRow[]} */
+  /**
+   * The rows last painted, in their order: an append leaves them as they were. A pull
+   * request's row has its level and, under a stack's row, its stack and place in it.
+   *
+   * @typedef {{kind: "pull", key: number, row: PullRow, level: number, stack: number | null, posinset: number | null, setsize: number | null}
+   *   | {kind: "stack", key: number, group: import("./pull-stacks.js").StackGroupRow}} PaintedPlace
+   */
+  /** @type {PaintedPlace[]} */
   let paintedRows = [];
+  /** @type {number | string} */
   let paintedVersion = -1;
+  /**
+   * A stack's row as painted, by its row key (`stackRowKey`): its elements, and the key of
+   * what it shows.
+   *
+   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, key: string}} PaintedStack
+   */
+  /** @type {Map<number, PaintedStack>} */
+  const paintedStacks = new Map();
+  /** A drawn row's treeitem by its key: a pull request's number, or a stack's row key. */
+  const rowElement = (/** @type {number} */ key) =>
+    key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
   const rowWindow = createPullsWindow({ estimate: 41.5, overscan: PULL_ROWS_OVERSCAN });
   /** @type {Map<number, number>} */
   let rowIndices = new Map();
   /** @type {Map<string, HTMLElement>} */
   const gaps = new Map();
-  /** @type {{number: number, offset: number} | null} */
+  /**
+   * The row the reader is reading, its key and its distance from the scroller's top, which
+   * a paint keeps: the row a reveal scrolled to while it holds (`revealedPlace`), and
+   * otherwise a pull request's row or a stack's, the first one in view.
+   *
+   * @type {{key: number, offset: number} | null}
+   */
   let readingPlace = null;
+  /**
+   * Where a reveal put its row, and the scroll that put it there. Rows that arrive or regroup
+   * after the reveal, as stacks read after the list's first window do, leave the row where
+   * the reveal put it, until the list is scrolled other than by this view, as a reader
+   * scrolls it: kept as the first row in view, the row was regrouped out of view.
+   *
+   * @type {{key: number, offset: number, scrollTop: number} | null}
+   */
+  let revealedPlace = null;
+  /** Whether the rows last painted were grouped by stack. */
+  let paintedGrouped = false;
   /** @type {number | null} */
   let windowFrame = null;
   /** @type {number | null} */
@@ -3019,6 +3452,21 @@ export function mountPullsPanel(container, ctx, mb) {
   // Which rows show their changed files, and each one's tree, by number: open ones, and the
   // last MAX_HELD_TREES closed, so one opened again is as the reader left it.
   const expansion = createRowExpansion();
+  // The changed-files tree every row's files are drawn with, which a diff's Diff summary
+  // shares (static/changed-files-tree.js). It is asked for now, as the list mounts, so it is
+  // in hand before a reader opens a row; a tree opened first waits for it in its read. A load
+  // that failed is asked for again by the next read, so a tree's Retry can still draw.
+  /** @type {Promise<MetabrowserChangedFilesTree> | null} */
+  let changedFiles = null;
+  const loadChangedFiles = () => {
+    changedFiles ??= mb.loadChangedFilesTree().catch((error) => {
+      changedFiles = null;
+      console.error("metabrowser github: the changed-files tree did not load", error);
+      throw error;
+    });
+    return changedFiles;
+  };
+  void loadChangedFiles().catch(() => {});
   /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
   const trees = new Map();
   /** The tree a file row with focus is in, whose keys the host's file keys are. */
@@ -3123,6 +3571,8 @@ export function mountPullsPanel(container, ctx, mb) {
         lastInput: () => lastInputAt,
         held: (hold, heldMs, outcome) =>
           mb.perf.measure(`githubPulls:${hold}Hold`, () => {}, { number, heldMs, outcome }),
+        tree: loadChangedFiles,
+        formatCount: (count) => mb.formatInteger(count),
       });
       trees.set(number, tree);
       const entry = painted.get(number);
@@ -3204,19 +3654,29 @@ export function mountPullsPanel(container, ctx, mb) {
     return { at, ...when };
   }
 
-  /** A passive badge stays inside the row's one primary link.
+  /**
+   * A stack member's place in its stack, on its number's line, before the number: "1/6 ·
+   * #455 · author" (docs/design-system.md, "Stacks"). It has no stack icon of its own: the
+   * stack's row it sits under has it. The place of its row's own stack comes first, bare,
+   * and any other stack's is named by the Layers glyph before its number. A passive part of
+   * the row's one primary link, named by its accessible name; the Pulls column shows no
+   * tooltips (docs/design-system.md, "Tooltips Add Information").
+   *
    * @param {HTMLElement} element
    * @param {number} number
+   * @param {number | null} [under]
    */
-  function paintStackBadge(element, number) {
-    const caption = stackCaption(stackIndex, stackIdentity, number);
+  function paintPlace(element, number, under = null) {
+    const caption = stackCaption(stackIndex, stackIdentity, number, under);
     const text = caption?.text ?? "";
     const hint = caption?.hint ?? "";
-    if (element.dataset.stackLabel === text && element.dataset.tipText === hint) {
+    if (
+      element.dataset.stackLabel === text &&
+      (element.getAttribute("aria-label") ?? "") === hint
+    ) {
       return;
     }
     element.dataset.stackLabel = text;
-    element.dataset.tipText = hint;
     element.hidden = caption === null;
     if (caption === null) {
       element.replaceChildren();
@@ -3225,33 +3685,50 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     element.setAttribute("aria-label", hint);
     element.replaceChildren(
-      ...(stackSvg === null
-        ? []
-        : [
-            h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
-              document.importNode(stackSvg, true),
-            ]),
-          ]),
-      h("span", { class: "github-pull-stack-position" }, [text]),
+      h(
+        "span",
+        { class: "github-pull-stack-position" },
+        caption.parts.flatMap((part, at) => [
+          ...(at === 0 ? [] : [" · "]),
+          ...(part.stack === null
+            ? []
+            : [
+                h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }, [
+                  stackSvg === null ? null : document.importNode(stackSvg, true),
+                ]),
+                `${part.stack} `,
+              ]),
+          part.position,
+        ]),
+      ),
+      h("span", { class: "github-pulls-sep" }, [" · "]),
     );
   }
 
   /**
-   * The muted line: the number, the author, and the merge. The stack's position is not on
-   * it: it arrives from its own answer, and on this line, which wraps, it moved what was
-   * before it or took a line of its own and moved every row below. It is on the title
-   * line instead (`buildRow`).
+   * The number's line, on a row's first after the chevron and the state icon: a stack
+   * member's place (`paintPlace`), the number, and the author, with the age at the row's
+   * end; the title has the second line to itself, from the text column to the row's end
+   * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
+   * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
+   * is the row's first text, so its accessible name gives the state, from the state icon's
+   * label, and then the title, before the number's line.
    *
    * @param {PullRow} row
+   * @param {HTMLElement} place The row's place, kept across the line built again.
    */
-  function rowMeta(row) {
-    // A line that wraps (github/styles.css, `.github-pulls-line`): the author and the
-    // branches each carry the separator before them, so either moves to the next line
-    // whole, and a separator that starts a line is clipped.
+  function rowMeta(row, place) {
+    // One line (github/styles.css, `.github-pulls-meta`): the author carries the separator
+    // before it, so past its floor it leaves the line whole, onto a second line its box
+    // clips, and a separator that starts a line is clipped. The place and the number are
+    // one part, which never breaks.
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-line" }, [
-        h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+        h("span", { class: "github-pulls-id" }, [
+          place,
+          h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+        ]),
         h("span", { class: "github-pulls-by" }, [
           separator(),
           // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so
@@ -3259,14 +3736,6 @@ export function mountPullsPanel(container, ctx, mb) {
           // as the list scrolls back draws its avatar at once: WebKit fetches a new lazy
           // image again (docs/design-system.md, "A Repaint Keeps Its Images").
           authorLabel(row.author, row.avatar, "github-pulls-author", { loading: "eager" }),
-        ]),
-        h("span", { class: "github-pulls-merge" }, [
-          separator(),
-          mb.mergeRefs(
-            { name: row.headRef, label: row.headLabel },
-            { name: row.baseRef },
-            { kind: "remote", copy: "sibling" },
-          ),
         ]),
       ]),
     ]);
@@ -3277,7 +3746,7 @@ export function mountPullsPanel(container, ctx, mb) {
   function patchRow(entry, row, key) {
     const before = entry.info;
     if (row.title !== before.title) {
-      entry.title.textContent = row.title;
+      entry.title.replaceChildren(...mb.titleNodes(row.title));
     }
     if (row.state !== before.state) {
       const icon = pullStateIcon(row.state);
@@ -3291,23 +3760,12 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.label = when.label;
       entry.age.textContent = when.label;
       entry.age.className = `github-pulls-age ${when.className}`;
-      if (when.at === null) {
-        entry.age.removeAttribute("data-tip-text");
-      } else {
-        entry.age.dataset.tipText = mb.formatTimestamp(when.at);
-      }
     }
-    if (
-      row.avatar !== before.avatar ||
-      row.meta !== before.meta ||
-      row.headRef !== before.headRef
-    ) {
-      entry.releaseCopies();
-      const meta = rowMeta(row);
+    if (row.avatar !== before.avatar || row.meta !== before.meta) {
+      const meta = rowMeta(row, entry.stack);
       entry.row.insertBefore(meta, entry.meta);
       entry.meta.remove();
       entry.meta = meta;
-      entry.releaseCopies = mb.mountRefCopies(entry.row, entry.item);
     }
     entry.info = row;
     entry.key = key;
@@ -3323,22 +3781,18 @@ export function mountPullsPanel(container, ctx, mb) {
   function buildRow(row, key) {
     const when = rowAge(row);
     const { at } = when;
-    const title = h("span", { class: "github-pulls-title" }, [row.title]);
-    const updated = h(
-      "span",
-      {
-        class: `github-pulls-age ${when.className}`,
-        ...(at === null ? {} : { "data-tip-text": mb.formatTimestamp(at) }),
-      },
-      [when.label],
-    );
-    // The stack's position has a column of its own on the title line, between the title
-    // and the age: arriving, it cuts the title shorter and moves nothing.
-    const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
-    paintStackBadge(stack, row.number);
-    const meta = rowMeta(row);
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    const title = h("span", { class: "github-pulls-title" }, mb.titleNodes(row.title));
+    // No tooltip, as nothing in the Pulls column has one: the page has the exact time
+    // (docs/design-system.md, "Tooltips Add Information").
+    const updated = h("span", { class: `github-pulls-age ${when.className}` }, [when.label]);
+    // A stack member's place, on the number's line (`rowMeta`); empty and hidden until the
+    // row sits under a stack's row.
+    const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
+    const meta = rowMeta(row, stack);
     const icon = pullStateIcon(row.state);
-    // The registry's chevron in the 16px box a folder's takes, since the row is a container.
+    // The registry's chevron in the slot a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and `placeRows` tells its place.
@@ -3353,7 +3807,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-expanded": "false",
           tabindex: "-1",
         },
-        [toggle, icon, title, stack, updated, meta],
+        [toggle, icon, title, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -3378,19 +3832,107 @@ export function mountPullsPanel(container, ctx, mb) {
       key,
       at,
       label: when.label,
-      releaseCopies: mb.mountRefCopies(anchor, item),
     };
   }
 
   /**
-   * Retain the logical row order and measurements; only the viewport builds DOM rows.
+   * Retain the logical row order and measurements; only the viewport builds DOM rows. The
+   * order is the list's, or, grouped by stack, the model's rows: each stack's row, its pull
+   * requests at the second level, then every pull request in no stack.
    *
-   * @param {PullRow[]} rows
+   * @param {PullsModel} model
    */
-  function paintRows(rows) {
-    paintedRows = rows.slice();
-    rowIndices = new Map(rows.map((row, index) => [row.number, index]));
-    rowWindow.setRows(rows.map((row) => row.number));
+  function paintRows(model) {
+    /** @type {PaintedPlace[]} */
+    const places = [];
+    if (model.stacks.rows === null) {
+      for (const row of model.rows) {
+        places.push({
+          kind: "pull",
+          key: row.number,
+          row,
+          level: 1,
+          stack: null,
+          posinset: null,
+          setsize: null,
+        });
+      }
+    } else {
+      const byNumber = new Map(model.rows.map((row) => [row.number, row]));
+      for (const entry of model.stacks.rows) {
+        const row = entry.kind === "pull" ? byNumber.get(entry.number) : undefined;
+        if (entry.kind === "stack") {
+          places.push({ kind: "stack", key: entry.key, group: entry });
+        } else if (row !== undefined) {
+          places.push({
+            kind: "pull",
+            key: entry.key,
+            row,
+            level: entry.level,
+            stack: entry.stack,
+            posinset: entry.posinset,
+            setsize: entry.setsize,
+          });
+        }
+      }
+    }
+    paintedRows = places;
+    rowIndices = new Map(paintedRows.map((entry, index) => [entry.key, index]));
+    rowWindow.setRows(paintedRows.map((entry) => entry.key));
+  }
+
+  /**
+   * A stack's row: the chevron, the Layers icon, and the stack's label in the label register
+   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"). It
+   * draws no tally: its pull requests are the rows under it ("Heading Tallies"), and its
+   * accessible name says how many. A row of the tree that opens and closes, as a folder is;
+   * it opens no page, so it is not a link.
+   *
+   * @param {import("./pull-stacks.js").StackGroupRow} group
+   * @returns {PaintedStack}
+   */
+  function paintStackRow(group) {
+    let entry = paintedStacks.get(group.key);
+    if (entry === undefined) {
+      const label = h("span", { class: "group-heading github-pull-stack-label" });
+      const row = h(
+        "div",
+        {
+          class: "github-pulls-row github-pulls-stack-row disclosure-toggle",
+          role: "treeitem",
+          "aria-level": "1",
+          tabindex: "-1",
+        },
+        [
+          h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
+          h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
+            stackSvg === null ? null : document.importNode(stackSvg, true),
+          ]),
+          label,
+        ],
+      );
+      row.dataset.stack = String(group.stack.number);
+      const item = h("li", { class: "github-pulls-item github-pulls-stack-item", role: "none" }, [
+        row,
+      ]);
+      item.dataset.number = String(group.key);
+      entry = { item, row, label, key: "" };
+      paintedStacks.set(group.key, entry);
+      rowSizes?.observe(item);
+    }
+    const key = JSON.stringify([group.label, group.hint, group.expanded]);
+    if (entry.key !== key) {
+      entry.key = key;
+      entry.label.textContent = group.label;
+      entry.row.setAttribute("aria-label", group.hint);
+      entry.row.setAttribute("aria-expanded", String(group.expanded));
+      entry.row.classList.toggle("expanded", group.expanded);
+      entry.row.classList.toggle("collapsed", !group.expanded);
+    }
+    entry.row.setAttribute("aria-posinset", String(group.posinset));
+    entry.row.setAttribute("aria-setsize", String(group.setsize));
+    entry.row.setAttribute("tabindex", group.key === anchorRow ? "0" : "-1");
+    return entry;
   }
 
   function visiblePlace() {
@@ -3398,16 +3940,39 @@ export function mountPullsPanel(container, ctx, mb) {
     if (view === undefined) {
       return null;
     }
-    const visible = [...painted.entries()].sort(
-      (left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0),
-    );
-    for (const [number, entry] of visible) {
-      const box = entry.item.getBoundingClientRect();
+    // Every drawn row, a stack's included: opening a stack at the top of the view keeps its
+    // header where it is, rather than the pull request after it.
+    const visible = [
+      ...[...painted.entries()].map(([key, entry]) => /** @type {const} */ ([key, entry.item])),
+      ...[...paintedStacks.entries()].map(
+        ([key, entry]) => /** @type {const} */ ([key, entry.item]),
+      ),
+    ].sort((left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0));
+    for (const [key, item] of visible) {
+      const box = item.getBoundingClientRect();
       if (box.bottom > view.top && box.top < view.bottom) {
-        return { number, offset: box.top - view.top };
+        return { key, offset: box.top - view.top };
       }
     }
     return null;
+  }
+
+  /**
+   * The place a paint keeps: a reveal's, until the list is scrolled other than by this view,
+   * and otherwise the first row in view.
+   *
+   * @returns {{key: number, offset: number} | null}
+   */
+  function keptPlace() {
+    if (
+      revealedPlace !== null &&
+      Math.abs((tab.scrollRoot?.scrollTop ?? 0) - revealedPlace.scrollTop) >= 1
+    ) {
+      revealedPlace = null;
+    }
+    return revealedPlace === null
+      ? visiblePlace()
+      : { key: revealedPlace.key, offset: revealedPlace.offset };
   }
 
   function queueWindow() {
@@ -3545,9 +4110,15 @@ export function mountPullsPanel(container, ctx, mb) {
       }
       rowSizes?.unobserve(entry.item);
       trees.get(number)?.detach();
-      entry.releaseCopies();
       entry.item.remove();
       painted.delete(number);
+    }
+    for (const [key, entry] of paintedStacks) {
+      if (!wanted.has(key)) {
+        rowSizes?.unobserve(entry.item);
+        entry.item.remove();
+        paintedStacks.delete(key);
+      }
     }
     /** @type {Node[]} */
     const nodes = [];
@@ -3569,7 +4140,12 @@ export function mountPullsPanel(container, ctx, mb) {
         nodes.push(gap);
         continue;
       }
-      const row = paintedRows[part.index];
+      const placed = paintedRows[part.index];
+      if (placed.kind === "stack") {
+        nodes.push(paintStackRow(placed.group).item);
+        continue;
+      }
+      const row = placed.row;
       const key = JSON.stringify(row);
       let entry = painted.get(row.number);
       if (entry === undefined) {
@@ -3581,9 +4157,13 @@ export function mountPullsPanel(container, ctx, mb) {
       } else if (entry.key !== key) {
         patchRow(entry, row, key);
       }
-      paintStackBadge(entry.stack, row.number);
-      entry.row.setAttribute("aria-posinset", String(part.index + 1));
-      entry.row.setAttribute("aria-setsize", String(placedSize));
+      paintPlace(entry.stack, row.number, placed.stack);
+      // A pull request under a stack's row is a level in, and its changed files with it
+      // (`--github-pulls-level` in github/styles.css; pull-files-view.js reads the level).
+      entry.row.setAttribute("aria-level", String(placed.level));
+      entry.item.dataset.level = String(placed.level);
+      entry.row.setAttribute("aria-posinset", String(placed.posinset ?? part.index + 1));
+      entry.row.setAttribute("aria-setsize", String(placed.setsize ?? placedSize));
       nodes.push(entry.item);
     }
     for (const [key, gap] of gaps) {
@@ -3605,12 +4185,22 @@ export function mountPullsPanel(container, ctx, mb) {
       alignRefreshing(list);
     }
     if (readingPlace !== null && tab.scrollRoot !== null) {
-      const entry = painted.get(readingPlace.number);
-      if (entry !== undefined && view !== undefined) {
-        const delta = entry.item.getBoundingClientRect().top - view.top - readingPlace.offset;
+      const item =
+        readingPlace.key < 0
+          ? paintedStacks.get(readingPlace.key)?.item
+          : painted.get(readingPlace.key)?.item;
+      if (item !== undefined && view !== undefined) {
+        const delta = item.getBoundingClientRect().top - view.top - readingPlace.offset;
         if (Math.abs(delta) >= 0.5) {
           tab.scrollRoot.scrollTop += delta;
         }
+        if (revealedPlace?.key === readingPlace.key) {
+          // Where the row is now: at the list's top or end, the scroll falls short of it.
+          revealedPlace.offset = item.getBoundingClientRect().top - view.top;
+        }
+      }
+      if (revealedPlace !== null) {
+        revealedPlace.scrollTop = tab.scrollRoot.scrollTop;
       }
     }
     if (focusBefore !== null && document.activeElement === document.body) {
@@ -3618,7 +4208,7 @@ export function mountPullsPanel(container, ctx, mb) {
         ? focusBefore
         : focused === null
           ? null
-          : painted.get(focused)?.row;
+          : rowElement(focused);
       arriving?.focus({ preventScroll: true });
     }
     // An arrival only belongs to this paint. Overscan, protected offscreen rows,
@@ -3641,7 +4231,7 @@ export function mountPullsPanel(container, ctx, mb) {
         }
       }
     }
-    readingPlace = visiblePlace();
+    readingPlace = keptPlace();
     for (const number of painted.keys()) {
       const tree = trees.get(number);
       tree?.controller.setShown(panelShown);
@@ -3662,10 +4252,12 @@ export function mountPullsPanel(container, ctx, mb) {
     placedSize = size;
     for (const [number, entry] of painted) {
       const index = rowIndices.get(number);
+      const placed = index === undefined ? undefined : paintedRows[index];
+      const grouped = placed?.kind === "pull" && placed.posinset !== null ? placed : null;
       if (index !== undefined) {
-        entry.row.setAttribute("aria-posinset", String(index + 1));
+        entry.row.setAttribute("aria-posinset", String(grouped?.posinset ?? index + 1));
       }
-      entry.row.setAttribute("aria-setsize", String(size));
+      entry.row.setAttribute("aria-setsize", String(grouped?.setsize ?? size));
     }
   }
 
@@ -3700,13 +4292,17 @@ export function mountPullsPanel(container, ctx, mb) {
       list.dataset.filter = model.filter;
       for (const [number, entry] of painted) {
         rowSizes?.unobserve(entry.item);
-        entry.releaseCopies();
         trees.get(number)?.detach();
       }
       painted.clear();
+      for (const entry of paintedStacks.values()) {
+        rowSizes?.unobserve(entry.item);
+      }
+      paintedStacks.clear();
       paintedRows = [];
       gaps.clear();
       readingPlace = null;
+      revealedPlace = null;
       list.replaceChildren();
       paintedVersion = -1;
       for (const { chip } of tallies) {
@@ -3715,12 +4311,26 @@ export function mountPullsPanel(container, ctx, mb) {
         chip.tabIndex = on ? 0 : -1;
       }
     }
-    if (arrivals.length > 0 && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+    // A row a reveal put in view holds its place over arrivals and a regroup, at the top too.
+    const atTop = revealedPlace === null && (tab.scrollRoot?.scrollTop ?? 0) <= 0;
+    if (arrivals.length > 0 && atTop) {
       readingPlace = null;
     }
-    if (model.rowsVersion !== paintedVersion) {
-      paintedVersion = model.rowsVersion;
-      paintRows(model.rows);
+    // Flat rows change with the list's rows; grouped rows with the grouping too.
+    const version =
+      model.stacks.rows === null
+        ? model.rowsVersion
+        : `${model.rowsVersion}:${model.stacks.version}`;
+    if (version !== paintedVersion) {
+      // A grouped order replacing the drawn one at the top of the list, as the stacks arriving
+      // after the first paint or the option turned on, keeps the top, as arrivals at the top
+      // do: kept in place, the first pull request read pushed the stacks' rows above the view.
+      if ((model.stacks.rows !== null || paintedGrouped) && atTop) {
+        readingPlace = null;
+      }
+      paintedGrouped = model.stacks.rows !== null;
+      paintedVersion = version;
+      paintRows(model);
       placeRows(model.setSize);
     } else if (model.setSize !== placedSize) {
       placeRows(model.setSize);
@@ -3756,7 +4366,9 @@ export function mountPullsPanel(container, ctx, mb) {
           model.countNumber === null || model.countSuffix === null
             ? [repository]
             : [
-                h("span", { class: "github-pulls-total" }, [model.countNumber]),
+                // The number bold, as every count summary's (docs/design-system.md, "Count
+                // Summaries Bold Their Numbers"), and the words in the line's weight.
+                h("span", { class: "github-pulls-total summary-number" }, [model.countNumber]),
                 model.countSuffix,
                 repository,
               ],
@@ -3854,7 +4466,7 @@ export function mountPullsPanel(container, ctx, mb) {
   nav.scrollRoot?.addEventListener(
     "scroll",
     () => {
-      readingPlace = visiblePlace();
+      readingPlace = keptPlace();
       queueWindow();
     },
     { passive: true, signal },
@@ -3862,6 +4474,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   // A key moved the focus, and not a reader arriving at a row: a walk reads nothing per row.
   let movingFocus = false;
+  /** @type {ReturnType<typeof createComparisonWarmer> | null} */
+  let warmer = null;
 
   const controller = createPullsController(
     {
@@ -3916,10 +4530,10 @@ export function mountPullsPanel(container, ctx, mb) {
         anchorRow = next;
         paintViewport();
         if (previous !== null) {
-          painted.get(previous)?.row.setAttribute("tabindex", "-1");
+          rowElement(previous)?.setAttribute("tabindex", "-1");
         }
         if (next !== null) {
-          const row = painted.get(next)?.row;
+          const row = rowElement(next);
           row?.setAttribute("tabindex", "0");
           if (focus && row) {
             movingFocus = true;
@@ -3931,13 +4545,70 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       reveal(number) {
         paintViewport();
-        painted.get(number)?.row.scrollIntoView({ block: "nearest" });
+        const entry = painted.get(number);
+        entry?.row.scrollIntoView({ block: "nearest" });
+        const view = tab.scrollRoot?.getBoundingClientRect();
+        revealedPlace = null;
+        // A hidden panel's rows have no place, and its tab's reveal comes when it is shown.
+        if (entry !== undefined && view !== undefined && tab.scrollRoot !== null && panelShown) {
+          const offset = entry.item.getBoundingClientRect().top - view.top;
+          revealedPlace = { key: number, offset, scrollTop: tab.scrollRoot.scrollTop };
+          readingPlace = { key: number, offset };
+        }
+      },
+      markOutside(text) {
+        if (text === null) {
+          outsideNote.remove();
+          return;
+        }
+        outsideNote.textContent = text;
+        if (!outsideNote.isConnected) {
+          connection.after(outsideNote);
+        }
       },
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
+      warmComparisons: (numbers) => warmer?.want(numbers),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
+  // The comparisons of the pull requests a reader opens next, kept for the document so their
+  // pages draw the Diff summary at once (comparison-prefetch.js). A record is the peek's when
+  // a peek read it, and otherwise one cache read, which never asks GitHub and, marked
+  // `warm=1`, is not counted as a view: the server's prefetch lane refreshes the records a
+  // reader viewed last, and a warm is not one. Warming is idle work, so an SDK without
+  // `whenIdle`, as a session's that drives the panel alone is, has none, as one without
+  // `shortcuts` has no numbered controls below.
+  warmer =
+    typeof mb.whenIdle !== "function"
+      ? null
+      : createComparisonWarmer({
+          async read(number, readSignal) {
+            let envelope = await controller.knownRecord(number);
+            if (envelope === null) {
+              const response = await request(
+                mb.perf,
+                "GET",
+                `${PULL_ROUTE}?number=${number}&warm=1`,
+                { signal: readSignal },
+              );
+              envelope = response.status === 200 ? response.body : null;
+            }
+            if (!isPullEnvelope(envelope) || envelope.number !== number) {
+              throw new Error(`no record of pull request ${number}`);
+            }
+            return {
+              comparison: pullComparison(envelope),
+              // The record's own freshness window, past which its head may have moved.
+              freshForMs: envelope.fresh_for_s * 1000,
+            };
+          },
+          load: diffComparisonLoader(mb),
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible",
+          now: () => Date.now(),
+        });
 
   const unbindFilters = controls.bind(filters, {
     onChange(key, value, select) {
@@ -3979,9 +4650,22 @@ export function mountPullsPanel(container, ctx, mb) {
       ? /** @type {HTMLAnchorElement | null} */ (target.closest("a.github-pulls-row"))
       : null;
 
+  /** @param {EventTarget | null} target */
+  const stackRowOf = (target) =>
+    target instanceof Element
+      ? /** @type {HTMLElement | null} */ (target.closest(".github-pulls-stack-row"))
+      : null;
   list.addEventListener(
     "click",
     (event) => {
+      const stackRow = stackRowOf(event.target);
+      if (stackRow !== null && isPlainClick(event)) {
+        // One gesture, as a folder's: the row takes the anchor and opens or closes.
+        const number = Number(stackRow.dataset.stack);
+        controller.focused(stackRowKey(number));
+        controller.setStackOpen(number);
+        return;
+      }
       const row = rowOf(event.target);
       // A new tab and a copied address are the browser's own.
       if (row !== null && isPlainClick(event)) {
@@ -3998,6 +4682,11 @@ export function mountPullsPanel(container, ctx, mb) {
   list.addEventListener(
     "focusin",
     (event) => {
+      const stackRow = stackRowOf(event.target);
+      if (stackRow !== null && !movingFocus) {
+        controller.focused(stackRowKey(Number(stackRow.dataset.stack)));
+        return;
+      }
       const row = rowOf(event.target);
       if (row !== null && !movingFocus) {
         const number = Number(row.dataset.number);
@@ -4027,16 +4716,6 @@ export function mountPullsPanel(container, ctx, mb) {
       const row = rowOf(event.target);
       if (row === null) {
         return;
-      }
-      // Cut short by an ellipsis, a row's tooltip carries the whole of it.
-      for (const part of row.querySelectorAll(".github-pulls-title, .github-pulls-meta")) {
-        if (part instanceof HTMLElement) {
-          if (part.scrollWidth > part.clientWidth) {
-            part.dataset.tipText = part.textContent ?? "";
-          } else {
-            delete part.dataset.tipText;
-          }
-        }
       }
       window.clearTimeout(peekTimer);
       const number = Number(row.dataset.number);
@@ -4127,6 +4806,7 @@ export function mountPullsPanel(container, ctx, mb) {
   const stacks = watchStacks((index) => {
     const hadMembership = stackIndex.byPull.size > 0;
     stackIndex = index;
+    controller.setStacks(index);
     if (!windowDisposed && painted.size > 0 && (hadMembership || index.byPull.size > 0)) {
       queueWindow();
     }
@@ -4145,6 +4825,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (visible) {
         queueWindow();
       } else {
+        revealedPlace = null;
         cancelCoreSample();
         // Hiding the tab cancels its animations without an animationend event.
         clearArrivalFlashes();
@@ -4154,11 +4835,12 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     },
     /**
-     * The address names a pull request's page, and maybe one file of it.
+     * The address names a pull request's page, and maybe one file of it. *again* reveals
+     * the pull request already current (the controller's `setCurrent`).
      *
      * @param {number | null} number
      * @param {string | null} [file]
-     * @param {{preserveScroll?: boolean}} [options]
+     * @param {{preserveScroll?: boolean, again?: boolean}} [options]
      */
     setCurrent(number, file = null, options) {
       if (currentRow !== null && currentRow !== number) {
@@ -4196,11 +4878,19 @@ export function mountPullsPanel(container, ctx, mb) {
       toggleRowFiles(number);
       return true;
     },
-    /** Right on a pull request's row: its files open, or focus goes to the first. */
+    /** Space on a stack's row opens or closes it. @param {number} number */
+    toggleStack: (number) => controller.setStackOpen(number),
+    /**
+     * Right on a pull request's row: its files open, or focus goes to the first. On a
+     * stack's row: it opens, or focus goes to its first pull request.
+     */
     expand() {
       const number = controller.snapshot().anchor;
       if (number === null) {
         return false;
+      }
+      if (number < 0) {
+        return controller.enterStack();
       }
       if (expansion.expand(number)) {
         setExpanded(number, true);
@@ -4209,11 +4899,18 @@ export function mountPullsPanel(container, ctx, mb) {
       }
       return true;
     },
-    /** Left on a pull request's row: its files close. */
+    /**
+     * Left on a pull request's row: its files close, or, closed, focus goes to the stack's
+     * row it is under. On a stack's row: it closes.
+     */
     collapse() {
       const number = controller.snapshot().anchor;
-      if (number !== null && expansion.collapse(number)) {
+      if (number !== null && number > 0 && expansion.collapse(number)) {
         setExpanded(number, false);
+        return true;
+      }
+      if (number !== null) {
+        controller.leaveToStack();
       }
       return number !== null;
     },
@@ -4222,6 +4919,21 @@ export function mountPullsPanel(container, ctx, mb) {
     fileLeft: () => focused()?.left() ?? false,
     fileRight: () => focused()?.right() ?? false,
     activateFile: () => focused()?.activateAnchor() ?? false,
+    /**
+     * Home (static/main-tabs.js, `goHome`): the list as a fresh load of `/view/` draws it.
+     * Every row's changed files close, whoever opened them, with no read, and the rows go
+     * back to every stack open and the Tab stop on the first. The lists of changed files
+     * already read stay held, as the rows do, so a row opened again opens at once, with
+     * the folders in it as the reader left them.
+     */
+    home() {
+      for (const key of Object.keys(expansion.snapshot())) {
+        const number = Number(key);
+        expansion.collapse(number);
+        setExpanded(number, false);
+      }
+      controller.home();
+    },
     dispose() {
       windowDisposed = true;
       cancelCoreSample();
@@ -4239,14 +4951,13 @@ export function mountPullsPanel(container, ctx, mb) {
       unbindFilters();
       stacks.dispose();
       controller.dispose();
+      warmer?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }
       trees.clear();
-      for (const entry of painted.values()) {
-        entry.releaseCopies();
-      }
       painted.clear();
+      paintedStacks.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();
       filters.remove();

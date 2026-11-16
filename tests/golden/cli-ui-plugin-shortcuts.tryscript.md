@@ -114,19 +114,19 @@ $ node tests/dom/plugin-shortcuts-session.js
       ]
     },
     {
-      "step": "T and N are the shell's: refused, with one warning for each command id",
+      "step": "T and J are the shell's: refused, with one warning for each command id",
       "keys": ["L plugin.demo.layout: Unified","M plugin.demo.moved: After"],
       "aria": ["Unified: L","Stale: none","Before: none","After: M","Find: none","Next: none"],
       "handledT": false,
-      "handledN": false,
-      "warned": ["shortcuts.attach: demo.find cannot have T, which the shell reserves; its control has no key","shortcuts.attach: demo.next cannot have N, which the shell reserves; its control has no key"]
+      "handledJ": false,
+      "warned": ["shortcuts.attach: demo.find cannot have T, which the shell reserves; its control has no key","shortcuts.attach: demo.next cannot have J, which the shell reserves; its control has no key"]
     },
     {
       "step": "every letter tried: the facade refuses exactly the reserved ones",
       "keys": ["L plugin.demo.layout: Unified","M plugin.demo.moved: After"],
       "aria": ["Unified: L","Stale: none","Before: none","After: M","Find: none","Next: none"],
-      "reservedKeys": ["1: every kind","2: every kind","3: every kind","4: every kind","5: every kind","6: every kind","7: every kind","8: every kind","9: every kind","f: every kind","h: every kind","j: every kind","k: every kind","n: every kind","p: every kind","r: every kind","t: every kind","u: every kind","w: every kind"],
-      "refused": ["f","h","j","k","n","p","r","t","u","w"]
+      "reservedKeys": ["0: every kind","1: every kind","2: every kind","3: every kind","4: every kind","5: every kind","6: every kind","7: every kind","8: every kind","9: every kind","f: every kind","h: every kind","j: every kind","k: every kind","p: every kind","t: every kind","u: every kind","w: every kind"],
+      "refused": ["f","h","j","k","p","t","u","w"]
     },
     {
       "step": "two plugins on O, both shown: the earlier runs and badges, the later is warned",

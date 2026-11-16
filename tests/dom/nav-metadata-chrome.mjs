@@ -22,7 +22,10 @@
 // band is its lines and nothing else. At the wide width, where every state's text fits on
 // its lines, each tab's band is one height in every state; at the default width a Pulls
 // remedy and the Files split wrap, as they should. In a narrow pane the Pulls count is cut
-// short on its one line.
+// short on its one line. And in a pane too narrow for it, the Commits tally, which stands in
+// the toolbar slot, wraps between its phrases at its own line height, as the tab bar over
+// it wraps between its tabs (docs/design-system.md, "Navigation Toolbars Wrap"), held to
+// that rule by tests/dom/nav-toolbar-wrap.mjs at every width from the narrowest.
 //
 // The states are the real ones where the running app can reach them, and otherwise the
 // markup the production code writes: the server's own Commits slot, read from the page it
@@ -33,6 +36,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { judge, linesOf, NARROWEST, SWEEP, WIDTHS } from "./nav-toolbar-wrap.mjs";
 
 const [base] = process.argv.slice(2);
 const { GH_HOLD: HOLD, GH_SCENARIO: SCENARIO, GH_BIN } = process.env;
@@ -106,6 +110,15 @@ const BAND = `(() => {
     return {
       cls: el.className,
       text: el.textContent.replace(/\\s+/g, " ").trim(),
+      // What the line reads as laid out: each item of the flex line is a run of its own.
+      innerText: el.innerText,
+      // A count summary's numbers, each with its weight and the display of what holds it
+      // ("Count Summaries Bold Their Numbers"): inline in one item, never an item itself.
+      numbers: [...el.querySelectorAll(".summary-number")].map((number) => ({
+        text: number.textContent,
+        weight: getComputedStyle(number).fontWeight,
+        within: getComputedStyle(number.parentElement).display,
+      })),
       note: el.classList.contains("nav-metadata-note"),
       fontSize: cs.fontSize,
       fontWeight: cs.fontWeight,
@@ -215,6 +228,97 @@ try {
   await click('.nav-tab-bar [data-tab="git"]');
   await waitFor(`document.querySelector(".git-history-summary-count") !== null`);
   await measure("commits");
+  // The Commits tally and the tab bar wrap in a pane too narrow for them: every width from
+  // the narrowest, in both font sets, the tally as the stand-in has it and as a large, old
+  // repository's reads. Each is held to the wrap rule; the tally's lines are its own line
+  // height apart, with no gap, and the tabs' a tab's height.
+  const COMMITS = {
+    bar: "#nav-toolbar-git",
+    row: "#nav-toolbar-git .nav-metadata",
+    tokens: {
+      pad: "var(--nav-metadata-padding-y)",
+      line: "calc(var(--nav-metadata-line-height) * var(--nav-font-size))",
+      column: "var(--nav-metadata-gap)",
+    },
+  };
+  const TABS = { bar: ".nav-tab-bar", row: ".nav-tab-bar", tokens: {} };
+  // The tally the stand-in settles at, not the pending shimmer, which has a count span too:
+  // its first commit's age lands with its count. Each case writes its own markup in the
+  // sweep's own page call, so what a sweep measures does not depend on when the summary
+  // lands or whether the panel draws it again.
+  await waitFor(`document.querySelector("#nav-toolbar-git .git-history-summary-first") !== null`);
+  const SUMMARY = `document.querySelector("#nav-toolbar-git .git-history-summary")`;
+  const tallyOf = (html) => `(() => { ${SUMMARY}.innerHTML = ${JSON.stringify(html)}; })()`;
+  const TALLY = tallyOf(await evaluate(`${SUMMARY}.innerHTML`));
+  // The spans git-panel.js (renderHistorySummary) writes, with a large, old repository's text.
+  const LONG_TALLY = tallyOf(
+    '<span class="git-history-summary-count"><span class="summary-number">123,456</span> commits</span>' +
+      '<span class="git-history-summary-first"><span>begun</span>' +
+      '<span class="git-history-summary-age age-old">12mo</span><span>ago</span></span>',
+  );
+  const sweep = (spec, before = "undefined") =>
+    evaluate(`(${before}, (${SWEEP})(${JSON.stringify({ widths: WIDTHS, ...spec })}))`);
+  const wrapped = {
+    tally: await evaluate(
+      `[...${SUMMARY}.querySelectorAll(".git-history-summary-count, .git-history-summary-first > span")].map((span) => span.textContent).join(" ")`,
+    ),
+  };
+  for (const set of ["clean", "system"]) {
+    await evaluate(
+      `document.documentElement.setAttribute("data-app-font", ${JSON.stringify(set)})`,
+    );
+    await evaluate("document.fonts.ready.then(() => true)");
+    await frames();
+    for (const [name, before] of [
+      ["the tally", TALLY],
+      ["a long tally", LONG_TALLY],
+    ]) {
+      const measured = await sweep(COMMITS, before);
+      const { pad, line, column } = measured.tokens;
+      const verdict = judge(`Commits, ${name}, ${set} fonts`, measured, {
+        pad,
+        line,
+        gap: 0,
+        column,
+      });
+      check(
+        `Commits, ${name}, ${set} fonts: keeps the wrap rule`,
+        verdict.failures.length === 0,
+        verdict.failures.slice(0, 6).join("\n"),
+      );
+      wrapped[`commits, ${name}, ${set}`] = verdict.oneLineFrom;
+    }
+    // The settled tally back in place of the long one.
+    await evaluate(TALLY);
+    const tabs = await sweep(TABS);
+    // A tab is its own line: its height, as the widest pane draws it.
+    const tab = tabs.rows.at(-1).units[0];
+    const verdict = judge(`the tab bar, ${set} fonts`, tabs, {
+      pad: 0,
+      line: tab.bottom - tab.top,
+      gap: 0,
+      column: 0,
+      overlap: 1,
+    });
+    check(
+      `the tab bar, ${set} fonts: keeps the wrap rule`,
+      verdict.failures.length === 0,
+      verdict.failures.slice(0, 6).join("\n"),
+    );
+    check(
+      `the tab bar, ${set} fonts: wraps at the narrowest pane, Commits under Files and Pulls`,
+      JSON.stringify(
+        linesOf(tabs.rows.find((row) => row.width === NARROWEST)).map((l) =>
+          l.units.map((u) => u.name),
+        ),
+      ) === JSON.stringify([["files", "pulls"], ["git"]]),
+    );
+    wrapped[`tabs, ${set}`] = verdict.oneLineFrom;
+  }
+  await evaluate(`document.documentElement.setAttribute("data-app-font", "clean")`);
+  await evaluate("document.fonts.ready.then(() => true)");
+  await frames();
+  phase(`wrapped ${JSON.stringify(wrapped)}`);
   // The slot as the server ships it, before the count arrives, read from the page it serves.
   await evaluate(`(async () => {
     const page = await (await fetch("/view/")).text();
@@ -302,6 +406,18 @@ for (const [width, measured] of [
       if (line.textLeft !== null) {
         check(`${where}: inset`, near(line.textLeft, reference.textLeft), `${line.textLeft}`);
       }
+      // A count summary's number is bold, and inline in one item of the line with its
+      // words: as an item of its own, the line's gap would part it from them, and it
+      // would read as a run of its own (docs/design-system.md, "Count Summaries Bold Their
+      // Numbers").
+      for (const number of line.numbers) {
+        check(`${where}: ${number.text} is bold`, number.weight === "700", number.weight);
+        check(
+          `${where}: ${number.text} is inline in its item`,
+          !/flex|grid/.test(number.within),
+          number.within,
+        );
+      }
       // A pending tally sits where its figures will: across the middle of the line box,
       // where the text's own middle is, not at its top.
       for (const middle of line.shimmers) {
@@ -320,6 +436,33 @@ for (const [width, measured] of [
   }
 }
 check("a remark is muted", notes.length > 0 && notes[0].color !== reference?.color);
+// The filter's remark is one item of its line: its number bold and inline with its words,
+// so it reads as one run, its spaces where they are written (mb-roa9).
+for (const [width, measured] of [
+  ["default", bands],
+  ["wide", wide],
+]) {
+  const remark = measured["files filtered"]?.lines.find((line) =>
+    line.cls.split(" ").includes("tree-summary-filtered"),
+  );
+  check(
+    `files filtered (${width}): the remark's one number`,
+    JSON.stringify(remark?.numbers.map((number) => number.text)) === JSON.stringify(["2"]),
+    JSON.stringify(remark?.numbers),
+  );
+  check(
+    `files filtered (${width}): the remark reads as one run`,
+    remark?.innerText === remark?.text && remark?.text === "Filtered to 2 files.",
+    JSON.stringify(remark?.innerText),
+  );
+  // The Pulls count's number is bold, as every count summary's, and its words regular.
+  const count = measured["pulls updated"]?.lines[0];
+  check(
+    `pulls updated (${width}): the count's one number is bold`,
+    count?.numbers.length === 1 && count.numbers[0].weight === "700",
+    JSON.stringify(count?.numbers),
+  );
+}
 // The pending tallies of Files and Commits sit alike in their lines.
 const shimmerOf = (name) => bands[name]?.lines[0].shimmers[0];
 check(

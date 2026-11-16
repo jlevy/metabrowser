@@ -13,6 +13,7 @@
    * @property {string[] | null} types
    * @property {string} size
    * @property {boolean} showIgnored
+   * @property {string} [group] Group by: "none", "age", or "type"
    */
 
   /**
@@ -54,8 +55,9 @@
   /**
    * @typedef {object} RecentFilterCursor
    * @property {string} recentRequestKey
-   * @property {"recent" | "tree"} source
+   * @property {"recent" | "tree" | "grouped"} source
    * @property {string} treeRequestKey
+   * @property {string} groupedRequestKey
    * @property {string} windowKey
    */
 
@@ -69,7 +71,7 @@
 
   /**
    * @typedef {object} RecentFilterTransition
-   * @property {"apply" | "load-recent" | "load-tree" | "refetch-recent"} action
+   * @property {"apply" | "load-groups" | "load-recent" | "load-tree" | "refetch-recent"} action
    * @property {RecentFilterCursor} current
    */
 
@@ -204,6 +206,566 @@
     return params.length > 0 ? `/api/tree?${params.join("&")}` : "/api/tree";
   }
 
+  // ── Group by ──────────────────────────────────────────────────
+  //
+  // Grouping splits the Files tree into groups, each a full tree of its members after the
+  // filter. The server decides which groups hold anything, their order, and their counts
+  // (`/api/tree?group_by=`, metabrowser/tree_groups.py); these functions say which
+  // requests the browser makes for them and turn the answer into sections to paint.
+
+  const GROUP_BY_VALUES = Object.freeze(["none", "age", "type"]);
+
+  /**
+   * @param {FilterSnapshot | null} state
+   * @returns {string} "none", "age", or "type"
+   */
+  function groupBy(state) {
+    const value = state?.group;
+    return value && GROUP_BY_VALUES.includes(value) ? value : "none";
+  }
+
+  /**
+   * The filters set behind the Files drawer's chevron, which its badge counts: Modified
+   * within, File type, and Minimum file size. Show ignored sits on the row beside Group
+   * by and shows its own state, so the badge leaves it out; Clear, which resets every
+   * filter, still counts it (`filterState.activeCount`).
+   *
+   * @param {FilterSnapshot | null} state
+   * @returns {number}
+   */
+  function drawerFilterCount(state) {
+    if (!state) {
+      return 0;
+    }
+    return Number(state.recency !== "all") + Number(!!state.types) + Number(state.size !== "all");
+  }
+
+  /**
+   * A grouped request's filter parameters: the tree's, and the recency window, which
+   * the ungrouped tree leaves to /api/recent but a group's tree narrows by itself.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @returns {string[]}
+   */
+  function groupedRequestParams(state, sizeFloors) {
+    const params = requestParams(state, sizeFloors);
+    if (state?.recency && state.recency !== "all") {
+      params.push(`recency=${encodeURIComponent(state.recency)}`);
+    }
+    return params;
+  }
+
+  /**
+   * The identity of a grouped view: the grouping and the filter it is cut under.
+   * Empty when nothing is grouped.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   */
+  function groupedRequestKey(state, sizeFloors) {
+    const by = groupBy(state);
+    return by === "none" ? "" : groupsUrl(state, sizeFloors, 0);
+  }
+
+  /**
+   * The request for the groups themselves: which hold anything, in order, with their
+   * counts and their trees to *depth*.
+   *
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @param {number} depth
+   */
+  function groupsUrl(state, sizeFloors, depth) {
+    const params = [
+      `group_by=${encodeURIComponent(groupBy(state))}`,
+      ...groupedRequestParams(state, sizeFloors),
+      `depth=${depth}`,
+    ];
+    return `/api/tree?${params.join("&")}`;
+  }
+
+  /**
+   * The request to make ahead for the Group by row a reader is about to choose: the one the
+   * pointer presses, or the one the keyboard rests on (`createGroupsPrefetch`, `rest`). No
+   * grouping, and the grouping already shown, need none.
+   *
+   * Nothing is asked for when the menu opens: a reader chooses at most one grouping and
+   * often none, each asks for a pass over the index, and passes at once slow the one
+   * chosen. On a 380,000-entry folder two took 856-863 ms each, against about 420 ms alone
+   * (measured in headless Chrome, 2026-11-15).
+   *
+   * @param {string} value the row's grouping: "none", "age", or "type"
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @returns {string | null}
+   */
+  function groupPrefetchUrl(value, state, sizeFloors) {
+    if (!GROUP_BY_VALUES.includes(value) || value === "none" || value === groupBy(state)) {
+      return null;
+    }
+    const unfiltered = { recency: "all", types: null, size: "all", showIgnored: true };
+    return groupsUrl({ ...(state || unfiltered), group: value }, sizeFloors, 2);
+  }
+
+  /**
+   * One group's tree under *path*: how a folder inside a group opens.
+   *
+   * @param {string} path
+   * @param {string} groupKey `<by>:<id>`, as a section carries it
+   * @param {FilterSnapshot | null} state
+   * @param {Record<string, number>} sizeFloors
+   * @param {string[]} [extraParams]
+   */
+  function groupTreeUrl(path, groupKey, state, sizeFloors, extraParams) {
+    const params = [
+      `group=${encodeURIComponent(groupKey)}`,
+      ...groupedRequestParams(state, sizeFloors),
+      ...(extraParams || []),
+    ];
+    if (path) {
+      params.unshift(`path=${encodeURIComponent(path)}`);
+    }
+    return `/api/tree?${params.join("&")}`;
+  }
+
+  /**
+   * The age group a file of *ageSeconds* falls in: the first window, shortest first, it is
+   * inside, else "older" (metabrowser/tree_groups.py draws the same bands).
+   *
+   * @param {number} ageSeconds
+   * @param {Record<string, number | null>} windows the recency windows, by key
+   * @returns {string}
+   */
+  function ageGroupFor(ageSeconds, windows) {
+    const bounded = Object.entries(windows)
+      .filter((entry) => typeof entry[1] === "number" && entry[1] > 0)
+      .sort((left, right) => Number(left[1]) - Number(right[1]));
+    const inside = bounded.find((entry) => ageSeconds <= Number(entry[1]));
+    return inside ? inside[0] : "older";
+  }
+
+  /**
+   * How many rows each section may open by itself on first paint: the viewport's budget,
+   * which the ungrouped tree spends alone, split among the sections, at least one each,
+   * so together they fill about one screen.
+   *
+   * @param {number} budget
+   * @param {number} sectionCount
+   */
+  function sectionRowBudget(budget, sectionCount) {
+    return Math.max(1, Math.floor(budget / Math.max(1, sectionCount)));
+  }
+
+  /**
+   * @typedef {object} RevealEntry
+   * @property {string} type "dir", "file", or "symlink"
+   * @property {string} name
+   * @property {string} [ext]
+   * @property {number} [mtime] seconds
+   */
+
+  /**
+   * The section a row most likely stands in, for revealing it without asking the server:
+   * a file's type group, or the band its known mtime falls in. A folder stands in every
+   * section that holds its files, and an entry with nothing to place it by has no guess,
+   * so both give null.
+   *
+   * @param {string} by "age" or "type"
+   * @param {RevealEntry | null} entry
+   * @param {number} nowSec
+   * @param {Record<string, number | null>} windows
+   * @param {(name: string, ext: string) => string | null | undefined} groupForFile
+   * @returns {string | null}
+   */
+  function likelySectionKey(by, entry, nowSec, windows, groupForFile) {
+    if (!entry || entry.type === "dir") {
+      return null;
+    }
+    if (by === "type") {
+      if (entry.type === "symlink") {
+        return "type:other";
+      }
+      const id = groupForFile(entry.name, entry.ext || "");
+      return id ? `type:${id}` : null;
+    }
+    if (by === "age" && typeof entry.mtime === "number" && entry.mtime > 0) {
+      return `age:${ageGroupFor(nowSec - entry.mtime, windows)}`;
+    }
+    return null;
+  }
+
+  /**
+   * The order to look for a row in: the likely section first, then every other one, so a
+   * guess that misses (a file that crossed a band's edge since the answer) still finds it.
+   *
+   * @param {string[]} sectionKeys in display order
+   * @param {string | null} likelyKey
+   * @returns {string[]}
+   */
+  function revealSectionOrder(sectionKeys, likelyKey) {
+    if (!likelyKey || !sectionKeys.includes(likelyKey)) {
+      return sectionKeys.slice();
+    }
+    return [likelyKey, ...sectionKeys.filter((key) => key !== likelyKey)];
+  }
+
+  /**
+   * The reopen plan for a refreshed section: the reader's open folders put back into the
+   * new answer, from the answer itself or from cached subtrees, so they paint open in the
+   * same frame. `expanded` is what paints open, and `fetch` the open folders the answer
+   * reaches whose children neither it nor the cache holds: the shell fetches those before it
+   * paints and plans again, a level at a time. An open folder the answer no longer reaches,
+   * gone from the group or under one of these, is in neither list.
+   *
+   * @param {Array<Record<string, any>>} nodes the section's answer
+   * @param {string[]} opened paths open before the refresh
+   * @param {(path: string) => Array<Record<string, any>> | null | undefined} cached
+   * @returns {{tree: Array<Record<string, any>>, expanded: string[], fetch: string[]}}
+   */
+  function graftOpenedFolders(nodes, opened, cached) {
+    const wanted = new Set(opened);
+    /** @type {string[]} */
+    const expanded = [];
+    /** @type {string[]} */
+    const fetch = [];
+    /** @param {Array<Record<string, any>>} list @returns {Array<Record<string, any>>} */
+    const visit = (list) =>
+      list.map((node) => {
+        if (node.type !== "dir" || !wanted.has(node.path)) {
+          return node;
+        }
+        const children = Array.isArray(node.children) ? node.children : cached(node.path);
+        if (!Array.isArray(children)) {
+          fetch.push(node.path);
+          return node;
+        }
+        expanded.push(node.path);
+        return { ...node, children: visit(children) };
+      });
+    return { tree: visit(nodes), expanded, fetch };
+  }
+
+  /**
+   * The part of a grouped request (`groupsUrl`) that names the filters, without the grouping:
+   * two groupings asked for under one filter state share it.
+   *
+   * @param {string} url
+   * @returns {string}
+   */
+  function groupsFilterKey(url) {
+    return url.replace(/^\/api\/tree\?group_by=[^&]*&?/, "");
+  }
+
+  /**
+   * @typedef {object} GroupsPrefetchDeps
+   * @property {() => number} now
+   * @property {number} ttlMs how long a fetched-ahead answer stays good
+   * @property {(url: string) => {answer: Promise<unknown>, abort: () => void}} start
+   * @property {number} dwellMs how long keyboard focus rests on a row before it asks ahead
+   * @property {(callback: () => void, ms: number) => unknown} setTimer
+   * @property {(timer: unknown) => void} clearTimer
+   */
+
+  /**
+   * The Group by prefetch: a grouping the reader is about to choose is asked for ahead
+   * (`groupPrefetchUrl`), and the choice takes its answer. A pointer's press asks at once
+   * (`want`); the keyboard asks only once focus has rested on a row for `dwellMs` (`rest`),
+   * so a row passed over on the way to another asks for nothing, and the next key, a
+   * choice, or the menu closing cancels the wait.
+   *
+   * An answer younger than `ttlMs` is kept for the same request rather than asked for again,
+   * an older one is dropped, and an answer is taken once. Asking for one drops the answers
+   * kept for other filters, which no choice under these filters takes.
+   *
+   * A change to the files makes every answer kept stale rather than dropping it. A choice
+   * still takes a stale answer, since it comes sooner than a new one, and says it is stale,
+   * so the shell paints it and then refreshes the sections. A stale answer still on its way
+   * is left alone, since its pass is running and a new one would run beside it; one that
+   * has come is asked for again. Dropping them would make a choice made just after a change
+   * start its pass over the index from nothing, which on a folder whose files keep changing
+   * looks like a choice that did nothing (mb-75l5).
+   *
+   * @param {GroupsPrefetchDeps} deps
+   */
+  function createGroupsPrefetch(deps) {
+    /**
+     * @type {Map<string, {at: number, stale: boolean, done: boolean, answer: Promise<unknown>, abort: () => void}>}
+     */
+    const entries = new Map();
+    /** @param {{at: number}} entry */
+    const fresh = (entry) => deps.now() - entry.at < deps.ttlMs;
+    /** @type {unknown} */
+    let resting = null;
+    const stopResting = () => {
+      if (resting !== null) {
+        deps.clearTimer(resting);
+        resting = null;
+      }
+    };
+    /** @param {string | null} keep the filters whose answers stay kept, or null for any */
+    const prune = (keep) => {
+      for (const [url, entry] of entries) {
+        if (!fresh(entry) || (keep !== null && groupsFilterKey(url) !== keep)) {
+          entry.abort();
+          entries.delete(url);
+        }
+      }
+    };
+    /** @param {string} url */
+    const want = (url) => {
+      stopResting();
+      prune(groupsFilterKey(url));
+      const kept = entries.get(url);
+      if (kept && (!kept.stale || !kept.done)) {
+        return;
+      }
+      const started = deps.start(url);
+      const entry = {
+        at: deps.now(),
+        stale: false,
+        done: false,
+        answer: started.answer,
+        abort: started.abort,
+      };
+      const settle = () => {
+        entry.done = true;
+      };
+      started.answer.then(settle, settle);
+      entries.set(url, entry);
+    };
+    return Object.freeze({
+      want,
+      /**
+       * Keyboard focus rests on a row asking for *url* (or for nothing, when null): ask for
+       * it once focus has stayed `dwellMs`, and `stillThere` says it has not moved on.
+       *
+       * @param {string | null} url
+       * @param {() => boolean} [stillThere]
+       */
+      rest(url, stillThere) {
+        stopResting();
+        if (url === null) {
+          return;
+        }
+        resting = deps.setTimer(() => {
+          resting = null;
+          if (!stillThere || stillThere()) {
+            want(url);
+          }
+        }, deps.dwellMs);
+      },
+      /** The menu closed, or the reader moved on: a rest under way asks for nothing. */
+      cancelRest: stopResting,
+      /**
+       * @param {string} url
+       * @returns {{answer: Promise<unknown>, stale: boolean, abort: () => void} | null}
+       */
+      take(url) {
+        stopResting();
+        prune(null);
+        const entry = entries.get(url);
+        entries.delete(url);
+        if (!entry) {
+          return null;
+        }
+        return { answer: entry.answer, stale: entry.stale, abort: entry.abort };
+      },
+      markChanged() {
+        for (const entry of entries.values()) {
+          entry.stale = true;
+        }
+      },
+      size: () => entries.size,
+      resting: () => resting !== null,
+    });
+  }
+
+  /**
+   * What a Group by load asked for now does beside the one on its way: start, superseding
+   * it, or wait until it paints.
+   *
+   * A refresh of a grouping whose first sections are still on their way waits for them, and
+   * runs once they paint. Started at once, it would discard them and begin again from
+   * nothing, with no sections on screen to keep: on a folder whose files keep changing and
+   * whose groups take seconds to come, each refresh would restart the wait, and the choice
+   * would look like it did nothing (mb-75l5). Anything else starts: a newer grouping or
+   * filter cancels the load it supersedes.
+   *
+   * @param {{key: string, first: boolean} | null} inFlight the load on its way, if any
+   * @param {{key: string, first: boolean}} asked `first` for a load that paints new sections
+   * @returns {"start" | "after"}
+   */
+  function groupedLoadDecision(inFlight, asked) {
+    return inFlight?.first && !asked.first && inFlight.key === asked.key ? "after" : "start";
+  }
+
+  /**
+   * @typedef {object} GroupedLoad one Group by load, as `run` sees it
+   * @property {string} key the grouped request it paints (`groupedRequestKey`)
+   * @property {boolean} first whether it paints new sections rather than refreshing those
+   *   on screen
+   * @property {AbortSignal} signal aborted when a newer load supersedes it or it is
+   *   cancelled
+   * @property {() => boolean} current whether it is still the load on its way, so its
+   *   answer may paint
+   * @property {() => void} refreshAfter refresh the sections once it ends: its answer
+   *   predates a change to the files
+   */
+
+  /**
+   * @typedef {object} GroupedLoadsDeps
+   * @property {(load: GroupedLoad) => Promise<boolean>} run fetch the groups and paint
+   *   them, if the load is still `current` when they come; whether they painted
+   * @property {(load: {key: string, first: boolean} | null) => void} pending show the wait
+   *   for the load on its way, or end it
+   * @property {() => void} refresh ask for a refresh of the sections on screen
+   */
+
+  /**
+   * The Group by loads: at most one on its way, which a newer grouping or filter cancels
+   * and a refresh of its own first sections waits for (`groupedLoadDecision`).
+   *
+   * `load` starts one and resolves with whether it painted; a refresh that waits resolves
+   * true at once and runs, once, after the load it waits for. `cancel` aborts the load on
+   * its way and ends its wait at once, and its answer is never painted. `settled` resolves
+   * once no load is painting new sections: when it paints, fails, or is cancelled, and a
+   * newer one that superseded it is waited for in turn.
+   *
+   * @param {GroupedLoadsDeps} deps
+   */
+  function createGroupedLoads(deps) {
+    /**
+     * @type {{key: string, first: boolean, controller: AbortController, refreshAfter: boolean, settled: Promise<void>, settle: () => void} | null}
+     */
+    let current = null;
+    function cancel() {
+      const load = current;
+      if (!load) {
+        return;
+      }
+      current = null;
+      load.controller.abort();
+      deps.pending(null);
+      load.settle();
+    }
+    return Object.freeze({
+      /**
+       * @param {string} key
+       * @param {{refresh?: boolean, painted?: boolean}} [options] `refresh` refreshes the
+       *   sections on screen; `painted` says sections are on screen to refresh
+       * @returns {Promise<boolean>}
+       */
+      async load(key, options = {}) {
+        const refresh = options.refresh === true;
+        if (current && groupedLoadDecision(current, { key, first: !refresh }) === "after") {
+          current.refreshAfter = true;
+          return true;
+        }
+        cancel();
+        /** @type {() => void} */
+        let settle = () => {};
+        /** @type {Promise<void>} */
+        const settled = new Promise((resolve) => {
+          settle = resolve;
+        });
+        const load = {
+          key,
+          // A refresh with no sections on screen to keep paints new ones.
+          first: !refresh || options.painted !== true,
+          controller: new AbortController(),
+          refreshAfter: false,
+          settled,
+          settle,
+        };
+        current = load;
+        deps.pending({ key, first: load.first });
+        try {
+          return await deps.run({
+            key,
+            first: load.first,
+            signal: load.controller.signal,
+            current: () => current === load,
+            refreshAfter: () => {
+              load.refreshAfter = true;
+            },
+          });
+        } finally {
+          if (current === load) {
+            current = null;
+            deps.pending(null);
+            if (load.refreshAfter) {
+              deps.refresh();
+            }
+          }
+          load.settle();
+        }
+      },
+      cancel,
+      async settled() {
+        for (let load = current; load?.first; load = current) {
+          await load.settled;
+        }
+      },
+      /** @returns {{key: string, first: boolean} | null} */
+      inFlight: () => (current ? { key: current.key, first: current.first } : null),
+    });
+  }
+
+  /**
+   * What the scan row says while a grouping's first sections are on their way: the choice,
+   * in the words of its Group by row ("By file type" is "Grouping by file type…").
+   *
+   * @param {string} by "age" or "type"
+   * @returns {string}
+   */
+  function regroupingStatusText(by) {
+    return by === "age" ? "Grouping by age…" : "Grouping by file type…";
+  }
+
+  /**
+   * @typedef {object} TreeSection
+   * @property {string} key `<by>:<id>`, the group a folder inside it opens under
+   * @property {string} id
+   * @property {string} label
+   * @property {number | null} files
+   * @property {number | null} size
+   * @property {Array<Record<string, unknown>>} tree
+   */
+
+  /**
+   * The sections a grouped answer paints, in the order the server gave: one per group
+   * that holds anything. A malformed answer is refused rather than painted partly.
+   *
+   * @param {unknown} payload
+   * @returns {TreeSection[]}
+   */
+  function groupSections(payload) {
+    const answer = /** @type {{group_by?: unknown, groups?: unknown} | null} */ (payload);
+    const by = answer?.group_by;
+    if (typeof by !== "string" || !GROUP_BY_VALUES.includes(by) || by === "none") {
+      throw new Error("a grouped tree answer names no grouping");
+    }
+    if (!Array.isArray(answer?.groups)) {
+      throw new Error("a grouped tree answer has no groups");
+    }
+    return answer.groups.map((raw) => {
+      const group = /** @type {Record<string, unknown>} */ (raw);
+      if (typeof group.id !== "string" || typeof group.label !== "string") {
+        throw new Error("a group has no id or label");
+      }
+      return {
+        key: `${by}:${group.id}`,
+        id: group.id,
+        label: group.label,
+        // A source that could not count a group says so with null (a truncated Git index).
+        files: typeof group.files === "number" ? group.files : null,
+        size: typeof group.size === "number" ? group.size : null,
+        tree: Array.isArray(group.tree) ? group.tree : [],
+      };
+    });
+  }
+
   /**
    * The exact Recent request the browser makes. Filters precede the provider's
    * ranking and cap, so a narrow selection cannot spend its page on nonmatches.
@@ -246,7 +808,10 @@
     const windowKey = state?.recency || "all";
     return {
       recentRequestKey: recentRequestKey(windowKey, limit, state, sizeFloors),
-      source: windowKey === "all" ? "tree" : "recent",
+      // Grouping takes the tree source whatever the window: each group is a filtered tree,
+      // which the recency window narrows like any other filter (groupedRequestParams).
+      source: groupBy(state) !== "none" ? "grouped" : windowKey === "all" ? "tree" : "recent",
+      groupedRequestKey: groupedRequestKey(state, sizeFloors),
       treeRequestKey: requestKey(state, sizeFloors),
       windowKey,
     };
@@ -262,6 +827,12 @@
    * @returns {RecentFilterTransition}
    */
   function recentFilterTransition(previous, current) {
+    if (current.source === "grouped") {
+      return previous?.source !== "grouped" ||
+        previous.groupedRequestKey !== current.groupedRequestKey
+        ? { action: "load-groups", current }
+        : { action: "apply", current };
+    }
     if (current.source === "recent") {
       if (previous?.source !== "recent" || previous.windowKey !== current.windowKey) {
         return { action: "load-recent", current };
@@ -746,23 +1317,36 @@
   }
 
   /**
-   * Format the filtered Recent tally without presenting a retained-page lower
-   * bound as an exact result. An untruncated response can become non-exact
-   * after an unscoped live change, so exactness—not truncation—owns the `+`.
+   * The Files filter's remark under the totals, "Filtered to 1,234 files.", in its parts:
+   * the words as strings and each number as `{number}`, which the remark paints bold, as
+   * every count summary does (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers"). *recent* is the Recent source's response, or null for the tree, whose count
+   * is a subtree total and exact.
+   *
+   * Recent's tally does not present a retained-page lower bound as an exact result. An
+   * untruncated response can become non-exact after an unscoped live change, so
+   * exactness—not truncation—owns the `+`, which is part of its number.
    *
    * @param {number} count
-   * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean}} options
+   * @param {{totalMatching: number, totalMatchingExact: boolean, truncated: boolean} | null} recent
+   * @returns {MetabrowserCountParts}
    */
-  function recentFilteredTallyText(count, options) {
-    if (!options.totalMatchingExact && !options.truncated) {
-      return `Filtered to ${count.toLocaleString()}+ files.`;
+  function filteredTallyParts(count, recent) {
+    if (recent !== null && !recent.totalMatchingExact && !recent.truncated) {
+      return ["Filtered to ", { number: `${count.toLocaleString()}+` }, " files."];
     }
-    let text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
-    if (options.truncated) {
-      const totalSuffix = options.totalMatchingExact ? "" : "+";
-      text += ` of ${options.totalMatching.toLocaleString()}${totalSuffix} matching`;
+    const parts = [
+      "Filtered to ",
+      { number: count.toLocaleString() },
+      ` ${count === 1 ? "file" : "files"}`,
+    ];
+    if (recent?.truncated) {
+      const totalSuffix = recent.totalMatchingExact ? "" : "+";
+      const total = `${recent.totalMatching.toLocaleString()}${totalSuffix}`;
+      parts.push(" of ", { number: total }, " matching");
     }
-    return `${text}.`;
+    parts.push(".");
+    return parts;
   }
 
   /**
@@ -1398,6 +1982,24 @@
   }
 
   window.MetabrowserTreeFilterModel = Object.freeze({
+    GROUP_BY_VALUES,
+    ageGroupFor,
+    createGroupedLoads,
+    createGroupsPrefetch,
+    graftOpenedFolders,
+    groupPrefetchUrl,
+    groupedLoadDecision,
+    regroupingStatusText,
+    likelySectionKey,
+    revealSectionOrder,
+    sectionRowBudget,
+    drawerFilterCount,
+    groupBy,
+    groupSections,
+    groupTreeUrl,
+    groupedRequestKey,
+    groupedRequestParams,
+    groupsUrl,
     applyRecentChangeBatch,
     applyRecentCatalogChange,
     beginRecentRequest,
@@ -1412,7 +2014,7 @@
     recentEntryMatches,
     recentFilterCursor,
     recentFilterTransition,
-    recentFilteredTallyText,
+    filteredTallyParts,
     recentRepairDisposition,
     recentRequestDisposition,
     recentRequestKey,

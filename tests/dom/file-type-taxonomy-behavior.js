@@ -113,7 +113,11 @@ const registry = process.argv[2]
 const sandbox = {
   console,
   globalThis: null,
-  METABROWSER_SETTINGS: { FILE_TYPE_REGISTRY: registry },
+  // The server's display order (file_type_filters.py, FILE_TYPE_GROUP_DISPLAY_ORDER).
+  METABROWSER_SETTINGS: {
+    FILE_TYPE_REGISTRY: registry,
+    FILE_TYPE_GROUP_ORDER: ["docs", "code", "data", "archives", "media", "other"],
+  },
 };
 sandbox.globalThis = sandbox;
 sandbox.window = sandbox;
@@ -146,6 +150,12 @@ if (
   registry.groups.map((group) => group.id).join(",")
 ) {
   throw new Error("registry group order was not preserved");
+}
+// Readers see the groups Documentation first; the registry keeps its own order above.
+if (
+  runtime.displayGroups.map((group) => group.id).join(",") !== "docs,code,data,archives,media,other"
+) {
+  throw new Error("groups are not listed in the display order");
 }
 if (runtime.revision !== registry.revision || runtime.fingerprint !== registry.fingerprint) {
   throw new Error("registry identity was not preserved");

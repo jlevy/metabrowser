@@ -185,7 +185,10 @@ def test_the_session_runs_on_the_recording() -> None:
 
     # What each part printed is what its golden pins, which tests/test_keymap.py holds to
     # the reserved shell keys.
-    assert {key for part in parts for key in part["shellKeys"]} == set("123456789fhjknprtuw")
+    assert {key for part in parts for key in part["shellKeys"]} == set("0123456789fhjkptuw") | {
+        "control-n",
+        "control-p",
+    }
 
     by_name = {step["step"]: step for part in parts for step in part["steps"]}
     root = by_name["the root folder has no Up"]
@@ -198,24 +201,60 @@ def test_the_session_runs_on_the_recording() -> None:
     ):
         assert by_name[copying]["pressed"] == {"key": "y", "handled": False}, copying
         assert by_name[copying]["ancillary"], copying
-    preview = by_name["the Preview tab is V, and P outside a stack does nothing"]
+    preview = by_name["the Preview tab is V, and Control-P outside a stack does nothing"]
     assert ["V", "view-tabs.v", "Preview tab"] in preview["keys"]
-    assert preview["p"] is False
+    assert preview["controlP"] is False
+    # On a pull request in a stack, Control-N and Control-P walk it (mb-lnqj): listed on
+    # the strip as a Mac writes them, the session's navigator, and the only platform kind
+    # that binds them; a chord ends the reveal and still walks; the letters alone and
+    # AltGr's Control-Alt walk nothing.
+    listed = by_name["a pull request in a stack lists Control-N or Control-P on the strip"]
+    assert "⌃N or ⌃P Stack" in listed["strip"]["items"]
+    assert ["⌃N", "pulls.stack.top", None] in listed["keys"]
+    shifted = by_name["Control-N with Shift held walks the stack and ends the reveal"]
+    assert shifted["pressed"] == {"key": "Control-n", "handled": True}
+    assert shifted["did"] == ["moved toward the stack's top"]
+    assert shifted["reveal"] == "idle"
+    toward_base = by_name["Control-P walks the stack toward its base"]
+    assert toward_base["pressed"] == {"key": "Control-p", "handled": True}
+    assert toward_base["did"] == ["moved toward its base"]
+    alone = by_name["N alone and Control-Alt-N walk nothing, and P alone is the Pulls tab"]
+    assert (alone["n"], alone["altGr"], alone.get("did")) == (False, False, None)
+    assert alone["p"] == {"handled": True, "active": "pulls", "focus": "#7"}
+    # P is the Pulls tab (mb-6rfu): from a file it opens the tab, and again it moves focus
+    # to the selected row.
+    to_pulls = by_name["P opens the Pulls tab from a file"]
+    assert (to_pulls["pressed"], to_pulls["active"]) == ({"key": "p", "handled": True}, "pulls")
+    again = by_name["P again, once the list has rows, moves focus to the selected row"]
+    assert (again["pressed"], again["focus"]) == ({"key": "p", "handled": True}, "#7")
     # The main tabs in their order, each with its letter.
     hosted = by_name["a repository with a hosted origin shows Files, Pulls, and Commits"]
     assert hosted["tabs"] == ["Files", "Pulls", "Commits"]
     assert [key for key, command, _target in hosted["keys"] if command.startswith("main-")] == [
         "F",
-        "R",
+        "P",
         "H",
     ]
-    # The numbers are positional and Help never gives a digit a fixed meaning.
+    # The numbers are positional, and Help gives one digit a fixed meaning: 0, Home.
     positional = by_name["Help lists the numbers once, as positional"]
     assert positional["helpDigits"] == [
-        {"keys": "1–9", "range": True, "action": "Numbered links and actions"}
+        {"keys": "0", "range": False, "action": "Home"},
+        {"keys": "1–9", "range": True, "action": "Numbered links and actions"},
     ]
-    assert positional["numbers"] == ["File type"]
-    assert ["1", "File type"] in positional["badges"]
+    # 0 is Home on any screen, and so is US Shift-0, which types ")" (mb-5lzl).
+    for step, typed in (
+        ("0 goes home, through the folder's name's own path", "0"),
+        ("Shift-0, which types ) on a US keyboard, goes home too", ")"),
+    ):
+        assert by_name[step]["pressed"] == {"key": typed, "handled": True}, step
+        assert by_name[step]["did"] == ["went home"], step
+        assert ["0", "shell.home", "squares"] in by_name[step]["keys"], step
+    # A pin's bar: Group by first, then its one filter (no Modified within on a pin).
+    assert positional["numbers"] == ["Group by", "File type"]
+    assert ["1", "Group by"] in positional["badges"]
+    assert ["2", "File type"] in positional["badges"]
+    # A pin has no By age, so Group by registers N and T only, as app.js does.
+    assert [key for key, _action, _description in positional["menus"]] == ["N", "T"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
     for chord in (
         "a capital typed within the threshold never reveals",
@@ -231,21 +270,98 @@ def test_the_session_runs_on_the_recording() -> None:
         "↑ on a tree row moves one row and keeps the reveal",
         "a held J moves rows and does no reveal work on its repeats",
         "H with Shift still held opens Commits, focuses its row, and keeps the reveal",
-        "F during the reveal shows the filter bar, and its filters gain 1 and 2",
+        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3",
     ):
         assert by_name[moved]["reveal"] == "revealed", moved
     assert by_name["the window losing focus ends the reveal"]["reveal"] == "idle"
-    files = by_name["F during the reveal shows the filter bar, and its filters gain 1 and 2"]
-    assert ["1", "Modified within"] in files["badges"]
-    assert ["2", "File type"] in files["badges"]
-    assert files["numbers"] == ["Modified within", "File type"]
-    opened = by_name["2 opens the file type filter and focuses its checked row"]
+    files = by_name[
+        "F during the reveal shows the filter bar, and Group by and its filters gain 1 to 3"
+    ]
+    assert ["1", "Group by"] in files["badges"]
+    assert ["2", "Modified within"] in files["badges"]
+    assert ["3", "File type"] in files["badges"]
+    assert files["numbers"] == ["Group by", "Modified within", "File type"]
+    opened = by_name[
+        "3 opens the closed drawer and the file type filter, and focuses its checked row"
+    ]
+    # The drawer's filters keep their numbers while it is closed; a number opens it.
+    assert opened["drawerBefore"] is False
+    assert opened["drawerAfter"] is True
     assert opened["focus"] == {
         "menu": "filter-type-menu",
         "row": "Any type",
         "checked": "true",
         "open": "true",
     }
+
+    # Every way a menu opens focuses its checked row, through the filter controls' one
+    # path; Escape, a second click, and a choice that closes it give focus to the trigger;
+    # and a pick or a rebuild while a row has focus keeps it on that row (mb-spqw).
+    kept = by_name[
+        "↓ moves to the next row, a pick or a rebuild keeps focus there, and Escape closes "
+        "the menu onto its trigger"
+    ]
+    next_row = {"menu": "filter-type-menu", "row": ".md", "checked": "false", "open": "true"}
+    assert kept["next"] == kept["picked"] == kept["rebuilt"] == next_row
+    assert kept["escaped"] == "the types trigger"
+    ways = by_name[
+        "each way a menu opens focuses its checked row, and each way it closes its trigger"
+    ]
+    group_checked = {
+        "menu": "filter-group-menu",
+        "row": "No grouping",
+        "checked": "true",
+        "open": "true",
+    }
+    assert ways["byNumber"] == {
+        "menu": "filter-recency-menu",
+        "row": "Any age",
+        "checked": "true",
+        "open": "true",
+    }
+    assert ways["byArrow"] == ways["byClick"] == group_checked
+    assert ways["byNumberEscaped"] == "the recency trigger"
+    assert ways["byArrowEscaped"] == ways["byClickClosed"] == "the group trigger"
+
+    # Group by's rows take N, A, and T, in its own scope, while its menu is open and has
+    # focus; Help lists them under Menus; each runs the row's click path; and T is Quick
+    # Search's whenever the menu is closed or focus is outside it (mb-ibo4).
+    assert by_name["Help lists Group by's letters under Menus"]["menus"] == [
+        ["N", "No grouping", "Choose No grouping in the Group by menu."],
+        ["A", "By age", "Choose By age in the Group by menu."],
+        ["T", "By file type", "Choose By file type in the Group by menu."],
+    ]
+    group_open = by_name["1 opens Group by and focuses its checked row, whose letters are live"]
+    assert [key for key in group_open["keys"] if key[1].startswith("menu.")] == [
+        ["N", "menu.group.n", "No grouping row"],
+        ["A", "menu.group.a", "By age row"],
+        ["T", "menu.group.t", "By file type row"],
+    ]
+    revealed = by_name["Shift held in the open menu badges its rows' letters"]
+    for badge in (["N", "No grouping row"], ["A", "By age row"], ["T", "By file type row"]):
+        assert badge in revealed["badges"], badge
+    # T reaches the row, so the strip offers Quick Search by / alone.
+    assert "/ Quick Search" in revealed["strip"]["items"]
+    assert "T By file type" in revealed["strip"]["items"]
+    age = by_name["A chooses By age and closes the menu"]
+    assert age["pressed"] == {"key": "a", "handled": True}
+    # The choice closed the menu, so focus is back on its trigger (mb-spqw).
+    assert age["focus"] == "the group trigger"
+    assert age["did"] == ["chose age in the group menu"]
+    assert age["trigger"] == "By age"
+    for quick in (
+        "with the menu closed, T is Quick Search",
+        "with focus outside the open menu, T is Quick Search",
+    ):
+        assert by_name[quick]["pressed"] == {"key": "t", "handled": True}, quick
+        assert by_name[quick]["focus"] == "combobox", quick
+    by_type = by_name["1 focuses By age, the checked row, and T chooses By file type"]
+    assert by_type["focus"]["row"] == "By age" and by_type["focus"]["checked"] == "true"
+    assert by_type["trigger"] == "By file type"
+    assert by_name["with focus outside the open menu, T is Quick Search"]["trigger"] == (
+        "By file type"
+    )
+    assert by_name["N chooses No grouping"]["trigger"] == "No grouping"
 
     # What a navigation and a key cost: one publication, and while revealed one pass.
     same_kind = by_name["a move between two files of one kind registers nothing"]["cost"]

@@ -47,8 +47,9 @@ import re
 import secrets
 import sys
 import time
-from collections.abc import AsyncIterator, Mapping, MutableMapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, MutableMapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from html import escape as html_escape
 from pathlib import Path
 from stat import S_ISREG
@@ -71,7 +72,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, kpress_adapter, server_timing
+from metabrowser import __version__, delivery, kpress_adapter, server_timing
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -86,6 +87,7 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
+from metabrowser.encoded_assets import EncodedAssetResponse
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -133,6 +135,7 @@ from metabrowser.inventory_engine.contract import (
     EntryType,
     FilteredTreeProjection,
     FilteredTreeQuery,
+    GroupedTreeQuery,
     InventoryFilter,
     LifecyclePhase,
     NavigationProjection,
@@ -153,8 +156,10 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
 from metabrowser.inventory_engine.runtime import InventoryRuntime
 from metabrowser.inventory_engine.tree_page_assembly import (
+    GroupedTreeAssembly,
     TreePageAssembly,
     TreePageQuery,
+    assemble_grouped_tree,
     assemble_tree_pages,
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
@@ -247,6 +252,16 @@ from metabrowser.tree_filter import (
     parse_recency,
     parse_size_floor,
     parse_types,
+)
+from metabrowser.tree_groups import (
+    GroupBy,
+    age_band,
+    group_row,
+    groups_for,
+    groups_payload,
+    inventory_group_filter,
+    parse_group,
+    parse_group_by,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -1170,9 +1185,15 @@ class _SlowRequestLogMiddleware:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
                 # records is mechanical (subtract for transit time).
+                # `end_ms` is the time to the end of the body again, to the
+                # tenth of a millisecond the phases have, for a reader that
+                # sums many small answers (server-time.mjs); the rounded
+                # figure in parentheses stays where older readers find it.
+                # Taken when the application returns, it includes a response's
+                # background tasks and the waits for the client to drain the body.
                 LOG.info(
                     "metabrowser request t=%.3f -> %.3f (%.0f ms) method=%s path=%s status=%s "
-                    "bytes=%s start_ms=%s phases=%s",
+                    "bytes=%s start_ms=%s phases=%s end_ms=%.1f",
                     arrived,
                     arrived + duration_ms / 1000,
                     duration_ms,
@@ -1182,6 +1203,7 @@ class _SlowRequestLogMiddleware:
                     body_bytes,
                     first_byte,
                     phases,
+                    duration_ms,
                 )
             elif self.threshold_ms and duration_ms >= self.threshold_ms:
                 # Include the arrival epoch even in non-verbose mode so
@@ -1894,6 +1916,16 @@ async def index(
         # Only untrusted Markdown needs the allowlist: a pull-request comment, or a
         # document under the untrusted profile, which the server marks inert.
         "inert-html": [{"src": inert_html_url}],
+        # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
+        # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
+        # page that shows a pull request's files or a multi-file diff asks for it: a diff
+        # asks beside its comparison, and the Pulls tab when it mounts.
+        "changed-files-tree": [
+            {
+                "src": _static_asset_url("changed-files-tree.js"),
+                "provides": "MetabrowserChangedFilesTree",
+            }
+        ],
         # Only a served mirror has freshness to show, so a folder never fetches
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.
@@ -2027,7 +2059,7 @@ async def index(
 <body>
   <main class="container{mirror_class}">
     <div class="tree-pane" id="tree-pane">
-      <header class="app-header">
+      <header class="app-header" data-kbd-badge-anchor>
         <!-- data-served-root is the one place the absolute root is written:
              the file header reads it back to render its dimmed prefix, so
              the two headers cannot disagree about what the root is. It is also
@@ -2040,13 +2072,17 @@ async def index(
              to prevent. See "One Tooltip, and It Is Ours" in
              docs/design-system.md.
 
-             The heading is home: app.js keeps a plain activation in the page and
-             opens the served root in the Files tab, from whichever tab is in front.
-             Its name stays the text it shows, and the description says where it
-             goes, so a screen reader hears both. -->
-        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" aria-describedby="header-home-description"
+             The folder's name is Home (docs/design-system.md, "Home"): app.js keeps a
+             plain activation in the page and shows the folder's home view as a fresh load
+             of this address does, every tab at its first, and `0` does the same. Its
+             accessible name is "Home:" and then the name it shows, read from its own
+             content, so the name a mirror's heading shows, its ref and commit with it,
+             stays in it. The header anchors the key's badge, which sits beside the name
+             because the name clips. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path" id="header-home"
+           aria-labelledby="header-home-label header-home"
            data-served-root="{initial_root}"{mirror_attrs}>{initial_path}</a>
-        <span id="header-home-description" hidden>Go home: the root folder in the Files tab</span>
+        <span id="header-home-label" hidden>Home:</span>
         <!-- The Metabrowser menu. The gear names the product rather than
              standing as an unlabelled settings control: the wordmark that
              used to sit on its own line above the path is this menu's title,
@@ -2269,7 +2305,8 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
     filename tokens (repeated or comma-separated), ``min_size`` is a byte
     floor, and ``include_ignored=0`` drops gitignored entries. An absent or
     unrecognized value means "no constraint", so an older client sees more
-    rather than a 400.
+    rather than a 400. `group` names one Group by group, `<by>:<id>`
+    (metabrowser/tree_groups.py), which narrows the tree as one more filter.
     """
 
     return TreeFilter(
@@ -2277,6 +2314,7 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
         types=parse_types(_query_values(request, "types")),
         min_size=parse_size_floor(request.query_params.get("min_size", "")),
         include_ignored=request.query_params.get("include_ignored", "1") not in ("0", "false"),
+        group=parse_group(request.query_params.get("group", "")),
     )
 
 
@@ -2285,15 +2323,29 @@ def _inventory_filter(tree_filter: TreeFilter, *, as_of_ns: int) -> InventoryFil
 
     extensions = tuple(token for token in tree_filter.types if token.startswith("."))
     filenames = tuple(token for token in tree_filter.types if not token.startswith("."))
+    group = tree_filter.group
+    recency: float | None = (
+        float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
+    )
+    band_within: float | None = None
+    older_than: float | None = None
+    if group is not None and group.by == "age":
+        # An age group is a band of its own; the recency window, a filter, cuts it as the
+        # provider applies both (metabrowser/tree_groups.py, `age_band`).
+        band = age_band(group, 0)
+        band_within = band.within_seconds
+        older_than = band.older_than_seconds
+    timed = recency is not None or band_within is not None or older_than is not None
     return InventoryFilter(
         extensions=extensions,
         filenames=filenames,
-        recency_seconds=(
-            float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
-        ),
+        recency_seconds=recency,
+        band_within_seconds=band_within,
+        older_than_seconds=older_than,
+        type_group=group.id if group is not None and group.by == "type" else None,
         minimum_size=tree_filter.min_size or None,
         include_ignored=tree_filter.include_ignored,
-        as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+        as_of_ns=as_of_ns if timed else None,
     )
 
 
@@ -2325,8 +2377,176 @@ async def _read_tree_from_provider(
     remaining_depth: int,
     tree_filter: TreeFilter,
 ) -> JSONResponse:
+    payload = await _tree_payload_from_provider(
+        request,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        tree_filter=tree_filter,
+        as_of_ns=time.time_ns(),
+    )
+    if payload is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return JSONResponse(payload)
+
+
+async def _read_with_known_parent[T](
+    runtime: InventoryRuntime,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    read: Callable[[], Awaitable[T]],
+    first_read: Callable[[T], CoordinatedRead],
+) -> tuple[T, EntryProjection]:
+    """Run *read*, whose first read carries the `tree-parent` entry query, and on a cold
+    start, while the index cannot yet say whether *subpath* exists, prioritize it and read
+    again for up to `_TREE_COLD_START_WAIT_S`."""
+
+    def parent_of(answer: T) -> EntryProjection:
+        parent = first_read(answer).result.completed_projection("tree-parent")
+        if not isinstance(parent, EntryProjection):
+            raise TypeError("the tree parent query returned the wrong projection")
+        return parent
+
+    answer = await read()
+    parent = parent_of(answer)
+    if parent.presence is EntryPresence.UNKNOWN:
+        if subpath:
+            await runtime.coordinator.prioritize(
+                PriorityRequest(paths=(subpath,), max_depth=max(1, remaining_depth))
+            )
+        deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.005)
+            answer = await read()
+            parent = parent_of(answer)
+            if parent.presence is not EntryPresence.UNKNOWN:
+                break
+    return answer, parent
+
+
+def _is_folder(parent: EntryProjection) -> bool:
+    """Whether the tree's parent may be a folder: present as one, or not yet known."""
+
+    return not (
+        parent.presence is EntryPresence.ABSENT
+        or (
+            parent.presence is EntryPresence.PRESENT
+            and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
+        )
+    )
+
+
+async def _grouped_tree_from_provider(
+    request: Request,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    tree_filter: TreeFilter,
+    group_by: GroupBy,
+) -> JSONResponse:
+    """`/api/tree?group_by=`: every group's tree under the filter, from one grouped read.
+
+    The provider computes every group from one pass over the index at one version
+    (`GroupedTreeQuery`), and cuts every age band at one instant, so the bands partition
+    mtimes and a file written mid-request is counted in one group or in none.
+    """
+
     runtime = _inventory_runtime_for(request)
     as_of_ns = time.time_ns()
+    groups = tuple(
+        group
+        for group in groups_for(group_by)
+        if not (group.by == "age" and age_band(group, tree_filter.recency_seconds).empty)
+    )
+    shared = _inventory_filter(tree_filter, as_of_ns=as_of_ns)
+    if group_by == "age":
+        shared = replace(shared, as_of_ns=as_of_ns)
+    query = GroupedTreeQuery(
+        query_id="tree-groups",
+        groups=tuple(inventory_group_filter(group) for group in groups),
+        path=subpath,
+        max_depth=max(1, remaining_depth),
+        max_rows=INVENTORY_TREE_PAGE_ROWS,
+        filter=shared,
+    )
+
+    async def read_groups() -> GroupedTreeAssembly:
+        # One grouped assembly at a time, so overlapping reads cannot evict each other's
+        # continuations (InventoryRuntime.grouped_tree_admission).
+        async with runtime.grouped_tree_admission:
+            return await assemble_grouped_tree(
+                runtime.coordinator,
+                query=query,
+                companion_queries=(EntryQuery(query_id="tree-parent", path=subpath),),
+            )
+
+    assembly, parent = await _read_with_known_parent(
+        runtime,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        read=read_groups,
+        first_read=lambda answer: answer.first_read,
+    )
+    if not _is_folder(parent):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    parent_ignored = bool(parent.entry.gitignored) if parent.entry is not None else False
+    rows: list[dict[str, Any]] = []
+    for group, answer in zip(groups, assembly.groups, strict=True):
+        rows.append(
+            group_row(
+                group,
+                {
+                    "filtered": {
+                        "files": answer.matching_files,
+                        "size": answer.matching_bytes,
+                        "entries": answer.matching_leaves,
+                    },
+                    "tree": (
+                        build_inventory_tree_from_entries(
+                            entries=answer.entries,
+                            parent_rel=subpath,
+                            max_depth=remaining_depth,
+                            parent_ignored=parent_ignored,
+                        )
+                        if remaining_depth > 0
+                        else []
+                    ),
+                },
+            )
+        )
+        # Each group's tree, and then the body, takes an event-loop turn of its own. On
+        # 200,000 files in 20 folders, where a depth-2 tree lists every file, building
+        # every tree and the JSON in one turn held the loop for 0.80-0.98 s; a turn each
+        # holds it for 0.33-0.64 s, the largest group's tree or the body (measured in
+        # process, warm, with a 5 ms ticker beside the request, 2026-11-15).
+        await asyncio.sleep(0)
+    state = assembly.final_read.result.state
+    envelope = {
+        "root": str(session_filesystem_root()),
+        "tally_cache_status": _index_status_from_state(
+            state.phase,
+            complete=state.coverage.complete,
+            budget=any(issue.code.value == "resource_budget" for issue in state.issues),
+        ),
+        "tally_cache_max_files": runtime.config.budget.max_files,
+    }
+    return JSONResponse(groups_payload(group_by, rows, envelope))
+
+
+async def _tree_payload_from_provider(
+    request: Request,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    tree_filter: TreeFilter,
+    as_of_ns: int,
+) -> dict[str, Any] | None:
+    """One /api/tree answer from the inventory, or None when *subpath* is no folder.
+
+    *as_of_ns* is the instant every time filter is cut at.
+    """
+
+    runtime = _inventory_runtime_for(request)
     companion_queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
     projection_id = "tree-filtered" if tree_filter.active else "tree-directory"
     page_query: TreePageQuery | None = None
@@ -2380,30 +2600,15 @@ async def _read_tree_from_provider(
         )
         return assembly.first_read, assembly
 
-    read, assembly = await read_tree()
-    parent = read.result.completed_projection("tree-parent")
-    if not isinstance(parent, EntryProjection):
-        raise TypeError("the tree parent query returned the wrong projection")
-    if parent.presence is EntryPresence.UNKNOWN:
-        if subpath:
-            await runtime.coordinator.prioritize(
-                PriorityRequest(paths=(subpath,), max_depth=max(1, remaining_depth))
-            )
-        deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
-        while asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(0.005)
-            read, assembly = await read_tree()
-            parent = read.result.completed_projection("tree-parent")
-            if not isinstance(parent, EntryProjection):
-                raise TypeError("the tree parent query returned the wrong projection")
-            if parent.presence is not EntryPresence.UNKNOWN:
-                break
-
-    if parent.presence is EntryPresence.ABSENT or (
-        parent.presence is EntryPresence.PRESENT
-        and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
-    ):
-        return JSONResponse({"error": "Not found"}, status_code=404)
+    (read, assembly), parent = await _read_with_known_parent(
+        runtime,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        read=read_tree,
+        first_read=lambda answer: answer[0],
+    )
+    if not _is_folder(parent):
+        return None
 
     tree_entries = ()
     filtered_projection: FilteredTreeProjection | None = None
@@ -2436,34 +2641,32 @@ async def _read_tree_from_provider(
         complete=state.coverage.complete,
         budget=any(issue.code.value == "resource_budget" for issue in state.issues),
     )
-    return JSONResponse(
-        {
-            "root": str(root_dir),
-            "tree": tree,
-            "filtered": (
-                {
-                    "files": filtered_projection.matching_files,
-                    "size": filtered_projection.matching_bytes,
-                    "entries": filtered_projection.matching_leaves,
-                }
-                if filtered_projection is not None
-                else None
-            ),
-            "tally_cache_status": status,
-            "tally_cache_max_files": runtime.config.budget.max_files,
-            "summary": navigation["summary"] if navigation is not None else None,
-            "file_type_registry": (
-                navigation["file_type_registry"] if navigation is not None else None
-            ),
-            "extensions": navigation["extensions"] if navigation is not None else None,
-            "canonical_extensions": (
-                navigation["canonical_extensions"] if navigation is not None else None
-            ),
-            "type_families": navigation["type_families"] if navigation is not None else None,
-            "type_presets": navigation["type_presets"] if navigation is not None else None,
-            "recency_tallies": (navigation["recency_tallies"] if navigation is not None else None),
-        }
-    )
+    return {
+        "root": str(root_dir),
+        "tree": tree,
+        "filtered": (
+            {
+                "files": filtered_projection.matching_files,
+                "size": filtered_projection.matching_bytes,
+                "entries": filtered_projection.matching_leaves,
+            }
+            if filtered_projection is not None
+            else None
+        ),
+        "tally_cache_status": status,
+        "tally_cache_max_files": runtime.config.budget.max_files,
+        "summary": navigation["summary"] if navigation is not None else None,
+        "file_type_registry": (
+            navigation["file_type_registry"] if navigation is not None else None
+        ),
+        "extensions": navigation["extensions"] if navigation is not None else None,
+        "canonical_extensions": (
+            navigation["canonical_extensions"] if navigation is not None else None
+        ),
+        "type_families": navigation["type_families"] if navigation is not None else None,
+        "type_presets": navigation["type_presets"] if navigation is not None else None,
+        "recency_tallies": (navigation["recency_tallies"] if navigation is not None else None),
+    }
 
 
 @log_async_calls()
@@ -2471,24 +2674,44 @@ async def api_tree(request: Request) -> Response:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
     tree_filter = tree_filter_from_request(request)
+    # `group_by` without `group` asks for the groups themselves (`tree_groups.groups_payload`).
+    group_by = (
+        parse_group_by(request.query_params.get("group_by", ""))
+        if tree_filter.group is None
+        else None
+    )
     require_source_capability("navigation")
     require_source_capability("index")
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
     require_filter_capabilities(
-        recency=bool(tree_filter.recency_seconds),
+        # An age group is a recency band: a source without mtimes has none to offer.
+        recency=bool(tree_filter.recency_seconds)
+        or group_by == "age"
+        or (tree_filter.group is not None and tree_filter.group.by == "age"),
         # Ignore is absent on a pin: unignored equals total, so hiding
         # ignored files is a no-op rather than unsupported_for_subject.
         include_ignored=True if git_pin else tree_filter.include_ignored,
     )
     if pin is not None:
-        from metabrowser.git.content_routes import git_revision_tree
+        from metabrowser.git.content_routes import git_revision_tree, git_revision_tree_groups
 
+        if group_by is not None:
+            return await git_revision_tree_groups(request, pin, tree_filter, group_by)
         return await git_revision_tree(request, pin, tree_filter)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
+
+    if group_by is not None:
+        return await _grouped_tree_from_provider(
+            request,
+            subpath=subpath,
+            remaining_depth=remaining_depth,
+            tree_filter=tree_filter,
+            group_by=group_by,
+        )
 
     return await _read_tree_from_provider(
         request,
@@ -3883,7 +4106,8 @@ async def kpress_static_asset(request: Request) -> Response:
         return asset, kpress_adapter.kpress_stamp_is_current(stamp_digest, asset.content)
 
     try:
-        asset, current = await asyncio.to_thread(read)
+        with server_timing.phase("read"):
+            asset, current = await asyncio.to_thread(read)
     except kpress_adapter.KPressAssetNotFoundError:
         return PlainTextResponse(f"not found: {rel}", status_code=404)
 
@@ -3903,6 +4127,15 @@ async def kpress_static_asset(request: Request) -> Response:
     }
     if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
+    if current:
+        # Compressed once under the ETag, which is KPress's hash of these bytes (H115).
+        # KPress reads the file itself, so the read above is still paid on each request.
+        return EncodedAssetResponse(
+            key=f"kpress:{asset.etag}",
+            identity=asset.content,
+            headers=headers,
+            media_type=asset.media_type,
+        )
     return Response(
         content=asset.content,
         media_type=asset.media_type,
@@ -4660,10 +4893,11 @@ routes = [
 ]
 
 # GZip every response above 1 KiB. This materially reduces tree and file
-# payloads over an SSH tunnel. ``compresslevel=6`` is Starlette's default and
-# trades CPU against compression ratio at the right point for the small
-# JSON payloads this app emits. ``FileResponse`` is excluded automatically
-# by Starlette since it sets its own headers.
+# payloads over an SSH tunnel. The level and the floor are in
+# ``metabrowser.delivery``, which also decides who is sent gzip. A streamed
+# ``FileResponse`` is compressed chunk by chunk like any other body; an asset at
+# a current stamped address arrives already encoded (``encoded_assets``), and
+# the middleware passes an answer with a ``Content-Encoding`` on unchanged.
 middleware = [
     # Outermost, so a rejection written before routing — and a 500 an
     # inner layer never got to shape — still leaves ``/raw`` sandboxed.
@@ -4674,7 +4908,11 @@ middleware = [
     Middleware(SourcePinGuard),
     Middleware(_SlowRequestLogMiddleware),
     # Starlette's, with the compression counted as the `encode` phase of Server-Timing.
-    Middleware(server_timing.TimedGZipMiddleware, minimum_size=1024, compresslevel=6),
+    Middleware(
+        server_timing.TimedGZipMiddleware,
+        minimum_size=delivery.GZIP_MINIMUM_SIZE,
+        compresslevel=delivery.GZIP_LEVEL,
+    ),
 ]
 
 # Lazy import: events_route.py pulls in the inventory + events

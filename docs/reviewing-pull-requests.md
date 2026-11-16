@@ -105,10 +105,12 @@ cost: a Conversation-only session runs no Git at all.
 The trade-off is that the first **Changes** on a checkout without a store waits for it.
 Once the checkout has a store, from an earlier **Changes** in this session or another,
 Conversation can prepare the comparison of a PR record fetched within the last minute in
-the background. That work fetches only the PR’s head and base, says nothing on
-Conversation, and gives way to anything you ask for: opening **Changes** takes it over,
-and any other refresh stops it.
-See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
+the background. That work fetches only the PR’s head and base, and its only sign on
+Conversation is the gray pulsing block in the header’s Diff summary row while it runs.
+It gives way to anything you ask for: opening **Changes** takes it over, and any other
+refresh stops it.
+See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing
+workflow.
 
 ## Keep Pulls Up to Date
 
@@ -125,16 +127,27 @@ follow its instructions and choose **Reload**. See
 
 ## Native Stack Navigation
 
-With the optional [gh-stack extension](installation.md#git-and-github-setup), a list row
-shows a Layers icon and position, such as **5/23**, when native GitHub metadata names
-its membership. The PR page uses the same position as a menu trigger.
-Open it for the stack number and members ordered from stack top to base, with each
-member’s title, ordinal, and PR number.
+With the optional [gh-stack extension](installation.md#git-and-github-setup), the Pulls
+list groups each native GitHub stack’s PRs under a **Stack #N** row, open by default,
+with the stack’s PRs under it from the stack’s top to its base and the PRs in no stack
+after the stacks. A stack’s row opens and closes like a folder.
+Each member row’s first line shows its place before its number, such as **1/6 · #455 ·
+jlevy**, and its second line the title.
+A PR in two stacks sits under the first, and its place names the other stack by its
+number, such as **3/4 · ⧉300 2/2**. Until the stacks are known, or when they cannot be
+read, the list stays flat.
+
+On the PR page, the stack button at the right end of the author’s row shows a Layers
+icon and the same position; a PR in two stacks has a button for each, which names its
+stack, such as **⧉300 2/2**. Open it for the stack number and members ordered from stack
+top to base, with each member’s title, ordinal, and PR number.
 Titles come from the matching local catalog; a missing title falls back to the PR
-number.
-Press `N` for the next member toward the stack’s top and `P` for the previous one
-toward its base; Shift makes no difference.
-Help lists both shortcuts, and editors or open dialogs keep their normal keys.
+number. On macOS, press Control-N for the next member toward the stack’s top and
+Control-P for the previous one toward its base; Shift makes no difference.
+Help lists both shortcuts, and text fields and open dialogs keep their normal keys:
+Control-N and Control-P move a field’s caret.
+On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
+use the stack menu there ([Control Chords](design-system.md#control-chords)).
 [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the rest of the keys.
 Moving between members keeps the current PR tab selected and clears the previous PR’s
 file selection.
@@ -175,13 +188,27 @@ The `Serving` line prints the address.
 A GitHub `/pull/123/commits` URL opens **Conversation**, where commit summaries appear
 with the discussion.
 
+To start over, click the folder’s name at the top of the navigation, or press `0`. That
+is Home: the folder’s home view as a fresh load shows it, with every tab at its first.
+**Pulls** then opens its list, and a pull request you open from it opens on
+**Conversation**, whichever tab you last read ([Home](design-system.md#home)).
+
 ## What the Page Shows
 
-The header has the title, state, branches, labels, and dates.
-PR numbers use dark text, usernames use bold normal text ink at the surface’s normal
-size, and branch names use smaller ref chips, consistently with the Pulls list and Git
-history. Hover or focus a copyable branch chip to reveal its copy control; it copies the
-full branch name. The author’s small circular avatar appears beside the username when
+The header has the title and its PR number; the author’s sentence, such as “jlevy wants
+to merge 2 commits”, with the stack button, if any, at its end; the head and base
+branches on a line of their own, head → base; the state badge before the dates; and the
+labels. Each label is in the color GitHub gives it, as github.com draws it in either
+theme, and hovering one shows its description when it has one.
+The header’s last row, on every tab, is the PR’s Diff summary, collapsed: its files and
+lines changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”. Opened, it
+lists the changed files as a tree, and pressing a file opens **Changes** at that file.
+While the comparison it counts is on its way, the row holds a gray pulsing block after a
+moment ([Diff Summary](design-system.md#diff-summary)). PR numbers use bold dark text,
+usernames use bold normal text ink at the surface’s normal size, and branch names use
+ref chips slightly smaller than the text around them, as in Git history.
+Hover or focus a copyable branch chip to reveal its copy control; it copies the full
+branch name. The author’s small circular avatar appears beside the username when
 available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
 condensed navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.

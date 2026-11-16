@@ -1,11 +1,15 @@
 """A run in its own process group leaves nothing running, however it ends.
 
 The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``,
+``test_control_chords_chrome.py``, ``test_diff_markdown_fold_chrome.py``,
+``test_git_commit_summary_chrome.py``,
 ``test_github_pull_header_chrome.py``, ``test_github_pull_text_chrome.py``,
+``test_github_pull_timeline_chrome.py``, ``test_github_pulls_stacks_chrome.py``,
 ``test_nav_metadata_chrome.py``, ``test_prose_faces_chrome.py``,
-``test_raw_profile_cache_chrome.py``, ``test_staged_fonts_chrome.py``) run a Node script
-that starts Chrome and its helpers.
-Stopping that script's process group is what stops them, so this holds:
+``test_raw_profile_cache_chrome.py``, ``test_staged_fonts_chrome.py``,
+``test_title_prefix_chrome.py``) run a Node script
+that starts Chrome and its helpers. Stopping that script's process group is what stops
+them, so this holds:
 
 - that Chrome keeps every process it starts for a session in the group, both ways the
   tests launch it (``tests/dom/chrome-group-probe.mjs``);
@@ -88,13 +92,20 @@ DEADLINE_S = 5.0
 # How far past its reserved time a teardown may run: a thread switch and a last ``ps``.
 SLACK_S = 0.5
 CHROME_TESTS = (
+    "tests.test_control_chords_chrome",
+    "tests.test_diff_markdown_fold_chrome",
     "tests.test_folder_overview_alignment",
+    "tests.test_files_tab_chrome",
+    "tests.test_git_commit_summary_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
+    "tests.test_github_pull_timeline_chrome",
+    "tests.test_github_pulls_stacks_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_prose_faces_chrome",
     "tests.test_raw_profile_cache_chrome",
     "tests.test_staged_fonts_chrome",
+    "tests.test_title_prefix_chrome",
     "tests.test_transitions_instrument",
 )
 # Creating the profile and the test's own setup, before its bounds start.

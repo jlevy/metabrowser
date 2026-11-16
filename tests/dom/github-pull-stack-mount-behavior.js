@@ -227,8 +227,8 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-labels").contains(trigger),
-    "stack control ends the labels row",
+    warm.querySelector(".github-pull-meta").children.at(-1).contains(trigger),
+    "stack control ends the author's row (mb-cf0l)",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");
@@ -240,6 +240,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
     ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
   );
+  // A menu of one group is named once, by the heading over its members: the host's group
+  // heading, in the stack's label class (docs/design-system.md, "Stacks").
+  const heading = [...members.descendants()].find(
+    (element) => element.getAttribute("class") === "group-heading github-pull-stack-label",
+  );
+  assert.equal(heading?.textContent, "Stack #286");
+  assert.equal(members.getAttribute("aria-labelledby"), heading.getAttribute("id"));
+  assert.equal(members.getAttribute("aria-label"), null, "the menu has no second name");
+  assert.equal(heading.parentElement?.getAttribute("role") ?? null, null, "no group role");
   const anchors = [...members.descendants()].filter((element) => element.tag === "a");
   anchors[0].focus();
   next.setTab("files");
@@ -342,6 +351,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     link: (target) => page.h("a", { href: `/pull/${target}/checks` }),
     icon: null,
     currentTitle: "Current",
+    titleNodes: api.titleNodes,
     onOpen() {},
   });
   const menuHost = new Element("main");
@@ -377,9 +387,36 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     }
   }
   assert.deepEqual(swallowed, [], "the stack menu takes no key held with a modifier");
+  // On the trigger, Home and End are left alone, as on a filter's trigger; the menu stays
+  // closed (docs/design-system.md, "Keys in a Menu").
+  for (const name of ["Home", "End"]) {
+    let prevented = false;
+    standalone.element.events.get("keydown")({
+      key: name,
+      target: standalone.element.children[0],
+      preventDefault() {
+        prevented = true;
+      },
+      stopPropagation() {},
+    });
+    assert.equal(prevented || Boolean(standalone.element.open), false, `${name} opens nothing`);
+  }
+  // Every way the menu opens puts focus on the current member, #7, the row checked, whose
+  // place in the top-first list is second (mb-xlla).
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");
-  assert.equal(document.activeElement, menuLinks[0], "Down opens at the top stack member");
+  const currentMember = () =>
+    standalone.element
+      .querySelectorAll("a[href]")
+      .find((link) => link.getAttribute("aria-current") === "page");
+  assert.equal(currentMember(), menuLinks[1]);
+  assert.equal(document.activeElement, menuLinks[1], "Down opens at the current member");
+  key("ArrowDown");
+  assert.equal(document.activeElement, menuLinks[2], "Down then moves within the menu");
+  key("ArrowUp");
+  assert.equal(document.activeElement, menuLinks[1]);
+  key("ArrowUp");
+  assert.equal(document.activeElement, menuLinks[0]);
   // With the menu open, Escape held with a modifier reaches the document's listeners, the
   // one that closes the open menu among them, and none takes it or closes the menu.
   const documentKeydowns = [...(documentEvents.get("keydown") ?? [])];
@@ -438,10 +475,57 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(standalone.element.open, false);
   assert.equal(document.activeElement, standalone.element.children[0], "Escape returns to trigger");
   key("Enter", standalone.element.children[0]);
-  assert.equal(document.activeElement, menuLinks[0], "Enter opens and focuses the first menu row");
+  assert.equal(document.activeElement, currentMember(), "Enter opens on the current member");
+  key("Escape");
+  assert.equal(document.activeElement, standalone.element.children[0], "and Escape gives it back");
+  key(" ", standalone.element.children[0]);
+  assert.equal(document.activeElement, currentMember(), "Space opens on the current member");
   key("Escape");
   key("ArrowUp");
-  assert.equal(document.activeElement, standalone.element.querySelectorAll("a[href]").at(-1));
+  assert.equal(document.activeElement, currentMember(), "Up opens on the current member");
+  key("Escape");
+  // A press: the details opens itself, with focus on the trigger, and its toggle event
+  // moves focus to the current member.
+  standalone.element.children[0].focus();
+  standalone.element.open = true;
+  standalone.element.events.get("toggle")();
+  assert.equal(document.activeElement, currentMember(), "a press opens on the current member");
+  // The toggle event a key's open sends after it leaves focus where the key put it.
+  key("ArrowDown");
+  const moved = document.activeElement;
+  standalone.element.events.get("toggle")();
+  assert.equal(document.activeElement, moved, "a later toggle event takes no focus back");
+  key("Escape");
+  assert.equal(document.activeElement, standalone.element.children[0], "Escape returns to trigger");
+  // A pull request in two stacks: each trigger names its stack before its position, as a
+  // Pulls row's place names another stack (mb-xlla); in one, the position is bare.
+  assert.equal(standalone.element.children[0].textContent, "3/4");
+  standalone.update(
+    { ...menuStack, pulls: [5, 6, 7, 8], titles: ["New base", "Base", "Current", "Top"] },
+    "Current",
+    true,
+  );
+  assert.equal(standalone.element.children[0].textContent, "90 3/4");
+  standalone.update(
+    { ...menuStack, pulls: [5, 6, 7, 8], titles: ["New base", "Base", "Current", "Top"] },
+    "Current",
+    false,
+  );
+  assert.equal(standalone.element.children[0].textContent, "3/4");
+  const named = page.createStackMenu(menuStack, 7, {
+    link: (target) => page.h("a", { href: `/pull/${target}` }),
+    icon: null,
+    currentTitle: "Current",
+    titleNodes: api.titleNodes,
+    named: true,
+    onOpen() {},
+  });
+  assert.equal(named.element.children[0].textContent, "90 2/3");
+  assert.equal(
+    named.element.children[0].getAttribute("aria-label"),
+    "Navigate Stack #90, position 2 of 3",
+  );
+  named.dispose();
   for (const listener of documentEvents.get("pointerdown")) {
     listener({ target: new Element("button") });
   }

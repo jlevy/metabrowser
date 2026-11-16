@@ -142,13 +142,13 @@ status: 200
   ],
   "type_presets": [
     [
-      "code",
-      2,
+      "docs",
+      7,
       0
     ],
     [
-      "docs",
-      7,
+      "code",
+      2,
       0
     ],
     [

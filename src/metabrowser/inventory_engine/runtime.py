@@ -64,6 +64,15 @@ class InventoryRuntime:
             config=self.config,
         )
         self._root: Path | None = None
+        # One grouped-tree assembly at a time (`/api/tree?group_by=`). A grouped read
+        # retains every group's remaining rows at once for its continuations, and the
+        # provider keeps all continuations within `MAX_ASSEMBLED_ROWS`, evicting the
+        # oldest first; overlapping grouped reads on a wide folder evicted each other's
+        # pages and reran whole passes, and failed past a few at once. Overlap buys no
+        # throughput either: the passes share the interpreter lock, so one, two, and four
+        # at once took 2.5, 5.2, and 10.8 s on 200,000 files in 20 folders (review B of
+        # #466, B1). A read waits its turn instead.
+        self.grouped_tree_admission = asyncio.Lock()
         self._remove_invalidation_listener = self.coordinator.add_invalidation_listener(
             self._invalidate_host_projections
         )

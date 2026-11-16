@@ -2,44 +2,32 @@
 //
 // Every decision lives here without a DOM, and the tree is built from the list of files the
 // `pull-files` route answers, never from hydrated diff documents. `holdFileList` keeps the rows
-// of one list as its pages arrive and says which window to ask for next; `buildFileTree` makes
-// folders of their paths; `visibleRows` flattens the folders a reader has expanded into rows,
-// drawing a folder whose only child is a folder as one row, `src/metabrowser`, as GitHub's file
-// tree does, with which folders are open decided by `initialExpansion` and a reader's toggles;
-// `describeFileList` says what the list is and how much of it has arrived.
+// of one list as its pages arrive and says which window to ask for next; the tree itself is
+// the shell's changed-files tree (static/changed-files-tree.js), which a diff's Diff summary
+// draws too: it makes folders of the paths, rolls their line counts up, and flattens the
+// folders a reader has open into rows, with which folders are open decided by
+// `initialExpansion` and a reader's toggles; `describeFileList` says what the list is and how
+// much of it has arrived.
 //
 // `createFileTreeController` is one pull request's tree in its row: reading and asking for the
 // list, the folders a reader opens, the row that takes Tab, the keys, and the jump of the diff
-// to a file; `createRowExpansion` says which rows are open and why; `windowRange` which rows of
-// a long tree are in the document. pull-files-view.js is the paint, and
-// tests/dom/github-pull-files-tree-session.js runs the rest from the command line on what the
-// server answered.
+// to a file; `createRowExpansion` says which rows are open and why. pull-files-view.js is the
+// paint, and tests/dom/github-pull-files-tree-session.js runs the rest from the command line
+// on what the server answered.
 //
 // A path is text whoever opened the pull request wrote. It is a row's identity, and the path
 // the diff view's jump is given, a rename's new path; what is painted is the row's `display`,
 // the server's display rule (control and invisible characters shown as U+FFFD), and a name
-// never reaches markup or a filesystem call. A folder's identity ends in "/", so a file and a
-// folder of one name, as a file replaced by a directory lists them, are two rows.
+// never reaches markup or a filesystem call.
 //
-// Measured 2026-11-03 with Node 24.19 on real lists as the route answered them, the median of
-// 25 runs twice at a load average of 4.5: building the tree and flattening it with every folder
-// expanded took 1.3 ms for the first 1,183 files of django/django#15387 (1,503 rows) and 3.7 ms
-// for the 3,000 nodejs/node#65161 lists (3,346 rows), so the whole tree is built again as each
-// page arrives. Which folders start expanded is a file count
-// the panel measures in a real browser and passes in.
+// The whole tree is built again as each page arrives: what that costs is measured beside the
+// shared model. Which folders start expanded is a file count the panel measures in a real
+// browser and passes in.
 
 /**
- * One row of the route's answer.
+ * One row of the route's answer, as the shared tree takes it.
  *
- * @typedef {{
- *   path: string,
- *   previous_path: string | null,
- *   status: string,
- *   additions: number | null,
- *   deletions: number | null,
- *   display: string,
- *   previous_display: string | null,
- * }} FileRow
+ * @typedef {MetabrowserChangedFileRow} FileRow
  */
 
 /**
@@ -72,150 +60,13 @@
  */
 
 /**
- * @typedef {{kind: "folder", id: string, name: string, files: number, children: TreeNode[]}} FolderNode
- * @typedef {{kind: "file", id: string, name: string, row: FileRow}} FileNode
- * @typedef {FolderNode | FileNode} TreeNode
- * @typedef {{root: FolderNode, files: number, folderIds: string[]}} FileTree
- */
-
-/**
- * One visible row. A folder row stands for its chain: `ids` are the chain's folders, top
- * first, and `id` the deepest, whose children follow it when it is expanded.
- *
- * `position` and `setSize` are its place among its parent's children, a chain counting as
- * one, for `aria-posinset` and `aria-setsize`: a row out of view is not in the document.
- *
- * @typedef {{
- *   kind: "folder",
- *   id: string,
- *   ids: string[],
- *   name: string,
- *   depth: number,
- *   position: number,
- *   setSize: number,
- *   expanded: boolean,
- *   files: number,
- * } | {
- *   kind: "file",
- *   id: string,
- *   name: string,
- *   depth: number,
- *   position: number,
- *   setSize: number,
- *   path: string,
- *   display: string,
- *   badge: string,
- *   status: string,
- *   statusLabel: string,
- *   additions: number | null,
- *   deletions: number | null,
- *   previousName: string | null,
- *   current: boolean,
- * }} TreeRow
- */
-
-/** The one-letter badge a patch's children carry, by GitHub's status. */
-export const STATUS_BADGES = Object.freeze({
-  added: "A",
-  removed: "D",
-  modified: "M",
-  renamed: "R",
-  copied: "C",
-  changed: "T",
-  unchanged: "M",
-});
-
-/** What a badge's tooltip and accessible name say, by GitHub's status. */
-export const STATUS_LABELS = Object.freeze({
-  added: "Added",
-  removed: "Deleted",
-  modified: "Modified",
-  renamed: "Renamed",
-  copied: "Copied",
-  changed: "Type changed",
-  unchanged: "Unchanged",
-});
-
-/**
- * The same order wherever it runs: by name without case, then by the name itself, so no
- * locale's collation decides it.
- *
- * @param {TreeNode} left
- * @param {TreeNode} right
- */
-function byName(left, right) {
-  if (left.kind !== right.kind) {
-    return left.kind === "folder" ? -1 : 1;
-  }
-  const a = left.name.toLowerCase();
-  const b = right.name.toLowerCase();
-  if (a !== b) {
-    return a < b ? -1 : 1;
-  }
-  return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
-}
-
-/**
- * Folders of the rows' paths. Each path is split on "/", and each segment is named by the
- * same segment of `display`, which the server's rule keeps one for one.
- *
- * @param {FileRow[]} rows
- * @returns {FileTree}
- */
-export function buildFileTree(rows) {
-  /** @type {FolderNode} */
-  const root = { kind: "folder", id: "", name: "", files: 0, children: [] };
-  /** @type {Map<string, FolderNode>} */
-  const folders = new Map([["", root]]);
-  /** @type {Set<string>} */
-  const seen = new Set();
-  for (const row of rows) {
-    if (seen.has(row.path)) {
-      continue;
-    }
-    seen.add(row.path);
-    const segments = row.path.split("/");
-    const names = row.display.split("/");
-    let parent = root;
-    parent.files += 1;
-    let prefix = "";
-    for (let index = 0; index < segments.length - 1; index += 1) {
-      prefix += `${segments[index]}/`;
-      let folder = folders.get(prefix);
-      if (folder === undefined) {
-        folder = {
-          kind: "folder",
-          id: prefix,
-          name: names[index] ?? "�",
-          files: 0,
-          children: [],
-        };
-        folders.set(prefix, folder);
-        parent.children.push(folder);
-      }
-      folder.files += 1;
-      parent = folder;
-    }
-    parent.children.push({
-      kind: "file",
-      id: row.path,
-      name: names[segments.length - 1] ?? "�",
-      row,
-    });
-  }
-  for (const folder of folders.values()) {
-    folder.children.sort(byName);
-  }
-  folders.delete("");
-  return { root, files: root.files, folderIds: [...folders.keys()] };
-}
-
-/**
  * Which folders are open: `all` says whether a folder no reader has touched is, and `toggled`
  * holds the ones a reader opened or closed, by id, so a folder a later page brings follows the
  * same rule as those before it.
  *
- * @typedef {{all: boolean, toggled: ReadonlyMap<string, boolean>}} Expansion
+ * @typedef {MetabrowserChangedFilesExpansion} Expansion
+ * @typedef {MetabrowserChangedFilesRow} TreeRow
+ * @typedef {MetabrowserChangedFilesTreeModel} FileTree
  */
 
 /** The page size of GitHub's list, which its `Link` header counts in. */
@@ -237,119 +88,6 @@ export function initialExpansion(envelope, autoExpandFiles) {
       ? Math.max(envelope.fetched, envelope.last_page * PAGE_FILES)
       : envelope.fetched;
   return { all: expected <= autoExpandFiles, toggled: new Map() };
-}
-
-/**
- * @param {Expansion} expansion
- * @param {string} id
- */
-export function isOpen(expansion, id) {
-  return expansion.toggled.get(id) ?? expansion.all;
-}
-
-/**
- * *expansion* with every folder above *path* open, so the row of the file the page shows can
- * be marked current where a reader sees it.
- *
- * @param {Expansion} expansion
- * @param {string} path
- * @returns {Expansion}
- */
-export function revealPath(expansion, path) {
-  const toggled = new Map(expansion.toggled);
-  const segments = path.split("/");
-  let prefix = "";
-  for (let index = 0; index < segments.length - 1; index += 1) {
-    prefix += `${segments[index]}/`;
-    toggled.set(prefix, true);
-  }
-  return { all: expansion.all, toggled };
-}
-
-/**
- * *expansion* with a folder row toggled: every folder of its chain together, so a chain that a
- * later page splits keeps the state a reader gave it.
- *
- * @param {Expansion} expansion
- * @param {{ids: string[], expanded: boolean}} row
- * @returns {Expansion}
- */
-export function toggleFolder(expansion, row) {
-  const toggled = new Map(expansion.toggled);
-  for (const id of row.ids) {
-    toggled.set(id, !row.expanded);
-  }
-  return { all: expansion.all, toggled };
-}
-
-/**
- * The rows a reader sees: each open folder's children after it, one level deeper.
- *
- * @param {FileTree} tree
- * @param {Expansion} expansion
- * @param {{current?: string | null}} [options]
- * @returns {TreeRow[]}
- */
-export function visibleRows(tree, expansion, options = {}) {
-  const current = options.current ?? null;
-  /** @type {TreeRow[]} */
-  const rows = [];
-  /**
-   * @param {TreeNode[]} children
-   * @param {number} depth
-   */
-  const walk = (children, depth) => {
-    const setSize = children.length;
-    for (const [index, node] of children.entries()) {
-      const position = index + 1;
-      if (node.kind === "file") {
-        const status = /** @type {keyof typeof STATUS_BADGES} */ (node.row.status);
-        rows.push({
-          kind: "file",
-          id: node.id,
-          name: node.name,
-          depth,
-          position,
-          setSize,
-          path: node.row.path,
-          display: node.row.display,
-          badge: STATUS_BADGES[status] ?? "?",
-          status: node.row.status,
-          statusLabel: STATUS_LABELS[status] ?? node.row.status,
-          additions: node.row.additions,
-          deletions: node.row.deletions,
-          previousName: node.row.previous_display,
-          current: node.row.path === current,
-        });
-        continue;
-      }
-      let folder = node;
-      const ids = [folder.id];
-      const names = [folder.name];
-      while (folder.children.length === 1 && folder.children[0].kind === "folder") {
-        folder = folder.children[0];
-        ids.push(folder.id);
-        names.push(folder.name);
-      }
-      const open = isOpen(expansion, folder.id);
-      rows.push({
-        kind: "folder",
-        id: folder.id,
-        ids,
-        name: names.join("/"),
-        depth,
-        position,
-        setSize,
-        expanded: open,
-        files: folder.files,
-      });
-      if (open) {
-        walk(folder.children, depth + 1);
-      }
-    }
-  };
-  walk(tree.root.children, 0);
-  return rows;
 }
 
 /**
@@ -871,12 +609,18 @@ function isFilesEnvelope(value) {
  *   leave(): void,
  *   lastInput?(): number | null,
  *   held?(hold: "opening" | "lateRows", heldMs: number, outcome: "met" | "failed" | "bound" | "reader" | "closed" | "withdrawn"): void,
+ *   tree: MetabrowserChangedFilesTree | (() => PromiseLike<MetabrowserChangedFilesTree>),
  * }} FileTreeDependencies
  */
 
 /**
  * One pull request's changed files in its row: the list as it arrives, which folders are
  * open, which row takes Tab and which file the page shows, the keys, and the jump.
+ *
+ * The tree is the shell's changed-files tree, `deps.tree`: the model itself, or a function
+ * that loads it, as the panel's asks the SDK for it. A read waits for it before its rows are
+ * taken, so a tree opened before it arrives draws its first rows when both are in hand, and a
+ * load that failed is asked for again by the next read, which Retry starts.
  *
  * Expansion reads the local cache before asking for a missing, partial, or stale list.
  * The server and the controller hold automatic provider requests to one per window.
@@ -897,6 +641,8 @@ function isFilesEnvelope(value) {
 export function createFileTreeController(deps, options) {
   const number = options.number;
   const holder = holdFileList(number);
+  /** The shared tree, once `deps.tree` has given it. @type {MetabrowserChangedFilesTree | null} */
+  let shared = null;
   /** @type {FilesEnvelope | null} */
   let envelope = null;
   /** @type {Expansion | null} */
@@ -1086,7 +832,10 @@ export function createFileTreeController(deps, options) {
 
   /** The rows a reader sees, from the tree and the folders open. */
   function restate() {
-    rows = tree === null || expansion === null ? [] : visibleRows(tree, expansion);
+    rows =
+      tree === null || expansion === null || shared === null
+        ? []
+        : shared.visibleRows(tree, expansion);
     index = new Map(rows.map((row, at) => [row.id, at]));
     version += 1;
     settleAnchor();
@@ -1098,23 +847,23 @@ export function createFileTreeController(deps, options) {
    */
   function drawsSameRows() {
     const held = holder.rows();
-    if (rows.length === 0 || held.length === 0 || expansion === null) {
+    if (rows.length === 0 || held.length === 0 || expansion === null || shared === null) {
       return false;
     }
-    const next = visibleRows(buildFileTree(held), expansion);
+    const next = shared.visibleRows(shared.buildFileTree(held), expansion);
     return next.length === rows.length && next.every((row, at) => row.id === rows[at]?.id);
   }
 
   /** The tree again, from the rows held: the first rows decide which folders start open. */
   function rebuild() {
-    const held = holder.rows();
-    if (expansion === null && held.length > 0 && envelope !== null) {
+    const held = shared === null ? [] : holder.rows();
+    if (shared !== null && expansion === null && held.length > 0 && envelope !== null) {
       expansion = initialExpansion(envelope, options.autoExpandFiles);
       if (current !== null) {
-        expansion = revealPath(expansion, current);
+        expansion = shared.revealPath(expansion, current);
       }
     }
-    tree = held.length > 0 ? buildFileTree(held) : null;
+    tree = shared !== null && held.length > 0 ? shared.buildFileTree(held) : null;
     restate();
   }
 
@@ -1229,6 +978,16 @@ export function createFileTreeController(deps, options) {
     inflight = controller;
     let again = false;
     try {
+      // The shared tree arrives as the panel mounts, long before a reader opens a row; a read
+      // that comes first waits for it, so its rows are never taken with nothing to draw them.
+      // One in hand is taken at once, so the read is asked for in the same task as ever.
+      if (shared === null) {
+        const given = deps.tree;
+        shared = typeof given === "function" ? await given() : given;
+        if (inflight !== controller || controller.signal.aborted || !live()) {
+          return;
+        }
+      }
       const response = await deps.request("GET", `${FILES_ROUTE}?${holder.query()}`, {
         signal: controller.signal,
       });
@@ -1250,7 +1009,8 @@ export function createFileTreeController(deps, options) {
       if (inflight !== controller || controller.signal.aborted || !live()) {
         return;
       }
-      error = "The server did not answer.";
+      error =
+        shared === null ? "The changed files could not be drawn." : "The server did not answer.";
     } finally {
       if (inflight === controller) {
         inflight = null;
@@ -1460,27 +1220,12 @@ export function createFileTreeController(deps, options) {
 
   /** @param {TreeRow} row */
   function toggle(row) {
-    if (row.kind !== "folder" || expansion === null) {
+    if (row.kind !== "folder" || expansion === null || shared === null) {
       return;
     }
-    expansion = toggleFolder(expansion, row);
+    expansion = shared.toggleFolder(expansion, row);
     restate();
     render();
-  }
-
-  /**
-   * The row that holds the row at *at*, a level up, or null at the top.
-   *
-   * @param {number} at
-   */
-  function parentOf(at) {
-    const depth = rows[at].depth;
-    for (let row = at - 1; row >= 0; row -= 1) {
-      if (rows[row].depth < depth) {
-        return row;
-      }
-    }
-    return null;
   }
 
   /** Follow a file already shown by the page, without invalidating an active walk. @param {string | null} path */
@@ -1489,8 +1234,8 @@ export function createFileTreeController(deps, options) {
       return;
     }
     markCurrent(path);
-    if (path !== null && expansion !== null && !index.has(path)) {
-      expansion = revealPath(expansion, path);
+    if (path !== null && expansion !== null && shared !== null && !index.has(path)) {
+      expansion = shared.revealPath(expansion, path);
       restate();
       render();
     }
@@ -1623,7 +1368,7 @@ export function createFileTreeController(deps, options) {
         toggle(row);
         return true;
       }
-      const parent = parentOf(at);
+      const parent = shared === null ? null : shared.parentIndex(rows, at);
       if (parent === null) {
         deps.leave();
       } else {
@@ -1721,6 +1466,8 @@ export function createFileTreeController(deps, options) {
     isMuted: (id) => muted.has(id),
     current: () => current,
     anchor: () => anchor,
+    /** The shared tree, once a read has had it: the paint windows its rows with it. */
+    tree: () => shared,
     dispose() {
       disposed = true;
       stopOpening("closed");
@@ -1814,24 +1561,4 @@ export function createRowExpansion() {
     },
     snapshot: () => Object.fromEntries(by),
   });
-}
-
-/**
- * Which rows of a list of *count* rows *rowHeight* tall to draw: those in the view, from
- * *viewTop* to *viewBottom*, and *overscan* more each way, with the list's own top at
- * *listTop*, all on one axis. A list at the cap is 3,346 rows, so only these are in the
- * document, and a step of a key or a scroll changes a few of them. Pure.
- *
- * @param {{count: number, rowHeight: number, viewTop: number, viewBottom: number, listTop: number, overscan: number}} where
- * @returns {{start: number, end: number}}
- */
-export function windowRange({ count, rowHeight, viewTop, viewBottom, listTop, overscan }) {
-  if (count <= 0 || !(rowHeight > 0)) {
-    return { start: 0, end: 0 };
-  }
-  const first = Math.floor((viewTop - listTop) / rowHeight) - overscan;
-  const last = Math.ceil((viewBottom - listTop) / rowHeight) + overscan;
-  const start = Math.max(0, Math.min(count, first));
-  const end = Math.max(start, Math.min(count, last));
-  return { start, end };
 }

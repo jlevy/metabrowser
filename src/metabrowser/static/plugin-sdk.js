@@ -62,6 +62,14 @@
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
 //     formatAge(secondsSinceEpoch, opts?) — the age primitive: {label, className}
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
+//     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
+//                                          commit prefix in span.title-prefix, then the rest
+//     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
+//                                          marks muted, and its status letters in their
+//                                          statuses' ink: the shell's one painter of them
+//     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
+//                                          −567", from statuses and line totals
+//     changeLineNodes(line, options?)    — its nodes, the shell's one component for it
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
@@ -953,9 +961,15 @@
         global.MetabrowserTooltip.show(html, anchor);
       }
     },
-    hide() {
+    /**
+     * Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     * whose anchor has left the document, and never one shown with no anchor. With none,
+     * any tooltip but one anchored in the nav's header. See docs/design-system.md, "A
+     * Surface Puts Away Only Its Own Tooltip".
+     */
+    hide(within) {
       if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.hide();
+        global.MetabrowserTooltip.hide(within);
       }
     },
   };
@@ -1022,6 +1036,25 @@
     return pending;
   }
 
+  /**
+   * Whether the page itself links `url` as a stylesheet: a `<link>` the page was served
+   * with, not one this loader appended (those carry data-kpress-asset and are tracked in
+   * the loaded and loading sets).
+   * @param {string} url
+   * @returns {boolean}
+   */
+  function _pageLinksStylesheet(url) {
+    const doc = global.document;
+    if (typeof doc.querySelectorAll !== "function") {
+      return false;
+    }
+    const wanted = new URL(url, doc.baseURI).href;
+    const links = /** @type {NodeListOf<HTMLLinkElement>} */ (
+      doc.querySelectorAll('link[rel~="stylesheet"]:not([data-kpress-asset])')
+    );
+    return Array.from(links).some((link) => link.href === wanted);
+  }
+
   /** @param {string} url @returns {Promise<void>} */
   function _loadStylesheet(url) {
     if (!url || !global.document) {
@@ -1030,6 +1063,14 @@
     const parent = _headOrBody();
     if (!parent || typeof global.document.createElement !== "function") {
       return Promise.resolve();
+    }
+    // A sheet the page already links is loaded, and a second link would move its rules
+    // later in the cascade. The shell's <head> links KPress's style-tokens.css before
+    // static/styles.css, so the shell's :root tokens outrank KPress's same-named ones
+    // (--font-sans, --font-mono, --kpress-print-page-margin). Linked again after
+    // styles.css, KPress's would win from the first rendered document on.
+    if (!_loadedKpressAssets.has(url) && _pageLinksStylesheet(url)) {
+      _loadedKpressAssets.add(url);
     }
     return _loadKpressAssetOnce(
       url,
@@ -1521,6 +1562,37 @@
     return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }
 
+  // A commit's or pull request's title, for its element to hold: a conventional-commit
+  // prefix at regular weight in `span.title-prefix`, then the rest at the title's own weight
+  // (docs/design-system.md, "Titles"). The nodes belong to the page's document.
+  /** @param {string} title @returns {Array<Node | string>} */
+  function titleNodes(title) {
+    return global.MetabrowserFormatters.titleNodes(global.document, title);
+  }
+
+  // The shell's painters of a count summary and a brief change line, into the page's
+  // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
+  // Line").
+  /** @param {MetabrowserCountParts} parts @returns {Array<Node | string>} */
+  function countPartsNodes(parts) {
+    return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
+  }
+
+  /** @param {MetabrowserChangeLineInput} change @returns {MetabrowserChangeLine} */
+  function changeLine(change) {
+    const formatters = global.MetabrowserFormatters;
+    return formatters.changeLine(change, formatters.formatInteger);
+  }
+
+  /**
+   * @param {MetabrowserChangeLine} line
+   * @param {MetabrowserChangeLineOptions} [options]
+   * @returns {Array<Node | string>}
+   */
+  function changeLineNodes(line, options) {
+    return global.MetabrowserFormatters.changeLineNodes(global.document, line, options);
+  }
+
   function formatTimestamp(secondsSinceEpoch) {
     // Local-time short form; matches the file header / activity feed.
     if (!secondsSinceEpoch) {
@@ -1742,6 +1814,10 @@
     formatFileCount: formatFileCount,
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
+    titleNodes: titleNodes,
+    countPartsNodes: countPartsNodes,
+    changeLine: changeLine,
+    changeLineNodes: changeLineNodes,
     countClass: countClass,
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,

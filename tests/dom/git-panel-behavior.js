@@ -41,22 +41,13 @@ function assertNotContains(label, haystack, needle) {
   }
 }
 
-// Counts are accessible labels; status identity and visible letters are separate
-// semantics. Attribute order and incidental span whitespace are not the contract.
-function assertFileStatus(label, html, status, count) {
-  const token = `data-file-status="${status}"`;
-  if (count === 0) {
-    assertNotContains(label, html, token);
-    return;
-  }
-  const unit = count === 1 ? "file" : "files";
-  assertContains(`${label}: accessible count`, html, `aria-label="${count} ${status} ${unit}"`);
-  assertContains(`${label}: status identity`, html, token);
-  const letter = { modified: "M", added: "A", deleted: "D" }[status];
-  const text = String(html)
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ");
-  assertContains(`${label}: visible count and letter`, text, `${count} ${letter}`);
+// A hover card's change line, as a reader sees it: its markup's text, without the words a
+// screen reader is told in its place.
+function changeLineText(html) {
+  const line = String(html).match(
+    /<span class="git-commit-change-line" aria-hidden="true">(.*?)<\/div>/s,
+  );
+  return line === null ? null : line[1].replace(/<[^>]*>/g, "");
 }
 
 // ── Fake DOM ─────────────────────────────────────────────────
@@ -163,6 +154,12 @@ class FakeElement {
       loading.className = "loading mb-delayed-loading";
       this.appendChild(loading);
     }
+    // The place the commit's Diff summary is drawn in, at the summary's top (mb-pb35).
+    if (this._html.includes('<div class="git-commit-diff-summary metabrowser-diff-host">')) {
+      const summaryHost = new FakeElement("div", this.ownerDocument);
+      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host";
+      this.appendChild(summaryHost);
+    }
     if (this._html.includes("git-commit-diff")) {
       const diffHost = new FakeElement("div", this.ownerDocument);
       diffHost.className = "git-commit-diff";
@@ -231,9 +228,16 @@ class FakeElement {
     this.children.push(child);
     return child;
   }
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
   append(...nodes) {
     for (const node of nodes) {
-      this.appendChild(node);
+      if (typeof node === "string") {
+        const text = new FakeElement("#text", this.ownerDocument);
+        text.textContent = node;
+        this.appendChild(text);
+      } else {
+        this.appendChild(node);
+      }
     }
   }
   replaceChildren(...nodes) {
@@ -539,6 +543,13 @@ const comparisonFetches = [];
 const shownTooltips = [];
 const measuredLabels = [];
 let tooltipHideCount = 0;
+// What each hide was given. The panel puts away only its own tooltip, so a rebuild or a
+// claimed preview never takes a Files row's from under the pointer (mb-alff).
+const tooltipHidesWithin = [];
+/** Whether every hide since `since` was given the panel itself, the `#tab-git` stand-in. */
+const hidWithinPanel = (since) =>
+  tooltipHidesWithin.length > since &&
+  tooltipHidesWithin.slice(since).every((within) => within === document.getElementById("tab-git"));
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -546,8 +557,9 @@ sandbox.metabrowser = {
   delegateOwnerAttribute: () => ' data-mb-owner="page-owner"',
   tooltip: {
     show: (html, anchor) => shownTooltips.push({ html, anchor }),
-    hide: () => {
+    hide: (within) => {
       tooltipHideCount += 1;
+      tooltipHidesWithin.push(within);
     },
   },
   ensureAsset: async () => {},
@@ -563,7 +575,14 @@ sandbox.metabrowser = {
       render: async (host, context) => {
         renderedDiffConnections.push(host.isConnected);
         renderedDiffRevisions.push(context.revision);
-        renderedDiffContexts.push(context);
+        // What the view was given, but not the page's place for its summary itself: holding
+        // that element would hold the whole staged page, which C2 checks is let go.
+        renderedDiffContexts.push({
+          ...context,
+          summaryHost: context.summaryHost
+            ? { className: context.summaryHost.className }
+            : undefined,
+        });
         await context.raw;
         return {
           cancelPending: () => canceledDiffRevisions.push(context.revision),
@@ -630,6 +649,9 @@ for (const file of [
 
 const panel = sandbox.MetabrowserGitPanel;
 const internals = panel._internals;
+// The shared changed-files model, as its bundle installs it: what a Diff summary says of a
+// change set, which a commit's hover card says of its own in the same words.
+const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
@@ -890,25 +912,65 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    assertFileStatus("tooltip: modified files", html, "modified", 28);
-    assertFileStatus("tooltip: added files", html, "added", 4);
-    assertFileStatus("tooltip: zero deleted files are omitted", html, "deleted", 0);
-    assertContains("tooltip: file unit", html, 'git-commit-stat-unit">files');
-    assertContains("tooltip: additions", html, "+1921");
-    assertContains("tooltip: deletions", html, "−160");
-    assertContains("tooltip: line unit", html, 'git-commit-stat-unit">lines');
+    // The hover card says a commit's changes in the Diff summary's words and paint, through
+    // its parts and painter (formatters.js, `changeSummary` and `countPartsHtml`): the
+    // summary's order, A, D, M, each count bold in the line's ink, each status its letter in
+    // the status primitive at the line's weight, and the commas and dots muted, each dot one
+    // item with the group before it (mb-khm6).
+    const format = sandbox.MetabrowserFormatters.formatInteger;
+    assertEqual(
+      "tooltip: the change line reads as the Diff summary's header",
+      changeLineText(html),
+      `32 files changed·4 A, 28 M·+${format(1921)}−160`,
+    );
+    assertContains(
+      "tooltip: the change line, painted",
+      html,
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+        '<span class="git-commit-change-group"><span class="git-commit-change-files">' +
+        '<span class="summary-number">32</span> files changed</span>' +
+        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
+        // The brief change line, the one component for "4 A, 28 M · +1,921 −160" (mb-9ekj).
+        '<span class="change-line"><span class="change-line-group"><span class="change-line-statuses">' +
+        '<span class="summary-number">4</span> ' +
+        '<span class="file-change-status" data-file-status="added">A</span>' +
+        '<span class="summary-punctuation">,</span> ' +
+        '<span class="summary-number">28</span> ' +
+        '<span class="file-change-status" data-file-status="modified">M</span></span>' +
+        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
+        '<span class="change-line-stats">' +
+        `<span class="diff-stat-add">+${format(1921)}</span>` +
+        '<span class="diff-stat-del">−160</span></span></span></span></div>',
+    );
+    assertNotContains(
+      "tooltip: zero deleted files are omitted",
+      html,
+      'data-file-status="deleted"',
+    );
+    assertContains(
+      "tooltip: a screen reader is told the change line in words",
+      html,
+      `<span class="visually-hidden">32 files changed: 4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
+    );
+    // The same counts as the Diff summary says them, from the shared changed-files model.
+    const said = sharedTree.describeChanges(
+      { files: 32, additions: 1921, deletions: 160, exact: true },
+      [...Array(4).fill("added"), ...Array(28).fill("modified")],
+      format,
+    );
+    assertEqual(
+      "tooltip: the change line is the Diff summary's, word for word",
+      [changeLineText(html), html.includes(`>${said.label}</span>`)],
+      [said.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+    );
+    assertNotContains("tooltip: no old per-status tint", html, "git-commit-file-status-");
+    assertNotContains("tooltip: no old units", html, "git-commit-stat-unit");
     const metaStart = html.indexOf('<div class="git-commit-meta">');
     const metaEnd = html.indexOf("</div>", metaStart);
     const statsStart = html.indexOf('<div class="git-commit-change-stats">');
-    const fileStatsStart = html.indexOf('<div class="git-commit-file-statuses"', statsStart);
-    const lineStatsStart = html.indexOf('<div class="git-commit-line-stats"', statsStart);
     assertTrue(
-      "tooltip: change statistics are two rows below identity metadata",
-      metaStart >= 0 &&
-        metaEnd > metaStart &&
-        statsStart > metaEnd &&
-        fileStatsStart > statsStart &&
-        lineStatsStart > fileStatsStart,
+      "tooltip: the change line is below the identity metadata",
+      metaStart >= 0 && metaEnd > metaStart && statsStart > metaEnd,
     );
     assertNotContains("tooltip: omits long body", html, "long body");
     assertNotContains("tooltip: has no interactive copy button", html, "<button");
@@ -919,11 +981,45 @@ async function run() {
       stats: {},
       files_truncated: true,
     });
-    assertFileStatus("tooltip: unknown modified count stays unknown", unknown, "modified", "?");
-    assertFileStatus("tooltip: unknown added count stays unknown", unknown, "added", "?");
-    assertFileStatus("tooltip: unknown deleted count stays unknown", unknown, "deleted", "?");
-    assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
-    assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
+    assertEqual(
+      "tooltip: unknown counts stay unknown, each family kept",
+      changeLineText(unknown),
+      "? files changed·? A, ? D, ? M·+?−?",
+    );
+    assertContains(
+      "tooltip: unknown counts are said as unknown",
+      unknown,
+      '<span class="visually-hidden">? files changed: ? added, ? deleted, ? modified; line counts unknown</span>',
+    );
+    const one = internals.renderCommitTooltip({
+      ...detail,
+      stats: {
+        files_changed: 1,
+        files_modified: 0,
+        files_added: 0,
+        files_deleted: 1,
+        additions: 0,
+        deletions: 1,
+      },
+    });
+    assertEqual("tooltip: one file", changeLineText(one), "1 file changed·1 D·+0−1");
+    assertContains(
+      "tooltip: one file, in words",
+      one,
+      "1 file changed: 1 deleted; 0 lines added, 1 deleted</span>",
+    );
+    const empty = internals.renderCommitTooltip({
+      ...detail,
+      stats: {
+        files_changed: 0,
+        files_modified: 0,
+        files_added: 0,
+        files_deleted: 0,
+        additions: 0,
+        deletions: 0,
+      },
+    });
+    assertEqual("tooltip: no files", changeLineText(empty), "0 files changed·+0−0");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   await internals.renderCommitDetail({
@@ -986,16 +1082,29 @@ async function run() {
     previewHtml,
     '<section class="git-commit-summary page-reading-column"',
   );
+  // The page's Diff summary takes the change stats' place (mb-pb35): the summary holds the
+  // place, the diff below draws it there, and no counts of the panel's own are drawn. Until
+  // it does, and where it is not drawn, the place says the commit's totals in one line, worded
+  // and painted as the diff's line is (A6 of review A on #470), through the same parts and
+  // painter: its dot one item with the count before it, and said as a comma (A5 of review A
+  // on #479); the spaces around the dot are written, so it reads as one line without the
+  // diff plugin's stylesheet too (B3 of review B on #479).
   assertContains(
-    "detail: summary gives change stats their own child",
+    "detail: summary holds the Diff summary's place, with the commit's totals",
+    previewHtml,
+    '<div class="git-commit-diff-summary metabrowser-diff-host"><div class="diff-summary">' +
+      '<span class="diff-summary-group"><span class="diff-summary-files">' +
+      '<span class="summary-number">2</span> files changed</span> ' +
+      '<span class="summary-punctuation" aria-hidden="true">·</span>' +
+      '<span class="visually-hidden">, </span></span> ' +
+      '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-add">+5</span>' +
+      '<span class="diff-stat-del">−1</span></span></span></div></div>',
+  );
+  assertNotContains(
+    "detail: summary draws no change stats of its own",
     previewHtml,
     "git-commit-change-stats",
   );
-  assertFileStatus("detail: summary counts modified files", previewHtml, "modified", 1);
-  assertFileStatus("detail: summary counts added files", previewHtml, "added", 1);
-  assertFileStatus("detail: summary omits zero deleted files", previewHtml, "deleted", 0);
-  assertContains("detail: summary counts additions", previewHtml, "+5");
-  assertContains("detail: summary counts deletions", previewHtml, "−1");
   assertContains(
     "detail: uses the shared page heading",
     previewHtml,
@@ -1030,6 +1139,24 @@ async function run() {
   assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
     comparison_id: SHA_A,
   });
+  assertTrue(
+    "detail: the diff draws its Diff summary in the summary's place",
+    String(renderedDiffContexts[0].summaryHost?.className ?? "").includes(
+      "git-commit-diff-summary",
+    ),
+  );
+  // The commit's own totals go to the diff, whose summary says them where the comparison's
+  // list is cut short at its bound (A3 of review A on #470).
+  assertEqual(
+    "detail: the diff is given the commit's totals",
+    renderedDiffContexts[0].summaryTotals,
+    {
+      files: 2,
+      additions: 5,
+      deletions: 1,
+      exact: true,
+    },
+  );
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
   await internals.renderCommitDetail({
     is_repo: true,
@@ -1045,6 +1172,11 @@ async function run() {
   // Files the server cannot open are still reported; hiding them would
   // misreport what the commit changed.
   assertContains("detail: names files outside the folder", previewHtml, "outside this folder");
+  assertContains(
+    "detail: the count of files outside the folder is a bold number",
+    previewHtml,
+    '<div class="git-commit-files-summary"><span><span class="summary-number">1</span> file outside this folder</span></div>',
+  );
   assertContains("detail: lists the outside file", previewHtml, "outside.js");
   assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");
   await internals.renderCommitDetail({
@@ -1059,6 +1191,38 @@ async function run() {
   // failure — so the bound has to be stated, with the real total.
   assertContains("detail: truncation is stated", previewHtml, "the diff below is bounded");
   assertContains("detail: truncation names the total", previewHtml, "900");
+  // A commit past the diff's bound on files: its summary is handed the whole commit's
+  // totals, which the server counts before it caps the list, not the list's own (A3 of
+  // review A on #470).
+  assertEqual(
+    "detail: a truncated commit's diff is given the whole commit's totals",
+    renderedDiffContexts.at(-1).summaryTotals,
+    { files: 900, additions: 1, deletions: 1, exact: true },
+  );
+  assertContains(
+    "detail: a truncated commit's place says the whole commit's totals",
+    previewHtml,
+    '<span class="diff-summary-files"><span class="summary-number">900</span> files changed</span>',
+  );
+  // A detail with no count of files has no line, and its empty place takes no room.
+  await internals.renderCommitDetail({
+    is_repo: true,
+    commit: commit(SHA_A, [], "uncounted commit"),
+    body: "",
+    stats: {},
+    files: [],
+    files_truncated: false,
+  });
+  assertContains(
+    "detail: an uncounted commit's place is empty",
+    previewHtml,
+    '<div class="git-commit-diff-summary metabrowser-diff-host"></div>',
+  );
+  assertEqual(
+    "detail: an uncounted commit's diff is given no totals",
+    renderedDiffContexts.at(-1).summaryTotals,
+    undefined,
+  );
 
   // ── Paging appends and keeps lanes continuous ──────────────
   {
@@ -1602,6 +1766,10 @@ async function run() {
       "tooltip lifecycle: pointer leave dismisses despite keyboard focus",
       tooltipHideCount > hidesBeforePointerLeave,
     );
+    assertTrue(
+      "tooltip lifecycle: pointer leave hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforePointerLeave),
+    );
 
     let resolveDelayedTooltip;
     responses.set(
@@ -1622,6 +1790,10 @@ async function run() {
       "tooltip lifecycle: keyboard selection dismisses immediately",
       tooltipHideCount > hidesBeforeKeyboardSelection,
     );
+    assertTrue(
+      "tooltip lifecycle: keyboard selection hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforeKeyboardSelection),
+    );
     resolveDelayedTooltip({
       is_repo: true,
       commit: commit(SHA_F, [], "tooltip-only commit"),
@@ -1638,6 +1810,10 @@ async function run() {
     );
     rows[2]._hovered = false;
     assertTrue("tooltip lifecycle: dismissal remains observable", tooltipHideCount > hidesBefore);
+    assertTrue(
+      "tooltip lifecycle: every dismissal hides only the panel's own tooltip",
+      hidWithinPanel(hidesBefore),
+    );
   }
 
   // ── Selection and stale-response handling ──────────────────
@@ -1792,6 +1968,7 @@ async function run() {
     rows[0].dispatch("keydown", j);
     rows[0]._hovered = false;
     assertTrue("keyboard: j dismisses the hover tooltip", tooltipHideCount > hidesBeforeJ);
+    assertTrue("keyboard: j hides only the panel's own tooltip", hidWithinPanel(hidesBeforeJ));
     assertTrue("keyboard: repeated j is handled", j.defaultPrevented);
     assertTrue("keyboard: j focuses the next commit", document.activeElement === rows[1]);
     assertEqual("keyboard: j opens the next commit", internals.stateForTests().selectedId, SHA_B);
@@ -5219,6 +5396,17 @@ async function run() {
     assertTrue("tally: the summary loads on its own request", summaryRequested);
     const container = document.getElementById("tab-git");
     assertContains("tally: commit count renders", container.textContent, "10,345 commits");
+    // The count is a count summary's bold number, its word in the line's weight
+    // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    const tallyCount = container.querySelector(".git-history-summary-count");
+    assertEqual(
+      "tally: the count is the bold number, apart from its word",
+      tallyCount?.children.map((node) => [node.className, node.textContent]),
+      [
+        ["summary-number", "10,345"],
+        ["", " commits"],
+      ],
+    );
     assertContains("tally: begun wording renders", container.textContent, "begun");
     const tallyAge = container.querySelector(".git-history-summary-age");
     assertTrue("tally: age value is present", tallyAge !== null);

@@ -326,6 +326,18 @@ class FileTypeRegistry:
 
         return _match_basename(name) in self._filenames
 
+    def name_group_id(self, name: str) -> str | None:
+        """The display group *name* alone classifies into, or None when it classifies as
+        its extension does (:meth:`classifies_by_name`).
+
+        A pass that groups every file in an index asks this once per file, so a plain
+        name, which has no separator to split on, skips the basename normalization.
+        """
+
+        basename = name.lower() if "/" not in name and "\\" not in name else _match_basename(name)
+        kind = self._filenames.get(basename)
+        return kind.group_id if kind is not None else None
+
     def classify(self, name: str, logical_extension: str) -> FileTypeClassification:
         """Return stable classification fields without presentation state."""
 

@@ -136,10 +136,10 @@
      list is the server's _FONT_SETS registry. Two sets today:
        clean  - KPress's vendored faces everywhere: Source Sans 3 for chrome +
                 embedded UI, PT Serif for embedded prose. The @font-face rules
-                come from KPress's style-tokens.css, linked once in <head>, so
-                the woff2 files download a single time and are shared by the
-                chrome and the embedded document (no second copy, no FOUT once
-                preloaded).
+                come from KPress's style-tokens.css, linked once in <head> (the
+                plugin SDK does not link it again), so the woff2 files download
+                a single time and are shared by the chrome and the embedded
+                document (no second copy, no FOUT once preloaded).
        system - the platform UI sans + platform serif (macOS: system-ui and
                 ui-serif "New York"); no web fonts are fetched.
      Clean is the default and lives in this :root base; each additional set is a
@@ -151,7 +151,21 @@
   --app-sans-system: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --app-serif-system: ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--app-sans-clean);
-  --font-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  /* One monospace stack for all code, the shell's and the embedded document's:
+     --font-mono here and KPress's --kpress-host-font-mono hook (bridged below)
+     both read it, so highlighted source and Markdown code draw in one face. The
+     name is host-only because KPress redeclares --font-mono inside .kpress, where
+     a bridge through it would resolve to KPress's own stack.
+     What it draws, measured on macOS 26.5 on 2026-11-15: WebKit (Safari and the
+     macOS app) maps ui-monospace to SF Mono. Chromium (Chrome 152, Arc) ignores
+     ui-monospace and cannot reach the system's SF Mono by name, so it draws an
+     SF Mono the user installed, else Menlo. Menlo precedes Consolas so a Mac
+     with Microsoft Office's Consolas still draws Menlo in Chromium; WebKit never
+     offers user-installed fonts to web content. Consolas serves Windows and
+     Liberation Mono Linux. */
+  --app-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: var(--app-mono);
 
   /* ── Typography roles: which face, where ─────────────────────────
      Chrome is sans. Content is mono. The line between them is what the
@@ -245,16 +259,18 @@
 
   /* KPress host bridge tokens. Metabrowser owns shell tokens; KPress owns
      document rendering. The default "clean" font set keeps KPress's vendored
-     faces (PT Serif prose / Source Sans UI), so family hooks stay unset and
-     fall back to those stacks. `[data-app-font="system"]` (below) bridges the
-     families to platform stacks; `data-prose-font="sans"` bridges just
-     --kpress-host-font-prose to --prose-sans-font. Embedded document colors
-     use KPress's public --kpress-doc-* seam in the scoped bridge below. */
+     faces (PT Serif prose / Source Sans UI), so the prose and sans family hooks
+     stay unset and fall back to those stacks. `[data-app-font="system"]`
+     (below) bridges them to platform stacks; `data-prose-font="sans"` bridges
+     just --kpress-host-font-prose to --prose-sans-font. The mono hook is always
+     bridged, to --app-mono, so document code matches the shell's. Embedded
+     document colors use KPress's public --kpress-doc-* seam in the scoped
+     bridge below. */
+  --kpress-host-font-mono: var(--app-mono);
   /* No --kpress-measure here. KPress declares it on
-     `:root, .kpress, .kpress-page-main, .kpress-tooltip` and its stylesheet
-     loads after this one, so a value set here is overwritten on :root and
-     shadowed on .kpress — it reached nothing, in either scope. The reading
-     width lives in --doc-measure below, a name KPress does not declare, and is
+     `:root, .kpress, .kpress-page-main, .kpress-tooltip`, so a value set here
+     is shadowed on .kpress, the element that consumes it. The reading width
+     lives in --doc-measure below, a name KPress does not declare, and is
      bridged onto --kpress-measure at the .kpress scope further down. */
   --kpress-print-page-margin: 0.65in;
   --kpress-print-font-size: 11pt;
@@ -284,7 +300,7 @@
                                    main tab's toolbar that totals them
        --ui-small-font-size  12px  secondary chrome (metadata, chips,
                                    tooltips, notes, filters, summaries)
-       --label-font-size     =ui-small  small-caps section labels (tabs,
+       --label-font-size     =ui-small  all-caps section labels (tabs,
                                    panel/table headers, stat labels, and
                                    the embedded-document CONTENTS title
                                    via the KPress bridge below) — same
@@ -391,8 +407,22 @@
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-bold: 700;
+  /* A pull request's number, "#N", wherever it names the pull request:
+     bold, the weight of a stack's position, so "1/6 · #N" reads as one
+     identifier. Every surface that shows one takes this token: a Pulls row,
+     a stack menu's member, the pull request's title, a Quick Search result,
+     and the ref selector (docs/design-system.md, "Pull Request Numbers";
+     mb-vrvs). */
+  --pull-number-weight: var(--weight-bold);
+  /* A count's numeral in a count summary, "8" of "8 files changed": bold, while the
+     words around it keep their line's weight, so the counts read at a glance. Every
+     count numeral takes this token, `.summary-number` and `.heading-tally-figure`, and
+     not --pull-number-weight, which is a pull request's number's (docs/design-system.md,
+     "Count Summaries Bold Their Numbers" and "Heading Tallies"; mb-roa9;
+     test_count_summaries_bold_their_numbers_through_one_token). */
+  --count-numeral-weight: var(--weight-bold);
 
-  /* Small-caps label style (shared by tabs, table headers, stat labels,
+  /* All-caps label style (shared by tabs, table headers, stat labels,
      section labels, and the embedded-document TOC title). Same size as
      --ui-small-font-size on purpose: labels differ by caps treatment,
      not by yet another size. */
@@ -414,6 +444,21 @@
      this to their left padding per level, so depth reads in the text
      position while the hover and selection shapes stay constant. */
   --tree-indent: 16px;
+  /* A tree row's leading slot: a folder's or a container's chevron, a file's
+     type icon, a change letter, and a Pulls row's chevron, state icon, and a
+     stack's Layers icon, one width, so they make one column and the names
+     after them line up (mb-hmv7). It is the glyph's own width: a 12px chevron
+     sits 1px in, and a file icon fills it, 6px (the row's gap) from its name.
+     Measured in Chrome at the default pane (tests/test_files_tab_chrome.py,
+     tests/test_github_pulls_stacks_chrome.py): at 16px, one step wider than
+     the glyph, a Files name started 22px from the row's content edge, and a
+     Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
+     pull request's title 4px wider. It is --icon-glyph, so the two cannot part. */
+  --tree-icon-slot: var(--icon-glyph);
+  /* The disclosure chevron's glyph (.toggle-chevron), 2px under --icon-glyph. A tree's
+     folder and container toggles center it in the slot, half the slot's spare width each
+     side, 1px. */
+  --toggle-chevron-size: 12px;
   --section-disclosure-chevron-color: var(--muted);
   --section-disclosure-chevron-gap: 0.35em;
   --section-disclosure-chevron-size: 0.85em;
@@ -447,13 +492,15 @@
      button (gear, printer, copy), a file-type mark in a row, or a menu
      row's leading mark, so icons stay interchangeable wherever they
      appear. --icon-btn-size is the hit target the interactive ones get;
-     see the `── Icon buttons ──` primitive below. The alignment boxes
-     that reserve a row's icon column (tree rows, palette rows, menu
-     rows) are 16px, one step wider than the glyph, so the glyph has
-     room to sit optically centered. The one deliberate exception is
-     `.menu-seg svg`, where the glyph is the whole label of a segmented
-     chooser rather than a mark beside text; it is sized in place. */
+     see the `── Icon buttons ──` primitive below. The alignment box that
+     reserves a palette or menu row's icon column, and a file identity's,
+     is --icon-box, one step wider than the glyph, so the glyph has room to
+     sit optically centered; a tree row's is --tree-icon-slot, the glyph's
+     own width. The one deliberate exception is `.menu-seg svg`, where the
+     glyph is the whole label of a segmented chooser rather than a mark
+     beside text; it is sized in place. */
   --icon-glyph: 14px;
+  --icon-box: 16px;
   --icon-btn-size: 24px;
 
   /* Border-radius tokens — split into "chrome" (interactive UI:
@@ -489,10 +536,19 @@
     2 *
     var(--chip-border)
   );
-  /* The navigation's toolbar slot: one chip, 6px above and below it, and the slot's
-     bottom border. Every main tab's toolbar is this tall, so what is under it starts
-     at one y on every tab. */
-  --nav-toolbar-height: calc(var(--chip-height) + 12px + 1px);
+  /* A navigation toolbar's line of controls: one chip's height. Every control in a
+     toolbar row is one line tall (`.nav-toolbar-row`), so every line is this tall
+     whichever controls it holds. */
+  --nav-toolbar-line-height: var(--chip-height);
+  /* The one spacing of a navigation toolbar: between its controls along a line, between
+     its lines when it wraps, and above its first line and below its last. A wrapped
+     toolbar is a grid of one spacing, so it reads as one toolbar, not as two stacked. */
+  --nav-toolbar-gap: 6px;
+  /* The navigation's toolbar slot: one line, the gap above and below it, and the slot's
+     bottom border. Every main tab's toolbar is this tall while its controls fit one
+     line, so what is under it starts at one y on every tab; each line a narrow pane
+     wraps adds a line and a gap (`.nav-toolbar-row`). */
+  --nav-toolbar-height: calc(var(--nav-toolbar-line-height) + 2 * var(--nav-toolbar-gap) + 1px);
   /* The metadata line under a main tab's toolbar (`.nav-metadata`): one line of it is the
      toolbar slot's height, its own line box, this padding above and below, and its bottom
      border. So on Commits, where the line stands in the slot, its text sits exactly where
@@ -569,6 +625,16 @@
   --refreshing-text-dim-opacity: 0.8;
   --refreshing-muted-rest-opacity: 0.605;
   --refreshing-muted-lift-opacity: 0.755;
+  /* The wait for a Group by choice's first sections (docs/design-system.md, "Grouping the
+     Files Tree", Waiting): the one place loading chrome dims content already shown,
+     because what is shown is the arrangement the reader left, not the answer coming. It
+     is the tree's dimmest level, the dimmed content token's, so a waiting tree reads as
+     an ignored row does at rest; a row already dimmed is held there rather than dimmed
+     twice (`.tree-regrouping` below). Measured in headless Chrome on the Files tab, light
+     theme (tests/test_files_tab_chrome.py, 2026-11-15): a name under the wait is drawn
+     at 0.45 and reads 2.86:1 on the tree's ground, an ignored row's at rest; dimmed
+     twice, an ignored row's name was drawn at 0.2025 and read 1.54:1. */
+  --loading-dim-opacity: 0.45;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -662,6 +728,11 @@
   --help-binding-width: 108px;
   --search-palette-width: 640px;
   --search-palette-max-height: min(70vh, 640px);
+  /* Where a menu's content starts: a row's first column, the menu's title, its
+     foot, a labelled row, and a group's heading all begin this far inside the
+     menu's padding. A heading on the rows' label column reads as a row of its
+     group (docs/design-system.md, "Groups in a Menu"). */
+  --menu-row-inset: 8px;
 
   /* Code block backgrounds */
   --code-bg: oklch(97.6% 0.004 247.9);
@@ -1436,8 +1507,13 @@ body {
   background: var(--hover-bg);
 }
 /* Path is the primary piece of information in the header — bold,
-   mixed-case, sans-serif at the tree-row size. Click jumps back to
-   the served root. */
+   mixed-case, sans-serif at the tree-row size. It is Home: a click shows
+   the folder's home view as a fresh load does (docs/design-system.md,
+   "Home"). So it is a link in the navigation's vocabulary, a folder
+   crumb's: the hover surface under the name and the link-colored ring on
+   keyboard focus. The box is the name's own, never the row's, so the hover
+   and the tooltip under it belong to the name, and its inline padding is
+   given back by the margin, so the name starts where it always has. */
 .header-path {
   font-weight: var(--weight-bold);
   letter-spacing: 0;
@@ -1445,15 +1521,24 @@ body {
   color: var(--header-text);
   font-family: var(--font-sans);
   font-size: var(--nav-font-size);
-  padding: 2px 0;
+  padding: 2px 4px;
+  margin-inline: -4px;
   border-radius: var(--radius-chrome);
-  /* Grows and truncates exactly as .file-header-path does, so both
-     headers shorten the same way when the panes are resized. */
-  flex: 1 1 auto;
+  /* Truncates exactly as .file-header-path does, so both headers shorten
+     the same way when the panes are resized; it does not grow past the
+     name, and the menu keeps the far end. */
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.header-path:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+.app-header > .settings-toggle {
+  margin-left: auto;
 }
 /* A pinned revision's heading: the repository's name at the heading's weight,
    then the ref and the short commit, muted. The full commit is in the
@@ -1487,14 +1572,9 @@ body {
   text-overflow: ellipsis;
 }
 /* The control that copies the full commit stands right after the short one, so
-   a mirror's heading ends at its text and the menu keeps the far end. It shows
-   while the pointer is over the header, as the file header's copy control does. */
-.mirror-source .header-path {
-  flex-grow: 0;
-}
-.mirror-source .settings-toggle {
-  margin-left: auto;
-}
+   a mirror's heading ends at its text, as every heading does, and the menu
+   keeps the far end. It shows while the pointer is over the header, as the
+   file header's copy control does. */
 .header-copy {
   flex: none;
   margin-left: -4px;
@@ -1616,6 +1696,31 @@ summary {
   letter-spacing: var(--label-letter-spacing);
   line-height: 1.25;
   text-transform: var(--label-text-transform);
+}
+/* ── Heading tally — how many a heading's group or section holds ──
+   It sits beside the heading's name, after the " · " separator, on the heading's line,
+   never at the far end (docs/design-system.md, "Heading Tallies"). Its markup is one
+   line, and follows the name with nothing between them, since its spaces are kept:
+     <span class="heading-tally"> <span class="heading-tally-dot" aria-hidden="true">·</span> <span class="heading-tally-figure">10,004</span> files</span>
+   A .group-heading or a .section-heading takes it. It is a figure, not part of the
+   name, so the heading's caps, tracking, and weight are for the name alone: the tally is
+   regular, muted, and untracked at the heading's size, its numeral bold at a count's
+   numeral weight, --count-numeral-weight. Its spaces are preserved, so the separator
+   keeps them where the heading lays its parts out as flex items, and the tally itself
+   never wraps. Cutting the name short is the use site's: a flex heading whose name
+   shrinks with an ellipsis, as .tree-section-label does. The dot is hidden from
+   assistive technology: the heading reads "Older 10,004 files". */
+.heading-tally {
+  flex: none;
+  color: var(--muted);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: pre;
+}
+.heading-tally-figure {
+  font-weight: var(--count-numeral-weight);
 }
 /* ── Fold expander — a run of content withheld until asked for ───
    The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
@@ -1782,8 +1887,16 @@ summary {
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
      .menu-version    the command-formatted build identity at the menu's foot.
-     .menu-separator  a divider between groups.
-     .menu-section-label a quiet heading for a semantic group of rows. */
+     .menu-separator  a divider between rows that no heading names.
+     .menu-group      a named group of rows: role="group" with aria-labelledby
+                      on its .group-heading. It draws its own divider above it
+                      unless it opens the menu, so a heading is never left
+                      without one or given two.
+     .group-heading   the quiet all-caps heading that names a group, at the
+                      menu's row inset like every other line in the menu.
+   A row's first column, the title, the foot, a labelled .menu-row, and a group's
+   heading read --menu-row-inset, so they start on one edge. See
+   docs/design-system.md, "Groups in a Menu". */
 .menu {
   min-width: 124px;
   padding: 4px;
@@ -1800,7 +1913,7 @@ summary {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  padding: 6px var(--menu-row-inset);
   background: transparent;
   border: none;
   border-radius: var(--radius-chrome);
@@ -1825,12 +1938,13 @@ summary {
   cursor: default;
   pointer-events: none;
 }
-/* 16px alignment box + --icon-glyph mark, same as a tree row and a
-   palette row, so a menu row's icon column lines up with theirs. */
+/* The --icon-box alignment box and an --icon-glyph mark, as a palette row
+   has, so a menu row's icon column lines up with a palette row's. A tree
+   row's slot is the glyph's own width (--tree-icon-slot). */
 .menu-item-icon {
   display: flex;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -1849,13 +1963,16 @@ summary {
 .menu-item[aria-checked="true"] .menu-item-icon {
   color: var(--link);
 }
+/* No shrink: a scrolling menu is a flex column whose rows hold their height, and a
+   1px rule with the default shrink would give up its pixel and leave a gap. */
 .menu-separator {
+  flex-shrink: 0;
   height: 1px;
   margin: 4px 0;
   background: var(--border);
 }
 .menu-version {
-  padding: 2px 8px;
+  padding: 2px var(--menu-row-inset);
   color: var(--muted);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
@@ -1866,11 +1983,11 @@ summary {
 }
 /* The menu's own name, at its top. Metabrowser's wordmark lives here now:
    the gear is the product's menu, and a menu that names itself does not
-   need a line of the navigation column to do it. Same small-caps register
-   as .menu-section-label, without that rule's icon-column inset — a title
-   is not a row. */
+   need a line of the navigation column to do it. Same all-caps register
+   and the same inset as .group-heading: a title names the whole menu where a
+   heading names one group of it. */
 .menu-title {
-  padding: 2px 8px 3px;
+  padding: 2px var(--menu-row-inset) 3px;
   color: var(--label-color);
   font-family: var(--font-sans);
   font-size: var(--label-font-size);
@@ -1918,8 +2035,29 @@ summary {
     transition: none;
   }
 }
-.menu-section-label {
-  padding: 3px 8px 2px 32px;
+/* A named group of a menu's rows. Its divider is its own top edge, drawn with
+   the .menu-separator geometry (4px, a 1px rule, 4px), so a heading never lacks
+   one; a group after a .menu-separator draws none, so it never gets two. The
+   menu's first child needs none: the menu's own edge is there. */
+.menu-group {
+  display: flex;
+  flex-direction: column;
+}
+.menu-group:not(:first-child) {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.menu-separator + .menu-group {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+/* The heading that names a group. It starts on the menu's row inset, the edge
+   the rows' first column (a check, an icon) starts on, not on their labels: on
+   the label column it read as a row of the group rather than its name. */
+.group-heading {
+  padding: 3px var(--menu-row-inset) 2px;
   color: var(--label-color);
   font-family: var(--font-sans);
   font-size: var(--label-font-size);
@@ -2011,7 +2149,7 @@ summary {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 2px 0 2px 2px;
+  padding: 2px 0 2px var(--menu-row-inset);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-medium);
@@ -2441,6 +2579,9 @@ html.theme-anim .menu {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.source-ref-selector-pull-number {
+  font-weight: var(--pull-number-weight);
+}
 .source-ref-selector-panel {
   position: absolute;
   top: calc(100% + 2px);
@@ -2488,7 +2629,7 @@ html.theme-anim .menu {
 }
 .source-ref-selector-commit {
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 .source-ref-selector-note,
 .source-ref-selector-error {
@@ -2650,6 +2791,19 @@ html[data-prose-font="sans"] {
   font-family: var(--prose-sans-font);
   --kpress-host-font-prose: var(--prose-sans-font);
 }
+/* An h2 is upright wherever the prose face is sans (docs/design-system.md, "Serif Is for
+   Documents"): KPress 0.3.5's document.css sets `.kpress-prose h2` italic, an accent of
+   its serif that reads as a slanted sans in the sans face. The two places the hook is
+   pointed at sans, above, are the two selectors here, so a serif document keeps the
+   italic. Only the style changes: the h2 keeps KPress's size, weight, and spacing. h4
+   keeps its italic because KPress sets it in its sans font under either reading font, so
+   that italic is KPress's own sans style, not the serif's accent. h6 follows the reading
+   face like an h2 and keeps its italic because the request this rule answers named only
+   h2s. The `md-body` fallback sets no italic, in either face. */
+html[data-prose-font="sans"] .kpress-prose h2,
+.chrome-prose .kpress-prose h2 {
+  font-style: normal;
+}
 /* The frame: KPress's `.kpress-frame`, a non-scrolling wrapper of the scroll
    pane (server.py). Its transform makes it the containing block for KPress's
    `position: fixed` floating UI (TOC drawer, toggle, and backdrop, tooltips,
@@ -2733,7 +2887,9 @@ html[data-prose-font="sans"] {
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
 .tree-item.tree-page-more {
-  padding: 2px 12px 2px calc(32px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
+  /* On the names' column: the row's inset, its slot, and its gap. */
+  padding: 2px 12px 2px
+    calc(10px + var(--tree-icon-slot) + 6px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
@@ -2781,10 +2937,12 @@ html[data-prose-font="sans"] {
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
+/* The row's one slot: the glyph's width, and the icon box's height, as a file identity in
+   the slot is (`.tree-item-icon.file-identity-icon`, below). */
 .tree-item-icon {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--tree-icon-slot);
+  height: var(--icon-box);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2799,9 +2957,9 @@ html[data-prose-font="sans"] {
    this alignment box supplies the common geometry and base tone. */
 .file-identity-icon {
   display: inline-flex;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
+  flex: 0 0 var(--icon-box);
   align-items: center;
   justify-content: center;
   color: var(--muted);
@@ -2809,6 +2967,12 @@ html[data-prose-font="sans"] {
 .file-identity-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
+}
+/* In a tree row the file's icon is in the row's one slot, as a chevron is
+   (--tree-icon-slot). */
+.tree-item-icon.file-identity-icon {
+  width: var(--tree-icon-slot);
+  flex-basis: var(--tree-icon-slot);
 }
 /* Compression overlay — reuses the existing 16x16 envelope as the
    positioning anchor and tucks a small badge into the bottom-right.
@@ -2898,7 +3062,7 @@ html[data-prose-font="sans"] {
    phrase in its own type, "4 files (38 B)", not a column of chips. */
 .size {
   color: var(--size-color);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   font-weight: var(--weight-normal);
 }
 .size-large {
@@ -2912,7 +3076,7 @@ html[data-prose-font="sans"] {
    formatters.js) the same way `.size-large` does for byte counts. */
 .count {
   color: var(--size-color);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   font-weight: var(--weight-normal);
 }
 .count-large {
@@ -3140,6 +3304,17 @@ a.tab-btn {
      column inset. Left-padding the bar instead would inset the label
      twice. */
   padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
+  /* A pane too narrow for every tab wraps the bar between tabs, as the toolbars
+     under it wrap (`.nav-toolbar-row`), rather than cutting the last tab off at the
+     pane's edge. A tab is its own line, its padding its spacing, so a wrapped tab
+     sits a tab's height under the one above it, on the same inset: the 1 px row
+     gap gives back the 1 px each tab lends the bar's rule (`.tab-btn`'s
+     `margin-bottom`), so a tab above does not lay its underline over the tab
+     below. Measured in headless Chrome on 2026-11-15: FILES, PULLS, COMMITS fit
+     one line from a 196 px pane in the default font set and from 216 px in the
+     system set, and the narrowest pane, 179 px, cut COMMITS by 16 and 36 px. */
+  flex-wrap: wrap;
+  row-gap: 1px;
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
@@ -3215,8 +3390,12 @@ a.tab-btn {
 }
 /* A long additive set is a chip cluster, not a segmented control.
    Each visible shape is its own target; the semantic group contributes
-   layout only, with no oversized frame or decorative end caps. */
-.chip-group[data-layout="wrap"] {
+   layout only, with no oversized frame or decorative end caps.
+   A joined group in a navigation toolbar that is wider than its line
+   takes this layout too, while it is (`data-fit="wrap"`, which
+   `fitJoinedGroups` in filter-controls.js sets): segmented controls
+   never wrap. */
+.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) {
   flex-wrap: wrap;
   gap: var(--chip-cluster-gap);
   max-width: 100%;
@@ -3225,7 +3404,7 @@ a.tab-btn {
   background: transparent;
   overflow: visible;
 }
-.chip-group[data-layout="wrap"] > .chip {
+.chip-group:is([data-layout="wrap"], [data-fit="wrap"]) > .chip {
   border: 1px solid var(--viz-border);
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
@@ -3322,9 +3501,14 @@ a.tab-btn {
   top: calc(100% + 4px);
   left: 0;
   min-width: 180px;
-  /* The list is capped at 30 entries, which still overflows a short
-     pane; scroll inside the menu rather than off the page. */
-  max-height: 320px;
+  /* The menu takes its rows' natural height up to 16 rows, and never more than
+     the room between its top and the window's bottom edge; past either it
+     scrolls inside itself. Both depend on measured geometry, the rendered row's
+     height and where the trigger sits, so filter-controls.js (`fitMenuPanel`)
+     sets max-height inline when the menu opens and when the window resizes. This
+     cap is only the floor under that: a menu nothing has fitted yet still stops
+     inside the window. */
+  max-height: calc(100vh - 16px);
   overflow-y: auto;
 }
 .chip-menu[aria-expanded="true"] .chip-menu-panel {
@@ -3356,7 +3540,7 @@ a.tab-btn {
 }
 .chip-menu-count {
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   font-size: var(--ui-small-font-size);
 }
 /* Age menu rows inherit the same foreground as tree and header ages.
@@ -3404,7 +3588,7 @@ a.tab-btn {
   font-size: var(--micro-font-size);
   line-height: 14px;
   text-align: center;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 /* Rendered only when something is set: a permanently visible Clear on
    a clean state is noise. */
@@ -3429,7 +3613,8 @@ a.tab-btn {
    Sits between the nav tab bar and the scrolling tree, outside the
    replaceable #tab-files container so a tree reload never destroys
    it and so it never scrolls away. The always-visible row carries
-   recency; everything else lives in the drawer one toggle down. */
+   Group by and Show ignored; the three filters live in the drawer one
+   toggle down. */
 .nav-filter-bar {
   display: flex;
   align-items: center;
@@ -3440,19 +3625,20 @@ a.tab-btn {
      gap belongs to the drawer being open, so it opens with it — and it
      has to live here rather than as padding inside the drawer, because
      `overflow` clips a content box and leaves padding standing. */
-  column-gap: 6px;
+  column-gap: var(--nav-toolbar-gap);
   row-gap: 0;
-  padding: 6px var(--pane-header-padding-x);
+  padding: var(--nav-toolbar-gap) var(--pane-header-padding-x);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
   /* The server ships this element empty and filter-controls.js fills it, so
      without a reserved height it stands 13px tall until the chips arrive and
      then grows to 37 -- pushing the whole tree down on every load and every
-     reload. One chip, this element's 6px vertical padding, and its bottom
-     border: the same height a populated bar computes to, so nothing moves
-     when the chips land. `box-sizing` is border-box, so the padding and
-     border are inside this figure. */
+     reload. One line, this element's padding of a toolbar gap above and below
+     it, and its bottom border: the same height a populated bar computes to
+     while its row is one line, so nothing moves when the chips land.
+     `box-sizing` is border-box, so the padding and border are inside this
+     figure. */
   min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
@@ -3467,31 +3653,85 @@ a.tab-btn {
    in the bar's place at its height (main-tabs.js#activateNavPanel), so the tree, the
    history, and the list start at one y on every tab. Before, the bar hid on Commits
    and Pulls, and what was under it moved 37 px on every switch. A toolbar wider than a
-   narrowed pane scrolls along its one line rather than being cut: a control past the
-   pane's edge is still reached, and focus brings it into view. */
+   narrowed pane wraps rather than being cut or scrolled along one line, where a control
+   past the pane's edge was out of sight (`.nav-toolbar-row`): the slot is then as tall
+   as its lines, and what is under it starts lower by the lines added. */
 .nav-toolbar {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 6px;
-  height: var(--nav-toolbar-height);
+  gap: var(--nav-toolbar-gap);
+  min-height: var(--nav-toolbar-height);
   padding: 0 var(--pane-header-padding-x);
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
-  white-space: nowrap;
   position: relative;
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
-.nav-toolbar::-webkit-scrollbar {
-  display: none;
-}
 .nav-filter-bar[hidden],
 .nav-toolbar[hidden] {
   display: none;
+}
+
+/* ── Navigation toolbar rows ─────────────────────────────────────
+   Every main tab's row of controls, the Files filter row and the Pulls filters, is a
+   `.nav-toolbar-row`, so one rule lays them all out (docs/design-system.md,
+   "Navigation Toolbars Wrap"). While the pane holds its controls on one line, the row
+   is that line and its toolbar the slot's height, `--nav-toolbar-height`, as before.
+   In a pane too narrow for that, the row wraps between its controls, in order and as
+   late as it can, so no control is cut, scrolled out of reach, or cut short: the
+   leading controls stay first, and the trailing group, which takes the line's end
+   with an auto margin (Clear and the chevron on Files, Reload on Pulls), moves down
+   whole and stays right-aligned. A segmented group wider than a whole line takes the
+   cluster layout instead (`.chip-group[data-fit="wrap"]`).
+
+   Lines are `--nav-toolbar-line-height` tall and `--nav-toolbar-gap` apart, the gap
+   between controls and above the first line and below the last, so a toolbar grows
+   by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
+   control is one line tall: a shorter one, Show ignored's checkbox, is centred in a
+   line's height rather than making its line shorter, and a taller one, a `.btn` such
+   as Reload (26 px at the default size, two over a chip), is held to it rather than
+   making its line, and so the one-line toolbar, taller. A cluster's own lines are a
+   row's apart.
+
+   Measured in headless Chrome on 2026-11-15, pane widths 179 px (the narrowest, 180
+   less the pane's border) to 420 px, both font sets; the themes lay out alike. The
+   widths each row fits one line from, default set / system set, the Pulls tallies
+   "Open 100, Closed 2, All 102" unless four-digit:
+     Files, no filter set                             246 / 262
+     Files, a filter set, "No grouping" (its widest)  298 / 317
+     Pulls, Show and Reload                           276 / 308
+     Pulls, Show and Reload, four-digit tallies       303 / 341
+   Before this rule, the Files row ran up to 17.69 px past the default pane in the
+   system set and 118 px past the narrowest pane, and the Pulls toolbar 8.05 px past
+   the default pane in the system set, scrolled out of sight (35.77 px in the default
+   set while it held a Stacks chip). The Pulls Show group alone is joined from
+   218 / 245 with three-digit tallies and 244 / 278 with four, and the cluster below.
+   At the narrowest pane, with a filter set, the Files row is three lines (97 px) and
+   the Pulls toolbar three or four. tests/test_files_tab_chrome.py and
+   tests/test_github_pulls_stacks_chrome.py sweep those widths and hold the wrap to
+   this rule (tests/dom/nav-toolbar-wrap.mjs). */
+.nav-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nav-toolbar-gap);
+  min-width: 0;
+}
+.nav-toolbar-row > * {
+  min-block-size: var(--nav-toolbar-line-height);
+}
+.nav-toolbar-row > :not(.chip-group) {
+  max-block-size: var(--nav-toolbar-line-height);
+}
+.nav-toolbar-row > .chip-group:is([data-layout="wrap"], [data-fit="wrap"]) {
+  row-gap: var(--nav-toolbar-gap);
+}
+/* In the slot the row fills it, with the gap above its first line and below its last. */
+.nav-toolbar > .nav-toolbar-row {
+  flex: 1 1 auto;
+  padding-block: var(--nav-toolbar-gap);
 }
 
 /* ── Navigation metadata line ─────────────────────────────────
@@ -3544,27 +3784,27 @@ a.tab-btn {
 }
 /* On a tab with no toolbar of its own, Commits, the line is the toolbar: in the
    slot, which supplies the inset and the rule. One line of it is the slot's height
-   (`--nav-metadata-padding-y`), so its text sits where it sits under a toolbar; it
-   keeps to that one line, and the slot scrolls along it. */
+   (`--nav-metadata-padding-y`), so its text sits where it sits under a toolbar. In a
+   pane too narrow for the line it wraps between its phrases, as a metadata line does
+   ("12,345 commits", then "begun 1y ago"), and the slot grows by its line height: a
+   toolbar of text wraps as text, the toolbar rows' rule for their controls
+   (`.nav-toolbar-row`). Measured in headless Chrome on 2026-11-15, "5 commits begun
+   3mo ago" is one line from 179 px (the narrowest pane) in the default font set and
+   from 186 px in the system set, and "123,456 commits begun 12mo ago", its count bold
+   (`.summary-number`; mb-roa9), from 214 and 242 px. */
 .nav-toolbar > .nav-metadata {
   flex: 1 1 auto;
-  flex-wrap: nowrap;
   min-width: 0;
   padding-inline: 0;
   border-bottom: none;
 }
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
-  row-gap: 6px;
+  row-gap: var(--nav-toolbar-gap);
 }
-/* Deliberately nowrap. The drawer toggle stays on the same line as its
-   trigger, and any grouped control in this row keeps the single-line
-   segmented-control contract. Longer value sets belong in a menu or a
-   wrapping chip cluster on another row. */
+/* The Files tab's toolbar row (`.nav-toolbar-row`), the bar's first line, over the
+   drawer. It wraps by the toolbar rows' rule: Group by, then Show ignored, then Clear
+   and the chevron, which stay together at the line's end. */
 .nav-filter-bar-main {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 6px;
   width: 100%;
 }
 .nav-filter-bar-main > .chip-group {
@@ -3578,14 +3818,45 @@ a.tab-btn {
 .nav-filter-bar-main > .chip-group > .chip {
   padding-inline: 7px;
 }
-/* Pushes the drawer toggle and Clear to the trailing edge, so the
-   recency group always starts at the same x as the tree's first row. */
+/* Pushes the drawer toggle and Clear to the trailing edge, so Group by
+   always starts at the same x as the tree's first row. */
 .nav-filter-bar-end {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+/* The chevron's count sits outside its fixed-size button
+   (filter-controls.js#toggleHtml) and counts the chevron's filters, so it
+   sits against the chevron: the margin cancels the span's gap on that
+   side, and the 5 px a badge keeps from a chip's label goes, since the
+   gap already parts it from Clear. That gives the row 9 px (mb-x1h6).
+   Measured in headless Chrome on 2026-11-15 at the default 299 px bar
+   (a 275 px row), in the default font set, with a filter set so Clear
+   and the badge "1" show: "No grouping", the widest trigger, overflowed
+   by 7.11 px and now has 1.89 px to spare; "By file type" overflowed by
+   about 1 px and has 7.83; "By age" has 30.7. In a narrower pane, or in
+   the system font set's wider face, the row wraps (`.nav-toolbar-row`). */
+.nav-filter-bar-end > .chip-badge {
+  margin-left: 0;
+  margin-right: -4px;
+}
+/* The closed drawer's filters take their keyboard numbers on these stand-ins: no box, no
+   focus, and a badge that sits beside the chevron, Modified within's before File type's.
+   The badge ends at its stand-in's edge (.kbd-badge, inline-end). */
+.filter-key-slot {
+  position: absolute;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.filter-key-slot[data-filter-key-slot="types"] {
+  inset-inline-end: var(--icon-btn-size);
+}
+.filter-key-slot[data-filter-key-slot="recency"] {
+  inset-inline-end: calc(var(--icon-btn-size) + 1.5em);
 }
 /* The drawer opens on the shared motion token rather than snapping,
    so the chevron's rotation and the reveal it announces run together.
@@ -3627,15 +3898,16 @@ a.tab-btn {
 .filter-drawer:has(.chip-menu[aria-expanded="true"]) > * {
   overflow: visible;
 }
-/* No section headings in here: an extension menu, a size ramp, and a
-   checkbox labelled "Gitignored" already say what they are, and four
-   uppercase labels cost more vertical space in a 300px pane than they
-   were paying for. */
+/* No section headings in here: its three menus, Modified within, File
+   type, and Minimum file size, already say what they are on their
+   triggers, and uppercase labels cost more vertical space in a 300px pane
+   than they were paying for. Its menus wrap on the toolbar's spacing, so
+   an open drawer's lines sit as far apart as the row's over them. */
 .filter-drawer-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--nav-toolbar-gap);
 }
 .filter-drawer-actions {
   display: flex;
@@ -3681,6 +3953,57 @@ a.tab-btn {
 .nav-metadata + .tree-root > .tree-item:first-child,
 .tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
+}
+/* ── Group by sections ──────────────────────────────────────────
+   With Group by on, the Files panel is one section per group: the menu group
+   pattern's heading (docs/design-system.md, "Groups in a Menu") over that group's
+   own tree. The heading starts on the tree's row inset, the 12px where a row's
+   content starts past its 2px selection bar, as a menu's heading starts on its
+   rows'. Sections after the first draw the divider above themselves, as a
+   .menu-group does; the first sits under the tally's own rule. */
+.tree-section + .tree-section {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+/* One line at every pane width: the name, then its tally beside it (.heading-tally).
+   Where the two do not fit, the name is cut short and the tally stays whole, as a Pulls
+   stack's label is. */
+.tree-section-heading {
+  display: flex;
+  align-items: baseline;
+  padding: 6px 12px 2px;
+}
+.tree-section-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Regrouping (docs/design-system.md, "Grouping the Files Tree", Waiting): while a
+   grouping's first sections are on their way, the tree on screen is the arrangement
+   the reader left, so once the wait passes the quiet period it dims to
+   --loading-dim-opacity, and the scan row below says what is coming. The metadata band
+   and notices above it keep their ink. Opacity only, set in one step, so nothing moves
+   and reduced motion has nothing to stop.
+   A row already dimmed, an ignored file or an empty folder, would take both opacities:
+   0.45 of 0.45 drew its name at 0.2025, 1.54:1, near invisible. Over the same quiet
+   period it lifts by the dim's own factor, so it ends at --dimmed-content-opacity, the
+   tree's dimmest, and no lower (--loading-dim-opacity says what was measured). */
+#tab-files.tree-regrouping > :not(.nav-metadata, .notice) {
+  animation: tree-regrouping-dim 0s linear var(--loading-state-delay) forwards;
+}
+#tab-files.tree-regrouping :is(.tree-item-gitignored, .tree-item-empty) {
+  animation: tree-regrouping-hold 0s linear var(--loading-state-delay) forwards;
+}
+@keyframes tree-regrouping-dim {
+  to {
+    opacity: var(--loading-dim-opacity);
+  }
+}
+@keyframes tree-regrouping-hold {
+  to {
+    opacity: min(1, calc(var(--dimmed-content-opacity) / var(--loading-dim-opacity)));
+  }
 }
 .recent-truncated-note {
   padding: 8px 12px;
@@ -3912,7 +4235,7 @@ a.tab-btn {
 .folder-header-age {
   font-size: var(--ui-small-font-size);
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
 }
 .file-header:hover .file-header-copy {
@@ -4793,7 +5116,7 @@ pre.code-block.metabrowser-source-lines > code {
 /* ── Markdown panels: tables and frontmatter ─────────────────── */
 /* Tables (``.table-container``) and frontmatter blocks share one
    envelope — outer ``--panel-border``, ``--radius-document`` corners,
-   and a ``--panel-header-bg`` strip that holds small-caps label
+   and a ``--panel-header-bg`` strip that holds all-caps label
    typography. The border lives on the container (not the table), so
    the radius clips a real 1px outline cleanly; cells only paint
    internal grid lines, so there's no double-edge anywhere. */
@@ -4856,7 +5179,7 @@ pre.code-block.metabrowser-source-lines > code {
    See ``.size`` / ``.count`` for the same convention elsewhere. */
 .data-table td.numeric-cell {
   text-align: right;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: var(--tabular-numerals);
 }
 /* Zebra striping reuses the panel header fill so the alternating rows
    read as part of the same table envelope (same hue family) rather
@@ -5163,8 +5486,8 @@ pre.code-block.metabrowser-source-lines > code {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-box);
+  height: var(--icon-box);
   color: var(--ft-color, var(--muted));
 }
 .search-palette-icon svg {
@@ -5197,6 +5520,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .search-palette-pull-number {
   color: var(--text);
+  font-weight: var(--pull-number-weight);
 }
 .search-palette-option mark {
   color: inherit;
@@ -5453,21 +5777,21 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 /* Container rows: a file that is also folder-like. Its chevron sits in
-   the same 16px alignment box a folder's does, so names line up at every
-   indent level; its children carry a kind badge in place of an icon. */
+   the same slot a folder's does (--tree-icon-slot), so names line up at
+   every indent level; its children carry a kind badge in place of an icon. */
 .tree-container > .tree-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 12px;
-  margin: 0 2px;
+  width: var(--toggle-chevron-size);
+  margin: 0 calc((var(--tree-icon-slot) - var(--toggle-chevron-size)) / 2);
   flex: none;
 }
 .tree-container-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: var(--tree-icon-slot);
   flex: none;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
@@ -5479,10 +5803,91 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--ui-small-font-size);
 }
 
+/* ── Changed-file rows ───────────────────────────────────────────
+   A change set's files as a tree, the model static/changed-files-tree.js holds, are drawn
+   by two plugins: a pull request's changed files under its Pulls row
+   (github/pull-files-view.js) and a multi-file diff's Diff summary (diff/diff-summary.js).
+   Their rows are this one class set, beside the Files tree's rows whose contract they
+   follow (`.tree-item`), so the two trees cannot drift apart: one row tall, the 10px
+   padding and the 2px bar that put a row's content on the 12px inset, the square hover,
+   the -2px focus ring, and the current row's highlight. A plugin sets only how far in a
+   row's depth puts it, `--changed-file-indent`. The rows are drawn a window at a time,
+   each placed at its index. These are the shell's rules, in its eager stylesheet, because
+   they are a few declarations; the tree's model loads on demand.
+     .changed-file-row     a folder's or a file's row (a folder's also .disclosure-toggle)
+     .changed-file-toggle  a folder's chevron, in the tree's icon slot
+     .changed-file-name    the name, cut short at the row's end
+     .changed-file-stats   the inline change stats at the row's end (docs/design-system.md,
+                           "Inline Change Stats")
+   A file's change letter is the shell's `.tree-container-badge`. */
+.changed-file-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--ui-row-height);
+  padding: 2px 12px 2px calc(10px + var(--changed-file-indent, 0px));
+  border-left: 2px solid transparent;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-user-select: var(--toggle-user-select);
+  user-select: var(--toggle-user-select);
+}
+.changed-file-row:hover {
+  background: var(--hover-bg);
+}
+.changed-file-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+.changed-file-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+.changed-file-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tree-icon-slot);
+}
+.changed-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changed-file-stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+.changed-file-stats > .diff-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+.changed-file-stats > .diff-stat-del {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
+}
+.changed-file-row > :is(.tree-container-badge, .changed-file-name, .changed-file-stats) {
+  align-self: baseline;
+}
+
 /* Shared toggle chevron (used by tree folders and tally tree) */
 .toggle-chevron {
-  width: 12px;
-  height: 12px;
+  width: var(--toggle-chevron-size);
+  height: var(--toggle-chevron-size);
   flex-shrink: 0;
   color: var(--muted);
   stroke-width: 2.5;
@@ -5494,10 +5899,10 @@ pre.code-block.metabrowser-source-lines > code {
 .expanded .toggle-chevron {
   transform: rotate(90deg);
 }
-/* Left-align folder names with file names. A file row leads with a 16px icon
-   box (.tree-item-icon); a folder row leads with the chevron inside its
-   .tree-toggle wrapper, so the wrapper's 2px inline margins make its
-   margin-box 16px to match the icon box (glyph stays 12px, centered), so
+/* Left-align folder names with file names. A file row leads with its icon
+   in the row's slot (.tree-item-icon, --tree-icon-slot); a folder row leads
+   with the chevron inside its .tree-toggle wrapper, whose inline margins
+   make its margin box the slot's width (glyph stays 12px, centered), so
    names align at every indent level. Scoped to .tree-folder so the shared
    tally-tree chevron is unaffected. The entire folder row shares one
    disclosure-and-navigation action. */
@@ -5505,7 +5910,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-inline: 2px;
+  margin-inline: calc((var(--tree-icon-slot) - var(--toggle-chevron-size)) / 2);
   flex-shrink: 0;
   border-radius: var(--radius-circle);
 }
@@ -6043,6 +6448,11 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: 8ch;
   flex-grow: 1;
   flex-shrink: 1000;
+  /* A commit's subject is a title, bold as a title is wherever it appears, so a
+     conventional-commit prefix that starts it reads regular against the rest
+     (docs/design-system.md, "Titles"). The row keeps its 22px and the subject its one
+     line: the bolder face is only wider, so a long subject is cut short sooner. */
+  font-weight: var(--weight-bold);
 }
 
 .git-graph-meta {
@@ -6096,6 +6506,75 @@ pre.code-block.metabrowser-source-lines > code {
 .repository-name {
   color: var(--text);
   font-weight: var(--weight-bold);
+}
+
+/* A number in a count summary, "8 files changed · 8 M", "15,458 files (324.1 MB)",
+   "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
+   line's weight, so the counts read at a glance. It sets the weight alone: the number
+   keeps its line's ink, muted in a muted half, and its size. Every count summary in the
+   shell and the built-in plugins puts each of its numbers in one, inline with its words
+   (formatters.js, countPartsHtml and countPartsNodes; docs/design-system.md, "Count
+   Summaries Bold Their Numbers"; mb-roa9). */
+.summary-number {
+  font-weight: var(--count-numeral-weight);
+}
+
+/* A count summary's punctuation: the " · " that sets its groups apart and the comma
+   between a list's entries, as in the Diff summary's "19 files changed · 10 A, 5 D, 4 M ·
+   +1,234 −567". Muted, so the numbers, the status letters, and the words read and the marks
+   recede; it sets the ink alone, so a mark keeps its line's size and weight. Every count
+   summary puts each of its marks in one (formatters.js, countPartsHtml and countPartsNodes;
+   docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-vb51). */
+.summary-punctuation {
+  color: var(--muted);
+}
+
+/* A brief change line, "10 A, 5 D, 4 M · +1,234 −567": a change set's statuses and line
+   totals, the one component every surface that says them in brief draws (formatters.js,
+   changeLine and changeLineNodes; docs/design-system.md, "Brief Change Line"; mb-9ekj): the
+   Diff summary's header after its "N files changed · ", a commit's hover card, and a
+   commit page's totals line. Its statuses and the muted dot after them are one item
+   (`.change-line-group`), so a line that wraps breaks after the dot and no line starts with
+   one, and one 6 px gap, the Diff summary's, spaces the dot on both sides. Its line totals
+   are the inline change stats, bold, in their statuses' inks. It sets no size or ink of its
+   own: it takes its line's. */
+.change-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+}
+
+.change-line-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
+}
+
+.change-line-stats {
+  display: inline-flex;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.change-line-stats > .diff-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+
+.change-line-stats > .diff-stat-del {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
+}
+
+/* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",
+   at regular weight, and the rest at the title's own: bold wherever a title is bold
+   (docs/design-system.md, "Titles"; mb-z57p). formatters.js's titleNodes and titleHtml
+   put the prefix in this span wherever a title is drawn, and only its weight is set
+   here, so it keeps the title's face, size, and ink. One rule, on the shell's weight
+   token: no surface sets a prefix's weight of its own. */
+.title-prefix {
+  font-weight: var(--weight-normal);
 }
 
 /* ── Ref badges ─────────────────────────────────────────────── */
@@ -6268,40 +6747,48 @@ pre.code-block.metabrowser-source-lines > code {
   pointer-events: auto;
 }
 
-.git-commit-change-stats {
-  display: grid;
-  justify-items: start;
-  gap: 4px;
+/* The commit's Diff summary, where its change stats were (mb-pb35): the diff plugin draws its
+   header and tree here (`.diff-summary`, builtin_plugins/diff/styles.css), above the body and
+   the diff, as the summary sits at the top of a pull request's page. The tree opens under it. */
+.git-commit-diff-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   margin-top: 6px;
-  color: var(--text);
-  white-space: nowrap;
+}
+/* No diff, as when its comparison failed: the place takes no room. */
+.git-commit-diff-summary:empty {
+  display: none;
+}
+.git-commit-diff-summary > .diff-summary-body {
+  align-self: stretch;
 }
 
-.git-commit-file-statuses,
-.git-commit-line-stats {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.git-commit-stat-unit {
+/* A commit's changes in its hover card, in the Diff summary's words and paint: "32 files
+   changed · 4 A, 28 M · +1,921 −160" (git-panel.js, renderCommitChangeStats;
+   docs/design-system.md, "Git Commit Summary"). Its numbers are the shell's bold
+   `.summary-number` in the line's ink, its letters the status primitive at the line's
+   weight, its commas and dots `.summary-punctuation`, and its line totals the inline change
+   stats: its file count, then the brief change line (`.change-line`). Its groups are items
+   of one line, spaced as the Diff summary's are, and each dot is one item with the group
+   before it, so a line that wraps breaks after a dot. */
+.git-commit-change-stats {
+  margin-top: 6px;
   color: var(--text);
   font-size: var(--body-font-size);
 }
 
-.git-commit-file-status {
-  color: var(--text);
-  font-variant-numeric: var(--tabular-numerals);
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
+.git-commit-change-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
 }
 
-.git-commit-file-status-added {
-  color: var(--status-success);
-}
-.git-commit-file-status-deleted {
-  color: var(--status-error-strong);
+.git-commit-change-group {
+  display: inline-flex;
+  align-items: baseline;
+  column-gap: inherit;
 }
 
 .git-commit-summary .git-commit-age {

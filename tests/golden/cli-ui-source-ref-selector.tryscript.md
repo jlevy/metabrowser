@@ -21,9 +21,10 @@ in-process application answered for a real mirror’s listings and switches.
 drifts. Timers and paint are injected, and each request waits for the step to answer it;
 each step records the requests the selector made, whether a filter pause is pending,
 what it would paint, and where it navigated.
-`labels` is what the button says for a page on a tag, a pull request’s head, and a
-commit with no ref; `keys` is where an arrow, Home, or End key moves focus in a list of
-three rows, `-1` being the filter box and `null` a key the list leaves alone.
+`labels` is what the button says for a page on a tag, a pull request’s head, with its
+number set bold in brackets, and a commit with no ref; `keys` is where an arrow, Home,
+or End key moves focus in a list of three rows, `-1` being the filter box and `null` a
+key the list leaves alone.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -349,7 +350,7 @@ $ node tests/dom/source-ref-selector-session.js
   ],
   "labels": [
     "Tag: v1",
-    "Pull request: #7",
+    "Pull request: #7 [bold #7]",
     "Commit: 42382ea2303b"
   ],
   "copies": [

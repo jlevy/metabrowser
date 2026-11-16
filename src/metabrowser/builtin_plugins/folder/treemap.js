@@ -238,8 +238,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     const parent = parentNavigation(ctx.path || "", mb.sourceKind());
     const parentControlHtml = parent
       ? '<div class="tm-parent-nav-row">' +
-        `<button type="button" class="btn parent-nav-btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}"` +
-        ` data-tip-text="Open ${mb.escapeHtml(parent.label)} in Treemap">` +
+        `<button type="button" class="btn parent-nav-btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}">` +
         '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' +
         `<span>${mb.escapeHtml(parent.label)}</span></button></div>`
       : "";
@@ -271,7 +270,7 @@ export function registerTreemap(mb, palette, rollupControls) {
           if (parentControl) {
             parentControl.removeEventListener("click", openParent);
           }
-          mb.tooltip.hide();
+          mb.tooltip.hide(container);
         },
       });
     }
@@ -636,7 +635,8 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      mb.tooltip.hide();
+      // The map's tooltip, and no other surface's (mb-alff).
+      mb.tooltip.hide(container);
     };
     return Object.freeze({ dispose });
   }

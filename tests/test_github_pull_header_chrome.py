@@ -5,8 +5,9 @@ layout: no browserless DOM computes it, and the stylesheet text passed while the
 badge hung below its line. This mounts the production page module on
 recorded records in a real engine, with the shell's stylesheets and KPress's faces, and
 compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs). The
-same session lays out Pulls rows as their stack positions arrive, and a file header as a
-run's status badge changes its label in place, and checks that nothing moves. It runs in
+same session lays out Pulls rows as their stack places arrive, a file header as a run's
+status badge changes its label in place, and the Diff summary's row as its pending
+placeholder gives way to the summary, and checks that nothing moves. It runs in
 parts, one case each, so each part has a bound of its own under the suite's.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
@@ -41,6 +42,9 @@ PARTS = (
     "offers",
     "pulls",
     "badges",
+    "labels",
+    "summary-wait",
+    "cold-landing",
 )
 # On a Mac at a load average of 10 to 16, each header part took 5.0 to 6.7 s, the Pulls
 # rows 1.4 to 2.6 s, the offers and the run badge 1.4 to 1.7 s, and the launch 1.3 to

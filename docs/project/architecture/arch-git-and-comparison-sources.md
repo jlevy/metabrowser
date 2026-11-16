@@ -121,6 +121,7 @@ The module exposes two seams, and which one a feature needs is a real decision:
 
 - **`run_git`** runs a command to completion and returns its buffered bytes.
   Every bounded, request-scoped read uses this.
+  Given `stop_when`, it stops Git once Git has printed what the caller can use.
 - **`spawn_git_process`** returns a live process whose streams the caller owns, for
   consumers that cannot wait for completion — a long walk read page by page.
   It performs the same executable lookup, environment isolation, fixed-argument
@@ -139,13 +140,16 @@ counterpart, and anything holding a process across requests needs the lifecycle 
 | No hanging prompt | `GIT_TERMINAL_PROMPT=0`, empty `GIT_ASKPASS`, empty `SSH_ASKPASS` | A credential prompt stalling a server request forever |
 | Bounded output | Incremental cap at `GIT_SUBPROCESS_MAX_BYTES`, 64 KiB read chunks | An unbounded buffer from a hostile or huge repository |
 | Bounded time | `GIT_SUBPROCESS_TIMEOUT_S`, then terminate and reap | A wedged process outliving its request |
+| Early stop | `stop_when` sees each stdout read; once it says enough, SIGTERM, then SIGKILL after `_STOP_GRACE_S` (0.5 s), and `GitOutputCutError` carries what was printed | Git printing output its caller would throw away, such as a comparison’s patch past `MAX_LISTED_PATCH_BYTES` |
+| Counted spawns | Each successful spawn calls `server_timing.git_process_started()` | A request’s Git cost hidden from `Server-Timing`, whose `git` entry says how many processes it started |
 | No deadlock | Concurrent stdout/stderr draining | Both pipes filling while one is unread |
 | No leaked paths | stderr capped at 64 KiB and only ever logged | Absolute local paths reaching a JSON body |
 
 Failures are typed rather than string-matched: `GitUnavailableError`, `GitCommandError`,
-`GitTimeoutError`, and `GitOutputTooLargeError`, all under `GitError`. Callers branch on
-the type, so “git is not installed” and “this is not a repository” stay distinguishable
-from “the command failed.”
+`GitTimeoutError`, and `GitOutputTooLargeError`, with `GitOutputCutError` under it for a
+run stopped early, all under `GitError`. Callers branch on the type, so “git is not
+installed” and “this is not a repository” stay distinguishable from “the command
+failed.”
 
 `run_git` returns **bytes**. That is load-bearing, not an accident of implementation.
 
@@ -273,6 +277,38 @@ reader’s Git configuration, and a replace ref or graft can each change it, and
 does not notice them until one of those clears happens.
 The server keeps no folder comparison (`builtin_plugins/diff/comparison_cache.py`).
 
+A pull request’s page keeps what it reads for the document, not for one page
+(`createComparisonKeep` in `builtin_plugins/github/comparison-prefetch.js`), because a
+page is mounted again on every visit (mb-neg9). Its key is the comparison’s route, which
+names the pull request, both commits, the build, and the store, so a kept answer holds
+for as long as a record names that route, and a record whose head or base moved names
+another one. A visit to a comparison the keep holds draws its Diff summary in the paint
+that shows the record, and its Changes mounts from the same answer, with no request.
+A page opened on Changes reads through the keep as well, so its next visit is drawn from
+it too. A request on its way is shared: a second page, a mount, or the Pulls tab joins
+it, and it is abandoned only when every asker has gone.
+The keep reads the comparison alone; the first screen’s rendered Markdown is the page’s
+own to ask for, under the page’s own signal, since a shared request outlives any one
+asker (`prefetchMarkdown` on the diff view).
+It is bounded at `KEPT_COMPARISON_CHARS` of JSON characters, with a quarter for one
+answer, least recently used first, and sized in a task after the one that hands the
+answer on, as the Commits panel’s is; the measurement is beside the constant.
+A comparison past the bound, evicted or too large to keep, is read as before: once the
+browser is idle, and answered by the browser’s cache without the server.
+The Pulls tab warms it for the pull requests a reader opens next
+(`createComparisonWarmer`), one at a time when the browser is idle, with a cache read of
+the record and a comparison from the store, no GitHub call, within `WARM_COMPARISONS` an
+ask and `WARM_PER_HOUR`, which counts each warm before its record is read.
+Each outcome holds for the record’s freshness window, the envelope’s `fresh_for_s`, so a
+record that names no comparison, a refusal, and an answer too large to keep are read
+once rather than on every ask.
+A warm’s record read carries `warm=1`, so the server does not count it among the records
+a reader viewed, which a prefetch’s `changed` refreshes.
+`tests/dom/github-pull-prefetch-session.js` holds the keep and the warmer,
+`tests/dom/github-pulls-files-prefetch-behavior.js` which pull requests the Pulls tab
+names, and `test_a_warm_read_answers_the_record_and_is_not_a_view` in
+`tests/test_github_pull_manifests.py` the flag.
+
 ## Paths are bytes
 
 A POSIX path is an arbitrary byte sequence excluding NUL and `/`. It need not be valid
@@ -395,6 +431,13 @@ rows, `tally_cache_status`, and `summary` come from the recursive blob index; ig
 counts are 0 because ignore is absent.
 `include_ignored=0` is a no-op rather than `unsupported_for_subject`. The SPA hides
 Modified within because recency still has no honest mtime.
+Group by works on a pin by file type: `group_by=type` answers each display group’s tree
+from the same blob index, a symlink blob grouped by its name as a file is, and
+`group=type:<id>` lists one group’s tree.
+A group’s `size` is null when its blob sizes are incomplete, and its `files` too when
+the index is truncated.
+`group_by=age` and `group=age:…` answer `unsupported_for_subject` (HTTP 409), as recency
+does, and the SPA offers no Age.
 Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
 keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
 dirs are omitted. A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind`

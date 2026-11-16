@@ -1,5 +1,13 @@
 // Optional repository-wide native stack metadata. One shared, visible-reader poller serves
 // the panel and page; core PR data never waits for it and no row starts a request.
+//
+// Every surface that names a stack names it here, so the page's stack button and menu, a
+// Pulls row's place, and the Pulls tab's stack groups say one thing one way
+// (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
+// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
+// `namedStackPosition` the "300 2/2" of one that names its stack; `stackPositionHint` is
+// the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
+// first. `groupByStack` is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
 /** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
@@ -10,53 +18,296 @@
  * last_refresh: {outcome: string, at: string, reset_at: string | null} | null,
  * stacks: NativeStack[],
  * }} StackEnvelope */
-/** @typedef {{source: string | null, reader: string | null, byPull: Map<number, NativeStack[]>, labels: Map<number, {text: string, hint: string}>}} StackIndex */
+/**
+ * A badge's positions, its own stack's first. A part with a `stack` names another stack,
+ * drawn as the Layers glyph before its number; `text` is what the badge's letters read,
+ * the glyph aside ("4/4 · 300 2/2"), and `hint` its accessible name.
+ *
+ * @typedef {{position: string, stack: number | null}} StackCaptionPart
+ * @typedef {{text: string, hint: string, parts: StackCaptionPart[]}} StackCaption
+ */
+/** @typedef {{
+ * known: boolean, reason: string | null,
+ * source: string | null, reader: string | null,
+ * byPull: Map<number, NativeStack[]>, labels: Map<number, StackCaption>,
+ * }} StackIndex */
+
+/** A stack's one name, wherever a surface names it. @param {number} number */
+export function stackLabel(number) {
+  return `Stack #${number}`;
+}
+
+/** A member's place in its stack, as GitHub numbers it from the base: "2/4".
+ * @param {number} at The member's index in `pulls`, base first.
+ * @param {number} length
+ */
+export function stackPosition(at, length) {
+  return `${at + 1}/${length}`;
+}
+
+/** A position as a badge reads it where it must say which stack it is in: the stack's
+ * number before it, "300 2/2", drawn after the Layers glyph. A position whose stack goes
+ * without saying, its pull request's only one or the one its row sits under, is bare.
+ * @param {string} position @param {number | null} stack The stack to name, or null.
+ */
+export function namedStackPosition(position, stack) {
+  return stack === null ? position : `${stack} ${position}`;
+}
+
+/** The tip that names a member's stack and place: "Stack #286, position 2 of 4".
+ * @param {NativeStack} stack @param {number} at
+ */
+export function stackPositionHint(stack, at) {
+  return `${stackLabel(stack.number)}, position ${at + 1} of ${stack.pulls.length}`;
+}
+
+/** The order every surface lists a stack's members in: the top of the stack first.
+ * @param {NativeStack} stack @returns {number[]}
+ */
+export function stackMenuOrder(stack) {
+  return stack.pulls.slice().reverse();
+}
+
+/**
+ * A badge's parts and accessible name for a pull request's stacks, *first* first. The first
+ * position is bare, since the row's own stack needs no name, its only one or the one it is
+ * grouped under; each other stack's position is named by the Layers glyph and its number,
+ * so a badge never holds two positions a reader cannot tell apart, and never a number that
+ * reads as a pull request's "#N" beside the row's own.
+ *
+ * @param {NativeStack[]} memberships @param {number} number @param {number | null} [first]
+ * @returns {StackCaption | null}
+ */
+function caption(memberships, number, first = null) {
+  const ordered =
+    first === null
+      ? memberships
+      : [
+          ...memberships.filter((stack) => stack.number === first),
+          ...memberships.filter((stack) => stack.number !== first),
+        ];
+  if (ordered.length === 0) {
+    return null;
+  }
+  const places = ordered.map((stack) => ({ stack, at: stack.pulls.indexOf(number) }));
+  /** @type {StackCaptionPart[]} */
+  const parts = places.map(({ stack, at }, index) => ({
+    position: stackPosition(at, stack.pulls.length),
+    stack: index === 0 ? null : stack.number,
+  }));
+  return {
+    text: parts.map((part) => namedStackPosition(part.position, part.stack)).join(" · "),
+    hint: places.map(({ stack, at }) => stackPositionHint(stack, at)).join("; "),
+    parts,
+  };
+}
 
 /** @param {StackEnvelope | null} envelope @returns {StackIndex} */
 export function createStackIndex(envelope) {
   /** @type {Map<number, NativeStack[]>} */
   const byPull = new Map();
-  /** @type {Map<number, {text: string, hint: string}>} */
-  const labels = new Map();
   for (const stack of envelope?.stacks ?? []) {
-    for (const [at, number] of stack.pulls.entries()) {
+    for (const number of stack.pulls) {
       const membership = byPull.get(number) ?? [];
       membership.push(stack);
       byPull.set(number, membership);
-      const previous = labels.get(number);
-      const text = `${at + 1}/${stack.pulls.length}`;
-      const hint = `Stack #${stack.number}, position ${at + 1} of ${stack.pulls.length}`;
-      labels.set(number, {
-        text: previous ? `${previous.text} · ${text}` : text,
-        hint: previous ? `${previous.hint}; ${hint}` : hint,
-      });
     }
   }
-  return { source: envelope?.source ?? null, reader: envelope?.reader ?? null, byPull, labels };
+  /** @type {Map<number, StackCaption>} */
+  const labels = new Map();
+  for (const [number, memberships] of byPull) {
+    labels.set(number, /** @type {StackCaption} */ (caption(memberships, number)));
+  }
+  return {
+    known: envelope !== null,
+    reason: envelope?.reason ?? null,
+    source: envelope?.source ?? null,
+    reader: envelope?.reader ?? null,
+    byPull,
+    labels,
+  };
+}
+
+/** Whether *index* is the stacks of the reader and repository the core data is.
+ * @param {StackIndex} index @param {StackIdentity | null} identity
+ */
+function sameIdentity(index, identity) {
+  return Boolean(
+    identity?.source &&
+      identity.reader &&
+      index.source === identity.source &&
+      index.reader === identity.reader,
+  );
 }
 
 /** Positive membership belongs to the same source and reader as the core data.
  * @param {StackIndex} index @param {StackIdentity | null} identity @param {number} number
  */
 export function stackMembership(index, identity, number) {
-  return identity?.source &&
-    identity.reader &&
-    index.source === identity.source &&
-    index.reader === identity.reader
-    ? (index.byPull.get(number) ?? [])
-    : [];
+  return sameIdentity(index, identity) ? (index.byPull.get(number) ?? []) : [];
 }
 
-/** A precomputed row caption: no membership traversal on viewport paint.
+/** A row's caption, precomputed for every row but one grouped under a stack other than its
+ * first, which is built when painted: that is rare, a pull request in two stacks. A row
+ * grouped under one of its stacks (*under*) has that stack's position first, bare.
  * @param {StackIndex} index @param {StackIdentity | null} identity @param {number} number
+ * @param {number | null} [under]
  */
-export function stackCaption(index, identity, number) {
-  return identity?.source &&
-    identity.reader &&
-    index.source === identity.source &&
-    index.reader === identity.reader
+export function stackCaption(index, identity, number, under = null) {
+  if (!sameIdentity(index, identity)) {
+    return null;
+  }
+  const memberships = index.byPull.get(number) ?? [];
+  return under === null || memberships.length < 2 || memberships[0].number === under
     ? (index.labels.get(number) ?? null)
-    : null;
+    : caption(memberships, number, under);
+}
+
+/** The row key of a stack's group row in the Pulls list. A pull request's row is keyed by
+ * its number, always positive, so one number space keys every row and none collides.
+ * @param {number} number
+ */
+export function stackRowKey(number) {
+  return -number;
+}
+
+/**
+ * @typedef {{
+ *   kind: "stack", key: number, stack: NativeStack, label: string, hint: string,
+ *   members: number[], expanded: boolean, level: 1, posinset: number, setsize: number,
+ * }} StackGroupRow
+ * @typedef {{
+ *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
+ *   posinset: number, setsize: number,
+ * }} PullGroupRow
+ * @typedef {StackGroupRow | PullGroupRow} GroupedRow
+ */
+
+/**
+ * The Pulls list grouped by stack. Pure.
+ *
+ * *numbers* are the list's pull requests in its own order. Each stack with a pull request
+ * among them has a row, "Stack #N", open unless *collapsed* names it, and under it its
+ * pull requests in the list, in `stackMenuOrder`. The stacks come in the order of their
+ * first pull request in the list, so the list's own order still decides which comes
+ * first; a tie, two stacks first listed at one shared member, keeps the envelope's order.
+ * A pull request in more than one stack sits once, under the first of them in that order;
+ * a stack whose listed pull requests all sit under earlier stacks has no row; their
+ * places name it. Pull requests in no stack follow the stacks, in the list's order.
+ *
+ * *setSize* is how many pull requests the list has, which may be more than it holds: the
+ * list's first level is the stacks and every pull request in none, so its size is that
+ * less the pull requests placed under stacks.
+ *
+ * @param {number[]} numbers
+ * @param {StackIndex} index
+ * @param {StackIdentity | null} identity
+ * @param {{collapsed?: ReadonlySet<number>, setSize?: number}} [options]
+ * @returns {{stacks: number, placed: number, rows: GroupedRow[]}}
+ */
+export function groupByStack(numbers, index, identity, options = {}) {
+  const collapsed = options.collapsed ?? new Set();
+  const listed = new Set(numbers);
+  /** @type {Map<number, NativeStack>} */
+  const order = new Map();
+  for (const number of numbers) {
+    for (const stack of stackMembership(index, identity, number)) {
+      if (!order.has(stack.number)) {
+        order.set(stack.number, stack);
+      }
+    }
+  }
+  /** The stack each placed pull request sits under. @type {Map<number, number>} */
+  const placed = new Map();
+  /** @type {{stack: NativeStack, members: number[], listed: number, elsewhere: Map<number, number>}[]} */
+  const groups = [];
+  for (const stack of order.values()) {
+    const listedMembers = stackMenuOrder(stack).filter((number) => listed.has(number));
+    const members = listedMembers.filter((number) => !placed.has(number));
+    if (members.length === 0) {
+      continue;
+    }
+    // Its listed pull requests under earlier stacks, by the stack each sits under.
+    /** @type {Map<number, number>} */
+    const elsewhere = new Map();
+    for (const number of listedMembers) {
+      const under = placed.get(number);
+      if (under !== undefined) {
+        elsewhere.set(under, (elsewhere.get(under) ?? 0) + 1);
+      }
+    }
+    for (const number of members) {
+      placed.set(number, stack.number);
+    }
+    groups.push({ stack, members, listed: listedMembers.length, elsewhere });
+  }
+  const rest = numbers.filter((number) => !placed.has(number));
+  const firstLevel =
+    groups.length + Math.max(rest.length, (options.setSize ?? numbers.length) - placed.size);
+  /** @type {GroupedRow[]} */
+  const rows = [];
+  for (const [at, { stack, members, listed: shown, elsewhere }] of groups.entries()) {
+    const expanded = !collapsed.has(stack.number);
+    rows.push({
+      kind: "stack",
+      key: stackRowKey(stack.number),
+      stack,
+      label: stackLabel(stack.number),
+      hint: stackGroupHint(stack, shown, elsewhere),
+      members,
+      expanded,
+      level: 1,
+      posinset: at + 1,
+      setsize: firstLevel,
+    });
+    if (expanded) {
+      for (const [place, number] of members.entries()) {
+        rows.push({
+          kind: "pull",
+          key: number,
+          number,
+          level: 2,
+          stack: stack.number,
+          posinset: place + 1,
+          setsize: members.length,
+        });
+      }
+    }
+  }
+  for (const [at, number] of rest.entries()) {
+    rows.push({
+      kind: "pull",
+      key: number,
+      number,
+      level: 1,
+      stack: null,
+      posinset: groups.length + at + 1,
+      setsize: firstLevel,
+    });
+  }
+  return { stacks: groups.length, placed: placed.size, rows };
+}
+
+/**
+ * A stack row's accessible name, since the Pulls column shows no tooltips: its label, its
+ * size, how many of its pull requests the list holds, and where those under an earlier
+ * stack sit, so a count of listed pull requests that is more than the rows under it says
+ * why.
+ *
+ * @param {NativeStack} stack
+ * @param {number} shown How many of its pull requests the list holds.
+ * @param {ReadonlyMap<number, number>} [elsewhere] How many sit under each earlier stack.
+ */
+export function stackGroupHint(stack, shown, elsewhere = new Map()) {
+  const total = stack.pulls.length;
+  const parts = [stackLabel(stack.number), `${total} pull request${total === 1 ? "" : "s"}`];
+  if (shown < total) {
+    parts.push(`${shown} in this list`);
+  }
+  for (const [under, count] of elsewhere) {
+    parts.push(`${count} under ${stackLabel(under)}`);
+  }
+  return parts.join(", ");
 }
 
 /** A member selection has the same explicit-reader fetch intent as a catalog click.
@@ -150,8 +401,10 @@ export function createStackController(deps) {
   function hold(next) {
     envelope = next;
     freshUntil = deps.now() + Math.max(0, next.fresh_for_s) * 1000;
-    // Count/freshness polling does not rebuild the membership index or row DOM.
-    const key = JSON.stringify([next.source, next.reader, next.stacks]);
+    // Count/freshness polling does not rebuild the membership index or row DOM. Why there
+    // is no snapshot, its `reason`, is part of what the index says: the Pulls tab's stack
+    // option tells it (pulls-panel.js, `describeStackGrouping`).
+    const key = JSON.stringify([next.source, next.reader, next.stacks, next.reason]);
     if (content !== key) {
       content = key;
       index = createStackIndex(next);

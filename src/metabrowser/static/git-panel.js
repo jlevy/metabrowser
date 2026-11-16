@@ -185,6 +185,10 @@
    */
   /** @type {NewestLanding | null} */
   let newestLanding = null;
+  // A commit's address whose row waits for the page of history that holds it
+  // (revealWaitingCommit).
+  /** @type {string | null} */
+  let waitingReveal = null;
   // How many commit selections have begun, so work that outlives one can tell that a
   // later selection placed the list (recoverHistorySession).
   let selectionCount = 0;
@@ -308,45 +312,122 @@
   }
 
   /**
+   * A commit's file families in its hover card, in the Diff summary's order, added, deleted,
+   * then modified (changed-files-tree.js, `STATUS_ORDER`), each with its letter, the badge
+   * its rows carry, and its word. They are Git's, which the server counts before it bounds
+   * the commit's list of files: A holds added and copied files, D deleted ones, and M
+   * modified, renamed, and type-changed ones.
+   */
+  const COMMIT_FILE_FAMILIES = Object.freeze([
+    Object.freeze({ key: "files_added", status: "added", letter: "A", word: "added" }),
+    Object.freeze({ key: "files_deleted", status: "deleted", letter: "D", word: "deleted" }),
+    Object.freeze({ key: "files_modified", status: "modified", letter: "M", word: "modified" }),
+  ]);
+
+  /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
+  const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
+  /** The commit totals line's dot, which says a comma in its place, as a line has no name. */
+  const COMMIT_TOTALS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
+
+  /**
+   * A commit's changes in its hover card, in the Diff summary's words and paint
+   * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
+   * −160", through the same parts (formatters.js, `changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the brief change line after the file
+   * count), so each number is bold in the line's ink, each status its letter in
+   * its status's ink at the line's weight, and the commas and dots muted. A family no file
+   * has is left out, and a count the commit does not know is "?". Each dot is one item with
+   * the group before it, so a line that wraps breaks after a dot. A screen reader is told
+   * the line in words, "32 files changed: 4 added, 28 modified; 1,921 lines added, 160
+   * deleted", in place of its letters and marks.
+   *
    * @param {Record<string, unknown>} stats
    * @returns {string}
    */
   function renderCommitChangeStats(stats) {
-    const fileStatuses = [
-      [stats.files_modified ?? "?", "M", "modified", "git-commit-file-status-modified"],
-      [stats.files_added ?? "?", "A", "added", "git-commit-file-status-added"],
-      [stats.files_deleted ?? "?", "D", "deleted", "git-commit-file-status-deleted"],
-    ]
-      .filter(([count]) => count !== 0)
-      .map(([count, code, label, className]) => {
-        const fileLabel = count === 1 ? "file" : "files";
-        return (
-          `<span class="git-commit-file-status ${className}"` +
-          ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
-          `${escapeHtml(String(count))} <span class="file-change-status" data-file-status="${label}">${code}</span></span>`
-        );
-      })
-      .join("");
-    const filesChanged = stats.files_changed ?? "?";
-    const fileUnit = filesChanged === 1 ? "file" : "files";
-    const additions = stats.additions ?? "?";
-    const deletions = stats.deletions ?? "?";
-    const lineTotal =
-      typeof additions === "number" && typeof deletions === "number" ? additions + deletions : null;
-    const lineUnit = lineTotal === 1 ? "line" : "lines";
+    const formatters = window.MetabrowserFormatters;
+    /** @param {unknown} value */
+    const known = (value) => (typeof value === "number" ? value : null);
+    const entries = COMMIT_FILE_FAMILIES.map(({ key, ...family }) => ({
+      ...family,
+      count: known(stats[key]),
+    })).filter((entry) => entry.count !== 0);
+    const said = formatters.changeSummary(
+      {
+        files: known(stats.files_changed),
+        additions: known(stats.additions),
+        deletions: known(stats.deletions),
+        exact: true,
+      },
+      entries,
+      formatters.formatInteger,
+    );
+    /** @param {string} className @param {MetabrowserCountParts} parts */
+    const group = (className, parts) =>
+      '<span class="git-commit-change-group">' +
+      `<span class="${className}">${formatters.countPartsHtml(parts)}</span>` +
+      `${formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])}</span>`;
     return (
       '<div class="git-commit-change-stats">' +
-      '<div class="git-commit-file-statuses" aria-label="File changes">' +
-      `${fileStatuses}<span class="git-commit-stat-unit">${fileUnit}</span>` +
-      "</div>" +
-      '<div class="git-commit-line-stats" aria-label="Line changes">' +
-      `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
-      `+${escapeHtml(String(additions))}</span>` +
-      `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
-      `−${escapeHtml(String(deletions))}</span>` +
-      `<span class="git-commit-stat-unit">${lineUnit}</span>` +
-      "</div>" +
-      "</div>"
+      `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+      group("git-commit-change-files", said.filesParts) +
+      formatters.changeLineHtml(said.line) +
+      "</span></div>"
+    );
+  }
+
+  /**
+   * The commit's own totals, which the server counts over the whole commit before it caps its
+   * list of files (`git/detail.py`), or null where the detail has no count of files.
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {{files: number, additions: number | null, deletions: number | null, exact: boolean} | null}
+   */
+  function commitTotals(stats) {
+    const files = stats.files_changed;
+    if (typeof files !== "number" || !Number.isInteger(files)) {
+      return null;
+    }
+    /** @param {unknown} value */
+    const lines = (value) => (typeof value === "number" && Number.isInteger(value) ? value : null);
+    return {
+      files,
+      additions: lines(stats.additions),
+      deletions: lines(stats.deletions),
+      exact: true,
+    };
+  }
+
+  /**
+   * The commit's totals as one line, "35 files changed · +1,234 −3,423", worded as a diff's line
+   * is where its tree of files did not load (`plainTotals`, builtin_plugins/diff/diff-model.js):
+   * what the Diff summary's place says until the commit's diff draws the summary there, and
+   * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
+   * comparison fails, so the page always states its counts (A6 of review A on #470). Empty
+   * where the detail has no count of files, and the place then takes no room. Its words and
+   * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the totals): the file count bold, and the dot
+   * muted, one item with the count before it, and said as a comma to a screen reader, as a
+   * line has no name in words. The spaces around the dot are written, so the line reads
+   * "35 files changed · +1,234 −3,423" without the diff plugin's stylesheet too, whose flex
+   * line renders none of them (B3 of review B on #479).
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {string}
+   */
+  function renderCommitTotals(stats) {
+    const totals = commitTotals(stats);
+    if (totals === null) {
+      return "";
+    }
+    const formatters = window.MetabrowserFormatters;
+    const said = formatters.changeSummary(totals, [], formatters.formatInteger);
+    return (
+      '<div class="diff-summary"><span class="diff-summary-group">' +
+      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span> ` +
+      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span> ` +
+      `${formatters.changeLineHtml(said.line)}</div>`
     );
   }
 
@@ -370,7 +451,9 @@
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
     html += '<div class="git-commit-header">';
-    html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
     html += '<span class="git-commit-revision">';
@@ -396,7 +479,14 @@
     html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
     html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
     html += "</div>";
-    html += renderCommitChangeStats(stats);
+    // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
+    // diff below draws it here, its header the commit's file and line totals and its tree
+    // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
+    // place says the commit's totals. The hover summary says its changes itself, in the Diff
+    // summary's words and paint.
+    html += compact
+      ? renderCommitChangeStats(stats)
+      : `<div class="git-commit-diff-summary metabrowser-diff-host">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
@@ -434,6 +524,19 @@
    */
   function ageClass(epochSeconds) {
     return window.MetabrowserFormatters?.ageClass(epochSeconds) ?? "";
+  }
+
+  /**
+   * A commit's subject as escaped markup, from the shared title primitive, so a history
+   * row, the commit's page, and its tooltip draw a conventional-commit prefix as a pull
+   * request's title does: in `span.title-prefix`, at regular weight (docs/design-system.md,
+   * "Titles").
+   *
+   * @param {string} subject
+   * @returns {string}
+   */
+  function subjectHtml(subject) {
+    return window.MetabrowserFormatters.titleHtml(subject);
   }
 
   /**
@@ -1902,7 +2005,14 @@
     const count = state.summary.commitCount;
     const countSpan = document.createElement("span");
     countSpan.className = "git-history-summary-count";
-    countSpan.textContent = `${count.toLocaleString()} ${count === 1 ? "commit" : "commits"}`;
+    // The number bold and its word in the line's weight, as every count summary reads
+    // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    countSpan.replaceChildren(
+      ...window.MetabrowserFormatters.countPartsNodes(document, [
+        { number: count.toLocaleString() },
+        count === 1 ? " commit" : " commits",
+      ]),
+    );
     const firstCommitAt = state.summary.firstCommitAt;
     const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
     if (!firstAge || firstCommitAt === null) {
@@ -2071,7 +2181,7 @@
     const refs = renderRefBadges(commit.refs || []);
     body.innerHTML =
       (refs ? `<span class="git-graph-refs">${refs}</span>` : "") +
-      `<span class="git-graph-subject">${escapeHtml(commit.subject)}</span>` +
+      `<span class="git-graph-subject">${subjectHtml(commit.subject)}</span>` +
       `<span class="git-graph-meta"><span class="actor-name">${escapeHtml(commit.author?.name || "")}</span>` +
       `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
       `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
@@ -2162,7 +2272,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
-    sdk()?.tooltip?.hide();
+    // The history's tooltip, and no other surface's: a rebuild of the panel must not take
+    // a Files row's from under the pointer (mb-alff).
+    sdk()?.tooltip?.hide(panelElement());
     hoverRevision = null;
   }
 
@@ -2196,6 +2308,9 @@
    */
   function cancelPending() {
     landingGeneration += 1;
+    // Another owner has the pane: a commit's row that waited for history is not revealed
+    // over it (revealWaitingCommit).
+    waitingReveal = null;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
@@ -2573,7 +2688,13 @@
     if (external.length) {
       html += '<div class="git-commit-files">';
       html += '<div class="git-commit-files-summary">';
-      html += `${external.length} file${external.length === 1 ? "" : "s"} outside this folder`;
+      // A count summary of the list under it: its number bold (docs/design-system.md,
+      // "Count Summaries Bold Their Numbers"), and the count and its words one item of the
+      // flex line, so its gap does not part them.
+      html += `<span>${window.MetabrowserFormatters.countPartsHtml([
+        { number: String(external.length) },
+        ` file${external.length === 1 ? "" : "s"} outside this folder`,
+      ])}</span>`;
       html += "</div>";
       html += external.map(renderFileRow).join("");
       html += "</div>";
@@ -2612,7 +2733,13 @@
       return;
     }
     try {
-      const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation, previewClaim);
+      const nextHandle = await mountCommitDiff(
+        stage,
+        commit.id,
+        diffPreparation,
+        previewClaim,
+        commitTotals(stats),
+      );
       if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
         nextHandle?.dispose?.();
         return;
@@ -2669,9 +2796,12 @@
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
    * @param {MetabrowserPreviewClaim} claim
+   * @param {ReturnType<typeof commitTotals>} [totals] The commit's own totals, which its Diff
+   *   summary says where the comparison's list of files is cut short at its bound (A3 of review
+   *   A on #470).
    * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, preparation, claim) {
+  async function mountCommitDiff(preview, revision, preparation, claim, totals = null) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
@@ -2705,8 +2835,15 @@
           if (!current()) {
             return null;
           }
+          // The Diff summary at the page's top, under the commit's identity (mb-pb35).
+          const summaryHost = preview.querySelector(".git-commit-diff-summary");
           return /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
-            await view.render(host, { revision, raw })
+            await view.render(host, {
+              revision,
+              raw,
+              ...(summaryHost instanceof HTMLElement ? { summaryHost } : {}),
+              ...(totals === null ? {} : { summaryTotals: totals }),
+            })
           );
         },
         { revision },
@@ -3125,6 +3262,7 @@
     refusedRevision = null;
     lastSelection = null;
     newestLanding = null;
+    waitingReveal = null;
     refColors = new Map();
     started = false;
     viewHelpersReady = false;
@@ -3180,7 +3318,12 @@
         window.location.pathname === pathname &&
         !(lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim))
       ) {
-        await selectCommit(wanted, { fromRoute: true });
+        // The selection marks the row as it begins, and the row is then revealed, now or
+        // when the page of history that holds it settles.
+        const selecting = selectCommit(wanted, { fromRoute: true });
+        waitingReveal = wanted;
+        revealWaitingCommit();
+        await selecting;
       }
     } catch (error) {
       console.error(
@@ -3240,6 +3383,7 @@
    * since, a file, a pull request, or a commit's own address, ends the wait.
    */
   function selectNewestWhenReady() {
+    revealWaitingCommit();
     const waiting = newestLanding;
     const bridge = shell();
     if (!waiting || !bridge) {
@@ -3310,6 +3454,78 @@
       pendingPreviewClaim === newestLanding.claim &&
       shell()?.isPreviewClaimCurrent(newestLanding.claim) === true
     );
+  }
+
+  /**
+   * Scroll a commit's row into view, mounting the window around it, when the history read
+   * so far holds it: a commit's address reveals its row, as a file's reveals the Files
+   * tree's (docs/design-system.md, "Navigation Reveals the Item"). A commit the history has
+   * not read, or one on no branch it walks, has no row: the list reads a page at a time
+   * from the newest and is not paged through for it, and the pane names the commit.
+   *
+   * @param {string} revision
+   * @returns {boolean} Whether its row is shown.
+   */
+  function revealCommitRow(revision) {
+    const ordinal = loadedOrdinalOf(revision);
+    const scroller = historyScroller();
+    const list = panelElement()?.querySelector(".git-graph-list");
+    if (ordinal === null || !scroller || !(list instanceof HTMLElement)) {
+      return false;
+    }
+    const rowAt = () => list.querySelector(`.git-graph-row[data-ordinal="${ordinal}"]`);
+    if (!(rowAt() instanceof HTMLElement)) {
+      scroller.scrollTop =
+        historyOrigin() +
+        state.virtualWindow.rebaseToOrdinal(ordinal, viewportHeight(scroller), "center");
+      state.mountedRange = null;
+      renderVirtualRows(true);
+    }
+    const row = rowAt();
+    if (!(row instanceof HTMLElement)) {
+      return false;
+    }
+    row.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+
+  /**
+   * Reveal the row of a commit's address once the history holds it. It runs as the landing
+   * selects the commit and whenever a page of history settles (`selectNewestWhenReady`), and
+   * stops waiting once the first pages are read without it, or the reader moves on: the
+   * selection moves, the address names another commit or none, or another tab is in front,
+   * whose panel scrolls the same scroller.
+   */
+  function revealWaitingCommit() {
+    const waiting = waitingReveal;
+    if (waiting === null) {
+      return;
+    }
+    const addressed = window.MetabrowserNavigationRoute?.parseCommit?.(
+      window.location?.pathname ?? "",
+    )?.revision;
+    if (
+      state.selectedId !== waiting ||
+      addressed !== waiting ||
+      !panelInFront() ||
+      revealCommitRow(waiting)
+    ) {
+      waitingReveal = null;
+    } else if (!state.loading && !refreshing && state.rowCount > 0) {
+      waitingReveal = null;
+    }
+  }
+
+  /** Where *revision* sits in the history read so far, or null. @param {string} revision */
+  function loadedOrdinalOf(revision) {
+    for (const pageNumber of state.pageCache.keys()) {
+      const page = state.pageCache.peek(pageNumber);
+      const index = page ? page.commits.findIndex((commit) => commit.id === revision) : -1;
+      if (page && index >= 0) {
+        return page.startOrdinal + index;
+      }
+    }
+    return null;
   }
 
   /** Scroll the newest row into view when it is not, with the history tally above it. */

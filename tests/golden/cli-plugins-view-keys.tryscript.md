@@ -10,15 +10,16 @@ env:
 patterns:
   PYDANTIC_URL: 'https://errors\.pydantic\.dev/\d+\.\d+/v/value_error'
 before: >-
-  mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes reserved/reskey override/steal &&
+  mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
   printf '# Notes\n' > mdroot/a.md &&
   printf '[plugin]\nname = "alpha"\nsdk_version = "0.7"\n[[kind]]\nid = "myk"\nmatch = { ext = ".myk" }\n[[view]]\nkind = "myk"\nid = "main"\nlabel = "Main"\nkey = "m"\ndefault = true\n' > pair/alpha/manifest.toml &&
   printf '[plugin]\nname = "beta"\nsdk_version = "0.7"\n[[view]]\nkind = "myk"\nid = "more"\nlabel = "More"\nkey = "M"\n' > pair/beta/manifest.toml &&
   printf '[plugin]\nname = "prnotes"\nsdk_version = "0.7"\n[[view]]\nkind = "pull-request"\nid = "notes"\nlabel = "Notes"\nkey = "N"\n' > stack/prnotes/manifest.toml &&
+  printf '[plugin]\nname = "pullkey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "preview"\nlabel = "Preview"\nkey = "P"\n' > pulls/pullkey/manifest.toml &&
   printf '[plugin]\nname = "reskey"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "outline"\nlabel = "Outline"\nkey = "T"\n' > reserved/reskey/manifest.toml &&
   printf '[plugin]\nname = "steal"\nsdk_version = "0.7"\n[[view]]\nkind = "markdown"\nid = "rendered"\nlabel = "Document"\nkey = "s"\ndefault = true\n' > override/steal/manifest.toml &&
-  for dir in pair/alpha pair/beta stack/prnotes reserved/reskey override/steal; do printf '// No renderer: these plugins exist for their manifests.\n' > "$dir/index.js"; done
+  for dir in pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal; do printf '// No renderer: these plugins exist for their manifests.\n' > "$dir/index.js"; done
 ---
 # Golden tests: view keys across plugin manifests
 
@@ -30,13 +31,15 @@ first view in tab order keeps a shared key, and the view that loses it is still 
 `--show` prints what the server serves, and `--doctor` reports each dropped key and
 exits 1.
 
-The `before:` block writes five operator plugins, loaded with `--plugins-dir`:
+The `before:` block writes six operator plugins, loaded with `--plugins-dir`:
 
 - `alpha` declares the `myk` kind and its Main view, keyed `m`.
 - `beta` adds a More view to `myk`, keyed `M`. Keys are compared without case, so it
   collides with Main.
-- `prnotes` adds a Notes view to `pull-request`, keyed `N`, which the shell reserves
-  everywhere: `N` and `P` mean next and previous wherever they apply.
+- `prnotes` adds a Notes view to `pull-request`, keyed `N`, which is free: next and
+  previous are Control-N and Control-P, chords no view can declare.
+- `pullkey` adds a Preview view to `markdown`, keyed `P`, which the shell reserves
+  everywhere for the Pulls tab.
 - `reskey` adds an Outline view to `markdown`, keyed `T`, which the shell reserves
   everywhere for Quick Search.
 - `steal` overrides Markdown’s Document view and keys it `s`, which the built-in Source
@@ -87,18 +90,33 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
 ? 1
 ```
 
-## Test: a view keyed N is refused at load, since N means next everywhere
+## Test: a view keyed N loads, since Control-N, not N, means next
 
-`N` and `P` are reusable next and previous keys, reserved in every kind, so the loader
-refuses the manifest as it refuses `T` below.
+Next and previous one level up are Control-N and Control-P, chords no view can declare,
+so `N` alone is free in every kind, a pull request’s included, and the plugin loads.
 
 ```console
 $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
+  "ok": true,
+  "plugin_count": 12,
+  "problems": []
+}
+? 0
+```
+
+## Test: a view keyed P is refused at load, since P opens the Pulls tab everywhere
+
+`P` is the Pulls tab’s letter in every kind, as `F` is the Files tab’s, so the loader
+refuses a view that takes it, a Preview included.
+
+```console
+$ metab --doctor --json --plugins-dir pulls 2>/dev/null
+{
   "ok": false,
   "plugin_count": 11,
   "problems": [
-    "[CWD]/stack/prnotes/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'N' is reserved for the shell's next item [type=value_error, input_value='N', input_type=str]\n    For further information visit [PYDANTIC_URL]"
+    "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ]
 }
 ? 1

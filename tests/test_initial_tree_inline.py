@@ -124,7 +124,8 @@ def test_collapsed_inline_descendants_stay_cached_out_of_the_dom() -> None:
     render = app[app.index("function renderTreeNodes") : app.index("// ── Lazy subtree loading")]
 
     assert "Array.isArray(node.children) && expanded" in render
-    assert "subtreeCache.set(subtreeCacheKey(node.path), node.children)" in render
+    # Keyed by the Group by section the rows are built for, when there is one.
+    assert "subtreeCache.set(subtreeCacheKey(node.path, options.section), node.children)" in render
     assert "data-tree-lazy-stub" in render
 
 
@@ -305,9 +306,11 @@ def test_the_first_tree_paint_selects_and_shows_a_landings_row() -> None:
     # A reveal the reader caused during the session (Quick Search, a link) is movement from
     # their input: it opens the folders without travel and shows the new selection, in one
     # frame. Nothing between the last folder opening and the scroll yields to the browser.
-    reveal = app[app.index("async function revealInTree(") :]
+    # revealInTree reveals within a scope (the panel, or a Group by section) through
+    # revealWithin, which opens the folders and shows the selection.
+    reveal = app[app.index("async function revealWithin(") :]
     reveal = reveal[: reveal.index("\n}\n")]
-    assert "instant = true }" in reveal.splitlines()[0]
+    assert "instant = true }" in reveal[: reveal.index(") {")]
     assert "setFolderExpanded(folder, true, { instant })" in reveal
     tail = reveal[reveal.rindex("setFolderExpanded(folder, true, { instant })") :]
     tail = tail[tail.index("\n") :]
