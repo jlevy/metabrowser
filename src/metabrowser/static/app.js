@@ -3131,7 +3131,9 @@ function tipAnchorIsCut(anchor) {
 /**
  * Whether a tip says something its anchor does not already show (docs/design-system.md,
  * "Tooltips Add Information"). A tip that is the anchor's own text says nothing while
- * that text is whole, so it shows only while the text is cut short; any other tip, such
+ * that text is whole, so it shows only while the text is cut short. So does a tip that is
+ * the text of a box inside the anchor, as a changed file's row holds its name beside its
+ * status letter and counts: it shows only while that box is cut short. Any other tip, such
  * as a glyph's name or an exact time, shows.
  *
  * @param {HTMLElement} anchor
@@ -3141,7 +3143,25 @@ function tipAddsInformation(anchor) {
   if (tip === "") {
     return false;
   }
-  return tip !== tipComparable(anchor.textContent) || tipAnchorIsCut(anchor);
+  var text = tipComparable(anchor.textContent);
+  if (tip === text) {
+    return tipAnchorIsCut(anchor);
+  }
+  // A box's text is part of its anchor's, so a tip the anchor's text does not hold is no
+  // box's text, and nothing inside need be read.
+  if (!text.includes(tip)) {
+    return true;
+  }
+  var repeated = false;
+  for (var box of anchor.querySelectorAll("*")) {
+    if (box instanceof HTMLElement && tipComparable(box.textContent) === tip) {
+      if (tipAnchorIsCut(box)) {
+        return true;
+      }
+      repeated = true;
+    }
+  }
+  return !repeated;
 }
 
 /** @param {Event} e */
