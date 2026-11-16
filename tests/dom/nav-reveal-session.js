@@ -22,14 +22,18 @@
 //
 // `files tree` lifts app.js's tree reveal and page mounting verbatim (`revealFileRow`,
 // `revealInTree`, `revealWithin`, `mountTreePageHolding`, `mountTreePageAt`,
-// `mountNextTreePage`, `setSelectedPath`, and the outside-filter note) over a stand-in
-// tree: closed folders open; in a folder of 1,400 files only the page that holds the row
-// is drawn, with the pages before and after it behind "more" rows of their own, which
-// draw in order where they are; a reveal that cannot show its row still takes the
-// selection from the row that had it; and the note names a file only when the filter is
-// what hides it. The renderer stands in for renderTreeNodes and deferredTreePageHtml,
-// paging as they do (TREE_PAGE_SIZE rows, then a "more" row), as the folder's lazy load
-// stands in for the server's.
+// `mountNextTreePage`, `setSelectedPath`, and the outside-filter note), and its insert of
+// a file that arrives while the page is open (`_insertRowSorted` and the "more" rows'
+// totals), over a stand-in tree: closed folders open; in a folder of 1,400 files only the
+// page that holds the row is drawn, with the pages before and after it behind "more" rows
+// of their own, which draw in order where they are; one above the reader's row grows up,
+// and one below grows down, with focus on its first row, after a second reveal too; an
+// arrival counts in every "more" row, and one that sorts last goes last; a reveal that
+// cannot show its row still takes the selection from the row that had it; and the note
+// names a file only when the filter is what hides it. The renderer stands in for
+// renderTreeNodes, deferredTreePageHtml and _buildRowHtml, paging as they do
+// (TREE_PAGE_SIZE rows, then a "more" row), as the folder's lazy load stands in for the
+// server's.
 //
 // `pulls list` runs builtin_plugins/github/pulls-panel.js's controller over the recorded
 // lists and stack snapshot that tests/test_github_pulls_panel_session.py records: an
@@ -487,8 +491,10 @@ async function filesStory() {
   const context = createContext(document, "/view/", ["tree-expansion.js"]);
   const filter = { state: { recency: "all", types: null, size: "all", showIgnored: true } };
   const TREE_PAGE_SIZE = Number(/\nconst TREE_PAGE_SIZE = (\d+);/.exec(appSource)[1]);
-  const rowHtml = (filePath) =>
-    `<div class="tree-item tree-file" data-path="${filePath}" role="treeitem"></div>`;
+  // A file's row, with the name a live insert sorts by and the total it was drawn with.
+  const rowHtml = (filePath, setSize) =>
+    `<div class="tree-item tree-file" data-path="${filePath}" data-tree-set-size="${setSize}"` +
+    ` role="treeitem"><span class="tree-item-name">${filePath.split("/").pop()}</span></div>`;
   let pageIds = 0;
   Object.assign(context, {
     TREE_PAGE_SIZE,
@@ -507,7 +513,7 @@ async function filesStory() {
       return (
         nodes
           .slice(0, TREE_PAGE_SIZE)
-          .map((node) => rowHtml(node.path))
+          .map((node) => rowHtml(node.path, options.setSize))
           .join("") +
         context.deferredTreePageHtml(nodes.slice(TREE_PAGE_SIZE), {
           ...options,
@@ -530,6 +536,9 @@ async function filesStory() {
     withTreeIdScope: (_scope, build) => build(),
     applyTreeFilters() {},
     reconcilePendingTallyDiagnostics() {},
+    // A row that arrives while the page is open, drawn as the renderer draws one.
+    _buildRowHtml: (entry, options) => rowHtml(entry.path, options.setSize),
+    scheduleTreeSynchronize() {},
   });
   vm.runInContext(
     [
@@ -541,13 +550,23 @@ async function filesStory() {
       "renderSelectionOutsideFilterNote",
       "treeOmitsPath",
       "treePageHolds",
+      "selectedTreeRowFollows",
       "mountNextTreePage",
+      "_labelDeferredTreePage",
       "mountTreePageAt",
       "mountTreePageHolding",
       "setFolderExpanded",
       "revealWithin",
       "revealInTree",
       "revealFileRow",
+      // A file that arrives while the page is open (the live inventory's insert).
+      "treeLevelForContainer",
+      "_treeSortKey",
+      "_treeKeyCmp",
+      "_deferredTreePageForContainer",
+      "_updateDeferredTreePageEntry",
+      "_synchronizeDeferredTreePage",
+      "_insertRowSorted",
     ]
       .map(appFunction)
       .join("\n"),
@@ -702,6 +721,68 @@ async function filesStory() {
   );
   await reveal("a path the tree does not hold, with no filter: no row stays selected", "gone.txt");
   await reveal("back to a listed file", "docs/guide.md");
+
+  // Two reveals in one long folder, the second above the first: its page lies between the
+  // "more" row above it and one of its own, which sits above the first's page.
+  draw();
+  await reveal("a long folder again, a file in its fifth page", longName(905));
+  await reveal("then one in its third: only its page is drawn, above the first's", longName(405));
+  assert.deepEqual(
+    steps.at(-1)["long folder"],
+    [
+      "f0000–f0199",
+      "Show 200 more (1400 total)",
+      "f0400–f0599",
+      "Show 200 more (1400 total)",
+      "f0800–f0999",
+      "Show 400 more (1400 total)",
+    ],
+    "a second reveal drew more than the page that holds its row",
+  );
+  pressMore(
+    "the row below the reader's, pressed: its page grows down, and focus goes to its first row",
+    1,
+  );
+  assert.equal(
+    steps.at(-1)["focus goes to"],
+    longName(600),
+    "a 'more' row below the reader's row sent focus past the page it drew",
+  );
+  // Files that arrive while the page is open, as the live inventory inserts them.
+  const longRows = () =>
+    panel
+      .querySelector('.tree-folder[data-path="long"]')
+      .nextElementSibling.children.filter((item) => !item.classList.contains("tree-page-more"));
+  const arrive = (what, filePath) => {
+    context._insertRowSorted(
+      panel.querySelector('.tree-folder[data-path="long"]').nextElementSibling,
+      { path: filePath, name: filePath.split("/").pop(), type: "file" },
+      {},
+      false,
+    );
+    steps.push({ step: what, path: context.currentPath, ...view() });
+  };
+  arrive("a file arrives within a drawn page: each 'more' row counts it", "long/f0650a.txt");
+  pressMore(
+    "the row above the reader's, pressed: the rows it draws count the arrival, and focus goes to the row nearest the reader's",
+    0,
+  );
+  steps.at(-1)["totals the rows give"] = [
+    ...new Set(longRows().map((row) => row.dataset.treeSetSize)),
+  ];
+  assert.deepEqual(
+    steps.at(-1)["totals the rows give"],
+    ["1401"],
+    "rows a 'more' row drew give the total from before an arrival",
+  );
+  await reveal("a file in the folder's last page", longName(1350));
+  arrive("a file that sorts last arrives: it goes last, after the page drawn", "long/zzz.txt");
+  assert.equal(
+    steps.at(-1)["long folder"].at(-1),
+    "zzz",
+    "a file that sorts last went above rows a reveal drew",
+  );
+
   filter.state = { ...filter.state, types: [".md"] };
   draw({ filtered: true });
   await reveal(
