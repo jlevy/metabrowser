@@ -162,7 +162,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -268,7 +268,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -327,7 +327,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -379,7 +379,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -423,7 +423,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -472,7 +472,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -520,7 +520,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -576,7 +576,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -632,7 +632,7 @@ $ node tests/dom/github-pull-page-session.js
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139",
           "comment forker 2026-09-17T12:03:00Z issue_comment/3341937856"
@@ -1699,6 +1699,10 @@ A cache miss waits for metadata settlement before asking the provider, and an ol
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
 A partial timeline and its focused commit link remain in place during the retry.
+Every review’s heading is its author, “reviewed”, and its age, with a chip after the age
+only for a state the verb does not say: Approved, Changes requested, and Dismissed, and
+a state GitHub adds later as itself, even one named as an `Object.prototype` property
+is. A plain review and a pending one have no chip (`reviewHeadings`).
 
 ```console
 $ node tests/dom/github-pull-timeline-session.js
@@ -1728,7 +1732,16 @@ $ node tests/dom/github-pull-timeline-session.js
   "unavailableKeepsDiscussion": true,
   "transientRetryIsBoundedAndKeepsPartial": true,
   "supersededRowsRetired": true,
-  "keptCommitRowsRetellAges": true
+  "keptCommitRowsRetellAges": true,
+  "reviewHeadings": {
+    "review/9007199254740993": "maintainer reviewed 1d ago",
+    "review/16": "maintainer reviewed 1d ago [Changes requested]",
+    "review/17": "maintainer reviewed 1d ago [Dismissed]",
+    "review/18": "maintainer reviewed 1d ago [Escalated]",
+    "review/19": "maintainer reviewed 1d ago [Constructor]",
+    "review/3279967139": "maintainer reviewed 1d ago [Approved]",
+    "review/15": "maintainer reviewed (pending)"
+  }
 }
 ? 0
 ```

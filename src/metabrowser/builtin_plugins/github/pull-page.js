@@ -218,13 +218,22 @@ const SETUP_FAILURES = Object.freeze({
     "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
 });
 
-/** @type {Readonly<Record<string, string>>} */
+/**
+ * A review's state, said by a chip after its heading where the verb does not say it
+ * (mb-novh): every review's heading reads "author reviewed age", as a comment's reads
+ * "author commented age", and Approved, Changes requested, and Dismissed are the review's
+ * own states, as GitHub marks them. A plain review (COMMENTED) is all in its verb, and a
+ * pending one in its "(pending)", so neither has a chip. A state GitHub adds later is
+ * shown as itself.
+ *
+ * @type {Readonly<Record<string, string | null>>}
+ */
 const REVIEW_STATES = Object.freeze({
   APPROVED: "approved",
-  CHANGES_REQUESTED: "requested changes",
-  COMMENTED: "reviewed",
-  DISMISSED: "review dismissed",
-  PENDING: "review pending",
+  CHANGES_REQUESTED: "changes requested",
+  COMMENTED: null,
+  DISMISSED: "dismissed",
+  PENDING: null,
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -287,7 +296,7 @@ const TRUNCATED = Object.freeze({
  *   at: string | null,
  *   text: string,
  *   truncated: boolean,
- *   review: {state: string, label: string} | null,
+ *   review: {state: string, label: string | null} | null,
  * }} TimelineItem
  */
 
@@ -536,7 +545,10 @@ function timeline(record) {
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
-      review: { state, label: REVIEW_STATES[state] ?? state.toLowerCase() },
+      review: {
+        state,
+        label: Object.hasOwn(REVIEW_STATES, state) ? REVIEW_STATES[state] : state.toLowerCase(),
+      },
     });
   }
   // A pending review has no time and sorts last; ties keep comments before reviews,
@@ -3131,10 +3143,11 @@ let stackMenuSerial = 0;
  * The native stack's compact trigger and lazy, keyboard-navigable member menu. Its words
  * are the shared stack design's (docs/design-system.md, "Stacks"): the trigger is the
  * position badge, the menu's heading is the stack's label, and its members come in
- * `stackMenuOrder`, the order the Pulls tab's stack groups list them in.
+ * `stackMenuOrder`, the order the Pulls tab's stack groups list them in. A member's title
+ * is the SDK's `titleNodes` (docs/design-system.md, "Titles").
  * @param {import("./pull-stacks.js").NativeStack} initial
  * @param {number} number
- * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, onOpen(): void}} deps
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, titleNodes(title: string): Array<Node | string>, onOpen(): void}} deps
  */
 export function createStackMenu(initial, number, deps) {
   let stack = initial;
@@ -3196,8 +3209,11 @@ export function createStackMenu(initial, number, deps) {
       const target = stack.pulls[at];
       const row = rows.get(target);
       if (row) {
-        row.title.textContent =
-          stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
+        row.title.replaceChildren(
+          ...deps.titleNodes(
+            stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`),
+          ),
+        );
         row.position.textContent = stackPosition(at, stack.pulls.length);
         row.number.textContent = `#${target}`;
       }
@@ -4188,6 +4204,7 @@ export function mountPullPage(container, ctx, mb) {
         link: (target) => pageLink(memberRoute(target, model.tab), "", []),
         icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
+        titleNodes: mb.titleNodes,
         onOpen() {
           preferredStack = stack.number;
           for (const [other, view] of stackMenus) {
@@ -4398,7 +4415,9 @@ export function mountPullPage(container, ctx, mb) {
       const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
       const also = { label: "updated", iso: pull.updated };
       const title = headerPart("title", [pull.state, pull.title, pull.number], () => {
-        const titleText = h("span", { class: "github-pull-title-text" }, [pull.title]);
+        // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+        // "Titles").
+        const titleText = h("span", { class: "github-pull-title-text" }, mb.titleNodes(pull.title));
         // The number is outside the clamped text, so a title cut short keeps it.
         const heading = h(
           "h1",
@@ -4669,7 +4688,7 @@ export function mountPullPage(container, ctx, mb) {
     // subject where the author is, then when, in the head's type (docs/design-system.md,
     // "Conversation Timeline").
     return h("div", { class: "github-pull-commit github-pull-event" }, [
-      h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
+      h("span", { class: "github-pull-commit-subject" }, mb.titleNodes(event.subject || "Commit")),
       event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
         ? h("span", {}, ["committed ", age(event.committed_at)])
         : null,
@@ -4890,12 +4909,15 @@ export function mountPullPage(container, ctx, mb) {
         const head = h("div", { class: "github-pull-card-head" }, [
           authorLabel(item.author, item.avatar, "", { slot: true }),
         ]);
-        if (item.review !== null) {
+        // Every event's heading reads alike: the author, a plain verb, and the age, and a
+        // review's chip after them only for a state its verb does not say (mb-novh).
+        head.append(
+          item.review === null ? " commented " : " reviewed ",
+          item.at === null ? "(pending)" : age(item.at),
+        );
+        if (item.review !== null && item.review.label !== null) {
           head.append(" ", badge(item.review.state, item.review.label, "review"));
-        } else {
-          head.append(" commented");
         }
-        head.append(" ", item.at === null ? "(pending)" : age(item.at));
         const built = h(
           "section",
           { class: `page-card github-pull-card github-pull-${item.kind} github-pull-event` },
@@ -4973,7 +4995,8 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function reviewThreads(model) {
-    const threads = h("section", { class: "github-pull-section" }, [
+    // Review comments are spaced as the Conversation's events are (mb-w7rt).
+    const threads = h("section", { class: "github-pull-section github-pull-threads" }, [
       h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
     ]);
     for (const comment of model.reviewComments) {

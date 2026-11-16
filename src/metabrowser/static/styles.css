@@ -6283,6 +6283,11 @@ pre.code-block.metabrowser-source-lines > code {
   min-width: 8ch;
   flex-grow: 1;
   flex-shrink: 1000;
+  /* A commit's subject is a title, bold as a title is wherever it appears, so a
+     conventional-commit prefix that starts it reads regular against the rest
+     (docs/design-system.md, "Titles"). The row keeps its 22px and the subject its one
+     line: the bolder face is only wider, so a long subject is cut short sooner. */
+  font-weight: var(--weight-bold);
 }
 
 .git-graph-meta {
@@ -6336,6 +6341,16 @@ pre.code-block.metabrowser-source-lines > code {
 .repository-name {
   color: var(--text);
   font-weight: var(--weight-bold);
+}
+
+/* A commit's or pull request's title draws a conventional-commit prefix, "feat(ledger):",
+   at regular weight, and the rest at the title's own: bold wherever a title is bold
+   (docs/design-system.md, "Titles"; mb-z57p). formatters.js's titleNodes and titleHtml
+   put the prefix in this span wherever a title is drawn, and only its weight is set
+   here, so it keeps the title's face, size, and ink. One rule, on the shell's weight
+   token: no surface sets a prefix's weight of its own. */
+.title-prefix {
+  font-weight: var(--weight-normal);
 }
 
 /* ── Ref badges ─────────────────────────────────────────────── */

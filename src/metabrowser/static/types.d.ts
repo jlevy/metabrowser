@@ -498,6 +498,16 @@ type MetabrowserFormatterRuntime = Readonly<{
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
   sizeClass(value: number): "" | "size-large";
+  /** A commit's or pull request's title as markup, its prefix in `span.title-prefix`. */
+  titleHtml(title: string): string;
+  /** A commit's or pull request's title as nodes, its prefix in `span.title-prefix`. */
+  titleNodes(
+    doc: Document,
+    title: string,
+    part?: (text: string, start: number) => Array<Node | string>,
+  ): Array<Node | string>;
+  /** A title's conventional-commit prefix and the rest after it, or null. */
+  titlePrefix(title: string): { prefix: string; rest: string } | null;
 }>;
 
 type MetabrowserFileTypeCategoryId = string;
@@ -1340,6 +1350,9 @@ type MetabrowserSdk = {
     options?: { style?: "compact" | "relative" },
   ): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
+  /** A commit's or pull request's title as nodes for its element: a conventional-commit
+   *  prefix in `span.title-prefix`, at regular weight, then the rest. */
+  titleNodes(title: string): Array<Node | string>;
   prefs: {
     get<T>(name: string, fallback: T): T;
     set(name: string, value: unknown): boolean;

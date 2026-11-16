@@ -238,8 +238,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     const parent = parentNavigation(ctx.path || "", mb.sourceKind());
     const parentControlHtml = parent
       ? '<div class="tm-parent-nav-row">' +
-        `<button type="button" class="btn parent-nav-btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}"` +
-        ` data-tip-text="Open ${mb.escapeHtml(parent.label)} in Treemap">` +
+        `<button type="button" class="btn parent-nav-btn tm-parent-nav" aria-label="Zoom out to ${mb.escapeHtml(parent.label)}">` +
         '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' +
         `<span>${mb.escapeHtml(parent.label)}</span></button></div>`
       : "";

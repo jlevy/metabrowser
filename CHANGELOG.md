@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Pulls column shows no tooltips: a pull request’s row, a stack’s row, and their
+  parts no longer show one on hover.
+  Elsewhere a tooltip appears only when it adds something not already visible, and one
+  that repeats an element’s own text shows only while that text is cut short, as does a
+  top-level changed file’s, which is its name.
+  “Load more” and a changed-files folder whose sums are whole no longer repeat their own
+  words in a tooltip, and neither do a “Show ignored” check, the treemap’s parent
+  button, or a merge’s arrow.
+  A crumb’s tooltip is its own name, shown only when the crumb is cut short, rather than
+  the path the trail already shows, and a Files tree row’s tooltip leaves out the size
+  or count its row shows exactly, keeping the exact date and the exact bytes of a size
+  its row rounds.
+
 - In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
   lines instead of cutting off what does not fit.
   The Files filter row moves Show ignored down, then Clear and the chevron, which stay
@@ -61,8 +74,13 @@ All notable changes to Metabrowser are documented here.
   A commit row was set at 12 px, smaller than a comment’s 14 px header, with its text
   pressed against the event above it.
   It is now set in a comment header’s size and line, with “committed” and the age in the
-  header’s type, and a run of commits stands at least as far from the comment above and
-  below it as one commit stands from the next.
+  header’s type. Every two events are now 20 px apart, comments, reviews, and commits
+  alike, and so are review comments: comments were 12 px apart and read as crowded, and
+  a commit stood 23.5 px from a comment.
+  Every heading reads alike, “jlevy commented 4d ago”, “jlevy reviewed 4d ago”: a review
+  no longer boxes “Reviewed” like a status, and a box after the age is kept for a state
+  the verb does not say, Approved, Changes requested, or Dismissed (“Requested changes”
+  is now “Changes requested”, as on GitHub).
   A line now joins the description, comments, reviews, and commits down the avatars’
   column, with a dot at each commit, as on GitHub’s own pull request page.
   The commit hash is one step below the row’s text, as a revision is elsewhere.
@@ -73,6 +91,18 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request’s number is bold wherever it names the pull request: a Pulls row, the
   pull request page’s title, the stack menu, Quick Search, and the ref selector.
+
+- A commit’s or pull request’s title that starts with a conventional-commit prefix, such
+  as `feat(ledger):` or `fix:`, sets the prefix at regular weight and the rest of the
+  title bold, wherever the title appears: a Pulls row, the pull request page’s title,
+  its stack menu, its Conversation’s commits, Quick Search, a Commits tab row, a
+  commit’s page, and its tooltip.
+  A Commits tab row’s subject, regular until now, is bold, as a title is everywhere
+  else, so a long one is cut short a little sooner.
+  A prefix counts only when it is 16 characters or fewer, colon included, and its type
+  is lowercase; any other title looks as before.
+  For plugin authors, `metabrowser.titleNodes(title)` draws a title the same way.
+  See [Titles](docs/design-system.md#titles).
 
 - The Files tree’s and the Pulls tab’s chevrons and icons sit in slightly tighter slots,
   one width for a chevron and a file type icon alike, so names start 2px sooner and a

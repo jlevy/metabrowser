@@ -169,6 +169,7 @@ const MEASURE = `async (name, change, tab, width) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      titleNodes: mb.titleNodes,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -247,6 +248,7 @@ const MEASURE = `async (name, change, tab, width) => {
         link: () => document.createElement("a"),
         icon: layers(),
         currentTitle: "",
+        titleNodes: mb.titleNodes,
         onOpen() {},
       }),
     );
@@ -293,7 +295,7 @@ const MEASURE = `async (name, change, tab, width) => {
     const probe = page.createStackMenu(
       { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
       body.number,
-      { link: () => document.createElement("a"), icon: null, currentTitle: "", onOpen() {} },
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {} },
     );
     const holder = document.createElement("div");
     holder.className = "github-pull-stacks";
