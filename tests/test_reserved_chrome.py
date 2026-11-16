@@ -264,15 +264,14 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     # The sentence gives way first.
     action = _rule(css, ".github-pull-meta-details > .github-pull-action")
     assert "flex: 0 1000 auto;" in action and "min-width: 0;" in action
-    # The author gives way next, down to its avatar and a little of the name (review E2 on
-    # #370).
+    # The author gives way next, down to its avatar's box and a little of the name (review E2
+    # on #370). The box is there for every author in the header, the person glyph in it where
+    # there is no avatar (mb-nunw), so the floor always counts it.
     author = _rule(css, ".github-pull-meta-details > .github-pull-identity")
-    assert "flex: 0 100 auto;" in author and "min-width: 1.75em;" in author
-    assert "overflow: hidden;" in author
-    floor = "min-width: calc(var(--github-pull-avatar-size) + var(--github-pull-identity-gap) + 1.75em);"
-    assert floor in _rule(
-        css, ".github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar)"
-    )
+    assert "flex: 0 100 auto;" in author and "overflow: hidden;" in author
+    floor = "min-width: calc(var(--actor-avatar-size) + var(--actor-identity-gap) + 1.75em);"
+    assert floor in author
+    assert ":has(.github-pull-avatar)" not in css
     name = _rule(css, ".github-pull-meta-details .github-pull-author")
     assert "min-width: 0;" in name and "text-overflow: ellipsis;" in name
     strut = _rule(css, ".github-pull-stack-strut")
@@ -283,14 +282,14 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     # (mb-cf0l): the sentence keeps its start, and is only cut short at its end. On the row
     # that also held the merge, a late chip took its width from the sentence and the merge
     # (review E3 on #370).
-    assert "[stateDetails, stackColumn]" in page
+    assert "[\n    stateDetails,\n    stackColumn,\n  ]);" in page
     # The state badge leads the row of ages (mb-4ydo), one line in every state.
     opened = _rule(css, ".github-pull-opened")
     assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
     ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
     assert "height: 1lh;" in ages and "text-overflow: ellipsis;" in ages
     assert "placeChildren(openedRow, [stateBadge, opened.row]);" in page
-    assert 'h("div", { class: "github-pull-branches" })' in page
+    assert 'h("div", { class: "github-pull-branches page-header-line" })' in page
 
 
 def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
@@ -351,7 +350,7 @@ def test_the_stack_chip_ends_the_authors_row() -> None:
     menu = _rule(css, ".github-pull-stack-menu")
     assert "inset-inline-end: 0;" in menu and "inset-inline-start" not in menu
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert 'h("div", { class: "github-pull-meta" }, [stateDetails, stackColumn])' in page
+    assert 'h("div", { class: "github-pull-meta page-header-line" }, [\n    stateDetails,' in page
 
 
 def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
@@ -370,9 +369,11 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     held = _rule(css, ".github-pull-refresh[hidden]")
     assert "visibility: hidden;" in held and "display: inline-block;" in held
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    # The row is a metadata line, a line of the small type tall (mb-2u08): its controls are
-    # text actions, a line tall, never bordered .btn boxes, which made it 26 px against 18.
-    assert "font-size: var(--ui-small-font-size);" in status
+    # The row is a metadata line, a line of the page header's body size tall (mb-2u08,
+    # mb-kisi), which its class sets (`.page-header-line`): its controls are text actions, a
+    # line tall, never bordered .btn boxes, which made it 26 px against 18.
+    assert "font-size" not in status
+    assert 'h("div", { class: "github-pull-status page-header-line" }, [freshnessLine])' in page
     assert 'class: "github-pull-text-action github-pull-refresh"' in page
     assert 'class: "github-pull-text-action github-pull-switch"' in page
     assert "btn github-pull-refresh" not in page and "btn github-pull-switch" not in page

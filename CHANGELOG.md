@@ -4,6 +4,25 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A commit’s page and a pull request’s page share one header design.
+  Every line under the title is the regular body size, 14 px, the Diff summary’s header
+  included, which was 13 px on both pages, and a pull request’s “Opened …” and “Fetched
+  … via GitHub CLI” lines, which were 12 px; the Diff summary is 14 px in a patch’s
+  toolbar too. On both pages the title is followed by the author, drawn the same way, a
+  profile icon and then the bold name.
+  A commit’s page then has its revision and refs on their own line, where a pull request
+  has its branches, then “Committed 3d ago”, where a pull request has “Opened …”, and
+  then the Diff summary, as a pull request’s header ends.
+  The profile icon is the author’s GitHub avatar where a pull request has one, and a
+  neutral person icon in the same place where there is none, so the name starts where it
+  would beside an avatar; a commit’s author shows the person icon.
+  A pull request’s author with no avatar on GitHub now shows it too, in the header and
+  on the Conversation; a Pulls row still shows no icon for one.
+  For plugin authors, `metabrowser.actorIdentity(name, options)` and
+  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does.
+  See [Page Headers](docs/design-system.md#page-headers) and
+  [Actor Identity](docs/design-system.md#actor-identity).
+
 - A pull request you have opened before shows its Diff summary at once when you open it
   again, and its Changes opens with no wait, whether you first opened it on Conversation
   or on Changes: what a page reads of a comparison is kept while Metabrowser is open,
@@ -38,8 +57,8 @@ All notable changes to Metabrowser are documented here.
   [Home](docs/design-system.md#home).
 
 - A pull request’s “Fetched … via GitHub CLI” line is one of its header’s metadata
-  lines: 18 px tall, as the “Opened …” line above it is, and 6 px under it, or under the
-  labels where the pull request has them.
+  lines: as tall as the “Opened …” line above it, and 6 px under it, or under the labels
+  where the pull request has them.
   Its Refresh or Fetch and Switch to the head are text actions, as Browse code is, in
   place of bordered buttons that made the line 26 px.
   While the comparison its Diff summary is drawn from is on its way and read, the

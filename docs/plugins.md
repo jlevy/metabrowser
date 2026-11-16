@@ -502,6 +502,17 @@ Useful helpers include:
   chip, left to right in any text direction.
   Each side is `{name, label}`, and `options` takes the chip’s `kind` and `copy`. See
   [Merge Direction](design-system.md#merge-direction);
+- `actorIdentity(name, options)` and `actorIdentityHtml(name, options)` for a person, as
+  every page draws one: an avatar’s box, 18 px from first paint, then the bold name.
+  `actorIdentity` returns the element; its `avatar` is an https address you vouch for,
+  which the box holds, and without one, or when the image fails, the box holds the
+  host’s person glyph, so nothing moves when an avatar arrives or fails.
+  `loading` is `"lazy"` by default, `"eager"` for a placement you build again on a
+  repaint; `className` and `nameClass` add your classes to the identity and the name;
+  and `placeholder: false` draws no box for a person with no avatar, for a dense list
+  row. `actorIdentityHtml` writes the same markup with the glyph in its box, for a view
+  that writes markup as text.
+  See [Actor Identity](design-system.md#actor-identity);
 - `ownDelegate(element)` and `delegateOwnerAttribute()` to stamp a copy control built
   without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
   carrying the page’s owner mark, because a trusted folder’s Markdown can write the same

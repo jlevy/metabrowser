@@ -84,7 +84,10 @@
 //     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
 //     mergeRefs(source, target, opts?)    — a merge as source → target, left to right
 //     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
-//     filterControls                      — shared filter markup and interaction
+//     actorIdentity(name, opts?)          — a person: an avatar's box, then the bold name,
+//                                          the person glyph in the box without an avatar
+//     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
+//     filterControls                     — shared filter markup and interaction
 //                                          helpers, installed before plugins load
 //     class="disclosure-toggle"           — on any control that shows or hides
 //                                          content: the host stylesheet keeps it from
@@ -103,8 +106,8 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies, ageBucket/ageLabelHtml,
-// renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
+// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies,
+// actorIdentity/actorIdentityHtml, ageBucket/ageLabelHtml, renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
 // script. It is on this object before any plugin's code runs: see loadPluginsForKind.

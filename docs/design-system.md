@@ -347,7 +347,8 @@ font-size literal at a use site.
 Chrome (interface) sizes:
 
 - `--body-font-size` (14px): primary chrome text — body default, inputs, empty states,
-  stat values.
+  stat values, and every line under a page header’s title, the Diff summary’s header
+  among them ([Page Headers](#page-headers)).
 - `--nav-font-size` (13px): dense navigation rows and path breadcrumbs — tree items,
   header path, file-header path — and the
   [navigation metadata line](#navigation-metadata-line) that states their totals.
@@ -407,7 +408,8 @@ Keep these roles distinct:
 - person names use `.actor-name`, and repository names use `.repository-name`: bold
   normal text ink, inheriting the surrounding context’s font size.
   Apply the same person-name primitive to commit authors, PR authors, mergers, comments,
-  and reviews;
+  and reviews, and draw a person with an avatar’s box through the one
+  [actor identity](#actor-identity);
 - branch names use the shared [ref chip](#branch-chips), including its color and
   hover-to-copy control, in navigation, headers, and histories;
 - filenames are the identity of a row and carry bold weight at full contrast, while the
@@ -420,6 +422,76 @@ Keep these roles distinct:
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
+
+### Page Headers
+
+A commit’s page and a pull request’s page open with one kind of header, a
+`.page-header`: the title, then its lines, each 6 px under the one before.
+Every line under the title is a `.page-header-line` at `--body-font-size`, and so is the
+Diff summary’s header, the last line; an age in a line takes the line’s size, not the
+age primitive’s small one.
+A chip in a line keeps its own size, a ref chip by the [chip ratio](#one-ratio), and a
+state badge and a label at theirs ([Label Colors](#label-colors)), and a revision sits
+its one step down ([Git Commit Summary](#git-commit-summary)). Before, the Diff summary
+was `--nav-font-size` on both pages, and a pull request’s row of ages and its status
+line `--ui-small-font-size`, a step or two under the lines above them.
+
+The two headers share their parts in one order, and each keeps the lines only it has:
+
+| Line | A commit’s page | A pull request’s page |
+| --- | --- | --- |
+| Title | The subject, `.page-heading`, two lines held | The state icon, the title, and the number, `.page-heading`, two lines held |
+| Author | The [actor identity](#actor-identity) | The actor identity, its sentence, “wants to merge 2 commits”, and the stack chip’s slot at the end |
+| Where it lives | The revision, its copy button, and its refs | The branches, head → base |
+| Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, View on GitHub, and Browse code |
+| Its own | None | The labels, a row of chips; the status line, its freshness and Refresh |
+| Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
+| Under the header | The description, a card | The tab bar |
+
+They diverge where a commit is not a pull request.
+A commit has one author and one time, and no state, branches, labels, stack, or
+freshness of its own, so its age line is the time alone, and its refs stand where a pull
+request’s branches do, both saying where the change lives.
+A pull request has a state, which leads its row of ages, and the lines only a cached
+record has. `test_page_headers_set_every_line_under_the_title_at_the_body_size` in
+`tests/test_design_vocabulary.py` holds the classes, the order each page writes, and
+that no rule sets another size on a line.
+`tests/test_page_header_chrome.py` draws both headers in headless Chrome at 980, 560,
+and 360 px, each with its Diff summary drawn, and reads every line and every run of text
+in it at 14 px, both titles at 24 px on 30 px lines, two lines tall, and every line 6 px
+under the one before, the first 6 px under the title.
+Measured there, the commit’s author, revision, and age lines are 21, 21, and 21 px and
+its Diff summary 24 px; a pull request’s rows of ages and status are 21 px where they
+were 18, and its header is 235 px with no labels and 261 px with them, where it was 229
+px and 255 px.
+
+### Actor Identity
+
+A person is drawn through one shell component wherever a page names one with an avatar:
+`metabrowser.actorIdentity(name, options)` as nodes and
+`metabrowser.actorIdentityHtml(name, options)` as markup, in
+`static/plugin-sdk-views.js`. It is a box, `--actor-avatar-size` (18 px) square and
+centered on the line, then the bold name, `.actor-name`, `--actor-identity-gap` (4 px)
+after it. The box holds the person’s avatar where the caller has an https address it
+vouches for, and the shell’s person glyph, Lucide’s `circle-user-round` in muted ink,
+where it has none; an image that fails to load gives its box to the glyph.
+The glyph lives beside the component in the view bundle, not in the eager icon registry,
+`static/icons.js`, where it cost every folder’s first paint 92 compressed bytes
+([Icons and Icon Buttons](#icons-and-icon-buttons)). The box is there from first paint
+either way, so the name starts at one x and an avatar that arrives later or fails moves
+nothing. A commit’s page draws its author through the markup form, and the GitHub
+plugin’s `authorLabel` builds every author on a pull request’s page through the nodes
+form, with GitHub’s avatar, so the box is one size on both pages and core reaches no
+plugin for it. A pull request’s author with no usable avatar shows the glyph too, in the
+header and on a Conversation card head, so the two pages read alike whether GitHub gave
+an avatar or not. A Pulls row, a dense list whose avatar comes with its row, passes
+`placeholder: false` and draws no box for an author without one.
+A commit’s page has no source of avatars of its own, so its author shows the glyph.
+`tests/dom/actor-identity-session.js` holds what each form draws
+(`cli-ui-actor-identity.tryscript.md`), `test_a_person_is_one_identity_on_every_page` in
+`tests/test_design_vocabulary.py` that both pages draw through it, and
+`tests/test_page_header_chrome.py` that both boxes are 18 px, both names start 22 px in,
+and an avatar arriving in either box moves nothing.
 
 ### Count Summaries Bold Their Numbers
 
@@ -1142,15 +1214,26 @@ The subject and the smaller author and age share a baseline; see
 ### Git Commit Summary
 
 The selected commit begins with one `.git-commit-summary` component rendered by
-`renderCommitSummary` in `static/git-panel.js`. Its anatomy has one order:
+`renderCommitSummary` in `static/git-panel.js`. On the commit’s page it is a
+[page header](#page-headers), in a pull request’s header’s order, every line under the
+subject at the body size; its anatomy has one order:
 
 1. subject, bold, with a conventional-commit prefix regular ([Titles](#titles));
-2. metadata containing an identity group with the short revision and refs, followed by
-   author and age;
-3. the commit’s changes: in the full summary its [Diff summary](#diff-summary), in
+2. the author, `.git-commit-byline`, as the shell’s [actor identity](#actor-identity):
+   the avatar’s box, holding the person glyph, then the bold name, where a pull request
+   has its author;
+3. the identity group, `.git-commit-revision-line`: the short revision, its copy button,
+   and the refs, which wrap under it when there are many, where a pull request has its
+   branches;
+4. the age, `.git-commit-ages`: “Committed 3d ago”, muted, the age in its freshness ink
+   with the exact time in its tooltip, where a pull request has its row of ages;
+5. the commit’s changes: in the full summary its [Diff summary](#diff-summary), in
    `.git-commit-diff-summary`, where the commit’s diff draws it, and in the compact one
    `.git-commit-change-stats`; and
-4. the commit description, when present.
+6. the commit description, when present.
+
+The compact summary keeps one line of metadata, `.git-commit-meta`: the identity group,
+then the author’s name and the age, with no avatar’s box, since a hover card is bounded.
 
 The identity group shows the commit’s refs as the Git history row does, with the same
 kinds, trunk, and HEAD marks ([Branch Chips](#branch-chips)). The full summary makes the
@@ -1170,13 +1253,13 @@ A detail with no count of files leaves the place empty, and it takes no room.
 The commit hands the diff its own totals, which the server counts over the whole commit
 before it caps the list of files, and for a list cut short at the comparison’s bound of
 2,000 files the summary’s header says those ([Diff Summary](#diff-summary)). Measured in
-Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16 px over the
+Chrome 152 at 980 to 320 px, the summary sits 6 px under the age line and 16 px over the
 description, its place on the subject’s edge and its toggle hung 4 px into the gutter,
 as every Diff summary’s is; for “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” its
-header is one 24 px row at 420 px and wider and wraps to two lines at 320 px, breaking
-after a dot, all before the page is shown; opened, its tree is under it and above the
-description; with no diff the totals line is one row under the identity; and an empty
-place takes no room.
+header, at the body size, is one 24 px row at 420 px and wider, from 373 px, and wraps
+to two lines at 320 px, breaking after a dot, all before the page is shown; opened, its
+tree is under it and above the description; with no diff the totals line is one row
+under the age line; and an empty place takes no room.
 `tests/test_git_commit_summary_chrome.py` holds it.
 The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
 sits below the identity metadata and says the commit’s changes in the Diff summary’s
@@ -1199,8 +1282,9 @@ letters and marks.
 The full subject uses `.page-heading` at `--page-title-font-size`, the PR title’s scale.
 Its summary starts at the pane’s content edge and uses `.page-reading-column` for the
 maximum reading width.
-The compact subject, author, age, and change line use `--body-font-size`. The ref badges
-are chips, slightly smaller than that text, by the [chip ratio](#one-ratio).
+The full summary’s lines and the compact subject, author, age, and change line use
+`--body-font-size`. The ref badges are chips, slightly smaller than that text, by the
+[chip ratio](#one-ratio).
 Among the row’s text the revision is the one deliberate exception: it is monospace, and
 mono at body size renders optically larger than the sans text beside it, so it uses
 `--nav-font-size` — one step down the ramp — to sit level with its row.
@@ -1494,18 +1578,22 @@ A summary already drawn stays while a newer comparison is read
 ([Refreshing Content](#refreshing-content)). A pull request’s header shows it on every
 tab. A commit’s page never shows it: the shell stages that page out of sight until its
 diff has drawn the summary, so its place does not wait in view.
-Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 188.5 by
-11.05 px (14.5 em of the header’s type), at the row’s start and centred on its line, the
-row is 24 px before and after the summary arrives, and the tab bar under it does not
-move. A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 files changed ·
-8 M · +120 −30”, ends 13.88 to 15.88 em from the row’s start, its text 13.42 to 15.42
-em, and the block ends between the two; one of three statuses, “35 files changed · 2 A,
-3 D, 30 M · +1,234 −3,423”, ends its text at 22.18 em.
+Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 203 by 11.89
+px (14.5 em of the header’s 14 px type; 188.5 by 11.05 px at the 13 px it had before),
+at the row’s start and centred on its line, the row is 24 px before and after the
+summary arrives, and the tab bar under it does not move.
+A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 files changed · 8 M ·
++120 −30”, ends 13.88 to 15.88 em from the row’s start, its text 13.42 to 15.42 em, and
+the block ends between the two; one of three statuses, “35 files changed · 2 A, 3 D, 30
+M · +1,234 −3,423”, ends its text at 22.18 em.
 `tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds that, and
 `tests/dom/github-pull-page-mount-behavior.js` which of them the row holds in each
-state. Its header is one row-like disclosure toggle that leads with the registry’s
-chevron in the tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M
-· +1,234 −3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
+state. Its header is at `--body-font-size`, the size of the lines above it on a page
+([Page Headers](#page-headers)), and in a patch’s toolbar too, and its tree’s rows at
+the navigation rows’ size.
+It is one row-like disclosure toggle that leads with the registry’s chevron in the
+tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M · +1,234
+−3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
 It is its file count, “35 files changed”, and a muted dot, then the
 [brief change line](#brief-change-line), the one component for the statuses and the line
 totals, “2 A, 3 D, 30 M · +1,234 −3,423”; each dot is one item with the group before it,
@@ -1732,8 +1820,16 @@ tests named beside each primitive.
 
 The page is a header, a [tab bar](#the-tab-bar), and a body, in that order; native stack
 navigation is part of the header.
-The header, tabs, Conversation, and Checks use `.page-reading-column` and start at the
-same pane gutter as the commit summary.
+The header is a [page header](#page-headers), as a commit’s summary is: the title, then
+the author’s row, the branches, the row of ages, the labels, the status line, and the
+Diff summary, every line under the title at the body size and 6 px under the one before.
+It shares the title, the author, the age, and the Diff summary with a commit’s page, in
+that order, and keeps the state, the branches, the labels, the stack chip, and the
+status line, which a commit does not have; the table there says where the two diverge
+and why. The author is the shell’s [actor identity](#actor-identity), its avatar’s box
+holding the person glyph where GitHub gave no usable avatar, as a commit’s author’s
+does. The header, tabs, Conversation, and Checks use `.page-reading-column` and start at
+the same pane gutter as the commit summary.
 The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
@@ -1788,9 +1884,12 @@ px. A pull request with labels lands moving nothing.
 A Pulls open whose read answers within its wait hands the page its record, and a
 retained navigation keeps the page out of sight until it has one, so neither shows a
 cold page. Measured in Chrome 152 at 560, 420, and 360 px in both themes, every row is 6
-px under the one before it and the freshness line is 18 px, the row of ages’ height; the
-header is 229 px with no labels and 255 px with labels or while its record is on its
-way. Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px
+px under the one before it and the freshness line is 21 px, the row of ages’ height; the
+header is 235 px with no labels and 261 px with labels or while its record is on its
+way. With the row of ages and the freshness line in the small type, before every line
+under the title took the body size ([Page Headers](#page-headers)), both were 18 px and
+the header 229 and 255 px.
+Before that, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px
 labels row stood between it and the row of ages, 32 px under that row, and the header
 was 263 px in every state.
 A cold landing measured in place, read by read, is recorded beside `.github-pull-cold`
@@ -1936,11 +2035,11 @@ a commit. It is said the way a card head says a comment:
   room of its own above or below, in a frame as wide as a card’s that draws nothing.
   Its subject is bold in text ink where a head’s author is, with a conventional-commit
   prefix regular ([Titles](#titles)), and starts where the author’s name does after the
-  avatar, `--github-pull-avatar-size` (18 px), and the identity’s gap,
-  `--github-pull-identity-gap` (4 px).
-  A card head whose author has no usable avatar keeps the avatar’s box, empty and hidden
-  from assistive technology (`authorLabel`’s `slot`), so every head’s name and every
-  commit’s subject start at one x. The header and Pulls rows draw no such box.
+  avatar, the shell’s `--actor-avatar-size` (18 px), and the identity’s gap,
+  `--actor-identity-gap` (4 px) ([Actor Identity](#actor-identity)). A card head whose
+  author has no usable avatar keeps the avatar’s box, holding the person glyph and
+  hidden from assistive technology, as the header’s author does, so every head’s name
+  and every commit’s subject start at one x. Pulls rows draw no such box.
   “committed” and the age read as a head’s “commented” and age do, with no quieter ink
   or size. The hash is the [GitHub action](#chrome) at a revision’s own
   `--nav-font-size`, one step below the text beside it, as in the
@@ -1970,7 +2069,7 @@ a commit. It is said the way a card head says a comment:
   rhythm.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
-  center of the card heads’ avatars and their empty slots.
+  center of the card heads’ avatars and the glyphs in the boxes of authors with none.
   Each commit has a solid `--muted` dot on the line at its first line, the shape of the
   history graph’s [commit nodes](#commit-nodes).
   The line starts at the first event, ends at the last, and breaks wherever something
@@ -1981,12 +2080,12 @@ a commit. It is said the way a card head says a comment:
 This is the structure of GitHub’s own pull request page, a line down the timeline with a
 mark at each commit, drawn in the shell’s tokens and none of GitHub’s assets.
 Its tokens are the rhythm and the avatar’s two: the commit row’s start, the line’s x
-down the avatars’ centers, and an absent avatar’s slot are derived from the avatar’s
-size and the identity’s gap, and the rest of its geometry is the card head’s.
+down the avatars’ centers, and an absent avatar’s box are derived from the avatar’s size
+and the identity’s gap, and the rest of its geometry is the card head’s.
 
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
-and the pixels painted, with one head drawn with only its slot.
+and the pixels painted, with one head drawn with the person glyph in its box.
 In Chrome 152 every two events’ boxes are 20 px apart, in both themes and at 980 and 420
 px, and their text 20 to 21 px apart, a commit’s read from its text nodes.
 At 420 px a commit row that wraps so that its hash ends it on a line of its own shows
@@ -2023,7 +2122,7 @@ above each event rather than the body’s gap.
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)), and a conventional-commit prefix that starts it regular ([Titles](#titles)). The number beside it uses normal text ink at the same size, bold ([Pull Request Numbers](#pull-request-numbers)) |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink; a review’s only for a state its verb does not say ([Conversation Timeline](#conversation-timeline)) | A pill means a filter, and a badge is not one. Sentence case, like all chrome, so the badge centers its capitals: `text-box` trims its line to them and the baseline, in a box as tall as its line, pads, and borders, which `test_badges_center_their_capitals_in_the_box_they_had` holds |
-| Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
+| Username | The shell’s [actor identity](#actor-identity): an avatar’s box, then `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor, and the person glyph stands in its box where there is none, as on a commit’s page |
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
@@ -2037,7 +2136,7 @@ above each event rather than the body’s gap.
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall; a bordered `.btn` made the line 26 px against the row of ages’ 18 |
+| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall; a bordered `.btn` made the line 26 px against the row of ages’ 18, in the small type it then had |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
@@ -2053,11 +2152,12 @@ changes. A Pulls row’s is eager, because only mounted catalog rows can create 
 which bounds what the Pulls tab asks for.
 The conversation’s are lazy: its sections are kept across tabs and polls, and an avatar
 far down a long conversation waits until the reader nears it.
-Missing or unsupported image URLs leave the username readable.
-Use the avatar of the named actor: a merged header naming the merger shows the merger’s
-image, while the description shows its author’s image.
-Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted, checked
-again before assigning the browser image source.
+Missing or unsupported image URLs, and an image that fails, leave the username readable
+and the box holding the person glyph, on the page; a Pulls row draws no box for a
+missing one ([Actor Identity](#actor-identity)). Use the avatar of the named actor: a
+merged header naming the merger shows the merger’s image, while the description shows
+its author’s image. Only normalized HTTPS URLs on `avatars.githubusercontent.com` are
+accepted, checked again before assigning the browser image source.
 Anonymous CORS and a no-referrer policy omit credentials and the local page URL. The
 browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
 Document image sanitization remains independent; see [Content Trust](../SECURITY.md).
@@ -3026,7 +3126,9 @@ inherits `currentColor`. An icon never carries its own color.
 A plugin’s own domain marks, which no other surface draws, are Lucide-derived the same
 way and live with the plugin’s code, so a page that never shows them does not load them:
 the GitHub plugin’s four pull-request states are in
-`builtin_plugins/github/pull-state.js`.
+`builtin_plugins/github/pull-state.js`. A shell mark that only a view draws lives with
+the view helper that draws it: the person glyph of an [actor identity](#actor-identity)
+is in `static/plugin-sdk-views.js`.
 
 ### One Glyph Size
 

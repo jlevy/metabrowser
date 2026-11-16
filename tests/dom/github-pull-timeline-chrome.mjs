@@ -27,8 +27,8 @@
 //   commit, commit to card, and commit to commit alike, and roomier than the 12 px cards
 //   had, and anything else below an event, Review comments, keeps the page's gap and its
 //   own margin;
-// - every card head's avatar, or the empty slot of one for an author without one, is on
-//   the line, and every head's name starts where the commits' subjects do;
+// - every card head's avatar, or its box with the person glyph for an author without one,
+//   is on the line, and every head's name starts where the commits' subjects do;
 // - one line joins every two adjacent events, at one x, from a card's edge or a commit's
 //   node to the next, and is drawn nowhere else: not above the first event, past the last,
 //   or across anything that is not an event. Each commit has a node on the line, at its
@@ -188,6 +188,7 @@ const MEASURE = `async (arrangement, width, theme) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "2mo ago", className: "age-old" }),
@@ -227,25 +228,25 @@ const MEASURE = `async (arrangement, width, theme) => {
     );
   }
   const waited = Math.round(performance.now() - began);
-  // The recorded authors have no avatar URL, so each head draws the avatar's empty slot.
-  // Most authors have one, so every head but the description's gets the image authorLabel
-  // draws in that slot, without a request; the description keeps its slot.
+  // The recorded authors have no avatar URL, so each head draws the avatar's box with the
+  // person glyph in it. Most authors have one, so every head but the description's gets the
+  // image authorLabel draws in that box, without a request; the description keeps its glyph.
   const heads = [...body().querySelectorAll(":scope > .github-pull-card > .github-pull-card-head")];
   for (const head of heads.slice(1)) {
-    const slot = head.querySelector(".github-pull-identity > .github-pull-avatar-slot");
+    const slot = head.querySelector(".github-pull-identity > .actor-avatar");
     if (slot) {
       const image = document.createElement("img");
-      image.className = "github-pull-avatar";
+      image.className = "actor-avatar-image";
       image.alt = "";
       image.width = 18;
       image.height = 18;
       image.src = "data:image/svg+xml," + encodeURIComponent(
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#8a8f98"/></svg>',
       );
-      slot.replaceWith(image);
+      slot.replaceChildren(image);
     }
   }
-  await Promise.allSettled([...container.querySelectorAll(".github-pull-avatar")].map((image) => image.decode()));
+  await Promise.allSettled([...container.querySelectorAll(".actor-avatar-image")].map((image) => image.decode()));
   await document.fonts.ready;
   await frames();
   const round = (value) => Math.round(value * 100) / 100;
@@ -346,10 +347,10 @@ const MEASURE = `async (arrangement, width, theme) => {
     } else if (kind === "card") {
       const head = node.querySelector(":scope > .github-pull-card-head");
       const author = head?.querySelector(".github-pull-author");
-      const avatar = head?.querySelector(".github-pull-avatar, .github-pull-avatar-slot");
+      const avatar = head?.querySelector(".github-pull-identity > .actor-avatar");
       item.text = author ? firstLine(author) : null;
       item.avatar = avatar ? box(avatar) : null;
-      item.slot = avatar?.classList.contains("github-pull-avatar-slot") ?? false;
+      item.slot = avatar ? avatar.querySelector("img") === null : false;
       item.type = { head: type(head), age: type(head?.querySelector(".github-pull-age")) };
       // The heading as read: its words, the verb said in the head's own text, and its chips.
       item.heading = head ? head.textContent.replace(/\\s+/g, " ").trim() : null;
@@ -706,10 +707,10 @@ function hold(measured, image) {
     parts.length > 0 && parts.every((part) => Math.abs(part.x - rail) <= 0.5),
     `${JSON.stringify(parts.map((part) => part.x))} against ${rail}`,
   );
-  // Every card head, the description's among them with only the avatar's empty slot, has
-  // its avatar or slot on the line and its name where the commits' subjects start.
+  // Every card head, the description's among them with the person glyph in the avatar's box,
+  // has its avatar or its box on the line and its name where the commits' subjects start.
   check(
-    `${where}: the head with no avatar keeps the avatar's slot`,
+    `${where}: the head with no avatar keeps the avatar's box, the glyph in it`,
     cards.filter((card) => card.slot).length === 1 && cards[0].slot,
     JSON.stringify(cards.map((card) => card.slot)),
   );
@@ -717,7 +718,7 @@ function hold(measured, image) {
     const label = `${where}: card "${card.label}"`;
     const center = card.avatar ? (card.avatar.left + card.avatar.right) / 2 : Number.NaN;
     check(
-      `${label} has its ${card.slot ? "avatar's slot" : "avatar"} on the line`,
+      `${label} has its ${card.slot ? "avatar's box" : "avatar"} on the line`,
       Math.abs(center - rail) <= 0.5,
       `${center} against ${rail}`,
     );
