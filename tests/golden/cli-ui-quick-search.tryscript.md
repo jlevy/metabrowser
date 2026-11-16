@@ -17,6 +17,9 @@ A lone `#` shows recent cached PRs across states.
 A title or number prefix after `#` searches PRs alone, and an exact PR number ranks
 first among its prefix matches.
 The selected PR survives when more prefix matches arrive.
+A title that starts with a conventional-commit prefix is drawn in two parts, the prefix
+in its `span.title-prefix`, and a word the query matches in both parts is marked in
+each, at its own place.
 Bare digits look up the exact PR alongside file matches.
 In a plain folder, a hash remains part of the filename query.
 File indexing leaves explicit PR searches alone and refreshes mixed results once they
@@ -75,6 +78,25 @@ $ node tests/dom/quick-search-pulls-session.js
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "explicitTitleHighlight": "Render",
+  "prefixedChoices": [
+    "Pull request #125, feat(chart): chart the strategies, Open"
+  ],
+  "prefixedTitle": [
+    {
+      "span.title-prefix": [
+        "feat(",
+        {
+          "mark": "chart"
+        },
+        "):"
+      ]
+    },
+    " ",
+    {
+      "mark": "chart"
+    },
+    " the strategies"
+  ],
   "hashFiles": [
     "new/#render.md",
     "notes/#render.md"
@@ -106,6 +128,7 @@ $ node tests/dom/quick-search-pulls-session.js
     "GET /api/plugin/github/pulls?q=%2312",
     "GET /api/plugin/github/pulls?q=%2312",
     "GET /api/plugin/github/pulls?q=%23render",
+    "GET /api/plugin/github/pulls?q=%23chart",
     "GET /api/plugin/github/pulls?q=%23123",
     "GET /api/plugin/github/pulls?q=123",
     "GET /api/plugin/github/pulls?q=%2377",

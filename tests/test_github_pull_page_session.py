@@ -567,8 +567,54 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "checkRows": True,
         "headerAges": True,
         "headerShape": True,
-        # The Diff summary is the header's last row on every tab (mb-pb35).
-        "headerSummary": True,
+        # The Diff summary is the header's last row on every tab (mb-pb35), and holds the
+        # shell's pending placeholder while a comparison is on its way and while it is read,
+        # on Changes the mounted diff's, and nothing once a read draws none, until a read of
+        # it starts again (mb-onr2).
+        "headerSummary": [
+            "Conversation, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "Changes: the summary",
+            "Checks, the comparison not yet read: the pending placeholder",
+            "Checks, the comparison read: the summary",
+            "opened on Changes, from what its diff read: the summary",
+            "a read that will fail, not yet answered: the pending placeholder",
+            "the read fails: nothing",
+            "a repaint after it failed: nothing",
+            "a comparison the summary draws nothing for: nothing",
+            "opened on Changes, whose diff reads no comparison: nothing",
+            "the record on its way: nothing",
+            "a record that names no comparison: nothing",
+            "a core preview whose read prepares its comparison: the pending placeholder",
+            "its record lands, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "a core preview whose read prepares no comparison: nothing",
+            "a prepared core no read is running for: nothing",
+            "a core preview whose read prepared nothing and ended: nothing",
+            "a record whose comparison the page asked to prepare: the pending placeholder",
+            "the preparation ends with no comparison: nothing",
+            "a record whose comparison nothing prepares: nothing",
+            "Changes, its diff reads no comparison: nothing",
+            "a record with a moved head lands, offering the newer changes: nothing",
+            "the reader takes them, their diff not yet read: the pending placeholder",
+            "their diff reads the comparison: the summary",
+            "Changes, its diff throws: nothing",
+            "Retry, the diff not yet read: the pending placeholder",
+            "the diff reads the comparison: the summary",
+            "Changes, its diff still reading: the pending placeholder",
+            "the record then names no comparison: nothing",
+        ],
+        # A page mounted with no record in hand holds its cold header and tab column for the
+        # quiet period, kept unseen while a record that landed in it waits for the
+        # conversation's held first paint, and the first header with a record lifts it.
+        "coldHold": [
+            "mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
+            "its record lands, the header waiting for the conversation: header github-pull-cold github-pull-cold-held, tab column github-pull-cold github-pull-cold-held",
+            "the conversation's first paint, at its bound: header shown, tab column shown",
+            "on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
+            "its record lands: header shown, tab column shown",
+            "mounted with its record in hand: header shown, tab column shown",
+        ],
         # C, G, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links

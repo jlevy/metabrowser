@@ -180,11 +180,7 @@ export function mountFileTree(host) {
     );
     if (row.kind === "folder") {
       return [
-        h(
-          "span",
-          { class: "changed-file-toggle github-pull-files-toggle", "aria-hidden": "true" },
-          [host.chevron()],
-        ),
+        h("span", { class: "changed-file-toggle", "aria-hidden": "true" }, [host.chevron()]),
         name,
         ...statsOf(row),
       ];
@@ -192,7 +188,7 @@ export function mountFileTree(host) {
     const badge = h(
       "span",
       {
-        class: "tree-container-badge github-pull-file-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },

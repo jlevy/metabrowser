@@ -118,7 +118,7 @@ request must prove.
 - **Stack keys** (`mb-lnqj`): next and previous in a stack move from `N` and `P` to
   Control-N and Control-P, so the letters are free.
   The registry accepts a declared Control chord, Control alone and never from a text
-  field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
+  field, written `⌃N`, and only on macOS and iOS, where Control reaches the page.
 - **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
   mechanism, as `F` opens Files and `H` Commits; `R` is freed.
 - **Narrow toolbars** (`mb-nm4z`): in a pane too narrow for one line, every navigation
@@ -202,7 +202,7 @@ it:
 | 12 | `claude/conversation-rhythm` | `mb-w7rt`, `mb-novh` | On pull request 11; respaces and reheads the Conversation that pull requests 6 and 7 leave, on the page as pull request 11 leaves its tips |
 | 13 | `claude/title-prefix-weight` | `mb-z57p` | On pull request 12; draws the titles of the Pulls rows, the pull request page, and its Conversation that pull requests 5, 6, 11, and 12 change |
 | 14 | `claude/reveal-on-navigate` | `mb-6y0g` | On pull request 13; reveals items in the Files tree pull request 2 groups and the Pulls stack groups pull request 5 adds, and notes beside the Pulls rows pull requests 11 and 13 change |
-| 15 | `claude/github-label-colors` | `mb-9qob` | On pull request 14; colors the labels of the pull request header whose title pull request 13 draws, and stores their colors in the Pulls catalog’s rows and their descriptions in the records |
+| 15 | `claude/github-label-colors` | `mb-9qob` | On pull request 14; colors the labels of the pull request header whose title pull request 13 draws, and stores their colors and descriptions in the records |
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
@@ -415,39 +415,43 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - Control-N and Control-P are the registry’s only chords (`CONTROL_CHORD_KEYS`). A chord
   matches Control alone, so AltGr’s Control and Alt types its character, and never in a
   text field, where macOS moves the caret with it.
-- Help, the Shift strip, and badges write the chord as the platform does, read from the
-  page’s navigator. The rule, and the platform limit (Chrome on Windows and Linux keeps
-  Ctrl+N for a new window), is stated once, in “Control Chords” in
-  `docs/design-system.md`.
+- The chords are bound only where Control reaches the page, macOS and iOS, read from the
+  page’s navigator; on Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new
+  window and Print, and the stack menu walks the stack.
+  Help, the Shift strip, and badges write the chord `⌃N`. The rule is stated once, in
+  “Control Chords” in `docs/design-system.md`.
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
 ### Label Colors
 
 - GitHub gives each label a `color`, six hex digits, and a `description`, in REST and
-  GraphQL alike. The selected pull request’s core asks for both, the pull request’s REST
-  read already had them, and the catalog’s page asks for the color alone.
-  A color that is not six hex digits is kept as none, and its chip is neutral.
+  GraphQL alike. The selected pull request’s core asks for both, and the pull request’s
+  REST read already had them; the catalog’s page asks for each label’s name alone, as
+  before. A color that is not six hex digits is kept as none, and its chip is neutral.
 - The page sets github.com’s `--label-*` properties on the chip and `github/styles.css`
   states github.com’s formula once, in both themes; the rule and why it is written in
   `rgb()` and `hsl()` are in “Label Colors” in `docs/design-system.md`. The constants
   and the rounding were read from github.com’s stylesheets and rendered labels on
   2026-11-15.
-- A record keeps each label as its name, color, and description, and a catalog row as
-  its name and color: no row draws labels, and the header’s tooltips come from the
-  record or its core, never from a row (decided in review of `mb-9qob`, 2026-11-15). A
-  record raises `PULL_RECORD_PROJECTION` to 2 and the catalog `CATALOG_PROJECTION` to 3,
-  so what an earlier build cached is still shown, its labels neutral, until its next
-  refresh asks for it in full (a record) or the one ALL rescan rewrites it (a row).
-  Both read a label an earlier projection named alone as one without a color.
-- Colors cost little and descriptions a lot, measured on 2026-11-15 on the catalog’s
-  page of the 100 newest pull requests.
+- A record keeps each label as its name, color, and description, and a catalog row its
+  name alone: no row draws labels, and the header’s colors and tooltips come from the
+  record or its core, never from a row (decided in review of `mb-9qob`, 2026-11-15, and
+  in review A of #465). A record raises `PULL_RECORD_PROJECTION` to 2 and reads a label
+  an earlier projection named alone as one without a color, so what an earlier build
+  cached is still shown, its labels neutral, until a refresh reads it in full.
+  The catalog vouches for no record of an earlier projection, closed or open
+  (`record_freshness` in `pull_freshness.py`), so opening one past its freshness window
+  refreshes it, once. A core cached before label colors, which has no projection, is
+  drawn neutral until its record arrives.
+- Colors in rows were measured and left out.
+  On 2026-11-15, on the catalog’s page of the 100 newest pull requests,
   kubernetes/kubernetes’s (981 labels) went from 84,678 to 101,355 bytes with colors,
   where descriptions too made it 174,997, and its average stored row from 646 to 901
-  bytes, where descriptions too made it 1,637. cli/cli’s (105 labels) went from 63,097
-  to 64,882 bytes, and its row from 518 to 545. Every page stays at a GraphQL cost of 1.
-  A row with every text at its bound is 11,079 bytes, inside the catalog’s 32 KiB row
-  limit.
+  bytes; cli/cli’s (105 labels) went from 63,097 to 64,882 bytes.
+  Every page stayed at a GraphQL cost of 1. Nothing reads a row’s colors, and storing
+  them would have raised `CATALOG_PROJECTION`, which rescans every cached catalog in
+  full and prepares every cached core again.
 
 ### Narrow Toolbars
 
@@ -487,8 +491,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   Conversation’s commits, Quick Search’s pull requests, the Commits tab’s rows, a
   commit’s page, and its tooltip.
   Quick Search has no commit results.
-  A Commits tab row’s subject is regular, and keeps that weight: the prefix there looks
-  as the rest does, which is reported to the owner rather than changed.
+  A Commits tab row’s subject, regular before, is bold, so the rule shows there too (see
+  Open Questions); the row keeps its 22 px and its one line, measured in headless Chrome
+  before and after.
 - **Records:** the rule is stated once in `docs/design-system.md`, “Titles”, beside
   “Pull Request Numbers”.
   The split is a session owner, `shell.title-prefix`, and the weights a paint exemption,
@@ -507,9 +512,11 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   request outside the list, and a commit outside the history read are named or left,
   each with its reason.
 - The decisions run browserlessly in `tests/dom/nav-reveal-session.js`, pinned by
-  `cli-ui-nav-reveal.tryscript.md` (`navigation.reveal-item`). The rows in view after
-  each route are checked in headless Chrome (`tests/test_nav_reveal_chrome.py`,
-  `navigation.reveal-item-paint`).
+  `cli-ui-nav-reveal.tryscript.md` (`navigation.reveal-item`), and the Commits wait for
+  history in `tests/dom/git-commit-history-session.js`, pinned by
+  `cli-ui-git-commit-history.tryscript.md` (`git.commit-history-landing`). The rows in
+  view after each route are checked in headless Chrome
+  (`tests/test_nav_reveal_chrome.py`, `navigation.reveal-item-paint`).
 
 ### Group By Speed and Feedback
 
@@ -581,8 +588,8 @@ tally of its pull requests, since it is obvious.
 - **Beside the name:** a heading that counts what it heads sets the count after “ · ” on
   its line, through one shell primitive, `.heading-tally`: a Files Group by section’s
   heading and a pull request page’s Review comments, which had its count in parentheses
-  (`mb-mcjd`). The name is cut short before the count wraps or leaves the line; the
-  numeral follows the count-summary rule for numbers.
+  (`mb-mcjd`). A Files section’s name is cut short before the count wraps or leaves the
+  line; the numeral is bold and its words regular, through `--count-numeral-weight`.
 - **No tally on a stack’s row:** a Pulls stack group’s row shows its label alone, and
   its accessible name still says its size (`mb-yk0i`).
 
@@ -627,8 +634,8 @@ part of the same metadata lines”.
   `pull-files`, a commit’s diff totals, and the stack envelope.
   Any new field arrives with its route’s golden.
 - **Labels** in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`
-  become objects of name, color, and description, and in `/api/plugin/github/pulls` of
-  name and color, which those routes’ goldens print.
+  become objects of name, color, and description, which those routes’ goldens print;
+  `/api/plugin/github/pulls` keeps each label’s name alone.
 
 ## Implementation Plan
 
@@ -715,8 +722,9 @@ part of the same metadata lines”.
 - [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
   once in the design system; the app’s other tooltips audited, those that repeat visible
   text removed and the owner’s decisions on the borderline ones applied; the shell shows
-  a tip equal to its element’s text only while that text is cut short; checks in
-  `devtools/check_tooltips.py` and the Pulls, header, and Files Chrome tests.
+  a tip equal to its element’s text, or to a box’s inside it, only while that text is
+  cut short; checks in `devtools/check_tooltips.py` and its own test, and the Pulls and
+  Files Chrome tests.
 
 ### Phase 12: Conversation Rhythm and Headings (pull request 12)
 
@@ -736,12 +744,14 @@ part of the same metadata lines”.
 
 ### Phase 15: Label Colors (pull request 15)
 
-- [ ] `mb-9qob`: every query that reads labels asks for their color, and a pull
-  request’s for their description too; the record keeps both and the catalog’s rows the
-  color, each under a raised projection; the chips are painted by github.com’s formula
-  in both themes at our chip’s size, with a label’s description as its tooltip; the
-  routes’ goldens print them; and a Chrome check holds a light, a dark, a very pale, and
-  a colorless label to the formula and to github.com’s own computed colors.
+- [ ] `mb-9qob`: a pull request’s queries ask for each label’s color and description;
+  the record keeps both under a raised projection, and the catalog vouches for no record
+  of an earlier one, which a refresh reads in full; the catalog’s rows keep names alone;
+  the chips are painted by github.com’s formula in both themes at our chip’s size, with
+  a label’s description as its tooltip; the routes’ goldens print them; and a Chrome
+  check holds a pale, a dark, a very pale, a white, an indigo, and a gray label to the
+  formula and to github.com’s own computed colors, and a colorless and a malformed one
+  to the neutral chip.
 
 ### Phase 16: Group By Speed and Feedback (pull request 16)
 
@@ -793,9 +803,11 @@ part of the same metadata lines”.
 ### Phase 21: Label Color Cache (pull request 21)
 
 - [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
-  refreshed on its age and on a name it does not hold, and a chip takes its color and
-  description from it whenever its record lacks them; a `metab` route and golden, and a
-  Chrome check of a bare-names record’s chip colored on first paint.
+  read on demand by a job of its own when a page shows a label named alone that the set
+  lacks, at most once in its age, and a chip takes its color and description from it
+  whenever its record lacks them; a `metab` route and golden, a browserless session of
+  the page’s ask and fast poll, and a Chrome check of a bare-names record’s chip colored
+  on first paint.
 
 ### Phase 22: Diff Summary in the Flow (pull request 22)
 
@@ -895,6 +907,13 @@ merges.
   than once under the first?
 - **Open folders in the Diff summary (answered):** an open folder shows its line counts
   too, as a Files folder keeps its size whichever way it is turned.
+- **A Commits tab row’s weight (answered from the request, `mb-z57p`):** a Commits tab
+  row’s subject is bold, as every other title is, so its prefix reads regular against
+  the rest. The owner asked for the rule “anywhere it’s a commit title or a PR title”,
+  and that “Regular commit messages that don’t match that regex should just be bold as
+  usual”. The question was: the subject was regular, so its prefix looked as the rest
+  did; should it turn bold so the rule shows there?
+  The owner may reverse this.
 
 ## References
 

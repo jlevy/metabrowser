@@ -410,9 +410,15 @@ async function run() {
   };
 }
 
-/** Stack commands use the active page capability and the real registry's global guards. */
+/**
+ * Stack commands use the active page capability and the real registry's global guards. They
+ * are bound on a Mac, where Control reaches the page, and nowhere else.
+ */
 async function stackKeysStory() {
-  const { nav, shortcuts } = modules;
+  const { context, nav, shortcuts } = modules;
+  // A Mac's navigator: only where Control reaches the page are the stack's chords bound
+  // (static/keyboard-shortcuts.js, `controlReachesPage`).
+  context.navigator = { platform: "MacIntel" };
   const page = createShell("/pull/7/checks", { active: "pulls" });
   let known = true,
     endpoint = false;
@@ -433,14 +439,14 @@ async function stackKeysStory() {
   await settle();
   page.take();
   let dispatch;
-  const registry = shortcuts.create({
-    document: {
-      addEventListener: (_type, listener) => {
-        dispatch = listener;
-      },
-      removeEventListener() {},
+  // Each registry made on this document is the one `press` reaches.
+  const document = {
+    addEventListener: (_type, listener) => {
+      dispatch = listener;
     },
-  });
+    removeEventListener() {},
+  };
+  const registry = shortcuts.create({ document });
   const unregister = nav.registerKeys(host, registry);
   const press = (key, values = {}) => {
     const event = {
@@ -500,7 +506,10 @@ async function stackKeysStory() {
   assert.deepEqual(shiftedFileMoves, ["view told: move file 1", "view told: move file -1"]);
   assert(press("n", control), "Control-N still walks the stack while a row has focus");
   assert.deepEqual(moves, [-1, 1, -1, 1, 1], "row keys never reach the stack");
-  assert.equal(press("p", { ...control, repeat: true }), false);
+  // A held chord walks once: its repeats are consumed without walking, so none falls
+  // through to the browser.
+  const heldRepeat = press("p", { ...control, repeat: true });
+  assert.equal(heldRepeat, true, "a held Control-P is consumed");
   // A text field keeps Control-N and Control-P, which move its caret on macOS.
   const textFields = [
     press("p", { ...control, target: { tagName: "INPUT" } }),
@@ -548,13 +557,13 @@ async function stackKeysStory() {
     Array.from(copy, (entry) => entry.keys),
     ["Control N", "Control P"],
   );
-  // This session's window has no navigator, so the chord is written as on Windows and Linux.
+  // A Mac writes the chord ⌃P.
   const presented = registry.present("pulls.stack.base").bindings;
   const written = {
     visible: Array.from(presented.visible),
     aria: presented.ariaKeyshortcuts,
   };
-  assert.deepEqual(written, { visible: ["Ctrl+P"], aria: "Control+P" });
+  assert.deepEqual(written, { visible: ["⌃P"], aria: "Control+P" });
   host.dispose();
   assert.equal(
     press("p", control),
@@ -567,12 +576,60 @@ async function stackKeysStory() {
   }
   assert.equal(registry.present("pulls.stack.base"), null);
   registry.dispose();
+
+  // The same page on each platform. On a Mac the chords are bound, listed, and walk, and a
+  // held one is consumed. Elsewhere Control is the browser's command key, Ctrl+N a new
+  // window and Ctrl+P Print, so the chords are not bound: Help and the Shift strip list
+  // neither, neither walks the stack, and the browser gets both, held or not, uncancelled.
+  // The stack menu walks the stack there.
+  const platforms = {};
+  for (const [platform, navigator] of [
+    ["macOS", { platform: "MacIntel" }],
+    ["Windows", { platform: "Win32" }],
+    ["Linux", { platform: "Linux x86_64" }],
+    [
+      "Windows, by its client hints",
+      { platform: "MacIntel", userAgentData: { platform: "Windows" } },
+    ],
+    ["no navigator, as in a browserless session", undefined],
+  ]) {
+    context.navigator = navigator;
+    const other = nav.createPullsNav(page.deps);
+    other.start();
+    await settle();
+    page.take();
+    const otherRegistry = shortcuts.create({ document });
+    const release = nav.registerKeys(other, otherRegistry);
+    const listed = (surface) =>
+      otherRegistry
+        .snapshot(surface, { includeInactive: true })
+        .some((group) => group.id === "pull-stack");
+    const before = moves.length;
+    platforms[platform] = {
+      bound: ["pulls.stack.top", "pulls.stack.base"].filter((id) => otherRegistry.present(id)),
+      help: listed("help"),
+      strip: listed("reveal"),
+      cancelled: [
+        press("n", control),
+        press("p", control),
+        press("p", { ...control, repeat: true }),
+      ],
+      walked: moves.slice(before),
+    };
+    for (const remove of release) {
+      remove();
+    }
+    otherRegistry.dispose();
+    other.dispose();
+  }
+  delete context.navigator;
   return {
     directions: moves.slice(0, 2),
     shiftedDirections: moves.slice(2, 4),
     plainLettersWalkNothing: plainLetters,
     otherChordsWalkNothing: otherChords,
     textFieldsKeepTheChords: textFields,
+    repeatConsumedWithoutWalking: heldRepeat,
     endpointConsumed: true,
     plainJRemainsRowNavigation: plainJ,
     shiftedRowKeysMoveTheRow: { handled: shiftedRowKeys, did: shiftedRowMoves },
@@ -592,6 +649,7 @@ async function stackKeysStory() {
       "disposed",
     ],
     help: copy,
+    platforms,
     cleanup: true,
   };
 }

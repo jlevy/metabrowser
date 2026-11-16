@@ -1206,6 +1206,8 @@ async function pullSearchSession() {
   const requests = [];
   const readyPull = { number: 123, title: "Fix <em>renderer</em>", state: "merged" };
   const newerPull = { number: 124, title: "Render the latest state", state: "closed" };
+  // A conventional-commit prefix, with the query's word in it and in the rest.
+  const prefixedPull = { number: 125, title: "feat(chart): chart the strategies", state: "open" };
   const reply = (rows, flags = {}) => ({
     ok: true,
     json: async () => ({
@@ -1284,6 +1286,9 @@ async function pullSearchSession() {
         }
         if (url.endsWith("?q=%23render")) {
           return Promise.resolve(reply([newerPull, readyPull]));
+        }
+        if (url.endsWith("?q=%23chart")) {
+          return Promise.resolve(reply([prefixedPull]));
         }
         if (url.endsWith("?q=%23123") || url.endsWith("?q=123")) {
           return Promise.resolve(reply([readyPull]));
@@ -1518,6 +1523,35 @@ async function pullSearchSession() {
     beforeTitleFileGrowth,
   );
 
+  // A title with a conventional-commit prefix is drawn in two parts, the prefix in its
+  // span (docs/design-system.md, "Titles"), and each part marks its own matches from where
+  // it starts in the title: the word in the prefix, and the same word in the rest at its
+  // own place, not at the prefix's.
+  const prefixedComplete = searchCompletes();
+  type("#chart");
+  await prefixedComplete;
+  /** A node as text, or as its tag and classes over its children's shapes. */
+  const shape = (node) =>
+    node instanceof FakeElement
+      ? {
+          [[node.tagName.toLowerCase(), ...node.className.split(/\s+/).filter(Boolean)].join(".")]:
+            node.children.length > 0 ? node.children.map(shape) : node.textContent,
+        }
+      : node.textContent;
+  const prefixedChoices = choices();
+  const prefixedTitle = shape(listbox.querySelector(".search-palette-label"))[
+    "span.search-palette-label"
+  ];
+  equal("a prefixed title is one pull request", prefixedChoices, [
+    "Pull request #125, feat(chart): chart the strategies, Open",
+  ]);
+  equal("each part of a prefixed title marks its own match", prefixedTitle, [
+    { "span.title-prefix": ["feat(", { mark: "chart" }, "):"] },
+    " ",
+    { mark: "chart" },
+    " the strategies",
+  ]);
+
   const numberComplete = searchCompletes();
   type("#123");
   await numberComplete;
@@ -1602,6 +1636,8 @@ async function pullSearchSession() {
     selectedAfterPrefixGrowth,
     explicitTitle,
     explicitTitleHighlight,
+    prefixedChoices,
+    prefixedTitle,
     hashFiles,
     exact,
     staleRequestAborted,

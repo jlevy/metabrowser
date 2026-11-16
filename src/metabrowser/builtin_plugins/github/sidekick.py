@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
     from metabrowser.builtin_plugins.github.pull_cores import CoreRequest
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
-    from metabrowser.builtin_plugins.github.pull_route import PullView
+    from metabrowser.builtin_plugins.github.pull_route import PullEnvelope, PullView
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
 
 # The answer changes as the record ages and as a refresh replaces it.
@@ -92,6 +92,15 @@ def _without_store(envelope: Any) -> bool:
     return isinstance(unavailable, dict) and unavailable.get("comparison") == "no_store"
 
 
+def _drop_core_preview(envelope: PullEnvelope) -> None:
+    """Drop a revoked core preview, and the label entries and fast poll it alone asked for."""
+
+    envelope["core_preview"] = None
+    if envelope["record"] is None:
+        envelope["repository_labels"] = []
+        envelope["labels_pending"] = False
+
+
 async def _preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
     """Finish revocation checks on the loop after bounded disk validation."""
     from metabrowser.builtin_plugins.github.pull_route import (
@@ -131,7 +140,6 @@ async def pull_handler(request: Request) -> Response:
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (
-        PullEnvelope,
         PullRequestError,
         envelope_etag,
         note_full_record,
@@ -186,7 +194,7 @@ async def pull_handler(request: Request) -> Response:
         if waited or kept.core_preview is not preview:
             view, stamp, envelope, freshness = await snapshot()
     if not await _preview_current(view, envelope["core_preview"]):
-        envelope["core_preview"] = None
+        _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
@@ -204,12 +212,6 @@ async def pull_handler(request: Request) -> Response:
         served.note_comparison((comparison["base"], comparison["head"]))
     if claimed_pin is not None and (refusal := pin_changed_response(claimed_pin)) is not None:
         return refusal
-    from metabrowser.builtin_plugins.github.pull_labels import note_unknown
-
-    # A label shown without a color the set does not hold: the catalog's next refresh,
-    # which the page asks for, asks for the set again (a read itself never asks GitHub).
-    if envelope["source"] is not None:
-        note_unknown(envelope["source"], _uncolored(envelope), envelope["repository_labels"])
     etag = envelope_etag(envelope, stamp)
     headers = {
         **_NO_STORE,
@@ -436,7 +438,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope, freshness = await asyncio.to_thread(pull_answer, view)
     if not await _preview_current(view, envelope["core_preview"]):
-        envelope["core_preview"] = None
+        _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
@@ -850,20 +852,6 @@ async def labels_refresh_handler(request: Request) -> Response:
         status_code=200 if started == "not_due" else 202,
         headers=_NO_STORE,
     )
-
-
-def _uncolored(envelope: Any) -> tuple[str, ...]:
-    """The names of the labels the envelope's record or core shows without a color."""
-
-    owner = envelope.get("record") or envelope.get("core_preview") or {}
-    pull = owner.get("pull") if isinstance(owner, dict) else None
-    labels = pull.get("labels") if isinstance(pull, dict) else None
-    names: list[str] = []
-    for label in labels if isinstance(labels, list) else []:
-        name = label.get("name") if isinstance(label, dict) else None
-        if isinstance(name, str) and label.get("color") is None and name not in names:
-            names.append(name)
-    return tuple(names)
 
 
 async def cache_clear_handler(request: Request) -> JSONResponse:

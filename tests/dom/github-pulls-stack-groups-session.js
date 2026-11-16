@@ -593,7 +593,7 @@ async function mountStory() {
     addEventListener: (type, listener) => listeners.set(type, listener),
   };
   const stack = shared.byPull.get(9)[0];
-  const menu = page.createStackMenu(stack, 9, {
+  const menuDeps = {
     link(number) {
       const link = new FakeElement("a");
       link.dataset.number = String(number);
@@ -603,9 +603,15 @@ async function mountStory() {
     currentTitle: "",
     titleNodes: require("./sdk-ref-fixture.js").refHelpers(document).titleNodes,
     onOpen() {},
-  });
+  };
+  const menu = page.createStackMenu(stack, 9, menuDeps);
+  // A press opens it, as a <details> does, with focus on its trigger; the menu puts focus on
+  // its current member.
+  document.activeElement = menu.element.childNodes[0];
   menu.element.open = true;
   menu.element.listeners.get("toggle")();
+  const landed = document.activeElement;
+  assert.equal(landed.getAttribute("aria-current"), "page", "the menu opens on its current member");
   const group = menu.element.childNodes
     .find((node) => node.classList.contains("github-pull-stack-menu"))
     .childNodes.find((node) => node.classList.contains("menu-group"));
@@ -616,7 +622,18 @@ async function mountStory() {
     .model()
     .stacks.rows.find((row) => row.kind === "stack" && row.stack.number === stack.number);
   assert.deepEqual(menuOrder, groupRow.members, "the menu and the group list one order");
+  const triggerText = menu.element.childNodes[0].textContent;
   menu.dispose();
+  // A pull request in two stacks, #8: its page draws a chip for each, and each names its
+  // stack before its position (`named`, which the page passes when the pull request is in
+  // more than one stack), as #8's Pulls row names the other stack.
+  const named = shared.byPull.get(8).map((each) => {
+    const chip = page.createStackMenu(each, 8, { ...menuDeps, named: true });
+    const trigger = chip.element.childNodes[0];
+    const shown = { triggerText: trigger.textContent, trigger: trigger.getAttribute("aria-label") };
+    chip.dispose();
+    return shown;
+  });
 
   process.stdout.write(
     `${JSON.stringify(
@@ -627,9 +644,15 @@ async function mountStory() {
           heading: heading.textContent,
           headingClasses: heading.className,
           trigger: menu.element.childNodes[0].getAttribute("aria-label"),
+          triggerText,
           triggerTip: menu.element.childNodes[0].dataset.tipText,
+          focusOnOpen: {
+            member: Number(landed.dataset.number),
+            current: landed.getAttribute("aria-current") === "page",
+          },
           members: menuOrder,
           groupRow: { label: groupRow.label, members: groupRow.members },
+          named,
         },
         invariants: true,
       },

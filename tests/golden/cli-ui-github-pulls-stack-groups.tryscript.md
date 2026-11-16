@@ -41,10 +41,13 @@ Right, and Left reach it, and a press on a stack’s row, printing the tree’s 
 levels, places, expansion, and Tab stop at each step, and each member’s muted line as
 drawn: its place in its stack before its number, “3/3 · #8 · maintainer”.
 `menu` is the page’s stack menu, mounted over a stand-in for the DOM: its heading is the
-stack’s label on the shared label classes, and its members are the group’s, in one
-order. Every step holds the session’s invariants: each listed pull request is drawn once
-or held by its closed stack, a stack’s members are in the menu’s order, and the rest
-keep the list’s.
+stack’s label on the shared label classes, its trigger shows its bare position, a press
+opens it with focus on the current member, and its members are the group’s, in one
+order. `named` is #8’s two chips, one for each of its stacks, each naming its stack
+before its position, as its page draws them.
+Every step holds the session’s invariants: each listed pull request is drawn once or
+held by its closed stack, a stack’s members are in the menu’s order, and the rest keep
+the list’s.
 
 ```console
 $ node tests/dom/github-pulls-stack-groups-session.js
@@ -510,7 +513,12 @@ $ node tests/dom/github-pulls-stack-groups-session.js
     "heading": "Stack #290",
     "headingClasses": "group-heading github-pull-stack-label",
     "trigger": "Navigate Stack #290, position 2 of 3",
+    "triggerText": "2/3",
     "triggerTip": "Stack #290, position 2 of 3",
+    "focusOnOpen": {
+      "member": 9,
+      "current": true
+    },
     "members": [
       10,
       9,
@@ -523,7 +531,17 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         9,
         8
       ]
-    }
+    },
+    "named": [
+      {
+        "triggerText": "286 3/3",
+        "trigger": "Navigate Stack #286, position 3 of 3"
+      },
+      {
+        "triggerText": "290 1/3",
+        "trigger": "Navigate Stack #290, position 1 of 3"
+      }
+    ]
   },
   "invariants": true
 }

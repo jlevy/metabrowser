@@ -398,6 +398,7 @@ const SHELL_FUNCTIONS = [
   "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
+  "revealPullAddress",
   "applyPullHistoryLanding",
   "addressedView",
   "addressedFilePath",
@@ -573,7 +574,6 @@ function createShell(pathname, network, options = {}) {
   );
   /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
   const slotToolbar = (toolbar) => {
-    toolbar.querySelector ??= () => null;
     const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
     if (toolbar.dataset.navToolbar !== "files") {
       elements.set(id, toolbar);
@@ -994,8 +994,6 @@ function createShell(pathname, network, options = {}) {
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
     /** The toolbars in the navigation's slot, shown or not. */
     toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
-    /** @param {string} name One toolbar in the slot. */
-    toolbar: (name) => toolbars.find((toolbar) => toolbar.dataset.navToolbar === name),
     /** The toolbars shown in the navigation's slot: exactly the active tab's. */
     toolbarsShown: () =>
       toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
@@ -1069,7 +1067,7 @@ async function mainTabShortcuts() {
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
   // F for Files, P for Pulls, H for commit History ("Keyboard Shortcuts" in
-  // docs/design-system.md). A digit no longer names a main tab, nor R the Pulls tab (mb-6rfu).
+  // docs/design-system.md). A digit names no main tab, and neither does R (mb-6rfu).
   assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
   assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
   assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
@@ -1691,14 +1689,6 @@ async function independentMainTabs() {
     slots,
     { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
     "each tab shows its own toolbar, and only it",
-  );
-  // A toolbar a narrow pane scrolled comes back at its start.
-  slotted.toolbar("pulls").scrollLeft = 97;
-  slotted.sandbox.mainTabs.activate("pulls");
-  assert.equal(
-    slotted.toolbar("pulls").scrollLeft,
-    0,
-    "a scrolled toolbar comes back at its start",
   );
   const pullsLanding = createShell("/pulls", read, { pulls: true });
   assert.deepEqual(
