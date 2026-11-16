@@ -16,9 +16,11 @@ const {
   accountFrames,
   applyNetworkEvent,
   disposition,
+  hoverDwellOf,
   listChanges,
   networkLog,
   presentedAt,
+  readsUpTo,
   regionMovement,
   requestClass,
   routeFamily,
@@ -453,6 +455,94 @@ check("a frame read before the input is out of its window though stamped after i
     REG,
   );
   assert.equal(m.groups.page.path, 0);
+});
+check("each frame is placed in the window on its own, a missed one by what the tick knew", () => {
+  // Review A of #442, A4: a frame whose read never came, stamped after the input, then a
+  // frame read before the input. The second stays out of the window, though it follows an
+  // entry placed in it.
+  const frames = [
+    [83.4, "E", 84, 0.1, 0],
+    [100.3, null, null],
+    [116.9, "", 118, 0.1, 0],
+    [133.6, "U", 135, 0.1, 1],
+    [150.2, "U", 151, 0.1, 1],
+  ];
+  const args = {
+    origin: 100,
+    windowEnd: 200,
+    readyAt: 133.6,
+    readyRead: 135,
+    readyNext: 150.2,
+    initialCode: "E",
+  };
+  const a = accountFrames({ ...args, frames });
+  assert.equal(a.framesInWindow, 3);
+  assert.equal(a.blankFramesBeforeReady, 1);
+  assert.ok(!a.frameStates.some(([t]) => t === 16.9), JSON.stringify(a.frameStates));
+  // Review C of #442, C8: the tick that logs a missed frame knows the input had not
+  // arrived, so it logs the frame read before the input (0), and the window holds the
+  // input's own frames alone.
+  const b = accountFrames({ ...args, frames: frames.with(1, [100.3, null, null, null, 0, 0]) });
+  assert.deepEqual([b.framesInWindow, b.blankFramesBeforeReady, b.framesToReady], [2, 0, 1]);
+  const c = accountFrames({
+    ...args,
+    frames: [
+      [83.4, "E", 84, 0.1, 0, 0],
+      [99.8, null, null, null, 0, 0],
+      [116.5, "U", 117, 0.1, 1, 0],
+      [133.2, "U", 134, 0.1, 1, 0],
+    ],
+    readyAt: 116.5,
+    readyRead: 117,
+    readyNext: 133.2,
+  });
+  assert.deepEqual([c.framesInWindow, c.uncreditedFrames], [2, 0]);
+  // After a frame whose read saw the input, a missed frame is in the window (1), whatever
+  // its stamp.
+  const d = accountFrames({
+    ...args,
+    frames: [
+      [99.9, "", 101, 0.1, 1, 0],
+      [99.9 + I, null, null, null, 1, 0],
+      [99.9 + 2 * I, "U", 101 + 2 * I, 0.1, 1, 0],
+    ],
+    readyAt: 99.9 + 2 * I,
+    readyRead: 101 + 2 * I,
+    readyNext: null,
+  });
+  assert.deepEqual([d.framesInWindow, d.uncreditedFrames, d.blankFramesBeforeReady], [3, 1, 2]);
+});
+check("the reads up to a milestone include those read after the window", () => {
+  // Review B of #442, B4: the window's frames and the ones read while the milestone was
+  // awaited, up to the milestone's own frame, a read before the input left out.
+  const frames = [
+    [90, "E", 91, 9.9, 0, 1],
+    [100, "", 101, 0.3, 1, 0],
+    [100 + I, "U", 101 + I, 0.5, 1, 0],
+    [100 + 2 * I, "U", 101 + 2 * I, 4.6, 1, 1],
+    [100 + 3 * I, null, null, null, 1, 0],
+    [100 + 4 * I, "U", 101 + 4 * I, 0.4, 1, 1],
+    [100 + 5 * I, "U", 101 + 5 * I, 7.7, 1, 1],
+  ];
+  assert.deepEqual(readsUpTo(frames, 99, 100 + 4 * I), { maxMs: 4.6, toMs: 5.8, truncated: 2 });
+  assert.deepEqual(readsUpTo(frames, 99, 50), { maxMs: null, toMs: 0, truncated: 0 });
+});
+check("a hover-click's dwell starts at the pointer's arrival over its target", () => {
+  // Review A of #442, A6: a boundary event elsewhere under the stationary pointer, after
+  // arm and before the move, is not the arrival.
+  const inputs = [
+    ["pointerover", 1000, true, 0],
+    ["pointerover", 1210, true, 1],
+    ["pointerover", 1230, true, 1],
+    ["pointerdown", 1460, true, 0],
+  ];
+  assert.equal(hoverDwellOf(inputs, 1460), 250);
+  assert.equal(hoverDwellOf(inputs.slice(0, 1), 1460), null);
+});
+check("a --memory-after name no transition measured is named", () => {
+  const journeys = [{ transitions: [{ id: "files.a" }, { id: "files.b" }] }, { transitions: [] }];
+  assert.deepEqual(stats.unmeasuredMemoryAfter(["files.b", "files.c"], journeys), ["files.c"]);
+  assert.deepEqual(stats.unmeasuredMemoryAfter([], journeys), []);
 });
 check("the origin's prompt lasts while only the pending modifier changes", () => {
   const frames = grid(["E", "Eb", "Eb", "EPb", "U"]);
@@ -1021,13 +1111,14 @@ check("a zero control under overlapping ranges goes through the pair rule", () =
     assert.equal(e.wrongWay, true, key);
     assert.equal(res.exitCode, 1, key);
   }
-  // Both medians 0, a long task in two candidate runs: the pairs give the direction.
+  // Both medians 0, a long task in two candidate runs: the medians did not move, and the
+  // two pairs beyond the tolerance are owed an explanation in the worse direction.
   const tie = find(
     cmp(six("files.a", (k) => ({ longTasks: { maxMs: k <= 2 ? 70 : 0 } }))),
     "files.a",
     "long_task_max_ms",
   );
-  assert.equal(tie.direction, "higher");
+  assert.equal(tie.direction, "same");
   assert.equal(tie.outcome, "explain");
   assert.equal(tie.wrongWay, true);
   // Separated ranges from a zero control are still a result, on the ranges alone.
@@ -1089,6 +1180,31 @@ check("a settle time beyond the candidate's window is marked", () => {
   const e = find(res, "files.a", "settled_ms");
   assert.equal(e.windowCut, true);
   assert.match(e.verdict, /after the candidate's shortest window \(250\.0 ms\) closed/);
+  // Review C of #442, C2: it cannot be compared, so it is a gap, not a result, and an
+  // expectation on it is not met.
+  assert.equal(e.outcome, "window");
+  assert.equal(e.wrongWay, false);
+  assert.ok(res.gaps.some((g) => g.id === "files.a" && g.metric === "settled_ms"));
+  const expected = cmp(
+    series(
+      (r) => setT(r, "files.a", { settledMs: 600, windowMs: 900 }),
+      (r) => setT(r, "files.a", { settledMs: 300, windowMs: 350 }),
+    ),
+    { expect: ["files.a:settled_ms:lower"] },
+  );
+  assert.equal(expected.expectations[0].pass, false);
+  assert.equal(expected.exitCode, 1);
+  // A settle time that is shown but not judged is marked and stays an entry.
+  const nav = cmp(
+    series(
+      (r) => setT(r, "files.a", { navSettledMs: 300, windowMs: 450 }),
+      (r) => setT(r, "files.a", { navSettledMs: 100, windowMs: 250 }),
+    ),
+  );
+  const ne = find(nav, "files.a", "nav_settled_ms");
+  assert.equal(ne.windowCut, true);
+  assert.notEqual(ne.outcome, "window");
+  assert.ok(!nav.gaps.some((g) => g.metric === "nav_settled_ms"));
 });
 check("a settle time beyond the control's window is marked too", () => {
   // The mirror of the check above (review C, C3): the candidate is ready later and watched
@@ -1101,6 +1217,7 @@ check("a settle time beyond the control's window is marked too", () => {
   );
   const e = find(res, "files.a", "settled_ms");
   assert.equal(e.windowCut, true);
+  assert.equal(e.outcome, "window");
   assert.match(
     e.verdict,
     /the candidate settled at 650\.0 ms, after the control's shortest window \(250\.0 ms\) closed/,
@@ -1122,6 +1239,83 @@ check("equal medians with a pair beyond each way name both pairs", () => {
   const text = stats.formatComparison(res).join("\n");
   assert.match(text, /1 higher and 1 lower of 3 beyond/);
 });
+check("pairs beyond the tolerance count in either direction, whatever the medians do", () => {
+  // Review C of #442, C1's four fixtures: each has two pairs worse beyond the tolerance,
+  // which the runbook says must be explained, and each read "no detected difference" or
+  // was not wrong way.
+  const values = (as, bs) =>
+    series(
+      (r, k) => setT(r, "files.a", { paintedReadyMs: as[k - 1] }),
+      (r, k) => setT(r, "files.a", { paintedReadyMs: bs[k - 1] }),
+      as.length,
+    );
+  for (const [label, as, bs, pairs] of [
+    ["1, the median 1% lower", [10, 10, 100, 100, 100], [20, 20, 99, 99, 99], "s1#1, s1#2"],
+    ["2, three pairs", [10, 20, 100], [13, 26, 15], "s1#1, s1#2"],
+    [
+      "3, equal medians, two each way",
+      [10, 10, 100, 200, 200],
+      [20, 20, 100, 100, 100],
+      "s1#1, s1#2",
+    ],
+  ]) {
+    const res = cmp(values(as, bs));
+    const e = find(res, "files.a", "painted_ready_ms");
+    assert.equal(e.outcome, "explain", `${label}: ${e.verdict}`);
+    assert.equal(e.wrongWay, true, label);
+    assert.match(e.verdict, new RegExp(`higher ${pairs}`), label);
+    assert.equal(res.exitCode, 1, label);
+  }
+  // The median's direction is still the medians': fixture 1's is lower.
+  assert.equal(
+    find(cmp(values([10, 10, 100, 100, 100], [20, 20, 99, 99, 99])), "files.a", "painted_ready_ms")
+      .direction,
+    "lower",
+  );
+  // 4: two complete pairs, both 1.5x higher, each side with one run whose partner was
+  // refused, under overlapping ranges.
+  const rows = [row("a", 1), row("b", 1), row("a", 2), row("b", 2), row("a", 3), row("b", 4)];
+  for (const [r, v] of rows.map((r, i) => [r, [100, 150, 100, 150, 300, 90][i]])) {
+    setT(r, "files.a", { paintedReadyMs: v });
+  }
+  const four = cmp(rows);
+  const e4 = find(four, "files.a", "painted_ready_ms");
+  assert.equal(e4.outcome, "explain", e4.verdict);
+  assert.equal(e4.wrongWay, true);
+  assert.equal(four.exitCode, 1);
+  // One worse pair of two, under overlapping ranges: the tolerance cannot be judged.
+  const one = rows.map((r) => structuredClone(r));
+  setT(one[3], "files.a", { paintedReadyMs: 100 });
+  const e1 = find(cmp(one), "files.a", "painted_ready_ms");
+  assert.equal(e1.outcome, "unpaired", e1.verdict);
+  // Two pairs beyond in the better direction must be explained too, and are not wrong way.
+  const better = find(
+    cmp(values([20, 20, 100, 100, 100], [10, 10, 101, 101, 101])),
+    "files.a",
+    "painted_ready_ms",
+  );
+  assert.deepEqual([better.outcome, better.wrongWay], ["explain", false]);
+});
+check("an expectation met in a metric's worse direction does not fail the exit", () => {
+  // Review C of #442, C7: a round that predicts a cost it accepts.
+  const rows = series(
+    (r) => setT(r, "files.a", { requests: { byClass: { data: 2 } } }),
+    (r) => setT(r, "files.a", { requests: { byClass: { data: 3 } } }),
+  );
+  const met = cmp(rows, { expect: ["files.a:requests_data:higher"] });
+  assert.equal(met.expectations[0].pass, true);
+  assert.equal(met.wrongWay.length, 0);
+  assert.deepEqual(
+    met.expected.map((e) => `${e.id} ${e.metric}`),
+    ["files.a requests_data"],
+  );
+  assert.equal(met.exitCode, 0);
+  const text = stats.formatComparison(met).join("\n");
+  assert.match(text, /\[WRONG WAY, EXPECTED\]/);
+  assert.match(text, /Exit 0: complete, with no wrong-way result but the 1 an expectation met/);
+  // Unexpected, the same movement still fails.
+  assert.equal(cmp(rows).exitCode, 1);
+});
 check("a journey's end reading is compared on its memory alone", () => {
   const withMemory = (heap) => (r, k) => {
     r.journeys[0].memory = {
@@ -1134,14 +1328,20 @@ check("a journey's end reading is compared on its memory alone", () => {
   };
   const res = cmp(series(withMemory(9000), withMemory(15000)));
   const heap = find(res, "files.end", "memory_js_heap_kb");
+  // Report-only (review A of #442, A2): apart, and shown, but neither judged nor a
+  // wrong-way result, until a round's protocol registers a budget to judge it against.
   assert.equal(heap.outcome, "result");
-  assert.equal(heap.wrongWay, true);
+  assert.equal(heap.judged, false);
+  assert.equal(heap.wrongWay, false);
+  assert.equal(res.exitCode, 0);
   assert.equal(find(res, "files.end", "painted_ready_ms"), undefined);
   assert.equal(find(res, "files.end", "requests_data"), undefined);
   assert.equal(res.gaps.filter((g) => g.id === "files.end").length, 0, JSON.stringify(res.gaps));
-  // Listeners and documents are shown, not judged.
-  assert.equal(find(res, "files.end", "memory_listeners").judged, false);
-  // A reading that failed in one run is a missing value, not a smaller sample.
+  for (const key of ["memory_dom_nodes", "memory_worker_heap_kb", "memory_listeners"]) {
+    assert.equal(find(res, "files.end", key).judged, false, key);
+  }
+  // A reading that failed in one run is a missing value, not a smaller sample; it is named
+  // in a note and does not make the comparison incomplete.
   const failed = cmp(
     series(withMemory(9000), (r, k) => {
       withMemory(9000)(r, k);
@@ -1150,14 +1350,15 @@ check("a journey's end reading is compared on its memory alone", () => {
       }
     }),
   );
+  assert.equal(failed.gaps.length, 0, JSON.stringify(failed.gaps));
+  assert.equal(failed.exitCode, 0);
   assert.ok(
-    failed.gaps.some(
-      (g) =>
-        g.id === "files.end" &&
-        g.metric === "memory_dom_nodes" &&
-        /missing in 0 of 3 a run\(s\) and 1 of 3 b/.test(g.reason),
+    failed.notes.some((n) =>
+      /^MEMORY READINGS MISSING.*files\.end memory_dom_nodes: missing in 0 of 3 a run\(s\) and 1 of 3 b/.test(
+        n,
+      ),
     ),
-    JSON.stringify(failed.gaps),
+    JSON.stringify(failed.notes),
   );
   const text = summarize(series(withMemory(9000), withMemory(15000))).join("\n");
   assert.match(text, /#### Retained memory, after a garbage collection/);
@@ -1216,27 +1417,103 @@ check("truncated searches and slow reads are counted and reported", () => {
   const text = summarize(series(() => {}, slow)).join("\n");
   assert.match(text, /instrument cost over 4 ms in `files\.a` \(longest read 5\.6 ms\)/);
 });
-check("blank and ready metrics are not judged where a search was cut", () => {
-  // The candidate's arm check stopped at its budget in every run, and it reads worse: its
-  // ready and blank metrics are a gap with the reason, not a wrong-way result; its counts
-  // and the other transition are judged as before.
+check("a transition's metrics are not judged where a search was cut", () => {
+  // The candidate's arm check stopped at its bound in every run, and it reads worse: the
+  // transition should perhaps have been refused, so every judged metric is a gap with the
+  // reason, not a wrong-way result; the other transition is judged as before.
   const cut = (r) =>
     setT(r, "files.a", { searchTruncatedBeforeInput: 1, paintedReadyMs: 90, blankFrames: 3 });
   const res = cmp(series(() => {}, cut));
-  for (const key of ["painted_ready_ms", "blank_frames"]) {
+  for (const key of ["painted_ready_ms", "blank_frames", "requests_data", "settled_ms"]) {
     const e = find(res, "files.a", key);
     assert.equal(e.outcome, "truncated", key);
     assert.equal(e.wrongWay, false, key);
     assert.match(
       e.verdict,
-      /^not judged: the content search stopped at its hit-test budget in 0 a and 3 b frame/,
+      /^not judged: the content search stopped at its hit-test bound in 0 a and 3 b frame\(s\) before the input/,
     );
     assert.ok(res.gaps.some((g) => g.id === "files.a" && g.metric === key));
   }
-  assert.equal(find(res, "files.a", "requests_data").outcome, "none");
+  // Shown figures stay shown.
+  assert.equal(find(res, "files.a", "next_frame_ms").outcome, "none");
   assert.equal(find(res, "files.b", "painted_ready_ms").outcome, "none");
   assert.equal(res.wrongWay.length, 0);
   assert.equal(res.exitCode, 1);
+  // Review A of #442, A1: a search cut up to the ready frame can find readiness late, and
+  // the window's end with it, so the settle time, the longest task, and the counts are
+  // gaps too, but not a milestone, which has its own count.
+  const late = cmp(
+    series(
+      (r) => setT(r, "files.a", { milestones: { prHeader: 30 } }),
+      (r) =>
+        setT(r, "files.a", {
+          searchTruncatedFrames: 2,
+          searchTruncatedToReady: 1,
+          settledMs: 400,
+          longTasks: { maxMs: 120 },
+          milestones: { prHeader: 30 },
+        }),
+    ),
+  );
+  for (const key of ["settled_ms", "long_task_max_ms", "painted_ready_ms", "requests_data"]) {
+    const e = find(late, "files.a", key);
+    assert.equal(e.outcome, "truncated", key);
+    assert.match(e.verdict, /0 a and 3 b frame\(s\) up to the ready frame/, key);
+  }
+  assert.equal(find(late, "files.a", "pr_header_ms").outcome, "none");
+  // Cut only after the ready frame: the blank counts are gaps, readiness and the rest are
+  // judged.
+  const after = cmp(
+    series(
+      () => {},
+      (r) =>
+        setT(r, "files.a", {
+          searchTruncatedFrames: 1,
+          searchTruncatedToReady: 0,
+          longTasks: { maxMs: 120 },
+        }),
+    ),
+  );
+  for (const key of ["blank_frames", "blank_frames_after_ready", "blank_ms"]) {
+    const e = find(after, "files.a", key);
+    assert.equal(e.outcome, "truncated", key);
+    assert.match(e.verdict, /0 a and 3 b frame\(s\) after the ready frame/, key);
+  }
+  assert.equal(find(after, "files.a", "painted_ready_ms").outcome, "none");
+  assert.equal(find(after, "files.a", "long_task_max_ms").outcome, "result");
+  assert.equal(find(after, "files.a", "long_task_max_ms").wrongWay, true);
+  // A search cut while a milestone was awaited (review B of #442, B4): that milestone is a
+  // gap, the transition's other metrics are judged, and the read is named.
+  const milestone = cmp(
+    series(
+      (r) =>
+        setT(r, "files.a", {
+          milestones: { sourceHighlighted: 600 },
+          milestoneReads: { sourceHighlighted: { maxMs: 1.1, toMs: 9, truncated: 0 } },
+        }),
+      (r) =>
+        setT(r, "files.a", {
+          milestones: { sourceHighlighted: 900 },
+          milestoneReads: { sourceHighlighted: { maxMs: 6.3, toMs: 40, truncated: 2 } },
+          searchTruncatedAfterWindow: 2,
+        }),
+    ),
+  );
+  const m = find(milestone, "files.a", "source_highlighted_ms");
+  assert.equal(m.outcome, "truncated");
+  assert.match(m.verdict, /0 a and 6 b frame\(s\) up to this milestone/);
+  assert.equal(find(milestone, "files.a", "painted_ready_ms").outcome, "none");
+  assert.ok(
+    milestone.notes.some((n) =>
+      /^INSTRUMENT COST: in condition b.*files\.a \(longest read 6\.3 ms before a milestone\)/.test(
+        n,
+      ),
+    ),
+    milestone.notes,
+  );
+  assert.ok(
+    milestone.notes.some((n) => /^SEARCH TRUNCATED: in condition b.*files\.a \(6 frame/.test(n)),
+  );
   // The frames before the input are counted apart from the window's.
   const a = accountFrames({
     frames: [
@@ -1406,7 +1683,7 @@ check("samples keep the metrics and drop paths", () => {
 
 // ------------------------------------------------------------------- command line exits
 
-check("compare exits 0, 1, and 2 from the command line", () => {
+check("compare exits 0, 1, 2, and 3 from the command line", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "transitions-"));
   try {
     const write = (name, rows) => {
@@ -1439,6 +1716,12 @@ check("compare exits 0, 1, and 2 from the command line", () => {
     const refused = run(write("refused.jsonl", series()), "--control", "a");
     assert.equal(refused.status, 2);
     assert.match(refused.stderr, /name both conditions/);
+    // Review C of #442, C9: a defect is not a refusal.
+    const broken = series();
+    broken[0].journeys[0].transitions.push(null);
+    const crashed = run(write("broken.jsonl", broken), "--control", "a", "--candidate", "b");
+    assert.equal(crashed.status, 3, crashed.stderr);
+    assert.match(crashed.stderr, /compare failed: TypeError/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
