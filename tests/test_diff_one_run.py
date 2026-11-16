@@ -38,6 +38,7 @@ from metabrowser.git.process import (
 from metabrowser.git.shallow import PARENT_UNAVAILABLE
 from tests.diff_fixture_repo import _env, build_diff_fixture, git
 from tests.required_tools import needs_git
+from tests.test_diff_textconv_cache import _old_git
 
 pytestmark = needs_git
 
@@ -474,7 +475,32 @@ def test_a_cold_configuration_is_asked_beside_the_one_run(
     assert (first, warm) == (4, 2)
 
 
-# ── A textconv driver (review of #449, H1) ──────────────────────────────
+def test_a_git_before_2_42_keeps_its_answers_after_its_first_comparison(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Such a Git has no `git var GIT_CONFIG_SYSTEM`; asked to list its system file alone,
+    it names it, once per server, and later comparisons take two processes. A system file
+    that holds nothing names itself nowhere, so then each comparison asks again: three."""
+    root, _base, target = repo
+    _old_git(tmp_path, monkeypatch)
+    monkeypatch.delenv("GIT_CONFIG_NOSYSTEM")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "no-system-file"))
+    textconv.forget()
+
+    def counts() -> list[int]:
+        return [
+            _answer(GitDiffSource(root, patch_with_listing=True), {"revision": target})[0]
+            for _ in range(3)
+        ]
+
+    assert counts() == [5, 2, 2], "rev-parse, the one run; git var, the system file, config"
+    (tmp_path / "empty-system-file").write_text("")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "empty-system-file"))
+    textconv.forget()
+    assert counts() == [5, 3, 3]
+
+
+# ── A textconv driver ───────────────────────────────────────────────────
 
 
 def test_a_textconv_driver_is_run_only_as_the_page_ran_it(
@@ -704,6 +730,35 @@ def test_gitlinks_answer_alike_in_every_submodule_format(
         ("type_changed", "file", "submodule"),
         ("type_changed", "submodule", "file"),
     } <= kinds
+
+
+def test_a_submodules_own_drivers_run_only_as_the_page_ran_them(tmp_path: Path) -> None:
+    """With `diff.submodule=diff`, Git diffs a changed submodule's files in a child `git
+    diff` of the submodule's own, which runs the submodule's textconv drivers whatever the
+    parent passes. A page that does not hold the submodule never ran them, and neither does
+    the comparison route's listing: such a configuration is taken to name a driver."""
+    root, target = _superproject(tmp_path)
+    git(root, "config", "diff.submodule", "diff")
+    calls = tmp_path / "calls.log"
+    driver = tmp_path / "driver.sh"
+    driver.write_text(f'#!/bin/sh\necho "$1" >> {calls}\ncat "$1"\n')
+    driver.chmod(0o755)
+    git(root, "-C", "sub", "config", "diff.logd.textconv", str(driver))
+    (root / ".git" / "modules" / "sub" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "modules" / "sub" / "info" / "attributes").write_text("*.txt diff=logd\n")
+
+    def a_txt(manifest: ChangeSetManifest) -> list[list[str]]:
+        return [[c.id for c in manifest.files if c.new is not None and c.new.path == "a.txt"]]
+
+    def driven(source: GitDiffSource) -> tuple[int, str]:
+        calls.unlink(missing_ok=True)
+        _, answer = _answer(source, {"revision": target}, a_txt)
+        return (len(calls.read_text().splitlines()) if calls.exists() else 0), answer
+
+    today = driven(_Today(root))
+    _warm(root)
+    assert driven(GitDiffSource(root, patch_with_listing=True)) == today
+    assert today[0] == 0, "a page of a.txt alone diffs no submodule"
 
 
 def test_binary_files_and_a_nul_past_gits_binary_check_answer_alike(tmp_path: Path) -> None:

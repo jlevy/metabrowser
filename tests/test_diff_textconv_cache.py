@@ -1,4 +1,4 @@
-"""The kept answer to whether a configuration names a textconv driver (review of #449).
+"""The kept answer to whether a configuration names a textconv driver.
 
 Each case is the reviewer's ``cache_probe.py``: a configuration that names none is read and
 kept, then something Git reads changes so that it names one, and the kept answer must not
@@ -18,6 +18,7 @@ from typing import Any
 import pytest
 
 from metabrowser.diff.adapters import textconv
+from metabrowser.git import process as git_process
 from metabrowser.git.process import GitLocation, as_location, repository_store_target
 from tests.required_tools import needs_git
 
@@ -185,3 +186,100 @@ def test_a_stores_answer_is_kept_whatever_is_written_to_dev_null(home: Path) -> 
     first, kept, truth = _kept_after(store, write)
     assert first is False and kept is False and truth is False
     _never_stale(store, lambda: _git(repo, "config", "diff.x.textconv", "cat"))
+
+
+def _old_git(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every Git of the module as a Git before 2.42, which has no `git var
+    GIT_CONFIG_SYSTEM`: a wrapper that refuses it as such a Git does."""
+    real = git_process.git_executable()
+    assert real is not None
+    wrapper = home / "old-git"
+    wrapper.write_text(
+        '#!/bin/sh\nprev=""\nfor a in "$@"; do\n'
+        '  if [ "$prev" = var ] && [ "$a" = GIT_CONFIG_SYSTEM ]; then\n'
+        '    echo "usage: git var (-l | <variable>)" >&2; exit 129\n'
+        "  fi\n"
+        '  prev="$a"\n'
+        f'done\nexec {real} "$@"\n'
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr(git_process, "git_executable", lambda: str(wrapper))
+    monkeypatch.setattr(textconv, "git_executable", lambda: str(wrapper))
+
+
+@pytest.mark.parametrize(
+    ("nosystem", "git_reads_it"),
+    [
+        (None, True),
+        ("", True),
+        ("0", True),
+        ("false", True),
+        ("1", False),
+        ("2", False),
+        ("yes", False),
+        ("0x1", False),
+    ],
+)
+def test_a_git_before_2_42_still_sees_its_system_file(
+    home: Path, monkeypatch: pytest.MonkeyPatch, nosystem: str | None, git_reads_it: bool
+) -> None:
+    """Such a Git names its system file when asked to list it alone, and reads it unless
+    `GIT_CONFIG_NOSYSTEM` is true as Git reads a boolean: `0`, `false` and the empty string
+    are false, and `2` and `0x1` are true."""
+    repo = _repo(home)
+    _old_git(home, monkeypatch)
+    system = home / "system"
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(system))
+    if nosystem is None:
+        monkeypatch.delenv("GIT_CONFIG_NOSYSTEM")
+    else:
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", nosystem)
+    if git_reads_it:
+        _never_stale(as_location(repo), lambda: system.write_text(DRIVER))
+        system.write_text("[x]\n\ty = 1\n")
+        textconv.forget()
+        _never_stale(as_location(repo), lambda: system.write_text(DRIVER))
+    else:
+        assert _kept_after(as_location(repo), lambda: system.write_text(DRIVER)) == (
+            False,
+            False,
+            False,
+        )
+
+
+def test_a_git_before_2_42_whose_system_file_holds_nothing_keeps_nothing(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty system file names itself nowhere, so what such a Git reads is never sure."""
+    repo = _repo(home)
+    _old_git(home, monkeypatch)
+    system = home / "system"
+    system.write_text("# nothing\n")
+    monkeypatch.delenv("GIT_CONFIG_NOSYSTEM")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(system))
+    first, kept, _truth = _kept_after(as_location(repo), lambda: None)
+    assert first is False and kept is None
+
+
+def test_a_kept_answer_in_use_outlives_older_ones_unused(home: Path) -> None:
+    """The kept answers are a queue by use: a folder read on every visit is never the one
+    that goes, however many others came after it."""
+    location = as_location(_repo(home))
+    assert asyncio.run(textconv.read_textconv_named(location)) is False
+    (key,) = textconv._KEPT
+    for n in range(textconv.MAX_KEPT_CONFIGURATIONS - 1):
+        textconv._keep(("other", str(n)), textconv._Kept(named=False, stamp=()))
+    assert asyncio.run(textconv.textconv_named(location)) is False
+    textconv._keep(("other", "one more"), textconv._Kept(named=False, stamp=()))
+    assert key in textconv._KEPT
+    assert ("other", "0") not in textconv._KEPT
+
+
+def test_a_submodule_diffed_as_a_diff_counts_as_a_driver(home: Path) -> None:
+    """`diff.submodule=diff` runs a child `git diff` in each changed submodule, which honors
+    the submodule's own drivers whatever the parent run passes."""
+    repo = _repo(home)
+    _git(repo, "config", "diff.submodule", "log")
+    assert asyncio.run(textconv.read_textconv_named(as_location(repo))) is False
+    _git(repo, "config", "diff.submodule", "diff")
+    assert asyncio.run(textconv.read_textconv_named(as_location(repo))) is True
