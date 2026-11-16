@@ -67,6 +67,10 @@ this repository’s structural facts and standing answers.
   `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
   contracts. Change one everywhere in one commit, and note it in `CHANGELOG.md` when a
   user or plugin author can observe the change.
+- The separately installed macOS app is the exception: the four CLI flags it passes and
+  `GET /api/identity` change only with a `MetabRequirement` floor bump and a
+  `CHANGELOG.md` note, as
+  [the standing answers](docs/development.md#standing-compatibility-answers) say.
 - `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
   update every built-in manifest in the same commit.
 

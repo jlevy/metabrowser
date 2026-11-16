@@ -38,6 +38,10 @@ when a user or plugin author can observe it.
 break and update every built-in manifest in the same commit.
 Do not add compatibility layers for these;
 [AGENTS.md](AGENTS.md#compatibility-and-legacy-code) has the rule.
+The CLI flags `--no-open`, `--exit-on-eof`, `--host`, and `--port` and the route
+`GET /api/identity` are also a contract with the separately installed macOS app, so
+change them only as
+[the standing answers](docs/development.md#standing-compatibility-answers) say.
 
 ## Documentation and Tests
 
