@@ -92,11 +92,11 @@ type MetabrowserPullsPanelHandle = Readonly<{
     number: number | null,
     file?: string | null,
     /**
-     * *preserveScroll* keeps the list where the reader left it; *reveal* shows the pull
-     * request again when the address names the one already current (docs/design-system.md,
-     * "Navigation Reveals the Item").
+     * *preserveScroll* keeps the list where the reader left it; *again* shows the pull
+     * request again when the address names the one already current, for an open of the
+     * pull request shown (docs/design-system.md, "Navigation Reveals the Item").
      */
-    options?: { preserveScroll?: boolean; reveal?: boolean },
+    options?: { preserveScroll?: boolean; again?: boolean },
   ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
@@ -2303,8 +2303,9 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
 }>;
 
 /**
- * One key, or Control with `n` or `p` (`control: true`): a binding states no other
- * modifier policy, and Shift never changes a key.
+ * One key, or Control with a letter of `CONTROL_CHORD_KEYS` (`control: true`), registered
+ * only where `controlReachesPage()`: a binding states no other modifier policy, and Shift
+ * never changes a key.
  */
 type MetabrowserShortcutBinding = Readonly<{
   control?: true;
@@ -2409,6 +2410,8 @@ type MetabrowserShortcutRegistry = Readonly<{
   ): MetabrowserShortcutTarget;
   /** Run `work` and publish what it changed once, when the outermost batch ends. */
   batch<T>(work: () => T): T;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   dispose(): void;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
@@ -2442,7 +2445,7 @@ type MetabrowserShortcutRegistry = Readonly<{
 }>;
 
 type MetabrowserKeyboardShortcutsRuntime = Readonly<{
-  /** The letters a binding may hold with Control: `n` and `p`. */
+  /** The letters a binding may hold with Control (`control: true`). */
   CONTROL_CHORD_KEYS: ReadonlyArray<string>;
   GROUP_DEFINITIONS: Readonly<
     Record<string, Readonly<{ context: string; label: string; order: number }>>
@@ -2459,6 +2462,8 @@ type MetabrowserKeyboardShortcutsRuntime = Readonly<{
   ): void;
   appendKey(document: Document, container: HTMLElement, key: string): HTMLElement;
   bindingSignature(binding: MetabrowserShortcutBinding): string;
+  /** Whether a Control chord reaches the page, on macOS and iOS; only there is one bound. */
+  controlReachesPage(): boolean;
   create(options?: { document?: Document }): MetabrowserShortcutRegistry;
   describeBindings(
     bindings: ReadonlyArray<MetabrowserShortcutBinding>,
@@ -3301,6 +3306,12 @@ declare global {
   type MetabrowserRevealHow = {
     scroll: "nearest" | "keep";
     isCurrent: () => boolean;
+    /**
+     * The reader opened the item already shown again (main-tabs.js, `reveal`): the call's
+     * own intent, which no state keeps. Files reveals a file on every call, so only Pulls
+     * reads it, to reveal the pull request the address already names.
+     */
+    again: boolean;
   };
 
   type MetabrowserMainTabsDeps = {
@@ -3337,7 +3348,10 @@ declare global {
     remember(): void;
     remove(id: string): void;
     /** Show what the address names in its tab: switch to it and reveal the item there. */
-    reveal(route: MetabrowserRevealRoute, how?: { isCurrent?: () => boolean }): Promise<void>;
+    reveal(
+      route: MetabrowserRevealRoute,
+      how?: { isCurrent?: () => boolean; again?: boolean },
+    ): Promise<void>;
   };
 
   type MetabrowserPreviewClaim = number;

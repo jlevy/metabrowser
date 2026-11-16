@@ -10,6 +10,7 @@ compares them with. The ceilings bound cost, not membership, so the deferred
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import tomllib
@@ -275,6 +276,20 @@ def test_the_computed_size_is_the_body_the_application_sends() -> None:
         assert len(response.content) == script.decoded_bytes, script.url_path
 
 
+def test_the_check_measures_with_delivery_and_refuses_a_middleware_that_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One computation of what a gzip client is sent (review A of #455, A8): the check's is
+    # metabrowser.delivery's, and a middleware set apart from it stops the check.
+    from metabrowser import delivery
+
+    body = b"const x = 1;\n" * 400
+    assert check.sent_body_bytes(body) == delivery.sent_size(body)
+    monkeypatch.setattr(delivery, "GZIP_LEVEL", delivery.GZIP_LEVEL + 1)
+    with pytest.raises(SystemExit, match="they must agree"):
+        check.sent_body_bytes(body)
+
+
 # The probe's own selection and rounding, run on Resource Timing entries: the functions
 # probe.js defines ahead of its body, which is what a browser capture evaluates.
 _PROBE_ARITHMETIC = """
@@ -289,6 +304,7 @@ const counted = sandbox.startupScriptResources(entries, domContentLoadedEventEnd
 process.stdout.write(JSON.stringify({
   names: counted.map((entry) => entry.name),
   kb: sandbox.transferKb(counted),
+  paths: sandbox.startupScriptPaths(counted),
 }));
 """
 
@@ -319,6 +335,7 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
             "name": f"{origin}{script.url_path}?v=1",
             "startTime": 5,
             "transferSize": script.transfer_bytes,
+            "encodedBodySize": script.transfer_bytes - check.RESOURCE_TIMING_HEADER_BYTES,
         }
         for script in scripts
     ]
@@ -335,6 +352,46 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
 
     assert probe["names"] == [entry["name"] for entry in counted]
     assert probe["kb"] == check.transfer_kb(scripts)
+    assert probe["paths"] == [f"{script.url_path}?v=1" for script in scripts]
+    # A script the browser's cache answered transferred nothing, and one answered 304
+    # transferred its headers' 300 bytes and no body: neither is read back. Each has the
+    # shape Chrome gives it: a cache hit keeps its full encodedBodySize (review C of #455,
+    # C1, reproduced in headless Chrome).
+    cached = {
+        "name": f"{origin}/static/app.js?v=2",
+        "startTime": 5,
+        "transferSize": 0,
+        "encodedBodySize": 6413,
+    }
+    revalidated = {
+        "name": f"{origin}/static/app.js?v=3",
+        "startTime": 5,
+        "transferSize": check.RESOURCE_TIMING_HEADER_BYTES,
+        "encodedBodySize": 0,
+    }
+    assert _probe([*counted, cached, revalidated])["paths"] == probe["paths"]
+
+
+def test_the_loop_reads_the_number_this_check_computes() -> None:
+    """`run.py record` reads `startup_script_transfer_kb` again from the scripts the page
+    named, compressed as the remote path sends them, because a loopback browser of a
+    local server is sent them uncompressed (H115). It must stay this check's number,
+    which is the browser's on a server that compresses toward it."""
+    runner = check.ROOT / "explorations" / "performance-loop" / "run.py"
+    spec = importlib.util.spec_from_file_location("metabrowser_performance_loop", runner)
+    assert spec is not None and spec.loader is not None
+    loop = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loop)
+    scripts = check.measure(check.render_folder_shell())
+    client = TestClient(server.app, base_url="http://127.0.0.1")
+
+    def read(path: str, _timeout_s: float) -> bytes:
+        answer = client.get(path, headers={"Accept-Encoding": "identity"})
+        assert "content-encoding" not in answer.headers, path
+        return answer.content
+
+    paths = [script.url_path for script in scripts]
+    assert loop._startup_script_transfer_kb(paths, read) == check.transfer_kb(scripts)
 
 
 @pytest.mark.parametrize("total", [175 * 1024 + 511, 175 * 1024 + 512, 1, 0])

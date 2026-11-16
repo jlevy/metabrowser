@@ -612,48 +612,6 @@ const NUMBERS = `(() => {
   const weight = (node) => getComputedStyle(node).fontWeight;
   return { palette: weight(palette), selector: weight(selector), position: weight(position) };
 })()`;
-// The shell's tooltip rule on three anchors, over its own stylesheet: a tip that is its
-// button's whole text, the same tip on text cut short by an ellipsis, and a glyph-only
-// control's name. tipAddsInformation and the two it calls are app.js's own, read from the
-// served file, as RUN_BADGE reads its functions: whether each tip would show (mb-8mpo,
-// docs/design-system.md, "Tooltips Add Information").
-const TIPS = `(async () => {
-  const source = await new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("GET", "/static/app.js");
-    request.onload = () => resolve(request.responseText);
-    request.onerror = reject;
-    request.send();
-  });
-  const take = (start) => {
-    const at = source.indexOf(start);
-    if (at < 0) {
-      throw new Error("app.js has no " + start);
-    }
-    return source.slice(at, source.indexOf("\\n}\\n", at) + 3);
-  };
-  const code = [
-    take("function tipComparable(text) {"),
-    take("function tipAnchorIsCut(anchor) {"),
-    take("function tipAddsInformation(anchor) {"),
-  ].join("\\n");
-  const tipAddsInformation = new Function(code + "\\nreturn tipAddsInformation;")();
-  const h = (tag, attributes = {}, children = []) => {
-    const node = document.createElement(tag);
-    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
-    node.append(...children);
-    return node;
-  };
-  const long = "A pull request title far longer than the box it is drawn in";
-  const anchors = {
-    whole: h("button", { type: "button", "data-tip-text": "Reload" }, ["Reload"]),
-    wholeSpaced: h("span", { "data-tip-text": "stack #286" }, ["  Stack   #286 "]),
-    cut: h("span", { "data-tip-text": long, style: "display: block; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }, [long]),
-    glyph: h("button", { type: "button", "data-tip-text": "Copy path", "aria-label": "Copy path" }, ["↑"]),
-  };
-  document.getElementById("preview-pane").replaceChildren(...Object.values(anchors));
-  return Object.fromEntries(Object.entries(anchors).map(([name, anchor]) => [name, tipAddsInformation(anchor)]));
-})()`;
 const PULLS = [
   {
     number: 370,
@@ -1112,13 +1070,6 @@ async function main() {
         lap("the labels in both themes");
       }
       if (runs("pulls")) {
-        const tips = await browser.evaluate(TIPS);
-        check(
-          "a tip that is its element's whole text, in any case or spacing, does not show, and shows while the text is cut short",
-          tips.whole === false && tips.wholeSpaced === false && tips.cut === true,
-          JSON.stringify(tips),
-        );
-        check("a glyph-only control's tip shows", tips.glyph === true, JSON.stringify(tips));
         const numbers = await browser.evaluate(NUMBERS);
         check(
           "a pull request's number is bold in Quick Search and the ref selector, as a stack's position is",

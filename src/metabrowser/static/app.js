@@ -352,8 +352,11 @@ function headerAddressHtml(path, isFile) {
     var last = i === segments.length - 1;
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    // One name, as the crumb's tip and its text, so the two cannot drift apart: the tip
+    // shows only while that text is cut short (`tipAddsInformation`).
+    var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
     );
   }
   return (
@@ -1886,13 +1889,13 @@ function treeNodeAsEntry(node) {
   };
 }
 
+// Every "more" row of the container: a reveal can leave one above the page it drew as
+// well as the one that ends the folder (mountTreePageAt).
 function removeDeferredPageForContainer(container) {
-  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
-  if (!sentinel) {
-    return;
+  for (const sentinel of queryHtmlAll(":scope > .tree-page-more[data-page-id]", container)) {
+    pendingTreePages.delete(sentinel.dataset.pageId);
+    sentinel.remove();
   }
-  pendingTreePages.delete(sentinel.dataset.pageId);
-  sentinel.remove();
 }
 
 // Reconcile one mounted tree container without replacing it. Every container
@@ -3131,7 +3134,9 @@ function tipAnchorIsCut(anchor) {
 /**
  * Whether a tip says something its anchor does not already show (docs/design-system.md,
  * "Tooltips Add Information"). A tip that is the anchor's own text says nothing while
- * that text is whole, so it shows only while the text is cut short; any other tip, such
+ * that text is whole, so it shows only while the text is cut short. So does a tip that is
+ * the text of a box inside the anchor, as a changed file's row holds its name beside its
+ * status letter and counts: it shows only while that box is cut short. Any other tip, such
  * as a glyph's name or an exact time, shows.
  *
  * @param {HTMLElement} anchor
@@ -3141,7 +3146,25 @@ function tipAddsInformation(anchor) {
   if (tip === "") {
     return false;
   }
-  return tip !== tipComparable(anchor.textContent) || tipAnchorIsCut(anchor);
+  var text = tipComparable(anchor.textContent);
+  if (tip === text) {
+    return tipAnchorIsCut(anchor);
+  }
+  // A box's text is part of its anchor's, so a tip the anchor's text does not hold is no
+  // box's text, and nothing inside need be read.
+  if (!text.includes(tip)) {
+    return true;
+  }
+  var repeated = false;
+  for (var box of anchor.querySelectorAll("*")) {
+    if (box instanceof HTMLElement && tipComparable(box.textContent) === tip) {
+      if (tipAnchorIsCut(box)) {
+        return true;
+      }
+      repeated = true;
+    }
+  }
+  return !repeated;
 }
 
 /** @param {Event} e */
@@ -3282,30 +3305,30 @@ treePane.addEventListener(
     }
     var d = item.dataset;
     // The tooltip gives what the row does not show (docs/design-system.md,
-    // "Tooltips Add Information"): the exact date, and a folder's other total.
-    // The row shows the name, a file's size, and a folder's size or file count,
-    // whichever its chip holds, so the tooltip leaves those out.
+    // "Tooltips Add Information"): the exact date, a folder's other total, and
+    // the exact size behind one its chip rounds. The row shows the name, and a
+    // size or file count, whichever its chip holds, so the tooltip leaves out the
+    // name and what the chip shows exactly: a count, and a size under 1,024
+    // bytes, which formatBytes writes in whole bytes ("512 B").
     var includeName = false;
     var chip = item.querySelector(".tree-item-size");
     var shows = chip === null ? null : chip.classList.contains("count") ? "count" : "size";
+    var size = parseTipNumber(d.tipSize);
+    var chipRoundsSize = typeof size === "number" && size >= 1024;
+    var tipSize = shows === "size" && !chipRoundsSize ? undefined : size;
     var html;
     if (d.tipType === "dir") {
       html = folderTooltipHtml(
         d.tipName,
         shows === "count" ? undefined : parseTipNumber(d.tipFiles),
-        shows === "size" ? undefined : parseTipNumber(d.tipSize),
+        tipSize,
         parseTipNumber(d.tipMtime),
         includeName,
       );
     } else if (d.tipType === "symlink") {
       html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
-      html = fileTooltipHtml(
-        d.tipName,
-        shows === "size" ? undefined : parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-        includeName,
-      );
+      html = fileTooltipHtml(d.tipName, tipSize, parseTipNumber(d.tipMtime), includeName);
     }
     if (html) {
       showTooltip(html, item);
@@ -3600,6 +3623,11 @@ function setRowExpanded(row, expanded) {
   return toggleTreeContainer(row);
 }
 
+// A "more" row's page arrives where the row was. Most such rows end their folder, and
+// the page grows down from there. One a reveal left above the page it drew
+// (mountTreePageAt) has rows after it: its page grows up from there, and the rows after
+// it stay where they are on screen, so the revealed row is not pushed out of view, and
+// the row that takes focus is the one nearest them.
 function mountNextTreePage(row) {
   var pageId = row.dataset.pageId;
   var page = pendingTreePages.get(pageId);
@@ -3609,17 +3637,22 @@ function mountNextTreePage(row) {
   }
   treeKeyboard?.prepareForMutation();
   pendingTreePages.delete(pageId);
+  var follower = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  var scroller = document.getElementById("tree-content");
+  var followerTop = follower && scroller ? follower.getBoundingClientRect().top : null;
   var temporary = document.createElement("div");
   temporary.innerHTML = withTreeIdScope(page.options.section || "", () =>
     renderTreeNodes(nextBatch, false, page.options),
   );
   var nodes = Array.prototype.slice.call(temporary.childNodes);
   var firstMounted = null;
+  var lastMounted = null;
   for (var i = 0; i < nodes.length; i++) {
     var node = nodes[i];
     row.parentElement?.insertBefore(node, row);
-    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
-      firstMounted = node;
+    if (node.getAttribute?.("role") === "treeitem") {
+      firstMounted ??= node;
+      lastMounted = node;
     }
   }
   row.remove();
@@ -3627,7 +3660,10 @@ function mountNextTreePage(row) {
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
-  return firstMounted;
+  if (follower && scroller && followerTop !== null) {
+    scroller.scrollTop += follower.getBoundingClientRect().top - followerTop;
+  }
+  return follower ? lastMounted : firstMounted;
 }
 
 // The pointer activation contract. A folder row is a single target: it selects
@@ -7910,20 +7946,31 @@ function _findChildContainerFor(parentRel, panelEl) {
   return children;
 }
 
-function _deferredTreePageForContainer(container) {
-  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
-  if (!sentinel) {
-    return null;
+// The container's deferred page that holds *path*, or with no path its last one. A
+// container has one "more" row at its end, and a reveal can leave another above the page
+// it drew (mountTreePageAt).
+function _deferredTreePageForContainer(container, path) {
+  var sentinels = Array.from(
+    queryHtmlAll(":scope > .tree-page-more[data-page-id]", container),
+  ).reverse();
+  for (const sentinel of sentinels) {
+    var pageId = sentinel.dataset.pageId;
+    var page = pendingTreePages.get(pageId);
+    if (
+      page &&
+      (path === undefined ||
+        page.nodes.some((/** @type {{path: string}} */ node) => node.path === path))
+    ) {
+      return { pageId: pageId, page: page, sentinel: sentinel };
+    }
   }
-  var pageId = sentinel.dataset.pageId;
-  var page = pendingTreePages.get(pageId);
-  return page ? { pageId: pageId, page: page, sentinel: sentinel } : null;
+  return null;
 }
 
 // Snapshot and change events include entries already held by a deferred page.
 // Refresh that pending copy instead of mounting it ahead of its sentinel.
 function _updateDeferredTreePageEntry(container, entry) {
-  var deferred = _deferredTreePageForContainer(container);
+  var deferred = _deferredTreePageForContainer(container, entry.path);
   if (!deferred) {
     return false;
   }
@@ -7953,14 +8000,24 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
   if (!container) {
     return;
   }
-  var rows = /** @type {HTMLElement[]} */ (
-    Array.from(container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"))
+  // The container's rows in order, each "more" row counting the rows it holds back.
+  var items = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item"))
   );
-  var setSize = Math.max(rows.length + page.nodes.length, Number(page.options.setSize) || 0);
+  var held = (/** @type {HTMLElement} */ item) =>
+    item.classList.contains("tree-page-more")
+      ? (pendingTreePages.get(item.dataset.pageId || "")?.nodes.length ?? 0)
+      : 1;
+  var setSize = Math.max(
+    items.reduce((total, item) => total + held(item), 0),
+    Number(page.options.setSize) || 0,
+  );
   page.options.setSize = setSize;
-  for (var index = 0; index < rows.length; index++) {
-    rows[index].dataset.treePosition = String(index + 1);
-    rows[index].dataset.treeSetSize = String(setSize);
+  var position = 0;
+  for (const item of items) {
+    item.dataset.treePosition = String(position + 1);
+    item.dataset.treeSetSize = String(setSize);
+    position += held(item);
   }
   if (page.nodes.length === 0) {
     var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
@@ -7969,8 +8026,6 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     scheduleTreeSynchronize(sentinelMutation);
     return;
   }
-  sentinel.dataset.treePosition = String(rows.length + 1);
-  sentinel.dataset.treeSetSize = String(setSize);
   var labelId = sentinel.getAttribute("aria-labelledby") || "";
   var label = document.getElementById(labelId);
   if (label) {
@@ -8051,8 +8106,9 @@ function _insertRowSorted(container, entry, options, highlightChange) {
     }
   }
   if (anchor === null) {
-    // Insert before the page-more sentinel if present, else at the end.
-    var more = container.querySelector(":scope > .tree-page-more");
+    // Insert before the page-more sentinel that ends the folder if present, else at the
+    // end. A reveal can leave another above the page it drew, before the rows it holds.
+    var more = Array.from(queryHtmlAll(":scope > .tree-page-more", container)).pop();
     anchor = more || null;
   }
   for (var j = 0; j < nodes.length; j++) {
@@ -8721,11 +8777,16 @@ async function openQuickSearchPull(number) {
     return { status: "cancelled" };
   }
   mainTabs?.remember();
-  const shown = window.location.pathname;
+  const routes = window.MetabrowserPullRoute;
+  const naming = () => routes?.parsePull(window.location.pathname)?.number ?? null;
+  // The pull request shown, on its page or on any of its tabs or changed files.
+  const shown = naming() === number;
   const outcome = await host.open({ number, tab: "" });
-  // An open of the page shown changes no address, so nothing else reveals its row.
-  if (outcome.status === "opened" && window.location.pathname === shown) {
-    void mainTabs?.reveal("open");
+  // Quick Search for the pull request shown opens it again, and its row is revealed again,
+  // opening a stack the reader closed since. Its address names no other pull request, so
+  // the host's write reveals nothing (revealPullAddress).
+  if (outcome.status === "opened" && shown && naming() === number) {
+    void mainTabs?.reveal("open", { again: true });
   }
   return outcome.status === "opened"
     ? { ...outcome, focusTarget: document.getElementById("preview-pane") }
@@ -8783,22 +8844,48 @@ function pullPageHostDeps(routes) {
       }),
     mountList: (claim) => mountView(claim, "pull-request-list", {}),
     pathname: () => window.location.pathname,
-    // A pull request's page opened by a link, a key, or a row: the Pulls tab reveals its row
-    // (main-tabs.js, `reveal`).
+    // A pull request's page, one of its tabs, or one of its changed files, opened by a link,
+    // a key, or a row.
     pushHref: (href) => {
+      var before = window.location.pathname;
       mainTabIntent += 1;
       window.history.pushState(null, "", href);
       mainTabs?.remember();
-      void mainTabs?.reveal("open");
+      revealPullAddress(before, "open");
     },
-    // A key's skim through the Pulls tab's rows replaces, as openTreeRow does.
+    // A key's skim through the Pulls tab's rows, or through a pull request's changed files,
+    // replaces, as openTreeRow does.
     replaceHref: (href) => {
+      var before = window.location.pathname;
       mainTabIntent += 1;
       window.history.replaceState(null, "", href);
       mainTabs?.remember();
-      void mainTabs?.reveal("nav");
+      revealPullAddress(before, "nav");
     },
   };
+}
+
+/**
+ * Show the pull request's address the page host just wrote, by the reveal rule
+ * (docs/design-system.md, "Navigation Reveals the Item"). An address that names another
+ * pull request than *before* did reveals that pull request's row, by *route*. One that
+ * names the same pull request, another tab of its page or one of its changed files, is a
+ * step within the item shown: the Pulls tab comes to the front if another is, and the
+ * list is told the address, which marks a changed file as current. A changed file's
+ * address never reveals the pull request's row.
+ *
+ * @param {string} before The address's path before the host wrote this one.
+ * @param {"open" | "nav"} route
+ */
+function revealPullAddress(before, route) {
+  var routes = window.MetabrowserPullRoute;
+  var number = routes?.parsePull(window.location.pathname)?.number ?? null;
+  if (mainTabs && number !== null && number !== (routes?.parsePull(before)?.number ?? null)) {
+    void mainTabs.reveal(route);
+    return;
+  }
+  void mainTabs?.reveal("step");
+  window.MetabrowserPullsNav?.routeChanged();
 }
 
 // Back and forward between a page's tabs change no navigation target, so the host decides
@@ -8906,7 +8993,7 @@ async function applyNavigationTarget(target, context) {
   var path = target.path.replace(/\/$/, "");
   // The file's tab comes to the front before the pane is read: a switch from another tab
   // takes the pane from what that tab showed there.
-  void revealAddressedItem("step", path, context.isCurrent);
+  void revealAddressedItem("step", { isCurrent: context.isCurrent });
   window.MetabrowserPullsNav?.routeChanged();
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
@@ -8919,9 +9006,9 @@ async function applyNavigationTarget(target, context) {
   // opening the same path again is a retry and has to load it.
   if (!context.pathChanged && previewPane.holds(path)) {
     // A fragment or a line anchor is a step within the file shown, which reveals nothing.
-    // Opening the file shown again, as Quick Search does, reveals its row.
+    // Opening the file shown again, as Quick Search does, reveals its row again.
     if (context.source === "user" && !target.fragment && !target.query) {
-      await revealAddressedItem(route, path, context.isCurrent);
+      await revealAddressedItem(route, { isCurrent: context.isCurrent, again: true });
     }
     // A line anchor added to the file shown opens its Source tab, as opening it does.
     var shownView = anchorModule ? await addressedView(target, anchorModule) : null;
@@ -8935,7 +9022,7 @@ async function applyNavigationTarget(target, context) {
       status: "opened",
     };
   }
-  await revealAddressedItem(route, path, context.isCurrent);
+  await revealAddressedItem(route, { isCurrent: context.isCurrent });
   // A held arrow key opens only the row its walk stops on.
   var walk = treeKeyboard?.walking(path);
   if (walk) {
@@ -8958,16 +9045,25 @@ async function applyNavigationTarget(target, context) {
  * has that tab's panel reveal it, by the one rule for every route. Before the tab
  * controller has loaded, Files is the tab in front and reveals the file itself.
  *
+ * The address is the one source of what is revealed, before the tab controller has
+ * loaded and after: the navigation controller writes a target's address before it
+ * applies the target, so the file a landing applies is the one the address names
+ * (addressedFilePath).
+ *
  * @param {MetabrowserRevealRoute | null} route Null before the tab controller has loaded.
- * @param {string} path The file or folder the address names.
- * @param {() => boolean} isCurrent
+ * @param {{isCurrent: () => boolean, again?: boolean}} how *again*: an open of the file
+ *   shown (main-tabs.js, `reveal`).
  * @returns {Promise<void>}
  */
-async function revealAddressedItem(route, path, isCurrent) {
+async function revealAddressedItem(route, how) {
   if (mainTabs && route !== null) {
-    await mainTabs.reveal(route, { isCurrent });
+    await mainTabs.reveal(route, how);
   } else if (route !== "step") {
-    await revealFileRow(path, { scroll: "nearest", isCurrent });
+    await revealFileRow(addressedFilePath(), {
+      scroll: "nearest",
+      isCurrent: how.isCurrent,
+      again: how.again === true,
+    });
   }
 }
 
@@ -9159,9 +9255,11 @@ async function revealWithin(
 }
 
 /**
- * Mount the rest of a long folder when *path*'s row is in it. A folder draws its first
- * TREE_PAGE_SIZE rows and holds the rest behind a "more" row until it is asked for, and a
- * reveal asks for it (docs/design-system.md, "Navigation Reveals the Item").
+ * Draw the page of a long folder that holds *path*'s row. A folder draws its first
+ * TREE_PAGE_SIZE rows and holds the rest behind a "more" row, which draws them a page at
+ * a time. A reveal draws only the page that holds the row: the rows before that page
+ * stay behind the "more" row, and the rows after it go behind one of their own
+ * (docs/design-system.md, "Navigation Reveals the Item").
  *
  * @param {Document | HTMLElement} scope
  * @param {string} path
@@ -9173,11 +9271,73 @@ function mountTreePageHolding(scope, path) {
     /** @type {HTMLElement} */ (scope),
   )) {
     var page = pendingTreePages.get(sentinel.dataset.pageId);
-    if (page?.nodes.some((/** @type {{path: string}} */ node) => node.path === path)) {
+    var index = page
+      ? page.nodes.findIndex((/** @type {{path: string}} */ node) => node.path === path)
+      : -1;
+    if (index >= TREE_PAGE_SIZE) {
+      return mountTreePageAt(sentinel, page, index - (index % TREE_PAGE_SIZE)) !== null;
+    }
+    if (index >= 0) {
       return mountNextTreePage(sentinel) !== null;
     }
   }
   return false;
+}
+
+/**
+ * Draw the page that starts *start* rows into what *sentinel* holds back, after the
+ * sentinel, which keeps the rows before that page, and the rows after it behind a "more"
+ * row of its own. Each of the two draws its page in place, as any "more" row does
+ * (mountNextTreePage), so pressing them draws the folder in order.
+ *
+ * The cost is one page's, however long the folder. Measured 2026-11-15 in headless
+ * Chrome 152 against a live server, with the folder's first page drawn, on a machine at
+ * load average 14: `revealFileRow` for the last of 10,000 files took 18 ms (median of
+ * five, at most 20 ms) and 28 ms to the second frame after, with the row selected and in
+ * view, against 17 ms for a row in the second page. Drawing every page up to the row
+ * instead, as pressing "more" until it appears would, took 204 ms for 2,000 files, 783 ms
+ * for 5,000, and 2.75 s for 10,000, most of it the layout of every row drawn.
+ *
+ * @param {HTMLElement} sentinel
+ * @param {{nodes: {path: string}[], options: Record<string, any>}} page
+ * @param {number} start A multiple of TREE_PAGE_SIZE within `page.nodes`.
+ * @returns {HTMLElement | null} The first row drawn.
+ */
+function mountTreePageAt(sentinel, page, start) {
+  var nodes = page.nodes;
+  var offset = Number(page.options.positionOffset) || 0;
+  treeKeyboard?.prepareForMutation();
+  page.nodes = nodes.slice(0, start);
+  var temporary = document.createElement("div");
+  temporary.innerHTML = withTreeIdScope(
+    page.options.section || "",
+    () =>
+      renderTreeNodes(nodes.slice(start, start + TREE_PAGE_SIZE), false, {
+        ...page.options,
+        positionOffset: offset + start,
+      }) +
+      deferredTreePageHtml(nodes.slice(start + TREE_PAGE_SIZE), {
+        ...page.options,
+        positionOffset: offset + start + TREE_PAGE_SIZE,
+      }),
+  );
+  var label = document.getElementById(sentinel.getAttribute("aria-labelledby") || "");
+  if (label) {
+    label.textContent = `Show ${start} more (${page.options.setSize} total)`;
+  }
+  var after = sentinel.nextElementSibling;
+  var firstMounted = null;
+  for (const node of Array.prototype.slice.call(temporary.childNodes)) {
+    sentinel.parentElement?.insertBefore(node, after);
+    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
+      firstMounted = node;
+    }
+  }
+  // A drawn page arrives without current filter decoration, as mountNextTreePage's does.
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  return firstMounted;
 }
 
 /**
