@@ -119,7 +119,8 @@ const ROWS = `(() => {
   // Each plugin's depth indent, the formula it gives its rows.
   const DEPTH = {
     pulls: "calc(var(--github-pulls-indent, 0px) + var(--github-pull-file-depth, 1) * var(--tree-indent))",
-    summary: "calc(var(--diff-summary-depth, 0) * var(--tree-indent))",
+    summary:
+      "calc((var(--diff-summary-depth, 0) + 1) * var(--tree-indent) - var(--diff-summary-toggle-pull))",
   };
   const indentOf = (row, tree) => {
     const probe = document.createElement("span");

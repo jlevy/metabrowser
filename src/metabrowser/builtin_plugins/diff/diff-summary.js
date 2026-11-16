@@ -16,9 +16,11 @@
 // `createSummaryTree` is every decision without a DOM: which folders are open, the rows a
 // reader sees, the row that takes Tab, and what a key or a press does; activating a file
 // jumps the diff to it. tests/dom/diff-summary-session.js runs it from the command line.
-// `mountSummaryTree` is the paint: the nav panel's tree rows adapted to the page, in a box
-// of its own that scrolls, drawn a window at a time as the Pulls tab's tree is, and on the
-// same rows, the shell's `.changed-file-row` class set (static/styles.css).
+// `mountSummaryTree` is the paint: the nav panel's tree rows adapted to the page, on the
+// same rows, the shell's `.changed-file-row` class set (static/styles.css). Open, the tree
+// has no scroll bar of its own: it is as tall as its rows and grows in the page's flow, and
+// it draws only the rows in the window's view of it, and the overscan, as the Pulls tab's
+// tree draws the rows in the panel's view (see SUMMARY_ROWS_OVERSCAN).
 //
 // The arrow keys move along the rows and never move the diff: the tree sits above the
 // files, so a jump on every step would scroll it out of the reader's sight. Enter, Space,
@@ -51,7 +53,22 @@
  */
 export const SUMMARY_AUTO_EXPAND_FILES = 3000;
 
-/** Rows drawn past the box's view each way, as the Pulls tab's tree draws them. */
+/**
+ * Rows drawn past the window's view of the tree each way, as the Pulls tab's tree draws them.
+ *
+ * An open tree has no bound on its length of its own and no scroll bar: it is as tall as its
+ * rows, one --ui-row-height each, in the page's flow, and the document holds only the rows in
+ * the window's view and this many each way. Its length is bounded by the comparison's, at
+ * most 2,000 files (`MAX_MANIFEST_FILES`), a few thousand rows, tens of thousands of pixels,
+ * where a browser lays out 33,554,428 (docs/large-content-rendering.md). Measured 2026-11-15
+ * in headless Chrome 152 at 1280×900, at a load average of 16, five loads each, a press after
+ * a hover, on synthetic patches of 106 files (133 rows, 3,221 px), 600 files (968 rows,
+ * 23,237 px), and 2,000 files four folders deep (2,290 rows, 54,965 px): the rows showed 8.4
+ * to 16.3, 16.2 to 19.8, and 48.3 to 57.4 ms after the press; the document held at most 116
+ * rows; scrolling the page through the whole tree, 400 px and two frames a step, took the
+ * two frames, 33.3 ms, at the median, and at most 33.9, 40.6, and 63.3 ms, one frame late;
+ * and no task ran long.
+ */
 export const SUMMARY_ROWS_OVERSCAN = 40;
 
 /**
@@ -207,9 +224,12 @@ export function createSummaryTree(tree, files, options = {}) {
   });
 }
 
+/** An `overflow` that makes a box cut what is inside it from view. */
+const CLIPS = /^(?:auto|scroll|hidden|clip|overlay)$/;
+
 /**
  * Which rows of a windowed tree are in the document, in their order: those *range* holds,
- * the rows in the box's view and its overscan (`windowRange` of the shared tree), and the
+ * the rows in the window's view and its overscan (`windowRange` of the shared tree), and the
  * row that takes Tab wherever it is, so focus never leaves with a scroll. Pure.
  *
  * @param {{start: number, end: number}} range
@@ -384,7 +404,29 @@ export function mountSummaryTree(host) {
     return { element, content: contentOf(row) };
   }
 
-  /** Draw the rows in the box's view, and the anchor's, in order; leave the rest out. */
+  /**
+   * The part of the window the tree can be seen through, in client coordinates: the window,
+   * cut by every box above the tree that scrolls or clips, such as the pane the page scrolls.
+   * @returns {{top: number, bottom: number}}
+   */
+  function viewOf() {
+    let top = 0;
+    let bottom =
+      typeof window.innerHeight === "number" ? window.innerHeight : Number.POSITIVE_INFINITY;
+    for (let node = body.parentElement; node; node = node.parentElement) {
+      if (CLIPS.test(getComputedStyle(node).overflowY ?? "")) {
+        const box = node.getBoundingClientRect();
+        top = Math.max(top, box.top);
+        bottom = Math.min(bottom, box.bottom);
+      }
+    }
+    return { top, bottom };
+  }
+
+  /** The window last drawn, so a scroll that moves no row draws nothing again. */
+  let drawnWindow = "";
+
+  /** Draw the rows in the window's view, and the anchor's, in order; leave the rest out. */
   function paintWindow() {
     if (disposed || !open) {
       return;
@@ -395,7 +437,7 @@ export function mountSummaryTree(host) {
     if (height <= 0) {
       return;
     }
-    const view = body.getBoundingClientRect();
+    const view = viewOf();
     const { start, end } = host.tree.windowRange({
       count: rows.length,
       rowHeight: height,
@@ -405,7 +447,13 @@ export function mountSummaryTree(host) {
       overscan: SUMMARY_ROWS_OVERSCAN,
     });
     const anchor = model.anchor();
-    const wanted = rowsToDraw({ start, end }, anchor === null ? undefined : model.indexOf(anchor));
+    const anchorAt = anchor === null ? undefined : model.indexOf(anchor);
+    const shown = `${model.version()} ${start} ${end} ${anchorAt}`;
+    if (shown === drawnWindow) {
+      return;
+    }
+    drawnWindow = shown;
+    const wanted = rowsToDraw({ start, end }, anchorAt);
     const keep = new Set(wanted.map((at) => rows[at].id));
     for (const [id, entry] of drawn) {
       if (!keep.has(id)) {
@@ -436,7 +484,7 @@ export function mountSummaryTree(host) {
     drawnVersion = model.version();
   }
 
-  /** Focus the row that takes Tab, drawn, and in the box's view. */
+  /** Focus the row that takes Tab, drawn, and in the window's view. */
   function focusAnchor() {
     const anchor = model.anchor();
     const element = anchor === null ? null : (drawn.get(anchor)?.element ?? null);
@@ -518,7 +566,11 @@ export function mountSummaryTree(host) {
       });
     }
   };
-  body.addEventListener("scroll", onScroll, { passive: true, signal });
+  // The tree has no scroll of its own: the window's view of it moves when the page, or any
+  // box above it, scrolls, which a listener on the document hears in its capture phase, and
+  // when the window or the tree changes size.
+  document.addEventListener("scroll", onScroll, { capture: true, passive: true, signal });
+  window.addEventListener("resize", onScroll, { passive: true, signal });
   const sized = typeof ResizeObserver === "function" ? new ResizeObserver(onScroll) : null;
   sized?.observe(body);
 
@@ -526,7 +578,7 @@ export function mountSummaryTree(host) {
     body,
     model,
     /**
-     * Open or close the box. It opens at its height in one travel, its first rows drawn
+     * Open or close the tree. It opens at its height in one travel, its first rows drawn
      * before it does, and closing keeps what it drew.
      *
      * @param {boolean} next

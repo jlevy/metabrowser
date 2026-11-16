@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- An opened Diff summary no longer scrolls in a box of its own: its tree of files is as
+  tall as its rows, and the page scrolls past it to the diff, drawing only the rows in
+  view. Its first level starts one indentation step in from the summary’s header, and
+  each folder’s rows one step further, as nested rows do in the Files tree and the Pulls
+  tab.
+
 - A Pulls row now reads its number’s line first, a stack member’s place, the number, and
   the author, as “1/4 · #113 · jlevy”, with the age at the row’s end, and then the title
   on a line of its own, running to the pane’s edge and cut there with an ellipsis.

@@ -1305,9 +1305,22 @@ counts”, or each side’s when they differ), and its tooltip says that alone, 
 name is on the row ([Tooltips Add Information](#tooltips-add-information)). A path a
 patch lists more than once, as a file that became a symlink, is one row with both
 changes’ counts, and goes to the first of its sections.
-The tree sits in a box under the toolbar, at most `60vh` tall, which scrolls inside
-itself so the files stay a scroll away, and it is drawn a window at a time.
-Nothing of it is mounted until the header first opens it.
+The header is the tree’s root, so the tree’s first level starts one indentation step,
+`--tree-indent`, in from it, its chevron from the header’s chevron and its name from the
+header’s words, and each level one step more, as a folder’s rows start one step in from
+the folder in the Files tree and the Pulls tab’s. The rows give back the header’s pull
+left of the toolbar’s edge, `--diff-summary-toggle-pull`, which lets its hover ground
+reach past its chevron.
+Before, the first level started 4 px in from the header.
+Opened, the tree sits under the toolbar as tall as its rows, in the page’s flow, with no
+scroll bar of its own: the page scrolls past it to the files.
+It has no bound on its length beyond the comparison’s, at most 2,000 files, and the
+document holds only the rows in the window’s view of it and `SUMMARY_ROWS_OVERSCAN` more
+each way, as the Pulls tab’s tree does.
+On synthetic patches of 106, 600, and 2,000 files (3,221, 23,237, and 54,965 px tall) in
+Chrome the rows showed 8 to 57 ms after a press, the document held at most 116 rows, and
+scrolling the page through the tree kept its frames; the numbers are beside the constant
+in `diff-summary.js`. Nothing of it is mounted until the header first opens it.
 The keys are a tree’s: the arrows move one tab stop, Right and Left open, close, and
 step into or out of a folder, and Home and End go to the ends.
 Only Enter, Space, or a press on a file jumps the diff to that file, because the tree

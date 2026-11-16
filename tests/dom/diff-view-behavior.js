@@ -325,7 +325,11 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
   global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
   const element = global.Element;
   global.Element = FakeElement;
-  global.window = { requestAnimationFrame: () => 1, cancelAnimationFrame() {} };
+  global.window = {
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+    addEventListener() {},
+  };
   try {
     const host = new LaidOutElement("div");
     const kinds = {
@@ -521,7 +525,11 @@ async function repeatedPathChecks(mountDiffView, twoFiles) {
   const element = global.Element;
   global.document.createElement = (tag) => new LaidOutElement(tag);
   global.getComputedStyle = () => ({ getPropertyValue: () => "24px" });
-  global.window = { requestAnimationFrame: () => 1, cancelAnimationFrame() {} };
+  global.window = {
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+    addEventListener() {},
+  };
   global.Element = FakeElement;
   try {
     const host = new LaidOutElement("div");
@@ -567,8 +575,9 @@ async function repeatedPathChecks(mountDiffView, twoFiles) {
 }
 
 /**
- * A long change set's tree draws the rows in its box's view and a window past it, and moves
- * that window with the box's scroll, as the Pulls tab's tree does.
+ * A long change set's tree draws the rows in the window's view of it and a window past it,
+ * and moves that window as the page scrolls, as the Pulls tab's tree does: the tree has no
+ * scroll of its own (mb-hi4l).
  */
 async function windowedSummaryChecks(repoRoot) {
   const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
@@ -586,6 +595,16 @@ async function windowedSummaryChecks(repoRoot) {
       return 1;
     },
     cancelAnimationFrame() {},
+    addEventListener() {},
+    innerHeight: 480,
+  };
+  // The page's scrolls, which the tree hears on the document in their capture phase.
+  const scrolls = [];
+  const listen = global.document.addEventListener;
+  global.document.addEventListener = (type, handler, options) => {
+    if (type === "scroll") {
+      scrolls.push({ handler, capture: options?.capture === true });
+    }
   };
   try {
     const { mountSummaryTree, SUMMARY_ROWS_OVERSCAN } = await import(
@@ -609,18 +628,24 @@ async function windowedSummaryChecks(repoRoot) {
       chevron: () => null,
       jump: (path) => jumps.push(path),
     });
-    tree.body.box = { top: 0, bottom: 480, left: 0, right: 600, width: 600, height: 480 };
     tree.setOpen(true);
     const drawn = () => tree.body.find("diff-summary-row").length;
     const visible = 480 / 24;
     check(
-      "a long tree draws its view and the overscan, not every row",
+      "a long tree draws the window's view of it and the overscan, not every row",
       drawn() === visible + SUMMARY_ROWS_OVERSCAN && tree.model.rows().length === 1201,
       String(drawn()),
     );
+    check(
+      "the tree has no scroll of its own and hears the page's",
+      (tree.body.listeners.get("scroll") ?? []).length === 0 &&
+        scrolls.length === 1 &&
+        scrolls[0].capture,
+      JSON.stringify(scrolls.map((each) => each.capture)),
+    );
     const list = tree.body.children[0];
     list.box = { top: -12000, bottom: -12000 + 1201 * 24 };
-    for (const handler of tree.body.listeners.get("scroll") ?? []) {
+    for (const { handler } of scrolls) {
       handler({});
     }
     frame?.();
@@ -638,6 +663,7 @@ async function windowedSummaryChecks(repoRoot) {
     tree.dispose();
     check("a disposed tree leaves the document", tree.body.parentNode === null);
   } finally {
+    global.document.addEventListener = listen;
     global.document.createElement = createElement;
     global.getComputedStyle = computed;
     global.window = view;

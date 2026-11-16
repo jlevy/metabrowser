@@ -481,6 +481,7 @@ window that never existed on disk.
 | `WINDOW_ROWS` | 100 rows | One cached-page request by the Pulls panel; automatic catalog backfill is not capped by the display window |
 | `DISPLAY_ROWS` | 500 rows | Pulls rows read from the cache at first; scrolling then reads one `WINDOW_ROWS` page per approach to the tail, with no cap |
 | `PULL_ROWS_OVERSCAN` | 40 rows | Neighbors on either side of the visible Pulls viewport; `createPullsWindow` also retains protected current or focused rows |
+| `SUMMARY_ROWS_OVERSCAN` | 40 rows | Diff summary rows on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond the comparison’s 2,000 files; the row that takes Tab is always drawn |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.
