@@ -435,9 +435,11 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   request outside the list, and a commit outside the history read are named or left,
   each with its reason.
 - The decisions run browserlessly in `tests/dom/nav-reveal-session.js`, pinned by
-  `cli-ui-nav-reveal.tryscript.md` (`navigation.reveal-item`). The rows in view after
-  each route are checked in headless Chrome (`tests/test_nav_reveal_chrome.py`,
-  `navigation.reveal-item-paint`).
+  `cli-ui-nav-reveal.tryscript.md` (`navigation.reveal-item`), and the Commits wait for
+  history in `tests/dom/git-commit-history-session.js`, pinned by
+  `cli-ui-git-commit-history.tryscript.md` (`git.commit-history-landing`). The rows in
+  view after each route are checked in headless Chrome
+  (`tests/test_nav_reveal_chrome.py`, `navigation.reveal-item-paint`).
 
 ### API Changes
 
