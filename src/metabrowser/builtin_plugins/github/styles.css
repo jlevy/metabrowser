@@ -531,7 +531,7 @@
   border-bottom: 0;
 }
 
-/* ââ The Conversation timeline ââââââââââââââââââââââââââââââââââ
+/* ── The Conversation timeline ──────────────────────────────────
    docs/design-system.md, "Conversation Timeline". A commit row is set in a card head's type
    and line, and its subject starts where an author's name does after the avatar, or its
    empty slot, and the identity's gap (--github-pull-avatar-size, --github-pull-identity-gap,
@@ -802,7 +802,7 @@
   color: var(--status-error);
 }
 
-/* ââ A pull request's state ââââââââââââââââââââââââââââââââââââââ
+/* ── A pull request's state ──────────────────────────────────────
    One vocabulary for a row and its page's header: docs/design-system.md, "The Pulls Tab". The
    four colors are GitHub's hues in both themes: green, a neutral gray, purple, and red. Each
    hue stays, and lightness and chroma answer the surface. The shapes differ, and the name is
@@ -857,7 +857,7 @@
   height: 1em;
 }
 
-/* ââ The Pulls tab âââââââââââââââââââââââââââââââââââââââââââââââ
+/* ── The Pulls tab ───────────────────────────────────────────────
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
    primitives; what is here is their placement, and a row, which takes the row contract. */
 .github-pulls-filters {
@@ -907,7 +907,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The shared spinner beside "Fetching pull requestsâ¦", centred on the words. */
+/* The shared spinner beside "Fetching pull requests…", centred on the words. */
 .github-pulls-connection-text {
   display: flex;
   align-items: center;
@@ -1382,7 +1382,7 @@
   min-width: 0;
 }
 /* A stack's position takes the pull request number's weight, through its one token, so
-   "1/6 Â· #N" reads as one identifier (docs/design-system.md, "Pull Request Numbers"). */
+   "1/6 · #N" reads as one identifier (docs/design-system.md, "Pull Request Numbers"). */
 .github-pull-stack-position,
 .github-pull-stack-member-position {
   font-weight: var(--pull-number-weight);
@@ -1438,7 +1438,7 @@
   box-shadow: inset 2px 0 0 var(--highlight-bar);
 }
 
-/* ââ Stacks (docs/design-system.md, "Stacks") âââââââââââââââââââââ
+/* ── Stacks (docs/design-system.md, "Stacks") ─────────────────────
    One design names a stack wherever one is shown: the pull request page's stack button
    and menu, a Pulls row's place, and the Pulls tab's stack groups.
      .github-pull-stack-label     "Stack #N": on the shell's .group-heading, the label

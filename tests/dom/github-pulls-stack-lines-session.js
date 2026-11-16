@@ -2,21 +2,23 @@
 // through the production code.
 //
 // builtin_plugins/github/stack-lines.js decides what a stack's heading shows of its change
-// line, its combined change, the bottom's base against the top's head, which the server sums
-// (`GET stack-change`): the shell's pending placeholder while the line is read, the line once
-// it is, and nothing where it cannot be had. It reads the stacks the list draws, one at a time
-// when the browser is idle, within the Pulls tab's hourly cap, and keeps each answer in the
-// document's comparison keep under the stack's two commits. Its answers are the server's: the
-// stack changes in tests/fixtures/github-stack-change-responses.json, which
+// line, its combined change, its members' own changes accumulated, which the server sums
+// (`GET stack-change`): the shell's pending placeholder while the read of its stack is on
+// its way, the line once it is, and nothing where it cannot be had. It reads the stacks the
+// list draws, one at a time when the browser is idle, once for each stack's members and
+// their heads, within the lines' own hourly cap, and keeps each answer in the document's
+// comparison keep under its stack and its revision. Its answers are the server's: the stack
+// changes in tests/fixtures/github-stack-change-responses.json, which
 // tests/test_github_stack_change.py records from the real route, and the lists and stack
 // snapshot the stack-groups session replays.
 //
-// `lane` drives the lane alone over those answers, with the browser's idle time and its
-// clock in the session's hands, and prints what each heading shows at each step and what was
-// asked. `heading` mounts the production panel over a stand-in for the DOM with the SDK's own
-// painters (tests/dom/sdk-ref-fixture.js) and prints the heading of each stack in its three
-// states: waiting, its line arrived, and unavailable, with its parts as drawn and its
-// accessible name. `invariants` are the relations every step holds.
+// `lane` drives the lane alone over those answers, with the browser's idle time, its clock,
+// and when each read is answered in the session's hands, and prints what each heading shows
+// at each step and what was asked. `heading` mounts the production panel over a stand-in
+// for the DOM with the SDK's own painters (tests/dom/sdk-ref-fixture.js) and prints the
+// heading of each stack in its three states: waiting, its line arrived, and unavailable,
+// with its parts as drawn and its accessible name. `invariants` are the relations every
+// step holds.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -38,6 +40,9 @@ const rowsOf = (rows) =>
     : [rows.same_as].flat().flatMap((holder) => rowsOf(lists[holder].body.rows));
 const listed = { ...lists.current.body, rows: rowsOf(lists.current.body.rows) };
 const SOURCE = "https://github.com/octo/demo";
+// A head the catalog reports once a stack's top has moved: no commit of the recording.
+const MOVED = "1".repeat(40);
+const MOVED_AGAIN = "2".repeat(40);
 
 async function settle() {
   for (let turn = 0; turn < 20; turn += 1) {
@@ -53,7 +58,8 @@ function answerFor(number) {
 
 /**
  * The lane alone: the browser's idle callbacks queued for the session to run, its clock the
- * session's, and every request it sends logged.
+ * session's, each read answered when the session lets it be, and every request it sends
+ * logged.
  */
 async function laneStory(lines, prefetch) {
   const { createStackLines, stackChangeKey, STACK_LINE_RETRY_MS, createStackLineIndex } = lines;
@@ -64,18 +70,25 @@ async function laneStory(lines, prefetch) {
   let idle = [];
   const asked = [];
   let answers = (number) => answerFor(number);
+  /** Reads on their way, each answered when the session runs it. */
+  const held = [];
   const repaints = [];
   const deps = (budget) => ({
     keep,
     index,
-    budget,
-    async read(number) {
+    ...(budget === undefined ? {} : { budget }),
+    read(number) {
       asked.push(`GET /api/plugin/github/stack-change?number=${number}`);
-      const answer = answers(number);
-      if (answer instanceof Error) {
-        throw answer;
-      }
-      return { status: answer.status, body: answer.body };
+      return new Promise((resolve, reject) => {
+        held.push(() => {
+          const answer = answers(number);
+          if (answer instanceof Error) {
+            reject(answer);
+          } else {
+            resolve({ status: answer.status, body: answer.body });
+          }
+        });
+      });
     },
     schedule(callback) {
       idle.push(callback);
@@ -88,15 +101,40 @@ async function laneStory(lines, prefetch) {
     now: () => now,
     changed: (number) => repaints.push(number),
   });
-  const shared = stacks.shared.body.stacks.map(({ number, pulls }) => ({ number, pulls }));
-  const budget = prefetch.createWarmBudget(() => now);
-  let lane = createStackLines(deps(budget));
+  // Each stack as the list draws it: its members, and each one's head from the recorded rows.
+  const heads = new Map(listed.rows.map((row) => [row.number, row.head_oid ?? null]));
+  let shared = stacks.shared.body.stacks.map(({ number, pulls }) => ({
+    number,
+    pulls,
+    heads: pulls.map((member) => heads.get(member) ?? null),
+  }));
+  /** The list with stack *number*'s member at *at*, its top unless named, moved to *head*. */
+  const moved = (number, head, at = -1) => {
+    shared = shared.map((stack) =>
+      stack.number === number
+        ? { ...stack, heads: stack.heads.with(at < 0 ? stack.heads.length + at : at, head) }
+        : stack,
+    );
+  };
+  let lane = createStackLines(deps());
   const steps = [];
-  /** Run the browser's idle callbacks, and what each read leads to, until none is left. */
+  /** The next idle callback, and what it leads to. */
+  const idleOnce = async () => {
+    idle.shift()?.();
+    await settle();
+  };
+  /** Answer the reads on their way. */
+  const answer = async () => {
+    for (const release of held.splice(0)) {
+      release();
+    }
+    await settle();
+  };
+  /** Run the browser's idle callbacks, and answer each read, until none is left. */
   const runIdle = async () => {
-    while (idle.length > 0) {
-      idle.shift()();
-      await settle();
+    while (idle.length > 0 || held.length > 0) {
+      await idleOnce();
+      await answer();
     }
   };
   const shows = () =>
@@ -124,53 +162,115 @@ async function laneStory(lines, prefetch) {
     });
   };
 
-  await step("the list draws #286 and #290: each heading waits, nothing is read yet", () =>
+  await step("the list draws #286 and #290: nothing is read yet, and no heading waits", () =>
     lane.want(shared, SOURCE),
   );
   assert.equal(idle.length, 1, "one read waits for idle at a time");
-  await step("the browser is idle: each is read in turn, #286 summed, #290 not cached", runIdle);
+  await step("the browser is idle: #286's read is sent, and only its heading waits", idleOnce);
+  await step("#286's line arrives, and #290's read is sent: its heading waits now", async () => {
+    await answer();
+    await idleOnce();
+  });
+  await step("#290's answer: a member's list is not cached, so its heading shows nothing", answer);
   const kept = changes.current.body;
-  const key = stackChangeKey(kept.base, kept.head);
-  assert.deepEqual(keep.snapshot().kept, [key], "the change is kept under its two commits");
+  const key = stackChangeKey(kept.number, kept.revision);
+  assert.deepEqual(keep.snapshot().kept, [key], "the change is kept under its stack and revision");
   await step("drawn again: the line in the paint that draws it, and nothing is read", () =>
     lane.want(shared, SOURCE),
   );
   assert.equal(idle.length, 0);
   // A Pulls tab mounted again in the document: its lane shares the document's keep and index.
   lane.dispose();
-  lane = createStackLines(deps(budget));
+  lane = createStackLines(deps());
   await step("a Pulls tab mounted again: the line at once, from the keep", () =>
     lane.want(shared, SOURCE),
   );
   assert.equal(idle.length, 0, "a remount reads nothing");
-  now += kept.fresh_for_s * 1000;
-  await step("its window passed: each is read again, the line it had shown meanwhile", () =>
+  // An hour on, past any window: an answer holds until what it depends on changes.
+  now += 3_600_000;
+  await step("an hour on, with nothing changed: nothing is read, and no heading waits", () =>
     lane.want(shared, SOURCE),
   );
+  assert.equal(idle.length, 0, "an answer is not read again on a timer");
+  // Any member's change moves the accumulation: here the bottom's.
+  moved(286, MOVED, 0);
+  await step(
+    "#286's bottom moves: it is read again, and its line stays shown meanwhile",
+    async () => {
+      lane.want(shared, SOURCE);
+      await idleOnce();
+    },
+  );
+  await step("its answer arrives: the line it names", answer);
+  moved(286, MOVED_AGAIN);
+  answers = (number) => (number === 286 ? new Error("connection dropped") : answerFor(number));
+  await step("#286's top moves again and the read fails: the line it had stays shown", async () => {
+    lane.want(shared, SOURCE);
+    await runIdle();
+  });
+  await step("drawn again within the minute: the failed read is not asked again yet", () =>
+    lane.want(shared, SOURCE),
+  );
+  assert.equal(idle.length, 0);
+  now += STACK_LINE_RETRY_MS;
+  answers = (number) => (number === 286 ? { status: 304, body: null } : answerFor(number));
+  await step("a minute on it is asked again; a 304 says its last answer holds", async () => {
+    lane.want(shared, SOURCE);
+    await runIdle();
+  });
+  // The keep let the line go: the stack is read again, and that read fails.
+  keep.clear();
   answers = (number) =>
     number === 286 ? { status: 500, body: { error: "boom" } } : answerFor(number);
-  keep.clear();
-  await step("the keep let it go and the read failed: no line, and no placeholder", runIdle);
+  await step("the keep let #286's line go and its read failed: no line, and no wait", async () => {
+    lane.want(shared, SOURCE);
+    await runIdle();
+  });
   now += STACK_LINE_RETRY_MS;
   answers = (number) => answerFor(number);
-  await step("a minute on, the failed read is asked again", async () => {
+  await step(
+    "a minute on, it is asked again, with no placeholder, and its line is back",
+    async () => {
+      lane.want(shared, SOURCE);
+      await idleOnce();
+      assert.equal(lane.line(shared[0], SOURCE).phase, "none", "a retry after a failure waits not");
+      await answer();
+    },
+  );
+  moved(290, MOVED);
+  await step("a member of #290 moves: its first read under the new identity waits", async () => {
     lane.want(shared, SOURCE);
-    await runIdle();
+    await idleOnce();
   });
-  // A server that serves no GitHub repository refuses every stack: one answer says so.
-  keep.clear();
+  await step("still not cached: nothing, and no wait again", answer);
+  // A server that refuses every stack: one answer says so, and the lane asks a minute on.
+  for (const [refusal, what] of [["not_github", "a server with no repository"]]) {
+    keep.clear();
+    index.clear();
+    lane.dispose();
+    lane = createStackLines(deps());
+    answers = () => changes[refusal];
+    await step(`${what}: one refusal, and no other stack is read`, async () => {
+      lane.want(shared, SOURCE);
+      await runIdle();
+    });
+    await step(`${what}, drawn again within the minute: nothing is read`, () =>
+      lane.want(shared, SOURCE),
+    );
+    assert.equal(idle.length, 0);
+    now += STACK_LINE_RETRY_MS;
+    await step(`${what}, a minute on: one read, and no heading waits`, async () => {
+      lane.want(shared, SOURCE);
+      await runIdle();
+    });
+  }
+  // The lines' own hourly cap, apart from the comparison warms'.
   index.clear();
-  answers = () => changes.not_github;
-  await step("a server with no repository: one refusal, and no heading waits", async () => {
-    lane.want(shared, SOURCE);
-    await runIdle();
-  });
-  // The Pulls tab's hourly cap, which its comparison warms count against too.
-  index.clear();
+  answers = (number) => answerFor(number);
   const spent = prefetch.createWarmBudget(() => now, 0);
   lane.dispose();
   lane = createStackLines(deps(spent));
-  await step("the hour's cap is spent: nothing is read, and no heading waits", async () => {
+  await step("the lines' hourly cap is spent: nothing is read, and no heading waits", async () => {
     lane.want(shared, SOURCE);
     await runIdle();
   });
@@ -216,8 +316,10 @@ async function headingStory() {
   const respond = (body, status = 200) =>
     Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
   const requests = [];
-  /** The stack changes the server answers, by stack. */
+  /** The stack changes the server answers, by stack, each held until the session lets it go. */
   const changeFor = (number) => answerFor(number);
+  /** @type {(() => void)[]} */
+  const held = [];
   const globals = {
     document,
     window: {
@@ -248,7 +350,9 @@ async function headingStory() {
       if (route.startsWith("/api/plugin/github/stack-change?")) {
         requests.push(route);
         const answer = changeFor(Number(new URL(route, "http://x").searchParams.get("number")));
-        return respond(answer.body, answer.status);
+        return new Promise((resolve) => held.push(resolve)).then(() =>
+          respond(answer.body, answer.status),
+        );
       }
       if (route.startsWith("/api/plugin/github/pulls?")) {
         return respond(listed);
@@ -361,43 +465,64 @@ async function headingStory() {
           ];
         }),
       );
-    const runIdle = async () => {
-      while (idle.length > 0) {
-        idle.shift()();
-        await paint();
+    /** The next idle callback, and the paint after it. */
+    const idleOnce = async () => {
+      idle.shift()?.();
+      await paint();
+    };
+    /** Let the reads on their way be answered, and paint. */
+    const release = async () => {
+      for (const answer of held.splice(0)) {
+        answer();
       }
+      await paint();
     };
     const steps = [];
+    const changeOf = (row) =>
+      childByClass(childByClass(row, "github-pulls-stack-heading"), "github-pulls-stack-change");
     await paint();
     steps.push({
-      step: "mounted: each heading holds the pending placeholder; the browser is not idle yet",
+      step: "mounted: no heading waits, since no read is sent; the browser is not idle yet",
       headings: headings(),
       requests: requests.splice(0),
     });
-    // The placeholder and the label are the nodes the arrival keeps or replaces in place.
+    // The list draws #290 first. Its read is sent when the browser is idle, and only then
+    // does its heading wait, its name saying so; #286's, queued behind it, does not.
+    await idleOnce();
+    steps.push({
+      step: "idle: #290's read is sent, and its heading waits; #286's is queued and does not",
+      headings: headings(),
+      requests: requests.splice(0),
+    });
+    const row290 = stackRows().find((row) => row.dataset.stack === "290");
+    const pendingBefore = changeOf(row290).childNodes[0];
+    await paint();
+    assert.equal(
+      changeOf(row290).childNodes[0],
+      pendingBefore,
+      "the placeholder is one node across paints, so its quiet period and pulse run once",
+    );
+    await release();
+    await idleOnce();
+    steps.push({
+      step: "#290 has a member with no list, so it shows nothing; #286's read is sent, and it waits",
+      headings: headings(),
+      requests: requests.splice(0),
+    });
+    // The label is the node the arrival keeps.
     const row286 = stackRows().find((row) => row.dataset.stack === "286");
     const labelBefore = childByClass(
       childByClass(row286, "github-pulls-stack-heading"),
       "github-pull-stack-label",
     );
-    const pendingBefore = childByClass(
-      childByClass(row286, "github-pulls-stack-heading"),
-      "github-pulls-stack-change",
-    ).childNodes[0];
-    await paint();
-    assert.equal(
-      childByClass(childByClass(row286, "github-pulls-stack-heading"), "github-pulls-stack-change")
-        .childNodes[0],
-      pendingBefore,
-      "the placeholder is one node across paints, so its quiet period and pulse run once",
-    );
-    await runIdle();
+    await release();
     const arrived = headings();
     steps.push({
-      step: "idle: #286's line arrives in its heading, and #290's cannot be had",
+      step: "#286's line arrives in its heading, and #290's shows nothing still",
       headings: arrived,
       requests: requests.splice(0),
     });
+    assert.equal(idle.length, 0, "nothing more is read");
     const heading286 = childByClass(row286, "github-pulls-stack-heading");
     assert.equal(
       childByClass(heading286, "github-pull-stack-label"),
@@ -441,16 +566,17 @@ async function headingStory() {
   const lines = await import(pathToFileURL(path.join(GITHUB, "stack-lines.js")).href);
   const prefetch = await import(pathToFileURL(path.join(GITHUB, "comparison-prefetch.js")).href);
   const lane = await laneStory(lines, prefetch);
-  // Every step: a heading waits only while a read of it is coming or queued, and a shown line
-  // is the recorded summed change.
+  // Every step: a heading waits only while its own stack's read is on its way, never for a
+  // read queued behind another, and at most one heading waits at a time.
   for (const step of lane) {
-    for (const [stack, shown] of Object.entries(step.shows)) {
-      if (shown === "waiting") {
-        assert.ok(
-          step.lane.queue.includes(Number(stack.slice(7))) || step.lane.running !== null,
-          `${step.step}: ${stack} waits for a read that is coming`,
-        );
-      }
+    const waiting = Object.entries(step.shows).filter(([, shown]) => shown === "waiting");
+    assert.ok(waiting.length <= 1, `${step.step}: one heading waits at most`);
+    for (const [stack] of waiting) {
+      assert.equal(
+        step.lane.running,
+        Number(stack.slice(7)),
+        `${step.step}: ${stack} waits for its own read on its way`,
+      );
     }
   }
   const heading = await headingStory();

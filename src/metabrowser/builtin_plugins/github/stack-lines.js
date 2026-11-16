@@ -1,56 +1,73 @@
 // A native stack's brief change line, on its heading in the Pulls column (mb-9ekj):
 // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567".
 //
-// What it says is the stack's combined change, its bottom pull request's base against its top
-// pull request's head, which the server sums in the repository store from the two cached
-// records' comparisons (`GET stack-change`, pull_stack_change.py). Summing each pull request's
-// own counts would count twice a file two layers change. The line is the shell's one
-// component for a change set said in brief (docs/design-system.md, "Brief Change Line"), built
-// and painted through the SDK, `metabrowser.changeLine` and `metabrowser.changeLineNodes`;
-// nothing here paints its parts.
+// What it says is the stack's combined change: a stack is the accumulation of its pull
+// requests, merged or open, so its change is theirs, each member's own changed files, the
+// list its expanded row shows, accumulated bottom first, every file once with a status
+// composed from what the members did to it, and every member's lines summed, which the
+// server does from the cache (`GET stack-change`, pull_stack_change.py). Summing each pull
+// request's own file counts would count twice a file two layers change.
+// The line is the shell's one component for a change set said in brief (docs/design-system.md,
+// "Brief Change Line"), built and painted through the SDK, `metabrowser.changeLine` and
+// `metabrowser.changeLineNodes`; nothing here paints its parts.
 //
 // When it is read, and what it costs:
 //
 // - Only for the stacks whose rows the list draws, its rows in view and the window's overscan,
 //   one at a time, each when the browser is idle, and only once no comparison is being read,
 //   so a page's own read goes first (`keep.quiet`), as the comparison warmer's are.
-// - Each read counts against the Pulls tab's hourly cap, which the warmer's share
-//   (`WARM_PER_HOUR`, `createWarmBudget`). A read is the stack snapshot and two records from
-//   the cache and, the first time a stack's two ends are asked for, their comparison listed
-//   in the store, a manifest with no patch; no GitHub call. Measured 2026-11-16 on this
-//   repository's 19 stacks of 2 to 46 pull requests (pull_stack_change.py): a first answer
-//   ran 3 Git processes and took 52 to 298 ms, and a repeat ran none and took under 1 ms.
-// - An answer was 318 to 430 bytes of JSON. It is kept in the document's comparison keep
-//   under its two commits (`stackChangeKey`), and which answer is each stack's is kept for
-//   the document too (`documentStackLines`), so a heading drawn again, scrolled back into
-//   view or in a Pulls tab mounted again, has its line in the paint that draws it, with no
-//   request. It is asked again once its window passes, the answer's `fresh_for_s`, the stack
-//   snapshot's own window, since its members and so its ends may have moved; the line it
-//   had stays shown meanwhile.
+// - Once for each stack's identity (`stackLineIdentity`): its members and each member's head
+//   as the catalog's rows report it. Any member's change moves the accumulation, and a
+//   member's change moves its head, so a stack is read again when the list's rows say a
+//   member moved or the members changed, and never on a timer (review of #484, A2). A read
+//   that failed is asked again a minute on; a stack with a member whose list is not cached
+//   is not, until its identity changes.
+// - Within the lines' own hourly cap (`STACK_LINES_PER_HOUR`), apart from the comparison
+//   warmer's (`WARM_PER_HOUR`), so the lines never take the warms' share. A read is the stack
+//   snapshot and each member's list of changed files from the cache; no GitHub call, no
+//   fetch, and no Git.
+// - An answer is a few hundred bytes of JSON. It is kept in the document's comparison keep
+//   under its stack and its revision (`stackChangeKey`), and which answer is each stack's is
+//   kept for the document too (`documentStackLines`), so a heading drawn again, scrolled
+//   back into view or in a Pulls tab mounted again, has its line in the paint that draws it,
+//   with no request. A line stays shown until a newer answer replaces it: while its stack is read
+//   again, and when that read fails.
 //
-// A heading waits for its line in the shell's pending placeholder, after the quiet period, so
-// nothing moves when the line arrives. A stack whose change cannot be had, a server with no
-// store or a stack whose ends are not cached, shows no line and no placeholder, and neither
-// does a heading whose read the cap holds.
+// A heading waits for its line in the shell's pending placeholder only while the read of its
+// stack is on its way, after the quiet period, and its accessible name says the change is
+// pending meanwhile. A stack whose last answer for its identity was not a line, whose change
+// cannot be had, never waits again until its identity changes, so its heading does not
+// pulse and go blank (review of #484, A4). Nor does a heading whose read is queued behind
+// another, or whose read the cap holds.
 
 import { createWarmBudget, documentComparisons } from "./comparison-prefetch.js";
 import { stackLabel } from "./pull-stacks.js";
 
 export const STACK_CHANGE_ROUTE = "/api/plugin/github/stack-change";
 
-// A read that failed, a refusal of the request or a broken connection rather than an
-// answer, is asked again after a minute, the pull routes' own freshness window
+// A read that failed, a refusal of the request, a broken connection, or a refusal that holds
+// for the whole server, is asked again after a minute, the pull routes' own freshness window
 // (`FRESHNESS_WINDOW_S`), so a failure that lasts costs one read a minute a stack at most.
 export const STACK_LINE_RETRY_MS = 60_000;
-// The answers whose stack the document remembers, oldest out first: more stacks than any
-// repository's list draws at once. This repository has 19. Measured 2026-11-16 in Node 24,
-// 256 of them, each a stack of 12 pull requests, held 216 KB of heap, 862 bytes each; the
-// answers themselves are in the keep, which bounds them with every comparison.
+// The reads the lines start in an hour, each counted as it starts; the comparison warmer
+// counts its own (`WARM_PER_HOUR`). A read runs no Git: it stats each member's list and,
+// when one changed since the server last accumulated them, parses them all, 6 to 16 ms for
+// #446's 16 cached lists and at most about 210 ms within `MAX_STACK_LIST_BYTES`, a repeat
+// 0.2 ms (measured 2026-11-16 at a load average of 26 to 38, pull_stack_change.py). The
+// list draws every one of this repository's 19 stacks, so a first visit reads 19, and the
+// rest of an hour's reads are stacks whose member moved, and failed reads asked again. So
+// the cap is at most about 13 s of local parsing an hour, and the hour's reads of a Pulls
+// tab left open with nothing changing are none.
+export const STACK_LINES_PER_HOUR = 60;
+// The stacks whose last outcome the document remembers, oldest out first: more stacks than
+// any repository's list draws at once. This repository has 19. Measured 2026-11-16 in Node
+// 24, 256 of them, each a stack of 12 pull requests, held 216 KB of heap, 862 bytes each;
+// the answers themselves are in the keep, which bounds them with every comparison.
 const REMEMBERED_STACKS = 256;
 // The recent outcomes a snapshot reports.
 const RECENT = 8;
 // Refusals that hold for every stack of the server, not one: no stack's change can be had.
-const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
+const SERVER_REFUSALS = new Set(["not_github"]);
 
 /**
  * What `GET stack-change` answers (pull_stack_change.py, `StackChangeEnvelope`).
@@ -59,11 +76,8 @@ const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
  *   state: "absent" | "current",
  *   reason: string | null,
  *   number: number,
- *   bottom: number | null,
- *   top: number | null,
- *   base: string | null,
- *   head: string | null,
- *   fresh_for_s: number,
+ *   pulls: number[],
+ *   revision: string | null,
  *   files: number | null,
  *   additions: number | null,
  *   deletions: number | null,
@@ -71,25 +85,39 @@ const SERVER_REFUSALS = new Set(["not_github", "no_store"]);
  *   statuses: {status: string, count: number}[],
  * }} StackChange
  *
- * @typedef {{number: number, pulls: number[]}} StackMembers
+ * A stack as the list draws it: its number, its members bottom first, and each member's
+ * head as the catalog's row reports it, in the members' order, or null where the list holds
+ * no row of it.
+ * @typedef {{number: number, pulls: number[], heads: (string | null)[]}} StackMembers
  *
  * What a stack's heading shows now: its line, its pending placeholder, or nothing.
  * @typedef {{phase: "shown", change: StackChange} | {phase: "waiting"} | {phase: "none"}} StackLineState
  *
- * @typedef {{key: string | null, at: number, holdsMs: number, reason: string | null}} StackLineOutcome
+ * A stack's last outcome: the identity it was read under, the key of its change in the keep,
+ * or null, when it is asked again after a failure, or null, and why it has no change.
+ * @typedef {{identity: string, key: string | null, retryAt: number | null, reason: string | null}} StackLineOutcome
  */
 
-/** The keep's key for a stack's change: the two commits it runs between.
- * @param {string} base @param {string} head
+/** The keep's key for a stack's change: its stack and the answer's revision, which names its
+ * content.
+ * @param {number} number @param {string} revision
  */
-export const stackChangeKey = (base, head) => `stack-change:${base}...${head}`;
+export const stackChangeKey = (number, revision) => `stack-change:${number}:${revision}`;
 
-/** A stack as the document remembers its line: its repository, its number, and its members,
- * so a stack whose members change is a stack asked for again.
+/** A stack of a repository, whatever its members, as the document remembers its outcome.
+ * @param {string | null} source @param {number} number
+ */
+const stackKey = (source, number) => `${source ?? ""}#${number}`;
+
+/** What a stack's answer depends on that the list knows: its repository, its number, its
+ * members, and each member's head, so a stack whose members change or any of whose members
+ * moves is asked for again.
  * @param {string | null} source @param {StackMembers} stack
  */
 export const stackLineIdentity = (source, stack) =>
-  `${source ?? ""}#${stack.number}:${stack.pulls.join(",")}`;
+  `${stackKey(source, stack.number)}:${stack.pulls
+    .map((number, at) => `${number}@${stack.heads[at] ?? "-"}`)
+    .join(",")}`;
 
 /** @param {unknown} value @returns {value is StackChange} */
 export function isStackChange(value) {
@@ -102,7 +130,6 @@ export function isStackChange(value) {
   return (
     (body.state === "current" || body.state === "absent") &&
     typeof body.number === "number" &&
-    typeof body.fresh_for_s === "number" &&
     Array.isArray(body.statuses) &&
     body.statuses.every(
       (entry) =>
@@ -114,7 +141,8 @@ export function isStackChange(value) {
     ) &&
     count(body.additions) &&
     count(body.deletions) &&
-    (body.state === "absent" || (typeof body.base === "string" && typeof body.head === "string"))
+    Array.isArray(body.pulls) &&
+    (body.state === "absent" || typeof body.revision === "string")
   );
 }
 
@@ -141,19 +169,19 @@ export function stackLineInput(change, breakdown) {
 }
 
 /**
- * Which stack each kept change is, for the document: a stack's identity
- * (`stackLineIdentity`) to its last outcome, the key of its change in the keep, or none.
+ * Each stack's last outcome, for the document: a stack of a repository (`stackKey`) to the
+ * identity it was read under and the key of its change in the keep, or none.
  */
 export function createStackLineIndex() {
   /** @type {Map<string, StackLineOutcome>} */
   const outcomes = new Map();
   return Object.freeze({
-    /** @param {string} identity */
-    get: (identity) => outcomes.get(identity),
-    /** @param {string} identity @param {StackLineOutcome} outcome */
-    set(identity, outcome) {
-      outcomes.delete(identity);
-      outcomes.set(identity, outcome);
+    /** @param {string} stack */
+    get: (stack) => outcomes.get(stack),
+    /** @param {string} stack @param {StackLineOutcome} outcome */
+    set(stack, outcome) {
+      outcomes.delete(stack);
+      outcomes.set(stack, outcome);
       if (outcomes.size > REMEMBERED_STACKS) {
         outcomes.delete(/** @type {string} */ (outcomes.keys().next().value));
       }
@@ -183,12 +211,17 @@ export const documentStackLines = createStackLineIndex();
 export function createStackLines(deps) {
   const keep = deps.keep ?? documentComparisons;
   const index = deps.index ?? documentStackLines;
-  const budget = deps.budget ?? createWarmBudget(deps.now);
-  /** @type {{identity: string, number: number}[]} */
+  const budget = deps.budget ?? createWarmBudget(deps.now, STACK_LINES_PER_HOUR);
+  /** @typedef {{stack: string, identity: string, number: number}} StackRead */
+  /** @type {StackRead[]} */
   let queue = [];
   /** @type {unknown} */
   let handle = null;
-  /** @type {{identity: string, number: number, controller: AbortController} | null} */
+  /**
+   * The read on its way: `sent` once its request is, and `waits` when its heading may hold
+   * the placeholder meanwhile.
+   * @type {(StackRead & {controller: AbortController, sent: boolean, waits: boolean}) | null}
+   */
   let running = null;
   /** A refusal that holds for every stack of the server, and until when. */
   /** @type {{reason: string, until: number} | null} */
@@ -217,17 +250,19 @@ export function createStackLines(deps) {
     return isStackChange(held) ? held : undefined;
   }
 
-  /** Whether *identity*'s last outcome still holds: within its window, and its change, if it
-   * had one, still kept.
-   * @param {string} identity
+  /** Whether a stack is to be read: never read under this identity, a failed read's minute
+   * passed, or its line let go by the keep. An answer for its identity holds otherwise.
+   * @param {string} stack @param {string} identity
    */
-  function settled(identity) {
-    const seen = index.get(identity);
-    return (
-      seen !== undefined &&
-      deps.now() - seen.at < seen.holdsMs &&
-      (seen.key === null || keep.has(seen.key))
-    );
+  function due(stack, identity) {
+    const seen = index.get(stack);
+    if (seen === undefined || seen.identity !== identity) {
+      return true;
+    }
+    if (seen.retryAt !== null) {
+      return deps.now() >= seen.retryAt;
+    }
+    return seen.key !== null && !keep.has(seen.key);
   }
 
   /** Whether a read asked for now would be sent. */
@@ -251,29 +286,50 @@ export function createStackLines(deps) {
     });
   }
 
-  /** @param {{identity: string, number: number}} item */
+  /** A read that failed: asked again a minute on, the line it had kept meanwhile (A3).
+   * @param {StackRead} item @param {StackLineOutcome | undefined} seen @param {string} outcome
+   */
+  function failed(item, seen, outcome) {
+    index.set(item.stack, {
+      identity: item.identity,
+      key: seen?.key ?? null,
+      retryAt: deps.now() + STACK_LINE_RETRY_MS,
+      reason: null,
+    });
+    note(item.number, outcome);
+  }
+
+  /** @param {StackRead} item */
   async function run(item) {
     if (disposed || !deps.isVisible()) {
       return;
     }
-    if (settled(item.identity) || !canRead()) {
+    if (!due(item.stack, item.identity) || !canRead()) {
       next();
       return;
     }
     if (!budget.take()) {
       note(item.number, "hourly cap");
       queue = [];
-      // The placeholders the queue held wait for nothing now.
-      deps.changed(null);
       return;
     }
+    const seen = index.get(item.stack);
     const controller = new AbortController();
-    running = { ...item, controller };
+    // A heading waits for a stack's first read under its identity, and for a line the keep
+    // let go, never again for an answer with no line or a read that failed (A4).
+    const waits = seen?.identity !== item.identity || (seen.key !== null && seen.retryAt === null);
+    const read = { ...item, controller, sent: false, waits };
+    running = read;
     try {
       // Behind the reader: a comparison a page is reading goes first.
       await keep.quiet();
       if (controller.signal.aborted) {
         return;
+      }
+      read.sent = true;
+      if (waits && kept(seen) === undefined) {
+        // Its heading waits for the read on its way now.
+        deps.changed(item.number);
       }
       const answer = await deps.read(item.number, controller.signal);
       if (controller.signal.aborted) {
@@ -281,42 +337,44 @@ export function createStackLines(deps) {
       }
       const at = deps.now();
       const body = answer.body;
-      if (answer.status !== 200 || !isStackChange(body) || body.number !== item.number) {
-        index.set(item.identity, { key: null, at, holdsMs: STACK_LINE_RETRY_MS, reason: null });
-        note(item.number, `failed ${answer.status}`);
+      if (answer.status === 304 && seen !== undefined) {
+        // Unchanged: the stack's last answer holds for its identity now (A10).
+        index.set(item.stack, { ...seen, identity: item.identity, retryAt: null });
+        note(item.number, "unchanged");
+      } else if (answer.status !== 200 || !isStackChange(body) || body.number !== item.number) {
+        failed(item, seen, `failed ${answer.status}`);
+      } else if (body.state === "current" && body.revision !== null) {
+        const key = stackChangeKey(body.number, body.revision);
+        keep.put(key, body);
+        index.set(item.stack, { identity: item.identity, key, retryAt: null, reason: null });
+        note(item.number, keep.has(key) ? "shown" : "not kept");
       } else {
-        const holdsMs = body.fresh_for_s * 1000;
-        if (body.state === "current" && body.base !== null && body.head !== null) {
-          const key = stackChangeKey(body.base, body.head);
-          keep.put(key, body);
-          index.set(item.identity, { key, at, holdsMs, reason: null });
-          note(item.number, keep.has(key) ? "shown" : "not kept");
-        } else {
-          index.set(item.identity, { key: null, at, holdsMs, reason: body.reason });
-          if (body.reason !== null && SERVER_REFUSALS.has(body.reason)) {
-            refusedAll = { reason: body.reason, until: at + holdsMs };
-            queue = [];
-            deps.changed(null);
-          }
-          note(item.number, body.reason ?? "absent");
+        const server = body.reason !== null && SERVER_REFUSALS.has(body.reason);
+        index.set(item.stack, {
+          identity: item.identity,
+          key: null,
+          retryAt: server ? at + STACK_LINE_RETRY_MS : null,
+          reason: body.reason,
+        });
+        if (server) {
+          refusedAll = {
+            reason: /** @type {string} */ (body.reason),
+            until: at + STACK_LINE_RETRY_MS,
+          };
+          queue = [];
         }
+        note(item.number, body.reason ?? "absent");
       }
       deps.changed(item.number);
     } catch {
       if (controller.signal.aborted) {
         note(item.number, "cancelled");
       } else {
-        index.set(item.identity, {
-          key: null,
-          at: deps.now(),
-          holdsMs: STACK_LINE_RETRY_MS,
-          reason: null,
-        });
-        note(item.number, "failed");
+        failed(item, seen, "failed");
         deps.changed(item.number);
       }
     } finally {
-      if (running?.controller === controller) {
+      if (running === read) {
         running = null;
       }
       next();
@@ -325,30 +383,31 @@ export function createStackLines(deps) {
 
   return Object.freeze({
     /**
-     * What *stack*'s heading shows now: its kept line, shown whether or not its window has
-     * passed, until a newer answer replaces it; the placeholder while a read of it is coming;
-     * or nothing, when its change cannot be had or no read of it will be sent.
+     * What *stack*'s heading shows now: its kept line, whatever identity it was read under,
+     * until a newer answer replaces it; the placeholder while its stack's read is on its way,
+     * unless its last outcome under this identity was an answer with no line or a failure;
+     * or nothing.
      *
      * @param {StackMembers} stack
      * @param {string | null} source
      * @returns {StackLineState}
      */
     line(stack, source) {
-      const identity = stackLineIdentity(source, stack);
-      const seen = index.get(identity);
-      const change = kept(seen);
+      const key = stackKey(source, stack.number);
+      const change = kept(index.get(key));
       if (change !== undefined) {
         return { phase: "shown", change };
       }
-      if (settled(identity) || !canRead()) {
-        return { phase: "none" };
+      if (running !== null && running.stack === key && running.sent && running.waits) {
+        return { phase: "waiting" };
       }
-      return { phase: "waiting" };
+      return { phase: "none" };
     },
     /**
-     * The stacks the list draws, in its order. An ask replaces the queue; the read on its way
-     * goes on, since the server sums what it was asked for whether or not the asker stays.
-     * An empty ask, as a panel hidden or offline asks, empties it.
+     * The stacks the list draws, in its order, of which those due are queued. An ask replaces
+     * the queue; the read on its way goes on, since the server sums what it was asked for
+     * whether or not the asker stays. An empty ask, as a panel hidden or offline asks, empties
+     * it.
      *
      * @param {StackMembers[]} stacks
      * @param {string | null} source
@@ -359,13 +418,15 @@ export function createStackLines(deps) {
       }
       const seen = new Set();
       queue = [];
-      for (const stack of stacks) {
+      // A refusal of the whole server, or the hour's cap spent: nothing would be sent.
+      for (const stack of canRead() ? stacks : []) {
+        const key = stackKey(source, stack.number);
         const identity = stackLineIdentity(source, stack);
-        if (seen.has(identity) || running?.identity === identity || settled(identity)) {
+        if (seen.has(key) || running?.identity === identity || !due(key, identity)) {
           continue;
         }
-        seen.add(identity);
-        queue.push({ identity, number: stack.number });
+        seen.add(key);
+        queue.push({ stack: key, identity, number: stack.number });
       }
       if (queue.length === 0 && handle !== null) {
         deps.cancel(handle);

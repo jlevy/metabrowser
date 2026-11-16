@@ -581,7 +581,10 @@ try {
     check(
       "and its size in its accessible name, after its change line's words if it has one",
       first?.change === ""
-        ? first?.name === "Stack #286, 4 pull requests"
+        ? // No line, or its read on its way, which the name says is pending.
+          ["Stack #286, 4 pull requests", "Stack #286: change pending; 4 pull requests"].includes(
+            first?.name ?? "",
+          )
         : /^Stack #286: .+; 4 pull requests$/.test(first?.name ?? ""),
       first?.name,
     );

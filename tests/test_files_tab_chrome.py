@@ -45,7 +45,11 @@ opens the Modified within menu in both. This judges what it measured against
   choice, and resting on By age asks for it ahead, which the choice then takes;
 - a folder's chevron and a file's type icon take one slot, `--tree-icon-slot`, from the
   row's content edge, each glyph centred in it, so the names after them start on one
-  column ("One Glyph Size", mb-hmv7).
+  column ("One Glyph Size", mb-hmv7);
+- a tree row's tooltip stays under a pointer that has not moved while the folder view's
+  totals draw again, and still appears when the filter bar rebuilds during its delay and
+  puts focus back on its rebuilt trigger, and focus moving on puts it away ("A Surface
+  Puts Away Only Its Own Tooltip" and "Tooltip Input Modality", mb-alff).
 
 Where text starts and how tall a box is drawn are layout, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
@@ -321,6 +325,13 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "lines": 2,
         "name": False,
     }, tips
+    # Something else on the page repaints under a pointer that has not moved, and the
+    # README row's tooltip stays (mb-alff): with it up, the folder view's totals draw again;
+    # during its delay, the filter bar rebuilds and puts focus back on its rebuilt Group by
+    # trigger, and the tooltip still appears. Focus moving on, to a tree row, puts it away.
+    repaints = measured["tipRepaints"]
+    assert repaints["totals"] == {"up": True, "drawn": True, "stayed": True}, repaints
+    assert repaints["bar"] == {"refocused": True, "shown": True, "focusMovedOn": True}, repaints
 
     # 1 is Group by; the drawer's filters keep their numbers while it is closed, and 3
     # opens the drawer with File type's menu.

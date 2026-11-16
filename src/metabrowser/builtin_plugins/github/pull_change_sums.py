@@ -1,47 +1,46 @@
-"""What pull requests' change sets sum to: one pull request's, or a stack's, accumulated.
+"""What one or more pull requests' own changed files accumulate to, said in brief.
 
-A pull request's change set is its cached list of changed files, GitHub's or the one listed
-from the local comparison, whichever its refresh last wrote (:mod:`.pull_files_route`): the
-list its Pulls row discloses. A stack's change is its members' change sets accumulated, bottom
-first, since a stack is the set of pull requests it consists of (the owner's decision on
-review A of #484). One function sums both, so a stack of one pull request says what that pull
-request's own row says: the Pulls row's brief change line (:mod:`.pull_files_summary`) and a
-stack heading's (:mod:`.pull_stack_change`) are this one sum.
+A pull request's change set is its cached list of changed files (:mod:`.pull_list`,
+``PullFileList``), the one its expanded row in the Pulls tab shows. :func:`accumulate` takes
+one list, or several bottom first, as a stack's members, and says what they change
+together: how many files, each counted once with one status, and their line totals. A
+stack's heading line (:mod:`.pull_stack_change`) and a pull request's row line read this
+one rule, so both say a change the same way.
 
-**One file, once.** A file is followed by its path, and across a rename: a member that
-renames ``a`` to ``b`` carries what earlier members did to ``a`` over to ``b``. Its status is
-composed from what the change sets did to it, in order:
+**One file, once.** A file is followed by its path, and across a rename: a list that
+renames ``a`` to ``b`` carries what earlier lists did to ``a`` over to ``b``. Its status is
+composed from what the lists did to it, in order:
 
-- ``removed`` if the last that touches it removed it;
-- otherwise ``added`` if the first that touches it added it (or copied it there);
-- otherwise ``renamed`` if one renamed it;
+- ``removed`` if the last list that touches it removed it;
+- otherwise ``added`` if the first list that touches it added it (or copied it there);
+- otherwise ``renamed`` if a list renamed it;
 - otherwise ``modified``.
 
-So one list's ``copied`` is ``added``, and its ``changed`` and ``unchanged`` are ``modified``;
-a file one layer adds and a later one edits is added, and a file several layers edit is
-modified once. Its additions and deletions are each list's summed, as each layer's own counts
-are what that layer wrote; a list with no count for a file, a binary one listed locally, makes
-the totals inexact (``exact``) and counts it as nothing.
+So a file one layer adds and a later one edits is added, a file a later layer deletes is
+removed, and a file several layers edit is modified once. Its additions and deletions are
+each list's summed, as each layer's own counts are what that layer wrote. A row with no
+count, a binary file a local comparison listed, makes the totals inexact (``exact``), and
+a list that stopped short, GitHub's most for one pull request (``capped``) or with a file
+left out (``truncated``), makes the whole short (``short``), since the rest are not known.
 """
 
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from metabrowser.builtin_plugins.github.pull_list import PullFileList
 
 
 @dataclass(frozen=True, slots=True)
 class ChangeSums:
-    """What change sets sum to: their files by composed status, and their line totals.
+    """What lists of changed files accumulate to: files by status, and line totals.
 
-    ``short`` says a list stopped short, at GitHub's most files or with a file left out, so the
-    rest are not known and nothing else here is the whole.
+    ``statuses`` is each composed status, in a pull request's words, with how many files
+    have it, by status name. ``short`` says a list stopped short, so the rest are not known.
     """
 
     files: int
@@ -57,7 +56,7 @@ SHORT: Final = ChangeSums(files=0, additions=0, deletions=0, exact=False, status
 
 @dataclass(slots=True)
 class _Touched:
-    """What the change sets did to one file, as far as they have been read."""
+    """What the lists did to one file, as far as they have been read."""
 
     first: str
     last: str
@@ -73,7 +72,7 @@ def _composed(touched: _Touched) -> str:
 
 
 def accumulate(lists: Sequence[PullFileList]) -> ChangeSums:
-    """What *lists*, one pull request's or a stack's members' bottom first, sum to."""
+    """What *lists*, bottom first, accumulate to; see the module. Pure."""
 
     files: dict[str, _Touched] = {}
     additions = deletions = 0

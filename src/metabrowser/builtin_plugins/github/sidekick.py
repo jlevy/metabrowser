@@ -773,15 +773,11 @@ async def stacks_handler(request: Request) -> Response:
 async def stack_change_handler(request: Request) -> Response:
     """``GET /api/plugin/github/stack-change?number=<stack>`` — a stack's combined change.
 
-    Its bottom's base against its top's head, from the cache and the store alone
-    (:mod:`.pull_stack_change`): no GitHub call, and Git only on a comparison not yet summed.
+    Its members' own changed files accumulated, each file once and their lines summed, from
+    the cache alone (:mod:`.pull_stack_change`): no GitHub call, no fetch, and no Git.
     """
     from metabrowser.builtin_plugins.github.pull_list_route import served_repository
-    from metabrowser.builtin_plugins.github.pull_route import (
-        PullRequestError,
-        pull_host,
-        requested_number,
-    )
+    from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
     from metabrowser.builtin_plugins.github.pull_stack_change import envelope_etag, stack_change
 
     if set(request.query_params) != {"number"}:
@@ -791,7 +787,7 @@ async def stack_change_handler(request: Request) -> Response:
     except PullRequestError:
         return _invalid_request('"number" is a native stack number')
     await _resolve(request)
-    envelope = await stack_change(pull_host(request.app), served_repository(request.app), number)
+    envelope = await stack_change(served_repository(request.app), number)
     etag = envelope_etag(envelope)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):

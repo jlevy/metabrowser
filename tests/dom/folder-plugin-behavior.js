@@ -133,6 +133,10 @@ const sandbox = {
 };
 let pendingTimers = [];
 sandbox.window = sandbox;
+// The shell's tooltip, recording what each hide is given: the map's disposal puts away only
+// its own tooltip, never another surface's (mb-alff).
+const tooltipHides = [];
+sandbox.MetabrowserTooltip = { show() {}, hide: (within) => tooltipHides.push(within) };
 sandbox.globalThis = sandbox;
 sandbox.MetabrowserFileTypeTaxonomy = {
   groups: [],
@@ -852,11 +856,17 @@ sandbox.MetabrowserNavigationRoute.attachController({
   // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
   const resizeCount = (windowListeners.resize || []).length;
+  const hidesBeforeDispose = tooltipHides.length;
   mounted.dispose();
   const afterDispose = (windowListeners["metabrowser:inventory-change"] || []).length;
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+  check(
+    "dispose hides only the map's own tooltip",
+    tooltipHides.length === hidesBeforeDispose + 1 && tooltipHides.at(-1) === container,
+    `${tooltipHides.length - hidesBeforeDispose}`,
+  );
 
   // A nested Treemap identifies its enclosing folder and navigates to
   // that path without dropping back to the folder's default Overview.
@@ -903,11 +913,17 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
   }
   const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;
+  const hidesBeforeNestedDispose = tooltipHides.length;
   nestedMounted.dispose();
   check(
     "parent navigation listener is disposed",
     (nestedContainer.parentNav.listeners.click?.length || 0) === parentClickListeners - 1,
     `${nestedContainer.parentNav.listeners.click?.length || 0}`,
+  );
+  check(
+    "a nested map's dispose hides only its own tooltip",
+    tooltipHides.length === hidesBeforeNestedDispose + 1 && tooltipHides.at(-1) === nestedContainer,
+    `${tooltipHides.length - hidesBeforeNestedDispose}`,
   );
 
   // ── watchRollup active-gate: hidden views spend no fetches ──────

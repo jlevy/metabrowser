@@ -51,7 +51,7 @@ introduces.
 
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
-| `kpress==0.3.5` | `0.3.4` | Wide-band column inset applies without a TOC, so an embedded README matches the standalone document |
+| `kpress==0.3.6` | `0.3.5` | Planetaire Mono Text for code, which Metabrowser overrides through `--kpress-host-font-mono`; the sanitizer stops reporting comments and `&nbsp;` reserialization and admits `align` on `p`, `div`, `h1`–`h6`; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `c2668a01…1db5e350` and sdist `f34fa604…958986b4` match `uv.lock` |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |

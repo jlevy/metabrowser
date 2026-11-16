@@ -12,10 +12,12 @@
 // recorded All list, the recorded snapshot of two stacks, #286 and #290, and the stack
 // changes tests/test_github_stack_change.py records: #286's line is summed, and #290's
 // cannot be had. Each stack change's answer is held until the session lets it go, so the
-// heading is laid out while it waits, in the shell's pending placeholder, and again once its
-// line has arrived. At every pane width from 420 px to the 180 px minimum, in the light theme
-// and the dark, it holds that:
+// heading is laid out while its read is on its way, in the shell's pending placeholder, and
+// again once its line has arrived. At every pane width from 420 px to the 180 px minimum, in
+// the light theme and the dark, it holds that:
 //
+// - a heading waits only while its own stack's read is on its way: the list draws #290
+//   first, and while its read is held #286's heading, queued behind it, holds no placeholder;
 // - nothing moves when the line arrives: the row, its chevron, its icon, its label, and the
 //   placeholder's start, which is the line's;
 // - the heading stays one line: the row is one `--ui-row-height`, and the line is either
@@ -23,7 +25,9 @@
 //   of view entirely, never cut through its totals or across the label;
 // - the line's inks and weights are the component's, part for part, as the same line drawn
 //   by the SDK outside the heading resolves them in that theme;
-// - #290's heading shows no line and no placeholder once its answer says it has none.
+// - #290's heading shows no line and no placeholder once its answer says it has none, and
+//   in a Pulls tab mounted again nothing is read and no heading waits: a stack whose answer
+//   had no line does not pulse and go blank again (review of #484, A4).
 //
 // It also lays out the brief change lines of this repository's own stacks
 // (`REAL_LINES`, measured 2026-11-16 with pull_stack_change.py's `comparison_sums`), to say
@@ -162,6 +166,7 @@ const MOUNT = `async (width, theme, fresh = true) => {
   const answers = window.__answers ??= await (await fetch("/answers.json")).json();
   const panel = window.__module ??= await import("/github/pulls-panel.js");
   const held = [];
+  const asked = window.__asked = [];
   window.__release = () => held.splice(0).forEach((release) => release());
   const respond = (body, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -169,6 +174,7 @@ const MOUNT = `async (width, theme, fresh = true) => {
     const url = new URL(route, location.href);
     if (url.pathname === "/api/plugin/github/stack-change") {
       const number = Number(url.searchParams.get("number"));
+      asked.push(number);
       await new Promise((resolve) => held.push(resolve));
       const found = Object.values(answers.changes).find((answer) => answer.body.number === number) ?? answers.changes.not_stacked;
       return respond(found.body, found.status);
@@ -324,20 +330,36 @@ async function main() {
       for (const width of WIDTHS) {
         const at = `${width} px ${theme}`;
         await browser.evaluate(`(${MOUNT})(${width}, ${JSON.stringify(theme)})`);
-        // Each heading waits in its placeholder, past the quiet period, its reads held. A
-        // build that draws no line draws no placeholder either, and fails here.
-        const waits = await browser
-          .waitFor(
-            `document.querySelectorAll(".github-pulls-stack-row .github-pulls-stack-change-pending").length === 2`,
-            5000,
-          )
-          .then(
+        const pending = (stack) =>
+          `document.querySelector('.github-pulls-stack-row[data-stack="${stack}"] .github-pulls-stack-change-pending')`;
+        const waited = (condition) =>
+          browser.waitFor(condition, 5000).then(
             () => true,
             () => false,
           );
-        check(`${at}: each stack heading holds a placeholder while its line is read`, waits);
-        if (!waits) {
+        // The list draws #290 first, so its read is sent first, and its heading waits; #286's,
+        // queued behind it, does not. A build that draws no line draws no placeholder either,
+        // and fails here.
+        const first = await waited(`${pending(290)} !== null`);
+        check(`${at}: #290's heading holds a placeholder while its read is on its way`, first);
+        if (!first) {
           lap(`${at}: no placeholder`);
+          continue;
+        }
+        const queued = await browser.evaluate(
+          `({ pending: ${pending(286)} === null, asked: window.__asked.join(",") })`,
+        );
+        check(
+          `${at}: #286's heading, its read queued behind #290's, holds no placeholder`,
+          queued.pending && queued.asked === "290",
+          JSON.stringify(queued),
+        );
+        await browser.evaluate(`window.__release(), true`);
+        // #290's answer has no line; #286's read is sent, and its heading waits in its turn.
+        const waits = await waited(`${pending(286)} !== null && ${pending(290)} === null`);
+        check(`${at}: #286's heading holds a placeholder while its read is on its way`, waits);
+        if (!waits) {
+          lap(`${at}: no placeholder for #286`);
           continue;
         }
         await browser.evaluate(`new Promise((resolve) => setTimeout(resolve, 120))`);
@@ -466,6 +488,16 @@ async function main() {
             `${at}: mounted again, its line is drawn at once`,
             again["286"].text === now.text && again["286"].pending === null,
             again["286"].text,
+          );
+          // Past the browser's idle time: neither stack is read again, and #290's heading,
+          // whose answer had no line, does not wait again.
+          await browser.evaluate(`new Promise((resolve) => setTimeout(resolve, 400))`);
+          const later = await browser.evaluate(READ);
+          const reread = await browser.evaluate(`window.__asked.join(",")`);
+          check(
+            `${at}: mounted again, nothing is read and no heading waits`,
+            reread === "" && later["290"].pending === null && later["290"].text === "",
+            JSON.stringify({ reread, pending: later["290"].pending }),
           );
         }
         lap(`${at}: waited ${measured[at].waited}, line ${measured[at].shown}`);

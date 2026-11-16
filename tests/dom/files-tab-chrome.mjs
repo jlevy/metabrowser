@@ -181,11 +181,10 @@ const SLOTS = `(() => {
 
 // The page's one tooltip, waited on rather than slept for: a tooltip appears on a 300 ms
 // timer (TOOLTIP_APPEAR_DELAY) and goes on a 150 ms one, and a fixed sleep only guesses at
-// either. `until` polls a condition up to a bound and returns whether it held. A focus
-// change hides a tooltip and cancels one on its delay (focusin, hideTooltip), so a read
-// moves focus out of the filter bar first, where a choice from a menu left it: the bar,
-// rebuilt when the tree's tallies answer, puts focus back on the menu's trigger, and on a
-// loaded runner that lands inside the delay (mb-alff).
+// either. `until` polls a condition up to a bound and returns whether it held. A read
+// leaves focus where a choice from a menu left it, in the filter bar: the bar, rebuilt
+// when the tree's tallies answer, puts focus back on the menu's trigger, which on a loaded
+// runner lands inside the delay, and that repair leaves the tooltip (TIP_REPAINTS, mb-alff).
 const TIP_WAITS = `
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const until = async (test, ms) => {
@@ -205,8 +204,6 @@ const TIP_WAITS = `
 const TREE_TIPS = `(async () => {
   ${TIP_WAITS}
   const tree = document.querySelector('#tab-files [role="tree"]');
-  // Focus moves to the tree first: ungrouping came from the Group by menu (TIP_WAITS).
-  tree.querySelector('.tree-file[data-path="README.md"]').focus({ preventScroll: true });
   // A focus change during a read, kept beside the readings for a failure's message.
   const focused = [];
   const onFocus = (event) =>
@@ -240,6 +237,67 @@ const TREE_TIPS = `(async () => {
   const [folder, folderWhy] = await read(tree.querySelector('.tree-folder[data-path="src"]'));
   document.removeEventListener("focusin", onFocus, true);
   return { file, folder, why: { file: fileWhy, folder: folderWhy } };
+})()`;
+
+// A tree row's tooltip while something else on the page repaints, under a pointer that has
+// not moved: it stays, or still appears (mb-alff, docs/design-system.md, "A Surface Puts
+// Away Only Its Own Tooltip" and "Tooltip Input Modality"). With the row's tooltip up, the
+// folder view's totals draw again, as they do when the folder's sums arrive: the shell
+// announces that anything may have changed, as it does when the scan completes, and the
+// totals' rollup answers again. Then, during the row's appear delay, the filter bar
+// rebuilds with focus on its Group by trigger, as it does when new tallies arrive, and
+// puts focus back on the rebuilt trigger. Focus moving on from there, to a tree row, does
+// put the tooltip away. The totals' draw and the bar's rebuild each used to put the
+// row's tooltip away, and their race against its delay was this test's flake.
+const TIP_REPAINTS = `(async () => {
+  ${TIP_WAITS}
+  const tip = () => document.querySelector(".custom-tooltip");
+  const tree = document.querySelector('#tab-files [role="tree"]');
+  const readme = () => tree.querySelector('.tree-file[data-path="README.md"]');
+
+  let row = readme();
+  row.dispatchEvent(new MouseEvent("mouseenter"));
+  await until(tipShown, 5000);
+  const up = tipShown();
+  let drawn = 0;
+  const totalsRoot = document.querySelector(".folder-totals");
+  const observer = new MutationObserver((records) => {
+    drawn += records.length;
+  });
+  if (totalsRoot) {
+    observer.observe(totalsRoot, { attributes: true, characterData: true, childList: true, subtree: true });
+  }
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", { detail: { kind: "snapshot", paths: null } }),
+  );
+  // The totals' rollup is asked again after a debounce, so its answer gets a longer bound.
+  await until(() => drawn > 0, 10000);
+  observer.disconnect();
+  // Longer than the fade a hide starts, so a tooltip put away is gone by the read.
+  await wait(2 * TOOLTIP_FADE_OUT);
+  const totals = {
+    up,
+    drawn: drawn > 0,
+    stayed: tipShown() && tip().classList.contains("visible"),
+  };
+  row.dispatchEvent(new MouseEvent("mouseleave"));
+  await until(() => !tipShown(), 5000);
+
+  const trigger = document.querySelector('[data-chip-menu-toggle="group"]');
+  trigger.focus({ preventScroll: true });
+  row = readme();
+  row.dispatchEvent(new MouseEvent("mouseenter"));
+  renderNavFilterBar();
+  const after = document.activeElement;
+  const refocused =
+    trigger.isConnected === false && after !== trigger && after?.dataset?.chipMenuToggle === "group";
+  await until(tipShown, 5000);
+  const bar = { refocused, shown: tipShown() };
+  tree.querySelector('.tree-folder[data-path="src"]').focus({ preventScroll: true });
+  await until(() => !tipShown(), 5000);
+  bar.focusMovedOn = !tipShown();
+  row.dispatchEvent(new MouseEvent("mouseleave"));
+  return { totals, bar };
 })()`;
 
 // The bar's row and drawer: which controls each holds.
@@ -380,10 +438,6 @@ const SECTION_TIPS = `(async () => {
   ${TIP_WAITS}
   const heading = (key) =>
     document.querySelector('.tree-section[data-tree-group="' + key + '"] > .tree-section-heading');
-  // Focus moves to the tree first: the grouping came from the Group by menu (TIP_WAITS).
-  document
-    .querySelector('.tree-section[data-tree-group="type:docs"] [role="treeitem"]')
-    .focus({ preventScroll: true });
   const read = async (key, expectShown) => {
     const label = heading(key).querySelector(".tree-section-label");
     await until(() => !tipShown(), 5000);
@@ -892,6 +946,7 @@ try {
   );
   result.slots = await browser.evaluate(SLOTS);
   result.treeTips = await browser.evaluate(TREE_TIPS);
+  result.tipRepaints = await browser.evaluate(TIP_REPAINTS);
   phase("grouped");
 
   // Waiting (docs/design-system.md, "Grouping the Files Tree"): every grouped request is

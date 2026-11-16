@@ -118,10 +118,12 @@ cost: a Conversation-only session runs no Git at all.
 The trade-off is that the first **Changes** on a checkout without a store waits for it.
 Once the checkout has a store, from an earlier **Changes** in this session or another,
 Conversation can prepare the comparison of a PR record fetched within the last minute in
-the background. That work fetches only the PR’s head and base, says nothing on
-Conversation, and gives way to anything you ask for: opening **Changes** takes it over,
-and any other refresh stops it.
-See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
+the background. That work fetches only the PR’s head and base, and its only sign on
+Conversation is the gray pulsing block in the header’s Diff summary row while it runs.
+It gives way to anything you ask for: opening **Changes** takes it over, and any other
+refresh stops it.
+See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing
+workflow.
 
 ## Keep Pulls Up to Date
 
@@ -211,13 +213,17 @@ to merge 2 commits”, with the stack button, if any, at its end; the head and b
 branches on a line of their own, head → base; the state badge before the dates; and the
 labels. Each label is in the color GitHub gives it, as github.com draws it in either
 theme, and hovering one shows its description when it has one.
-PR numbers use bold dark text, usernames use bold normal text ink at the surface’s
-normal size, and branch names use ref chips slightly smaller than the text around them,
-as in Git history. Hover or focus a copyable branch chip to reveal its copy control; it
-copies the full branch name.
-The author’s small circular avatar appears beside the username when available.
-Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; condensed
-navigation keeps short ages.
+The header’s last row, on every tab, is the PR’s Diff summary, collapsed: its files and
+lines changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”. Opened, it
+lists the changed files as a tree, and pressing a file opens **Changes** at that file.
+While the comparison it counts is on its way, the row holds a gray pulsing block after a
+moment ([Diff Summary](design-system.md#diff-summary)). PR numbers use bold dark text,
+usernames use bold normal text ink at the surface’s normal size, and branch names use
+ref chips slightly smaller than the text around them, as in Git history.
+Hover or focus a copyable branch chip to reveal its copy control; it copies the full
+branch name. The author’s small circular avatar appears beside the username when
+available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
+condensed navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.
 When switching from useful content, that content stays visible until the new description
 or an actionable failure is ready.

@@ -288,13 +288,49 @@ def render_kpress_view(
     )
     plain = _PLAIN_CODE.set(plain_code)
     try:
-        return cast("dict[str, Any]", runtime.render_view(request))
+        return _separate_sanitizer_diagnostics(cast("dict[str, Any]", runtime.render_view(request)))
     except runtime.KPressInvalidRequestError as exc:
         raise KPressInvalidRequestError(str(exc)) from exc
     except runtime.KPressRenderError as exc:
         raise KPressRenderError(str(exc)) from exc
     finally:
         _PLAIN_CODE.reset(plain)
+
+
+# KPress's diagnostic types for raw HTML its sanitizer removed: `html_sanitized_tag`,
+# `html_sanitized_attribute`, and the catch-all `html_sanitized`.
+_SANITIZER_DIAGNOSTIC_PREFIX = "html_sanitized"
+
+
+def is_sanitizer_diagnostic(diagnostic: object) -> bool:
+    """Whether *diagnostic* records raw HTML that KPress's sanitizer removed."""
+
+    if not isinstance(diagnostic, dict):
+        return False
+    kind = cast("dict[str, Any]", diagnostic).get("type")
+    return isinstance(kind, str) and kind.startswith(_SANITIZER_DIAGNOSTIC_PREFIX)
+
+
+def _separate_sanitizer_diagnostics(rendered: dict[str, Any]) -> dict[str, Any]:
+    """*rendered* with its sanitizer diagnostics moved to ``sanitizer_diagnostics``.
+
+    ``diagnostics`` is what the reader's Diagnostics disclosure shows: faults in the
+    document, such as a broken anchor, a missing footnote, or unparseable front
+    matter. A sanitizer diagnostic is not one. It records that KPress removed a
+    `<script>` or a `javascript:` link, which is the safe outcome and what GitHub,
+    for which most of these documents are written, does without a word. So it is kept
+    apart, for `--api` and debugging, rather than shown above the document.
+
+    A new mapping: KPress keeps renders, and this one must not change what it keeps.
+    """
+
+    diagnostics = rendered.get("diagnostics")
+    items = cast("list[object]", diagnostics) if isinstance(diagnostics, list) else []
+    return {
+        **rendered,
+        "diagnostics": [item for item in items if not is_sanitizer_diagnostic(item)],
+        "sanitizer_diagnostics": [item for item in items if is_sanitizer_diagnostic(item)],
+    }
 
 
 def get_kpress_static_asset(rel_path: str) -> KPressAsset:
