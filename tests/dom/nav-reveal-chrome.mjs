@@ -80,6 +80,23 @@ try {
   );
   await send("Runtime.enable");
   await send("Page.enable");
+  // Step 9 presses Control-N and Control-P, which are bound only where Control reaches the
+  // page, macOS and iOS, as its navigator says (`controlReachesPage` in
+  // static/keyboard-shortcuts.js). So every page here has a Mac's navigator, on every host,
+  // CI's Linux runners included, as tests/dom/control-chords-chrome.mjs sets one; the key
+  // events are still this Chrome's own.
+  await send("Emulation.setUserAgentOverride", {
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    platform: "MacIntel",
+    userAgentMetadata: {
+      brands: [],
+      platform: "macOS",
+      platformVersion: "",
+      architecture: "x86",
+      model: "",
+      mobile: false,
+    },
+  });
   const waitFor = async (expression, what) => {
     try {
       return await chrome.waitFor(expression, STEP_MS);
@@ -394,7 +411,8 @@ try {
   // neighbour, which the Pulls tab reveals, or, when the list does not hold it, names. #7
   // ends its stack, so one of the two goes nowhere. On a page that reached #7 by Forward on
   // a server that had just started, neither chord walked, with or without this change
-  // (2026-11-15), so the walk starts from the page's own address.
+  // (2026-11-15), so the walk starts from the page's own address. The chords are bound
+  // because the page's navigator names a Mac (above); under Linux's neither walks.
   await evaluate("document.activeElement?.blur?.()");
   await waitFor(
     `typeof window.metabrowser?.debug?.pullPage()?.hasStack === "function" && window.metabrowser.debug.pullPage().hasStack()`,
