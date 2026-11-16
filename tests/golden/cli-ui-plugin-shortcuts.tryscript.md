@@ -125,7 +125,7 @@ $ node tests/dom/plugin-shortcuts-session.js
       "step": "every letter tried: the facade refuses exactly the reserved ones",
       "keys": ["L plugin.demo.layout: Unified","M plugin.demo.moved: After"],
       "aria": ["Unified: L","Stale: none","Before: none","After: M","Find: none","Next: none"],
-      "reservedKeys": ["1: every kind","2: every kind","3: every kind","4: every kind","5: every kind","6: every kind","7: every kind","8: every kind","9: every kind","f: every kind","h: every kind","j: every kind","k: every kind","p: every kind","t: every kind","u: every kind","w: every kind"],
+      "reservedKeys": ["0: every kind","1: every kind","2: every kind","3: every kind","4: every kind","5: every kind","6: every kind","7: every kind","8: every kind","9: every kind","f: every kind","h: every kind","j: every kind","k: every kind","p: every kind","t: every kind","u: every kind","w: every kind"],
       "refused": ["f","h","j","k","p","t","u","w"]
     },
     {

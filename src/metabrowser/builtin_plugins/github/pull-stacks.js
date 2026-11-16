@@ -4,9 +4,10 @@
 // Every surface that names a stack names it here, so the page's stack button and menu, a
 // Pulls row's place, and the Pulls tab's stack groups say one thing one way
 // (docs/design-system.md, "Stacks"): `stackLabel` is the "Stack #N" every heading, menu
-// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row;
-// `stackPositionHint` is the tip that names both; and `stackMenuOrder` is the one member
-// order, top of the stack first. `groupByStack` is the Pulls tab's grouping of its rows.
+// and tip reads; `stackPosition` is the bold "2/4" of a badge and a member row, and
+// `namedStackPosition` the "300 2/2" of one that names its stack; `stackPositionHint` is
+// the tip that names both; and `stackMenuOrder` is the one member order, top of the stack
+// first. `groupByStack` is the Pulls tab's grouping of its rows.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
 /** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
@@ -42,6 +43,15 @@ export function stackLabel(number) {
  */
 export function stackPosition(at, length) {
   return `${at + 1}/${length}`;
+}
+
+/** A position as a badge reads it where it must say which stack it is in: the stack's
+ * number before it, "300 2/2", drawn after the Layers glyph. A position whose stack goes
+ * without saying, its pull request's only one or the one its row sits under, is bare.
+ * @param {string} position @param {number | null} stack The stack to name, or null.
+ */
+export function namedStackPosition(position, stack) {
+  return stack === null ? position : `${stack} ${position}`;
 }
 
 /** The tip that names a member's stack and place: "Stack #286, position 2 of 4".
@@ -86,9 +96,7 @@ function caption(memberships, number, first = null) {
     stack: index === 0 ? null : stack.number,
   }));
   return {
-    text: parts
-      .map((part) => (part.stack === null ? part.position : `${part.stack} ${part.position}`))
-      .join(" · "),
+    text: parts.map((part) => namedStackPosition(part.position, part.stack)).join(" · "),
     hint: places.map(({ stack, at }) => stackPositionHint(stack, at)).join("; "),
     parts,
   };
@@ -165,9 +173,8 @@ export function stackRowKey(number) {
 
 /**
  * @typedef {{
- *   kind: "stack", key: number, stack: NativeStack, label: string, count: string,
- *   hint: string, members: number[], expanded: boolean,
- *   level: 1, posinset: number, setsize: number,
+ *   kind: "stack", key: number, stack: NativeStack, label: string, hint: string,
+ *   members: number[], expanded: boolean, level: 1, posinset: number, setsize: number,
  * }} StackGroupRow
  * @typedef {{
  *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
@@ -185,8 +192,8 @@ export function stackRowKey(number) {
  * first pull request in the list, so the list's own order still decides which comes
  * first; a tie, two stacks first listed at one shared member, keeps the envelope's order.
  * A pull request in more than one stack sits once, under the first of them in that order;
- * a stack whose listed pull requests all sit under earlier stacks has no row, and their
- * badges name it. Pull requests in no stack follow the stacks, in the list's order.
+ * a stack whose listed pull requests all sit under earlier stacks has no row; their
+ * places name it. Pull requests in no stack follow the stacks, in the list's order.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that
@@ -240,14 +247,12 @@ export function groupByStack(numbers, index, identity, options = {}) {
   /** @type {GroupedRow[]} */
   const rows = [];
   for (const [at, { stack, members, listed: shown, elsewhere }] of groups.entries()) {
-    const total = stack.pulls.length;
     const expanded = !collapsed.has(stack.number);
     rows.push({
       kind: "stack",
       key: stackRowKey(stack.number),
       stack,
       label: stackLabel(stack.number),
-      count: shown === total ? `${total}` : `${shown} of ${total}`,
       hint: stackGroupHint(stack, shown, elsewhere),
       members,
       expanded,
@@ -284,9 +289,10 @@ export function groupByStack(numbers, index, identity, options = {}) {
 }
 
 /**
- * A stack row's accessible name: its label, its size, how many of its pull requests the
- * list holds, and where those under an earlier stack sit, so a count of listed pull requests
- * that is more than the rows under it says why.
+ * A stack row's accessible name, since the Pulls column shows no tooltips: its label, its
+ * size, how many of its pull requests the list holds, and where those under an earlier
+ * stack sit, so a count of listed pull requests that is more than the rows under it says
+ * why.
  *
  * @param {NativeStack} stack
  * @param {number} shown How many of its pull requests the list holds.

@@ -12,11 +12,13 @@ the Pulls count share (`docs/design-system.md`, “Navigation Metadata Line”),
 markup and words are `treeSummaryHtml` in `static/navigation.js`, written with the
 shell’s own text helpers.
 
-This browserless session runs the real `static/navigation.js` with `esc`, `formatCount`,
+This browserless session runs the real `static/navigation.js` with `formatCountParts`
 and `formatSize` extracted verbatim from `static/app.js`, the helpers the shell hands
 it, over the real `static/formatters.js`, whose `formatBytes` writes every size the
-shell shows. For each state the line paints in, it records the line’s classes, how it
-reads, how many figures are still pending, and its markup.
+shell shows and whose `countPartsHtml` paints every count summary’s numbers bold.
+For each state the line paints in, it records the line’s classes, how it reads, how many
+figures are still pending, the figures it paints bold (`numbers`), what it says in the
+line’s own weight (`regular`), and its markup.
 `live` records the two figures the shell patches as the walker’s root aggregate changes.
 The transcript pins these behaviors:
 
@@ -26,6 +28,9 @@ The transcript pins these behaviors:
   files (size)”, so the line reads the same when the split replaces it.
 - A Git pin has no size fact, so its line states none.
 - The split adds the gitignored half only when there is one.
+- Every figure, a count or a size with its unit, is a bold number, `.summary-number`,
+  and the words and parentheses keep the line’s weight (`docs/design-system.md`, “Count
+  Summaries Bold Their Numbers”).
 
 ```console
 $ node tests/dom/tree-summary-line-session.js
@@ -35,51 +40,84 @@ $ node tests/dom/tree-summary-line-session.js
       "classes": "tree-summary nav-metadata",
       "reads": "",
       "pending": 2,
+      "numbers": [],
+      "regular": "",
       "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"count tally-pending\"></span></span><span class=\"tree-summary-size\"><span class=\"size tally-pending\"></span></span></div>"
     },
     "counted, before the split arrives": {
       "classes": "tree-summary nav-metadata",
       "reads": "12,797 files (394.6 MB)",
       "pending": 0,
-      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\">12,797 files</span><span class=\"tree-summary-size\">(394.6 MB)</span></div>"
+      "numbers": [
+        "12,797",
+        "394.6 MB"
+      ],
+      "regular": "files ( )",
+      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-size\">(<span class=\"summary-number\">394.6 MB</span>)</span></div>"
     },
     "a Git pin, which has no sizes": {
       "classes": "tree-summary nav-metadata",
       "reads": "4 files",
       "pending": 0,
-      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\">4 files</span><span class=\"tree-summary-size\"></span></div>"
+      "numbers": [
+        "4"
+      ],
+      "regular": "files",
+      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"summary-number\">4</span> files</span><span class=\"tree-summary-size\"></span></div>"
     },
     "the split, nothing ignored": {
       "classes": "tree-summary tree-summary-split nav-metadata",
       "reads": "4 files (38 B)",
       "pending": 0,
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\">4 files</span><span class=\"tree-summary-bytes\">(38 B)</span></div>"
+      "numbers": [
+        "4",
+        "38 B"
+      ],
+      "regular": "files ( )",
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">4</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">38 B</span>)</span></div>"
     },
     "the split, with ignored files": {
       "classes": "tree-summary tree-summary-split nav-metadata",
       "reads": "12,797 files (394.6 MB) + 248,189 ignored (9.4 GB)",
       "pending": 0,
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\">12,797 files</span><span class=\"tree-summary-bytes\">(394.6 MB)</span><span class=\"tree-summary-ignored\"><span class=\"tree-summary-plus\">+</span>248,189 ignored<span class=\"tree-summary-bytes\">(9.4 GB)</span></span></div>"
+      "numbers": [
+        "12,797",
+        "394.6 MB",
+        "248,189",
+        "9.4 GB"
+      ],
+      "regular": "files ( ) + ignored ( )",
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">394.6 MB</span>)</span><span class=\"tree-summary-ignored\"><span class=\"tree-summary-plus\">+</span><span><span class=\"summary-number\">248,189</span> ignored</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">9.4 GB</span>)</span></span></div>"
     },
     "an empty folder": {
       "classes": "tree-summary tree-summary-split nav-metadata",
       "reads": "0 files (0 B)",
       "pending": 0,
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\">0 files</span><span class=\"tree-summary-bytes\">(0 B)</span></div>"
+      "numbers": [
+        "0",
+        "0 B"
+      ],
+      "regular": "files ( )",
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">0</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">0 B</span>)</span></div>"
     },
     "one file": {
       "classes": "tree-summary tree-summary-split nav-metadata",
       "reads": "1 file (2.0 KB)",
       "pending": 0,
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\">1 file</span><span class=\"tree-summary-bytes\">(2.0 KB)</span></div>"
+      "numbers": [
+        "1",
+        "2.0 KB"
+      ],
+      "regular": "file ( )",
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">1</span> file</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">2.0 KB</span>)</span></div>"
     }
   },
   "live": {
     "count still being counted": "<span class=\"count tally-pending\"></span>",
-    "count known": "1 file",
+    "count known": "<span class=\"summary-number\">1</span> file",
     "count omitted": "",
     "size still being counted": "<span class=\"size tally-pending\"></span>",
-    "size known": "(1.5 KB)",
+    "size known": "(<span class=\"summary-number\">1.5 KB</span>)",
     "size omitted": ""
   }
 }

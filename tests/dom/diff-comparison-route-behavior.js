@@ -15,7 +15,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} });",
+          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} }); export const mountDiffSummary = (_slot, document, _api, options) => ({ document, options, dispose() {} });",
       };
     }
     return nextLoad(url, context);
@@ -81,6 +81,9 @@ async function main() {
 
   // The rendered Markdown route is the server's too: the plugin appends only `file`, and
   // `prefetch` on the requests it sends ahead of Changes for the first screen's files.
+  // `prefetch` reads the comparison alone, since a page that keeps it shares its request;
+  // the first screen's projections are asked for apart, under the asking page's signal,
+  // so a page that goes stops the rest (`prefetchMarkdown`, mb-neg9).
   requests.length = 0;
   const rendered_route =
     "/api/plugin/github/pull-rendered-diff?number=7&left=base&right=head&store=route-store";
@@ -91,10 +94,17 @@ async function main() {
     .filter((file) => /\.md$/.test((file.new ?? file.old).path))
     .map((file) => file.id);
   assert.ok(markdown.length > 0, "the recorded comparison changes a Markdown file");
-  await registered.prefetch(pull, signal);
+  const read = await registered.prefetch(pull, signal);
   for (let turn = 0; turn < 20; turn += 1) {
     await new Promise((resolve) => setImmediate(resolve));
   }
+  assert.deepEqual(
+    requests.map(({ hook, params }) => [hook, params.file, params.prefetch]),
+    [["pull-comparison", undefined, undefined]],
+    "a prefetch of a comparison asked for Markdown",
+  );
+  const page = new AbortController();
+  await registered.prefetchMarkdown(pull, read, page.signal);
   assert.deepEqual(
     requests.map(({ hook, params }) => [hook, params.file, params.prefetch]),
     [
@@ -103,6 +113,13 @@ async function main() {
     ],
   );
   assert.equal(requests.at(-1).params.store, "route-store");
+  assert.equal(requests.at(-1).signal, page.signal, "the projections are under the page's signal");
+  requests.length = 0;
+  page.abort();
+  await registered.prefetchMarkdown(pull, read, page.signal);
+  assert.equal(requests.length, 0, "a page that went still asked for Markdown");
+  await registered.prefetchMarkdown(comparison, read, new AbortController().signal);
+  assert.equal(requests.length, 0, "a comparison with no rendered route asked for Markdown");
   requests.length = 0;
   // The route codec a page has loaded; View file's own behavior is its session's.
   window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k" };
@@ -155,6 +172,28 @@ async function main() {
   loadTree = () => Promise.resolve(tree);
   const again = await registered.render({}, { comparison });
   assert.equal(again.options.changedFiles, tree, "the next diff asks for the tree again");
+
+  // A commit's page gives the diff its own totals for the summary, which the view is handed
+  // as they are (A3 of review A on #470).
+  const totals = { files: 5, additions: 15, deletions: 3, exact: true };
+  const counted = await registered.render({}, { comparison, summaryTotals: totals });
+  assert.equal(counted.options.summaryTotals, totals, "a page's totals reach the view");
+  assert.equal(again.options.summaryTotals, undefined, "and only where it gives them");
+
+  // A page's Diff summary on its own reads the comparison's manifest alone, so its patches
+  // are neither read nor validated, and one whose manifest is not valid draws nothing (A5 of
+  // review A on #470).
+  const broken = structuredClone(answer);
+  for (const patch of Object.values(broken.patches)) {
+    patch.hunks = "not hunks";
+  }
+  const slot = { replaceChildren() {} };
+  const drawn = await registered.summary(slot, { raw: broken, openFile() {} });
+  assert.deepEqual(drawn.document, { manifest: broken.manifest }, "drawn from the manifest");
+  assert.equal(drawn.options.changedFiles, tree);
+  const unlisted = structuredClone(answer);
+  delete unlisted.manifest.totals;
+  assert.equal(await registered.summary(slot, { raw: unlisted, openFile() {} }), null);
   console.log("diff comparison routes OK");
 }
 main().catch((error) => {

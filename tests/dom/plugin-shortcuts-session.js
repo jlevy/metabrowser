@@ -36,6 +36,7 @@ const RESERVED_SHELL_KEYS = Object.freeze({
   k: null,
   u: null,
   w: null,
+  0: null,
   ...Object.fromEntries([..."123456789"].map((digit) => [digit, null])),
 });
 

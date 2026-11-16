@@ -557,6 +557,21 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/labels",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/labels-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull",
       "methods": [
         "GET",
@@ -843,7 +858,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 63
+  "count": 65
 }
 ? 0
 ```

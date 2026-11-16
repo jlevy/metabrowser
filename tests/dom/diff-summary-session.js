@@ -82,10 +82,29 @@ let rowOf = () => {
 /** diff-model.js, once it has loaded. */
 let diffModel = null;
 
-/** The header of a manifest: the call `renderDiffSummary` in diff-view.js makes. */
-function header(_model, manifest) {
-  const { said } = diffModel.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
-  return { text: said.text, label: said.label, estimated: said.estimated };
+/**
+ * The header of a manifest: the call `renderDiffSummary` in diff-view.js makes, with the page's
+ * whole totals (*whole*) where the list is cut short. `numbers` are the counts it paints bold,
+ * each apart from its words (docs/design-system.md, "Count Summaries Bold Their Numbers"): the
+ * file count, then each status's.
+ */
+function header(_model, manifest, whole = null) {
+  const { said, listed } = diffModel.diffSummaryOf(
+    manifest.totals,
+    manifest.files,
+    shared,
+    formatCount,
+    whole,
+  );
+  return {
+    text: said.text,
+    label: said.label,
+    estimated: said.estimated,
+    numbers: [...said.filesParts, ...said.breakdownParts].flatMap((part) =>
+      typeof part === "string" ? [] : [part.number],
+    ),
+    ...(listed === null ? {} : { listed }),
+  };
 }
 
 /** A manifest of *files*, with totals summed as the comparison sums them. */
@@ -159,6 +178,14 @@ async function main() {
     manifestOf([change("modified", "a.txt", 1, 1), change("modified", "b/c.txt", 1, 0)]),
   );
   stories["no files"] = header(model, manifestOf([]));
+  // A list cut short at its bound, on a page that knows the whole change set's totals, as a
+  // commit's page does from the commit's own stats: those, with no breakdown of the files
+  // listed alone, and how many are listed (A3 of review A on #470).
+  stories["a list cut short, with the page's whole totals"] = header(
+    model,
+    { ...kindsManifest, truncated: true, cursor: "manifest-cap" },
+    { files: 5000, additions: 152340, deletions: 30211, exact: true },
+  );
 
   // The tree as it opens: every folder open, a chain of single folders as one row, and each
   // folder with the counts of its files rolled up, the binary ones left out and counted.
@@ -290,8 +317,8 @@ async function main() {
     .rows()
     .map((row) => ({ row: line(row), label: shared.rowLabel(row, formatCount) }));
 
-  // Which rows of a long tree are in the document: those in the box's view and 40 more each
-  // way, and the row that takes Tab wherever it is (A10 of review A on #448).
+  // Which rows of a long tree are in the document: those in the window's view of it and 40
+  // more each way, and the row that takes Tab wherever it is (A10 of review A on #448).
   const long = Array.from({ length: 1200 }, (_, at) =>
     change("modified", `pkg/file-${String(at).padStart(4, "0")}.py`, 1, 1),
   ).map(rowOf);
@@ -358,6 +385,20 @@ async function main() {
       return row.path === (entry.new ?? entry.old).path;
     }),
     "a closed tree's rows are the top level": compact.rows().every((row) => row.depth === 0),
+    "the header's parts read as its text and its label": [exampleManifest, kindsManifest].every(
+      (manifest) => {
+        const { said } = model.diffSummaryOf(manifest.totals, manifest.files, shared, formatCount);
+        const written = (parts) =>
+          parts.map((part) => (typeof part === "string" ? part : part.number)).join("");
+        const files = written(said.filesParts);
+        const breakdown = written(said.breakdownParts);
+        return (
+          breakdown !== "" &&
+          said.text.startsWith(`${files} (${breakdown})  `) &&
+          said.label.startsWith(`${files}: ${breakdown}; `)
+        );
+      },
+    ),
   };
   for (const [name, holds] of Object.entries(invariants)) {
     if (holds !== true) {

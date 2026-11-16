@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from metabrowser.file_type_filters import FILE_TYPE_CATEGORIES, FILE_TYPE_GROUP_DISPLAY_ORDER
+from metabrowser.inventory_engine.contract import TreeGroupFilter
 from metabrowser.settings import RECENT_WINDOW_SECONDS
 
 GroupBy = Literal["type", "age"]
@@ -152,6 +153,21 @@ def age_band(group: TreeGroup, recency_seconds: int) -> AgeBand:
     return AgeBand(within_seconds=within, older_than_seconds=older_than)
 
 
+def inventory_group_filter(group: TreeGroup) -> TreeGroupFilter:
+    """*group* as the inventory provider selects it in a grouped tree (`GroupedTreeQuery`):
+    a type group by its id, and an age group as its band, which a recency window then cuts
+    as the provider applies both."""
+
+    if group.by == "type":
+        return TreeGroupFilter(key=group.id, type_group=group.id)
+    band = age_band(group, 0)
+    return TreeGroupFilter(
+        key=group.id,
+        band_within_seconds=band.within_seconds,
+        older_than_seconds=band.older_than_seconds,
+    )
+
+
 def group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
     """One group of a grouped answer: its name, what it holds, and its tree.
 
@@ -205,6 +221,7 @@ __all__ = [
     "group_row",
     "groups_for",
     "groups_payload",
+    "inventory_group_filter",
     "parse_group",
     "parse_group_by",
 ]

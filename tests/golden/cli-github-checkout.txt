@@ -54,7 +54,9 @@ status: 200
   "snapshot_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -219,7 +221,9 @@ status: 202
     "snapshot_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -237,7 +241,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -251,7 +255,7 @@ status: 200
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -317,7 +321,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -359,7 +365,7 @@ status: 200
 {
   "number": 10,
   "fetched_at": "2026-09-17T12:00:00Z",
-  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "part": "body",
   "html": "\n<div><div><p>Not ready.</p></div></div>",
   "assets": {
@@ -849,7 +855,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -863,7 +869,7 @@ status: 200
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -929,7 +935,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -1010,7 +1018,7 @@ status: 202
     "verified_by": "catalog",
     "head_moved": false,
     "checks_pending": false,
-    "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+    "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -1024,7 +1032,7 @@ status: 202
     "rendered_route": null,
     "record": {
       "schema_version": 2,
-      "projection_version": 1,
+      "projection_version": 2,
       "source": "https://github.com/octo/demo",
       "number": 10,
       "fetched_at": "2026-09-17T12:00:00Z",
@@ -1090,7 +1098,9 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1108,7 +1118,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1122,7 +1132,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1191,7 +1201,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -1223,7 +1235,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1237,7 +1249,7 @@ status: 200
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1303,7 +1315,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- gh ---
@@ -1327,7 +1341,7 @@ status: 202
     "verified_by": "catalog",
     "head_moved": false,
     "checks_pending": false,
-    "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+    "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -1341,7 +1355,7 @@ status: 202
     "rendered_route": null,
     "record": {
       "schema_version": 2,
-      "projection_version": 1,
+      "projection_version": 2,
       "source": "https://github.com/octo/demo",
       "number": 10,
       "fetched_at": "2026-09-17T12:00:00Z",
@@ -1407,7 +1421,9 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1425,7 +1441,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1439,7 +1455,7 @@ status: 200
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1508,7 +1524,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---

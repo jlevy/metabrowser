@@ -86,6 +86,8 @@ async function mountStory() {
   const answer = (body, status = 200) =>
     Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
   const opened = [];
+  /** Every route the mounted list fetches. */
+  const requests = [];
   const globals = {
     document,
     window: {
@@ -113,6 +115,7 @@ async function mountStory() {
       disconnect() {}
     },
     fetch(route) {
+      requests.push(route);
       if (route.startsWith("/api/plugin/github/pulls?")) {
         return answer(route.includes("&after=") ? lists.more_window.body : lists.current.body);
       }
@@ -261,6 +264,33 @@ async function mountStory() {
     await step("a press on the stack's row opens it", () =>
       list.listeners.get("click")({ target: label, button: 0, preventDefault() {} }),
     );
+    // Home (docs/design-system.md, "Home"): the list as a fresh load draws it. The reader
+    // opens #8's files, walks to the first pull request in no stack, and closes the stack;
+    // Home opens it, closes #8's files, and gives the Tab stop back to the stack's row. The
+    // address it opens names no pull request, which the host tells the list next.
+    await step("Right, Right: #8 opens, and then its files", () => {
+      handle.expand();
+      return handle.expand();
+    });
+    await step("J past the stack, then Space on its row closes it", () => {
+      for (let press = 0; press < 3; press += 1) {
+        handle.move(1);
+      }
+      return handle.toggleStack(286);
+    });
+    const homeRequests = requests.length;
+    await step("Home: every stack open, no files open, the Tab stop on the first row", () => {
+      handle.home();
+      handle.setCurrent(null);
+    });
+    const homed = steps.at(-1).tree;
+    assert.ok(homed[0].startsWith("Stack #286") && homed[0].endsWith("Tab stop"), homed[0]);
+    assert.ok(
+      homed.every((row) => !row.includes("expanded true") || row.startsWith("Stack")),
+      "no pull request's files are open",
+    );
+    assert.equal(pull(8).getAttribute("aria-expanded"), "false", "#8's files closed");
+    assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
     handle.dispose();
     return {
       "member lines": memberLines,
@@ -288,7 +318,8 @@ async function mountStory() {
 
   /** One panel's controller over recorded answers, with every effect it asks for logged. */
   function mount({ filter = "all", list = "current" } = {}) {
-    const log = { opened: [], marks: [], prefetch: [] };
+    // `requests` counts every request, which Home's reset makes none of.
+    const log = { opened: [], marks: [], prefetch: [], requests: 0 };
     let model = null;
     let anchor = null;
     const timers = new Map();
@@ -296,6 +327,7 @@ async function mountStory() {
     const controller = panel.createPullsController(
       {
         request(method, route, options) {
+          log.requests += 1;
           if (route === "/api/plugin/github/pulls-prefetch") {
             // What an open asks to read ahead: its neighbours as drawn, and the top.
             log.prefetch.push(options.body);
@@ -383,7 +415,7 @@ async function mountStory() {
     for (const row of model.stacks.rows) {
       if (row.kind === "stack") {
         lines.push(
-          `${row.expanded ? "▾" : "▸"} ${row.label} (${row.count}) [${row.posinset}/${row.setsize}] · ${row.hint}`,
+          `${row.expanded ? "▾" : "▸"} ${row.label} [${row.posinset}/${row.setsize}] · ${row.hint}`,
         );
       } else if (row.level === 2) {
         lines.push(
@@ -491,6 +523,27 @@ async function mountStory() {
     closed: story.controller.snapshot().closedStacks,
     tabStop: story.anchor(),
   });
+  // Home (docs/design-system.md, "Home"): the rows as a fresh load draws them, from the rows
+  // held. The reader closes the stack and walks past it; Home opens it again and gives the
+  // Tab stop back to the first row, and the address it opens, /view/, names no pull request.
+  await story.key("Left");
+  await story.key("Left");
+  await story.key("J");
+  record("the reader closes the stack and walks past it", story, current, {
+    closed: story.controller.snapshot().closedStacks,
+    tabStop: story.anchor(),
+  });
+  const homeReads = story.log.requests;
+  story.controller.home();
+  story.controller.setCurrent(null);
+  await settle();
+  record("Home: every stack open, and the Tab stop on the first row", story, current, {
+    closed: story.controller.snapshot().closedStacks,
+    tabStop: story.anchor(),
+    requests: story.log.requests - homeReads,
+  });
+  assert.deepEqual(story.controller.snapshot().closedStacks, [], "Home opens every stack");
+  assert.equal(story.anchor(), story.model().stacks.rows[0].key, "the Tab stop is the first row's");
 
   // ── A filter, shared membership, a snapshot kept through a failed refresh, and none.
   const open = mount({ filter: "open", list: "open_current" });
@@ -540,7 +593,7 @@ async function mountStory() {
     addEventListener: (type, listener) => listeners.set(type, listener),
   };
   const stack = shared.byPull.get(9)[0];
-  const menu = page.createStackMenu(stack, 9, {
+  const menuDeps = {
     link(number) {
       const link = new FakeElement("a");
       link.dataset.number = String(number);
@@ -550,9 +603,15 @@ async function mountStory() {
     currentTitle: "",
     titleNodes: require("./sdk-ref-fixture.js").refHelpers(document).titleNodes,
     onOpen() {},
-  });
+  };
+  const menu = page.createStackMenu(stack, 9, menuDeps);
+  // A press opens it, as a <details> does, with focus on its trigger; the menu puts focus on
+  // its current member.
+  document.activeElement = menu.element.childNodes[0];
   menu.element.open = true;
   menu.element.listeners.get("toggle")();
+  const landed = document.activeElement;
+  assert.equal(landed.getAttribute("aria-current"), "page", "the menu opens on its current member");
   const group = menu.element.childNodes
     .find((node) => node.classList.contains("github-pull-stack-menu"))
     .childNodes.find((node) => node.classList.contains("menu-group"));
@@ -563,7 +622,18 @@ async function mountStory() {
     .model()
     .stacks.rows.find((row) => row.kind === "stack" && row.stack.number === stack.number);
   assert.deepEqual(menuOrder, groupRow.members, "the menu and the group list one order");
+  const triggerText = menu.element.childNodes[0].textContent;
   menu.dispose();
+  // A pull request in two stacks, #8: its page draws a chip for each, and each names its
+  // stack before its position (`named`, which the page passes when the pull request is in
+  // more than one stack), as #8's Pulls row names the other stack.
+  const named = shared.byPull.get(8).map((each) => {
+    const chip = page.createStackMenu(each, 8, { ...menuDeps, named: true });
+    const trigger = chip.element.childNodes[0];
+    const shown = { triggerText: trigger.textContent, trigger: trigger.getAttribute("aria-label") };
+    chip.dispose();
+    return shown;
+  });
 
   process.stdout.write(
     `${JSON.stringify(
@@ -574,9 +644,15 @@ async function mountStory() {
           heading: heading.textContent,
           headingClasses: heading.className,
           trigger: menu.element.childNodes[0].getAttribute("aria-label"),
+          triggerText,
           triggerTip: menu.element.childNodes[0].dataset.tipText,
+          focusOnOpen: {
+            member: Number(landed.dataset.number),
+            current: landed.getAttribute("aria-current") === "page",
+          },
           members: menuOrder,
           groupRow: { label: groupRow.label, members: groupRow.members },
+          named,
         },
         invariants: true,
       },

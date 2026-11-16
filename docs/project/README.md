@@ -45,9 +45,10 @@ links to the document that covers each in depth.
 ## Active Feature Plans
 
 - [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md)
-  — the menu group pattern and filter menu height, Files Group by, the diff fold in
-  place, a Diff summary, pull stack groups, the conversation timeline, and upright sans
-  h2 headings, as one native stack of pull requests tracked under epic `mb-eevh`
+  — the owner’s requests of 2026-11-15, from Files Group by, a Diff summary, Pulls stack
+  groups, and the conversation timeline to the pull request header, the keys, tooltips,
+  titles, label colors, and a design-system consistency pass, as one native stack of
+  pull requests tracked under epic `mb-eevh`
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md) — folder identity
   and window titles, the icon and release pipeline adapted from a sister app, warm
   folder switching, host mode and the agent front door, and the app-managed runtime,

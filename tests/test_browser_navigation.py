@@ -185,24 +185,29 @@ def test_header_root_link_uses_the_canonical_view_route(tmp_path: Path) -> None:
     assert '<a href="/" class="header-path"' not in response.text
 
 
-def test_header_root_link_says_it_goes_home(tmp_path: Path) -> None:
-    """The heading's name is the folder it shows; its description says it goes home.
+def test_header_root_link_is_named_home_and_the_folder(tmp_path: Path) -> None:
+    """The folder's name is called "Home:" and the name it shows.
 
-    app.js keeps a plain activation of the heading in the page and opens the root in the
-    Files tab from any tab (tests/dom/preview-pane-state-session.js, `goingHome`). The
-    name stays the visible text, so speech and sight agree, and the description is a
-    hidden element the link names, which the server writes before any script runs.
+    app.js keeps a plain activation of the name in the page and shows the folder's home
+    view as a fresh load of `/view/` does (tests/dom/preview-pane-state-session.js,
+    `goingHome`; docs/design-system.md, "Home"). The link is labelled by a hidden "Home:"
+    and by its own content, so the name a reader sees, a mirror's ref and commit with it,
+    is always in the name a screen reader hears; the server writes both before any script
+    runs. ``tests/test_folder_home_chrome.py`` reads the name Chrome computes. The header
+    anchors the `0` key's badge, which sits beside the name because the name clips.
     """
 
     server._set_root_dir(tmp_path)
     response = TestClient(server.app).get("/view/")
     anchor = response.text[response.text.index('class="header-path"') :]
     anchor = anchor[: anchor.index(">")]
-    assert 'aria-describedby="header-home-description"' in anchor
+    assert 'id="header-home"' in anchor
+    assert 'aria-labelledby="header-home-label header-home"' in anchor
     assert "aria-label=" not in anchor
-    assert (
-        '<span id="header-home-description" hidden>Go home: the root folder in the Files tab</span>'
-    ) in response.text
+    assert "aria-describedby=" not in anchor
+    assert '<span id="header-home-label" hidden>Home:</span>' in response.text
+    assert '<header class="app-header" data-kbd-badge-anchor>' in response.text
+    assert "Go home" not in response.text
 
 
 def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Path) -> None:

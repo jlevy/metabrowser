@@ -324,7 +324,7 @@ async function run() {
   // Each of these changes one of the header's inputs; only its part is built again.
   await poll(
     changed((pull) => {
-      pull.labels = [...pull.labels, "bug"];
+      pull.labels = [...pull.labels, { name: "bug", color: "d73a4a", description: null }];
     }),
   );
   step("a label is added");
