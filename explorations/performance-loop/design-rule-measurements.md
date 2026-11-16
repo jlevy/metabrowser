@@ -217,6 +217,10 @@ a pass over the index per group.
 On 22,104 files File type answered in 106 ms where the ungrouped tree took 34 ms, and on
 100,000 files in 0.72 to 0.91 s against 0.12 to 0.19 s. Opening a folder inside a
 section took 24 to 32 ms, the same as outside one, with no spinner shown.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
 
 Recorded again on 2026-11-15, once the server read every group from one pass over the
 index (`GroupedTreeQuery`), measured in process, warm, against the read per group it
@@ -234,15 +238,7 @@ painted its tree in 29–49 ms.
 On the larger folder By file type took 0.50–0.53 s, or 0.39–0.48 s after a 100 ms press,
 and No grouping 41–95 ms.
 Two groupings asked for at once each took twice as long there, 0.86 s against about 0.42
-s. Opening a folder inside a section took 24 to 32 ms, the same as outside one, with no
-spinner shown. On a folder of 112 files, a file written every 250 ms for 6 s into a
-folder open one or two levels down gave four paced refreshes of at most 8 ms of paint
-each, and the scroll position, the focused row inside that folder, and the open folders
-held through all of them.
-On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
-two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
-position, the focused row inside that folder, and the open folders held through all of
-them.
+s.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
