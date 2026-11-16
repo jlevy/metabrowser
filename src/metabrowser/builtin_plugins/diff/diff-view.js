@@ -1514,8 +1514,9 @@ function summaryOwnerOf(view) {
  * kinds of the files it lists, or, for a list cut short, the whole change set's totals
  * (*whole*) and how many files it lists, and its accessible name says them in words, "35
  * files changed: 2 added, 3 deleted, 30 modified; …". A change set of no files has nothing
- * to open, so its header is a line. A header whose host cuts its breakdown short, as a pull request's
- * header does to keep one line, has its whole words as its tooltip while it is cut.
+ * to open, so its header is a line. A header whose host cuts its breakdown short, as a
+ * pull request's header does to keep one line, has its whole words as its tooltip while it
+ * is cut.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files

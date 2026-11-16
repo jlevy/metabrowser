@@ -2296,12 +2296,14 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
 
     One shell class, `.summary-punctuation`, sets the muted ink and nothing else, and no
     stylesheet restyles it. A status count in a count summary is one span, the shell's
-    `.summary-status-count`, which sets the count's weight and nothing else, and the shell's
-    status primitive, `.file-change-status`, whose inks `test_file_status_ink_is_shared_and_legible`
-    holds; no stylesheet restyles the status count, so its number and letter take one ink. What a change set's summary says is one function, `changeSummary`, which the Diff
-    summary's model and a commit's hover card both say it through, and its parts have one
-    painter, formatters.js's, which a plugin reaches through the SDK's `countPartsNodes`:
-    the Diff summary and the Checks summary paint none of those classes themselves.
+    `.summary-status-count`, which sets the count's weight and nothing else, and the
+    shell's status primitive, `.file-change-status`, whose inks
+    `test_file_status_ink_is_shared_and_legible` holds; no stylesheet restyles the status
+    count, so its number and letter take one ink. What a change set's summary says is one
+    function, `changeSummary`, which the Diff summary's model and a commit's hover card both
+    say it through, and its parts have one painter, formatters.js's, which a plugin reaches
+    through the SDK's `countPartsNodes`: the Diff summary and the Checks summary paint none
+    of those classes themselves.
     tests/dom/count-parts-session.js pins each kind's markup, tests/dom/diff-view-behavior.js
     the Diff summary's header and fallback line, tests/dom/git-panel-behavior.js the hover
     card, and tests/test_changed_file_rows_chrome.py and tests/dom/git-commit-summary-chrome.mjs

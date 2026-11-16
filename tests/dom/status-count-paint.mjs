@@ -67,7 +67,11 @@ export const STATUS_COUNTS = `(root) => {
       number:
         number === null
           ? null
-          : [number.textContent, getComputedStyle(number).color, getComputedStyle(number).fontWeight],
+          : [
+              number.textContent,
+              getComputedStyle(number).color,
+              getComputedStyle(number).fontWeight,
+            ],
       letter: [letter, own.color, own.fontWeight],
       size: own.fontSize,
       ground: hex(ground),
