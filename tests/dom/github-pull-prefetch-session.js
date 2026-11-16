@@ -6,7 +6,9 @@
 // a mount would be handed, and which answers it has told the page of, for the page's Diff
 // summary (`summarized`, mb-pb35), and which failed reads, so the summary's placeholder does
 // not outlive its wait (`failedTold`, mb-onr2). It asserts, and so prints nothing for, that a
-// poll changes nothing and that a disposed prefetch does nothing.
+// poll changes nothing, that the page is told of each read put on its way, the same
+// comparison's again after another's, so its summary waits for it (`readingTold`), and that a
+// disposed prefetch does nothing.
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -35,6 +37,7 @@ async function main() {
     let warmed = 0;
     const summarized = [];
     const failedTold = [];
+    const readingTold = [];
     const state = { visible };
     const prefetch = createComparisonPrefetch({
       load(comparison, signal) {
@@ -51,6 +54,9 @@ async function main() {
       },
       warm() {
         warmed += 1;
+      },
+      reading(comparison) {
+        readingTold.push(comparison.right);
       },
       loaded(comparison) {
         summarized.push(comparison.right);
@@ -73,6 +79,7 @@ async function main() {
       state,
       requests,
       failedTold,
+      readingTold,
       idle() {
         for (const handle of scheduled.splice(0)) {
           if (!handle.cancelled) {
@@ -108,6 +115,10 @@ async function main() {
   }
   reader.idle();
   assert(reader.requests.length === 1, "a poll of the same record sent another request");
+  assert(
+    reader.readingTold.join() === "bbbb",
+    `a read put on its way is told once, and a poll tells nothing: ${reader.readingTold}`,
+  );
   reader.requests[0].resolve({ document: "first" });
   await tick();
   say("the answer arrives and is held", reader);
@@ -152,6 +163,7 @@ async function main() {
   say("the new comparison is fetched", movedHead);
   await tick();
   assert(movedHead.failedTold.length === 0, "a cancelled request told the page it failed");
+  assert(movedHead.readingTold.join() === "bbbb,cccc", "a moved head's read is told");
 
   const waitingOnOld = page();
   waitingOnOld.prefetch.want(first);
@@ -171,6 +183,14 @@ async function main() {
   say("a refused request is not retried and not an error: the diff asks and says why", refused, {
     handed: fromRefusal ?? null,
   });
+  // A comparison whose read failed is read again only after another's, and then told again.
+  refused.prefetch.want(first);
+  refused.prefetch.want(moved);
+  refused.prefetch.want(first);
+  assert(
+    refused.readingTold.join() === "bbbb,cccc,bbbb",
+    `a failed comparison wanted again after another is told again: ${refused.readingTold}`,
+  );
 
   const takenRefused = page();
   takenRefused.prefetch.want(first);
@@ -187,6 +207,7 @@ async function main() {
   hidden.prefetch.want(first);
   hidden.idle();
   say("a tab in the background sends nothing", hidden);
+  assert(hidden.readingTold.length === 0, "a tab in the background told of a read");
   hidden.state.visible = true;
   hidden.prefetch.want(first);
   hidden.idle();

@@ -14,9 +14,10 @@
 // start of a CI job, the slowest there, has a case of its own. Then the header at its widest
 // two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
-// the run badge (`badges`), the label chips' colors in both themes (`labels`), and the Diff
+// the run badge (`badges`), the label chips' colors in both themes (`labels`), the Diff
 // summary's row while its comparison is read, as it arrives, and as it fails
-// (`summary-wait`). With no
+// (`summary-wait`), and a page mounted with no record in hand as its record lands
+// (`cold-landing`). With no
 // part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
@@ -747,6 +748,152 @@ const SUMMARY_WAIT = `async (width, theme, outcome) => {
   delete document.documentElement.dataset.theme;
   return { waiting, arrived };
 }`;
+// In the page: a pull request page mounted with no record in hand, as a direct load or a
+// reload mounts it, whose pull read the session answers (docs/design-system.md, "Layout").
+// The quiet period is set long, so where it ends is the session's to say: it finishes the
+// hold's animation itself, before the read for `slow`, and while the header waits for the
+// conversation's held first paint for `held`, whose description's Markdown never answers,
+// so that paint runs to its bound. Every frame from the mount to the landing is read: whether
+// the header and the tab column show, the cold header or the record's, and where the tab
+// bar is against the same record mounted in hand.
+const COLD_LANDING = `async (width, labelled, outcome) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const body = structuredClone(recorded.current.body);
+  const holder = body.record?.same_as;
+  if (holder !== undefined) {
+    body.record = structuredClone(recorded[holder].body.record);
+  }
+  if (!labelled) {
+    body.record.pull.labels = [];
+  }
+  const realFetch = window.__realFetch ??= window.fetch;
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const mb = window.metabrowser;
+  const deps = {
+    perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+    ensureAsset: async () => {},
+    whenIdle: mb.whenIdle,
+    ensureKindAssets: async () => {},
+    loadChangedFilesTree: async () => {},
+    getRegisteredView: () => null,
+    decorateExternalLink: mb.decorateExternalLink,
+    refChip: mb.refChip,
+    refChipHtml: mb.refChipHtml,
+    mergeRefs: mb.mergeRefs,
+    mountRefCopies: mb.mountRefCopies,
+    titleNodes: mb.titleNodes,
+    formatAge: () => ({ label: "now", className: "age" }),
+    formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    navigation: { href: () => "/view/" },
+    sourceKind: () => "filesystem",
+    icons: { toggle: "" },
+  };
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const round = (value) => Math.round(value * 100) / 100;
+  const tabBarOf = (container) =>
+    round(container.querySelector(".tab-bar").getBoundingClientRect().top - container.getBoundingClientRect().top);
+  history.replaceState(null, "", "/pull/" + body.number);
+  window.fetch = async () => new Response(null, { status: 304 });
+  // The same record mounted in hand: where its tab bar is.
+  const inHand = document.createElement("div");
+  pane.replaceChildren(inHand);
+  const opened = page.mountPullPage(inHand, { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } }, deps);
+  await document.fonts.ready;
+  await frames();
+  const landsAt = tabBarOf(inHand);
+  opened.dispose();
+  document.documentElement.style.setProperty("--loading-state-delay", "60s");
+  let answer = null;
+  const read = new Promise((resolve) => {
+    answer = resolve;
+  });
+  window.fetch = async (route) => {
+    const url = String(route);
+    if (url.startsWith("/api/plugin/github/pull?")) {
+      await read;
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (outcome === "held" && url.startsWith("/api/plugin/github/pull-markdown")) {
+      return new Promise(() => {});
+    }
+    return new Response(null, { status: 304 });
+  };
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const handle = page.mountPullPage(container, { number: body.number, tab: "", reader: null }, deps);
+  const header = container.querySelector(".github-pull-header");
+  const column = () => container.querySelector(".tab-bar")?.parentElement ?? null;
+  const seen = [];
+  const look = (step) => {
+    const tabColumn = column();
+    const state = {
+      step,
+      header: getComputedStyle(header).opacity,
+      column: tabColumn ? getComputedStyle(tabColumn).opacity : null,
+      cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
+      tabBar: tabColumn ? tabBarOf(container) : null,
+      live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
+    };
+    seen.push(state);
+    return state;
+  };
+  // The quiet period's end: the hold's animation, run to its end.
+  const quietEnds = () => {
+    for (const part of [header, column()]) {
+      for (const animation of part?.getAnimations() ?? []) {
+        animation.finish();
+      }
+    }
+  };
+  let sampling = true;
+  const sample = () => {
+    if (sampling) {
+      look("frame");
+      requestAnimationFrame(sample);
+    }
+  };
+  requestAnimationFrame(sample);
+  await frames();
+  const before = look("before the read");
+  if (outcome === "slow") {
+    quietEnds();
+    await frames();
+  }
+  const shownCold = look("the read on its way");
+  answer();
+  const deadline = performance.now() + 5000;
+  let waited = null;
+  while (performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    if (outcome === "held" && waited === null && header.classList.contains("github-pull-cold-held")) {
+      // The record is in hand and the header waits for the conversation: the quiet period ends.
+      quietEnds();
+      await frames();
+      waited = look("the header waits, the quiet period over");
+    }
+    if (!look("landing").cold) {
+      break;
+    }
+  }
+  await frames();
+  sampling = false;
+  const landed = look("landed");
+  handle.dispose();
+  document.documentElement.style.removeProperty("--loading-state-delay");
+  window.fetch = realFetch;
+  return {
+    landsAt,
+    before,
+    shownCold,
+    waited,
+    landed,
+    coldShown: seen.filter((state) => state.cold && Number(state.header) > 0).length,
+    halfShown: seen.filter((state) => state.header !== state.column && state.column !== null).length,
+    tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
+  };
+}`;
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
 // the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
@@ -1147,6 +1294,7 @@ const PARTS = [
   "badges",
   "labels",
   "summary-wait",
+  "cold-landing",
 ];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
@@ -1461,6 +1609,72 @@ async function main() {
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );
         lap("the Diff summary's wait");
+      }
+      if (runs("cold-landing")) {
+        const landings = [];
+        for (const width of [560, 360]) {
+          for (const labelled of [false, true]) {
+            const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
+            for (const outcome of ["quiet", "held", "slow"]) {
+              const where = `${width} px, ${kind}, ${outcome}`;
+              const run = await browser.evaluate(
+                `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
+              );
+              landings.push({ where, run });
+              const { before, shownCold, waited, landed } = run;
+              check(
+                `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
+                before.cold &&
+                  before.header === "0" &&
+                  before.column === "0" &&
+                  before.live.length === 3 &&
+                  before.live.every(Boolean),
+                JSON.stringify(before),
+              );
+              check(
+                `${where}: the record lands where it lands in hand, the header and tab column shown together`,
+                !landed.cold &&
+                  landed.header === "1" &&
+                  landed.column === "1" &&
+                  landed.tabBar === run.landsAt &&
+                  run.halfShown === 0,
+                JSON.stringify({ landsAt: run.landsAt, landed, halfShown: run.halfShown }),
+              );
+              if (outcome === "slow") {
+                // A read slower than the quiet period shows the cold header, rows held: one
+                // with labels lands moving nothing, and one with none moves the tab bar up by
+                // the labels row and its gap as it lands, the one move left (mb-2u08).
+                check(
+                  `${where}: after the quiet period the cold header shows, rows held`,
+                  shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                  JSON.stringify(shownCold),
+                );
+                check(
+                  `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
+                  labelled ? shownCold.tabBar === landed.tabBar : shownCold.tabBar > landed.tabBar,
+                  JSON.stringify({ shownCold, landed }),
+                );
+              } else {
+                check(
+                  `${where}: the cold header never shows, so the tab bar never moves`,
+                  run.coldShown === 0 && run.tabBarsShown.length === 1,
+                  JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                );
+              }
+              if (outcome === "held") {
+                check(
+                  `${where}: a record that lands in the quiet period keeps the cold page unseen past it while the header waits for the conversation`,
+                  waited?.cold === true && waited.header === "0" && waited.column === "0",
+                  JSON.stringify(waited),
+                );
+              }
+            }
+          }
+        }
+        process.stderr.write(
+          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
+        );
+        lap("the cold landings");
       }
       if (runs("labels")) {
         const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));

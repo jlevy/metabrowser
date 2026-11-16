@@ -41,6 +41,35 @@
 .github-pull-title {
   min-height: 2lh;
 }
+/* A page mounted with no record in hand holds its cold header and tab column out of sight
+   for the shell's quiet period, and pull-page.js lifts the hold with the first header that
+   has a record (docs/design-system.md, "Layout"). A record that lands within the quiet
+   period, and whose header waits for the conversation's held first paint, keeps them out of
+   sight until that paint (`-held`), at most DESCRIPTION_HOLD_MS. Measured 2026-11-16 in
+   headless Chrome 152 at 560 px, at a load average of 9 to 14, three loads each: the page
+   mounted with no record in hand, its pull read answered after 5, 30, 120, and 600 ms, every
+   frame read to the landing. Before, a 30 ms read showed the cold header from the first
+   frame (17 ms) and an unlabelled pull request's tab bar moved from 255 to 229 px when its
+   record landed at 35 to 50 ms. With the hold, 5 and 30 ms reads first showed at 15 to 50
+   ms with their record, its tab bar at 229 or 255 px and never moved; 120 and 600 ms reads
+   showed the cold page at 48 to 67 ms and landed at 132 to 134 and 615 to 618 ms, moving
+   an unlabelled tab bar up 26 px and a labelled one not at all. With the description's
+   Markdown unanswered, the first paint waited to its 200 ms bound: a hold that ended with
+   the quiet period showed the cold header from 48 to 68 ms and moved it at 216 to 252 ms;
+   `-held` kept 5 and 30 ms reads unseen until 150 to 250 ms, and nothing moved. Opacity
+   alone, set in one step and back, so the rows keep their layout, the tab keys stay live,
+   and reduced motion has nothing to stop. */
+.github-pull-cold {
+  animation: github-pull-cold-hold 0s linear var(--loading-state-delay) backwards;
+}
+@keyframes github-pull-cold-hold {
+  from {
+    opacity: 0;
+  }
+}
+.github-pull-cold-held {
+  opacity: 0;
+}
 /* The icon, the title cut short at two lines, and the number at the content edge, level
    with the title's last line: the number is outside the clamp, so a title cut short keeps
    it. The text's track takes the spare width, so the icon and the text start at the

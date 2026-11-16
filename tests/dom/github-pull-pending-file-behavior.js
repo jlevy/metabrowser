@@ -100,7 +100,9 @@ async function run() {
   const rendering = deferred();
   const page = mount(recorded.current, assets.promise, abandoned, loading, rendering.promise);
   await settle();
-  const pending = () => loading.querySelector(".mb-delayed-loading");
+  // The diff's own spinner, not the header's Diff summary placeholder, which waits on the
+  // same read from the header (mb-onr2).
+  const pending = () => loading.querySelector(".github-pull-diff-loading");
   assert.equal(pending()?.getAttribute("aria-label"), "Loading changes");
   assert.ok(pending().querySelector(".spinner"));
   assert.equal(page.showFile("src/app.txt").kind, "no_diff");

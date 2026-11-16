@@ -9,10 +9,14 @@ All notable changes to Metabrowser are documented here.
   labels where the pull request has them.
   Its Refresh or Fetch and Switch to the head are text actions, as Browse code is, in
   place of bordered buttons that made the line 26 px.
-  While the page reads the comparison its Diff summary is drawn from, the summary’s row
-  shows the gray, slowly pulsing block the Commits tally shows while it counts, after
-  the same short quiet period, and the summary takes its place without moving anything;
-  a comparison that cannot be read leaves the row empty, as it was.
+  While the comparison its Diff summary is drawn from is on its way and read, the
+  summary’s row shows the gray, slowly pulsing block the Commits tally shows while it
+  counts, after the same short quiet period, from a pull request’s preview through its
+  record, and the summary takes its place without moving anything; a comparison that
+  cannot be read leaves the row empty, as it was, until it is read again.
+  A reload or a direct link to a pull request no longer shows its empty header and tabs
+  first when the record arrives within that quiet period, so the tabs do not jump up as
+  a pull request with no labels arrives; after a slower read they still do.
   See [The Pull Request Page](docs/design-system.md#layout) and
   [Diff Summary](docs/design-system.md#diff-summary).
 
@@ -138,7 +142,8 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request’s page header is one size on every tab, and for every pull request with
   labels or every one without, so nothing in it moves when a part arrives late, and the
-  tab bar under it moves only between a pull request with labels and one without.
+  tab bar under it moves only between a pull request with labels and one without, and
+  when a refresh brings a pull request its first label or takes away its last.
   The title holds two lines and is cut short there, with the whole of it in a tooltip;
   its icon and text start at the header’s left edge, and the pull request’s number ends
   at the right edge, level with the title’s last line.

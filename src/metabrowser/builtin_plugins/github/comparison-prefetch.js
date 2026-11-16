@@ -22,6 +22,7 @@
  * @typedef {{
  *   load(comparison: ComparisonEnds, signal: AbortSignal): Promise<unknown>,
  *   warm(): void,
+ *   reading?(comparison: ComparisonEnds): void,
  *   loaded?(comparison: ComparisonEnds, payload: unknown): void,
  *   failed?(comparison: ComparisonEnds): void,
  *   schedule(callback: () => void): unknown,
@@ -122,6 +123,9 @@ export function createComparisonPrefetch(deps) {
       const entry = { key, phase: "waiting", handle: null, controller: null, payload: null };
       current = entry;
       entry.handle = deps.schedule(() => start(entry, comparison));
+      // A read of it is on its way, for the page's Diff summary to wait on (mb-onr2), the
+      // same comparison's again after another's.
+      deps.reading?.(comparison);
     },
     /**
      * The reader asked: the payload if there is one, waiting for a request on its way, or

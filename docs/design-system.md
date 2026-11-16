@@ -1381,15 +1381,25 @@ and slow pulse (`.tally-pending`), shown only after the quiet period
 row’s line from the row’s start, and as wide as a summary of one status, so the summary
 takes its place and nothing moves
 ([Loading States Are Shapes, Not Sentences](#loading-states-are-shapes-not-sentences)).
+The wait starts when a comparison is on its way, before the page has one: on a pull
+request’s page, a core preview whose read prepares the comparison with the record, or a
+record whose comparison the page asked the server to prepare.
+One placeholder carries the wait from the core through its record to the read, with one
+quiet period and one pulse.
+The wait is the read in flight: on Changes the mounted diff’s, so a newer comparison the
+record names waits until the reader takes it.
+A core whose read prepares no comparison, or that no read is running for, has nothing on
+its way, and only Changes asks for its comparison.
 A read that draws no summary, because it failed or its comparison is not a valid
-document, leaves the place empty, so a placeholder never outlives its wait, and a
-summary already drawn stays while a newer comparison is read
+document, leaves the place empty until a read of the same comparison starts again, a
+Retry among them, so a placeholder never outlives its wait and every wait has one.
+A summary already drawn stays while a newer comparison is read
 ([Refreshing Content](#refreshing-content)). A pull request’s header shows it on every
 tab. A commit’s page never shows it: the shell stages that page out of sight until its
 diff has drawn the summary, so its place does not wait in view.
 Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 221 by 11.05
 px, at the row’s start and centred on its line, the row is 24 px before and after the
-summary arrives, and the tab bar under it does not move (mb-onr2).
+summary arrives, and the tab bar under it does not move.
 `tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds that, and
 `tests/dom/github-pull-page-mount-behavior.js` which of them the row holds in each
 state. Its header is one row-like disclosure toggle that leads with the registry’s
@@ -1581,9 +1591,11 @@ The icon and the text start at the header’s left edge, and the number, outside
 clamped text, ends on the header’s right edge, level with the title’s last line, over
 the stack chip that ends the author’s row, whatever the title’s length.
 The colored badge that leads the row of ages gives the state in text and the title icon
-is decorative. The header’s box is decided at first paint, in every state and on every
-tab, so the tab bar under it never moves between tabs, nor between pull requests that
-both have labels or both have none: the author’s row is one line, the author and the
+is decorative. The header’s box is decided at first paint, on every tab, but for the
+labels row, which a pull request has only while it has labels: so the tab bar under it
+never moves between tabs, nor between pull requests that both have labels or both have
+none, and moves when a pull request gains its first label or loses its last.
+Otherwise it is decided in every state: the author’s row is one line, the author and the
 sentence, then at its right end the stack chip’s slot (see native stack navigation
 below), and the sentence is cut short at its end, the action first and then the author,
 never moved or wrapped; the branches have the line under it to themselves, one line in
@@ -1603,14 +1615,35 @@ bring some: a record with labels lands moving nothing, and one with none takes t
 and its gap away in the paint that lands it, the one paint that changes the header and
 the body together. A record’s labels come with it or its core, and a label’s color and
 tooltip, which the repository’s label set may bring later, change no chip’s box.
-Measured in Chrome 152 at 560, 420, and 360 px in both themes, every row is 6 px under
-the one before it and the freshness line is 18 px, the row of ages’ height; the header
-is 229 px with no labels and 255 px with labels or while its record is on its way.
-Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px labels
-row stood between it and the row of ages, 32 px under that row, and the header was 263
-px in every state (mb-2u08). The header’s last row is the pull request’s
-[Diff summary](#diff-summary), on every tab, so its counts are at the page’s top and not
-inside Changes. The row is held at `--ui-row-height` from first paint, holding the
+A refreshed record that gains a pull request’s first label, or loses its last, adds or
+takes away the row and its gap on a loaded page, and the tab bar moves 26 px; only
+GitHub changing the labels does that, so the header follows it rather than hold an empty
+row for every pull request.
+A page mounted with no record in hand, as a direct load or a reload mounts it, keeps its
+header and tab column out of sight for the shell’s quiet period
+(`--loading-state-delay`), by opacity alone, so its rows keep their layout and the tab
+keys stay live, and shows them with the first header that has a record or core.
+A read that lands within the quiet period never shows the cold header; when the
+conversation’s first paint then waits for its description (`DESCRIPTION_HOLD_MS`), the
+header waits with it, and the page stays unseen until that paint, as the body does.
+So the one move left on a cold page is a slow read of a pull request with no labels:
+past the quiet period the cold page shows, rows held, rather than a blank pane, and the
+record that lands later takes the labels row and its gap away, moving the tab bar up 26
+px. A pull request with labels lands moving nothing.
+A Pulls open whose read answers within its wait hands the page its record, and a
+retained navigation keeps the page out of sight until it has one, so neither shows a
+cold page. Measured in Chrome 152 at 560, 420, and 360 px in both themes, every row is 6
+px under the one before it and the freshness line is 18 px, the row of ages’ height; the
+header is 229 px with no labels and 255 px with labels or while its record is on its
+way. Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px
+labels row stood between it and the row of ages, 32 px under that row, and the header
+was 263 px in every state.
+A cold landing measured in place, read by read, is recorded beside `.github-pull-cold`
+in `builtin_plugins/github/styles.css`, and `tests/test_github_pull_header_chrome.py`’s
+`cold-landing` part holds it.
+The header’s last row is the pull request’s [Diff summary](#diff-summary), on every tab,
+so its counts are at the page’s top and not inside Changes.
+The row is held at `--ui-row-height` from first paint, holding the
 [pending placeholder](#diff-summary) while the comparison is read, and the summary’s
 header is one line, its breakdown cut short at its end, so the summary that arrives
 moves nothing; opened, its tree pushes the tabs down, as the reader asked.
