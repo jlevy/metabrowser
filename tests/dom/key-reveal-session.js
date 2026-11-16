@@ -1495,8 +1495,7 @@ const PARTS = {
       }),
     );
 
-    // P is the Pulls tab (mb-6rfu), freed when the stack's walk moved to Control-N and
-    // Control-P.
+    // P is the Pulls tab (mb-6rfu); the stack's walk is Control-N and Control-P.
     const toPulls = hosted.press("p");
     await settle();
     steps.push(
