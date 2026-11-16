@@ -195,11 +195,79 @@ try {
   phase("link");
   await revealed("a link", fileRow("docs/deep/deeper/leaf.md"), "files");
 
-  // 3. Quick Search, to a file past the rows its long folder draws at once.
-  await quickSearch("f250", "f250");
+  // 3. Quick Search, to a file in the fourth page of a 1,000-file folder. Only that page
+  // is drawn: the pages before it stay behind a "more" row above it, and the last page
+  // behind the row that ends the folder.
+  await quickSearch("f605", "f605");
   phase("quick search: a long folder");
-  await revealed("Quick Search, a long folder", fileRow("long/f250.txt"), "files");
+  await revealed("Quick Search, a long folder", fileRow("long/f605.txt"), "files");
   await shot("long-folder");
+  // The long folder as drawn, in order: each run of consecutive rows, and each "more" row.
+  const LONG = `(() => {
+    const children = document.querySelector('#tab-files .tree-folder[data-path="long"]').nextElementSibling;
+    const parts = [];
+    let last = null;
+    for (const item of children.children) {
+      if (item.classList.contains("tree-page-more")) {
+        last = null;
+        parts.push(item.textContent);
+        continue;
+      }
+      const name = item.dataset.path.slice("long/".length, -".txt".length);
+      const number = Number(name.slice(1));
+      if (last !== null && number === last + 1) {
+        parts[parts.length - 1] = parts[parts.length - 1].split("–")[0] + "–" + name;
+      } else {
+        parts.push(name);
+      }
+      last = number;
+    }
+    return parts;
+  })()`;
+  const longIs = async (label, expected) => {
+    const parts = await evaluate(LONG);
+    check(label, JSON.stringify(parts) === JSON.stringify(expected), JSON.stringify(parts));
+  };
+  await longIs("Quick Search, a long folder: only the page that holds the row is drawn", [
+    "f000–f199",
+    "Show 400 more (1000 total)",
+    "f600–f799",
+    "Show 200 more (1000 total)",
+  ]);
+  // The "more" row above the revealed page draws the page before it there: the revealed
+  // row stays where it is, in view and selected, and the folder reads in order.
+  const MORE_ABOVE = `document.querySelector('#tab-files .tree-item[data-path="long/f600.txt"]').previousElementSibling`;
+  for (const [press, drawn, expected] of [
+    [
+      1,
+      "f399",
+      ["f000–f399", "Show 200 more (1000 total)", "f600–f799", "Show 200 more (1000 total)"],
+    ],
+    [2, "f599", ["f000–f799", "Show 200 more (1000 total)"]],
+  ]) {
+    await evaluate(`${MORE_ABOVE}.scrollIntoView({ block: "nearest" })`);
+    await frames();
+    const before = await evaluate(PANE(fileRow("long/f605.txt")));
+    check(
+      `the "more" row above the revealed page, press ${press}: the revealed row is in view first`,
+      before.row?.inView === true,
+      JSON.stringify(before),
+    );
+    await evaluate(`${MORE_ABOVE}.click()`);
+    await waitFor(
+      `document.querySelector(${JSON.stringify(fileRow(`long/${drawn}.txt`))}) !== null`,
+      `press ${press} draws the page before the revealed one`,
+    );
+    await frames();
+    const after = await evaluate(PANE(fileRow("long/f605.txt")));
+    check(
+      `the "more" row above the revealed page, press ${press}: the revealed row stays in view`,
+      after.row?.inView === true && after.row?.selected === true,
+      JSON.stringify({ before: before.row, after: after.row }),
+    );
+    await longIs(`the "more" row above the revealed page, press ${press}: in order`, expected);
+  }
+  phase("the rows a reveal left behind");
 
   // 4. Quick Search to the file shown, after the reader closed its folder: opening it
   // again reveals it. The folder closes as its chevron's toggle does, without opening it.
@@ -225,9 +293,9 @@ try {
     })`,
     "the long folder closes",
   );
-  await quickSearch("f250", "f250");
+  await quickSearch("f605", "f605");
   phase("quick search: the file shown");
-  await revealed("Quick Search, the file shown", fileRow("long/f250.txt"), "files");
+  await revealed("Quick Search, the file shown", fileRow("long/f605.txt"), "files");
 
   // The reader scrolls the tree away from that row before leaving Files.
   await evaluate(`document.getElementById("tree-content").scrollTop = 0`);
@@ -264,9 +332,9 @@ try {
   await evaluate("history.back()");
   await waitFor(`location.pathname === "/pulls"`, "Back to the list");
   await evaluate("history.back()");
-  await waitFor(`location.pathname === "/view/long/f250.txt"`, "Back to the file");
+  await waitFor(`location.pathname === "/view/long/f605.txt"`, "Back to the file");
   phase("back");
-  await revealed("Back", fileRow("long/f250.txt"), "files");
+  await revealed("Back", fileRow("long/f605.txt"), "files");
 
   // 7. Forward, twice: to the pull request.
   await evaluate("history.forward()");

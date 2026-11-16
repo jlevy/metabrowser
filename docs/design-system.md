@@ -3273,9 +3273,17 @@ Each exception has a reason:
   kept the panel’s place.
   The reveal call says so itself (`again`): no state carries it from one call to the
   next.
-- **A long folder draws the rest of its rows.** A folder draws its first 200 rows and
-  holds the rest behind a row that shows them.
-  When the item is among them, the reveal draws them first.
+- **A long folder draws only the page that holds the item.** A folder draws its first
+  200 rows and holds the rest behind a row that shows them 200 at a time.
+  When the item is among them, the reveal draws only the 200-row page that holds it.
+  The rows before that page stay behind a “Show 400 more” row above it, and the rows
+  after it behind the row that ends the folder.
+  Pressing the row above draws its next page where the row was, and the rows below it
+  stay in place, so the revealed row stays in view and the folder still reads in order.
+  A reveal therefore costs one page however long the folder is.
+  Drawing every page up to the item instead took 2.75 s for the last of 10,000 files,
+  and the cost grew with the folder (`mountTreePageAt` in `app.js` records both
+  measurements).
 - **A file a filter hides is named, not drawn.** The Files tree takes the selection from
   whatever row had it, so no other row stays selected, and a note under its totals says
   “src/app.txt is outside this filter.”

@@ -1886,13 +1886,13 @@ function treeNodeAsEntry(node) {
   };
 }
 
+// Every "more" row of the container: a reveal can leave one above the page it drew as
+// well as the one that ends the folder (mountTreePageAt).
 function removeDeferredPageForContainer(container) {
-  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
-  if (!sentinel) {
-    return;
+  for (const sentinel of queryHtmlAll(":scope > .tree-page-more[data-page-id]", container)) {
+    pendingTreePages.delete(sentinel.dataset.pageId);
+    sentinel.remove();
   }
-  pendingTreePages.delete(sentinel.dataset.pageId);
-  sentinel.remove();
 }
 
 // Reconcile one mounted tree container without replacing it. Every container
@@ -3600,6 +3600,11 @@ function setRowExpanded(row, expanded) {
   return toggleTreeContainer(row);
 }
 
+// A "more" row's page arrives where the row was. Most such rows end their folder, and
+// the page grows down from there. One a reveal left above the page it drew
+// (mountTreePageAt) has rows after it: its page grows up from there, and the rows after
+// it stay where they are on screen, so the revealed row is not pushed out of view, and
+// the row that takes focus is the one nearest them.
 function mountNextTreePage(row) {
   var pageId = row.dataset.pageId;
   var page = pendingTreePages.get(pageId);
@@ -3609,17 +3614,22 @@ function mountNextTreePage(row) {
   }
   treeKeyboard?.prepareForMutation();
   pendingTreePages.delete(pageId);
+  var follower = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  var scroller = document.getElementById("tree-content");
+  var followerTop = follower && scroller ? follower.getBoundingClientRect().top : null;
   var temporary = document.createElement("div");
   temporary.innerHTML = withTreeIdScope(page.options.section || "", () =>
     renderTreeNodes(nextBatch, false, page.options),
   );
   var nodes = Array.prototype.slice.call(temporary.childNodes);
   var firstMounted = null;
+  var lastMounted = null;
   for (var i = 0; i < nodes.length; i++) {
     var node = nodes[i];
     row.parentElement?.insertBefore(node, row);
-    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
-      firstMounted = node;
+    if (node.getAttribute?.("role") === "treeitem") {
+      firstMounted ??= node;
+      lastMounted = node;
     }
   }
   row.remove();
@@ -3627,7 +3637,10 @@ function mountNextTreePage(row) {
   applyTreeFilters();
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
-  return firstMounted;
+  if (follower && scroller && followerTop !== null) {
+    scroller.scrollTop += follower.getBoundingClientRect().top - followerTop;
+  }
+  return follower ? lastMounted : firstMounted;
 }
 
 // The pointer activation contract. A folder row is a single target: it selects
@@ -7910,20 +7923,31 @@ function _findChildContainerFor(parentRel, panelEl) {
   return children;
 }
 
-function _deferredTreePageForContainer(container) {
-  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
-  if (!sentinel) {
-    return null;
+// The container's deferred page that holds *path*, or with no path its last one. A
+// container has one "more" row at its end, and a reveal can leave another above the page
+// it drew (mountTreePageAt).
+function _deferredTreePageForContainer(container, path) {
+  var sentinels = Array.from(
+    queryHtmlAll(":scope > .tree-page-more[data-page-id]", container),
+  ).reverse();
+  for (const sentinel of sentinels) {
+    var pageId = sentinel.dataset.pageId;
+    var page = pendingTreePages.get(pageId);
+    if (
+      page &&
+      (path === undefined ||
+        page.nodes.some((/** @type {{path: string}} */ node) => node.path === path))
+    ) {
+      return { pageId: pageId, page: page, sentinel: sentinel };
+    }
   }
-  var pageId = sentinel.dataset.pageId;
-  var page = pendingTreePages.get(pageId);
-  return page ? { pageId: pageId, page: page, sentinel: sentinel } : null;
+  return null;
 }
 
 // Snapshot and change events include entries already held by a deferred page.
 // Refresh that pending copy instead of mounting it ahead of its sentinel.
 function _updateDeferredTreePageEntry(container, entry) {
-  var deferred = _deferredTreePageForContainer(container);
+  var deferred = _deferredTreePageForContainer(container, entry.path);
   if (!deferred) {
     return false;
   }
@@ -7953,14 +7977,24 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
   if (!container) {
     return;
   }
-  var rows = /** @type {HTMLElement[]} */ (
-    Array.from(container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"))
+  // The container's rows in order, each "more" row counting the rows it holds back.
+  var items = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item"))
   );
-  var setSize = Math.max(rows.length + page.nodes.length, Number(page.options.setSize) || 0);
+  var held = (/** @type {HTMLElement} */ item) =>
+    item.classList.contains("tree-page-more")
+      ? (pendingTreePages.get(item.dataset.pageId || "")?.nodes.length ?? 0)
+      : 1;
+  var setSize = Math.max(
+    items.reduce((total, item) => total + held(item), 0),
+    Number(page.options.setSize) || 0,
+  );
   page.options.setSize = setSize;
-  for (var index = 0; index < rows.length; index++) {
-    rows[index].dataset.treePosition = String(index + 1);
-    rows[index].dataset.treeSetSize = String(setSize);
+  var position = 0;
+  for (const item of items) {
+    item.dataset.treePosition = String(position + 1);
+    item.dataset.treeSetSize = String(setSize);
+    position += held(item);
   }
   if (page.nodes.length === 0) {
     var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
@@ -7969,8 +8003,6 @@ function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
     scheduleTreeSynchronize(sentinelMutation);
     return;
   }
-  sentinel.dataset.treePosition = String(rows.length + 1);
-  sentinel.dataset.treeSetSize = String(setSize);
   var labelId = sentinel.getAttribute("aria-labelledby") || "";
   var label = document.getElementById(labelId);
   if (label) {
@@ -8051,8 +8083,9 @@ function _insertRowSorted(container, entry, options, highlightChange) {
     }
   }
   if (anchor === null) {
-    // Insert before the page-more sentinel if present, else at the end.
-    var more = container.querySelector(":scope > .tree-page-more");
+    // Insert before the page-more sentinel that ends the folder if present, else at the
+    // end. A reveal can leave another above the page it drew, before the rows it holds.
+    var more = Array.from(queryHtmlAll(":scope > .tree-page-more", container)).pop();
     anchor = more || null;
   }
   for (var j = 0; j < nodes.length; j++) {
@@ -9199,9 +9232,11 @@ async function revealWithin(
 }
 
 /**
- * Mount the rest of a long folder when *path*'s row is in it. A folder draws its first
- * TREE_PAGE_SIZE rows and holds the rest behind a "more" row until it is asked for, and a
- * reveal asks for it (docs/design-system.md, "Navigation Reveals the Item").
+ * Draw the page of a long folder that holds *path*'s row. A folder draws its first
+ * TREE_PAGE_SIZE rows and holds the rest behind a "more" row, which draws them a page at
+ * a time. A reveal draws only the page that holds the row: the rows before that page
+ * stay behind the "more" row, and the rows after it go behind one of their own
+ * (docs/design-system.md, "Navigation Reveals the Item").
  *
  * @param {Document | HTMLElement} scope
  * @param {string} path
@@ -9213,11 +9248,73 @@ function mountTreePageHolding(scope, path) {
     /** @type {HTMLElement} */ (scope),
   )) {
     var page = pendingTreePages.get(sentinel.dataset.pageId);
-    if (page?.nodes.some((/** @type {{path: string}} */ node) => node.path === path)) {
+    var index = page
+      ? page.nodes.findIndex((/** @type {{path: string}} */ node) => node.path === path)
+      : -1;
+    if (index >= TREE_PAGE_SIZE) {
+      return mountTreePageAt(sentinel, page, index - (index % TREE_PAGE_SIZE)) !== null;
+    }
+    if (index >= 0) {
       return mountNextTreePage(sentinel) !== null;
     }
   }
   return false;
+}
+
+/**
+ * Draw the page that starts *start* rows into what *sentinel* holds back, after the
+ * sentinel, which keeps the rows before that page, and the rows after it behind a "more"
+ * row of its own. Each of the two draws its page in place, as any "more" row does
+ * (mountNextTreePage), so pressing them draws the folder in order.
+ *
+ * The cost is one page's, however long the folder. Measured 2026-11-15 in headless
+ * Chrome 152 against a live server, with the folder's first page drawn, on a machine at
+ * load average 14: `revealFileRow` for the last of 10,000 files took 18 ms (median of
+ * five, at most 20 ms) and 28 ms to the second frame after, with the row selected and in
+ * view, against 17 ms for a row in the second page. Drawing every page up to the row
+ * instead, as pressing "more" until it appears would, took 204 ms for 2,000 files, 783 ms
+ * for 5,000, and 2.75 s for 10,000, most of it the layout of every row drawn.
+ *
+ * @param {HTMLElement} sentinel
+ * @param {{nodes: {path: string}[], options: Record<string, any>}} page
+ * @param {number} start A multiple of TREE_PAGE_SIZE within `page.nodes`.
+ * @returns {HTMLElement | null} The first row drawn.
+ */
+function mountTreePageAt(sentinel, page, start) {
+  var nodes = page.nodes;
+  var offset = Number(page.options.positionOffset) || 0;
+  treeKeyboard?.prepareForMutation();
+  page.nodes = nodes.slice(0, start);
+  var temporary = document.createElement("div");
+  temporary.innerHTML = withTreeIdScope(
+    page.options.section || "",
+    () =>
+      renderTreeNodes(nodes.slice(start, start + TREE_PAGE_SIZE), false, {
+        ...page.options,
+        positionOffset: offset + start,
+      }) +
+      deferredTreePageHtml(nodes.slice(start + TREE_PAGE_SIZE), {
+        ...page.options,
+        positionOffset: offset + start + TREE_PAGE_SIZE,
+      }),
+  );
+  var label = document.getElementById(sentinel.getAttribute("aria-labelledby") || "");
+  if (label) {
+    label.textContent = `Show ${start} more (${page.options.setSize} total)`;
+  }
+  var after = sentinel.nextElementSibling;
+  var firstMounted = null;
+  for (const node of Array.prototype.slice.call(temporary.childNodes)) {
+    sentinel.parentElement?.insertBefore(node, after);
+    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
+      firstMounted = node;
+    }
+  }
+  // A drawn page arrives without current filter decoration, as mountNextTreePage's does.
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  return firstMounted;
 }
 
 /**

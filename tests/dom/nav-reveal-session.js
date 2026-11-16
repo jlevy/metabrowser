@@ -20,12 +20,16 @@
 // step within the pull request shown reveals no row, and an open of it again does. No
 // step moves focus.
 //
-// `files tree` lifts app.js's tree reveal verbatim (`revealFileRow`, `revealInTree`,
-// `revealWithin`, `mountTreePageHolding`, `setSelectedPath`, and the outside-filter note)
-// over a stand-in tree: closed folders open, the page of a long folder that holds a row is
-// mounted, a reveal that cannot show its row still takes the selection from the row that
-// had it, and the note names a file only when the filter is what hides it. The page's
-// mount and the folder's lazy load stand in for the renderer's.
+// `files tree` lifts app.js's tree reveal and page mounting verbatim (`revealFileRow`,
+// `revealInTree`, `revealWithin`, `mountTreePageHolding`, `mountTreePageAt`,
+// `mountNextTreePage`, `setSelectedPath`, and the outside-filter note) over a stand-in
+// tree: closed folders open; in a folder of 1,400 files only the page that holds the row
+// is drawn, with the pages before and after it behind "more" rows of their own, which
+// draw in order where they are; a reveal that cannot show its row still takes the
+// selection from the row that had it; and the note names a file only when the filter is
+// what hides it. The renderer stands in for renderTreeNodes and deferredTreePageHtml,
+// paging as they do (TREE_PAGE_SIZE rows, then a "more" row), as the folder's lazy load
+// stands in for the server's.
 //
 // `pulls list` runs builtin_plugins/github/pulls-panel.js's controller over the recorded
 // lists and stack snapshot that tests/test_github_pulls_panel_session.py records: an
@@ -482,7 +486,12 @@ async function filesStory() {
   };
   const context = createContext(document, "/view/", ["tree-expansion.js"]);
   const filter = { state: { recency: "all", types: null, size: "all", showIgnored: true } };
+  const TREE_PAGE_SIZE = Number(/\nconst TREE_PAGE_SIZE = (\d+);/.exec(appSource)[1]);
+  const rowHtml = (filePath) =>
+    `<div class="tree-item tree-file" data-path="${filePath}" role="treeitem"></div>`;
+  let pageIds = 0;
   Object.assign(context, {
+    TREE_PAGE_SIZE,
     filterState: { get: () => filter.state },
     treeKeyboard: null,
     currentPath: "",
@@ -491,16 +500,36 @@ async function filesStory() {
     synchronizeTreeNow() {},
     scheduleSubtreePrefetch() {},
     loadSubtree: async () => {},
-    // A page of a long folder, drawn as rows before its "more" row, which goes.
-    mountNextTreePage(sentinel) {
-      const page = context.pendingTreePages.get(sentinel.dataset.pageId);
-      context.pendingTreePages.delete(sentinel.dataset.pageId);
-      for (const node of page.nodes) {
-        sentinel.parentNode.insertBefore(fileRow(node.path), sentinel);
-      }
-      sentinel.remove();
-      return sentinel;
+    // The renderer, paging as production's renderTreeNodes does: a folder's first
+    // TREE_PAGE_SIZE rows, then a "more" row that holds back the rest.
+    renderTreeNodes(nodes, _isRoot, options) {
+      const offset = options.positionOffset || 0;
+      return (
+        nodes
+          .slice(0, TREE_PAGE_SIZE)
+          .map((node) => rowHtml(node.path))
+          .join("") +
+        context.deferredTreePageHtml(nodes.slice(TREE_PAGE_SIZE), {
+          ...options,
+          positionOffset: offset + TREE_PAGE_SIZE,
+        })
+      );
     },
+    deferredTreePageHtml(nodes, options) {
+      if (nodes.length === 0) {
+        return "";
+      }
+      const pageId = `page-${++pageIds}`;
+      context.pendingTreePages.set(pageId, { nodes, options });
+      return (
+        `<div class="tree-item tree-page-more" data-page-id="${pageId}" data-action="page-more"` +
+        ` role="treeitem" aria-labelledby="${pageId}-label"><span id="${pageId}-label">` +
+        `Show ${nodes.length} more (${options.setSize} total)</span></div>`
+      );
+    },
+    withTreeIdScope: (_scope, build) => build(),
+    applyTreeFilters() {},
+    reconcilePendingTallyDiagnostics() {},
   });
   vm.runInContext(
     [
@@ -512,6 +541,8 @@ async function filesStory() {
       "renderSelectionOutsideFilterNote",
       "treeOmitsPath",
       "treePageHolds",
+      "mountNextTreePage",
+      "mountTreePageAt",
       "mountTreePageHolding",
       "setFolderExpanded",
       "revealWithin",
@@ -530,6 +561,9 @@ async function filesStory() {
       "data-path": filePath,
       role: "treeitem",
     });
+  // A folder longer than the tree draws at once: 1,400 files, f0000 to f1399.
+  const LONG_FILES = 1400;
+  const longName = (index) => `long/f${String(index).padStart(4, "0")}.txt`;
   const folder = (folderPath, children, { open = false } = {}) => [
     element(document, "div", {
       class: `tree-item tree-folder ${open ? "expanded" : "collapsed"}`,
@@ -551,19 +585,13 @@ async function filesStory() {
     context.pendingTreePages.clear();
     const long = [];
     if (!filtered) {
-      for (let index = 0; index < 3; index += 1) {
-        long.push(fileRow(`long/f${index}.txt`));
-      }
-      long.push(
-        element(document, "div", {
-          class: "tree-item tree-page-more",
-          "data-page-id": "long-more",
-          "data-action": "page-more",
-        }),
+      const holder = element(document, "div");
+      holder.innerHTML = context.renderTreeNodes(
+        Array.from({ length: LONG_FILES }, (_unused, index) => ({ path: longName(index) })),
+        false,
+        { level: 2, setSize: LONG_FILES },
       );
-      context.pendingTreePages.set("long-more", {
-        nodes: [{ path: "long/f3.txt" }, { path: "long/f250.txt" }],
-      });
+      long.push(...holder.childNodes);
     }
     panel.replaceChildren(
       element(document, "div", { class: "tree-summary" }),
@@ -578,15 +606,46 @@ async function filesStory() {
       fileRow("README.md"),
     );
   }
+  /**
+   * The long folder as drawn, in order: each run of consecutive rows, and each "more" row
+   * with what it says. A row out of order starts a run of its own.
+   */
+  const longFolder = () => {
+    const children = panel.querySelector('.tree-folder[data-path="long"]')?.nextElementSibling;
+    if (!children) {
+      return null;
+    }
+    const parts = [];
+    let run = null;
+    for (const item of children.children) {
+      if (item.classList.contains("tree-page-more")) {
+        run = null;
+        parts.push(item.textContent);
+        continue;
+      }
+      const name = item.dataset.path.slice("long/".length, -".txt".length);
+      const number = Number(name.slice(1));
+      if (run !== null && number === run.last + 1) {
+        run.last = number;
+        parts[parts.length - 1] = `${run.first}–${name}`;
+      } else {
+        run = { first: name, last: number };
+        parts.push(name);
+      }
+    }
+    return parts;
+  };
   const view = () => {
     const open = [...panel.querySelectorAll(".tree-folder")]
       .filter((row) => row.getAttribute("aria-expanded") === "true")
       .map((row) => row.dataset.path);
+    const drawn = longFolder();
     return {
       open,
       selected: [...panel.querySelectorAll(".tree-item.selected")].map((row) => row.dataset.path),
       scrolled: scrolled.splice(0),
       note: panel.querySelector(".tree-selection-note")?.textContent ?? null,
+      ...(drawn === null ? {} : { "long folder": drawn }),
     };
   };
   const steps = [];
@@ -594,6 +653,19 @@ async function filesStory() {
     context.currentPath = filePath;
     const shown = await context.revealFileRow(filePath, { scroll, isCurrent: () => true });
     steps.push({ step: what, path: filePath, shown, ...view() });
+  };
+  /** The reader presses the *nth* "more" row of the long folder, as its click does. */
+  const pressMore = (what, nth) => {
+    const more = panel
+      .querySelector('.tree-folder[data-path="long"]')
+      .nextElementSibling.children.filter((item) => item.classList.contains("tree-page-more"))[nth];
+    const focus = context.mountNextTreePage(more);
+    steps.push({
+      step: what,
+      path: context.currentPath,
+      ...view(),
+      "focus goes to": focus?.dataset.path ?? focus?.textContent ?? null,
+    });
   };
   draw();
   await reveal("a file three folders down: its folders open", "docs/deep/deeper/leaf.md");
@@ -603,8 +675,30 @@ async function filesStory() {
     "keep",
   );
   await reveal(
-    "a file past a long folder's first page: the page holding it is drawn",
-    "long/f250.txt",
+    "a file in a long folder's second page: that page is drawn, the rest stays behind its row",
+    longName(250),
+  );
+  await reveal(
+    "a file in its fifth page: only that page is drawn, between rows for the pages around it",
+    longName(905),
+  );
+  const fifth = steps.at(-1);
+  assert.ok(fifth.shown, "a file in a long folder's fifth page is not drawn");
+  assert.deepEqual(
+    fifth["long folder"],
+    ["f0000–f0399", "Show 400 more (1400 total)", "f0800–f0999", "Show 400 more (1400 total)"],
+    "a reveal drew more than the page that holds its row",
+  );
+  pressMore(
+    "the row above the revealed page draws the page before it there, and keeps focus nearby",
+    0,
+  );
+  pressMore("again: the folder reads in order up to the revealed page", 0);
+  pressMore("the row that ends the folder draws down from there, as before", 0);
+  assert.deepEqual(
+    steps.at(-1)["long folder"],
+    ["f0000–f1199", "Show 200 more (1400 total)"],
+    "the rows the reveal left behind did not draw in order",
   );
   await reveal("a path the tree does not hold, with no filter: no row stays selected", "gone.txt");
   await reveal("back to a listed file", "docs/guide.md");

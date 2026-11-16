@@ -24,10 +24,12 @@ as `app.js` calls it, printing the tab in front, what each panel was asked, and 
 Pulls tab’s own controller reveals a row.
 Another tab or a changed file of the pull request shown is a step within it and reveals
 no row; Quick Search for it reveals it again, after the tab’s button too; no step moves
-focus. `files tree` lifts `app.js`’s tree reveal verbatim over a stand-in tree: closed
-folders open, the page of a long folder that holds the row is drawn, a reveal that
-cannot show its row leaves no other row selected, and the tree says a file is outside
-the filter only when the filter is what hides it.
+focus. `files tree` lifts `app.js`’s tree reveal and its page mounting verbatim over a
+stand-in tree whose renderer pages as production’s does, 200 rows and then a “more” row:
+closed folders open, and in a folder of 1,400 files only the page that holds the row is
+drawn, with the pages before and after it behind rows of their own, which draw in order
+where they are. A reveal that cannot show its row leaves no other row selected, and the
+tree says a file is outside the filter only when the filter is what hides it.
 `pulls list` runs the Pulls tab’s controller over the recorded lists and stack snapshot:
 an address naming a pull request in a closed stack opens the stack, the same pull
 request named again moves nothing unless it was opened again, which reveals it and ends
@@ -308,7 +310,11 @@ $ node tests/dom/nav-reveal-session.js
       "scrolled": [
         "docs/deep/deeper/leaf.md"
       ],
-      "note": null
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 1200 more (1400 total)"
+      ]
     },
     {
       "step": "a tab's landing keeps the tree's place: selected, not scrolled",
@@ -323,11 +329,15 @@ $ node tests/dom/nav-reveal-session.js
         "README.md"
       ],
       "scrolled": [],
-      "note": null
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 1200 more (1400 total)"
+      ]
     },
     {
-      "step": "a file past a long folder's first page: the page holding it is drawn",
-      "path": "long/f250.txt",
+      "step": "a file in a long folder's second page: that page is drawn, the rest stays behind its row",
+      "path": "long/f0250.txt",
       "shown": true,
       "open": [
         "docs",
@@ -336,12 +346,102 @@ $ node tests/dom/nav-reveal-session.js
         "long"
       ],
       "selected": [
-        "long/f250.txt"
+        "long/f0250.txt"
       ],
       "scrolled": [
-        "long/f250.txt"
+        "long/f0250.txt"
       ],
-      "note": null
+      "note": null,
+      "long folder": [
+        "f0000–f0399",
+        "Show 1000 more (1400 total)"
+      ]
+    },
+    {
+      "step": "a file in its fifth page: only that page is drawn, between rows for the pages around it",
+      "path": "long/f0905.txt",
+      "shown": true,
+      "open": [
+        "docs",
+        "docs/deep",
+        "docs/deep/deeper",
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [
+        "long/f0905.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0399",
+        "Show 400 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "the row above the revealed page draws the page before it there, and keeps focus nearby",
+      "path": "long/f0905.txt",
+      "open": [
+        "docs",
+        "docs/deep",
+        "docs/deep/deeper",
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0599",
+        "Show 200 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ],
+      "focus goes to": "Show 200 more (1400 total)"
+    },
+    {
+      "step": "again: the folder reads in order up to the revealed page",
+      "path": "long/f0905.txt",
+      "open": [
+        "docs",
+        "docs/deep",
+        "docs/deep/deeper",
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0999",
+        "Show 400 more (1400 total)"
+      ],
+      "focus goes to": "long/f0799.txt"
+    },
+    {
+      "step": "the row that ends the folder draws down from there, as before",
+      "path": "long/f0905.txt",
+      "open": [
+        "docs",
+        "docs/deep",
+        "docs/deep/deeper",
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f1199",
+        "Show 200 more (1400 total)"
+      ],
+      "focus goes to": "long/f1000.txt"
     },
     {
       "step": "a path the tree does not hold, with no filter: no row stays selected",
@@ -355,7 +455,11 @@ $ node tests/dom/nav-reveal-session.js
       ],
       "selected": [],
       "scrolled": [],
-      "note": null
+      "note": null,
+      "long folder": [
+        "f0000–f1199",
+        "Show 200 more (1400 total)"
+      ]
     },
     {
       "step": "back to a listed file",
@@ -373,7 +477,11 @@ $ node tests/dom/nav-reveal-session.js
       "scrolled": [
         "docs/guide.md"
       ],
-      "note": null
+      "note": null,
+      "long folder": [
+        "f0000–f1199",
+        "Show 200 more (1400 total)"
+      ]
     },
     {
       "step": "a filter hides its folder: no row stays selected, and the tree says why",

@@ -11,8 +11,12 @@ All notable changes to Metabrowser are documented here.
   Back and Forward now scroll to the row too, as a tab’s own button still does not.
   Another tab of the pull request shown, or one of its changed files, clicked or walked
   with J and K, leaves the Pulls list on your row.
-  Quick Search for the item already shown reveals it again, a file past a long folder’s
-  first 200 rows is drawn, and a commit’s address scrolls the Commits list to its row.
+  Quick Search for the item already shown reveals it again, and a commit’s address
+  scrolls the Commits list to its row.
+  A file past a long folder’s first 200 rows is drawn with only the 200-row page that
+  holds it, as fast in a folder of 10,000 files as in one of 400. The rows before that
+  page wait behind a “Show N more” row above it, which draws them in order without
+  moving the file’s row.
   A file a filter hides no longer leaves the previous file selected: the tree says
   “src/app.txt is outside this filter.”, and no longer says that of a file that is only
   in a closed folder. A pull request the Pulls list does not hold is named under its

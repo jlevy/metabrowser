@@ -686,7 +686,7 @@ def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
     js = _read_app_js()
     helper_start = js.index("function _updateDeferredTreePageEntry(container, entry)")
     helper_block = js[helper_start : helper_start + 1000]
-    assert "_deferredTreePageForContainer(container)" in helper_block
+    assert "_deferredTreePageForContainer(container, entry.path)" in helper_block
     assert "node.path === entry.path" in helper_block
     assert "deferred.page.nodes[index]" in helper_block
     assert "current.type !== entry.type" in helper_block

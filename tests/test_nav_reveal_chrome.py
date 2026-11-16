@@ -61,9 +61,9 @@ LIFECYCLE_S = (
 )
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 
-# More rows than a folder draws at once (TREE_PAGE_SIZE in static/app.js), so the last
-# ones wait behind its "more" row until a reveal asks for them.
-LONG_FOLDER_FILES = 260
+# Five of the pages a folder draws at a time (TREE_PAGE_SIZE in static/app.js): a reveal of
+# a file in the fourth draws only that page, between "more" rows for the pages around it.
+LONG_FOLDER_FILES = 1000
 HISTORY_COMMITS = 300
 
 
