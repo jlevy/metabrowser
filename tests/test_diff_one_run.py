@@ -12,7 +12,7 @@ import asyncio
 import dataclasses
 import json
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,25 @@ from tests.required_tools import needs_git
 pytestmark = needs_git
 
 type Ask = Callable[[ChangeSetManifest], Sequence[Sequence[str]]]
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_git_config(tmp_path: Path) -> Iterator[None]:
+    """Folder reads honor the caller's configuration, and a developer's global file can name
+    a textconv driver, which changes every count here: an empty global file, no system file,
+    and no configuration from the environment. A test that names a system file sets it.
+    The fixture's own patch outlives a test's ``monkeypatch.undo()``."""
+    textconv.forget()
+    empty = tmp_path / "empty-global-gitconfig"
+    empty.write_bytes(b"")
+    with pytest.MonkeyPatch.context() as isolated:
+        for name in ("GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS"):
+            isolated.delenv(name, raising=False)
+        isolated.delenv("GIT_CONFIG_SYSTEM", raising=False)
+        isolated.setenv("GIT_CONFIG_GLOBAL", str(empty))
+        isolated.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        yield
+    textconv.forget()
 
 
 class _Today(GitDiffSource):
