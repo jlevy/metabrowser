@@ -465,10 +465,17 @@ async function headingStory() {
           ];
         }),
       );
-    /** The next idle callback, and the paint after it. */
+    /**
+     * The next idle callback that reads a stack, and the paint after it. A pull request's row
+     * reads its own change line in the same idle time (row-lines.js), in a request this story
+     * leaves unanswered, so a callback that reads no stack is run and passed over.
+     */
     const idleOnce = async () => {
-      idle.shift()?.();
-      await paint();
+      const before = requests.length;
+      while (idle.length > 0 && requests.length === before) {
+        idle.shift()();
+        await paint();
+      }
     };
     /** Let the reads on their way be answered, and paint. */
     const release = async () => {
@@ -522,7 +529,12 @@ async function headingStory() {
       headings: arrived,
       requests: requests.splice(0),
     });
-    assert.equal(idle.length, 0, "nothing more is read");
+    // Whatever is still left for idle time reads no stack.
+    while (idle.length > 0) {
+      idle.shift()();
+      await paint();
+    }
+    assert.deepEqual(requests, [], "nothing more is read");
     const heading286 = childByClass(row286, "github-pulls-stack-heading");
     assert.equal(
       childByClass(heading286, "github-pull-stack-label"),
