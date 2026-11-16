@@ -1135,9 +1135,10 @@ async function headerAges(page) {
 }
 
 // The header's box is decided at first paint: the same rows, in the same order, whatever
-// the pull request carries and whichever tab shows, and while its record is on its way.
-// Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
-// row is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
+// the pull request carries and whichever tab shows, and while its record is on its way,
+// but for the labels row, which a pull request with no labels does not have (mb-2u08). It
+// is held while the record is on its way, since the record may bring labels. Each row's
+// height is its stylesheet's (tests/test_reserved_chrome.py); here, that every row is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
 // strut until one arrives, which holds that row at a chip's height; and Refresh has its
 // slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
 // late chip moves nothing.
@@ -1186,6 +1187,8 @@ async function headerShape(page) {
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
   };
+  // The variants whose record names no labels.
+  const NO_LABELS = new Set(["no labels, a title of three lines", "merged"]);
   for (const [name, body] of Object.entries(variants)) {
     for (const tab of ["", "files", "checks"]) {
       const { container, handle } = await mountOn(page, body, tab, age);
@@ -1202,7 +1205,11 @@ async function headerShape(page) {
         stacks,
         `${name} ${tab}: the stack slot ends the author's row`,
       );
-      assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
+      if (NO_LABELS.has(name)) {
+        assert.equal(labels, null, `${name} ${tab}: no labels, no labels row`);
+      } else {
+        assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
+      }
       if (name === "three labels") {
         // A label with GitHub's color carries it and the properties github/styles.css
         // paints it from; one with a description has it as its tooltip; one without a
@@ -1263,18 +1270,33 @@ async function headerShape(page) {
         refresh.classes.has("github-pull-refresh"),
         `${name} ${tab}: Refresh's slot ends the status row`,
       );
+      // A text action, a line tall, so the status line is a metadata line (mb-2u08).
+      assert.ok(
+        refresh.classes.has("github-pull-text-action") && !refresh.classes.has("btn"),
+        `${name} ${tab}: Refresh is a text action`,
+      );
       assert.ok(
         container.querySelector(".tab-bar"),
         `${name} ${tab}: the tab bar is under the header from first paint`,
       );
       assert.equal(header.parentNode.children.indexOf(header), 0);
       shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
+      assert.equal(
+        rows(container).join(" "),
+        NO_LABELS.has(name)
+          ? "title meta branches opened status summary"
+          : "title meta branches opened labels status summary",
+        `${name} ${tab}: the header's rows`,
+      );
       handle.dispose();
     }
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta branches opened labels status summary"]),
+    new Set([
+      "title meta branches opened labels status summary",
+      "title meta branches opened status summary",
+    ]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.
@@ -1303,9 +1325,16 @@ async function headerShape(page) {
 // (`onDocument`), which draws nothing more for the same comparison; on Checks the
 // comparison is read for it too; and the page's disposal disposes it. The summary's own
 // header and tree are the diff plugin's, pinned in tests/dom/diff-summary-session.js.
+// The header's Diff summary row (mb-pb35), and what it holds while it waits (mb-onr2): the
+// shell's pending placeholder while the comparison the record names is read, the summary in
+// its place once read, and nothing once a read draws none, so a placeholder never outlives
+// its wait. Each state the row passes through is told, in order, for the golden.
 async function headerSummary(page) {
-  /** @param {string} tab */
-  const mount = async (tab) => {
+  /**
+   * @param {string} tab
+   * @param {{read?: "answers" | "fails", summary?: "draws" | "declines", diff?: "reads" | "fails", body?: unknown}} [options]
+   */
+  const mount = async (tab, options = {}) => {
     const tasks = [];
     globalThis.document = {
       visibilityState: "visible",
@@ -1326,17 +1355,28 @@ async function headerSummary(page) {
     const raw = { comparison: "read" };
     const steps = { summaries: [], renders: [] };
     const diffView = {
-      prefetch: async () => raw,
+      prefetch: async () => {
+        if (options.read === "fails") {
+          throw new Error("refused");
+        }
+        return raw;
+      },
       summary: async (slot, ctx) => {
         steps.summaries.push(ctx.raw === raw ? "the comparison read" : "another");
+        if (options.summary === "declines") {
+          return null;
+        }
         const header = new Element("button");
         header.className = "diff-summary diff-summary-toggle";
+        header.classes.add("diff-summary");
         slot.append(header);
         return { dispose: () => steps.summaries.push("disposed") };
       },
       render: async (_host, ctx) => {
         steps.renders.push({ summary: ctx.summary, onDocument: typeof ctx.onDocument });
-        ctx.onDocument?.(raw);
+        if (options.diff !== "fails") {
+          ctx.onDocument?.(raw);
+        }
         return { dispose() {} };
       },
     };
@@ -1346,13 +1386,17 @@ async function headerSummary(page) {
       {
         number: 7,
         tab,
-        reader: { initial: { etag: null, body: recorded.current.body }, fetchAfterMs: 60_000 },
+        reader: {
+          initial: { etag: null, body: options.body ?? recorded.current.body },
+          fetchAfterMs: 60_000,
+        },
       },
       {
         perf,
         ensureAsset: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
+        loadChangedFilesTree: async () => {},
         getRegisteredView: () => diffView,
         ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
@@ -1371,37 +1415,103 @@ async function headerSummary(page) {
     };
     return { handle, row, steps, idle };
   };
+  /** What the row holds: the placeholder, a summary, or nothing. */
+  const holds = (row) => {
+    if (row.children.length === 0) {
+      return "nothing";
+    }
+    const [only] = row.children;
+    if (row.children.length === 1 && only.classes.has("github-pull-summary-pending")) {
+      // The shell's primitives: the quiet period's reveal, and in it the tally's block.
+      assert.ok(only.classes.has("mb-delayed-loading"), "shown after the quiet period");
+      assert.equal(only.getAttribute("role"), "status");
+      assert.equal(only.getAttribute("aria-label"), "Loading the summary of changes");
+      assert.equal(only.children.length, 1);
+      assert.ok(only.children[0].classes.has("tally-pending"), "the navigation tally's block");
+      assert.equal(only.children[0].getAttribute("aria-hidden"), "true");
+      return "the pending placeholder";
+    }
+    if (row.children.length === 1 && only.classes.has("diff-summary")) {
+      return "the summary";
+    }
+    return `${row.children.length} other nodes`;
+  };
+  const told = [];
+  const tell = (step, row) => told.push(`${step}: ${holds(row)}`);
 
   const conversation = await mount("");
   const header = conversation.row().parentNode;
   assert.equal(header.children.at(-1), conversation.row(), "the summary ends the header");
   assert.ok(conversation.row().classes.has("metabrowser-diff-host"), "with the diff's styles");
-  assert.equal(conversation.row().children.length, 0, "held, empty, until the comparison is read");
+  tell("Conversation, the comparison not yet read", conversation.row());
+  const placeholder = conversation.row().children[0];
+  conversation.handle.land({ tab: "" });
+  await settle();
+  assert.equal(conversation.row().children[0], placeholder, "a repaint keeps the placeholder");
   conversation.idle();
   await settle();
   assert.deepEqual(conversation.steps.summaries, ["the comparison read"]);
-  assert.equal(conversation.row().children.length, 1, "drawn in the row the header held");
+  tell("the comparison read", conversation.row());
   window.location.pathname = "/pull/7/files";
   conversation.handle.land({ tab: "files" });
   await settle();
   assert.deepEqual(conversation.steps.renders, [{ summary: false, onDocument: "function" }]);
   assert.deepEqual(conversation.steps.summaries, ["the comparison read"], "drawn once");
-  assert.equal(conversation.row().children.length, 1, "and kept on Changes");
+  tell("Changes", conversation.row());
   conversation.handle.dispose();
   assert.deepEqual(conversation.steps.summaries, ["the comparison read", "disposed"]);
 
   const checks = await mount("checks");
+  tell("Checks, the comparison not yet read", checks.row());
   checks.idle();
   await settle();
   assert.deepEqual(checks.steps.summaries, ["the comparison read"], "read for it on Checks too");
+  tell("Checks, the comparison read", checks.row());
   checks.handle.dispose();
 
   const changes = await mount("files");
   await settle();
   assert.deepEqual(changes.steps.renders, [{ summary: false, onDocument: "function" }]);
   assert.deepEqual(changes.steps.summaries, ["the comparison read"], "from what Changes read");
-  assert.equal(changes.row().children.length, 1);
+  tell("opened on Changes, from what its diff read", changes.row());
   changes.handle.dispose();
+
+  const refused = await mount("", { read: "fails" });
+  tell("a read that will fail, not yet answered", refused.row());
+  refused.idle();
+  await settle();
+  assert.deepEqual(refused.steps.summaries, []);
+  tell("the read fails", refused.row());
+  refused.handle.land({ tab: "" });
+  await settle();
+  tell("a repaint after it failed", refused.row());
+  refused.handle.dispose();
+
+  const declined = await mount("", { summary: "declines" });
+  declined.idle();
+  await settle();
+  assert.deepEqual(declined.steps.summaries, ["the comparison read"]);
+  tell("a comparison the summary draws nothing for", declined.row());
+  declined.handle.dispose();
+
+  const unread = await mount("files", { diff: "fails" });
+  await settle();
+  assert.deepEqual(unread.steps.summaries, []);
+  tell("opened on Changes, whose diff reads no comparison", unread.row());
+  unread.handle.dispose();
+
+  const loading = await mount("", { body: recorded.absent.body });
+  tell("the record on its way", loading.row());
+  loading.handle.dispose();
+
+  const none = structuredClone(recorded.current.body);
+  delete none.record.comparison;
+  const nameless = await mount("", { body: none });
+  nameless.idle();
+  await settle();
+  tell("a record that names no comparison", nameless.row());
+  nameless.handle.dispose();
+  return told;
 }
 
 async function run() {
@@ -2014,7 +2124,7 @@ async function run() {
   await checkRows(page);
   await headerAges(page);
   await headerShape(page);
-  await headerSummary(page);
+  const headerSummarySteps = await headerSummary(page);
   const tabKeySteps = await tabKeys(page);
   for (const label of [
     "githubPull:decode",
@@ -2038,7 +2148,7 @@ async function run() {
     checkRows: true,
     headerAges: true,
     headerShape: true,
-    headerSummary: true,
+    headerSummary: headerSummarySteps,
     tabKeys: tabKeySteps,
   };
 }

@@ -15,9 +15,12 @@ of Conversation, `take` when a diff mounts, and `dispose` when the page goes.
 
 Each step prints what has been asked of the server, what is held, and what a mount is
 handed. A mount handed nothing asks for itself and reports its own errors.
-The session asserts, and so prints nothing for, that a poll of the same record sends
-nothing, that a mount waiting through a dispose is let go, and that a disposed prefetch
-does nothing.
+`summarized` is each answer the page was told of, for its Diff summary, and `failedTold`
+each read no mount took that failed, which leaves the summary’s row empty rather than
+holding its pending placeholder; a cancelled request, and one a mount took, tell the
+page nothing. The session asserts, and so prints nothing for, that a poll of the same
+record sends nothing, that a mount waiting through a dispose is let go, that a cancelled
+request tells no failure, and that a disposed prefetch does nothing.
 
 ```console
 $ node tests/dom/github-pull-prefetch-session.js
@@ -30,7 +33,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "holding": false,
       "requests": [],
       "assetsWarmed": 0,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "idle: one request, and the diff's assets",
@@ -41,7 +45,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "the answer arrives and is held",
@@ -54,7 +59,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "assetsWarmed": 1,
       "summarized": [
         "bbbb"
-      ]
+      ],
+      "failedTold": []
     },
     {
       "step": "the reader clicks Files changed: it is handed over",
@@ -68,6 +74,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "summarized": [
         "bbbb"
       ],
+      "failedTold": [],
       "handed": {
         "document": "first"
       }
@@ -84,6 +91,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "summarized": [
         "bbbb"
       ],
+      "failedTold": [],
       "handed": null
     },
     {
@@ -97,7 +105,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "assetsWarmed": 1,
       "summarized": [
         "bbbb"
-      ]
+      ],
+      "failedTold": []
     },
     {
       "step": "a click while the request is on its way waits for that request",
@@ -108,7 +117,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "it arrives",
@@ -122,6 +132,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "summarized": [
         "bbbb"
       ],
+      "failedTold": [],
       "handed": {
         "document": "first"
       }
@@ -134,6 +145,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [],
       "assetsWarmed": 0,
       "summarized": [],
+      "failedTold": [],
       "handed": null
     },
     {
@@ -144,6 +156,7 @@ $ node tests/dom/github-pull-prefetch-session.js
       "requests": [],
       "assetsWarmed": 0,
       "summarized": [],
+      "failedTold": [],
       "handed": null
     },
     {
@@ -155,7 +168,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb (cancelled)"
       ],
       "assetsWarmed": 1,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "the new comparison is fetched",
@@ -167,7 +181,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "cccc"
       ],
       "assetsWarmed": 2,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "a mount is waiting on the old request: it is not cancelled",
@@ -178,7 +193,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "a refused request is not retried and not an error: the diff asks and says why",
@@ -190,7 +206,22 @@ $ node tests/dom/github-pull-prefetch-session.js
       ],
       "assetsWarmed": 1,
       "summarized": [],
+      "failedTold": [
+        "bbbb"
+      ],
       "handed": null
+    },
+    {
+      "step": "a request a mount took fails: the diff asks and says why, and the page is told nothing",
+      "phase": "taken",
+      "comparison": "aaaa...bbbb",
+      "holding": false,
+      "requests": [
+        "bbbb"
+      ],
+      "assetsWarmed": 1,
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "a tab in the background sends nothing",
@@ -199,7 +230,8 @@ $ node tests/dom/github-pull-prefetch-session.js
       "holding": false,
       "requests": [],
       "assetsWarmed": 0,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "the same page once it is shown",
@@ -210,7 +242,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 1,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "the page goes: its request is cancelled and nothing is held",
@@ -221,7 +254,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb (cancelled)"
       ],
       "assetsWarmed": 1,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     },
     {
       "step": "the same endpoints at a changed route fetch again",
@@ -233,7 +267,8 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb"
       ],
       "assetsWarmed": 2,
-      "summarized": []
+      "summarized": [],
+      "failedTold": []
     }
   ]
 }

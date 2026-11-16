@@ -14,7 +14,9 @@
 // start of a CI job, the slowest there, has a case of its own. Then the header at its widest
 // two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
-// the run badge (`badges`), and the label chips' colors in both themes (`labels`). With no
+// the run badge (`badges`), the label chips' colors in both themes (`labels`), and the Diff
+// summary's row while its comparison is read, as it arrives, and as it fails
+// (`summary-wait`). With no
 // part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
@@ -23,8 +25,10 @@
 // header is set in the faces the shell uses.
 //
 // The header is reserved at first paint, so a record that has not arrived and every
-// loaded record lay out to one height on every tab, row by row, and the tab bar under it
-// starts at one place. That is layout, which no browserless DOM can compute: the
+// loaded record with labels lay out to one height on every tab, row by row, and the tab bar
+// under it starts at one place; a record with no labels has no labels row, and lays out to
+// that height less the row and its gap (mb-2u08). Its status line is a metadata line, as
+// tall as the row of ages above it. That is layout, which no browserless DOM can compute: the
 // stylesheet text passed with a state badge whose first flex item was a zero-height sizer,
 // which hung the badge below the line and made the loaded header 5.6 px taller than the
 // empty one. And no record's row may end past the header: an offer kept whole ran 262 px
@@ -197,6 +201,10 @@ const MEASURE = `async (name, change, tab, width) => {
   if (change.lastRefresh) {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
+  }
+  // A pull request with no labels, which has no labels row (mb-2u08).
+  if (change.noLabels) {
+    body.record.pull.labels = [];
   }
   // Labels of each color the label part checks, in the theme it names.
   if (change.labels && body.record) {
@@ -485,11 +493,27 @@ const MEASURE = `async (name, change, tab, width) => {
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
+  // Where each row starts and ends, from the header's top, and the header's one gap between
+  // rows: the status line is one of the metadata lines under the title, as tall as the row
+  // of ages and one gap under the row before it, with no empty labels row between (mb-2u08).
+  const lines = [...header.children].map((row, at) => ({
+    row: rows[at].row,
+    top: Math.round((box(row).top - box(header).top) * 100) / 100,
+    bottom: Math.round((box(row).bottom - box(header).top) * 100) / 100,
+  }));
+  const refresh = header.querySelector(".github-pull-status .github-pull-refresh");
   const result = {
     edges,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
+    lines,
+    rowGap: parseFloat(getComputedStyle(header).rowGap),
+    // How many labels the record names, or null while there is no record.
+    recordLabels: body.record ? body.record.pull.labels.length : null,
+    refresh: refresh
+      ? { shown: !refresh.hidden, height: Math.round(box(refresh).height * 100) / 100 }
+      : null,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
     strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
@@ -557,7 +581,8 @@ const MEASURE = `async (name, change, tab, width) => {
 
 // A record that has not arrived, records still loading, loaded, merged, closed, stale, with
 // the checkout on its head, with each offer the status row can draw, and held by a rate
-// limit. A failure is let wrap its status row, so it is not among them.
+// limit, and a loaded one with no labels, as the merged record has none. A failure is let
+// wrap its status row, so it is not among them.
 const RATE_LIMITED = {
   outcome: "rate_limited",
   message: null,
@@ -581,7 +606,147 @@ const RECORDS = [
   ["current", { longNames: true }],
   ["current", { longNames: true, avatar: true }],
   ["merged", { longNames: true, avatar: true }],
+  ["current", { noLabels: true }],
 ];
+// In the page: the Diff summary's row while the page waits for its comparison, and as it
+// arrives or fails (mb-onr2). The page is the production one, its diff view a stand-in whose
+// prefetch is a read the session answers and whose summary is the diff plugin's own
+// mountDiffSummary, as the plugin's summary draws it. The row holds the shell's pending
+// placeholder, `.tally-pending`, after the quiet period, and the summary takes its place
+// moving nothing; a read that fails leaves the row empty, at its height.
+const SUMMARY_WAIT = `async (width, theme, outcome) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const diff = (window.__diff ??= await import("/diff/diff-view.js"));
+  const body = structuredClone(recorded.current.body);
+  document.documentElement.dataset.theme = theme;
+  window.fetch = async () => new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  let answer = null;
+  const read = new Promise((resolve, reject) => {
+    answer = { resolve, reject };
+  });
+  const kinds = [...Array(2).fill("added"), ...Array(3).fill("deleted"), ...Array(30).fill("modified")];
+  const files = kinds.map((kind, at) => ({
+    kind,
+    ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+    ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
+    additions: 30,
+    deletions: 90,
+  }));
+  const comparison = { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } };
+  const view = {
+    prefetch: () => read,
+    summary: async (slot, ctx) =>
+      diff.mountDiffSummary(slot, ctx.raw, mb, { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} }),
+  };
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: (callback) => {
+        const id = setTimeout(callback, 0);
+        return () => clearTimeout(id);
+      },
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => {},
+      getRegisteredView: () => view,
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      titleNodes: mb.titleNodes,
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await Promise.resolve();
+  const header = container.querySelector(".github-pull-header");
+  const row = header.querySelector(".github-pull-summary");
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => node.getBoundingClientRect();
+  const wrapper = () => row.querySelector(".github-pull-summary-pending");
+  // Inside the quiet period: the placeholder is in the row and not yet seen.
+  const quiet = wrapper() ? getComputedStyle(wrapper()).visibility : null;
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const delay = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--loading-state-delay"));
+  await new Promise((resolve) => setTimeout(resolve, delay * 2));
+  await frames();
+  const contentLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+  const places = () => ({
+    rows: [...header.children].map((child) => [
+      child.tagName === "H1" ? "title" : [...child.classList].find((c) => c.startsWith("github-pull-")).slice(12),
+      round(box(child).top - box(header).top),
+      round(box(child).height),
+    ]),
+    tabBar: round(box(container.querySelector(".tab-bar")).top - box(header).top),
+  });
+  const block = row.querySelector(".tally-pending");
+  const probe = document.createElement("span");
+  probe.style.background = "var(--tally-skeleton-bg)";
+  header.append(probe);
+  const skeleton = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  const waiting = {
+    quiet,
+    shown: block ? getComputedStyle(block).visibility : null,
+    pulse: block ? getComputedStyle(block).animationName : null,
+    ground: block ? getComputedStyle(block).backgroundColor === skeleton : false,
+    left: block ? round(box(block).left - contentLeft) : null,
+    width: block ? round(box(block).width) : null,
+    height: block ? round(box(block).height) : null,
+    em: block ? round(parseFloat(getComputedStyle(block).fontSize)) : null,
+    centre: block ? round((box(block).top + box(block).bottom) / 2 - (box(row).top + box(row).bottom) / 2) : null,
+    row: round(box(row).height),
+    places: places(),
+  };
+  if (outcome === "fails") {
+    answer.reject(new Error("refused"));
+  } else {
+    answer.resolve(comparison);
+  }
+  const deadline = performance.now() + 5000;
+  const settled = () =>
+    outcome === "fails" ? row.querySelector(".tally-pending") === null : row.querySelector(".diff-summary") !== null;
+  while (!settled() && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await frames();
+  const summary = row.querySelector(".diff-summary");
+  const chevron = row.querySelector(".diff-summary-chevron svg, .diff-summary-chevron");
+  const words = row.querySelector(".diff-summary-files");
+  const arrived = {
+    placeholder: row.querySelector(".tally-pending") !== null,
+    summary: summary !== null,
+    children: row.children.length,
+    row: round(box(row).height),
+    places: places(),
+    toggleLeft: summary ? round(box(summary).left - contentLeft) : null,
+    chevronLeft: chevron ? round(box(chevron).left - contentLeft) : null,
+    wordsLeft: words ? round(box(words).left - contentLeft) : null,
+    textRight: (() => {
+      if (!summary) return null;
+      const range = document.createRange();
+      range.selectNodeContents(summary);
+      return round(range.getBoundingClientRect().right - contentLeft);
+    })(),
+  };
+  handle.dispose();
+  delete document.documentElement.dataset.theme;
+  return { waiting, arrived };
+}`;
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
 // the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
@@ -974,7 +1139,15 @@ const nearColor = (value, wanted) =>
   channels(value)?.every(
     (channel, at) => Math.abs(channel - wanted[at]) <= (at === 3 ? 0.005 : 1),
   ) ?? false;
-const PARTS = ["launch", ...Object.keys(HEADER_PARTS), "offers", "pulls", "badges", "labels"];
+const PARTS = [
+  "launch",
+  ...Object.keys(HEADER_PARTS),
+  "offers",
+  "pulls",
+  "badges",
+  "labels",
+  "summary-wait",
+];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
   const name = at < 0 ? "all" : process.argv[at + 1];
@@ -1033,6 +1206,7 @@ async function main() {
         lap(`${faces.length} faces loaded`);
       }
       const offersDrawn = new Set();
+      const summaryWaits = [];
       const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
       for (const width of widths) {
         const seen = {};
@@ -1154,17 +1328,69 @@ async function main() {
                 paneScrolls: shape.paneScrolls,
               }),
             );
+            // The status line is one of the header's metadata lines (mb-2u08): as tall as the
+            // row of ages above it, its Refresh, shown or held, no taller than it, and every
+            // row one gap under the row before it. As a bordered .btn, Refresh made the line
+            // 26 px against the row of ages' 18, and an empty labels row stood between them.
+            const line = (row) => shape.lines.find((each) => each.row === row);
+            const opened = line("opened");
+            const statusLine = line("status");
+            const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
+            check(
+              `${where}: the status line is as tall as the row of ages`,
+              opened !== undefined &&
+                statusLine !== undefined &&
+                Math.abs(tall(statusLine) - tall(opened)) <= 0.5,
+              JSON.stringify(shape.lines),
+            );
+            check(
+              `${where}: Refresh's slot is no taller than the status line`,
+              shape.refresh !== null &&
+                statusLine !== undefined &&
+                shape.refresh.height <= tall(statusLine) + 0.5,
+              JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
+            );
+            check(
+              `${where}: each row is the header's one gap under the row before it`,
+              shape.lines.every(
+                (each, at) =>
+                  at === 0 || Math.abs(each.top - shape.lines[at - 1].bottom - shape.rowGap) <= 0.5,
+              ),
+              JSON.stringify({ rowGap: shape.rowGap, lines: shape.lines }),
+            );
+            if (shape.recordLabels === 0) {
+              check(
+                `${where}: a pull request with no labels has no labels row, its status line one gap under the row of ages`,
+                line("labels") === undefined &&
+                  opened !== undefined &&
+                  statusLine !== undefined &&
+                  Math.abs(statusLine.top - opened.bottom - shape.rowGap) <= 0.5,
+                JSON.stringify(shape.lines),
+              );
+            }
           }
         }
         lap(`the header at ${width} px`);
+        // While the record is on its way the labels row is held, since the record may bring
+        // labels: a record with labels lands moving nothing, row by row. One with none lands
+        // without that row and the gap before it, and moves nothing above it (mb-2u08).
         const reference = seen["absent conversation"];
+        const labelsRow = reference.rows.find((row) => row.row === "labels");
+        const labelsSpace = (labelsRow?.height ?? Number.NaN) + reference.rowGap;
+        const unlabelled = {
+          header: reference.header - labelsSpace,
+          tabBar: reference.tabBar - labelsSpace,
+          rows: reference.rows.filter((row) => row.row !== "labels"),
+        };
         for (const [key, shape] of Object.entries(seen)) {
+          const none = shape.recordLabels === 0;
+          const expected = none ? unlabelled : reference;
           check(
-            `${width} px, ${key}: the header lays out to the empty record's height, row by row`,
-            shape.header === reference.header &&
-              shape.tabBar === reference.tabBar &&
-              JSON.stringify(shape.rows) === JSON.stringify(reference.rows),
-            JSON.stringify({ empty: reference, [key]: shape }),
+            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}, row by row`,
+            Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
+              Math.abs(shape.tabBar - expected.tabBar) <= (none ? 0.5 : 0) &&
+              JSON.stringify(shape.rows) === JSON.stringify(expected.rows),
+            JSON.stringify({ expected, [key]: shape }),
           );
         }
       }
@@ -1180,6 +1406,61 @@ async function main() {
       }
       if (runs("badges")) {
         lap("the run badge");
+      }
+      if (runs("summary-wait")) {
+        for (const theme of ["light", "dark"]) {
+          for (const width of [560, 420, 360]) {
+            const where = `${theme}, ${width} px`;
+            const drawn = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "arrives")`,
+            );
+            const { waiting, arrived } = drawn;
+            check(
+              `${where}: while the comparison is read, the Diff summary's row holds the pending placeholder, unseen in the quiet period`,
+              waiting.quiet === "hidden" &&
+                waiting.shown === "visible" &&
+                waiting.pulse === "tally-pending-pulse" &&
+                waiting.ground === true,
+              JSON.stringify(waiting),
+            );
+            check(
+              `${where}: the placeholder is on the row's line, from the row's start, as wide as a summary of one status`,
+              waiting.left !== null &&
+                Math.abs(waiting.left) <= 0.5 &&
+                Math.abs(waiting.centre) <= 0.5 &&
+                Math.abs(waiting.width - 17 * waiting.em) <= 0.5 &&
+                Math.abs(waiting.height - 0.85 * waiting.em) <= 0.5 &&
+                Math.abs(waiting.row - 24) <= 0.5,
+              JSON.stringify(waiting),
+            );
+            check(
+              `${where}: the summary takes the placeholder's place, and nothing in the header or under it moves`,
+              !arrived.placeholder &&
+                arrived.summary &&
+                arrived.children === 1 &&
+                Math.abs(arrived.row - waiting.row) <= 0.5 &&
+                JSON.stringify(arrived.places) === JSON.stringify(waiting.places),
+              JSON.stringify({ waiting, arrived }),
+            );
+            const failed = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "fails")`,
+            );
+            check(
+              `${where}: a read that fails leaves the row empty, at its height, and moves nothing`,
+              failed.waiting.shown === "visible" &&
+                !failed.arrived.placeholder &&
+                !failed.arrived.summary &&
+                failed.arrived.children === 0 &&
+                JSON.stringify(failed.arrived.places) === JSON.stringify(failed.waiting.places),
+              JSON.stringify(failed),
+            );
+            summaryWaits.push({ where, waiting, arrived });
+          }
+        }
+        process.stderr.write(
+          `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
+        );
+        lap("the Diff summary's wait");
       }
       if (runs("labels")) {
         const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));
