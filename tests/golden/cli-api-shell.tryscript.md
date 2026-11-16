@@ -1057,6 +1057,7 @@ status: 200
     "headings": [],
     "widgets": {}
   },
+  "sanitizer_diagnostics": [],
   "raw_versions": {}
 }
 ? 0
@@ -1094,6 +1095,7 @@ status: 200
     "headings": [],
     "widgets": {}
   },
+  "sanitizer_diagnostics": [],
   "raw_versions": {}
 }
 ? 0

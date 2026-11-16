@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A rendered document no longer shows a Diagnostics disclosure because KPress’s
+  sanitizer removed raw HTML from it.
+  The disclosure appeared above every document ending in the guideline footer comment,
+  above the README for its centered icon block, and above a document whose `<script>`
+  was removed, which GitHub also removes silently.
+  Faults the author can fix, such as a broken anchor or unparseable front matter, still
+  show. For plugin authors and `--api` readers, `/api/kpress/render` now answers what the
+  sanitizer removed in `sanitizer_diagnostics`, apart from `diagnostics`.
+
 - In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
   lines instead of cutting off what does not fit.
   The Files filter row moves Show ignored down, then Clear and the chevron, which stay
