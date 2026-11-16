@@ -140,8 +140,12 @@ _COMMIT_ID = re.compile(rb"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 # What makes rev-parse read a name in a list otherwise than alone: a range (`..`), a
 # negation (`^` first), the parent shorthands (`^@`, `^!`, `^-`), an option (`-` first),
 # and a colon, which names a path, an index entry, or a message search that a suffix
-# appended to the name would become part of. Whitespace is never part of one revision.
-_NOT_LISTED = re.compile(r"\.\.|\^[@!-]|:|\s|^[-^]|^$")
+# appended to the name would become part of. And a reflog selector, `@{`: where the peeled
+# name's parent does not resolve, as a root's does not, Git reads the whole argument as
+# that selector, the suffixes as part of a date it then guesses, so `HEAD@{1}^{commit}^`
+# named some other entry of the reflog rather than failing. Whitespace can be part of one
+# revision, `HEAD^{/fix the}`, and each argument is one name either way.
+_NOT_LISTED = re.compile(r"\.\.|\^[@!-]|:|@\{|^[-^]|^$")
 
 type _SideKey = tuple[str | None, str | None]
 type _RawRecord = tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]

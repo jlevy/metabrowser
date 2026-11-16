@@ -304,7 +304,9 @@ def test_every_revision_resolves_or_is_refused_as_one_at_a_time(
     repo: tuple[Path, str, str],
 ) -> None:
     """A name `_NOT_LISTED` admits resolves in the one run; any other, and any that does
-    not resolve, is asked one at a time, so its refusal names it as before."""
+    not resolve, is asked one at a time, so its refusal names it as before. Names with
+    whitespace are one revision each; `HEAD@{1}` is the fixture's root commit, whose
+    parent a batch read as another entry of the reflog."""
     root, base, target = repo
     git(root, "tag", "-a", "-m", "annotated", "annotated", target)
     git(root, "tag", "light", base)
@@ -316,7 +318,12 @@ def test_every_revision_resolves_or_is_refused_as_one_at_a_time(
         "annotated",
         "light",
         "HEAD@{0}",
+        "HEAD@{1}",
+        "main@{1}",
         "HEAD^{/target}",
+        "HEAD^{/tar[ ]?get}",
+        "HEAD@{10 years ago}",
+        "HEAD^{/no such words}",
         "no-such-revision",
         "",
         f"{base}..{target}",
