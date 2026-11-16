@@ -314,9 +314,11 @@ Strict mode is off on a developer machine, which can add these:
   and font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
-  fold of unchanged blocks closed, open, and under the pointer; and
+  fold of unchanged blocks closed, open, and under the pointer;
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
-  Chrome’s input and reads how its navigator has Help write them.
+  Chrome’s input and reads how its navigator has Help write them; and
+  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
+  computed weight, face, size, and ink on every title surface.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until

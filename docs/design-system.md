@@ -988,7 +988,7 @@ A row is the graph, then the commit, then who and when:
 | --- | --- |
 | Graph gutter | Shrink-wraps **this row’s** lanes, so the subject starts where that row’s graph ends. A shared column would spend the widest row’s width on every row. |
 | Ref chips | Fixed, slightly smaller than the subject by the [chip ratio](#one-ratio); shrink last (see below) |
-| Subject | Takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
+| Subject | Bold, with a conventional-commit prefix regular ([Titles](#titles)); takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
 | Author and age | Fixed, right-aligned; slide outward as the panel widens |
 
 When a row cannot fit everything, the order it gives way in is **subject, then chips,
@@ -1004,7 +1004,7 @@ The subject and the smaller author and age share a baseline; see
 The selected commit begins with one `.git-commit-summary` component rendered by
 `renderCommitSummary` in `static/git-panel.js`. Its anatomy has one order:
 
-1. subject;
+1. subject, bold, with a conventional-commit prefix regular ([Titles](#titles));
 2. metadata containing an identity group with the short revision and refs, followed by
    author and age;
 3. `.git-commit-change-stats`, with one file-status row and one line-total row; and
@@ -1554,13 +1554,13 @@ a commit. It is said the way a card head says a comment:
 - **Type:** a commit row is set as a card head is.
   It is set at `--body-font-size` on the head’s line, and its box is that line, with no
   room of its own above or below, in a frame as wide as a card’s that draws nothing.
-  Its subject is bold in text ink where a head’s author is, and starts where the
-  author’s name does after the 18 px avatar.
-  A card head whose author has no usable avatar keeps the avatar’s box, empty and hidden
-  from assistive technology (`authorLabel`’s `slot`), so every head’s name and every
-  commit’s subject start at one x. The header and Pulls rows draw no such box.
-  “committed” and the age read as a head’s “commented” and age do, with no quieter ink
-  or size. The hash is the [GitHub action](#chrome) at a revision’s own
+  Its subject is bold in text ink where a head’s author is, with a conventional-commit
+  prefix regular ([Titles](#titles)), and starts where the author’s name does after the
+  18 px avatar. A card head whose author has no usable avatar keeps the avatar’s box,
+  empty and hidden from assistive technology (`authorLabel`’s `slot`), so every head’s
+  name and every commit’s subject start at one x. The header and Pulls rows draw no such
+  box. “committed” and the age read as a head’s “commented” and age do, with no quieter
+  ink or size. The hash is the [GitHub action](#chrome) at a revision’s own
   `--nav-font-size`, one step below the text beside it, as in the
   [Git Commit Summary](#git-commit-summary).
 
@@ -1840,7 +1840,7 @@ holds the one helper and the one rule in source.
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, as the chevron before it | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.formatAge`; the page gives the exact time | [Age](#age); the Pulls column has no tooltips |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then moves to the next line |
