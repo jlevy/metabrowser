@@ -22,6 +22,14 @@ type MetabrowserRenderContext = {
   /** How long a comparison's first screen of Markdown files waits for Rendered, for a page
    *  that keeps the comparison out of sight until its handle's `firstScreen` settles. */
   markdownHoldMs?: number;
+  /** Where a page that keeps a comparison's Diff summary at its own top wants the diff's
+   *  summary drawn, as a commit's page does; or false, where the page draws it itself and the
+   *  diff draws none, as a pull request's page does (docs/design-system.md, "Diff Summary"). */
+  summaryHost?: HTMLElement;
+  summary?: false;
+  /** Told the validated comparison a view mounts, so a page that draws its Diff summary
+   *  itself has the comparison's files however the diff came by them. */
+  onDocument?: (document: Record<string, unknown>) => void;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -138,6 +146,15 @@ type MetabrowserViewSpec = {
     },
     signal?: AbortSignal,
   ) => Promise<unknown>;
+  /**
+   * A comparison's Diff summary on its own, drawn in *slot* from what `prefetch` or `render`
+   * read, for a page that keeps it at its top while the view comes and goes, as a pull
+   * request's page does. The diff view has one; null for a comparison it cannot read.
+   */
+  summary?: (
+    slot: HTMLElement,
+    ctx: { raw: unknown; openFile: (path: string) => void },
+  ) => Promise<{ dispose: () => void } | null>;
 };
 
 type MetabrowserViewDescriptor = {

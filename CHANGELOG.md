@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A commit’s page and a pull request’s page each have one Diff summary, collapsed, at
+  the top of the page, and the counts of files and lines are its header.
+  On a commit’s page it sits under the commit’s identity, in place of the `M`, `A`, and
+  `D` file counts and the line totals, and it is there for a commit of one file too.
+  On a pull request’s page it is the header’s last row on every tab, not in Changes, and
+  a press on a file in it opens Changes at that file from any tab.
+  The row is there from the first paint, so the summary arriving moves nothing and the
+  tab bar stays where it was; the header is one 24 px row and a 6 px gap taller.
+  The hover summary of a commit in the history keeps its two rows of counts.
+  See [Diff Summary](docs/design-system.md#diff-summary).
+
 - A Pulls row now reads its number’s line first, a stack member’s place, the number, and
   the author, as “1/4 · #113 · jlevy”, with the age at the row’s end, and then the title
   on a line of its own, running to the pane’s edge and cut there with an ellipsis.

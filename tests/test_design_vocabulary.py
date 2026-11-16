@@ -1104,6 +1104,18 @@ def test_git_commit_summary_is_one_component() -> None:
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
     assert "renderCommitSummary(detail, { compact: true })" in panel
+    # The commit page's change counts are its one Diff summary, which its diff draws in the
+    # summary's place (mb-pb35); only the compact summary, in a tooltip, keeps the two rows.
+    assert (
+        "html += compact\n"
+        "      ? renderCommitChangeStats(stats)\n"
+        "      : '<div class=\"git-commit-diff-summary metabrowser-diff-host\"></div>';"
+    ) in panel
+    assert panel.count('class="git-commit-diff-summary metabrowser-diff-host"') == 1
+    assert 'preview.querySelector(".git-commit-diff-summary")' in panel
+    commit_place = _rule(styles, ".git-commit-diff-summary")
+    assert "flex-direction: column" in commit_place
+    assert "align-items: flex-start" in commit_place
     for component_part in (
         'const subjectClass = compact ? "git-commit-subject"',
         'class="git-commit-meta"',

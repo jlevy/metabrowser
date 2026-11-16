@@ -163,6 +163,12 @@ class FakeElement {
       loading.className = "loading mb-delayed-loading";
       this.appendChild(loading);
     }
+    // The place the commit's Diff summary is drawn in, at the summary's top (mb-pb35).
+    if (this._html.includes('<div class="git-commit-diff-summary metabrowser-diff-host">')) {
+      const summaryHost = new FakeElement("div", this.ownerDocument);
+      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host";
+      this.appendChild(summaryHost);
+    }
     if (this._html.includes("git-commit-diff")) {
       const diffHost = new FakeElement("div", this.ownerDocument);
       diffHost.className = "git-commit-diff";
@@ -563,7 +569,14 @@ sandbox.metabrowser = {
       render: async (host, context) => {
         renderedDiffConnections.push(host.isConnected);
         renderedDiffRevisions.push(context.revision);
-        renderedDiffContexts.push(context);
+        // What the view was given, but not the page's place for its summary itself: holding
+        // that element would hold the whole staged page, which C2 checks is let go.
+        renderedDiffContexts.push({
+          ...context,
+          summaryHost: context.summaryHost
+            ? { className: context.summaryHost.className }
+            : undefined,
+        });
         await context.raw;
         return {
           cancelPending: () => canceledDiffRevisions.push(context.revision),
@@ -986,16 +999,18 @@ async function run() {
     previewHtml,
     '<section class="git-commit-summary page-reading-column"',
   );
+  // The page's Diff summary takes the change stats' place (mb-pb35): the summary holds the
+  // place, the diff below draws it there, and no counts of the panel's own are drawn.
   assertContains(
-    "detail: summary gives change stats their own child",
+    "detail: summary holds the Diff summary's place",
+    previewHtml,
+    '<div class="git-commit-diff-summary metabrowser-diff-host"></div>',
+  );
+  assertNotContains(
+    "detail: summary draws no change stats of its own",
     previewHtml,
     "git-commit-change-stats",
   );
-  assertFileStatus("detail: summary counts modified files", previewHtml, "modified", 1);
-  assertFileStatus("detail: summary counts added files", previewHtml, "added", 1);
-  assertFileStatus("detail: summary omits zero deleted files", previewHtml, "deleted", 0);
-  assertContains("detail: summary counts additions", previewHtml, "+5");
-  assertContains("detail: summary counts deletions", previewHtml, "−1");
   assertContains(
     "detail: uses the shared page heading",
     previewHtml,
@@ -1030,6 +1045,12 @@ async function run() {
   assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
     comparison_id: SHA_A,
   });
+  assertTrue(
+    "detail: the diff draws its Diff summary in the summary's place",
+    String(renderedDiffContexts[0].summaryHost?.className ?? "").includes(
+      "git-commit-diff-summary",
+    ),
+  );
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
   await internals.renderCommitDetail({
     is_repo: true,

@@ -3747,6 +3747,11 @@ export function mountPullPage(container, ctx, mb) {
   // The pull request's state leads the row of its ages: its badge, then when it was
   // opened, updated, merged, or closed.
   const openedRow = h("div", { class: "github-pull-opened" });
+  // The pull request's Diff summary, the header's last row, above the tabs and on every one
+  // of them (mb-pb35): its header the change set's file and line totals, its tree the
+  // changed files. Its row is held from first paint, so the summary arriving with the
+  // comparison moves nothing. Its class carries the diff plugin's styles for a summary.
+  const summaryRow = h("div", { class: "github-pull-summary metabrowser-diff-host" });
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
@@ -4805,6 +4810,9 @@ export function mountPullPage(container, ctx, mb) {
       end,
     ]);
     children.push(status);
+    if (pull !== null || model.status !== "unavailable") {
+      children.push(summaryRow);
+    }
     placeChildren(header, children);
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
@@ -5323,10 +5331,84 @@ export function mountPullPage(container, ctx, mb) {
       // never waits for it after its comparison (docs/development.md, Asset Loading Tiers).
       void mb.loadChangedFilesTree().catch(() => {});
     },
+    // What it read is the page's Diff summary too, on every tab (mb-pb35).
+    loaded: (comparison, payload) => showSummary(comparison, payload),
     schedule: (callback) => mb.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
     cancel: (cancel) => /** @type {() => void} */ (cancel)(),
     isVisible: () => document.visibilityState === "visible",
   });
+
+  /**
+   * A changed file at its address, `/pull/<n>/files/<path>`, the route a press on it in the
+   * Pulls tab's tree takes, so the address names it and Back returns to where the reader was.
+   * A path the route cannot spell, as one with a backslash, which Git allows in a name, has no
+   * address: the diff goes to it in place instead.
+   *
+   * @param {string} path
+   */
+  function openChangedFile(path) {
+    const opened = /** @type {{then?: unknown} | null | undefined} */ (
+      open({ number, tab: "files", file: path, replace: false, jumped: false })
+    );
+    if (opened && typeof opened.then === "function") {
+      void Promise.resolve(opened).then(undefined, () => jumpTo(path));
+    } else {
+      jumpTo(path);
+    }
+  }
+
+  /** The comparison the page's Diff summary shows, and its mount. */
+  let summaryShown = {
+    key: "",
+    claim: 0,
+    handle: /** @type {{dispose: () => void} | null} */ (null),
+  };
+
+  /**
+   * Draw the page's Diff summary for *comparison* from what was read of it, once per
+   * comparison, whichever read comes first: the prefetch, on any tab but Changes, or the
+   * Changes diff's own. It is drawn out of sight and put in the header's held row in one
+   * step, so it moves nothing; a newer comparison's replaces it the same way.
+   *
+   * @param {{left: string, right: string, route?: string}} comparison
+   * @param {unknown} raw
+   */
+  function showSummary(comparison, raw) {
+    const key = comparison.route ?? `${comparison.left}...${comparison.right}`;
+    if (listening.signal.aborted || raw === undefined || raw === null || summaryShown.key === key) {
+      return;
+    }
+    const view =
+      /** @type {{summary?: (slot: HTMLElement, ctx: {raw: unknown, openFile: (path: string) => void}) => Promise<{dispose: () => void} | null>} | null} */ (
+        mb.getRegisteredView("diff", "diff")
+      );
+    if (typeof view?.summary !== "function") {
+      return;
+    }
+    const claim = summaryShown.claim + 1;
+    summaryShown = { ...summaryShown, key, claim };
+    const stage = h("div", {});
+    void view.summary(stage, { raw, openFile: openChangedFile }).then(
+      (handle) => {
+        if (listening.signal.aborted || summaryShown.claim !== claim) {
+          handle?.dispose();
+          return;
+        }
+        if (handle === null) {
+          summaryShown = { ...summaryShown, key: "" };
+          return;
+        }
+        summaryShown.handle?.dispose();
+        summaryShown = { key, claim, handle };
+        summaryRow.replaceChildren(...stage.childNodes);
+      },
+      () => {
+        if (summaryShown.claim === claim) {
+          summaryShown = { ...summaryShown, key: "" };
+        }
+      },
+    );
+  }
 
   /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
   async function mountDiff(comparison) {
@@ -5389,6 +5471,9 @@ export function mountPullPage(container, ctx, mb) {
                   : { rendered_route: comparison.rendered_route }),
               },
               ...(prefetched === undefined ? {} : { raw: prefetched }),
+              // The page draws the Diff summary at its top; the diff draws none (mb-pb35).
+              summary: false,
+              onDocument: (document_) => showSummary(comparison, document_),
               ...(comparison.rendered_route === undefined
                 ? {}
                 : { markdownHoldMs: CHANGES_FIRST_SCREEN_MS }),
@@ -5397,16 +5482,7 @@ export function mountPullPage(container, ctx, mb) {
               // and Back returns to where the reader was.
               // A path the route cannot spell, as one with a backslash, which Git allows in a
               // name, has no address: the diff goes to it in place instead.
-              openFile: (path) => {
-                const opened = /** @type {{then?: unknown} | null | undefined} */ (
-                  open({ number, tab: "files", file: path, replace: false, jumped: false })
-                );
-                if (opened && typeof opened.then === "function") {
-                  void Promise.resolve(opened).then(undefined, () => jumpTo(path));
-                } else {
-                  jumpTo(path);
-                }
-              },
+              openFile: openChangedFile,
             }),
           { number },
         )
@@ -5671,6 +5747,11 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
+    // The comparison is read on every tab but Changes, which reads it itself: the page's
+    // Diff summary is drawn from it (mb-pb35).
+    if (model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
     if (model.tab === "checks") {
       const key = JSON.stringify([
         "checks",
@@ -6315,6 +6396,8 @@ export function mountPullPage(container, ctx, mb) {
     place?.dispose();
     controller.dispose();
     prefetch.dispose();
+    summaryShown.handle?.dispose();
+    summaryShown = { key: "", claim: summaryShown.claim + 1, handle: null };
     stacks.dispose();
     for (const menu of stackMenus.values()) {
       menu.dispose();

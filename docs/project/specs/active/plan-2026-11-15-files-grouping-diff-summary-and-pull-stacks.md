@@ -12,8 +12,8 @@ Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files
 menu, a rule for tooltips, the Conversation’s rhythm and headings, a rule for commit and
 pull request titles, navigation that reveals the item, label colors, Group by’s speed on
 a large folder, a design-system consistency pass over all of them, a Pulls row’s two
-lines, and a cached label set, from the same day.
-They land as one native GitHub stack of twenty pull requests on `main`:
+lines, one Diff summary at a page’s top, and a cached label set, from the same day.
+They land as one native GitHub stack of twenty-one pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -62,7 +62,10 @@ They land as one native GitHub stack of twenty pull requests on `main`:
     from 0.12.0 (`mb-vg55`).
 19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
     age, and its second the whole title to the pane’s edge (`mb-lkkt`).
-20. **Label color cache:** each repository’s whole label set is cached, so a label a
+20. **Diff summary at the top:** a commit’s page and a pull request’s page each show one
+    Diff summary, collapsed, at the page’s top, whose header is the counts of files and
+    lines, in place of a commit’s stats block and of the summary in Changes (`mb-pb35`).
+21. **Label color cache:** each repository’s whole label set is cached, so a label a
     record cached before label colors names alone is colored on first paint (`mb-varu`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
@@ -199,7 +202,8 @@ it:
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
 | 19 | `claude/pulls-rows-two-lines` | `mb-lkkt` | On pull request 18; lays a Pulls row out on two lines |
-| 20 | `claude/label-color-cache` | `mb-varu` | On pull request 19; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
+| 20 | `claude/diff-summary-top` | `mb-pb35` | On pull request 19; moves the Diff summary to the top of the commit and pull request pages, under the header whose rows pull requests 13 and 19 change |
+| 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -523,6 +527,24 @@ against 5 ms for the ungrouped tree.
   dropped the prefetch, each refresh during the load discarded it and began again, and
   the two prefetches the open menu ran at once each took twice as long as one.
 
+### Diff Summary at the Top
+
+The owner’s report of 2026-11-15: a commit showed its counts twice, once as `M`, `A`,
+and `D` file counts with line totals, and once in its diff; the counts belong in the
+toggleable summary, at the top of both the commit page and the pull request page, not in
+the Changes tab.
+
+- **One summary, one wording:** each page has one Diff summary, whose header’s words are
+  the shared model’s (`describeChanges`); the commit summary’s change stats remain only
+  in the hover summary, which has no diff.
+- **Placement:** a commit’s diff draws its summary in the commit summary’s place
+  (`summaryHost`), for one file too; a pull request’s page draws its own as the header’s
+  last row on every tab, through the diff view’s `summary`, from the comparison the
+  prefetch reads or Changes read, and its Changes diff draws none (`summary: false`).
+- **Nothing moves:** the row is held at a row’s height from first paint and the
+  summary’s header is one line, cut short at its end; measured in Chrome 152 from 980 to
+  320 px, the summary arriving moved no row and not the tab bar.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -681,7 +703,15 @@ against 5 ms for the ungrouped tree.
   420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
   stylesheet’s tests.
 
-### Phase 20: Label Color Cache (pull request 20)
+### Phase 20: Diff Summary at the Top (pull request 20)
+
+- [ ] `mb-pb35`: one Diff summary at the top of the commit page and of the pull request
+  page, on every tab; the commit page’s stats block removed; the pull request header’s
+  last row held from first paint and measured in Chrome to move nothing; pinned in the
+  diff view, git panel, pull page mount, and prefetch sessions, the prefetch golden, the
+  header Chrome test, and the design vocabulary.
+
+### Phase 21: Label Color Cache (pull request 21)
 
 - [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
   refreshed on its age and on a name it does not hold, and a chip takes its color and
@@ -713,7 +743,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 20 merges.
+This plan moves to `docs/project/specs/done/` when pull request 21 merges.
 
 ## Open Questions
 

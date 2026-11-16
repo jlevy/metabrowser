@@ -567,6 +567,8 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "checkRows": True,
         "headerAges": True,
         "headerShape": True,
+        # The Diff summary is the header's last row on every tab (mb-pb35).
+        "headerSummary": True,
         # C, G, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links

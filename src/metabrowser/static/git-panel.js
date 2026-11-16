@@ -402,7 +402,12 @@
     html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
     html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
     html += "</div>";
-    html += renderCommitChangeStats(stats);
+    // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
+    // diff below draws it here, its header the commit's file and line totals and its tree
+    // the commit's files (`mountCommitDiff`). The hover summary keeps its two rows.
+    html += compact
+      ? renderCommitChangeStats(stats)
+      : '<div class="git-commit-diff-summary metabrowser-diff-host"></div>';
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
@@ -2724,8 +2729,14 @@
           if (!current()) {
             return null;
           }
+          // The Diff summary at the page's top, under the commit's identity (mb-pb35).
+          const summaryHost = preview.querySelector(".git-commit-diff-summary");
           return /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
-            await view.render(host, { revision, raw })
+            await view.render(host, {
+              revision,
+              raw,
+              ...(summaryHost instanceof HTMLElement ? { summaryHost } : {}),
+            })
           );
         },
         { revision },
