@@ -644,6 +644,10 @@ it, and ideally cached it up front”.
   13 to 20 ms after the click, 57 to 73 ms at four times slower CPU, and 16 to 19 ms
   with no `requestIdleCallback`; a first visit to a row rested on for 250 ms draws it 13
   to 55 ms after the click, where it was 283 to 343 ms.
+  Measured again after review A, at a load average of 19 to 47: 16 to 27 ms, 46 to 63 ms
+  at four times slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull
+  request first opened on Changes included, whose comparison was then requested once
+  rather than twice; a first visit to a rested row, 9 to 12 ms.
 - **The keep:** what a page reads is kept for the document, keyed by the comparison’s
   route, which names both commits, the build, and the store, within 16 MiB of JSON,
   measured over this repository’s 192 merged pull requests; a request on its way is
@@ -654,6 +658,13 @@ it, and ideally cached it up front”.
   pointer or focus rested on, the open pull request’s stack neighbours, and its list
   neighbours, one at a time on idle and behind any page’s own read, with no GitHub
   request.
+- **After review A of #478** (`mb-s3ck`): a page opened on Changes reads through the
+  keep too, so its next visit is drawn from it; a mount taken while its page waits for
+  idle leaves with the page; the keep reads the comparison alone, and the first screen’s
+  rendered Markdown is the page’s own to ask for, under its own signal; each warm counts
+  against the hourly cap before its record is read, and each outcome holds for the
+  record’s freshness window; a warm’s record read is not a view (`warm=1`); and a Pulls
+  tab hidden, parked, or offline empties the warmer’s queue.
 
 ### API Changes
 
@@ -903,6 +914,9 @@ it, and ideally cached it up front”.
   on the GitHub stand-in before and after, pinned in the prefetch session and the Pulls
   prefetch behavior session and their goldens, each of which fails on the old code, and
   a server test that a repeated comparison runs no Git.
+  After review A, measured again, a page first opened on Changes is kept too, and the
+  `summary-wait` part of `tests/test_github_pull_header_chrome.py` holds in Chrome that
+  a revisit’s summary is in the frame that paints its record.
 
 ## Testing Strategy
 
