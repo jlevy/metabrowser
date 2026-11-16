@@ -1410,9 +1410,86 @@ async function main() {
     drawn?.reads() ?? "",
   );
   standalone.dispose();
+  // A list cut short at its bound, on a page that knows the whole change set's totals, as a
+  // commit's page does from the commit's own stats: the header says those, with no breakdown
+  // of the listed files alone, and how many files are listed (A3 of review A on #470). A list
+  // that is whole says its own totals, whatever the page gives.
+  const whole = { files: 5, additions: 15, deletions: 3, exact: true };
+  const cutShort = {
+    ...twoFiles,
+    manifest: { ...twoFiles.manifest, truncated: true, cursor: "manifest-cap" },
+  };
+  const cutPlace = new FakeElement("div");
+  mountDiffView(new FakeElement("div"), cutShort, undefined, {
+    changedFiles: sharedTree,
+    summaryHost: cutPlace,
+    summaryTotals: whole,
+  });
+  const cutHeader = cutPlace.find("diff-summary-toggle")[0];
+  check(
+    "a list cut short says the page's whole totals and how many it lists",
+    cutHeader?.text().includes("5 changed files") &&
+      cutHeader.text().includes("+15") &&
+      cutHeader.text().includes("−3") &&
+      cutHeader.text().includes("(2 listed)") &&
+      cutHeader.find("diff-summary-breakdown").length === 0,
+    cutHeader?.text() ?? "",
+  );
+  check(
+    "and names them for a screen reader",
+    cutHeader?.getAttribute("aria-label") ===
+      "5 changed files; 15 lines added, 3 deleted; 2 listed",
+    cutHeader?.getAttribute("aria-label") ?? "",
+  );
+  const cutPlain = new FakeElement("div");
+  mountDiffView(new FakeElement("div"), cutShort, undefined, {
+    summaryHost: cutPlain,
+    summaryTotals: whole,
+  });
+  check(
+    "a list cut short says them without the shared tree too",
+    cutPlain.text().includes("5 changed files") && cutPlain.text().includes("(2 listed)"),
+    cutPlain.text(),
+  );
+  const wholePlace = new FakeElement("div");
+  mountDiffView(new FakeElement("div"), twoFiles, undefined, {
+    changedFiles: sharedTree,
+    summaryHost: wholePlace,
+    summaryTotals: whole,
+  });
+  check(
+    "a whole list says its own totals",
+    wholePlace.text().includes("2 changed files") && !wholePlace.text().includes("listed"),
+    wholePlace.text(),
+  );
   await diffSummaryChecks(mountDiffView, twoFiles);
   await repeatedPathChecks(mountDiffView, twoFiles);
   await windowedSummaryChecks(repoRoot);
+  // A host that cuts the header's breakdown short, as a pull request's header does to keep
+  // its one line, gives the header its whole words as a tooltip while it is cut, and none
+  // while it is whole (A7 of review A on #470). It runs after the checks of a tree that did
+  // not load, since a hover loads the tree's module.
+  const tipSlot = new FakeElement("div");
+  const tipped = mountDiffSummary(tipSlot, twoFiles, undefined, {
+    changedFiles: sharedTree,
+    openFile() {},
+  });
+  const tipHeader = tipSlot.children[0];
+  const tipBreakdown = tipHeader.find("diff-summary-breakdown")[0];
+  tipHeader.dispatch("pointerenter");
+  check("a whole breakdown has no tooltip", tipHeader.dataset.tipText === undefined);
+  tipBreakdown.scrollWidth = 180;
+  tipBreakdown.clientWidth = 60;
+  tipHeader.dispatch("pointerenter");
+  check(
+    "a breakdown cut short gives its header's whole words",
+    tipHeader.dataset.tipText === "2 changed files (2 modified)  +1 \u22121",
+    tipHeader.dataset.tipText ?? "",
+  );
+  tipBreakdown.scrollWidth = 60;
+  tipHeader.dispatch("pointerenter");
+  check("a breakdown whole again has none", tipHeader.dataset.tipText === undefined);
+  tipped.dispose();
 
   // A long contiguous run folds behind an expander; ordinary runs do not.
   const longDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));

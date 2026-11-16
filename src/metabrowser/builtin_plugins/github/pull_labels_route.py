@@ -1,10 +1,11 @@
 """The repository's cached label set, read from the cache alone, and the job that fills it.
 
 ``GET github/labels`` answers the set :mod:`.pull_labels` keeps; ``POST
-github/labels-refresh`` starts or joins its refresh. A pull request's envelope carries the
-entries of the labels its record names without a color (:func:`labels_for`), so its chips
-are colored on first paint. The catalog's own refresh job also refreshes the set, once
-it has published a page (:func:`.pull_list_refresh.refresh_pull_list`).
+github/labels-refresh`` starts or joins its job, the only one that reads it, under
+:func:`.pull_labels.labels_job_key`. A pull request's envelope carries the entries of the
+labels its record names without a color (:func:`.pull_labels.labels_for`), so its chips
+are colored on first paint once the set is cached, and its page asks for the set when one
+of them has none.
 """
 
 from __future__ import annotations
@@ -121,7 +122,7 @@ def envelope_etag(envelope: LabelEnvelope) -> str:
 
 
 def start_refresh(
-    view: LabelView, *, retry: bool, wanted: bool, names: tuple[str, ...] = ()
+    view: LabelView, *, retry: bool, wanted: bool
 ) -> Literal["started", "joined", "not_due"]:
     repository, coordinator = view.repository, view.coordinator
     assert repository is not None and coordinator is not None
@@ -132,7 +133,7 @@ def start_refresh(
         return "not_due"
     return coordinator.start(
         key,
-        partial(refresh_labels, repository, slot=coordinator.slot(), retry=retry, names=names),
+        partial(refresh_labels, repository, slot=coordinator.slot(), retry=retry),
         network=False,
     )
 

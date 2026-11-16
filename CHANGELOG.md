@@ -26,13 +26,21 @@ All notable changes to Metabrowser are documented here.
   tab.
 
 - A commit’s page and a pull request’s page each have one Diff summary, collapsed, at
-  the top of the page, and the counts of files and lines are its header.
+  the top of the page, and the counts of files and lines are its header; a patch file of
+  more than one file has it at the top of its diff.
   On a commit’s page it sits under the commit’s identity, in place of the `M`, `A`, and
   `D` file counts and the line totals, and it is there for a commit of one file too.
-  On a pull request’s page it is the header’s last row on every tab, not in Changes, and
-  a press on a file in it opens Changes at that file from any tab.
+  Until the commit’s diff draws it, and where the diff cannot be drawn, its place says
+  the commit’s totals in one line.
+  For a commit past the diff’s bound of 2,000 files, its header says the whole commit’s
+  totals and how many files its list holds, as “5,000 changed files +15,000 −3,000
+  (2,000 listed)”. On a pull request’s page it is the header’s last row on every tab,
+  not in Changes, and a press on a file in it opens Changes at that file from any tab.
   The row is there from the first paint, so the summary arriving moves nothing and the
   tab bar stays where it was; the header is one 24 px row and a 6 px gap taller.
+  Where the row cuts the summary short, its tooltip gives the whole of it, and a
+  comparison that cannot be read leaves the row empty rather than showing an older
+  comparison’s counts.
   The hover summary of a commit in the history keeps its two rows of counts.
   See [Diff Summary](docs/design-system.md#diff-summary).
 
@@ -54,17 +62,17 @@ All notable changes to Metabrowser are documented here.
   A label’s description, where it has one, is its chip’s tooltip.
   A label GitHub gave no usable color keeps the plain chip.
   Each repository’s whole label set, its names, colors, and descriptions, is cached
-  beside its pull requests and across restarts and kept fresh with its list of pull
-  requests, so labels are colored as the page first paints, also on a pull request
-  cached before this release, whose record names its labels alone; that record is not
-  fetched again for them.
-  A repository’s cached list of pull requests reads its rows again once, keeping the
-  rows it holds meanwhile.
+  beside its pull requests and across restarts, so labels are colored as the page first
+  paints, also on a pull request cached before this release, whose record names its
+  labels alone. The set is read when a page shows such a label and the set lacks it, at
+  most once in five minutes, and never by a read or with the list of pull requests.
+  Such a pull request is also refreshed in full once when it is next opened, even when
+  it is closed or merged and has not changed on GitHub.
   `metab --api` answers each label as its name, color, and description rather than its
-  name alone in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`,
-  and as its name and color in `/api/plugin/github/pulls`; `/api/plugin/github/labels`
-  reads the cached label set, `/api/plugin/github/labels-refresh` asks GitHub for it,
-  and the pull envelope adds `repository_labels` and `labels_pending`. See
+  name alone in `/api/plugin/github/pull` and `/api/plugin/github/pull-cores-prepare`;
+  `/api/plugin/github/labels` reads the cached label set,
+  `/api/plugin/github/labels-refresh` asks GitHub for it, and the pull envelope adds
+  `repository_labels` and `labels_pending`. See
   [Label Colors](docs/design-system.md#label-colors).
 
 - Going to a file, a pull request, or a commit now shows it in the navigation pane by
@@ -72,23 +80,31 @@ All notable changes to Metabrowser are documented here.
   open one. Its tab comes to the front, the folders or the stack that hold it open, and
   its row is selected and scrolled into view, while focus stays where you are reading.
   Back and Forward now scroll to the row too, as a tab’s own button still does not.
-  Quick Search for the item already shown reveals it again, a file past a long folder’s
-  first 200 rows is drawn, and a commit’s address scrolls the Commits list to its row.
+  Another tab of the pull request shown, or one of its changed files, clicked or walked
+  with J and K, leaves the Pulls list on your row.
+  Quick Search for the item already shown reveals it again, and a commit’s address
+  scrolls the Commits list to its row.
+  A file past a long folder’s first 200 rows is drawn with only the 200-row page that
+  holds it, as fast in a folder of 10,000 files as in one of 400. The rows before that
+  page wait behind a “Show N more” row above it, which draws them in order without
+  moving the file’s row.
   A file a filter hides no longer leaves the previous file selected: the tree says
   “src/app.txt is outside this filter.”, and no longer says that of a file that is only
   in a closed folder. A pull request the Pulls list does not hold is named under its
   count, “#8 is not listed under Open.”
   See [Navigation Reveals the Item](docs/design-system.md#navigation-reveals-the-item).
 
-- The Pulls column shows no tooltips: a pull request’s row and its parts no longer show
-  one on hover, and a stack’s row has none.
-  Elsewhere a tooltip appears only when it adds something not already visible, and one
-  that repeats an element’s own text shows only while that text is cut short.
+- The Pulls column’s rows show no tooltips: a pull request’s row and its parts no longer
+  show one on hover, and a stack’s row has none; the changed files under a row keep the
+  tree’s tooltips. Elsewhere a tooltip appears only when it adds something not already
+  visible, and one that repeats an element’s own text shows only while that text is cut
+  short, as does a top-level changed file’s, which is its name.
   “Load more” no longer repeats its own words in a tooltip, and neither do a “Show
   ignored” check or the treemap’s parent button.
   A crumb’s tooltip is its own name, shown only when the crumb is cut short, rather than
   the path the trail already shows, and a Files tree row’s tooltip leaves out the size
-  or count its row shows, keeping the exact date.
+  or count its row shows exactly, keeping the exact date and the exact bytes of a size
+  its row rounds.
 
 - In a narrow navigation pane, or in the system font set, the toolbars wrap onto more
   lines instead of cutting off what does not fit.
@@ -108,13 +124,14 @@ All notable changes to Metabrowser are documented here.
   at once, and `filterControls.joinedGroupFits` is the pure rule.
 
 - Walking a pull request’s stack moves from `⇧J` and `⇧K` to Control-N, to the next
-  member toward the stack’s top, and Control-P, to the previous one toward its base, so
-  `J` and `K` on a focused Pulls row always move the row, and `P` alone opens the Pulls
-  tab. Help and the Shift strip write them `⌃N` and `⌃P` on a Mac and `Ctrl+N` and
-  `Ctrl+P` elsewhere. A text field keeps both, since macOS moves its caret with them, and
-  AltGr with `N` or `P` still types its character.
-  On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
-  the stack. These are the only shortcuts held with a modifier.
+  member toward the stack’s top, and Control-P, to the previous one toward its base, on
+  macOS and iOS, so `J` and `K` on a focused Pulls row always move the row, and `P`
+  alone opens the Pulls tab.
+  Help and the Shift strip write them `⌃N` and `⌃P`, and holding one walks once.
+  A text field keeps both, since macOS moves its caret with them.
+  On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
+  Help lists neither and the stack menu walks the stack there.
+  These are the only shortcuts held with a modifier.
   See [Control Chords](docs/design-system.md#control-chords).
 
 - A second-level heading (h2) in sans Markdown is now upright: in a pull request’s
@@ -168,8 +185,10 @@ All notable changes to Metabrowser are documented here.
   A commit’s or pull request’s title that starts with a conventional-commit prefix, such
   as `feat(ledger):` or `fix:`, sets the prefix at regular weight and the rest of the
   title bold, wherever the title appears: a Pulls row, the pull request page’s title,
-  its stack menu, its Conversation’s commits, Quick Search, a commit’s page, and its
-  tooltip. A Commits tab row’s subject is regular, so there the prefix looks as before.
+  its stack menu, its Conversation’s commits, Quick Search, a Commits tab row, a
+  commit’s page, and its tooltip.
+  A Commits tab row’s subject, regular until now, is bold, as a title is everywhere
+  else, so a long one is cut short a little sooner.
   A prefix counts only when it is 16 characters or fewer, colon included, and its type
   is lowercase; any other title looks as before.
   For plugin authors, `metabrowser.titleNodes(title)` draws a title the same way.
@@ -195,9 +214,10 @@ All notable changes to Metabrowser are documented here.
   other stack by the stack icon and its number before its position, as “3/4 · ⧉300 2/2”,
   where it showed two bare positions, such as “4/4 · 2/2”; on its page each of its stack
   buttons names its stack the same way, “⧉286 4/4” and “⧉300 2/2”, where they differed
-  only by their tips. A stack’s row and the pull request page’s stack menu share one
-  label, gray, all caps, and tracked, and the menu’s positions are in the row’s ink
-  rather than link blue.
+  only in their names for screen readers; each button’s tooltip also names its stack and
+  place, as in “Stack #286, position 4 of 4”. A stack’s row and the pull request page’s
+  stack menu share one label, gray, all caps, and tracked, and the menu’s positions are
+  in the row’s ink rather than link blue.
   Every way the stack menu opens, a press, Enter, Space, `↓`, or `↑`, puts focus on the
   current pull request, which the menu marks as the Pulls list marks its current row,
   and Escape gives focus back to the button ([Stacks](docs/design-system.md#stacks)).
@@ -229,9 +249,10 @@ All notable changes to Metabrowser are documented here.
   section once they come.
   The server reads every group from one pass over the index: on a 100,000-file folder By
   file type takes about 0.1 s, and on a folder of 270,000 files and 110,000 folders
-  about 0.4 s. Pressing a row, or moving to it with the keyboard, asks for that grouping
-  ahead of the choice, and on a folder whose files keep changing that answer is kept and
-  a refresh waits until the sections have painted.
+  about 0.4 s. Pressing a row asks for that grouping ahead of the choice, as resting on
+  one with the arrow keys does; a row the keys pass over on the way to another asks for
+  nothing. On a folder whose files keep changing that answer is kept, and a refresh waits
+  until the sections have painted.
   `/api/tree` takes `group_by=type` or `group_by=age` for the groups, with their counts
   and trees, and `group=<by>:<id>` for one group’s tree.
 
@@ -239,9 +260,10 @@ All notable changes to Metabrowser are documented here.
   its numeral bold and its words regular: “Older · 10,004 files” over a Files Group by
   section, and “Review comments · 3” on a pull request’s page, where the count was in
   parentheses. A count at the far end of a line is a row’s total, as a folder’s size
-  stays. Where the name and the count do not fit, the name is cut short and the count
-  stays whole. A Pulls stack’s row shows no count, since its pull requests are the rows
-  under it. See [Heading Tallies](docs/design-system.md#heading-tallies).
+  stays. Where a Files section’s name and count do not fit, the name is cut short, with
+  its whole in a tooltip, and the count stays whole.
+  A Pulls stack’s row shows no count, since its pull requests are the rows under it.
+  See [Heading Tallies](docs/design-system.md#heading-tallies).
 
 - With the Files tab’s Group by menu open, `A` chooses By age, `T` By file type, and `N`
   No grouping, as a click on the row does.
@@ -292,6 +314,51 @@ All notable changes to Metabrowser are documented here.
   ([Groups in a Menu](docs/design-system.md#groups-in-a-menu),
   [Menu Height](docs/design-system.md#menu-height)).
 
+- Code keeps one monospace face for the life of a window, and code in a Markdown
+  document matches it.
+  Highlighted source, diffs, JSON and YAML, and log payloads changed face once any
+  Markdown file had been opened, and Markdown code never matched them: on a Mac with
+  Microsoft Office, Chrome and Arc drew source in Consolas and Markdown code in Menlo,
+  and the macOS app drew source in Menlo and Markdown code in SF Mono.
+  Both now read one stack, which draws SF Mono in the macOS app and Safari, and Menlo in
+  Chrome and Arc unless you installed SF Mono.
+  The cause also changed printing: once a document had been shown, a printout took
+  KPress’s 0.7 in page margin instead of Metabrowser’s 0.65 in, which now always holds.
+  Plugin authors: `--font-sans` and `--font-mono` keep the shell’s values after a KPress
+  document renders, and the document’s code draws in the same stack as `--font-mono`.
+
+- The macOS app’s window is no longer sent gzipped answers, and the application’s own
+  scripts, stylesheets, and fonts are compressed once rather than on every request.
+  Compressing cost the server time on every answer, on the thread every request waits
+  for, to save bytes that never left the machine.
+  Only the server the app starts stops compressing: `metab` on a loopback address with
+  `--exit-on-eof`, outside an SSH session, a Codespace, or a Dev Container.
+  It then answers a loopback client uncompressed, unless the request carries a proxy’s
+  or a CDN’s forwarding header, and its banner says
+  `Compression: off for loopback clients of this machine`. Any other program that starts
+  `metab` that way, for the flag’s stop, gets the same.
+  Every other server compresses as before, `metab ./notes` opening a browser and the
+  server `--remote` starts included, so a remote host of any release still sends gzip
+  through the tunnel, and nothing new is passed to it.
+  An asset at the address the page names is kept in memory, up to 16 MiB, read and
+  compressed once, and sent with a `Content-Length` where a streamed answer had none;
+  its bytes and other headers are unchanged.
+
+- `Server-Timing` counts the Git processes a request started, in its `git` entry’s
+  description: `git;dur=41.2;desc="2 processes"`.
+
+- A page of a commit or a comparison no longer shows some of its renamed files as
+  unreadable when the whole patch is at most 256 KiB. When Git paired a page’s files
+  differently on their own than in the whole comparison, as on the first page of a
+  commit of more than 50 files, the page named them “could not be read from the produced
+  diff”; their changes now show, as the file list describes them, in a commit’s page and
+  in a pull request’s Files changed alike.
+  Past 256 KiB of patch such files are still named unreadable.
+
+- A folder whose Git configuration sets `color.diff` or `color.ui` to `always` now shows
+  a commit’s changes. Git wrote color codes around every line of the patch, and every
+  file was named “could not be read from the produced diff”.
+
 - A Markdown file in a pull request’s Changes now reads in your reading font, serif
   unless you chose Sans, as the same file does in its Document view.
   It was always sans, because the rule that keeps the pull request’s description,
@@ -329,8 +396,8 @@ All notable changes to Metabrowser are documented here.
   the text colour under the pointer.
   A document’s own `<details>` sections look as before.
 
-- A diff of more than one file now opens with a Diff summary, collapsed, in place of the
-  “41 changed files +6526 −555” line at its top: a header such as “35 changed files (2
+- A change set’s totals are now a Diff summary, collapsed, in place of the line a diff
+  opened with, “41 changed files +6526 −555”: a header such as “35 changed files (2
   added, 3 removed, 30 modified) +1,234 −3,423” that opens to the changed files as a
   tree by folder. The header lists only the statuses some file has, in one order (added,
   removed, modified, renamed, then the rest), writes its numbers in the shell’s format,
@@ -341,15 +408,13 @@ All notable changes to Metabrowser are documented here.
   in the Diff summary and in the Pulls tab alike, and a folder’s tooltip gives only what
   those counts leave out.
   Pressing a file, or Enter or Space on it, takes the diff to that file, and on a pull
-  request’s Changes the address follows, as it does from the Pulls tab; the arrow keys
-  move along the rows without moving the diff.
+  request’s page the address follows, as it does from the Pulls tab; the arrow keys move
+  along the rows without moving the diff.
   A name shows a control or invisible character, such as a right-to-left override, as
   U+FFFD, as the Pulls tab does, and so does each file’s bar in the diff below, whose
   counts now read in the shell’s number format.
   A path a patch lists more than once, as a file that became a symlink, is one row.
   If the tree cannot load, the totals line stays.
-  It appears on a pull request’s Changes and on a patch file; a commit’s view keeps its
-  commit summary’s totals, as before.
   Plugins can draw a tree of changed files with the shell’s own model,
   `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
 

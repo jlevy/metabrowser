@@ -165,7 +165,6 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh api repos/octo/demo/labels?per_page=100&page=1
 gh api graphql catalog state=all cursor=start
 gh api graphql catalog state=all cursor=all-100
 # metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01

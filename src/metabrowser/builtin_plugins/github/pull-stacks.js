@@ -21,7 +21,7 @@
 /**
  * A badge's positions, its own stack's first. A part with a `stack` names another stack,
  * drawn as the Layers glyph before its number; `text` is what the badge's letters read,
- * the glyph aside ("4/4 · 300 2/2"), and `hint` its tip and accessible name.
+ * the glyph aside ("4/4 · 300 2/2"), and `hint` its accessible name.
  *
  * @typedef {{position: string, stack: number | null}} StackCaptionPart
  * @typedef {{text: string, hint: string, parts: StackCaptionPart[]}} StackCaption
@@ -69,11 +69,11 @@ export function stackMenuOrder(stack) {
 }
 
 /**
- * A badge's parts and tip for a pull request's stacks, *first* first. The first position is
- * bare, since the row's own stack needs no name, its only one or the one it is grouped
- * under; each other stack's position is named by the Layers glyph and its number, so a
- * badge never holds two positions a reader cannot tell apart, and never a number that reads
- * as a pull request's "#N" beside the row's own.
+ * A badge's parts and accessible name for a pull request's stacks, *first* first. The first
+ * position is bare, since the row's own stack needs no name, its only one or the one it is
+ * grouped under; each other stack's position is named by the Layers glyph and its number,
+ * so a badge never holds two positions a reader cannot tell apart, and never a number that
+ * reads as a pull request's "#N" beside the row's own.
  *
  * @param {NativeStack[]} memberships @param {number} number @param {number | null} [first]
  * @returns {StackCaption | null}
@@ -192,8 +192,8 @@ export function stackRowKey(number) {
  * first pull request in the list, so the list's own order still decides which comes
  * first; a tie, two stacks first listed at one shared member, keeps the envelope's order.
  * A pull request in more than one stack sits once, under the first of them in that order;
- * a stack whose listed pull requests all sit under earlier stacks has no row, and their
- * badges name it. Pull requests in no stack follow the stacks, in the list's order.
+ * a stack whose listed pull requests all sit under earlier stacks has no row; their
+ * places name it. Pull requests in no stack follow the stacks, in the list's order.
  *
  * *setSize* is how many pull requests the list has, which may be more than it holds: the
  * list's first level is the stacks and every pull request in none, so its size is that

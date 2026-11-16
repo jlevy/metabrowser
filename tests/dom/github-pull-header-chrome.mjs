@@ -296,10 +296,12 @@ const MEASURE = `async (name, change, tab, width) => {
   // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
   // on a change set whose breakdown names three statuses, "35 changed files (2 added,
   // 3 removed, 30 modified) +1,234 −3,423": it moves nothing, keeps its row's height, and
-  // starts on the header's content edge.
+  // starts on the header's content edge. While its breakdown is cut short, its header's
+  // tooltip is its whole words, and while it is whole there is none (A7 of review A on #470).
+  // It is measured on every tab, by a flag of its own (A11 of review A on #470).
   let summaryMoves = null;
-  if (change.stackChip) {
-    const slot = header.querySelector(".github-pull-summary");
+  const slot = header.querySelector(".github-pull-summary");
+  if (change.summary && slot !== null) {
     const before = places();
     const rowBefore = Math.round(box(slot).height * 100) / 100;
     const diff = (window.__diff ??= await import("/diff/diff-view.js"));
@@ -326,6 +328,8 @@ const MEASURE = `async (name, change, tab, width) => {
     const rows = (shape) => JSON.stringify({ rows: shape.rows, tabBar: shape.tabBar });
     const headerLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
     const toggle = slot.querySelector(".diff-summary");
+    const breakdown = slot.querySelector(".diff-summary-breakdown");
+    toggle?.dispatchEvent(new Event("pointerenter"));
     summaryMoves = {
       moved: rows(before) === rows(after) ? null : { before, after },
       rowBefore,
@@ -333,6 +337,8 @@ const MEASURE = `async (name, change, tab, width) => {
       toggleHeight: toggle ? Math.round(box(toggle).height * 100) / 100 : null,
       left: Math.round((box(slot).left - headerLeft) * 100) / 100,
       text: toggle?.textContent ?? null,
+      cut: breakdown !== null && breakdown.scrollWidth > breakdown.clientWidth,
+      tip: toggle?.dataset.tipText ?? null,
     };
     summary.dispose();
     // Once a width: a change set five folders deep, opened in the header's last row, where
@@ -350,7 +356,8 @@ const MEASURE = `async (name, change, tab, width) => {
     }
   }
   // A stack's chip arrives late, from its own answer, through the page's own builder, at
-  // the right end of the author's row (mb-cf0l): one stack, "2/3", or two, "4/4" and "2/2".
+  // the right end of the author's row (mb-cf0l): one stack, "⧉2/3", or two, "⧉286 4/4" and
+  // "⧉300 2/2", each named by its stack, as the page names a chip in more than one stack.
   // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
   // The strut that holds the author's row at a chip's height, read before a chip replaces it.
   const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
@@ -371,6 +378,7 @@ const MEASURE = `async (name, change, tab, width) => {
         link: () => document.createElement("a"),
         icon: layers(),
         currentTitle: "",
+        named: change.stackChip === 2,
         titleNodes: mb.titleNodes,
         onOpen() {},
       }),
@@ -700,6 +708,18 @@ const PULLS_ROWS = `async (rows, width) => {
     const glyphs = [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon")].map((node) => node.getBoundingClientRect());
     const middle = (r) => (r.top + r.bottom) / 2;
     const round = (value) => Math.round(value * 100) / 100;
+    // The author's floor, from its parts rather than its own min-width, which a flex item
+    // never goes below: the separator, the avatar's size and the identity's gap when it has
+    // one, and 1.75 of its type's em of the name (styles.css, .github-pulls-by).
+    const panel = getComputedStyle(nav);
+    const floor =
+      by.querySelector(".github-pulls-sep").getBoundingClientRect().width +
+      (by.querySelector(".github-pull-avatar") === null
+        ? 0
+        : parseFloat(panel.getPropertyValue("--github-pull-avatar-size")) +
+          parseFloat(panel.getPropertyValue("--github-pull-identity-gap"))) +
+      1.75 * parseFloat(getComputedStyle(by).fontSize);
+    const name = by.querySelector(".github-pulls-author").getBoundingClientRect();
     return {
       number: row.number,
       moved,
@@ -723,10 +743,17 @@ const PULLS_ROWS = `async (rows, width) => {
       glyphsOff: glyphs.map((r) => round(middle(r) - middle(meta))),
       withNumber: glyphs.every((r) => r.height > 0 && r.top >= meta.top - 0.5 && r.bottom <= meta.bottom + 0.5 && r.bottom <= t.top + 0.5),
       glyphsFrom: glyphs.map((r) => round(r.left - inset)),
-      // The author on the number's line, at its floor or wider, or off it, whole.
-      author: b.top < meta.bottom - 0.5 ? (b.width + 0.5 >= parseFloat(getComputedStyle(by).minWidth) ? "shown" : "squeezed") : "off",
+      // The author on the number's line, at its floor or wider and its name ending inside the
+      // line, or off it, whole.
+      author:
+        b.top < meta.bottom - 0.5
+          ? b.width + 0.5 >= floor && name.right <= meta.right + 0.5
+            ? "shown"
+            : "squeezed"
+          : "off",
       authorWidth: Math.round(b.width * 10) / 10,
-      authorFloor: getComputedStyle(by).minWidth,
+      authorFloor: round(floor),
+      authorNameEnd: round(name.right - meta.right),
       title: Math.round(t.width * 10) / 10,
     };
   });
@@ -759,48 +786,6 @@ const NUMBERS = `(() => {
   );
   const weight = (node) => getComputedStyle(node).fontWeight;
   return { palette: weight(palette), selector: weight(selector), position: weight(position) };
-})()`;
-// The shell's tooltip rule on three anchors, over its own stylesheet: a tip that is its
-// button's whole text, the same tip on text cut short by an ellipsis, and a glyph-only
-// control's name. tipAddsInformation and the two it calls are app.js's own, read from the
-// served file, as RUN_BADGE reads its functions: whether each tip would show (mb-8mpo,
-// docs/design-system.md, "Tooltips Add Information").
-const TIPS = `(async () => {
-  const source = await new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("GET", "/static/app.js");
-    request.onload = () => resolve(request.responseText);
-    request.onerror = reject;
-    request.send();
-  });
-  const take = (start) => {
-    const at = source.indexOf(start);
-    if (at < 0) {
-      throw new Error("app.js has no " + start);
-    }
-    return source.slice(at, source.indexOf("\\n}\\n", at) + 3);
-  };
-  const code = [
-    take("function tipComparable(text) {"),
-    take("function tipAnchorIsCut(anchor) {"),
-    take("function tipAddsInformation(anchor) {"),
-  ].join("\\n");
-  const tipAddsInformation = new Function(code + "\\nreturn tipAddsInformation;")();
-  const h = (tag, attributes = {}, children = []) => {
-    const node = document.createElement(tag);
-    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
-    node.append(...children);
-    return node;
-  };
-  const long = "A pull request title far longer than the box it is drawn in";
-  const anchors = {
-    whole: h("button", { type: "button", "data-tip-text": "Reload" }, ["Reload"]),
-    wholeSpaced: h("span", { "data-tip-text": "stack #286" }, ["  Stack   #286 "]),
-    cut: h("span", { "data-tip-text": long, style: "display: block; width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" }, [long]),
-    glyph: h("button", { type: "button", "data-tip-text": "Copy path", "aria-label": "Copy path" }, ["↑"]),
-  };
-  document.getElementById("preview-pane").replaceChildren(...Object.values(anchors));
-  return Object.fromEntries(Object.entries(anchors).map(([name, anchor]) => [name, tipAddsInformation(anchor)]));
 })()`;
 const PULLS = [
   {
@@ -1041,11 +1026,16 @@ async function main() {
           for (const tab of TABS) {
             // The author's row is the same on every tab, so its stack chip arrives on one: one
             // stack, and two for the records with an avatar, the longest rows.
-            const measured = tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change;
+            // The Diff summary is the header's last row on every tab, so it is measured on each.
+            const measured = {
+              ...(tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change),
+              summary: true,
+            };
             const shape = await browser.evaluate(
               `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(measured)}, ${JSON.stringify(tab)}, ${width})`,
             );
             const where = `${width} px, ${label} ${tab || "conversation"}`;
+            check(`${where}: the Diff summary is measured`, shape.summaryMoves !== null);
             if (shape.mergeShown !== null) {
               check(
                 `${where}: the merge's chips and arrow show whole on their line`,
@@ -1072,6 +1062,21 @@ async function main() {
                 Math.abs(moves.left) <= 0.5,
                 JSON.stringify(moves),
               );
+              check(
+                `${where}: the Diff summary's tooltip is its whole words only while cut short`,
+                moves.cut
+                  ? moves.tip ===
+                      "35 changed files (2 added, 3 removed, 30 modified)  +1,234 −3,423"
+                  : moves.tip === null,
+                JSON.stringify({ cut: moves.cut, tip: moves.tip }),
+              );
+              if (width === 320) {
+                check(
+                  `${where}: at the narrowest width the breakdown is cut short`,
+                  moves.cut,
+                  JSON.stringify(moves),
+                );
+              }
               if (moves.indent !== undefined) {
                 check(
                   `${where}: the Diff summary's tree steps in from its header one level at a time`,
@@ -1328,13 +1333,6 @@ async function main() {
         lap("the labels in both themes");
       }
       if (runs("pulls")) {
-        const tips = await browser.evaluate(TIPS);
-        check(
-          "a tip that is its element's whole text, in any case or spacing, does not show, and shows while the text is cut short",
-          tips.whole === false && tips.wholeSpaced === false && tips.cut === true,
-          JSON.stringify(tips),
-        );
-        check("a glyph-only control's tip shows", tips.glyph === true, JSON.stringify(tips));
         const numbers = await browser.evaluate(NUMBERS);
         check(
           "a pull request's number is bold in Quick Search and the ref selector, as a stack's position is",
@@ -1391,7 +1389,7 @@ async function main() {
             JSON.stringify(row),
           );
           check(
-            `${where}: the author shows at its floor or wider, or leaves the line whole`,
+            `${where}: the author shows at its floor or wider, its name ending inside the line, or leaves the line whole`,
             row.author !== "squeezed",
             JSON.stringify(row),
           );

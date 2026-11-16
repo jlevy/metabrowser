@@ -13,7 +13,9 @@ const failures = [];
 
 async function main() {
   const modelPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-model.js");
-  const { validateDocument, fileChangeLabel } = await import(pathToFileURL(modelPath).href);
+  const { validateDocument, validateManifest, fileChangeLabel } = await import(
+    pathToFileURL(modelPath).href
+  );
   const corpus = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
@@ -28,6 +30,20 @@ async function main() {
       failures.push(
         `${testCase.name}: expected ${testCase.expect}, got ` +
           (result.ok ? "valid" : `invalid (${result.error})`),
+      );
+    }
+  }
+
+  // A page's Diff summary reads the manifest alone, so its validation is a part of the
+  // document's: a valid document has a valid manifest, and each manifest it refuses the
+  // document refuses with the same words (A5 of review A on #470).
+  for (const testCase of corpus.cases) {
+    const manifest = validateManifest(testCase.document);
+    const whole = validateDocument(testCase.document);
+    if (whole.ok ? !manifest.ok : !manifest.ok && manifest.error !== whole.error) {
+      failures.push(
+        `${testCase.name}: the manifest alone was ${manifest.ok ? "valid" : manifest.error}, ` +
+          `the document ${whole.ok ? "valid" : whole.error}`,
       );
     }
   }

@@ -1701,10 +1701,10 @@ address.
    headed “maintainer reviewed …” with no chip, the comment
    `Thanks. CI is green; one question inline.`, and the review `Looks right.`, whose
    heading ends in an **approved** chip.
-3. **Review comments (2)** shows `src/app.txt` with an **outdated** badge and its diff
-   hunk, then forker’s reply on `src/app.txt:2`. Open **Checks** at `/pull/7/checks`. It
-   reads `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the
-   Read the Docs status.
+3. **Review comments · 2**, in the label capitals, shows `src/app.txt` with an
+   **outdated** badge and its diff hunk, then forker’s reply on `src/app.txt:2`. Open
+   **Checks** at `/pull/7/checks`. It reads `2 success · 1 pending`, with
+   `tests (3.13)`, `docs` (in progress), and the Read the Docs status.
    Each links out in a new tab.
    The tab also says `No conflicts with the base branch`.
 4. Return to **Conversation** and click **Changes**. The address becomes
@@ -1750,6 +1750,18 @@ address.
    no `/kpress-static/` script, and no iframe.
    Application-owned author avatars may request the fixed
    `avatars.githubusercontent.com` host.
+10. A record cached before label colors.
+    Stop the server, and in pull request 7’s record, `sources/*/pulls/7.json` in the
+    home under `"${QA_PR}"`, set `projection_version` to `1` and `pull.labels` to
+    `["enhancement", "deleted-on-github"]`, the names alone, as a 0.12.0 build cached
+    it. Serve 7 again with the browser’s network panel open.
+    The chips are neutral at first, the page sends one
+    `POST /api/plugin/github/labels-refresh`, and within a few seconds `enhancement`
+    turns indigo with its tooltip, while `deleted-on-github` stays neutral and nothing
+    in the header moves.
+    Stop the server, write the record’s labels as names alone again (its own refresh has
+    rewritten it), and serve 7 once more: `enhancement` is indigo with its tooltip on
+    first paint, and the page sends no `labels-refresh` for it.
 
 **Pass:** every step as described; no console errors.
 Only application-owned avatars may load from `avatars.githubusercontent.com`; check and
