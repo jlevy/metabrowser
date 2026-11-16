@@ -2207,16 +2207,21 @@ html.theme-anim .menu {
    the spans inside it carry colour and where the ignored count goes only.
 
    The ignored count is a line of its own (`flex-basis: 100%`), "+ 248,189
-   ignored (10.1 GB)" under the tracked one, in every pane wide enough for it,
-   so the band is one line with nothing ignored and two with something,
-   whatever the figures' lengths. As half of one line it wrapped only when the
-   two halves outgrew the pane: in the default 300 px pane the tree moved down
-   19.5 px when the split arrived (mb-h3hc, measured in headless Chrome on
-   2026-11-16; H54 before it). While the line cannot tell yet whether anything is
-   ignored, it holds that line with the shell's pending placeholder, after the
-   quiet period (`.tree-summary-ignored-pending`, app.js
+   ignored (10.1 GB)" under the tracked one, and one line in every pane: in one
+   too narrow for it its size is cut short at its end rather than wrapped, as
+   "+ 7,906 ignored (133.4 …" at the 180 px minimum, where it took a second
+   line of its own. So the band is one line with nothing ignored and two with
+   something, whatever the figures' lengths. As half of one line it wrapped only
+   when the two halves outgrew the pane: in the default 300 px pane the tree
+   moved down 19.5 px when the split arrived (mb-h3hc, measured in headless
+   Chrome 152 on 2026-11-16; H54 before it). While the line cannot tell yet
+   whether anything is ignored, it holds that line with the shell's pending
+   placeholder, after the quiet period (`.tree-summary-ignored-pending`, app.js
    `treeSummaryHoldsIgnored`); the shell inlines the root's totals, so that is
-   only a shell drawn before the walk finished the root. */
+   only a shell drawn before the walk finished the root. The tracked count can
+   still wrap between its two figures in a pane too narrow for both, as a
+   six-digit count with its size does at the narrowest pane, and such a shell
+   then gains that line when the count lands. */
 /* The ignored half is muted to the same degree the gitignored rows
    below it are, so the header reads at a glance as "this much is
    yours, that much is build output". */
@@ -2227,8 +2232,15 @@ html.theme-anim .menu {
 .tree-summary-ignored {
   display: inline-flex;
   flex-basis: 100%;
+  min-width: 0;
   align-items: baseline;
   gap: var(--nav-metadata-gap);
+  white-space: nowrap;
+}
+.tree-summary-ignored > .tree-summary-bytes {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* The held ignored line: one line box of the line's type, its strut holding the
    pending block (`.tally-pending`) across the middle of the line, where the count

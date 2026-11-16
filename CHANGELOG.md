@@ -9,8 +9,9 @@ All notable changes to Metabrowser are documented here.
   ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
   first frame, so a folder with ignored files shows both lines from the start and one
   with none shows one.
-  While a folder is still being scanned, the ignored line is held with a pulsing
-  placeholder, after a short quiet period, and the count fills it in place.
+  In a pane too narrow for it, the ignored count’s size is cut short at its end instead
+  of wrapping. While a folder is still being scanned, the ignored line is held with a
+  pulsing placeholder, after a short quiet period, and the count fills it in place.
   The tracked count no longer reads as the combined figure for a moment before the
   ignored count arrives.
   See [Navigation Metadata Line](docs/design-system.md#navigation-metadata-line).

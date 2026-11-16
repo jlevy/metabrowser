@@ -22,7 +22,8 @@ and held 2 s, in the default pane and the narrowest. This judges it:
 - the line is its settled self from first paint: the ignored count's line for the folder
   with ignored files, and no ignored line for the folder with none;
 - a shell drawn before the walk finished the root, its inlined totals taken out, holds
-  the ignored line from first paint; the count fills it in place, and for a folder with
+  the ignored line from first paint; the count fills it in place, in the narrowest pane
+  too, where it is cut short on its one line rather than wrapped, and for a folder with
   nothing ignored the held line goes away, the one move this keeps, which is measured
   here as exactly that line's height.
 
@@ -49,8 +50,8 @@ from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
-# Two server starts, one Chrome, and fifteen loads, nine of them holding the tally 2 s:
-# 33 s of a 56 s test on a 10-core Mac at a load average near 30. A cold Chrome start in CI has
+# Two server starts, one Chrome, and seventeen loads, eleven of them holding the tally
+# 2 s: about 40 s of a 60 s test on a 10-core Mac at a load average near 30. A cold Chrome start in CI has
 # taken 28.2 s, and each server's start is bounded at 30 s inside the session.
 SESSION_TIMEOUT_S = 240
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
@@ -138,7 +139,7 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
     # Shown with a failure: every load's frames, and each phase's time.
     print(run.stdout, run.stderr)
     results: list[dict[str, Any]] = json.loads(run.stdout.strip().splitlines()[-1])["results"]
-    assert len(results) == 15, [result["name"] for result in results]
+    assert len(results) == 17, [result["name"] for result in results]
 
     for result in results:
         name = result["name"]

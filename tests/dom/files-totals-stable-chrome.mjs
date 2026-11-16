@@ -19,9 +19,10 @@
 // in the default pane and the narrowest; for the folder with ignored files and for the
 // one with none.
 //
-// Three loads take the shell as a server drawn before the walk finished the root would
+// Five loads take the shell as a server drawn before the walk finished the root would
 // send it, its inlined totals taken out ("unknown"): with ignored files the line holds the
-// ignored line from first paint and the count fills it; with none, the held line is taken
+// ignored line from first paint and the count fills it, in the narrowest pane too, where
+// the count is cut short on its one line rather than wrapped; with none, the held line is taken
 // away once the root's totals say so, which is the one move the design keeps
 // (docs/design-system.md, "Navigation Metadata Line"), and this measures it.
 //
@@ -312,14 +313,16 @@ async function main() {
           strip: false,
         });
       }
-      await load({
-        server: ignoring,
-        name: `ignored unknown slow 300px ${theme}`,
-        theme,
-        width: 300,
-        slow: true,
-        strip: true,
-      });
+      for (const width of WIDTHS) {
+        await load({
+          server: ignoring,
+          name: `ignored unknown slow ${width}px ${theme}`,
+          theme,
+          width,
+          slow: true,
+          strip: true,
+        });
+      }
     }
     await load({
       server: clean,
