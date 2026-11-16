@@ -27,6 +27,15 @@ type MetabrowserRenderContext = {
    *  diff draws none, as a pull request's page does (docs/design-system.md, "Diff Summary"). */
   summaryHost?: HTMLElement;
   summary?: false;
+  /** The change set's whole totals, where the page knows more than the comparison's list,
+   *  as a commit's page does from the commit's own stats: the diff's summary says them, and
+   *  how many files are listed, when that list is cut short at its bound. */
+  summaryTotals?: {
+    files: number;
+    additions: number | null;
+    deletions: number | null;
+    exact: boolean;
+  };
   /** Told the validated comparison a view mounts, so a page that draws its Diff summary
    *  itself has the comparison's files however the diff came by them. */
   onDocument?: (document: Record<string, unknown>) => void;

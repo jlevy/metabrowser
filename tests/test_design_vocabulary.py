@@ -1108,10 +1108,13 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "renderCommitSummary(detail, { compact: true })" in panel
     # The commit page's change counts are its one Diff summary, which its diff draws in the
     # summary's place (mb-pb35); only the compact summary, in a tooltip, keeps the two rows.
+    # Until the diff draws it, and where it is not drawn, the place holds the commit's totals
+    # (A6 of review A on #470).
     assert (
         "html += compact\n"
         "      ? renderCommitChangeStats(stats)\n"
-        "      : '<div class=\"git-commit-diff-summary metabrowser-diff-host\"></div>';"
+        '      : `<div class="git-commit-diff-summary metabrowser-diff-host">'
+        "${renderCommitTotals(stats)}</div>`;"
     ) in panel
     assert panel.count('class="git-commit-diff-summary metabrowser-diff-host"') == 1
     assert 'preview.querySelector(".git-commit-diff-summary")' in panel

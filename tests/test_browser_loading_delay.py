@@ -282,13 +282,12 @@ def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:
     # place it is drawn in is in the commit summary, inside the staged node, which
     # mountCommitDiff finds there and hands the diff (`summaryHost`); the diff is mounted on
     # that stage before renderPreviewNode shows it, and mountDiffView, which is synchronous,
-    # draws the summary's header in the place, not in its toolbar. Before, the commit
-    # summary carried its own totals and a revision's diff drew no summary at all
-    # (`showSummary: !ctx.revision`); a summary drawn after the handoff would move the page.
+    # draws the summary's header in the place, not in its toolbar: a summary drawn after the
+    # handoff would move the page.
     mount = git[git.index("async function mountCommitDiff") : git.index("function renderFileRow")]
     assert 'const summaryHost = preview.querySelector(".git-commit-diff-summary");' in mount
     assert "...(summaryHost instanceof HTMLElement ? { summaryHost } : {})," in mount
-    assert select.index("await mountCommitDiff(stage, commit.id,") < handoff
+    assert select.index("await mountCommitDiff(\n        stage,\n        commit.id,") < handoff
     assert "showSummary: ctx.summary !== false && (summaryHost !== null || !ctx.revision)," in diff
     assert "      summaryHost,\n" in diff
     view = (PLUGIN_ROOT / "diff" / "diff-view.js").read_text(encoding="utf-8")

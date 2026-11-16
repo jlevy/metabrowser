@@ -355,6 +355,59 @@
   }
 
   /**
+   * The commit's own totals, which the server counts over the whole commit before it caps its
+   * list of files (`git/detail.py`), or null where the detail has no count of files.
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {{files: number, additions: number | null, deletions: number | null, exact: boolean} | null}
+   */
+  function commitTotals(stats) {
+    const files = stats.files_changed;
+    if (typeof files !== "number" || !Number.isInteger(files)) {
+      return null;
+    }
+    /** @param {unknown} value */
+    const lines = (value) => (typeof value === "number" && Number.isInteger(value) ? value : null);
+    return {
+      files,
+      additions: lines(stats.additions),
+      deletions: lines(stats.deletions),
+      exact: true,
+    };
+  }
+
+  /**
+   * The commit's totals as one line, "35 changed files +1,234 −3,423", worded as a diff's line
+   * is where its tree of files did not load (`plainTotals`, builtin_plugins/diff/diff-model.js):
+   * what the Diff summary's place says until the commit's diff draws the summary there, and
+   * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
+   * comparison fails, so the page always states its counts (A6 of review A on #470). Empty
+   * where the detail has no count of files, and the place then takes no room.
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {string}
+   */
+  function renderCommitTotals(stats) {
+    const totals = commitTotals(stats);
+    if (totals === null) {
+      return "";
+    }
+    /** @param {number} value */
+    const format = (value) => window.MetabrowserFormatters?.formatInteger?.(value) ?? String(value);
+    /** @param {number | null} value */
+    const count = (value) => (value === null ? "?" : format(value));
+    return (
+      '<div class="diff-summary">' +
+      `<span class="diff-summary-files">${escapeHtml(format(totals.files))} changed ` +
+      `${totals.files === 1 ? "file" : "files"}</span> ` +
+      '<span class="diff-summary-stats">' +
+      `<span class="diff-stat-add">+${escapeHtml(count(totals.additions))}</span> ` +
+      `<span class="diff-stat-del">−${escapeHtml(count(totals.deletions))}</span>` +
+      "</span></div>"
+    );
+  }
+
+  /**
    * Render the complete commit summary as one component. The comparison,
    * out-of-root files, and bounds remain siblings because they describe the
    * rendered change rather than the commit's identity and message.
@@ -404,10 +457,11 @@
     html += "</div>";
     // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
     // diff below draws it here, its header the commit's file and line totals and its tree
-    // the commit's files (`mountCommitDiff`). The hover summary keeps its two rows.
+    // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
+    // place says the commit's totals. The hover summary keeps its two rows.
     html += compact
       ? renderCommitChangeStats(stats)
-      : '<div class="git-commit-diff-summary metabrowser-diff-host"></div>';
+      : `<div class="git-commit-diff-summary metabrowser-diff-host">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
@@ -2636,7 +2690,13 @@
       return;
     }
     try {
-      const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation, previewClaim);
+      const nextHandle = await mountCommitDiff(
+        stage,
+        commit.id,
+        diffPreparation,
+        previewClaim,
+        commitTotals(stats),
+      );
       if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
         nextHandle?.dispose?.();
         return;
@@ -2693,9 +2753,12 @@
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
    * @param {MetabrowserPreviewClaim} claim
+   * @param {ReturnType<typeof commitTotals>} [totals] The commit's own totals, which its Diff
+   *   summary says where the comparison's list of files is cut short at its bound (A3 of review
+   *   A on #470).
    * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, preparation, claim) {
+  async function mountCommitDiff(preview, revision, preparation, claim, totals = null) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
@@ -2736,6 +2799,7 @@
               revision,
               raw,
               ...(summaryHost instanceof HTMLElement ? { summaryHost } : {}),
+              ...(totals === null ? {} : { summaryTotals: totals }),
             })
           );
         },
