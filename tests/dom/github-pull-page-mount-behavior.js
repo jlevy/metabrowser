@@ -1135,9 +1135,10 @@ async function headerAges(page) {
 }
 
 // The header's box is decided at first paint: the same rows, in the same order, whatever
-// the pull request carries and whichever tab shows, and while its record is on its way.
-// Each row's height is its stylesheet's (tests/test_reserved_chrome.py); here, that every
-// row is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
+// the pull request carries and whichever tab shows, and while its record is on its way,
+// but for the labels row, which a pull request with no labels does not have (mb-2u08). It
+// is held while the record is on its way, since the record may bring labels. Each row's
+// height is its stylesheet's (tests/test_reserved_chrome.py); here, that every row is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
 // strut until one arrives, which holds that row at a chip's height; and Refresh has its
 // slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs measures that a
 // late chip moves nothing.
@@ -1186,6 +1187,8 @@ async function headerShape(page) {
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
   };
+  // The variants whose record names no labels.
+  const NO_LABELS = new Set(["no labels, a title of three lines", "merged"]);
   for (const [name, body] of Object.entries(variants)) {
     for (const tab of ["", "files", "checks"]) {
       const { container, handle } = await mountOn(page, body, tab, age);
@@ -1202,7 +1205,11 @@ async function headerShape(page) {
         stacks,
         `${name} ${tab}: the stack slot ends the author's row`,
       );
-      assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
+      if (NO_LABELS.has(name)) {
+        assert.equal(labels, null, `${name} ${tab}: no labels, no labels row`);
+      } else {
+        assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
+      }
       if (name === "three labels") {
         // A label with GitHub's color carries it and the properties github/styles.css
         // paints it from; one with a description has it as its tooltip; one without a
@@ -1263,18 +1270,33 @@ async function headerShape(page) {
         refresh.classes.has("github-pull-refresh"),
         `${name} ${tab}: Refresh's slot ends the status row`,
       );
+      // A text action, a line tall, so the status line is a metadata line (mb-2u08).
+      assert.ok(
+        refresh.classes.has("github-pull-text-action") && !refresh.classes.has("btn"),
+        `${name} ${tab}: Refresh is a text action`,
+      );
       assert.ok(
         container.querySelector(".tab-bar"),
         `${name} ${tab}: the tab bar is under the header from first paint`,
       );
       assert.equal(header.parentNode.children.indexOf(header), 0);
       shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
+      assert.equal(
+        rows(container).join(" "),
+        NO_LABELS.has(name)
+          ? "title meta branches opened status summary"
+          : "title meta branches opened labels status summary",
+        `${name} ${tab}: the header's rows`,
+      );
       handle.dispose();
     }
   }
   assert.deepEqual(
     new Set(Object.values(shapes)),
-    new Set(["title meta branches opened labels status summary"]),
+    new Set([
+      "title meta branches opened labels status summary",
+      "title meta branches opened status summary",
+    ]),
     JSON.stringify(shapes, null, 2),
   );
   // A title cut short at two lines carries the whole of it in its tooltip, and only then.

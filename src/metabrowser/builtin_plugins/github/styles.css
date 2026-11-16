@@ -252,8 +252,9 @@
 .github-pull-badge[data-state="DISMISSED"] {
   color: var(--muted);
 }
-/* Always present, one line of labels whether there are none or many, a label's height,
-   the labels cut short at the row's end. */
+/* One line of labels, a label's height, cut short at the row's end. The row is there for a
+   pull request with labels, and held empty at that height while the record is on its way;
+   a pull request with none has no row (pull-page.js, mb-2u08). */
 .github-pull-labels {
   display: flex;
   flex-wrap: nowrap;
@@ -352,9 +353,14 @@
     calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
   );
 }
-/* One line, as tall as the Refresh button whose slot ends it on every tab. Its text is
-   cut short before it wraps; its controls never are. A failure is the exception: it says
-   what to do, so the row wraps to show all of it, the one state where the tab bar may move. */
+/* One of the header's metadata lines, under the row of ages and as tall as it: one line of
+   the small type, ending in Refresh's slot on every tab. Refresh, Fetch, and Switch to the
+   head are text actions (`.github-pull-text-action`), a line tall, as Browse code on the row
+   of ages is (mb-2u08). As bordered `.btn`s they made this row 26 px where the row of ages is
+   18, and with the empty labels row it stood 32 px under that row against the 6 px between
+   the others (Chrome 152). Its text is cut short before it wraps; its controls never are.
+   A failure is the exception: it says what to do, so the row wraps to show all of it, the
+   one state where the tab bar may move. */
 .github-pull-failure {
   color: var(--status-warning-strong);
 }

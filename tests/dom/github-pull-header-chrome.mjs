@@ -23,8 +23,10 @@
 // header is set in the faces the shell uses.
 //
 // The header is reserved at first paint, so a record that has not arrived and every
-// loaded record lay out to one height on every tab, row by row, and the tab bar under it
-// starts at one place. That is layout, which no browserless DOM can compute: the
+// loaded record with labels lay out to one height on every tab, row by row, and the tab bar
+// under it starts at one place; a record with no labels has no labels row, and lays out to
+// that height less the row and its gap (mb-2u08). Its status line is a metadata line, as
+// tall as the row of ages above it. That is layout, which no browserless DOM can compute: the
 // stylesheet text passed with a state badge whose first flex item was a zero-height sizer,
 // which hung the badge below the line and made the loaded header 5.6 px taller than the
 // empty one. And no record's row may end past the header: an offer kept whole ran 262 px
@@ -197,6 +199,10 @@ const MEASURE = `async (name, change, tab, width) => {
   if (change.lastRefresh) {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
+  }
+  // A pull request with no labels, which has no labels row (mb-2u08).
+  if (change.noLabels) {
+    body.record.pull.labels = [];
   }
   // Labels of each color the label part checks, in the theme it names.
   if (change.labels && body.record) {
@@ -485,11 +491,27 @@ const MEASURE = `async (name, change, tab, width) => {
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
+  // Where each row starts and ends, from the header's top, and the header's one gap between
+  // rows: the status line is one of the metadata lines under the title, as tall as the row
+  // of ages and one gap under the row before it, with no empty labels row between (mb-2u08).
+  const lines = [...header.children].map((row, at) => ({
+    row: rows[at].row,
+    top: Math.round((box(row).top - box(header).top) * 100) / 100,
+    bottom: Math.round((box(row).bottom - box(header).top) * 100) / 100,
+  }));
+  const refresh = header.querySelector(".github-pull-status .github-pull-refresh");
   const result = {
     edges,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
+    lines,
+    rowGap: parseFloat(getComputedStyle(header).rowGap),
+    // How many labels the record names, or null while there is no record.
+    recordLabels: body.record ? body.record.pull.labels.length : null,
+    refresh: refresh
+      ? { shown: !refresh.hidden, height: Math.round(box(refresh).height * 100) / 100 }
+      : null,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
     strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
@@ -557,7 +579,8 @@ const MEASURE = `async (name, change, tab, width) => {
 
 // A record that has not arrived, records still loading, loaded, merged, closed, stale, with
 // the checkout on its head, with each offer the status row can draw, and held by a rate
-// limit. A failure is let wrap its status row, so it is not among them.
+// limit, and a loaded one with no labels, as the merged record has none. A failure is let
+// wrap its status row, so it is not among them.
 const RATE_LIMITED = {
   outcome: "rate_limited",
   message: null,
@@ -581,6 +604,7 @@ const RECORDS = [
   ["current", { longNames: true }],
   ["current", { longNames: true, avatar: true }],
   ["merged", { longNames: true, avatar: true }],
+  ["current", { noLabels: true }],
 ];
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
@@ -1154,17 +1178,69 @@ async function main() {
                 paneScrolls: shape.paneScrolls,
               }),
             );
+            // The status line is one of the header's metadata lines (mb-2u08): as tall as the
+            // row of ages above it, its Refresh, shown or held, no taller than it, and every
+            // row one gap under the row before it. As a bordered .btn, Refresh made the line
+            // 26 px against the row of ages' 18, and an empty labels row stood between them.
+            const line = (row) => shape.lines.find((each) => each.row === row);
+            const opened = line("opened");
+            const statusLine = line("status");
+            const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
+            check(
+              `${where}: the status line is as tall as the row of ages`,
+              opened !== undefined &&
+                statusLine !== undefined &&
+                Math.abs(tall(statusLine) - tall(opened)) <= 0.5,
+              JSON.stringify(shape.lines),
+            );
+            check(
+              `${where}: Refresh's slot is no taller than the status line`,
+              shape.refresh !== null &&
+                statusLine !== undefined &&
+                shape.refresh.height <= tall(statusLine) + 0.5,
+              JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
+            );
+            check(
+              `${where}: each row is the header's one gap under the row before it`,
+              shape.lines.every(
+                (each, at) =>
+                  at === 0 || Math.abs(each.top - shape.lines[at - 1].bottom - shape.rowGap) <= 0.5,
+              ),
+              JSON.stringify({ rowGap: shape.rowGap, lines: shape.lines }),
+            );
+            if (shape.recordLabels === 0) {
+              check(
+                `${where}: a pull request with no labels has no labels row, its status line one gap under the row of ages`,
+                line("labels") === undefined &&
+                  opened !== undefined &&
+                  statusLine !== undefined &&
+                  Math.abs(statusLine.top - opened.bottom - shape.rowGap) <= 0.5,
+                JSON.stringify(shape.lines),
+              );
+            }
           }
         }
         lap(`the header at ${width} px`);
+        // While the record is on its way the labels row is held, since the record may bring
+        // labels: a record with labels lands moving nothing, row by row. One with none lands
+        // without that row and the gap before it, and moves nothing above it (mb-2u08).
         const reference = seen["absent conversation"];
+        const labelsRow = reference.rows.find((row) => row.row === "labels");
+        const labelsSpace = (labelsRow?.height ?? Number.NaN) + reference.rowGap;
+        const unlabelled = {
+          header: reference.header - labelsSpace,
+          tabBar: reference.tabBar - labelsSpace,
+          rows: reference.rows.filter((row) => row.row !== "labels"),
+        };
         for (const [key, shape] of Object.entries(seen)) {
+          const none = shape.recordLabels === 0;
+          const expected = none ? unlabelled : reference;
           check(
-            `${width} px, ${key}: the header lays out to the empty record's height, row by row`,
-            shape.header === reference.header &&
-              shape.tabBar === reference.tabBar &&
-              JSON.stringify(shape.rows) === JSON.stringify(reference.rows),
-            JSON.stringify({ empty: reference, [key]: shape }),
+            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}, row by row`,
+            Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
+              Math.abs(shape.tabBar - expected.tabBar) <= (none ? 0.5 : 0) &&
+              JSON.stringify(shape.rows) === JSON.stringify(expected.rows),
+            JSON.stringify({ expected, [key]: shape }),
           );
         }
       }

@@ -210,6 +210,7 @@ it:
 | 20 | `claude/diff-summary-top` | `mb-pb35` | On pull request 19; moves the Diff summary to the top of the commit and pull request pages, under the header whose rows pull requests 13 and 19 change |
 | 21 | `claude/label-color-cache` | `mb-varu` | On pull request 20; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 | 22 | `claude/diff-summary-expand` | `mb-hi4l` | On pull request 21; opens the Diff summary’s tree in the page’s flow and indents it from its header, in the places pull request 20 gives it, on the rows pull request 17 shares |
+| 25 | `claude/pull-header-status` | `mb-2u08` | On pull request 24 (#474); respaces the pull request header’s labels row and status line, above the Diff summary row pull request 20 adds |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -584,6 +585,28 @@ tally of its pull requests, since it is obvious.
 - **No tally on a stack’s row:** a Pulls stack group’s row shows its label alone, and
   its accessible name still says its size (`mb-yk0i`).
 
+### Pull Request Header Lines
+
+The owner’s report of 2026-11-16, on a pull request with no labels: the “Fetched just
+now via GitHub CLI” line “has a lot o vertical space above it”, and “it should just be
+part of the same metadata lines”.
+
+- **Cause:** two holds of the header’s first-paint rule (the design system’s “Regions
+  Keep Their Boxes”). The labels row was always there, empty and 20 px tall, so labels
+  arriving would move nothing; and Refresh, a bordered `.btn` whose slot ends the status
+  line on every tab, made that line 26 px.
+  Measured in Chrome 152, the line stood 32 px under the row of ages, against 6 px
+  between the header’s other rows.
+- **The freshness line is a metadata line** (`mb-2u08`): Refresh or Fetch and Switch to
+  the head are text actions, a line tall, as Browse code is, so the line is the row of
+  ages’ 18 px, one 6 px gap under it.
+- **No empty labels row:** a pull request with no labels has no labels row and no gap.
+  The row is held only while the record is on its way, since labels come with the record
+  or its core: a record with labels lands moving nothing, and one with none takes the
+  row away in the one paint that changes the header and the body together.
+  A label’s color, which the repository’s label set may bring later, changes no chip’s
+  box.
+
 ### API Changes
 
 - **Files Group by** needs the grouping reached through `metab`: either a parameter on
@@ -794,6 +817,15 @@ tally of its pull requests, since it is obvious.
   commit’s files outside the folder; held without a browser per surface and in Chrome on
   the Diff summary, the Files totals and filter remark, the Commits tally, and the Pulls
   count, each number inline with its words.
+
+### Phase 25: Pull Request Header Lines (pull request 25)
+
+- [ ] `mb-2u08`: the freshness line is one of the header’s metadata lines, its Refresh,
+  Fetch, and Switch to the head text actions, and a pull request with no labels has no
+  labels row, held only while the record is on its way; measured in Chrome 152 at 560,
+  420, and 360 px in both themes, with a header Chrome check that fails on the old
+  layout, and pinned in the page mount session, the reserved-chrome and design
+  vocabulary tests, and the design system.
 
 ## Testing Strategy
 

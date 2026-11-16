@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s “Fetched … via GitHub CLI” line is one of its header’s metadata
+  lines: 18 px tall, as the “Opened …” line above it is, and 6 px under it, or under the
+  labels where the pull request has them.
+  Its Refresh or Fetch and Switch to the head are text actions, as Browse code is, in
+  place of bordered buttons that made the line 26 px.
+  See [The Pull Request Page](docs/design-system.md#layout).
+
 - Every count summary bolds its numbers and keeps its words regular.
   The numbers are now bold in the Diff summary’s header, “**8** changed files (**8**
   modified)”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar;
@@ -124,8 +131,9 @@ All notable changes to Metabrowser are documented here.
   spacing are unchanged.
   See [Serif Is for Documents](docs/design-system.md#serif-is-for-documents).
 
-- A pull request’s page header is one size for every pull request and tab, so nothing in
-  it moves when a part arrives late, and the tab bar under it never moves.
+- A pull request’s page header is one size on every tab, and for every pull request with
+  labels or every one without, so nothing in it moves when a part arrives late, and the
+  tab bar under it moves only between a pull request with labels and one without.
   The title holds two lines and is cut short there, with the whole of it in a tooltip;
   its icon and text start at the header’s left edge, and the pull request’s number ends
   at the right edge, level with the title’s last line.
@@ -135,8 +143,9 @@ All notable changes to Metabrowser are documented here.
   row, under the pull request’s number, and its menu opens from there; arriving after
   the page, it lands in the row’s empty end.
   The state badge (Draft, Open, Merged, Closed) moves from the start of the author’s row
-  to lead “Opened 9h ago · updated …”, and the labels have a row of their own, there
-  even with no labels.
+  to lead “Opened 9h ago · updated …”. The labels row is held while a pull request’s
+  record is on its way, so a record with labels arrives moving nothing, and one with
+  none, which has no labels row, moves the tabs up 26 px as it arrives.
   Each of these rows is one line: in a narrow pane the author’s sentence is cut short,
   its action and then its author, and long branch names are cut short on their line.
   Refresh has its slot on every tab, and only a failure in the status row wraps, to show

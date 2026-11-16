@@ -627,14 +627,16 @@ or fill, because a bordered button would read as a different thing from the link
 it. It is a link when the page already has the address, and a real `<button>` when
 following it first switches the served pin, so that a new tab or a copied address never
 opens something a click would not.
+An action that opens nothing, such as a pull request’s Refresh, is always a `<button>`.
 Both forms look the same in their context, a tooltip and accessible name say which
 commit opens and whether the pin switches, and keyboard and screen-reader users still
 get the element they expect.
 The diff file bar’s [View file](#diff-file-bar), and
-[Browse code and a review comment’s file](#chrome) on a pull request’s page, are text
-actions. Each context sets one look for the `<a>` and the `<button>`, box included: a
-`<button>` is always an atomic inline box, so where a label can wrap, the `<a>` is one
-too, and what follows a wrapped label starts on the next line in both forms.
+[Browse code, a review comment’s file, Refresh, and Switch to the head](#chrome) on a
+pull request’s page, are text actions.
+Each context sets one look for the `<a>` and the `<button>`, box included: a `<button>`
+is always an atomic inline box, so where a label can wrap, the `<a>` is one too, and
+what follows a wrapped label starts on the next line in both forms.
 
 ### External GitHub Links
 
@@ -1562,25 +1564,40 @@ clamped text, ends on the header’s right edge, level with the title’s last l
 the stack chip that ends the author’s row, whatever the title’s length.
 The colored badge that leads the row of ages gives the state in text and the title icon
 is decorative. The header’s box is decided at first paint, in every state and on every
-tab, so the tab bar under it never moves between pull requests or tabs: the author’s row
-is one line, the author and the sentence, then at its right end the stack chip’s slot
-(see native stack navigation below), and the sentence is cut short at its end, the
-action first and then the author, never moved or wrapped; the branches have the line
-under it to themselves, one line in every state, their names cut short rather than
-wrapping it; the row of ages begins with the state’s badge, as wide as the widest state,
-then “Opened”, the ages, View on GitHub, and Browse code, one line cut short at its end;
-the labels row is always there, a line of labels or none, at a label’s height; the
-status row is one line that ends in Refresh’s slot, held hidden on a tab with nothing to
-refresh, its text and then its offers’ sentences cut short, never their controls, and a
-rate limit’s hold on the line too; and a cold page keeps every row, empty, at its
-height. Only a failure, which says what to do, wraps the status row.
-The header’s last row is the pull request’s [Diff summary](#diff-summary), on every tab,
-so its counts are at the page’s top and not inside Changes.
-The row is held at `--ui-row-height` from first paint, empty until the comparison is
-read, and the summary’s header is one line, its breakdown cut short at its end, so the
-summary that arrives moves nothing; opened, its tree pushes the tabs down, as the reader
-asked. On every tab but Changes the page reads the comparison once it is idle, as it
-would for Changes; on Changes it draws the summary from what the diff read.
+tab, so the tab bar under it never moves between tabs, nor between pull requests that
+both have labels or both have none: the author’s row is one line, the author and the
+sentence, then at its right end the stack chip’s slot (see native stack navigation
+below), and the sentence is cut short at its end, the action first and then the author,
+never moved or wrapped; the branches have the line under it to themselves, one line in
+every state, their names cut short rather than wrapping it; the row of ages begins with
+the state’s badge, as wide as the widest state, then “Opened”, the ages, View on GitHub,
+and Browse code, one line cut short at its end; a pull request with labels has a row of
+them, one line at a label’s height, and one with none has no labels row and no gap for
+it; the status row, the freshness line, is the next metadata line, as tall as the row of
+ages, and ends in Refresh’s slot, held hidden on a tab with nothing to refresh, its text
+and then its offers’ sentences cut short, never their controls, and a rate limit’s hold
+on the line too; and a cold page keeps every row, empty, at its height.
+Only a failure, which says what to do, wraps the status row.
+Refresh or Fetch and Switch to the head are [text actions](#control-families), a line
+tall, as Browse code is, so the freshness line is no taller than its text.
+A cold page holds the labels row while the labels are unknown, since the record may
+bring some: a record with labels lands moving nothing, and one with none takes the row
+and its gap away in the paint that lands it, the one paint that changes the header and
+the body together. A record’s labels come with it or its core, and a label’s color and
+tooltip, which the repository’s label set may bring later, change no chip’s box.
+Measured in Chrome 152 at 560, 420, and 360 px in both themes, every row is 6 px under
+the one before it and the freshness line is 18 px, the row of ages’ height; the header
+is 229 px with no labels and 255 px with labels or while its record is on its way.
+Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px labels
+row stood between it and the row of ages, 32 px under that row, and the header was 263
+px in every state (mb-2u08). The header’s last row is the pull request’s
+[Diff summary](#diff-summary), on every tab, so its counts are at the page’s top and not
+inside Changes. The row is held at `--ui-row-height` from first paint, empty until the
+comparison is read, and the summary’s header is one line, its breakdown cut short at its
+end, so the summary that arrives moves nothing; opened, its tree pushes the tabs down,
+as the reader asked.
+On every tab but Changes the page reads the comparison once it is idle, as it would for
+Changes; on Changes it draws the summary from what the diff read.
 It is drawn once for each comparison it shows and kept across tabs.
 Measured in Chrome 152 at 980 to 320 px, the row is 24 px from first paint; a summary of
 “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving moved no row
@@ -1788,7 +1805,7 @@ of events is 20 px apart, as in Chrome.
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch, Switch to the head | `.btn` |  |
+| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall; a bordered `.btn` made the line 26 px against the row of ages’ 18 |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
@@ -4386,15 +4403,15 @@ own toolbar at one height (the Files filters, the Commits tally, the Pulls filte
 Commits tab from the server at a repository’s root, a scrollbar gutter on the tree and
 the preview pane, the shortcut strip’s row, a view tab bar in every file, the print
 button’s and a run badge’s widths, the Pulls tab’s status and connection lines and its
-age column, and the pull request header’s rows.
-Heights are in line units, or struts of the controls a row holds, never pixels measured
-in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
-is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
-does, the view holds its first paint for that data, briefly, with the previous view
-still shown.
-The server draws the tab an address lands on in front, a commit’s address on
-Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
-cannot load says so in its slot rather than pulsing.
+age column, and the pull request header’s rows, but for a labels row a pull request with
+no labels does not have ([Layout](#layout)). Heights are in line units, or struts of the
+controls a row holds, never pixels measured in one engine, because WebKit’s font metrics
+differ from Chrome’s. Where a region’s size is its data’s and arrives a moment after the
+rest, as the File Overview’s first rollup does, the view holds its first paint for that
+data, briefly, with the previous view still shown.
+The server draws the tab an address lands on in front, a commit’s address on Commits, so
+a landing never shows one tab’s chrome and then swaps it; a toolbar that cannot load
+says so in its slot rather than pulsing.
 `tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome

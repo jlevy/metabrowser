@@ -316,8 +316,13 @@ def test_the_state_badge_is_as_wide_as_the_widest_state() -> None:
     assert ".github-pull-badge::before" not in css and ".github-pull-badge::after" not in css
 
 
-def test_labels_have_a_row_that_always_exists() -> None:
-    """A label's height whether there are labels or none; the stack's chip is on the author's row."""
+def test_labels_have_a_row_while_unknown_or_present() -> None:
+    """A label's height, held while the record is on its way; none for no labels (mb-2u08).
+
+    The stack's chip is on the author's row. A record's labels come with it, so whether the
+    row is there is decided with the record's first paint; a label's color arriving later
+    changes no chip's box (tests/dom/github-pull-header-chrome.mjs measures both).
+    """
 
     css = _github_css()
     rule = _rule(css, ".github-pull-labels")
@@ -327,8 +332,11 @@ def test_labels_have_a_row_that_always_exists() -> None:
     labels = _rule(css, ".github-pull-label-list")
     assert "min-width: 0;" in labels and "overflow: hidden;" in labels
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
-    assert "if (pull.labels.length > 0)" not in page
     assert 'h("div", { class: "github-pull-labels" }, [labelList])' in page
+    # A pull request with no labels has no labels row, and no gap for it.
+    assert "if (pull.labels.length > 0) {" in page
+    # While the record is on its way the row is held, empty, with the rows it may have.
+    assert "children.push(stateRow, branchesRow, openedRow, labelsRow);" in page
 
 
 def test_the_stack_chip_ends_the_authors_row() -> None:
@@ -362,6 +370,12 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     held = _rule(css, ".github-pull-refresh[hidden]")
     assert "visibility: hidden;" in held and "display: inline-block;" in held
     page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    # The row is a metadata line, a line of the small type tall (mb-2u08): its controls are
+    # text actions, a line tall, never bordered .btn boxes, which made it 26 px against 18.
+    assert "font-size: var(--ui-small-font-size);" in status
+    assert 'class: "github-pull-text-action github-pull-refresh"' in page
+    assert 'class: "github-pull-text-action github-pull-switch"' in page
+    assert "btn github-pull-refresh" not in page and "btn github-pull-switch" not in page
     assert "refresh.hidden = !model.canRefresh;" in page
     assert "if (model.canRefresh) {" not in page
     # Refresh is always the end's last child, after any offers.

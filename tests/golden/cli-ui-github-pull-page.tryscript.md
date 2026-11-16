@@ -1642,10 +1642,12 @@ Pending and disposed controls cannot issue duplicate requests.
 Asset and render failures retain their local Retry action.
 Opening Changes beside a checkout starts an acquisition and offers Retry changes after a
 refusal. The header has the same rows in the same order for every pull request and tab,
-and while its record is on its way: the state row holds a chip’s height with a strut, a
-stack has its slot at the end of the labels row, and Refresh at the end of the status
-row. The tabs answer to `C`, `G`, and `E` through the production shortcut registry and
-plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
+and while its record is on its way, but for the labels row, which a pull request with no
+labels does not have: the state row holds a chip’s height with a strut, a stack has its
+slot at the end of the author’s row, and Refresh, a text action, at the end of the
+status row.
+The tabs answer to `C`, `G`, and `E` through the production shortcut registry
+and plugin shortcut facade, with or without Shift and never with Ctrl: a tab the address
 does not show opens through the route, as a click on its link does.
 `H` is the Commits tab’s, so it does nothing here.
 The header keeps the tab column unless its first read fails: while the record is on its

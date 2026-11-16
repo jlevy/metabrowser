@@ -3726,8 +3726,10 @@ export function mountPullPage(container, ctx, mb) {
   const header = h("div", { class: "github-pull-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
-  // line each, so nothing that arrives later, a stack, a label, a Refresh, moves the tab
-  // bar or the rows below it. docs/design-system.md, "The Pull Request Page".
+  // line each, so nothing that arrives later, a stack, a label's color, a Refresh, moves the
+  // tab bar or the rows below it. The one row that depends on the record is the labels row:
+  // held while the labels are unknown, and not there for a pull request with none (mb-2u08).
+  // docs/design-system.md, "The Pull Request Page".
   // A hidden chip of no width, which gives a row a chip's height whatever else it holds.
   const strut = () =>
     h(
@@ -3762,6 +3764,8 @@ export function mountPullPage(container, ctx, mb) {
   header.append(stateRow);
   // The status line and its age are kept across paints, so the age's breathing while a
   // refresh runs is one animation from start to end rather than one restarted at each paint.
+  // It is one of the header's metadata lines, under the row of ages and as tall as it: its
+  // controls are text actions, a line tall (mb-2u08).
   const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
   const status = h("div", { class: "github-pull-status" }, [freshnessLine]);
   /** Commits of the conversation are being read from GitHub for the record shown. */
@@ -4694,12 +4698,17 @@ export function mountPullPage(container, ctx, mb) {
       }
       placeChildren(openedRow, [stateBadge, opened.row]);
       children.push(title, paintStateRow(pull), branchesRow, openedRow);
-      // A row that is always there, so a pull request with labels is as tall as one without.
-      placeChildren(
-        labelList,
-        headerPart("labels", pull.labels, () => pull.labels.map(labelChip)),
-      );
-      children.push(labelsRow);
+      // A pull request with no labels has no labels row, and no gap for it: the status line
+      // follows the row of ages as the next metadata line (mb-2u08). Its labels come with its
+      // record or core, so the row is decided with the record's first paint; a label's color
+      // and tooltip, which the repository's set may bring later, change no chip's box.
+      if (pull.labels.length > 0) {
+        placeChildren(
+          labelList,
+          headerPart("labels", pull.labels, () => pull.labels.map(labelChip)),
+        );
+        children.push(labelsRow);
+      }
     } else {
       children.push(
         headerPart("loading title", model.number, () =>
@@ -4707,7 +4716,10 @@ export function mountPullPage(container, ctx, mb) {
         ),
       );
       // While the record is on its way the header keeps the rows it will have, empty, at
-      // their heights, so the record lands without moving the tab bar.
+      // their heights, so the record lands without moving the tab bar. The labels row is
+      // among them while the labels are unknown, so a record with labels lands moving
+      // nothing; one with none takes the row and its gap away in the paint that lands it,
+      // the one paint that changes the header and the body together (mb-2u08).
       if (model.status !== "unavailable") {
         placeChildren(stateBadge, []);
         placeChildren(stateDetails, []);
@@ -4739,12 +4751,16 @@ export function mountPullPage(container, ctx, mb) {
     const failure = model.failure;
     const failureHelp = model.failureHelp;
     // Refresh has its slot at the row's end on every tab, held hidden when there is nothing
-    // to refresh: it came and went with the tab, moving the tab bar 8 px.
+    // to refresh: it came and went with the tab, moving the tab bar 8 px. It is a text
+    // action, as Browse code on the row of ages is, so the line is a metadata line's height:
+    // as a bordered .btn it was 26 px where the line's text is 18 (mb-2u08).
     const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
     const refresh = headerPart("refresh", refreshLabel, () => {
-      const button = h("button", { type: "button", class: "btn github-pull-refresh" }, [
-        refreshLabel,
-      ]);
+      const button = h(
+        "button",
+        { type: "button", class: "github-pull-text-action github-pull-refresh" },
+        [refreshLabel],
+      );
       button.addEventListener("click", refreshShown);
       return button;
     });
@@ -4759,9 +4775,12 @@ export function mountPullPage(container, ctx, mb) {
       const text = model.headOffer.text;
       const switchNow = () => void controller.switchToHead();
       const held = headerPart("switch offer", text, () => {
-        const button = h("button", { type: "button", class: "btn github-pull-switch" }, [
-          "Switch to the head",
-        ]);
+        // A text action, as Refresh beside it is: following it switches the served pin.
+        const button = h(
+          "button",
+          { type: "button", class: "github-pull-text-action github-pull-switch" },
+          ["Switch to the head"],
+        );
         button.addEventListener("click", switchNow);
         return { offer: offer(text, button), button };
       });
