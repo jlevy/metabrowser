@@ -467,85 +467,113 @@ class _SelectedDirectoryTotals:
 
 
 class _ListedFolders:
-    """The folders a tree under *root* lists to *max_depth* that hold a given folder: it
-    and its ancestors below *root*, nearest the root first. Memoized for one read, so
-    several selections over the same rows share the work."""
+    """The folders a tree under *root* lists to *max_depth*: which of them holds a given
+    folder deepest, and which hold a listed one. Memoized for one read, so several
+    selections over the same rows share the work."""
 
-    __slots__ = ("_max_depth", "_memo", "_prefix", "_root")
+    __slots__ = ("_chains", "_deepest", "_max_depth", "_names", "_prefix", "_root")
 
     def __init__(self, root: str, max_depth: int) -> None:
         self._root = root
         self._prefix = f"{root}/" if root else ""
         self._max_depth = max_depth
-        self._memo: dict[str, tuple[str, ...]] = {}
+        self._deepest: dict[str, str | None] = {}
+        # One string per listed folder, shared by every folder under it.
+        self._names: dict[str, str] = {}
+        self._chains: dict[str, tuple[str, ...]] = {}
 
-    def holding(self, folder: str) -> tuple[str, ...]:
-        listed = self._memo.get(folder)
-        if listed is None:
-            if folder == self._root:
-                listed = ()
+    def deepest(self, folder: str) -> str | None:
+        """The deepest listed folder holding *folder*: *folder* itself when it is listed,
+        else its ancestor *max_depth* below *root*; None for *root*."""
+
+        try:
+            return self._deepest[folder]
+        except KeyError:
+            pass
+        listed: str | None = None
+        if folder != self._root:
+            parts = folder[len(self._prefix) :].split("/", self._max_depth)
+            if len(parts) <= self._max_depth:
+                listed = folder
             else:
-                parts = folder[len(self._prefix) :].split("/", self._max_depth)
-                nearest = self._prefix + parts[0]
-                chain = [nearest]
-                for part in parts[1 : self._max_depth]:
-                    nearest = f"{nearest}/{part}"
-                    chain.append(nearest)
-                listed = tuple(chain)
-            self._memo[folder] = listed
+                name = self._prefix + "/".join(parts[: self._max_depth])
+                listed = self._names.setdefault(name, name)
+        self._deepest[folder] = listed
         return listed
+
+    def holding(self, listed: str) -> tuple[str, ...]:
+        """The listed folders that hold the listed folder *listed*: it and its ancestors
+        below *root*, nearest the root first."""
+
+        chain = self._chains.get(listed)
+        if chain is None:
+            parts = listed[len(self._prefix) :].split("/")
+            nearest = self._prefix + parts[0]
+            names = [nearest]
+            for part in parts[1:]:
+                nearest = f"{nearest}/{part}"
+                names.append(nearest)
+            chain = self._chains[listed] = tuple(names)
+        return chain
 
 
 @dataclass(slots=True)
 class _TreeSelection:
-    """What one filtered tree keeps under its path: the matching leaves, their totals, and
-    the totals of the files kept directly in each folder, which `rows` rolls up into the
-    listed folders.
+    """What one filtered tree keeps under its path, as far as its listed rows need it: how
+    many leaves it keeps and their totals, the kept leaves a row can show, and the totals
+    of the kept files each listed folder holds deepest, which `rows` rolls up into every
+    listed folder holding them.
 
-    The per-folder totals are plain integers in three dictionaries rather than an object
-    per folder: a pass over a large index otherwise allocates one tracked object per
-    folder, and the cyclic collector those allocations set off scans the index's own
-    entries. On a 380,000-entry folder, with an object per folder, a grouped read took
-    0.46 to 0.79 s with the collector on and 0.41 s with it off; with the integers, and
-    without a child list for every folder (`_tree_leaves`), it took 0.42 to 0.43 s with it
-    on (measured in process, watch off, 2026-11-15).
+    It holds nothing per folder of the index: a kept leaf is remembered only when it is
+    within the listed depth (its folder is in *shallow*, which `_tree_leaves` fills), and
+    a kept file counts toward the deepest listed folder holding it (`_ListedFolders`, one
+    for every selection of a read). Keeping every kept leaf, and totals for every folder
+    holding one, would cost a grouped pass a 55 MB peak against 9 MB, and 0.51-0.55 s
+    against 0.31-0.36 s, on 260,000 files in 111,500 folders (measured at the provider,
+    warm, 2026-11-15).
     """
 
+    listed: _ListedFolders
+    shallow: Mapping[str, object]
     matched: set[str] = field(default_factory=set[str])
+    matching_leaves: int = 0
     matching_files: int = 0
     matching_bytes: int = 0
-    # Every folder that directly holds a kept leaf is a key of `own_files`, a folder of
-    # kept symlinks only at zero; `own_newest` has only the folders holding a kept file.
+    # Every listed folder that holds a kept leaf deepest is a key of `own_files`, one
+    # holding kept symlinks only at zero; `own_newest` has only those holding a kept file.
     own_files: dict[str, int] = field(default_factory=dict[str, int])
     own_bytes: dict[str, int] = field(default_factory=dict[str, int])
     own_newest: dict[str, int] = field(default_factory=dict[str, int])
 
     def add(self, entry: FsEntry) -> None:
-        self.matched.add(entry.path)
+        self.matching_leaves += 1
         parent = entry.parent
+        if parent in self.shallow:
+            self.matched.add(entry.path)
+        holder = self.listed.deepest(parent)
         own_files = self.own_files
         if entry.type != "file":
-            # A kept symlink makes its folder a kept one, with no file in its totals.
-            if parent not in own_files:
-                own_files[parent] = 0
+            # A kept symlink makes its folders kept ones, with no file in their totals.
+            if holder is not None and holder not in own_files:
+                own_files[holder] = 0
             return
         size = entry.size
         self.matching_files += 1
         self.matching_bytes += size
-        own_files[parent] = own_files.get(parent, 0) + 1
+        if holder is None:
+            return
+        own_files[holder] = own_files.get(holder, 0) + 1
         own_bytes = self.own_bytes
-        own_bytes[parent] = own_bytes.get(parent, 0) + size
-        newest = self.own_newest.get(parent)
+        own_bytes[holder] = own_bytes.get(holder, 0) + size
+        newest = self.own_newest.get(holder)
         if newest is None or entry.mtime_ns > newest:
-            self.own_newest[parent] = entry.mtime_ns
+            self.own_newest[holder] = entry.mtime_ns
 
-    def listed_totals(self, listed: _ListedFolders) -> dict[str, _SelectedDirectoryTotals]:
-        """Each listed folder's totals over every kept file under it.
-
-        Rolling each folder's own totals up once, to the listed folders only, replaced a
-        walk from every kept leaf to the root: one dictionary update per leaf and a few per
-        folder, where the walk paid one per ancestor of every leaf.
-        """
+    def listed_totals(self) -> dict[str, _SelectedDirectoryTotals]:
+        """Each listed folder's totals over every kept file under it, rolled up once from
+        the listed folders that hold the files deepest: one dictionary update per leaf and
+        a few per listed folder, where a walk from each leaf to the root pays one per
+        ancestor of every leaf."""
 
         totals: dict[str, _SelectedDirectoryTotals] = {}
         own_bytes = self.own_bytes
@@ -553,7 +581,7 @@ class _TreeSelection:
         for folder, files in self.own_files.items():
             size = own_bytes.get(folder, 0)
             newest = own_newest.get(folder)
-            for holder in listed.holding(folder):
+            for holder in self.listed.holding(folder):
                 bucket = totals.get(holder)
                 if bucket is None:
                     bucket = totals[holder] = _SelectedDirectoryTotals()
@@ -568,14 +596,13 @@ class _TreeSelection:
     def rows(
         self,
         rows: Sequence[FsEntry],
-        listed: _ListedFolders,
         semantic: Callable[[FsEntry], InventoryEntry],
     ) -> list[InventoryEntry]:
         """The kept *rows*, in their order: each folder with its totals over the kept
-        files, and each kept leaf. *rows* lists folders to *listed*'s depth."""
+        files, and each kept leaf. *rows* lists folders to the listed depth."""
 
         selected: list[InventoryEntry] = []
-        totals_by_path = self.listed_totals(listed)
+        totals_by_path = self.listed_totals()
         matched = self.matched
         for entry in rows:
             if entry.type == "dir":
@@ -2388,8 +2415,8 @@ class _PythonInventoryStore:
         ignored_dirs = (
             {} if selection.include_ignored else self._effective_ignored_directories(entries)
         )
-        kept = _TreeSelection()
         shallow: dict[str, list[FsEntry]] = {}
+        kept = _TreeSelection(_ListedFolders(query.path, query.max_depth), shallow)
         for entry in _tree_leaves(entries, query.path, max_depth=query.max_depth, shallow=shallow):
             if self._filter_matches(entry, selection, ignored_dirs):
                 kept.add(entry)
@@ -2400,15 +2427,12 @@ class _PythonInventoryStore:
             include_ignored=query.filter.include_ignored,
         )
         page, next_page = self._first_tree_page(
-            query,
-            kept,
-            kept.rows(rows, _ListedFolders(query.path, query.max_depth), _semantic_entry),
-            image=image,
+            query, kept, kept.rows(rows, _semantic_entry), image=image
         )
         return FilteredTreeProjection(
             query_id=query.query_id,
             entries=page,
-            matching_leaves=len(kept.matched),
+            matching_leaves=kept.matching_leaves,
             matching_files=kept.matching_files,
             matching_bytes=kept.matching_bytes,
             next_page=next_page,
@@ -2435,7 +2459,7 @@ class _PythonInventoryStore:
                         state=image.state,
                         query=query,
                         rows=tuple(selected),
-                        matching_leaves=len(kept.matched),
+                        matching_leaves=kept.matching_leaves,
                         matching_files=kept.matching_files,
                         matching_bytes=kept.matching_bytes,
                         token=next_page,
@@ -2475,7 +2499,9 @@ class _PythonInventoryStore:
             or shared.minimum_size is not None
         )
         group_queries = tuple(query.group_query(group) for group in query.groups)
-        kept = tuple(_TreeSelection() for _group in query.groups)
+        listed = _ListedFolders(query.path, query.max_depth)
+        shallow: dict[str, list[FsEntry]] = {}
+        kept = tuple(_TreeSelection(listed, shallow) for _group in query.groups)
         # Each group's own fields, as `_filter_matches` tests them past the shared filter:
         # its type group, then its age band (`_in_age_band`). A group of a type is looked
         # up by the leaf's type group; a group of no type is tested for every leaf.
@@ -2490,7 +2516,6 @@ class _PythonInventoryStore:
                 typed.setdefault(compiled.type_group, []).append(member)
         no_members: list[tuple[int | None, int | None, _TreeSelection]] = []
         by_extension = shared.group_by_extension
-        shallow: dict[str, list[FsEntry]] = {}
         for entry in _tree_leaves(entries, query.path, max_depth=query.max_depth, shallow=shallow):
             if not unfiltered and not self._filter_matches(entry, shared, ignored_dirs):
                 continue
@@ -2511,7 +2536,6 @@ class _PythonInventoryStore:
                     continue
                 selection.add(entry)
 
-        listed = _ListedFolders(query.path, query.max_depth)
         rows = _directory_rows(
             _ChildRows(shallow),
             path=query.path,
@@ -2530,13 +2554,13 @@ class _PythonInventoryStore:
         projections: list[TreeGroupProjection] = []
         for group, group_query, selection in zip(query.groups, group_queries, kept, strict=True):
             page, next_page = self._first_tree_page(
-                group_query, selection, selection.rows(rows, listed, semantic_once), image=image
+                group_query, selection, selection.rows(rows, semantic_once), image=image
             )
             projections.append(
                 TreeGroupProjection(
                     key=group.key,
                     entries=page,
-                    matching_leaves=len(selection.matched),
+                    matching_leaves=selection.matching_leaves,
                     matching_files=selection.matching_files,
                     matching_bytes=selection.matching_bytes,
                     next_page=next_page,
