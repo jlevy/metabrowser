@@ -214,6 +214,13 @@ async def assemble_grouped_tree(
                         raise InventoryConsistencyError(
                             f"grouped tree group {group.key!r} returned a duplicate path"
                         )
+                    # Counted on every page, as `assemble_tree_pages` counts, so a group
+                    # whose cursors keep advancing stops at the bound, not past it.
+                    assembled_rows += len(entries)
+                    if assembled_rows > max_assembled_rows:
+                        raise InventoryConsistencyError(
+                            "grouped tree assembly exceeded its row bound"
+                        )
                     seen_cursors: set[str] = set()
                     after = answer.next_page
                     while after is not None:
@@ -253,13 +260,13 @@ async def assemble_grouped_tree(
                                 )
                             seen_paths.add(entry.path)
                             entries.append(entry)
+                        assembled_rows += len(page.entries)
+                        if assembled_rows > max_assembled_rows:
+                            raise InventoryConsistencyError(
+                                "grouped tree assembly exceeded its row bound"
+                            )
                         final_read = read
                         after = page.next_page
-                    assembled_rows += len(entries)
-                    if assembled_rows > max_assembled_rows:
-                        raise InventoryConsistencyError(
-                            "grouped tree assembly exceeded its row bound"
-                        )
                     complete.append(replace(answer, entries=tuple(entries), next_page=None))
                 return GroupedTreeAssembly(
                     first_read=first_read,

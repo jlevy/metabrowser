@@ -23,6 +23,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.file_type_registry import load_file_type_registry
@@ -238,6 +240,49 @@ def test_api_tree_group_by_reads_every_group_in_one_pass(tmp_path: Path) -> None
 
     costs = asyncio.run(run())
     assert costs["type"] == costs["age"] == costs["filtered"]
+
+
+def test_api_tree_group_by_assembles_a_group_past_the_page_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A group whose rows outrun `INVENTORY_TREE_PAGE_ROWS` is read to its end from its
+    continuation: its tree is the one its own `?group=` read draws."""
+
+    _build_fixture(tmp_path)
+    for folder in ("docs", "guides"):
+        (tmp_path / folder).mkdir(exist_ok=True)
+        for index in range(6):
+            (tmp_path / folder / f"page-{index}.md").write_text("page")
+    page_rows = 3
+    monkeypatch.setattr(proc_browser, "INVENTORY_TREE_PAGE_ROWS", page_rows)
+
+    async def run() -> tuple[dict[str, Any], dict[str, Any]]:
+        paths_safe._set_root_dir(tmp_path)
+        async with inventory_harness(tmp_path) as harness:
+            grouped = await proc_browser.api_tree(
+                cast(Any, _FakeRequest({"group_by": "type", "depth": "2"}, app=harness.app))
+            )
+            alone = await proc_browser.api_tree(
+                cast(Any, _FakeRequest({"group": "type:docs", "depth": "2"}, app=harness.app))
+            )
+            assert grouped.status_code == alone.status_code == 200
+            return json.loads(bytes(grouped.body)), json.loads(bytes(alone.body))
+
+    grouped, alone = asyncio.run(run())
+    docs = next(group for group in grouped["groups"] if group["id"] == "docs")
+
+    def rows(nodes: list[dict[str, Any]]) -> list[str]:
+        return [
+            path for node in nodes for path in (node["path"], *rows(node.get("children") or []))
+        ]
+
+    assert len(rows(docs["tree"])) > page_rows
+    assert docs["tree"] == alone["tree"]
+    assert (docs["files"], docs["size"], docs["entries"]) == (
+        alone["filtered"]["files"],
+        alone["filtered"]["size"],
+        alone["filtered"]["entries"],
+    )
 
 
 def test_api_tree_uses_provider_presence_instead_of_parallel_filesystem_truth(
