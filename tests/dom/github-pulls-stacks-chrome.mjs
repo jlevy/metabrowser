@@ -132,8 +132,46 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
+  // A pull request's two lines (mb-lkkt): the number's line and the age, then the chevron,
+  // the icon, and the title to the row's end. Each row's parts, from its content box.
+  const lines = Object.fromEntries(
+    [10, 9, 106].map((number) => {
+      const row = list.querySelector('a.github-pulls-row[data-number="' + number + '"]');
+      if (row === null) return [number, null];
+      const style = getComputedStyle(row);
+      const r = row.getBoundingClientRect();
+      const inset = r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+      const end = r.right - parseFloat(style.paddingRight);
+      const of = (selector) => row.querySelector(selector).getBoundingClientRect();
+      const meta = of(".github-pulls-meta");
+      const age = of(".github-pulls-age");
+      const title = of(".github-pulls-title");
+      const toggle = of(".github-pulls-toggle");
+      const icon = of(".github-pull-state-icon");
+      const numberBox = of(".github-pulls-number");
+      const metaBox = row.querySelector(".github-pulls-meta");
+      const round = (value) => Math.round(value * 100) / 100;
+      return [number, {
+        text: metaBox.textContent,
+        // The number's line is above the title's, and one line of the number's type.
+        firstAbove: meta.bottom <= title.top + 0.5 && age.bottom <= title.top + 0.5,
+        oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
+        // The number's line starts in the title's column; the age ends at the row's end.
+        metaFromTitle: round(meta.left - title.left),
+        ageToEnd: round(end - age.right),
+        // The title runs from its column to the row's end.
+        titleToEnd: round(end - title.right),
+        titleFromInset: round(title.left - inset),
+        // The chevron and the icon are on the title's line.
+        withTitle: [toggle, icon].every((box) => box.top >= title.top - 4 && box.bottom <= title.bottom + 4),
+        numberLeft: round(numberBox.left - meta.left),
+        height: round(r.height),
+      }];
+    }),
+  );
   return {
     tips,
+    lines,
     titleRoom,
     stacks,
     rows: rows.length,
@@ -404,6 +442,27 @@ try {
     );
     // Its place on the title line once cut a member's title to 65 px at the default pane,
     // where a first-level row's had 176 (mb-dzsi, measured before the change).
+    // The number's line first and the title under it, to the row's end (mb-lkkt): at the
+    // default pane a member's title had 170 px, beside its age, and has 208.
+    check(
+      "a pull request's first line is its number's line and its age, its second the chevron, the icon, and the title to the row's end",
+      [10, 9, 106].every((number) => {
+        const row = list.lines[number];
+        return (
+          row?.firstAbove &&
+          row.oneLine &&
+          Math.abs(row.metaFromTitle) < 0.5 &&
+          Math.abs(row.ageToEnd) < 0.5 &&
+          Math.abs(row.titleToEnd) < 0.5 &&
+          row.withTitle &&
+          row.height === list.titleRoom.flatRow
+        );
+      }) &&
+        list.lines[9].text.startsWith("3/4 · #9 · ") &&
+        list.lines[106].text.startsWith("#106 · ") &&
+        list.lines[106].numberLeft === 0,
+      JSON.stringify(list.lines),
+    );
     check(
       "a member's title has a first-level row's room, less its one indent",
       Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.treeIndent)) < 0.5 &&

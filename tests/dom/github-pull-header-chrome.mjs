@@ -469,13 +469,14 @@ const RECORDS = [
   ["merged", { longNames: true, avatar: true }],
 ];
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
-// github-pulls-panel-session.js pins: the toggle, the state icon, the title, and the age
-// on the title line, and the muted line under it, where a stack member's place comes
-// before its number (mb-dzsi). Each row is a member, a level in under its stack's row.
-// Every part of the title line is read, from its row's top, before and after each row's
-// place arrives, the title's width with it: the place is not on that line, so the title
-// keeps all its room. A place that sends the author to a line of its own makes its row a
-// line taller, and so moves the rows below it: that is read as `grew`.
+// github-pulls-panel-session.js pins: the toggle, the state icon, the title, the age, and
+// the number's line, which the stylesheet lays out as two lines (mb-lkkt): the number's
+// line, where a stack member's place comes before its number (mb-dzsi), and the age;
+// then the chevron, the icon, and the title, to the row's end. Each row is a member, a
+// level in under its stack's row. The age, the chevron, the icon, and the title are read,
+// from the row's top, before and after each row's place arrives, the title's width with
+// them: the place is on the number's line, which stays one line, so nothing else moves
+// and the row keeps its two lines (`grew`).
 const PULLS_ROWS = `async (rows, width) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const state = window.__state ??= await import("/github/pull-state.js");
@@ -485,7 +486,9 @@ const PULLS_ROWS = `async (rows, width) => {
     node.append(...children);
     return node;
   };
-  const nav = document.createElement("div");
+  // The panel's own container, as pulls-panel.js#mountPullsPanel marks it: it carries the
+  // avatar's size and gap, without which an avatar had no size here and an author no floor.
+  const nav = h("div", { class: "github-pulls" });
   nav.style.width = width + "px";
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   nav.append(list);
@@ -519,7 +522,7 @@ const PULLS_ROWS = `async (rows, width) => {
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
-  // Each row's title line, its width with it, read from its row's top as it was drawn.
+  // Each row's age and title line, the title's width with them, read from its row's top.
   const titleLine = built.map(({ anchor, title, age }) => [anchor.querySelector(".github-pulls-toggle"), anchor.querySelector(".github-pull-state-icon"), title, age]);
   const read = () =>
     titleLine.map((nodes, at) => {
@@ -568,7 +571,11 @@ const PULLS_ROWS = `async (rows, width) => {
     const n = number.getBoundingClientRect();
     const box = anchor.getBoundingClientRect();
     const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
-    const meta = anchor.querySelector(".github-pulls-meta").getBoundingClientRect();
+    const metaBox = anchor.querySelector(".github-pulls-meta");
+    const meta = metaBox.getBoundingClientRect();
+    const by = anchor.querySelector(".github-pulls-by");
+    const b = by.getBoundingClientRect();
+    const t = title.getBoundingClientRect();
     return {
       number: row.number,
       moved,
@@ -580,7 +587,16 @@ const PULLS_ROWS = `async (rows, width) => {
       inside: [age, number, place].every((node) => node.getBoundingClientRect().right <= end) && nav.scrollWidth <= nav.clientWidth,
       cut: position.scrollWidth > position.clientWidth,
       grew: Math.round((box.height - heights[at]) * 100) / 100,
-      title: Math.round(title.getBoundingClientRect().width * 10) / 10,
+      height: Math.round(box.height * 100) / 100,
+      // The number's line is one line of the number's type.
+      oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
+      // The title runs to the row's end, under the age.
+      titleEnd: Math.abs(t.right - (end - 0.5)) < 0.5 && t.top > age.getBoundingClientRect().bottom - 0.5,
+      // The author on the number's line, at its floor or wider, or off it, whole.
+      author: b.top < meta.bottom - 0.5 ? (b.width + 0.5 >= parseFloat(getComputedStyle(by).minWidth) ? "shown" : "squeezed") : "off",
+      authorWidth: Math.round(b.width * 10) / 10,
+      authorFloor: getComputedStyle(by).minWidth,
+      title: Math.round(t.width * 10) / 10,
     };
   });
 }`;
@@ -1172,7 +1188,7 @@ async function main() {
         for (const row of rows) {
           const where = `${width} px, Pulls row #${row.number}`;
           check(
-            `${where}: a late stack place moves nothing on its row's title line, nor cuts the title`,
+            `${where}: a late stack place moves nothing else in its row: not the age, the chevron, the icon, or the title`,
             row.moved.length === 0,
             JSON.stringify(row.moved),
           );
@@ -1193,11 +1209,21 @@ async function main() {
             !row.cut || !oneStack,
             JSON.stringify(row),
           );
-          // At the default pane's width and wider, measured: two stacks with a 39-character
-          // login keep two lines at 300 px, and three stacks take a third at 300 px.
+          // The number's line is one line at every width, so the row is always two (mb-lkkt):
+          // before, three stacks took a third line at 300 px and one stack at 180 px.
           check(
-            `${where}: one stack's place keeps its row two lines`,
-            width < 300 || !oneStack || row.grew === 0,
+            `${where}: the number's line stays one line, and the row two`,
+            row.oneLine && row.grew === 0,
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the title runs to the row's end, under the age`,
+            row.titleEnd,
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the author shows at its floor or wider, or leaves the line whole`,
+            row.author !== "squeezed",
             JSON.stringify(row),
           );
           check(

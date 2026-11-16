@@ -913,6 +913,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "span .github-pulls-age.age-hour",
       "span .github-pulls-meta"
     ],
+    "its text leads with its title": true,
     "a PR preview leaves its files expanded": false,
     "Right opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
     "they hang under it as a group it owns": [

@@ -11,8 +11,9 @@
 Nine changes from the owner’s requests of 2026-11-15, a follow-up on the Files Group by
 menu, a rule for tooltips, the Conversation’s rhythm and headings, a rule for commit and
 pull request titles, navigation that reveals the item, label colors, Group by’s speed on
-a large folder, and a design-system consistency pass over all of them, from the same
-day. They land as one native GitHub stack of eighteen pull requests on `main`:
+a large folder, a design-system consistency pass over all of them, a Pulls row’s two
+lines, and a cached label set, from the same day.
+They land as one native GitHub stack of twenty pull requests on `main`:
 
 1. **Menus:** one pattern for groups inside a menu, with group headings at the row
    inset, and filter menus that fit their rows and the window.
@@ -59,7 +60,9 @@ day. They land as one native GitHub stack of eighteen pull requests on `main`:
 18. **Consistency in docs:** what the same review found in the design system, the user
     docs, this plan, and the CHANGELOG, whose Unreleased block then reads as one change
     from 0.12.0 (`mb-vg55`).
-19. **Label color cache:** each repository’s whole label set is cached, so a label a
+19. **Pulls rows:** a Pulls row’s first line is its stack place, number, author, and
+    age, and its second the whole title to the pane’s edge (`mb-lkkt`).
+20. **Label color cache:** each repository’s whole label set is cached, so a label a
     record cached before label colors names alone is colored on first paint (`mb-varu`).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
@@ -195,6 +198,7 @@ it:
 | 16 | `claude/group-by-speed` | `mb-navs`, `mb-75l5` | On pull request 15; changes Group by’s server read, its prefetch, and its wait, which pull requests 2 and 10 made, beside the reveal into the Files tree that pull request 14 adds |
 | 17 | `claude/ds-consistency-code` | `mb-xlla` | On pull request 16; fixes in code and stylesheets what the consistency review (`mb-r5jr`) found in pull requests 1 to 16, with each fix’s test |
 | 18 | `claude/ds-consistency-docs` | `mb-vg55` | On pull request 17; brings the design system, the user docs, this plan, and the CHANGELOG to the state pull request 17 leaves |
+| 19 | `claude/pulls-rows-two-lines` | `mb-lkkt` | On pull request 18; lays a Pulls row out on two lines |
 | 20 | `claude/label-color-cache` | `mb-varu` | On pull request 19; caches the label set whose colors pull request 15 draws, for the records pull request 15 left naming their labels alone |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
@@ -669,6 +673,14 @@ against 5 ms for the ungrouped tree.
   describe the stack as pull request 17 leaves it, each rule stated once with links from
   the other sections, and with no bead IDs in the design system.
 
+### Phase 19: Pulls Rows (pull request 19)
+
+- [ ] `mb-lkkt`: the number’s line first, “1/4 · #113 · jlevy” with the age at the row’s
+  end, then the title under the age to the row’s end; the number’s line one line at
+  every width, its author giving way first and its place after; measured in Chrome from
+  420 to 180 px and pinned in the Pulls stacks and header Chrome tests and the
+  stylesheet’s tests.
+
 ### Phase 20: Label Color Cache (pull request 20)
 
 - [ ] `mb-varu`: the repository’s label set is fetched once and cached per repository,
@@ -701,7 +713,7 @@ The pull requests ship as drafts in one native stack and merge in order at the o
 word.
 A phase is ticked when its pull request merges, and each bead closes then, with the
 merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when pull request 18 merges.
+This plan moves to `docs/project/specs/done/` when pull request 20 merges.
 
 ## Open Questions
 
