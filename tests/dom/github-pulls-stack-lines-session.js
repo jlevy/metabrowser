@@ -2,7 +2,7 @@
 // through the production code.
 //
 // builtin_plugins/github/stack-lines.js decides what a stack's heading shows of its change
-// line, its combined change, the bottom's base against the top's head, which the server sums
+// line, its combined change, the top's head against the base branch, which the server sums
 // (`GET stack-change`): the shell's pending placeholder while the line is read, the line once
 // it is, and nothing where it cannot be had. It reads the stacks the list draws, one at a time
 // when the browser is idle, within the Pulls tab's hourly cap, and keeps each answer in the

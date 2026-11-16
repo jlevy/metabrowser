@@ -574,16 +574,20 @@ See
 [optional native stack metadata](arch-repository-sources-and-provider-mirrors.md#optional-native-stack-metadata).
 
 `GET github/stack-change?number=<stack>` sums one native stack’s combined change, its
-bottom pull request’s base against its top pull request’s head, from their merge base,
-for the brief change line its Pulls heading shows (mb-9ekj). Its two ends are the cached
-records’ comparisons, the bottom’s `base` and the top’s `head`, and its members the
-stack snapshot’s; it never asks GitHub or fetches, and runs Git only to list a
-comparison it has not summed, a manifest with no patch, whose sums it keeps by the two
-commits, the store, and the build (`pull_stack_change.py`). Its envelope has `state`
+top pull request’s head against the stack’s base branch, from their merge base, for the
+brief change line its Pulls heading shows (mb-9ekj). The right end is the top’s cached
+record’s comparison `head`; the left end is the merge base of that head and the stack’s
+`base_ref` as the store mirrors it, read as an open pull request’s comparison reads its
+base branch but with no fetch to fall back on; the members are the stack snapshot’s. It
+never asks GitHub or fetches.
+It runs Git to find the merge base on every answer, and to list a comparison only when
+it has not summed it, a manifest with no patch, whose sums it keeps by the merge base,
+the head, the store, and the build (`pull_stack_change.py`). Its envelope has `state`
 (`current` or `absent`), `reason` (`not_github`, `no_store`, `not_stacked`,
-`not_cached`, `no_comparison`, `too_large`, or `unavailable`), `number`, `bottom`,
-`top`, `base`, `head`, `fresh_for_s`, the stack snapshot’s window, `files`, `additions`,
-`deletions`, `exact`, and `statuses`, each a pull request’s status word and its count.
+`not_cached`, `no_comparison`, `no_base_branch`, `too_large`, or `unavailable`),
+`number`, `bottom`, `top`, `base`, the merge base, `head`, `fresh_for_s`, the stack
+snapshot’s window, `files`, `additions`, `deletions`, `exact`, and `statuses`, each a
+pull request’s status word and its count.
 It names nothing but `number`; its tag is the envelope’s.
 
 `GET github/labels` reads the repository’s cached label set with no query parameters

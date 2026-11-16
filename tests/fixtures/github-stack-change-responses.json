@@ -62,6 +62,24 @@
       "statuses": []
     }
   },
+  "no_store": {
+    "status": 200,
+    "body": {
+      "state": "absent",
+      "reason": "no_store",
+      "number": 286,
+      "bottom": null,
+      "top": null,
+      "base": null,
+      "head": null,
+      "fresh_for_s": 300.0,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    }
+  },
   "not_github": {
     "status": 200,
     "body": {

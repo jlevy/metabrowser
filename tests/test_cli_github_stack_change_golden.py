@@ -2,13 +2,14 @@
 
 ``GET /api/plugin/github/stack-change`` is the route the Pulls tab's stack heading reads its
 brief change line from (mb-9ekj). This drives it the way a reader's server is driven, through
-``metab --api``: before any snapshot, with a snapshot of two stacks, after the records of one
-stack's bottom and top are fetched, and for a stack whose record is not. Stack #70 is the
-stand-in's pull requests 8, merged, and 10, a draft on the branch 8 was merged into. Its
-change runs from 8's base to 10's head, which is what ``git diff 8-base...10-head`` lists
-in the stand-in: ``README.md``, which the base branch changed after 8's base and 10 sits on,
-and 10's ``docs/draft.md``. The stand-in's merge of 8 keeps the base branch's tree, so 8's own
-file is not in 10's head.
+``metab --api``: before any snapshot, with a snapshot of two stacks, after one stack's top's
+record is fetched, and for a stack whose top's record is not. Stack #70 is the stand-in's
+pull requests 8, merged, and 10, a draft on the base branch after 8 was merged into it. Its
+change runs from where 10's head meets the base branch the store mirrors, ``topic``, to that
+head, which is what ``git diff topic...10-head`` lists in the stand-in: 10's own
+``docs/draft.md``, one line. Neither ``README.md``, which the base branch changed after 8's
+base, nor 8's merged ``docs/guide.md`` is the stack's to change (review of #484, A1); 8's
+record is not needed, and is never fetched.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     CANONICAL,
+    DEFAULT_BRANCH,
     FETCHED_AT,
     Origin,
     in_a_stable_order,
@@ -48,7 +50,7 @@ def _stack(number: int, pulls: list[int]) -> dict[str, Any]:
     return {
         "number": number,
         "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
-        "base": {"ref": "main"},
+        "base": {"ref": DEFAULT_BRANCH},
         "open": True,
         "pull_requests": [{"number": n} for n in pulls],
     }
@@ -103,16 +105,19 @@ def test_golden_stack_change(
     )
     assert change("number=70")["reason"] == "not_cached"
     blocks.append(
-        "## Its bottom's and top's records fetched, the stack's change is summed in the store:"
-        " the bottom's base against the top's head.\n"
+        "## Its top's record fetched, the stack's change is summed in the store: the top's head"
+        " against the base branch, from where they meet.\n"
     )
-    for number in (8, 10):
-        assert run(f"{CANONICAL}/pull/{number}", "--no-serve", gh_free=False).exit_code == 0
+    assert run(f"{CANONICAL}/pull/10", "--no-serve", gh_free=False).exit_code == 0
     summed = change("number=70")
     assert summed["state"] == "current"
     assert (summed["bottom"], summed["top"]) == (8, 10)
     assert summed["head"] == pull_origin["draft_head"]
-    blocks.append("## A stack of one pull request whose record is not fetched has none.\n")
+    # Where 10's head meets the base branch: the base branch's own tip, 8's merge.
+    assert summed["base"] == pull_origin["topic"]
+    assert (summed["files"], summed["additions"], summed["deletions"]) == (1, 1, 0)
+    assert summed["statuses"] == [{"status": "added", "count": 1}]
+    blocks.append("## A stack of one pull request whose top's record is not fetched has none.\n")
     assert change("number=90")["reason"] == "not_cached"
     blocks.append("## A request that names anything but the stack's number is refused.\n")
     refused = run(CANONICAL, "--api", f"{ROUTE}?number=70&left=main")

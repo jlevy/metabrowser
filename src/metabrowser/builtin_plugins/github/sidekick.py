@@ -773,8 +773,9 @@ async def stacks_handler(request: Request) -> Response:
 async def stack_change_handler(request: Request) -> Response:
     """``GET /api/plugin/github/stack-change?number=<stack>`` — a stack's combined change.
 
-    Its bottom's base against its top's head, from the cache and the store alone
-    (:mod:`.pull_stack_change`): no GitHub call, and Git only on a comparison not yet summed.
+    Its top's head against the stack's base branch, from their merge base, from the cache
+    and the store alone (:mod:`.pull_stack_change`): no GitHub call and no fetch; Git to
+    find the merge base, and to list a comparison only when it is not yet summed.
     """
     from metabrowser.builtin_plugins.github.pull_list_route import served_repository
     from metabrowser.builtin_plugins.github.pull_route import (

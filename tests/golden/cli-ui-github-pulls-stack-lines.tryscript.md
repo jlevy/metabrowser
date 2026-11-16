@@ -7,12 +7,13 @@ env:
 # Golden Test: A Stack Heading’s Brief Change Line
 
 Each “Stack #N” heading in the Pulls tab shows its stack’s brief change line beside its
-label, “Stack #286 · 1 A, 1 M · +5 −0”: the stack’s combined change, its bottom pull
-request’s base against its top pull request’s head, which the server sums in the
-repository store (`GET stack-change`). This browserless session runs the production code
-that decides what each heading shows, `builtin_plugins/github/stack-lines.js`, on the
-server’s own answers, the stack changes `tests/test_github_stack_change.py` records and
-the list and stack snapshot the stack-groups session replays.
+label, “Stack #286 · 1 A, 1 M · +5 −0”: the stack’s combined change, its top pull
+request’s head against the stack’s base branch, from where they meet, which the server
+sums in the repository store (`GET stack-change`). This browserless session runs the
+production code that decides what each heading shows,
+`builtin_plugins/github/stack-lines.js`, on the server’s own answers, the stack changes
+`tests/test_github_stack_change.py` records and the list and stack snapshot the
+stack-groups session replays.
 
 `lane` drives the lane alone, with the browser’s idle time and its clock in the
 session’s hands. Each step’s `shows` is what each heading shows: `waiting`, the pending

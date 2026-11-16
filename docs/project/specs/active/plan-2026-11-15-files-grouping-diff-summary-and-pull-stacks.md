@@ -967,12 +967,13 @@ it, and ideally cached it up front”.
 
 - [ ] `mb-9ekj`: each “Stack #N” heading in the Pulls tab shows its stack’s brief change
   line, “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”, drawn through the SDK’s one
-  component. The numbers are the stack’s combined change, the bottom pull request’s base
-  against the top one’s head, from their merge base, which a new cache-only route,
-  `GET stack-change`, sums in the repository store from the two cached records and keeps
-  by the two commits; summing each layer’s own counts would count a file twice that two
-  layers change. Measured on this repository’s 19 stacks: 3 Git processes and 52 to 298
-  ms for a first answer, none and under 1 ms for a repeat, 318 to 430 bytes an answer.
+  component. The numbers are the stack’s combined change, the top pull request’s head
+  against the stack’s base branch, from their merge base, which a new cache-only route,
+  `GET stack-change`, sums in the repository store from the top’s cached record and the
+  base branch the store mirrors, and keeps by the merge base and the head; summing each
+  layer’s own counts would count a file twice that two layers change.
+  Measured on this repository’s 19 stacks: 3 Git processes and 52 to 298 ms for a first
+  answer, none and under 1 ms for a repeat, 318 to 430 bytes an answer.
   The line is read for the stacks the list draws, when the browser is idle, within the
   hourly cap the comparison warms count against, and kept in the document’s comparison
   keep; the heading holds the pending placeholder while it waits and shows nothing for a

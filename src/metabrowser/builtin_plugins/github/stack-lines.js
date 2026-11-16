@@ -1,10 +1,11 @@
 // A native stack's brief change line, on its heading in the Pulls column (mb-9ekj):
 // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567".
 //
-// What it says is the stack's combined change, its bottom pull request's base against its top
-// pull request's head, which the server sums in the repository store from the two cached
-// records' comparisons (`GET stack-change`, pull_stack_change.py). Summing each pull request's
-// own counts would count twice a file two layers change. The line is the shell's one
+// What it says is the stack's combined change, its top pull request's head against the
+// stack's base branch, from their merge base, which the server sums in the repository store
+// from the top's cached record and the base branch the store mirrors (`GET stack-change`,
+// pull_stack_change.py). Summing each pull request's own counts would count twice a file two
+// layers change, and a layer's record can start from a base the stack has since moved past. The line is the shell's one
 // component for a change set said in brief (docs/design-system.md, "Brief Change Line"), built
 // and painted through the SDK, `metabrowser.changeLine` and `metabrowser.changeLineNodes`;
 // nothing here paints its parts.

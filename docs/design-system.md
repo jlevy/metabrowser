@@ -2491,17 +2491,19 @@ toolbar, the Show group and Reload, has 23 px to spare.
   stack’s row passed over, and the first pull requests drawn.
 - **Change line.** A stack’s row shows the stack’s combined change as its
   [brief change line](#brief-change-line), after its label and a muted dot: “Stack #286
-  · 10 A, 5 D, 4 M · +1,234 −567”. The change is the bottom pull request’s base against
-  the top one’s head, from their merge base, which the server sums in the repository
-  store from the two cached records (`GET stack-change`), so a file two layers change
-  counts once; it never asks GitHub.
+  · 10 A, 5 D, 4 M · +1,234 −567”. The change is the top pull request’s head against the
+  stack’s base branch, from their merge base, as one pull request from the top into the
+  stack’s base would compare them; the server sums it in the repository store from the
+  top’s cached record and the base branch the store mirrors (`GET stack-change`), so a
+  file two layers change counts once and the base branch’s own changes are not the
+  stack’s. It never asks GitHub or fetches.
   It is read for the stacks the list draws, one at a time when the browser is idle,
   within the Pulls tab’s hourly cap, and kept for the document under the stack’s two
   commits, so a heading drawn again has it in its first paint
   (`builtin_plugins/github/stack-lines.js`). While it is read, the heading holds the
   shell’s pending placeholder where the line will be, after the quiet period, so nothing
-  moves when it arrives; a stack whose change cannot be had, its ends not cached or no
-  store to compare in, shows neither.
+  moves when it arrives; a stack whose change cannot be had, its top not cached, its
+  base branch not mirrored, or no store to compare in, shows neither.
   The row stays one line at every pane width: the label is never cut for the line, the
   line’s statuses are cut short first, as the pull request header’s are, its totals stay
   whole, and where even its dot and totals have no room the whole line goes.
