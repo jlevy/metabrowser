@@ -131,12 +131,12 @@ its membership. The PR page uses the same position as a menu trigger.
 Open it for the stack number and members ordered from stack top to base, with each
 member’s title, ordinal, and PR number.
 Titles come from the matching local catalog; a missing title falls back to the PR
-number. Press Control-N for the next member toward the stack’s top and Control-P for the
-previous one toward its base; Shift makes no difference.
-Help lists both shortcuts, and text fields and open dialogs keep their normal keys: on
-macOS, Control-N and Control-P move a field’s caret.
-On Windows and Linux, Chrome keeps Ctrl+N for a new window, so there only Ctrl+P walks
-the stack ([Control Chords](design-system.md#control-chords)).
+number. On macOS, press Control-N for the next member toward the stack’s top and
+Control-P for the previous one toward its base; Shift makes no difference.
+Help lists both shortcuts, and text fields and open dialogs keep their normal keys:
+Control-N and Control-P move a field’s caret.
+On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
+use the stack menu there ([Control Chords](design-system.md#control-chords)).
 [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the rest of the keys.
 Moving between members keeps the current PR tab selected and clears the previous PR’s
 file selection.

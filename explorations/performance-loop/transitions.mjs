@@ -40,6 +40,7 @@ import {
   sampleRow,
   summarize,
   summarizeJson,
+  unmeasuredMemoryAfter,
 } from "./transitions-stats.mjs";
 
 const HERE = import.meta.dirname;
@@ -263,6 +264,8 @@ async function pass({
   quiet,
   keepGoing,
   newestCommit,
+  memoryAfter = [],
+  memoryAtEnd = false,
 }) {
   const out = [];
   for (const name of journeys) {
@@ -280,8 +283,20 @@ async function pass({
         keepGoing,
         facts,
         newestCommit,
+        memoryAfter,
         loadavg: () => loadavg()[0],
       });
+      // Retained memory once the journey's last transition is done (revision 6): its
+      // garbage collection changes nothing measured. A reading that fails leaves the
+      // journey without one, which compare names as a gap.
+      if (memoryAtEnd) {
+        try {
+          journey.memory = await d.memory();
+        } catch (error) {
+          journey.memory = null;
+          journey.memoryError = String(error.message || error).slice(0, 300);
+        }
+      }
       const served = await d.evaluate(
         `(document.querySelector(".menu-version") || {}).textContent || null`,
       );
@@ -334,7 +349,7 @@ async function pass({
 
 async function oneRun(options) {
   const { exp, series, condition, runIndex, pairIndex, corpus, journeys, headed, warmup } = options;
-  const { keepGoing, subset } = options;
+  const { keepGoing, subset, memoryAfter } = options;
   const expDir = path.join(BENCH, exp);
   const home = path.join(expDir, "state", condition.label);
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -349,7 +364,10 @@ async function oneRun(options) {
     // window). 4 reads a worker's 304 as revalidated, takes a region's first rendered
     // match, and skips hidden and off-screen subtrees when looking for content. 5 accepts
     // a switch to Commits that lands on the newest commit as well as on the prompt, and
-    // records which one each run saw (`commits_landing`).
+    // records which one each run saw (`commits_landing`). 6 places the input's own frame
+    // in its window, bounds and widens the content search, reads collapsed and parked
+    // surfaces as hidden, and adds the read cost, retained memory, time to highlighted,
+    // and the dwell journey (README, "Transition Navigation Scenario").
     // REVISION_NOTES in transitions-stats.mjs says what each older revision differs in.
     scenario_revision: SCENARIO_REVISION,
     exp,
@@ -369,7 +387,13 @@ async function oneRun(options) {
     },
     viewport: "1440x900",
     headed,
-    regime_flags: { headed, no_warmup: !warmup, journey_subset: subset, keep_going: keepGoing },
+    regime_flags: {
+      headed,
+      no_warmup: !warmup,
+      journey_subset: subset,
+      keep_going: keepGoing,
+      memory_after: memoryAfter,
+    },
     regime: REGIME,
     regions: Object.fromEntries(Object.entries(REGIONS).map(([k, v]) => [k, v.track])),
     journeys_requested: journeys,
@@ -444,6 +468,8 @@ async function oneRun(options) {
         quiet: false,
         keepGoing,
         newestCommit,
+        memoryAfter,
+        memoryAtEnd: true,
       });
       row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
       // Which Commits landing this build has; compare pairs only runs that agree.
@@ -452,6 +478,13 @@ async function oneRun(options) {
         for (const [guard, detail] of j.refusals) {
           row.refusals.push([guard, `${j.name}: ${detail}`]);
         }
+      }
+      // A name --memory-after gave that no transition carried read nothing (revision 6).
+      for (const id of unmeasuredMemoryAfter(memoryAfter, row.journeys)) {
+        row.refusals.push([
+          "memory_after",
+          `--memory-after names ${id}, which no transition measured`,
+        ]);
       }
     }
   } catch (error) {
@@ -491,6 +524,7 @@ async function cmdRun(argv) {
       headed: { type: "boolean", default: false },
       "no-warmup": { type: "boolean", default: false },
       "keep-going": { type: "boolean", default: false },
+      "memory-after": { type: "string" },
       order: { type: "string", default: "alternate" },
     },
   });
@@ -540,8 +574,16 @@ async function cmdRun(argv) {
     }
   }
   const subset = !sameJson(journeys, Object.keys(JOURNEYS));
+  // Transitions after which retained memory is read; its garbage collection changes what
+  // each journey measures after them, so a run that names any is not the standard regime.
+  const memoryAfter = values["memory-after"] ? values["memory-after"].split(",") : [];
   // A diagnostic run writes beside the standard file, never into it, unless --out says so.
-  const standard = !subset && !values.headed && !values["no-warmup"] && !values["keep-going"];
+  const standard =
+    !subset &&
+    !values.headed &&
+    !values["no-warmup"] &&
+    !values["keep-going"] &&
+    memoryAfter.length === 0;
   const outFile = values.out
     ? path.resolve(values.out)
     : path.join(BENCH, values.exp, standard ? "runs.jsonl" : "diagnostic.jsonl");
@@ -552,7 +594,7 @@ async function cmdRun(argv) {
   );
   if (!standard) {
     console.log(
-      `NOT THE STANDARD REGIME: ${[subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals"].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
+      `NOT THE STANDARD REGIME: ${[subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
     );
   }
   let refused = 0;
@@ -582,6 +624,7 @@ async function cmdRun(argv) {
         warmup: !values["no-warmup"],
         keepGoing: values["keep-going"],
         subset,
+        memoryAfter,
       });
       fs.appendFileSync(outFile, `${JSON.stringify(row)}\n`);
       if (!row.valid) {
@@ -683,7 +726,7 @@ const USAGE = `usage:
   transitions.mjs run --exp exp-NNN --corpus PATH --condition LABEL=PATH/TO/metab
                       [--condition LABEL=PATH/TO/metab] [--runs 5] [--journeys a,b]
                       [--headed] [--no-warmup] [--keep-going] [--order alternate|fixed]
-                      [--out FILE]
+                      [--memory-after TRANSITION,...] [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                       [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]
@@ -691,7 +734,9 @@ const USAGE = `usage:
   transitions.mjs compare RUNS.jsonl --aa LABEL      (odd against even runs of one build)
   transitions.mjs samples RUNS.jsonl --out FILE      (the fields summarize and compare read)
 compare exits 0 when complete with no wrong-way result, 1 on a wrong-way result, a gap, or
-an expectation not met (an A/A only on a gap), and 2 when it refuses.
+an expectation not met (an A/A only on a gap), and 2 when it refuses. run exits 2 when its
+arguments or its setup are refused. Any other error is a defect of the tool: it prints its
+stack and exits 3.
 journeys: ${Object.keys(JOURNEYS).join(", ")}
 subjects: ${JSON.stringify(SUBJECTS).slice(0, 120)}...`;
 
@@ -704,6 +749,14 @@ if (!commands[mode]) {
 try {
   process.exitCode = await commands[mode](rest);
 } catch (error) {
-  console.error(`transitions.mjs ${mode}: ${error.message}`);
-  process.exitCode = 2;
+  // A refusal exits 2. run refuses its arguments and setup with plain errors, so any error
+  // there does; in the reading commands only a CompareRefusal is one, and anything else (a
+  // TypeError in compare) is a defect, not a refusal.
+  if (error instanceof CompareRefusal || mode === "run") {
+    console.error(`transitions.mjs ${mode}: ${error.message}`);
+    process.exitCode = 2;
+  } else {
+    console.error(`transitions.mjs ${mode} failed: ${error.stack || error}`);
+    process.exitCode = 3;
+  }
 }

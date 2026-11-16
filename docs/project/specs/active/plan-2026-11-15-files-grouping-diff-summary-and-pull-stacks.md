@@ -88,7 +88,7 @@ request must prove.
 - **Stack keys** (`mb-lnqj`): next and previous in a stack move from `N` and `P` to
   Control-N and Control-P, so the letters are free.
   The registry accepts a declared Control chord, Control alone and never from a text
-  field, written `⌃N` on macOS and `Ctrl+N` elsewhere.
+  field, written `⌃N`, and only on macOS and iOS, where Control reaches the page.
 - **Pulls tab key** (`mb-6rfu`): `P` opens the Pulls tab by the main tabs’ own letter
   mechanism, as `F` opens Files and `H` Commits; `R` is freed.
 - **Narrow toolbars** (`mb-nm4z`): in a pane too narrow for one line, every navigation
@@ -370,10 +370,11 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - Control-N and Control-P are the registry’s only chords (`CONTROL_CHORD_KEYS`). A chord
   matches Control alone, so AltGr’s Control and Alt types its character, and never in a
   text field, where macOS moves the caret with it.
-- Help, the Shift strip, and badges write the chord as the platform does, read from the
-  page’s navigator. The rule, and the platform limit (Chrome on Windows and Linux keeps
-  Ctrl+N for a new window), is stated once, in “Control Chords” in
-  `docs/design-system.md`.
+- The chords are bound only where Control reaches the page, macOS and iOS, read from the
+  page’s navigator; on Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new
+  window and Print, and the stack menu walks the stack.
+  Help, the Shift strip, and badges write the chord `⌃N`. The rule is stated once, in
+  “Control Chords” in `docs/design-system.md`.
 - `P` is the Pulls tab’s entry in `MAIN_TABS` (`static/main-tabs.js`), reserved in
   `keymap.py`; Commits keeps `H`, since `C` is Charts’ and Conversation’s view tab key.
 
@@ -415,8 +416,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
   Conversation’s commits, Quick Search’s pull requests, the Commits tab’s rows, a
   commit’s page, and its tooltip.
   Quick Search has no commit results.
-  A Commits tab row’s subject is regular, and keeps that weight: the prefix there looks
-  as the rest does, which is reported to the owner rather than changed.
+  A Commits tab row’s subject, regular before, is bold, so the rule shows there too (see
+  Open Questions); the row keeps its 22 px and its one line, measured in headless Chrome
+  before and after.
 - **Records:** the rule is stated once in `docs/design-system.md`, “Titles”, beside
   “Pull Request Numbers”.
   The split is a session owner, `shell.title-prefix`, and the weights a paint exemption,
@@ -527,8 +529,9 @@ The owner’s follow-ups of 2026-11-15 to the Conversation, pull request 12, on
 - [ ] `mb-8mpo`: no tooltip on a Pulls row, a stack row, or their parts; the rule stated
   once in the design system; the app’s other tooltips audited, those that repeat visible
   text removed and the owner’s decisions on the borderline ones applied; the shell shows
-  a tip equal to its element’s text only while that text is cut short; checks in
-  `devtools/check_tooltips.py` and the Pulls, header, and Files Chrome tests.
+  a tip equal to its element’s text, or to a box’s inside it, only while that text is
+  cut short; checks in `devtools/check_tooltips.py` and its own test, and the Pulls and
+  Files Chrome tests.
 
 ### Phase 12: Conversation Rhythm and Headings (pull request 12)
 
@@ -584,6 +587,13 @@ This plan moves to `docs/project/specs/done/` when pull request 14 merges.
   The question was: should an open folder also show its line counts?
   This plan leaves that to the implementer, kept consistent with the Files tab’s folder
   tallies.
+- **A Commits tab row’s weight (answered from the request, `mb-z57p`):** a Commits tab
+  row’s subject is bold, as every other title is, so its prefix reads regular against
+  the rest. The owner asked for the rule “anywhere it’s a commit title or a PR title”,
+  and that “Regular commit messages that don’t match that regex should just be bold as
+  usual”. The question was: the subject was regular, so its prefix looked as the rest
+  did; should it turn bold so the rule shows there?
+  The owner may reverse this.
 
 ## References
 
