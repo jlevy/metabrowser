@@ -411,6 +411,7 @@ const MEASURE = `async (widths) => {
         tokens,
         line: { ink: ink(line), weight: weight(line) },
         words: ink(line.querySelector(".git-commit-change-files")),
+        wordsWeight: weight(line.querySelector(".git-commit-change-files")),
         numbers: [...line.querySelectorAll(".git-commit-change-files .summary-number")].map((node) => [node.textContent, ink(node), weight(node)]),
         counts: (${STATUS_COUNTS})(line),
         marks: [...line.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node), weight(node)]),
@@ -640,10 +641,15 @@ async function main() {
             ),
           JSON.stringify(paint.numbers),
         );
+        // Its words are regular: nothing sets a weight on the card or its change line, so a
+        // rule that bolded either would show here.
         check(
-          `${where}: its words are in the line's ink`,
-          paint.words === paint.tokens["--text"] && paint.line.ink === paint.tokens["--text"],
-          JSON.stringify({ words: paint.words, line: paint.line }),
+          `${where}: its words are in the line's ink, at its regular weight`,
+          paint.words === paint.tokens["--text"] &&
+            paint.line.ink === paint.tokens["--text"] &&
+            paint.line.weight === "400" &&
+            paint.wordsWeight === "400",
+          JSON.stringify({ words: paint.words, wordsWeight: paint.wordsWeight, line: paint.line }),
         );
         // A status count, "2 A", is one span that is the status primitive: its number and its
         // letter bold, in its status's ink, at a text's 4.5:1 on the card (mb-8iwn). Before,
@@ -681,14 +687,18 @@ async function main() {
           ),
         );
         check(
-          `${where}: its commas and dots are muted, the dots hidden`,
+          `${where}: its commas and dots are muted at the line's weight, the dots hidden`,
           JSON.stringify(paint.marks.map(([text, hidden]) => [text, hidden])) ===
             JSON.stringify([
               ["·", "true"],
               [",", null],
               [",", null],
               ["·", "true"],
-            ]) && paint.marks.every(([, , color]) => color === paint.tokens["--muted"]),
+            ]) &&
+            paint.marks.every(
+              ([, , color, markWeight]) =>
+                color === paint.tokens["--muted"] && markWeight === paint.line.weight,
+            ),
           JSON.stringify(paint.marks),
         );
       }
