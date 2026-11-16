@@ -18,7 +18,9 @@
   /* The Conversation's one rhythm (mb-w7rt): the visible space between any two consecutive
      events, a card's border or a commit's text, and between two review comments. 20 px is
      the space between two commits' glyphs that the owner called good (Chrome 152), where
-     cards had 12 px, crowded, and a commit stood 23.5 px from a card. */
+     cards had 12 px, crowded, and a commit stood 23.5 px from a card. It is the
+     Conversation's alone: the Files and Checks tabs keep the gap between their notices and
+     what they show, and Review comments keeps its break below a card (below). */
   --github-pull-rhythm: 20px;
   /* The column includes the pane gutter on each side. */
   --page-reading-gutter: var(--content-padding-x);
@@ -257,14 +259,15 @@
   font-size: var(--ui-small-font-size);
 }
 /* A label GitHub gave a color is painted as github.com paints it, in our chip's box: the
-   formula of github.com's own label stylesheet (Primer's .IssueLabel, read 2026-11-15),
-   with its constants, from the --github-label-r/g/b/h/s/l the page sets on the chip
-   (labelColorProperties in pull-page.js). docs/design-system.md, "Label Colors", says why
-   these colors are not oklch. Its custom properties are under the plugin's --github-label-
-   prefix, so none shares the shell's label register's --label- names (--label-color,
-   --label-font-size): each is Primer's of the same part, --github-label-r, -g, -b, -h, -s,
-   and -l its --label-r to --label-l; --github-label-lightness its --perceived-lightness;
-   -switch its --lightness-switch; -threshold its --lightness-threshold; -border-threshold,
+   formula of github.com's own label stylesheets (its global .hx_IssueLabel and Primer
+   React's .prc-Token-IssueLabel, which agree, read 2026-11-15), with its constants, from
+   the --github-label-r/g/b/h/s/l the page sets on the chip (labelColorProperties in
+   pull-page.js). docs/design-system.md, "Label Colors", says why these colors are not
+   oklch. Its custom properties are under the plugin's --github-label- prefix, so none
+   shares the shell's label register's --label- names (--label-color, --label-font-size):
+   each is github.com's of the same part, --github-label-r, -g, -b, -h, -s, and -l its
+   --label-r to --label-l; --github-label-lightness its --perceived-lightness; -switch its
+   --lightness-switch; -threshold its --lightness-threshold; -border-threshold,
    -border-alpha, -background-alpha, and -lighten-by its --border-threshold,
    --border-alpha, --background-alpha, and --lighten-by.
    Light: the color is the ground; the text is black above a perceived lightness of 0.453
@@ -413,10 +416,12 @@
   inset: var(--content-padding-y) var(--content-padding-x) auto;
   visibility: visible;
 }
+/* Every tab's body keeps the page's gap; the Conversation's events stand the rhythm apart
+   ("The Conversation timeline", below). */
 .github-pull-body {
   display: flex;
   flex-direction: column;
-  gap: var(--github-pull-rhythm);
+  gap: var(--github-pull-gap);
   padding: var(--content-padding-y) var(--content-padding-x);
 }
 .github-pull-card-head {
@@ -435,7 +440,7 @@
   border-bottom: 0;
 }
 
-/* ── The Conversation timeline ──────────────────────────────────
+/* ââ The Conversation timeline ââââââââââââââââââââââââââââââââââ
    docs/design-system.md, "Conversation Timeline". A commit row is set in a card head's type
    and line, and its subject starts where an author's name does after the avatar, or its
    empty slot, and the identity's gap (--github-pull-avatar-size, --github-pull-identity-gap,
@@ -484,6 +489,14 @@
   /* A commit's first line: half of it. */
   --github-pull-node-y: 0.5lh;
   position: relative;
+}
+/* The rhythm stands above each of the Conversation's events, whatever is before it: the
+   body's gap and this margin. Only its events are `.github-pull-event`, so the Files and
+   Checks tabs keep the gap, 12 px, and so does a section or note below an event, with its
+   own margin: Review comments stands 28 px below a card, as before the rhythm. Measured in
+   Chrome 152 with the rhythm as the body's gap: 20 px for those notices, and 36 px. */
+.github-pull-body > * + .github-pull-event {
+  margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
 }
 .github-pull-event.page-card {
   overflow: visible;
@@ -664,11 +677,9 @@
   gap: var(--github-pull-gap);
   margin-block-start: var(--content-padding-y);
 }
-/* Review comments, a comment's card from the next, at the Conversation's rhythm. The heading
-   sits over the first card at the section's gap, as every section's heading sits over its
-   content: with the rhythm as the section's gap, it stood 20 px over its first card where
-   other headings stand 12 px over theirs. The margin is the rhythm less the gap the column
-   already puts between two cards. */
+/* Review comments, a comment's card from the next, at the Conversation's rhythm, and the
+   heading over the first card at the section's gap, as every section's heading sits over its
+   content. The margin is the rhythm less the gap the column already puts between two cards. */
 .github-pull-threads > .github-pull-card + .github-pull-card {
   margin-block-start: calc(var(--github-pull-rhythm) - var(--github-pull-gap));
 }
@@ -700,7 +711,7 @@
   color: var(--status-error);
 }
 
-/* ── A pull request's state ──────────────────────────────────────
+/* ââ A pull request's state ââââââââââââââââââââââââââââââââââââââ
    One vocabulary for a row and its page's header: docs/design-system.md, "The Pulls Tab". The
    four colors are GitHub's hues in both themes: green, a neutral gray, purple, and red. Each
    hue stays, and lightness and chroma answer the surface. The shapes differ, and the name is
@@ -755,7 +766,7 @@
   height: 1em;
 }
 
-/* ── The Pulls tab ───────────────────────────────────────────────
+/* ââ The Pulls tab âââââââââââââââââââââââââââââââââââââââââââââââ
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
    primitives; what is here is their placement, and a row, which takes the row contract. */
 .github-pulls-filters {
@@ -805,7 +816,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The shared spinner beside "Fetching pull requests…", centred on the words. */
+/* The shared spinner beside "Fetching pull requestsâ¦", centred on the words. */
 .github-pulls-connection-text {
   display: flex;
   align-items: center;
@@ -1162,7 +1173,7 @@
   min-width: 0;
 }
 /* A stack's position takes the pull request number's weight, through its one token, so
-   "1/6 · #N" reads as one identifier (docs/design-system.md, "Pull Request Numbers"). */
+   "1/6 Â· #N" reads as one identifier (docs/design-system.md, "Pull Request Numbers"). */
 .github-pull-stack-position,
 .github-pull-stack-member-position {
   font-weight: var(--pull-number-weight);
@@ -1218,7 +1229,7 @@
   box-shadow: inset 2px 0 0 var(--highlight-bar);
 }
 
-/* ── Stacks (docs/design-system.md, "Stacks") ─────────────────────
+/* ââ Stacks (docs/design-system.md, "Stacks") âââââââââââââââââââââ
    One design names a stack wherever one is shown: the pull request page's stack button
    and menu, a Pulls row's place, and the Pulls tab's stack groups.
      .github-pull-stack-label     "Stack #N": on the shell's .group-heading, the label

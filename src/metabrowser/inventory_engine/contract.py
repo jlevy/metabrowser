@@ -80,7 +80,7 @@ import json
 import os
 import string
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
@@ -97,9 +97,14 @@ from metabrowser.wire_models import NavigationTallies, RollupResult
 MAX_CHANGE_PATHS = 1_024
 MAX_COMMAND_PATHS = 1_024
 MAX_QUERIES_PER_READ = 1_024
-# A Group by grouping is a handful of groups (metabrowser/tree_groups.py); the bound keeps
-# one grouped read's first pages within `MAX_TREE_GROUPS * max_rows` rows.
-MAX_TREE_GROUPS = 32
+# Group by sends at most six groups (metabrowser/tree_groups.py); eight leaves headroom.
+# A grouped pass costs about the number of groups times the leaves each keeps, and
+# `max_work` charges it once, for the entries visited, so the bound is on groups. On
+# 260,000 files in 111,500 folders, one warm pass at the provider took 0.27-0.33 s for
+# Group by's six groups or eight bands that partition mtimes, 0.46 s for eight nested
+# windows that each keep most leaves, and 1.7-1.8 s for 32 nested windows, the bound
+# before; each peaked at 9-11 MB (measured 2026-11-15).
+MAX_TREE_GROUPS = 8
 # Bound host-side materialization even when a provider returns endlessly advancing cursors.
 MAX_ASSEMBLED_PAGES = 4_096
 MAX_ASSEMBLED_ROWS = 1_000_000
@@ -1101,17 +1106,12 @@ class GroupedTreeQuery:
             max_rows=self.max_rows,
             max_work=self.max_work,
             after=after,
-            filter=InventoryFilter(
-                extensions=self.filter.extensions,
-                filenames=self.filter.filenames,
-                type_families=self.filter.type_families,
-                recency_seconds=self.filter.recency_seconds,
+            # The shared filter, every field of it, with the group's own set.
+            filter=replace(
+                self.filter,
+                type_group=group.type_group,
                 band_within_seconds=group.band_within_seconds,
                 older_than_seconds=group.older_than_seconds,
-                type_group=group.type_group,
-                minimum_size=self.filter.minimum_size,
-                include_ignored=self.filter.include_ignored,
-                as_of_ns=self.filter.as_of_ns,
             ),
         )
 
