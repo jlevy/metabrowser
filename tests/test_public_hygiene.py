@@ -49,6 +49,39 @@ def test_dangling_legacy_documentation_names_are_rejected() -> None:
     assert find_hygiene_findings("src/metabrowser/example.py", public_url) == []
 
 
+def _encoded_twice(text: str, codec: str = "latin-1") -> str:
+    return text.encode("utf-8").decode(codec)
+
+
+def test_double_encoded_utf8_is_rejected() -> None:
+    # The three sequences a merge once left in a stylesheet's comments.
+    assert _encoded_twice("─").encode("utf-8") == b"\xc3\xa2\xc2\x94\xc2\x80"
+    assert _encoded_twice("…").encode("utf-8") == b"\xc3\xa2\xc2\x80\xc2\xa6"
+    assert _encoded_twice("·").encode("utf-8") == b"\xc3\x82\xc2\xb7"
+
+    lines = (
+        "/* ── The Pulls tab ──── */",
+        "Fetching pull requests…",
+        '"1/6 · #N"',
+        "Café",
+    )
+    for line in lines:
+        assert find_hygiene_findings("src/metabrowser/example.css", _encoded_twice(line)) == [
+            "src/metabrowser/example.css:1: double-encoded UTF-8"
+        ]
+        assert find_hygiene_findings("src/metabrowser/example.css", line) == []
+
+    # The commoner accident, UTF-8 read as Windows-1252: ’ becomes â, €, and ™.
+    assert _encoded_twice("’", "cp1252").encode("utf-8") == (b"\xc3\xa2\xe2\x82\xac\xe2\x84\xa2")
+    for line in ("It’s read once.", "the keep — bounded", "/* ── Stacks ── */"):
+        assert find_hygiene_findings("docs/example.md", _encoded_twice(line, "cp1252")) == [
+            "docs/example.md:1: double-encoded UTF-8"
+        ]
+        assert find_hygiene_findings("docs/example.md", line) == []
+
+    assert find_hygiene_findings("README.md", "SÃO PAULO") == []
+
+
 def test_terminal_private_home_paths_are_rejected() -> None:
     home_paths = (
         "/" + "Users/alice",

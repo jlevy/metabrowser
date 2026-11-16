@@ -87,8 +87,6 @@ var FILTER_SIZE_OPTIONS = [{ value: "1m", label: ">1M" }];
 var filterState = window.metabrowser.filterState;
 var filterControls = window.metabrowser.filterControls;
 var treeFilterModel = window.MetabrowserTreeFilterModel;
-// No grouping is loading: a page starts ungrouped.
-var _groupingPending = false;
 var quickFileCatalogFeed = {
   start() {
     __probe.catalogFeedStarts += 1;
