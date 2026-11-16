@@ -545,16 +545,32 @@ try {
   await sleep(400);
   result.keyThreeOpens = await browser.evaluate(OPEN_MENU);
   result.focus.three = await browser.evaluate(FOCUS);
-  // A pick in the multi-select menu keeps it open, and the bar rebuilds as the filter and
-  // the tree's tallies answer: focus stays on the row picked, and on it again unpicked.
+  // A pick in the multi-select menu keeps it open, and the bar rebuilds under it,
+  // synchronously from the filter's change: focus stays on the row picked, and on it again
+  // unpicked. A MutationObserver counts the bar's rebuilds, so each read waits for the
+  // rebuild it is about instead of for a time. New tallies rebuild the bar asynchronously
+  // too (loadTree in app.js), but a file written here does not, because the root summary's
+  // refresh leaves the bar alone while a menu is open; a rebuild with a row focused is
+  // pinned browserlessly in tests/dom/key-reveal-session.js and filter-controls-behavior.js.
+  await browser.evaluate(`(() => {
+    window.filterBarRebuilds = 0;
+    new MutationObserver((records) => { window.filterBarRebuilds += records.length; })
+      .observe(document.getElementById("nav-filter-bar"), { childList: true });
+    return true;
+  })()`);
+  const rebuilds = () => browser.evaluate("window.filterBarRebuilds");
+  const rebuiltSince = (count) => browser.waitFor(`window.filterBarRebuilds > ${count}`, 30000);
   await press("ArrowDown");
   result.typesRow = await browser.evaluate(FOCUS);
+  let rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesPicked = await browser.evaluate(FOCUS);
+  rebuildCount = await rebuilds();
   await press("Enter");
-  await sleep(800);
+  await rebuiltSince(rebuildCount);
   result.typesUnpicked = await browser.evaluate(FOCUS);
+  result.typesRebuilds = await rebuilds();
   await browser.waitFor(
     `document.querySelectorAll('.chip-menu[data-chip-menu="types"] .chip-menu-item').length > 30`,
     30000,
