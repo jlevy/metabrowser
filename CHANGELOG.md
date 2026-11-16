@@ -17,6 +17,38 @@ All notable changes to Metabrowser are documented here.
   Plugin authors: `--font-sans` and `--font-mono` keep the shell’s values after a KPress
   document renders, and the document’s code draws in the same stack as `--font-mono`.
 
+- The macOS app’s window is no longer sent gzipped answers, and the application’s own
+  scripts, stylesheets, and fonts are compressed once rather than on every request.
+  Compressing cost the server time on every answer, on the thread every request waits
+  for, to save bytes that never left the machine.
+  Only the server the app starts stops compressing: `metab` on a loopback address with
+  `--exit-on-eof`, outside an SSH session, a Codespace, or a Dev Container.
+  It then answers a loopback client uncompressed, unless the request carries a proxy’s
+  or a CDN’s forwarding header, and its banner says
+  `Compression: off for loopback clients of this machine`. Any other program that starts
+  `metab` that way, for the flag’s stop, gets the same.
+  Every other server compresses as before, `metab ./notes` opening a browser and the
+  server `--remote` starts included, so a remote host of any release still sends gzip
+  through the tunnel, and nothing new is passed to it.
+  An asset at the address the page names is kept in memory, up to 16 MiB, read and
+  compressed once, and sent with a `Content-Length` where a streamed answer had none;
+  its bytes and other headers are unchanged.
+
+- `Server-Timing` counts the Git processes a request started, in its `git` entry’s
+  description: `git;dur=41.2;desc="2 processes"`.
+
+- A page of a commit or a comparison no longer shows some of its renamed files as
+  unreadable when the whole patch is at most 256 KiB. When Git paired a page’s files
+  differently on their own than in the whole comparison, as on the first page of a
+  commit of more than 50 files, the page named them “could not be read from the produced
+  diff”; their changes now show, as the file list describes them, in a commit’s page and
+  in a pull request’s Files changed alike.
+  Past 256 KiB of patch such files are still named unreadable.
+
+- A folder whose Git configuration sets `color.diff` or `color.ui` to `always` now shows
+  a commit’s changes. Git wrote color codes around every line of the patch, and every
+  file was named “could not be read from the produced diff”.
+
 - A Markdown file in a pull request’s Changes now reads in your reading font, serif
   unless you chose Sans, as the same file does in its Document view.
   It was always sans, because the rule that keeps the pull request’s description,

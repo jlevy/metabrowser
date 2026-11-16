@@ -129,6 +129,12 @@ Whatever arrives on stdin before it closes is read and dropped.
 Without the flag stdin is ignored, so `metab ./notes < /dev/null` serves as usual; with
 it, a stdin that is not open at all is refused before serving.
 
+The flag also marks the start the macOS app makes, so it changes what a loopback client
+is sent: a server started with it on a loopback address, outside an SSH session, a
+Codespace, or a Dev Container, sends a client on this machine its answers uncompressed
+([Compression](#compression)). A program that starts `metab` this way only to stop it
+gets that too; its answers carry the same bytes, not gzipped.
+
 The watch begins as soon as the command line is read, before the server reads ROOT,
 dotenv files, or plugins, acquires a Git source, or looks for a port, so a server whose
 startup is held up, by a slow disk or a fetch, still stops when its stdin closes.
@@ -168,6 +174,31 @@ signalled; it holds no lock, and it ends when it next writes to, or reads from, 
 server that is gone.
 A stderr too full to take the notice at once, because nothing is reading it, gets no
 notice, and the stop goes on without it; so does one Ctrl-C’s.
+
+### Compression
+
+The server gzips its answers for every client that accepts gzip, with one exception: a
+server the macOS app starts sends the app’s window its answers uncompressed, since
+nothing crosses a network and gzip costs the server time on every answer.
+That server is the one started on a loopback address (`127.0.0.1`, the default, `::1`,
+or `localhost`) with `--exit-on-eof`, from an environment that names no remote session:
+no `SSH_CONNECTION`, `SSH_CLIENT`, `SSH_TTY`, `CODESPACES`, or `REMOTE_CONTAINERS`. Even
+then a request from another address, or one that carries a proxy’s or a CDN’s
+`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto`,
+`X-Forwarded-Port`, `X-Forwarded-Server`, `X-Real-IP`, `Via`, `CF-Connecting-IP`, or
+`True-Client-IP` header, is sent gzip.
+Such a server says so as it starts, on a line after its address:
+`Compression: off for loopback clients of this machine`.
+
+Every other server compresses for every client, `metab ./notes` opening a browser
+included: on a remote host that browser can be another machine’s, through `$BROWSER`. So
+does the server `--remote` starts, and one behind an SSH tunnel, a port forward, or a
+proxy: such a client reaches the server from its own loopback, and the server cannot
+tell it from a local one.
+For the same reason, the server the macOS app starts sends uncompressed to a client that
+reaches it through a forward on the app’s own machine, such as an `ssh -L` from another
+machine into the Mac or a port forwarder running on it.
+That costs bytes on that link only; the answers are the same.
 
 ### Serving a Git source
 
@@ -979,7 +1010,9 @@ metab --remote example-host --path /srv/shared-files
 
 `metab` starts itself on the remote host over SSH and tunnels the port back, so the
 browser stays local.
-`ROOT` is not used in this mode; the remote directory is `--path`.
+`ROOT` is not used in this mode; the remote directory is `--path`. The remote server is
+started with `--no-open`, so what crosses the tunnel is gzipped
+([Compression](#compression)), whichever release either host runs.
 
 ## Why the Data Modes Exist
 

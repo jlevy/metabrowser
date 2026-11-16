@@ -524,6 +524,7 @@ def run_serve_pin(
     port: int,
     host: str = "127.0.0.1",
     no_open: bool = False,
+    local_client: bool = False,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     no_active_content: bool = False,
@@ -562,6 +563,7 @@ def run_serve_pin(
         host=host,
         port=port,
         no_open=no_open,
+        local_client=local_client,
         attach=functools.partial(_serve_selected, selected),
         banner=(
             f"Revision: {revision}",

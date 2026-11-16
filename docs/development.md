@@ -273,7 +273,10 @@ nothing still spends that budget.
 renders a folder’s shell through the application and counts every `<script src>` in it,
 whatever its attributes, compresses each file as the application’s gzip middleware does,
 and adds the 300 bytes Resource Timing reports for a response’s headers, which is how
-the browser arrives at the number the gate reads.
+the browser arrives at the number the gate reads when the server compresses toward it.
+A server started for local use sends a loopback browser its scripts uncompressed, so
+`run.py record` reads the gate’s number the same way, from the scripts the page
+requested, as the remote path sends them; the note beside the budget says why.
 Its module documentation records the two agreeing, script for script.
 A script can also ask for another one, which no tag shows and the gate still counts.
 So the check runs the shell’s own scripts without a browser
