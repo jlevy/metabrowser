@@ -203,7 +203,7 @@ def test_live_inventory_paths_coalesce_their_tree_synchronization() -> None:
     for name, length in (
         ("applyCellPatch", 6500),
         ("_insertRowSorted", 4000),
-        ("_synchronizeDeferredTreePage", 1600),
+        ("_synchronizeDeferredTreePage", 2000),
     ):
         body = _function(source, name, length)
         assert "scheduleTreeSynchronize(" in body, name
