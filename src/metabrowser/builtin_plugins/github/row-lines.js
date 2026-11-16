@@ -41,8 +41,8 @@ export const MAX_SUMMARY_NUMBERS = 100;
 // listed when it was asked and whose listing no report has ended.
 export const ROW_LINE_RETRY_MS = 60_000;
 // The rows whose answer the document remembers, oldest out first: ten windows of rows.
-// Measured 2026-11-16 in Node 24, 1,024 of them, each a listed answer of four statuses, held
-// 0.42 MB of heap, 410 bytes each.
+// Measured 2026-11-16 in Node 24 with `--expose-gc`, 1,024 of them, each a listed
+// answer of four statuses with its head and generation, held 1.16 MB of heap, 1.1 KB each.
 const REMEMBERED_ROWS = 1024;
 // The recent outcomes a snapshot reports.
 const RECENT = 8;
