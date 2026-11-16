@@ -36,9 +36,13 @@ from metabrowser.inventory_engine.contract import (
     EntryProjection,
     EntryQuery,
     FilteredTreeQuery,
+    GroupedTreeQuery,
     InventoryEntry,
     ReadRequest,
+    VersionUnavailableError,
 )
+from metabrowser.inventory_engine.coordinator import CoordinatedRead, InventoryReadSession
+from metabrowser.inventory_engine.providers import python_inventory
 from metabrowser.settings import INVENTORY_MAX_FILES, INVENTORY_TREE_PAGE_ROWS
 from tests.inventory_harness import inventory_harness
 
@@ -242,6 +246,14 @@ def test_api_tree_group_by_reads_every_group_in_one_pass(tmp_path: Path) -> None
     assert costs["type"] == costs["age"] == costs["filtered"]
 
 
+def _tree_paths(nodes: list[dict[str, Any]]) -> list[str]:
+    """Every row a tree payload draws, depth first."""
+
+    return [
+        path for node in nodes for path in (node["path"], *_tree_paths(node.get("children") or []))
+    ]
+
+
 def test_api_tree_group_by_assembles_a_group_past_the_page_bound(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -270,19 +282,94 @@ def test_api_tree_group_by_assembles_a_group_past_the_page_bound(
 
     grouped, alone = asyncio.run(run())
     docs = next(group for group in grouped["groups"] if group["id"] == "docs")
-
-    def rows(nodes: list[dict[str, Any]]) -> list[str]:
-        return [
-            path for node in nodes for path in (node["path"], *rows(node.get("children") or []))
-        ]
-
-    assert len(rows(docs["tree"])) > page_rows
+    assert len(_tree_paths(docs["tree"])) > page_rows
     assert docs["tree"] == alone["tree"]
     assert (docs["files"], docs["size"], docs["entries"]) == (
         alone["filtered"]["files"],
         alone["filtered"]["size"],
         alone["filtered"]["entries"],
     )
+
+
+def test_api_tree_group_by_reads_overlapping_wide_groupings_without_missing_a_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Grouped reads that overlap, each retaining every group's remaining rows for its
+    continuations, take turns, so none evicts another's pages (mb-ub75).
+
+    The provider keeps one grouped read's continuations within `MAX_ASSEMBLED_ROWS`, here
+    lowered to exactly what one read retains, so a second read retaining its own beside
+    it would evict the first's. Each read's first pass is held until every grouped pass
+    already begun has retained its pages, as passes that take seconds overlap."""
+
+    _build_fixture(tmp_path)
+    for folder, extension in (("docs", ".md"), ("src", ".py"), ("data", ".json")):
+        (tmp_path / folder).mkdir(exist_ok=True)
+        for index in range(6):
+            (tmp_path / folder / f"item-{index}{extension}").write_text("item")
+    page_rows = 3
+    monkeypatch.setattr(proc_browser, "INVENTORY_TREE_PAGE_ROWS", page_rows)
+    query = {"group_by": "type", "depth": "2"}
+    passes = {"started": 0, "finished": 0}
+    retained_all = asyncio.Condition()
+    missed: list[str] = []
+    original_read = InventoryReadSession.read
+
+    async def overlapping_read(
+        self: InventoryReadSession, request: ReadRequest, **kwargs: bool
+    ) -> CoordinatedRead:
+        grouped = any(isinstance(entry, GroupedTreeQuery) for entry in request.queries)
+        passes["started"] += grouped
+        try:
+            read = await original_read(self, request, **kwargs)
+        except VersionUnavailableError as error:
+            missed.append(str(error))
+            raise
+        if grouped:
+            passes["finished"] += 1
+            async with retained_all:
+                retained_all.notify_all()
+                await asyncio.wait_for(
+                    retained_all.wait_for(lambda: passes["finished"] >= passes["started"]), 5
+                )
+        return read
+
+    async def run() -> tuple[dict[str, Any], list[Any]]:
+        paths_safe._set_root_dir(tmp_path)
+        async with inventory_harness(tmp_path) as harness:
+            alone = await proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
+            body = json.loads(bytes(alone.body))
+            retained = sum(
+                count
+                for group in body["groups"]
+                if (count := len(_tree_paths(group["tree"]))) > page_rows
+            )
+            # One row less, and a read evicts its own pages: it says so when it gives up.
+            monkeypatch.setattr(python_inventory, "MAX_ASSEMBLED_ROWS", retained - 1)
+            with pytest.raises(
+                VersionUnavailableError,
+                match=r"grouped tree assembly failed 3 attempts; the last: the filtered-tree "
+                r"page cursor is unavailable: its page was evicted, as retained continuations "
+                rf"reached {retained - 1} rows",
+            ):
+                await proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
+            monkeypatch.setattr(python_inventory, "MAX_ASSEMBLED_ROWS", retained)
+            monkeypatch.setattr(InventoryReadSession, "read", overlapping_read)
+            responses = await asyncio.gather(
+                *(
+                    proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
+                    for _request in range(3)
+                )
+            )
+            return body, list(responses)
+
+    alone, responses = asyncio.run(run())
+    assert sum(1 for group in alone["groups"] if len(_tree_paths(group["tree"])) > 3) >= 2
+    assert missed == []
+    assert passes == {"started": 3, "finished": 3}
+    for response in responses:
+        assert response.status_code == 200
+        assert json.loads(bytes(response.body)) == alone
 
 
 def test_api_tree_uses_provider_presence_instead_of_parallel_filesystem_truth(

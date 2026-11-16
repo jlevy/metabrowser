@@ -184,6 +184,9 @@ _WALKER_COOPERATIVE_YIELD_BATCH = 64
 _WALKER_COOPERATIVE_YIELD_S = 0.000_001
 _NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
 _PAGE_MEMO_CAPACITY = 64
+# How many evicted continuation cursors are remembered, so one that finds its page gone
+# says it was evicted rather than reading as a change to the files.
+_EVICTED_PAGE_TOKEN_MEMORY = 256
 _CONTRACT_ID = "inventory-provider-v1"
 
 
@@ -928,6 +931,8 @@ class _PythonInventoryStore:
         # The small table supports bundled paged queries without repeating full scans.
         self._page_lock = threading.Lock()
         self._page_memos: dict[str, _PageMemo] = {}
+        # Why each recently evicted cursor's page is gone, oldest first.
+        self._evicted_page_tokens: dict[str, str] = {}
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -1118,6 +1123,7 @@ class _PythonInventoryStore:
             self._navigation_read_memo = None
         with self._page_lock:
             self._page_memos.clear()
+            self._evicted_page_tokens.clear()
         self._emit(FsResyncRequired(reason="root_swap"))
 
     async def wait_until_done(self, timeout: float | None = None) -> None:
@@ -1609,7 +1615,7 @@ class _PythonInventoryStore:
                     and memo.include_ignored == query.include_ignored
                     and memo.token == query.after
                 ):
-                    raise VersionUnavailableError("the directory page cursor is unavailable")
+                    raise self._unavailable_cursor_locked("directory", after)
                 rows = memo.rows[memo.offset : memo.offset + query.max_rows]
                 if len(rows) > query.max_work:
                     projection = QueryLimitProjection(
@@ -1639,7 +1645,7 @@ class _PythonInventoryStore:
                     and memo.query.filter == query.filter
                     and memo.token == query.after
                 ):
-                    raise VersionUnavailableError("the filtered-tree page cursor is unavailable")
+                    raise self._unavailable_cursor_locked("filtered-tree", after)
                 rows = memo.rows[memo.offset : memo.offset + query.max_rows]
                 if len(rows) > query.max_work:
                     projection = QueryLimitProjection(
@@ -1670,7 +1676,7 @@ class _PythonInventoryStore:
                     and memo.selection == _catalog_selection(query)
                     and memo.token == query.after
                 ):
-                    raise VersionUnavailableError("the catalog page cursor is unavailable")
+                    raise self._unavailable_cursor_locked("catalog", after)
                 records = memo.records[memo.offset : memo.offset + query.max_rows]
                 if len(records) > query.max_work:
                     projection = QueryLimitProjection(
@@ -1739,11 +1745,30 @@ class _PythonInventoryStore:
             len(self._page_memos) >= _PAGE_MEMO_CAPACITY
             or retained_rows + memo_rows > MAX_ASSEMBLED_ROWS
         ):
+            reason = (
+                f"the provider retains at most {_PAGE_MEMO_CAPACITY} continuations"
+                if len(self._page_memos) >= _PAGE_MEMO_CAPACITY
+                else f"retained continuations reached {MAX_ASSEMBLED_ROWS:,} rows"
+            )
             evicted = self._page_memos.pop(next(iter(self._page_memos)))
             retained_rows -= (
                 len(evicted.records) if isinstance(evicted, _CatalogPageMemo) else len(evicted.rows)
             )
+            self._evicted_page_tokens[evicted.token] = reason
+            if len(self._evicted_page_tokens) > _EVICTED_PAGE_TOKEN_MEMORY:
+                del self._evicted_page_tokens[next(iter(self._evicted_page_tokens))]
         self._page_memos[memo.token] = memo
+
+    def _unavailable_cursor_locked(self, kind: str, after: str) -> VersionUnavailableError:
+        """The error for a continuation whose page is gone, naming eviction when that is
+        why, while holding `_page_lock`."""
+
+        reason = self._evicted_page_tokens.get(after)
+        if reason is None:
+            return VersionUnavailableError(f"the {kind} page cursor is unavailable")
+        return VersionUnavailableError(
+            f"the {kind} page cursor is unavailable: its page was evicted, as {reason}"
+        )
 
     def _read_snapshot_sync(self, request: ReadRequest) -> ReadResult:
         """Answer from one immutable image when a query needs broad traversal."""

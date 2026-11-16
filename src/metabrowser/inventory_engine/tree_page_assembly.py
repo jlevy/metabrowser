@@ -278,8 +278,10 @@ async def assemble_grouped_tree(
             continue
     if last_version_error is None:
         raise InventoryConsistencyError("grouped tree assembly exhausted without a version failure")
+    # The last failure says why: the files changed, or a continuation's page was evicted.
     raise VersionUnavailableError(
-        f"inventory changed during {_MAX_ASSEMBLY_ATTEMPTS} grouped tree assembly attempts"
+        f"grouped tree assembly failed {_MAX_ASSEMBLY_ATTEMPTS} attempts; "
+        f"the last: {last_version_error}"
     ) from last_version_error
 
 

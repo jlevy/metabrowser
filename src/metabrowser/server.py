@@ -2459,11 +2459,14 @@ async def _grouped_tree_from_provider(
     )
 
     async def read_groups() -> GroupedTreeAssembly:
-        return await assemble_grouped_tree(
-            runtime.coordinator,
-            query=query,
-            companion_queries=(EntryQuery(query_id="tree-parent", path=subpath),),
-        )
+        # One grouped assembly at a time, so overlapping reads cannot evict each other's
+        # continuations (InventoryRuntime.grouped_tree_admission).
+        async with runtime.grouped_tree_admission:
+            return await assemble_grouped_tree(
+                runtime.coordinator,
+                query=query,
+                companion_queries=(EntryQuery(query_id="tree-parent", path=subpath),),
+            )
 
     assembly, parent = await _read_with_known_parent(
         runtime,
