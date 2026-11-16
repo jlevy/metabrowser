@@ -52,7 +52,7 @@ type Ask = Callable[[ChangeSetManifest], Sequence[Sequence[str]]]
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_git_config(tmp_path: Path) -> Iterator[None]:
+def no_ambient_git_config(tmp_path: Path) -> Iterator[None]:
     """Folder reads honor the caller's configuration, and a developer's global file can name
     a textconv driver, which changes every count here: an empty global file, no system file,
     and no configuration from the environment. A test that names a system file sets it.
