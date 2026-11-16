@@ -619,6 +619,11 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   const page = window.__page ??= await import("/github/pull-page.js");
   const diff = (window.__diff ??= await import("/diff/diff-view.js"));
   const body = structuredClone(recorded.current.body);
+  // Each run reads a comparison of its own. The page keeps what it read of a comparison for
+  // the document, by its route (comparison-prefetch.js, documentComparisons), so a run
+  // under an earlier run's route would draw that run's summary at once, with no wait.
+  window.__summaryRuns = (window.__summaryRuns ?? 0) + 1;
+  body.comparison_route = "/summary-wait/" + window.__summaryRuns;
   document.documentElement.dataset.theme = theme;
   window.fetch = async () => new Response(null, { status: 304 });
   history.replaceState(null, "", "/pull/" + body.number);
