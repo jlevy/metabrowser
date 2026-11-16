@@ -57,9 +57,9 @@ log = logging.getLogger(__name__)
 PULL_RECORD_SCHEMA: Final = 2
 # 1 added each actor's avatar; 2 each label's color and description (:class:`PullLabel`).
 # A record of an earlier projection is still shown, but the catalog never vouches for it
-# (:func:`.pull_freshness.record_freshness`), so it is refreshed once its window has
-# passed, closed or open, and that refresh asks GitHub for every part again, without the
-# ETags that would let a 304 keep what it lacks.
+# (:func:`.pull_freshness.record_freshness`), so once its window has passed it is stale,
+# and the next page that shows it refreshes it, closed or open, asking GitHub for every
+# part again, without the ETags that would let a 304 keep what it lacks.
 PULL_RECORD_PROJECTION: Final = 2
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
