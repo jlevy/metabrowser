@@ -3,14 +3,18 @@ type: is
 id: is-01m7exgvwwnvb18j9e2v92rz3z
 title: KPress's :root aliases replace the shell's --font-sans and --font-mono once a document loads
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
+hold: null
+hold_until: null
 created_at: 2026-11-15T06:15:11.515Z
-updated_at: 2026-11-15T06:15:11.515Z
+updated_at: 2026-11-16T06:26:07.916Z
+started_at: 2026-11-16T06:26:07.914Z
 ---
 Found in review A of #438 (finding A5, https://github.com/jlevy/metabrowser/pull/438#pullrequestreview-5909379904) and seen while measuring faces for mb-k838.
 

@@ -3,9 +3,9 @@ type: is
 id: is-01m7h0wnsjyz9enemj0de4q5wg
 title: "Address PR #455 reviews A, B, C (round 1): H115 encode once and U2 server-time"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 29
+version: 30
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -41,7 +41,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T01:52:33.073Z
-updated_at: 2026-11-16T01:53:10.213Z
+updated_at: 2026-11-16T02:12:30.917Z
 started_at: 2026-11-16T01:53:10.212Z
+closed_at: 2026-11-16T02:12:30.916Z
+close_reason: "Reviews A, B, C of PR #455 addressed at b262d503d; replies https://github.com/jlevy/metabrowser/pull/455#issuecomment-6905396112 (A), -6905396444 (B), -6905396725 (C), -6905397032 (qodo). Deferred children left open: mb-0i10 (A11), mb-tbpn (B2), mb-s64k (B7), mb-x3x1 (B11)."
+resolution: null
+duplicate_of: null
 ---
 Addressing agent work for https://github.com/jlevy/metabrowser/pull/455 at head 284553b12847baaf8b22e57798a11c7e00e7c9e2. Review A (senior) https://github.com/jlevy/metabrowser/pull/455#pullrequestreview-5913913966 A1-A11; review B (performance) https://github.com/jlevy/metabrowser/pull/455#pullrequestreview-5914011305 B1-B12; review C (correctness) https://github.com/jlevy/metabrowser/pull/455#pullrequestreview-5914139612 C1-C4; unmarked qodo billing notice https://github.com/jlevy/metabrowser/pull/455#issuecomment-6892600290 (no findings).
