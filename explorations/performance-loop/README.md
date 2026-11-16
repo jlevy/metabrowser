@@ -847,7 +847,8 @@ pixels are not read.
 
 **How content is found.** The search walks the root’s subtree in document order and
 stops at the first hit (`hasUseful` in `transitions-recorder.mjs`). It does not enter
-the subtree of a placeholder, prompt, or label; of an element with `display: none`,
+the subtree of a placeholder, prompt, or label (a source view’s line-number gutter,
+`.source-line-numbers`, among them); of an element with `display: none`,
 `content-visibility: hidden`, or zero opacity, none of whose descendants can show; or of
 an element with an empty box that clips its descendants (overflow other than visible, or
 paint containment), such as a block collapsed to height 0. A box-less element (an inline
@@ -857,57 +858,78 @@ An element wholly outside the viewport is not entered unless its scrollable over
 which holds content and positioned descendants laid out outside its box, reaches the
 viewport. A text node is measured only over its runs of lines that hold a non-space
 character, each trimmed to its first and last one, so blank lines on screen after text
-that is not are not content.
+that is not are not content; at most 32 runs of a node are measured, and a node whose
+first 32 are not on screen sends the search on to the hit test.
 Text under a hidden parent is visited but neither measured nor counted toward the 400.
 The walk stops at 1,500 nodes visited, entered or not, or 400 text nodes measured.
-A text node longer than 2,000 characters, such as a source view’s line-number gutter, is
-measured from its start only, since its boxes cost in proportion to its lines (3 ms a
-call for the corpus’s `app.js` gutter, in every frame of that view); one whose start is
-not shown sends the search on to the hit test.
-When the walk stops at a bound, or found nothing after passing over an element on its
-own box, it hit-tests up to 60 points across the area where the root can paint (the
+A text node longer than 2,000 characters, such as a plain source view’s text, is
+measured over its first 2,000 only, since its boxes cost in proportion to its lines (3
+ms a call for the corpus’s `app.js` gutter of 41,000 characters, in every frame of that
+view, before the bound); one whose start is not shown sends the search on to the hit
+test. When the walk stops at a bound, or found nothing after passing over an element on
+its own box, it hit-tests up to 60 points across the area where the root can paint (the
 viewport, cut by the root and every ancestor that clips), at four columns: first the two
-top rows of that area and of the root, where a view’s content starts, then rows coarse
-to fine. It starts no point after 3 ms of the call (the first always runs) and marks the
-frame’s read `searchTruncated` when it stops there, and it stops at the first point that
-finds content. A point whose topmost element (`elementFromPoint`) is outside the root,
-such as an overlay, does not show the root.
-Otherwise that element and its ancestors up to the root are tested as media and by their
-first 32 child text nodes, and, the first time a topmost element is met, so is the text
-the caret lands on there (`caretPositionFromPoint`), which sees text under
-`pointer-events: none` and the text nearest the point, so a lone line between the rows
-is found; a long text node is measured around the caret’s offset.
+top rows of that area and of the root, where a view’s content starts, then as many rows
+as the points left fill, coarse to fine and each level from its outer rows inward, so
+the last level the 60 points reach still spans the area down to its bottom eighth.
+It stops at the first point that finds content.
+Its bound is counted in work, so the same page gives the same answer under any load:
+each point is charged the child nodes of every element from the one it lands on up to
+the root, and one per 8 characters of the text among that element’s first 32 children,
+and no point starts once the charge reaches 80,000 (the first always runs).
+A call that stops there marks the frame’s read `searchTruncated`; its time is only
+reported, in the read’s cost.
+A point whose topmost element (`elementFromPoint`) is outside the root, such as an
+overlay, does not show the root.
+Otherwise that element and its ancestors up to the root are tested as media and by the
+text among their first 32 children (elements and blank text count toward the 32), and,
+the first time a topmost element is met, so is the text the caret lands on there
+(`caretPositionFromPoint`), which sees text under `pointer-events: none` and the text
+nearest the point, so a lone line between the rows is found; that node is measured from
+the line the caret lands on.
 Media are tested as the walk reaches them, not by a separate pass over the whole
 subtree.
 
-The bounds and the budget come from
-[transitions-search-cost.mjs](transitions-search-cost.mjs), which times one call on
-synthetic documents in headless Chrome, scrolled to the end of their lines (dense), or
-past them onto a tail that shows a heading at the screen’s top, one line at its bottom,
-lines under `pointer-events: none`, or nothing (blank).
-Median of 20 calls in ms, revision 5 / revision 6, at a load average of about 6 (read
-the ratios, not the values); `(cut)` marks a call that stopped at the budget, and every
-other call found what is on screen:
+The bounds come from [transitions-search-cost.mjs](transitions-search-cost.mjs), which
+times one call on synthetic documents in headless Chrome, scrolled to the end of their
+lines (dense), or past them onto a tail that shows a heading at the screen’s top, one
+line at its bottom, lines under `pointer-events: none`, or nothing (blank), and prints
+the search’s counts beside each time.
+Median of 20 calls in ms, revision 5 / revision 6, at a load average falling from about
+17 to 7 (read the ratios, not the values); `(cut)` marks a call that stopped at the
+hit-test bound, and every other call found what is on screen:
 
 | Document | Lines | Dense | Sparse top | Sparse bottom | `pointer-events: none` | Blank |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| one `<div>` per line | 10,000 | 13.5 / 1.9 | 13.8 / 1.8 | 13.1 / 1.8 | 12.9 / 1.8 | 13.6 / 4.9 (cut) |
-| one `<div>` per line | 40,000 | 54.0 / 1.7 | 52.7 / 1.8 | 53.5 / 1.8 | 52.9 / 1.7 | 55.4 / 5.2 (cut) |
-| lines of 8 highlighted spans | 10,000 | 16.2 / 1.9 | 16.6 / 1.9 | 16.6 / 2.1 | 16.2 / 1.9 | 20.3 / 4.9 (cut) |
-| lines of 8 highlighted spans | 40,000 | 66.2 / 1.7 | 66.3 / 2.0 | 65.5 / 2.0 | 66.1 / 2.0 | 83.1 / 5.6 (cut) |
-| table rows of 3 cells | 10,000 | 14.7 / 1.8 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 1.8 / 0.1 |
-| table rows of 3 cells | 40,000 | 57.9 / 2.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 7.4 / 0.1 |
-| sections of 50 lines | 10,000 | 0.3 / 0.3 | 0.3 / 0.3 | 0.3 / 0.2 | 0.3 / 0.3 | 0.8 / 0.6 |
-| sections of 50 lines | 40,000 | 1.1 / 1.1 | 1.1 / 1.1 | 1.1 / 1.1 | 1.1 / 1.1 | 3.1 / 1.9 |
+| one `<div>` per line | 10,000 | 13.5 / 1.9 | 14.0 / 1.7 | 13.0 / 1.7 | 12.7 / 1.8 | 13.3 / 2.7 (cut) |
+| one `<div>` per line | 40,000 | 53.9 / 1.7 | 52.9 / 1.7 | 53.5 / 1.8 | 52.1 / 1.8 | 54.8 / 1.8 (cut) |
+| lines of 8 highlighted spans | 10,000 | 14.6 / 2.0 | 14.6 / 1.9 | 16.2 / 1.9 | 16.5 / 2.0 | 19.9 / 3.3 (cut) |
+| lines of 8 highlighted spans | 40,000 | 66.5 / 1.9 | 66.0 / 1.9 | 64.7 / 1.9 | 65.6 / 1.9 | 81.5 / 1.8 (cut) |
+| table rows of 3 cells | 10,000 | 14.0 / 1.9 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 1.8 / 0.2 |
+| table rows of 3 cells | 40,000 | 57.8 / 2.0 | 0.0 / 0.0 | 0.0 / 0.0 | 0.0 / 0.0 | 7.4 / 0.1 |
+| sections of 50 lines | 10,000 | 0.3 / 0.3 | 0.3 / 0.3 | 0.3 / 0.3 | 0.3 / 0.3 | 0.7 / 0.5 |
+| sections of 50 lines | 40,000 | 1.1 / 1.0 | 1.1 / 1.0 | 1.1 / 1.0 | 1.1 / 1.0 | 3.2 / 1.7 |
 
-A long document now costs what a short one does, because the walk is bounded and the
-first hit-test point finds the lines, the heading, the lone line, or the text under
-`pointer-events: none`. Over blank space past a long list the budget stops the call at
-about 5 ms, where each point costs a walk of the siblings it lands among (about 1.1 ms
-for `elementFromPoint` and 1.7 ms for the caret over 40,000 lines), so 60 points cost 68
-to 123 ms before the budget; such a frame reads blank, which it is.
-On the product, a frame of the corpus’s `app.js` source view reads in 2.4 ms (5.1 ms
-before the gutter’s bound), and of its Markdown files in under 1 ms.
+A long document of short lines now costs the search what a short one does, because the
+walk is bounded and the first hit-test point finds the lines, the heading, the lone
+line, or the text under `pointer-events: none`. Over blank space past a long flat list
+the hit-test bound stops the call: after 8 points past 10,000 lines and 2 past 40,000,
+each charged the list’s children, where all 60 points would cost 68 to 123 ms over
+40,000 lines; such a frame reads blank, which it is.
+The table rows and sections were charged little enough that every blank call tried all
+60 points. On the product, a frame of the corpus’s `app.js` source view read in 2.4 ms
+while the search still measured the first 2,000 characters of its gutter (5.1 ms with
+the whole gutter), and of its Markdown files in under 1 ms; the search now passes over
+the gutter, which has not been timed on the product.
+That bound is the search’s alone, and the probe times the search alone.
+The rest of a frame’s read, its state’s prompt and placeholder queries, the regions’
+selectors, and the alert query, traverses the view in every frame: review B of #442
+counted 15 such traversals a read, a million element visits on a highlighted source of
+8,671 lines, against the search’s 3, so on a large view the read costs in proportion to
+its DOM (`mb-gnh9`). A text node costs up to its 2,000 characters and their line boxes,
+so a view of many long nodes, such as a large file’s 64 KiB chunks after Load more,
+scrolled to its end, costs the search up to 400 of them (`mb-jg75`). Neither has been
+measured on the product’s views; both wait on the A/A run of revision 6.
 
 **Scenario revisions.** Each row carries `scenario_revision`, and `compare` refuses to
 mix revisions but judges two sets of rows of one older revision against each other,
@@ -967,7 +989,17 @@ defined as in revision 5, so rounds on the two revisions differ by this list onl
   as 0, 0, 0 for a 66 px move, one parked at `left: -10000px`, which it read as 10,000
   px, and one parked at `left: 100%`, translated off by `translateX(100%)`, or parked
   below inside the scrolling pane are now passed over like one hidden with
-  `display: none`. One clipped away by `clip-path` is still taken, as in revision 5.
+  `display: none`. Among the matches a scroll could bring on screen, the one that was
+  the region in the previous read comes first while it still can, so a shown page
+  scrolled out of its pane stays the region rather than a retained one parked below it
+  in the pane; when the shown page is replaced, the first match in document order is
+  taken. One clipped away by `clip-path` is still taken, as in revision 5.
+- **The line-number gutter is not content.** A source view’s `.source-line-numbers` is
+  passed over like a label, so a source view is useful only once its code is on screen,
+  and the search measures the code’s first token rather than the gutter’s first 2,000
+  characters. The product writes the gutter and the code in one `innerHTML`
+  (`src/metabrowser/static/plugin-sdk-views.js`), so the two are painted in the same
+  frame and the ready frame does not move.
 - **Four reporting fixes** (`mb-5xzz`, C3). `compare` marks a settle time that either
   side reached after the other side’s shortest window closed (revision 5 marked only a
   control that settled after the candidate’s window); equal medians with as many pairs
@@ -977,20 +1009,24 @@ defined as in revision 5, so rounds on the two revisions differ by this list onl
   placeholder appearing beside the prompt no longer ends it; and a placeholder root
   reads `P` (above).
 - **New readings.** The recorder’s own read cost per frame; retained memory at every
-  journey’s end and, with `--memory-after`, after named transitions; a
-  `sourceHighlighted` milestone on `files.cold.source_large` and
-  `files.revisit.source_large`; and the `dwell` journey, last in the default order.
+  journey’s end and, with `--memory-after`, after named transitions, shown and not
+  judged (**How a round uses it**, below); a `sourceHighlighted` milestone on
+  `files.cold.source_large` and `files.revisit.source_large`; and the `dwell` journey,
+  last in the default order.
   The two source transitions’ predicate is evaluated in each of their frames until it
-  holds, so their read cost includes it, and the wait for it comes out of the 700 ms gap
-  after them as every milestone’s does: when highlighting completes more than 700 ms
-  after the window closes, the next Files transition starts later than in revision 5.
-  The `dwell` journey also runs in the warm-up pass, as every journey does, so its four
-  files are read by a warm server like every other subject; leaving it out would measure
-  them server-cold. A hover-click row records its realized dwell, `hoverDwellMs`, from
-  the pointer’s arrival over the target (its first `pointerover`) to the press, shown as
-  `hover_dwell_ms` and not judged: it runs some milliseconds past the requested
-  `hoverMs` (23 ms for a 0 ms dwell on a loaded machine), and the product’s hover intent
-  is 250 ms, so the 200 ms point can land on either side of it.
+  holds, including the frames read after the window while it is awaited; those frames
+  are read back after the wait, so each milestone records the reads up to it
+  (`milestoneReads`), and the wait comes out of the 700 ms gap after them as every
+  milestone’s does: when highlighting completes more than 700 ms after the window
+  closes, the next Files transition starts later than in revision 5. The `dwell` journey
+  also runs in the warm-up pass, as every journey does, so its four files are read by a
+  warm server like every other subject; leaving it out would measure them server-cold.
+  A hover-click row records its realized dwell, `hoverDwellMs`, from the pointer’s
+  arrival over the target (its first `pointerover` inside the element the transition
+  armed, so a boundary event elsewhere under a stationary pointer is not the arrival) to
+  the press, shown as `hover_dwell_ms` and not judged: it runs some milliseconds past
+  the requested `hoverMs` (23 ms for a 0 ms dwell on a loaded machine), and the
+  product’s hover intent is 250 ms, so the 200 ms point can land on either side of it.
   The end-of-journey reading runs after a journey’s last transition and before its
   browser closes, so it changes nothing measured but adds a garbage collection and a few
   protocol calls between journeys.
@@ -1066,25 +1102,40 @@ start for a landing).
   sets as it writes the token markup, and the view holds a token span.
   A build that highlights another way must set the same mark, or the milestone never
   arrives. A milestone that never arrives is `null` and named in `milestonesMissing`;
-- the recorder’s own read (revision 6): `readCostMaxMs`, the longest read of a frame in
-  the window, `readCostToReadyMs`, the reads summed up to the ready frame, and
-  `searchTruncatedFrames`, the frames whose content search stopped at its hit-test
-  budget, where on-screen content can have read as blank, and
-  `searchTruncatedBeforeInput`, the same count for the arm check and the frames before
+- the recorder’s own read (revision 6), on the page clock, which resolves 0.1 ms there
+  (the page is not cross-origin isolated), so each read is rounded to 0.1 ms:
+  `readCostMaxMs`, the longest read of a frame in the window, `readCostToReadyMs`, the
+  reads summed up to the ready frame, and for each milestone in `milestoneReads` the
+  longest read, the reads summed, and the truncated searches up to it, the frames read
+  while it was awaited after the window included.
+  `searchTruncatedFrames` counts the window’s frames whose content search stopped at its
+  hit-test bound, where on-screen content can have read as blank,
+  `searchTruncatedToReady` the part of them up to the ready frame, and
+  `searchTruncatedAfterWindow` those read while milestones were awaited.
+  `searchTruncatedBeforeInput` is the same count for the arm check and the frames before
   the input, which the ready-before-input guard read: when it is not 0,
   `readyBeforeInputUncertain` is true, since a truncated search there can have hidden a
   subject shown before the input.
   `convergedUncertain` marks a converged check whose search was truncated, and its
   refusal says so. A read includes the frame’s state, its regions, and the ready and
   milestone predicates, so a condition whose page makes the search work harder shows it
-  here. `compare` and `summarize` name every transition whose longest read passed
-  `READ_COST_CEILING_MS` (4 ms, about a quarter of a 60 Hz frame, in
-  `transitions-stats.mjs`), as `INSTRUMENT COST`, since the recorder may have delayed
-  that frame, and every transition with a truncated search, as `SEARCH TRUNCATED`. On a
-  transition with any truncated search on either side, `compare` does not judge its
-  ready and blank metrics (`painted_ready_ms`, `ready_ms`, `frames_to_ready`,
-  `blank_frames`, `blank_frames_after_ready`, `blank_ms`, and
-  `ready_after_last_input_ms`): each is a gap, with the reason in its verdict;
+  here. `compare` and `summarize` name every transition whose longest read, up to its
+  ready frame or a milestone, passed `READ_COST_CEILING_MS` (4 ms, about a quarter of a
+  60 Hz frame, in `transitions-stats.mjs`), as `INSTRUMENT COST`, since the recorder may
+  have delayed that frame, and every transition with a truncated search, as
+  `SEARCH TRUNCATED`. The ceiling’s basis is a search’s cost, and its comment says what
+  it does not cover: a read runs one search per root it asks about, each with its own
+  bounds; the rest of a read traverses the view unbounded; a text node costs up to 2,000
+  characters; and a frame whose read hit-tests has its pre-paint run inside the read, so
+  its `INSTRUMENT COST` is an upper bound on the instrument’s own cost.
+  Where a search was truncated, on either side, `compare` leaves unjudged what it can
+  have bent, each as a gap with the reason in its verdict: truncated before the input,
+  every judged metric of the transition, since it should perhaps have been refused; up
+  to the ready frame, every judged metric but its milestones, since readiness found late
+  moves the end of the window that the settle times, the longest task, the placeholder
+  counts, the movement, and the request, shift, and DOM node counts are measured over;
+  after the ready frame, the blank counts (`blank_frames`, `blank_frames_after_ready`,
+  `blank_ms`); and up to a milestone, that milestone;
 - retained memory (revision 6), after a full garbage collection, at every journey’s end
   (`journey.memory`, compared as `<journey>.end`) and, with `--memory-after`, after
   named transitions (`memory`): the page’s main-thread V8 heap (`Runtime.getHeapUsage`,
@@ -1099,7 +1150,12 @@ start for a landing).
   cross-origin isolated page, which the product is not.
   The collection is not something the page does on its own, so a reading between two
   transitions changes what the later one measures, which is why `--memory-after` is not
-  the standard regime; the reading at a journey’s end follows its last transition;
+  the standard regime; the reading at a journey’s end follows its last transition.
+  The reading first empties the recorder’s own logs (its frames, region boxes, DOM
+  changes, entries, and inputs since the last arm, about 10 KB a second of logging on
+  review B’s probe), which every caller has read by then, so they do not count.
+  A name `--memory-after` gives that no transition of the run measured refuses the run
+  (`memory_after`), so a misspelled one does not quietly read nothing;
 - `inputSpanMs` and `readyAfterLastInputMs` for gestures of several events, a watched
   list’s row replacements (the palette’s results), request body bytes of every POST,
   top-level preview nodes replaced, Long Tasks, Event Timing (with Chrome’s own
@@ -1128,7 +1184,8 @@ start for a landing).
   rendered subject, active tab, and mounted owner all agree;
 - `input_observed`, `hit_test`, `target_missing`, `subject_missing`, and `setup`: the
   trusted input reached the page, a press at the target’s center lands on it, and every
-  subject and setup step was found.
+  subject and setup step was found;
+- `memory_after`: every transition `--memory-after` names was measured.
 
 **How a round uses it.** Run the control and the candidate in one series, at least six
 runs each, then `compare`, naming the hypothesis’s metric with
@@ -1152,38 +1209,54 @@ says
 each candidate run divided by the control run of its pair, against `--tolerance` (1.3 by
 default, the rough cut on this loaded machine; it must be below 2). Ranges apart with
 two or more pairs beyond the tolerance is a result; one pair beyond under separated
-ranges is a rerun of that pair; ranges apart with every pair within is not a result; and
-two pairs beyond under overlapping ranges must be explained.
-One pair beyond under overlapping ranges is listed with the pair to rerun but is not a
-wrong-way result: at three runs a side it is common under load (88 of the 4,199
-comparisons of the exp-058 A/A split), and the runbook’s rerun of that pair is for a
-release. When the medians are equal, the pairs beyond the tolerance give the direction;
-when as many are beyond each way, there is none, and the pairs of both ways are named.
+ranges is a rerun of that pair; and ranges apart with every pair within is not a result.
+Under overlapping ranges the pairs beyond the tolerance are counted in each direction,
+whatever the medians do, and every verdict names them both ways: two or more beyond in
+one direction must be explained, and are a wrong-way result when that is the metric’s
+worse direction, however close the medians are and whatever the other direction holds.
+With fewer than three back-to-back pairs, one pair beyond in the worse direction is a
+gap, since the tolerance cannot be judged.
+One pair beyond under overlapping ranges, with three or more pairs, is listed with the
+pair to rerun but is not a wrong-way result: at three runs a side it is common under
+load (88 of the 4,199 comparisons of the exp-058 A/A split), and the runbook’s rerun of
+that pair is for a release.
+A line’s `direction` is the medians’, which an expectation’s first clause reads.
 A zero control median against a non-zero candidate with separated ranges is a result on
 the ranges alone, so a transition that gains its first long task in every run is a
 result; under overlapping ranges it goes through the pair rule, where a pair whose
 control is 0 and whose candidate is not is beyond any tolerance.
 A settle time one side reached after the other side’s shortest window closed (the window
 ends a settle time after the ready frame, so a build that is ready sooner is watched for
-less time) is marked, since a lower candidate value may only be a shorter window, and a
-higher one only a longer window.
-Counts (requests, replacements, movement, shifts, and retained memory) are judged on
-their ranges. Every line shows the pooled medians and ranges beside the pair ratios, and
-the report ends with the chance that two identical builds separate on one comparison at
-the n in hand, `2 / C(a + b, a)` (10% at three runs each, under 1% at five), and how
-many comparisons that predicts.
-It exits 0 when the comparison is complete with no wrong-way result, and 1 on a
-wrong-way result (a judged metric that got worse, or a rerun or an explanation owed in
-the wrong direction), a gap, or an expectation not met.
-Figures it shows but does not judge are marked: `requests_background`, `input_span_ms`,
-`next_frame_ms`, `window_ms`, `nav_settled_ms`, `uncredited_frames`,
-`tree_rows_replaced`, `subject_settlement_reads`, `blank_frames_origin_prompt`,
-`read_cost_max_ms`, `read_cost_to_ready_ms`, `hover_dwell_ms`, `memory_listeners`,
-`memory_documents`, and the `revalidated` counts.
-The memory heaps and DOM nodes (`memory_js_heap_kb`, `memory_embedder_heap_kb`,
-`memory_dom_nodes`, `memory_worker_heap_kb`) are judged lower at each `<journey>.end`,
-the guard H95, H98, and H99 (a) name; their values vary from run to run, so at three
-runs a side about one in ten separates by chance (the closing chance line counts them).
+less time) cannot be compared, since a lower candidate value may only be a shorter
+window, and a higher one only a longer window: `settled_ms` is then a gap, so it is
+neither a result nor a met expectation, and `nav_settled_ms`, shown but not judged, is
+marked.
+Counts (requests, replacements, movement, and shifts) are judged on their ranges.
+Every line shows the pooled medians and ranges beside the pair ratios, and the report
+ends with the chance that two identical builds separate on one comparison at the n in
+hand, `2 / C(a + b, a)` (10% at three runs each, under 1% at five), and how many
+comparisons that predicts.
+It exits 0 when the comparison is complete with no wrong-way result, 1 on a wrong-way
+result (a judged metric that got worse, or a rerun or an explanation owed in the wrong
+direction), a gap, or an expectation not met, 2 when it refuses, and 3 when the tool
+itself fails, with its stack.
+A met expectation accounts for its own metric, so a round that predicts a cost in the
+metric’s worse direction and sees it met exits 0, and its line is marked
+`[WRONG WAY, EXPECTED]`. Figures it shows but does not judge are marked:
+`requests_background`, `input_span_ms`, `next_frame_ms`, `window_ms`, `nav_settled_ms`,
+`uncredited_frames`, `tree_rows_replaced`, `subject_settlement_reads`,
+`blank_frames_origin_prompt`, `read_cost_max_ms`, `read_cost_to_ready_ms`,
+`milestone_read_cost_max_ms`, the `search_truncated_…` counts, `hover_dwell_ms`, the
+retained memory, and the `revalidated` counts.
+The retained memory (`memory_js_heap_kb`, `memory_embedder_heap_kb`, `memory_dom_nodes`,
+`memory_worker_heap_kb`, `memory_listeners`, `memory_documents`) is report-only: shown
+at each `<journey>.end` and after any transition read with `--memory-after`, never
+judged, and a reading that is missing is named in a note, not a gap, so it counts toward
+no exit code. A heap varies from run to run, and a candidate can retain more by design
+(H101 moves lexing into a worker, H112 keeps hosts), so whether two ranges separate says
+nothing a round can act on.
+Judging it needs a budget a round registers first, as H112 asks, which `mb-eu2t` tracks;
+until then a round that guards memory reads the table and says what it shows.
 Write the verdict with the accept rule below, and say what did not move.
 
 `compare RUNS.jsonl --aa LABEL` splits one condition’s valid runs into odd and even
@@ -1240,17 +1313,19 @@ table with one row per hypothesis, since the schema holds one decision per recor
 
 `tests/test_transitions_instrument.py` runs the instrument’s pure logic browserless and
 its recorder in headless Chrome on synthetic pages built to fail each definition above.
-Each of revision 6’s changes has a check that fails under revision 5’s logic, or under
-the revision 6 code that the review of #442 corrected: the `search` group’s seven
-shapes, windowed lists, hidden text ahead, long document, content past the walk’s bound,
-hidden roots, placeholder root, collapsed and parked retained pages, and the review’s
-tree page, the product’s clipping panes around `#tree-content`, and region page; the
-`window` group’s page, which wraps `requestAnimationFrame` to stamp every frame 34 ms
-early, so the frames drawn after a press begin, by their stamps, before it, as Chrome’s
-did once by 0.2 ms, or 34 ms late, so the frames read before it begin after it; the
-`readings` group’s memory, time to highlighted, and dwell journey on a stand-in Files
-tab; and the browserless checks of the frame window, the region log, the origin’s
-prompt, and `compare`’s marks.
+Each of revision 6’s changes has a check that fails under revision 5’s logic: the
+`search` group’s seven shapes, windowed lists, hidden text ahead, long document, content
+past the walk’s bound, the hit test’s bound and rows, a text node of more runs than are
+measured, the line-number gutter, hidden roots, placeholder root, collapsed and parked
+retained pages, and the review’s tree page, the product’s clipping panes around
+`#tree-content`, and region page, scrolled as well as at its top; the `window` group’s
+page, which wraps `requestAnimationFrame` to stamp every frame 34 ms early, so the
+frames drawn after a press begin, by their stamps, before it, as Chrome’s did once by
+0.2 ms, or 34 ms late, so the frames read before it begin after it; the `readings`
+group’s memory, time to highlighted, and dwell journey on a stand-in Files tab; and the
+browserless checks of the frame window, missed frames, the region log, the origin’s
+prompt, the reads up to a milestone, the realized dwell, and `compare`’s pair rule,
+gates, marks, expectations, and exits.
 A check that can be repeated, and that failed while the recorder refused one of its
 measurements for its frame clock alone, is taken again, up to three attempts in all.
 A pass that needed another attempt is reported as a pytest warning.
@@ -1283,22 +1358,34 @@ Since revision 6 a frame is in the window when its read came after the input, wh
 its begin time, so the edge no longer drops a frame, and a frame read before the input
 that Chrome stamped after it no longer enters; the frame’s times are still its own, so
 `paintedReadyMs` can be under a frame interval there.
+A frame whose read never came is placed by what the next frame’s tick knew: before the
+input when the input had still not reached the page, in the window when the read before
+it saw the input, and otherwise, when the input arrived between the two, by its begin
+time, which can still drop it at the edge.
 exp-058’s 462 transitions have no `framesToReady` 0, and whether any revision 5 round
 dropped a blank frame cannot be told from its samples.
 The walk weighs nothing that covers the content it reaches, in either revision: text
 under an opaque overlay still reads as content.
 The hit test does, since a point whose topmost element is outside the root shows nothing
-of it. Content smaller than the grid that escapes a pruned ancestor (a short
-fixed-position label under a block clipped to height 0) can fall between its points, and
-an element clipped away by `clip-path` is not read as hidden.
-The hit test’s budget is time, so on a slower or busier machine it tries fewer points
-before it stops: sparse content past the first point can then read as blank, and the
-frame says so (`searchTruncated`). On the synthetic pages every sparse case was found at
-the first point, which always runs.
-A text node is measured over at most 2,000 characters, from its start or from the
-caret’s offset in the hit test, and only over its runs of non-blank lines, so blank
-lines on screen after text that is not do not read as content; on screen beyond those
-2,000 characters, a long node’s text is found only through the hit test.
+of it. Content smaller than the grid that escapes a pruned ancestor can fall between its
+points, and an element clipped away by `clip-path` is not read as hidden.
+Content positioned out of a block collapsed to height 0 with its overflow clipped (a
+fixed or absolute box whose containing block is outside that block, which CSS does not
+clip) is not found at any size: the walk passes over the collapsed block without sending
+the search on to the hit test, and a box found by the hit test is cut by every clipping
+ancestor, the collapsed one included.
+The product’s views have no such shape.
+The hit test’s bound is counted in work, so a busier machine tries the same points and
+reaches the same answer; sparse content past the points the bound allows reads as blank,
+and the frame says so (`searchTruncated`). On the synthetic pages every sparse case was
+found at the first point, which always runs.
+The work is a model of what Chrome’s hit test passes, the children and text of the
+elements a point lands among, so a shape it undercounts costs more per point than its
+charge says, which the frame’s read cost shows.
+A text node is measured over at most 2,000 characters and 32 runs of non-blank lines,
+from its start, or in the hit test from the line the caret lands on, so blank lines on
+screen after text that is not do not read as content; on screen beyond those characters
+or runs, a node’s text is found only through the hit test.
 The search reads an off-screen element’s scroll size to see whether its overflow reaches
 the viewport. On 200 `content-visibility: auto` chunks of 50 lines scrolled to the
 middle, the chunking H99 (b) proposes, a call found the lines in 0.2 ms, but whether

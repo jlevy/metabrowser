@@ -10,59 +10,125 @@ export const SCENARIO_REVISION = 6;
 export const MIN_RUNS = 3;
 // A frame whose recorder read took longer than this may have been delayed by the
 // instrument rather than the product: about a quarter of a 60 Hz frame. Reads on the
-// product's views measured 0.4 to 2.5 ms a frame; the bounded search's worst case on the
-// synthetic pages, a blank screen past a long list (the walk's 1,500 visits, about 2 ms,
-// then the hit test's 3 ms budget and the point it started), is about 5 ms, so it is
-// named. compare and summarize name every transition that read longer (revision 6).
+// product's views measured 0.4 to 2.5 ms a frame, and the bounded search's worst case on
+// the synthetic pages of transitions-search-cost.mjs, a blank screen past a long list,
+// 1.8 to 3.3 ms a call (README, **How content is found**), so such a frame is named when
+// the rest of its read passes the remainder. compare and summarize name every transition
+// that read longer, up to its ready frame or to any of its milestones (revision 6).
+// What this covers, and what it does not:
+// - The bound is a search's: the walk's 1,500 visits and the hit test's HIT_WORK. A read
+//   can run one search per root it asks about (the state's, then a ready predicate's
+//   other root), each with its own bounds, so a read's search cost is bounded only by the
+//   searches it runs times one search's.
+// - The rest of a read (the state's prompt and placeholder queries, the regions'
+//   selectors, the alert query) traverses the view and is not bounded: on large views it
+//   is the larger part (review B of #442 counted 15 traversals a read).
+// - A text node costs up to LONG_TEXT characters and their line boxes, so a view of many
+//   long text nodes costs more than the synthetic pages' short lines did.
+// - The hit test brings the frame's pre-paint up to date before the frame does, so a
+//   hit-testing frame's read includes work the frame would have done anyway, and its
+//   INSTRUMENT COST note is an upper bound on the instrument's own cost.
 export const READ_COST_CEILING_MS = 4;
 
 /**
- * Transitions whose recorder read exceeded READ_COST_CEILING_MS in some frame, or whose
- * content search stopped at its hit-test budget, from `collect` entries: "id (…)".
+ * Transitions whose recorder read exceeded READ_COST_CEILING_MS in some frame up to its
+ * ready frame or a milestone, or whose content search stopped at its hit-test bound,
+ * from `collect` entries, as `{ id, detail }`.
  */
 export function instrumentDisturbed(entries) {
   const out = { slow: [], truncated: [] };
   for (const e of entries) {
-    const cost = (e.values.read_cost_max_ms ?? []).map((x) => x.v);
-    if (cost.length && Math.max(...cost) > READ_COST_CEILING_MS) {
-      out.slow.push(`${e.id} (longest read ${Math.max(...cost)} ms)`);
+    const longest = (key) => Math.max(...valuesOf(e, key));
+    const reads = [
+      ["read_cost_max_ms", ""],
+      ["milestone_read_cost_max_ms", " before a milestone"],
+    ].filter(([key]) => valuesOf(e, key).length && longest(key) > READ_COST_CEILING_MS);
+    if (reads.length) {
+      const [key, where] = reads.sort((a, b) => longest(b[0]) - longest(a[0]))[0];
+      out.slow.push({ id: e.id, detail: `longest read ${longest(key)} ms${where}` });
     }
-    const cut = truncation(e);
+    const cut = truncation(e).all;
     if (cut.total > 0) {
-      out.truncated.push(`${e.id} (${cut.total} frame(s) in ${cut.runs} run(s))`);
+      out.truncated.push({ id: e.id, detail: `${cut.total} frame(s) in ${cut.runs} run(s)` });
     }
   }
   return out;
 }
 
 /**
- * The frames of one transition, from arm to the end of its window, whose content search
- * stopped at its hit-test budget, summed over a condition's runs: in the window, and in
- * the arm check and the frames before the input, which the ready-before-input guard read.
+ * The frames of one transition whose content search stopped at its hit-test bound,
+ * summed over a condition's runs, as `{ total, runs }` per part: `beforeInput` (the arm
+ * check and the frames before the input, which the ready-before-input guard read),
+ * `toReady` (the window up to the ready frame), `window` (all of the window),
+ * `afterWindow` (the frames read while milestones were awaited), and `all`.
  */
 export function truncation(entry) {
-  const byRun = new Map();
-  for (const key of ["search_truncated_frames", "search_truncated_before_input"]) {
-    for (const x of entry?.values[key] ?? []) {
-      byRun.set(x.pair, (byRun.get(x.pair) ?? 0) + x.v);
+  const sum = (keys) => {
+    const byRun = new Map();
+    for (const key of keys) {
+      for (const x of entry?.values[key] ?? []) {
+        byRun.set(x.pair, (byRun.get(x.pair) ?? 0) + x.v);
+      }
     }
-  }
-  const counts = [...byRun.values()];
-  return { total: counts.reduce((a, v) => a + v, 0), runs: counts.filter((v) => v > 0).length };
+    const counts = [...byRun.values()];
+    return { total: counts.reduce((a, v) => a + v, 0), runs: counts.filter((v) => v > 0).length };
+  };
+  return {
+    beforeInput: sum(["search_truncated_before_input"]),
+    toReady: sum(["search_truncated_to_ready"]),
+    window: sum(["search_truncated_frames"]),
+    afterWindow: sum(["search_truncated_after_window"]),
+    all: sum([
+      "search_truncated_before_input",
+      "search_truncated_frames",
+      "search_truncated_after_window",
+    ]),
+  };
 }
 
-// The judged metrics a truncated search can bend: a frame that read blank with content on
-// screen, readiness found late, or a subject shown before the input not seen. On a
-// transition with truncated searches on either side they are a gap, not a judgement.
-const BENT_BY_TRUNCATION = new Set([
-  "painted_ready_ms",
-  "ready_ms",
-  "frames_to_ready",
-  "blank_frames",
-  "blank_frames_after_ready",
-  "blank_ms",
-  "ready_after_last_input_ms",
-]);
+// The judged metrics a search truncated after the ready frame can bend: a frame in the
+// window that read blank with content on screen. Readiness was already found, so the
+// window's end did not move.
+const BENT_AFTER_READY = new Set(["blank_frames", "blank_frames_after_ready", "blank_ms"]);
+
+/**
+ * Why a truncated content search leaves a judged metric of a transition unjudged, or
+ * null. A search truncated before the input can have hidden a subject shown before it,
+ * so the transition should have been refused: every judged metric is a gap. One
+ * truncated up to the ready frame can have found readiness late, and with it the end of
+ * the window that every other figure is measured over (settle times, longest task,
+ * placeholders, movement, requests, shifts, DOM nodes): every judged metric is a gap,
+ * but a milestone, which has its own count. After the ready frame it bends the blank
+ * counts alone, and up to a milestone that milestone's time.
+ */
+export function truncationGate(m, ea, eb, la, lb) {
+  if (m.better === null) {
+    return null;
+  }
+  const [ta, tb] = [truncation(ea), truncation(eb)];
+  const parts = [];
+  const add = (a, b, where) => {
+    if (a || b) {
+      parts.push(`${a} ${la} and ${b} ${lb} frame(s) ${where}`);
+    }
+  };
+  add(ta.beforeInput.total, tb.beforeInput.total, "before the input");
+  if (m.milestone) {
+    add(ea.milestoneCut[m.key] ?? 0, eb.milestoneCut[m.key] ?? 0, "up to this milestone");
+  } else {
+    add(ta.toReady.total, tb.toReady.total, "up to the ready frame");
+    if (BENT_AFTER_READY.has(m.key)) {
+      add(
+        ta.window.total - ta.toReady.total,
+        tb.window.total - tb.toReady.total,
+        "after the ready frame",
+      );
+    }
+  }
+  return parts.length
+    ? `not judged: the content search stopped at its hit-test bound in ${parts.join("; ")} of this transition, where on-screen content can have read as blank, readiness or a milestone as late (and the window's end with it), or a subject shown before the input as not shown (gap)`
+    : null;
+}
 
 // What an older revision's rows record differently. `compare` judges two sets of rows of
 // one revision against each other, with this note, and refuses to mix revisions.
@@ -97,6 +163,15 @@ export function commitsLandingOf(journeys) {
     return null;
   }
   return seen.size === 1 ? [...seen][0] : "mixed";
+}
+
+/**
+ * The transitions `--memory-after` named that no transition of a run's journeys measured,
+ * so a misspelled or skipped one refuses the run instead of reading nothing.
+ */
+export function unmeasuredMemoryAfter(names, journeys) {
+  const measured = new Set((journeys ?? []).flatMap((j) => (j.transitions ?? []).map((t) => t.id)));
+  return (names ?? []).filter((id) => !measured.has(id));
 }
 
 /** Each transition whose recorded `landing` differs across `rows`: "id: a / b". */
@@ -156,8 +231,20 @@ export const METRICS = [
   // when the instrument cost one condition more, and never judged.
   T("read_cost_max_ms", (t) => t.readCostMaxMs, null),
   T("read_cost_to_ready_ms", (t) => t.readCostToReadyMs, null),
+  // The longest read up to any of the transition's milestones, the frames read while
+  // they were awaited after the window included.
+  T(
+    "milestone_read_cost_max_ms",
+    (t) => {
+      const reads = Object.values(t.milestoneReads ?? {}).filter((x) => x?.maxMs != null);
+      return reads.length ? Math.max(...reads.map((x) => x.maxMs)) : undefined;
+    },
+    null,
+  ),
   C("search_truncated_frames", (t) => t.searchTruncatedFrames, null),
+  C("search_truncated_to_ready", (t) => t.searchTruncatedToReady, null),
   C("search_truncated_before_input", (t) => t.searchTruncatedBeforeInput, null),
+  C("search_truncated_after_window", (t) => t.searchTruncatedAfterWindow, null),
   ...[
     ["shell_tools_ready_ms", "shellToolsReady"],
     ["styled_markdown_ms", "styledMarkdown"],
@@ -167,6 +254,7 @@ export const METRICS = [
     ["pr_description_final_ms", "prDescriptionFinal"],
   ].map(([key, name]) => ({
     ...T(key, (t) => t.milestones?.[name]),
+    milestone: name,
     // A transition that declares the milestone and never reached it has a missing value,
     // even when no run on either side reached it.
     declared: (t) => !!t.milestones && name in t.milestones,
@@ -197,16 +285,20 @@ export const METRICS = [
   C("list_rows_replaced_below_selection", (t) => t.list?.rowsReplacedBelowSelection),
   C("list_row_replacements", (t) => t.list?.rowReplacements),
   // Retained memory after a garbage collection (revision 6), read at every journey's end
-  // and after a transition a round names with --memory-after. Judged on its ranges.
+  // and after a transition a round names with --memory-after. Report-only: a heap varies
+  // from run to run and a candidate can retain more by design (H101's worker, H112's
+  // kept hosts), so ranges alone say nothing a round can act on. It is shown, never
+  // judged, and a missing reading is named in a note, not a gap, until a round's protocol
+  // registers a budget to judge it against.
   ...[
-    ["memory_js_heap_kb", (t) => t.memory?.jsHeapUsedKb, "lower"],
-    ["memory_embedder_heap_kb", (t) => t.memory?.embedderHeapUsedKb, "lower"],
-    ["memory_dom_nodes", (t) => t.memory?.domNodes, "lower"],
-    ["memory_worker_heap_kb", (t) => t.memory?.workerHeapUsedKb, "lower"],
-    ["memory_listeners", (t) => t.memory?.listeners, null],
-    ["memory_documents", (t) => t.memory?.documents, null],
-  ].map(([key, get, better]) => ({
-    ...C(key, get, better),
+    ["memory_js_heap_kb", (t) => t.memory?.jsHeapUsedKb],
+    ["memory_embedder_heap_kb", (t) => t.memory?.embedderHeapUsedKb],
+    ["memory_dom_nodes", (t) => t.memory?.domNodes],
+    ["memory_worker_heap_kb", (t) => t.memory?.workerHeapUsedKb],
+    ["memory_listeners", (t) => t.memory?.listeners],
+    ["memory_documents", (t) => t.memory?.documents],
+  ].map(([key, get]) => ({
+    ...C(key, get, null),
     memory: true,
     // A journey's end whose reading failed has a missing value, not none to compare.
     declared: (t) => t.end === true && !t.memory,
@@ -313,6 +405,9 @@ export function collect(condition) {
             runs: 0,
             values: {},
             declared: {},
+            // Per milestone metric, the frames up to that milestone whose content search
+            // stopped at its bound, summed over the runs.
+            milestoneCut: {},
             end: t.end === true,
           });
         }
@@ -322,6 +417,10 @@ export function collect(condition) {
         for (const m of METRICS) {
           if (t.end && !m.memory) {
             continue;
+          }
+          const cut = m.milestone ? (t.milestoneReads?.[m.milestone]?.truncated ?? 0) : 0;
+          if (cut) {
+            entry.milestoneCut[m.key] = (entry.milestoneCut[m.key] ?? 0) + cut;
           }
           const v = m.get(t);
           if (v !== null && v !== undefined) {
@@ -401,17 +500,24 @@ export function pairRatios(ea, eb, key) {
   return out;
 }
 
-/** The judgement of one metric of one transition, both sides having enough values. */
+/**
+ * The judgement of one metric of one transition, both sides having enough values.
+ * `direction` is the medians' (an expectation's first clause reads it). A result on the
+ * ranges is about that direction; one on the pairs, about the direction of the pairs
+ * beyond the tolerance, which are counted each way whatever the medians do: two or more
+ * beyond in one direction must be explained, and are a wrong-way result when that
+ * direction is the metric's worse one, as the runbook's rule says.
+ */
 export function judge(m, sa, sb, pairs, tolerance) {
   const overlap = !(sb.min > sa.max || sb.max < sa.min);
   const direction = sb.median > sa.median ? "higher" : sb.median < sa.median ? "lower" : "same";
   const out = { overlap, direction, outcome: "none", verdict: "no detected difference" };
   const worse = m.better === "lower" ? "higher" : m.better === "higher" ? "lower" : null;
+  // The direction the outcome is about.
+  let about = direction;
   const finish = () => {
     out.wrongWay =
-      worse !== null &&
-      out.direction === worse &&
-      !["none", "within", "pair"].includes(out.outcome);
+      worse !== null && about === worse && !["none", "within", "pair"].includes(out.outcome);
     return out;
   };
   if (m.kind === "count" || m.kind === "value") {
@@ -438,54 +544,58 @@ export function judge(m, sa, sb, pairs, tolerance) {
     up: pairs.filter((p) => p.r >= tolerance).map((p) => p.pair),
     down: pairs.filter((p) => p.r <= 1 / tolerance).map((p) => p.pair),
   };
-  if (P < MIN_RUNS) {
-    if (!overlap) {
+  const beyond = { higher: out.pairs.up, lower: out.pairs.down };
+  const named = `higher ${beyond.higher.join(", ") || "none"}; lower ${beyond.lower.join(", ") || "none"}`;
+  if (!overlap) {
+    // Ranges apart: every pair lies on the medians' side, so only that side's can be beyond.
+    if (P < MIN_RUNS) {
       out.outcome = "unpaired";
       out.verdict = `${direction}, ranges apart; the tolerance is not judged with ${P} back-to-back pair(s) (gap)`;
+      return finish();
     }
-    return finish();
-  }
-  // Equal medians say nothing about direction; the pairs beyond the tolerance do.
-  if (out.direction === "same" && out.pairs.up.length !== out.pairs.down.length) {
-    out.direction = out.pairs.up.length > out.pairs.down.length ? "higher" : "lower";
-  }
-  const dir = out.direction;
-  // Equal medians with as many pairs beyond the tolerance each way give no direction:
-  // the pairs of both ways are named (revision 6; before, one pair of one way was named
-  // as "same beyond"). Equal medians always overlap.
-  if (dir === "same" && out.pairs.up.length > 0) {
-    const n = out.pairs.up.length;
-    const named = `higher ${out.pairs.up.join(", ")}; lower ${out.pairs.down.join(", ")}`;
-    if (n === 1) {
-      out.outcome = "pair";
-      out.verdict = `ranges overlap and the medians are equal; one pair of ${P} is higher and one lower beyond the ${tolerance}x tolerance (${named}): rerun both pairs back to back before a release (listed, not a wrong-way result)`;
+    const k = beyond[direction].length;
+    if (k >= 2) {
+      out.outcome = "result";
+      out.verdict = `${direction}, ranges apart and beyond the ${tolerance}x tolerance in ${k} of ${P} pairs (result)`;
+    } else if (k === 1) {
+      out.outcome = "rerun";
+      out.verdict = `${direction}, ranges apart; one pair of ${P} beyond the ${tolerance}x tolerance (${beyond[direction][0]}): rerun that pair back to back and judge the rerun (not yet a result)`;
     } else {
-      out.outcome = "explain";
-      out.verdict = `ranges overlap and the medians are equal, but ${n} of ${P} pairs are higher and ${n} lower beyond the ${tolerance}x tolerance (${named}): explain before accepting`;
+      out.outcome = "within";
+      out.verdict = `${direction}, ranges apart but every pair within the ${tolerance}x tolerance (not a result)`;
     }
     return finish();
   }
-  const beyond = dir === "lower" ? out.pairs.down : out.pairs.up;
-  const k = beyond.length;
-  if (!overlap && k >= 2) {
-    out.outcome = "result";
-    out.verdict = `${direction}, ranges apart and beyond the ${tolerance}x tolerance in ${k} of ${P} pairs (result)`;
-  } else if (!overlap && k === 1) {
-    out.outcome = "rerun";
-    out.verdict = `${direction}, ranges apart; one pair of ${P} beyond the ${tolerance}x tolerance (${beyond[0]}): rerun that pair back to back and judge the rerun (not yet a result)`;
-  } else if (!overlap) {
-    out.outcome = "within";
-    out.verdict = `${direction}, ranges apart but every pair within the ${tolerance}x tolerance (not a result)`;
-  } else if (k >= 2) {
+  // Overlapping ranges. The worse direction is looked at first.
+  const order = worse === "lower" ? ["lower", "higher"] : ["higher", "lower"];
+  const many = order.find((d) => beyond[d].length >= 2);
+  if (many) {
+    about = many;
     out.outcome = "explain";
-    out.verdict = `ranges overlap, but ${k} of ${P} pairs are ${dir} beyond the ${tolerance}x tolerance: explain before accepting`;
-  } else if (k === 1) {
-    // The runbook reruns a pair beyond the tolerance whatever the ranges do, so it is
-    // listed with the pair to rerun. Under overlapping ranges it is not counted as a
-    // wrong-way result: one pair in three beyond 1.3x is common under load (88 of the
-    // 4,199 comparisons of the exp-058 A/A split), and would fail every comparison.
+    out.verdict = `ranges overlap, but ${beyond[many].length} of ${P} pairs are ${many} beyond the ${tolerance}x tolerance (${named}): explain before accepting`;
+    return finish();
+  }
+  // One pair beyond in the worse direction, with too few pairs to judge the tolerance.
+  if (P < MIN_RUNS && worse !== null && beyond[worse].length === 1) {
+    about = worse;
+    out.outcome = "unpaired";
+    out.verdict = `ranges overlap, and one of ${P} back-to-back pair(s) is ${worse} beyond the ${tolerance}x tolerance (${beyond[worse][0]}); the tolerance is not judged with ${P} pair(s) (gap)`;
+    return finish();
+  }
+  const ones = order.filter((d) => beyond[d].length === 1);
+  if (ones.length === 2) {
+    // The runbook reruns a pair beyond the tolerance whatever the ranges do, so both are
+    // listed with the pairs to rerun.
+    about = "same";
     out.outcome = "pair";
-    out.verdict = `ranges overlap; one pair of ${P} is ${dir} beyond the ${tolerance}x tolerance (${beyond[0]}): rerun that pair back to back before a release (listed, not a wrong-way result)`;
+    out.verdict = `ranges overlap; one pair of ${P} is higher and one lower beyond the ${tolerance}x tolerance (${named}): rerun both pairs back to back before a release (listed, not a wrong-way result)`;
+  } else if (ones.length === 1) {
+    // Under overlapping ranges one pair is not counted as a wrong-way result: one pair in
+    // three beyond 1.3x is common under load (88 of the 4,199 comparisons of the exp-058
+    // A/A split), and would fail every comparison.
+    about = ones[0];
+    out.outcome = "pair";
+    out.verdict = `ranges overlap; one pair of ${P} is ${about} beyond the ${tolerance}x tolerance (${beyond[about][0]}): rerun that pair back to back before a release (listed, not a wrong-way result)`;
   }
   return finish();
 }
@@ -662,24 +772,32 @@ export function compareRuns(
     [B, cb],
   ]) {
     const d = instrumentDisturbed([...entries.values()]);
+    const list = (xs) => xs.map((x) => `${x.id} (${x.detail})`).join("; ");
     if (d.slow.length) {
       notes.push(
-        `INSTRUMENT COST: in condition ${c.label}, the recorder's read took longer than ${READ_COST_CEILING_MS} ms in a frame of ${d.slow.length} transition(s), which may have delayed those frames: ${d.slow.join("; ")}`,
+        `INSTRUMENT COST: in condition ${c.label}, the recorder's read took longer than ${READ_COST_CEILING_MS} ms in a frame of ${d.slow.length} transition(s), which may have delayed those frames: ${list(d.slow)}`,
       );
     }
     if (d.truncated.length) {
       notes.push(
-        `SEARCH TRUNCATED: in condition ${c.label}, the content search stopped at its hit-test budget in frames of ${d.truncated.length} transition(s), where on-screen content can have read as blank: ${d.truncated.join("; ")}`,
+        `SEARCH TRUNCATED: in condition ${c.label}, the content search stopped at its hit-test bound in frames of ${d.truncated.length} transition(s), where on-screen content can have read as blank: ${list(d.truncated)}`,
       );
     }
   }
   const entries = [];
   const gaps = [];
+  // A report-only reading that is missing is named, and does not make the comparison
+  // incomplete: retained memory (METRICS).
+  const unreported = [];
+  const gap = (g, reportOnly = false) => (reportOnly ? unreported : gaps).push(g);
   for (const id of new Set([...ca.keys(), ...cb.keys()])) {
     const ea = ca.get(id);
     const eb = cb.get(id);
     if (!ea || !eb) {
-      gaps.push({ id, metric: null, reason: `measured only in ${ea ? A.label : B.label}` });
+      gap(
+        { id, metric: null, reason: `measured only in ${ea ? A.label : B.label}` },
+        (ea ?? eb).end,
+      );
       continue;
     }
     for (const m of METRICS) {
@@ -690,51 +808,74 @@ export function compareRuns(
         const da = ea.declared[m.key] ?? 0;
         const db = eb.declared[m.key] ?? 0;
         if (da || db) {
-          gaps.push({
-            id,
-            metric: m.key,
-            reason: `missing in ${da} of ${ea.runs} ${A.label} run(s) and ${db} of ${eb.runs} ${B.label} run(s), and present in none`,
-          });
+          gap(
+            {
+              id,
+              metric: m.key,
+              reason: `missing in ${da} of ${ea.runs} ${A.label} run(s) and ${db} of ${eb.runs} ${B.label} run(s), and present in none`,
+            },
+            m.memory,
+          );
         }
         continue;
       }
       const missA = ea.runs - va.length;
       const missB = eb.runs - vb.length;
       if (missA || missB) {
-        gaps.push({
-          id,
-          metric: m.key,
-          reason: `missing in ${missA} of ${ea.runs} ${A.label} run(s) and ${missB} of ${eb.runs} ${B.label} run(s)`,
-        });
+        gap(
+          {
+            id,
+            metric: m.key,
+            reason: `missing in ${missA} of ${ea.runs} ${A.label} run(s) and ${missB} of ${eb.runs} ${B.label} run(s)`,
+          },
+          m.memory,
+        );
       }
       if (va.length < MIN_RUNS || vb.length < MIN_RUNS) {
-        gaps.push({ id, metric: m.key, reason: `not compared: n=${va.length} and ${vb.length}` });
+        gap(
+          { id, metric: m.key, reason: `not compared: n=${va.length} and ${vb.length}` },
+          m.memory,
+        );
         continue;
       }
       const sa = stat(va);
       const sb = stat(vb);
       const j = judge(m, sa, sb, pairRatios(ea, eb, m.key), tolerance);
-      const [ta, tb] = [truncation(ea), truncation(eb)];
-      if (BENT_BY_TRUNCATION.has(m.key) && m.better !== null && (ta.total || tb.total)) {
+      const cut = truncationGate(m, ea, eb, A.label, B.label);
+      if (cut) {
         j.outcome = "truncated";
         j.wrongWay = false;
-        j.verdict = `not judged: the content search stopped at its hit-test budget in ${ta.total} ${A.label} and ${tb.total} ${B.label} frame(s) of this transition, from arm to the end of its window, where on-screen content can have read as blank, readiness as late, or a subject shown before the input as not shown (gap)`;
+        j.verdict = cut;
         gaps.push({ id, metric: m.key, reason: j.verdict });
       }
       // The window ends a settle time after the ready frame, so a condition that is ready
       // sooner is watched for less time: a settle time one side reached after the other
-      // side's window closed cannot be compared. Revision 6 marks both directions (before,
-      // a candidate watched longer than the control was not marked).
+      // side's shortest window closed cannot be compared. Both directions are marked, and
+      // a judged one is a gap, so it is neither a result nor a met expectation.
       if (m.key === "settled_ms" || m.key === "nav_settled_ms") {
         const wa = stat(valuesOf(ea, "window_ms"));
         const wb = stat(valuesOf(eb, "window_ms"));
+        const marks = [];
         if (wb && sa.median > wb.min) {
-          j.windowCut = true;
-          j.verdict += `; the control settled at ${fmtNum(sa.median, "time")} ms, after the candidate's shortest window (${fmtNum(wb.min, "time")} ms) closed, so a lower candidate value may only be a shorter window`;
+          marks.push(
+            `the control settled at ${fmtNum(sa.median, "time")} ms, after the candidate's shortest window (${fmtNum(wb.min, "time")} ms) closed, so a lower candidate value may only be a shorter window`,
+          );
         }
         if (wa && sb.median > wa.min) {
+          marks.push(
+            `the candidate settled at ${fmtNum(sb.median, "time")} ms, after the control's shortest window (${fmtNum(wa.min, "time")} ms) closed, so a higher candidate value may only be a longer window`,
+          );
+        }
+        if (marks.length) {
           j.windowCut = true;
-          j.verdict += `; the candidate settled at ${fmtNum(sb.median, "time")} ms, after the control's shortest window (${fmtNum(wa.min, "time")} ms) closed, so a higher candidate value may only be a longer window`;
+          if (m.better !== null && j.outcome !== "truncated") {
+            j.outcome = "window";
+            j.wrongWay = false;
+            j.verdict = `not judged (${j.verdict}): ${marks.join("; ")} (gap)`;
+            gaps.push({ id, metric: m.key, reason: j.verdict });
+          } else {
+            j.verdict += `; ${marks.join("; ")}`;
+          }
         }
       }
       if (j.outcome === "unpaired") {
@@ -757,8 +898,12 @@ export function compareRuns(
       });
     }
   }
+  if (unreported.length) {
+    notes.push(
+      `MEMORY READINGS MISSING (report-only, not a gap): ${unreported.map((g) => `${g.id}${g.metric ? ` ${g.metric}` : ""}: ${g.reason}`).join("; ")}`,
+    );
+  }
   const judged = entries.filter((e) => e.judged);
-  const wrongWay = judged.filter((e) => e.wrongWay);
   const chanceExpected = entries.reduce((a, e) => a + e.chance, 0);
   const expectations = expect.map((spec) => {
     const [id, key, predicted] = String(spec).split(":");
@@ -768,18 +913,29 @@ export function compareRuns(
     }
     const moved = e.direction === predicted;
     const apart = !e.overlap && e.outcome === "result";
-    const others = wrongWay.filter((x) => !(x.id === id && x.metric === key));
-    return {
-      spec,
-      found: true,
-      pass: moved && apart,
-      conditions: [
-        `1. the median moved ${predicted}: ${moved ? "yes" : "no"} (${fmtStat(e.control, e.kind)} → ${fmtStat(e.candidate, e.kind)})`,
-        `2. the ranges do not overlap at n≥${MIN_RUNS}${e.kind === "time" || e.kind === "frames" ? ", beyond the tolerance on back-to-back pairs" : ""}: ${apart ? "yes" : "no"} (${e.verdict})`,
-        `3. nothing else moved the wrong way without being accounted for: ${others.length} wrong-way result(s) elsewhere to account for`,
-      ],
-    };
+    return { spec, entry: e, found: true, pass: moved && apart, moved, apart, predicted };
   });
+  // A met expectation accounts for its own metric's movement, even in the metric's worse
+  // direction (a cost a round predicts and accepts), so it is not a wrong-way result.
+  for (const x of expectations) {
+    if (x.pass && x.entry.wrongWay) {
+      x.entry.expected = true;
+    }
+  }
+  const wrongWay = judged.filter((e) => e.wrongWay && !e.expected);
+  for (const x of expectations.filter((y) => y.found)) {
+    const e = x.entry;
+    const others = wrongWay.filter((y) => y !== e);
+    x.conditions = [
+      `1. the median moved ${x.predicted}: ${x.moved ? "yes" : "no"} (${fmtStat(e.control, e.kind)} → ${fmtStat(e.candidate, e.kind)})`,
+      `2. the ranges do not overlap at n≥${MIN_RUNS}${e.kind === "time" || e.kind === "frames" ? ", beyond the tolerance on back-to-back pairs" : ""}: ${x.apart ? "yes" : "no"} (${e.verdict})`,
+      `3. nothing else moved the wrong way without being accounted for: ${others.length} wrong-way result(s) elsewhere to account for`,
+    ];
+    delete x.entry;
+    delete x.moved;
+    delete x.apart;
+    delete x.predicted;
+  }
   let exitCode = 0;
   if (aa) {
     exitCode = gaps.length ? 1 : 0;
@@ -795,6 +951,7 @@ export function compareRuns(
     entries,
     gaps,
     wrongWay,
+    expected: judged.filter((e) => e.expected),
     expectations,
     chanceExpected,
     pairs: paired.length,
@@ -827,7 +984,7 @@ export function formatComparison(result) {
   const pr = (e) =>
     e.pairs?.median === null || e.pairs?.median === undefined
       ? "n/a"
-      : `${e.pairs.median.toFixed(2)}x (${e.pairs.min.toFixed(2)}–${Number.isFinite(e.pairs.max) ? e.pairs.max.toFixed(2) : "∞"}), ${e.direction === "same" ? `${e.pairs.up.length} higher and ${e.pairs.down.length} lower` : (e.direction === "lower" ? e.pairs.down : e.pairs.up).length} of ${e.pairs.n} beyond`;
+      : `${e.pairs.median.toFixed(2)}x (${e.pairs.min.toFixed(2)}–${Number.isFinite(e.pairs.max) ? e.pairs.max.toFixed(2) : "∞"}), ${e.pairs.up.length} higher and ${e.pairs.down.length} lower of ${e.pairs.n} beyond`;
   out.push(
     `| Transition | ${A.label} painted ready ms | ${B.label} painted ready ms | Pair ratio, median (range) | Verdict |`,
     "| --- | ---: | ---: | ---: | --- |",
@@ -840,7 +997,7 @@ export function formatComparison(result) {
   out.push("");
   const listed = entries.filter((e) => e.outcome !== "none" || e.windowCut);
   const line = (e) =>
-    `- \`${e.id}\` ${e.metric}: ${fmtStat(e.control, e.kind)} → ${fmtStat(e.candidate, e.kind)}${e.pairs ? `; pairs ${pr(e)}` : ""}; ${e.verdict}${e.judged ? "" : " [not judged]"}${e.wrongWay ? " [WRONG WAY]" : ""}`;
+    `- \`${e.id}\` ${e.metric}: ${fmtStat(e.control, e.kind)} → ${fmtStat(e.candidate, e.kind)}${e.pairs ? `; pairs ${pr(e)}` : ""}; ${e.verdict}${e.judged ? "" : " [not judged]"}${e.wrongWay ? (e.expected ? " [WRONG WAY, EXPECTED]" : " [WRONG WAY]") : ""}`;
   if (!listed.length) {
     out.push("No metric has non-overlapping ranges or pairs beyond the tolerance.");
   } else {
@@ -882,7 +1039,7 @@ export function formatComparison(result) {
       ? "an A/A check, complete; every difference above is the instrument's own spread"
       : `an A/A check with ${gaps.length} gap(s)`
     : result.exitCode === 0
-      ? "complete, with no wrong-way result"
+      ? `complete, with no wrong-way result${result.expected.length ? ` but the ${result.expected.length} an expectation met` : ""}`
       : `${result.wrongWay.length} wrong-way result(s), ${gaps.length} gap(s)${expectations.some((x) => !x.pass) ? ", an expectation not met" : ""}`;
   out.push(`Exit ${result.exitCode}: ${why}.`);
   return out;
@@ -990,7 +1147,9 @@ const TABLES = [
     columns: [
       ["read_cost_max_ms", "Longest read ms"],
       ["read_cost_to_ready_ms", "Reads to ready ms"],
+      ["milestone_read_cost_max_ms", "Longest read to a milestone ms"],
       ["search_truncated_frames", "Truncated searches"],
+      ["search_truncated_after_window", "Truncated after the window"],
     ],
   },
 ];
@@ -1066,12 +1225,10 @@ export function summarize(rows, { condition = null, allowMixed = false } = {}) {
     const entries = [...collect(c).values()];
     const disturbed = instrumentDisturbed(entries);
     for (const x of disturbed.slow) {
-      out.push(
-        `- instrument cost over ${READ_COST_CEILING_MS} ms in \`${x.split(" (")[0]}\` (${x.split(" (")[1]}`,
-      );
+      out.push(`- instrument cost over ${READ_COST_CEILING_MS} ms in \`${x.id}\` (${x.detail})`);
     }
     for (const x of disturbed.truncated) {
-      out.push(`- content search truncated in \`${x.split(" (")[0]}\` (${x.split(" (")[1]}`);
+      out.push(`- content search truncated in \`${x.id}\` (${x.detail})`);
     }
     for (const e of entries.filter((x) => x.subjects.size > 1)) {
       out.push(`- subject drift in \`${e.id}\`: ${[...e.subjects].join(", ")}`);
@@ -1173,7 +1330,10 @@ export function keepTransition(t) {
     readCostMaxMs: t.readCostMaxMs,
     readCostToReadyMs: t.readCostToReadyMs,
     searchTruncatedFrames: t.searchTruncatedFrames,
+    searchTruncatedToReady: t.searchTruncatedToReady,
     searchTruncatedBeforeInput: t.searchTruncatedBeforeInput,
+    searchTruncatedAfterWindow: t.searchTruncatedAfterWindow,
+    milestoneReads: t.milestoneReads,
     readyBeforeInputUncertain: t.readyBeforeInputUncertain,
     convergedUncertain: t.convergedUncertain,
     inputSpanMs: t.inputSpanMs,

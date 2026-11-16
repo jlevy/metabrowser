@@ -4,7 +4,7 @@
 // to their end, where the screen holds dense lines; or past them onto a tail that is
 // sparse (a heading at the top of the screen, one line at its bottom, lines under
 // `pointer-events: none`) or blank. It measures no product and takes no lock; it is how
-// the search's bounds and its hit-test budget were set (README, "Transition Navigation
+// the search's bounds and its hit-test bound were set (README, "Transition Navigation
 // Scenario", **How content is found**).
 //
 //   node explorations/performance-loop/transitions-search-cost.mjs [--recorder FILE]
@@ -14,7 +14,10 @@
 // revision's from `git show`, so two searches can be read side by side. Each figure is the
 // median of `--calls` calls, in ms; the machine's load moves the values, not the ratios.
 // A cell says `miss` when the search did not find what is on screen, and `cut` when it
-// stopped at its hit-test budget.
+// stopped at its hit-test bound. Beside the time, the last call's counts, which load does
+// not move: the walk's visits (v) and texts measured (t), the hit test's points (p) and
+// its work (w, revision 6's bound), and the characters measured (c). An older recorder
+// leaves out the counts it does not keep.
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -128,9 +131,22 @@ try {
           let found = null;
           for (let i = 0; i < ${calls}; i++) { const t = performance.now(); found = window.__tr.hasUseful(view); times.push(performance.now() - t); }
           times.sort((a, b) => a - b);
-          return { ms: times[Math.floor(times.length / 2)], found, cut: window.__tr.lastSearch?.truncated === true };
+          const s = window.__tr.lastSearch ?? {};
+          return { ms: times[Math.floor(times.length / 2)], found, cut: s.truncated === true, s };
         })()`);
-        cells.push(`${r.ms.toFixed(1)}${r.found === shown ? "" : " miss"}${r.cut ? " cut" : ""}`);
+        const counts = [
+          ["v", "visits"],
+          ["t", "texts"],
+          ["p", "points"],
+          ["w", "work"],
+          ["c", "chars"],
+        ]
+          .filter(([, k]) => typeof r.s[k] === "number")
+          .map(([l, k]) => `${l}${r.s[k]}`)
+          .join(" ");
+        cells.push(
+          `${r.ms.toFixed(1)}${r.found === shown ? "" : " miss"}${r.cut ? " cut" : ""}${counts ? ` (${counts})` : ""}`,
+        );
       }
       console.log(`| ${label} | ${n} | ${cells.join(" | ")} |`);
     }
