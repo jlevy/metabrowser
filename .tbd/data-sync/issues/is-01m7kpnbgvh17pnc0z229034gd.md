@@ -3,10 +3,11 @@ type: is
 id: is-01m7kpnbgvh17pnc0z229034gd
 title: "CI speed 2.1: split ci.yml into unit, goldens, and chrome jobs, with no fail-fast, cancellation of superseded pull request runs, time limits, a ci-ok verdict job, a red main that widens a pull request's matrix, and the merge procedure"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
+delegate: claude-code@vm
 labels: []
 dependencies:
   - type: blocks
@@ -16,8 +17,11 @@ dependencies:
   - type: blocks
     target: is-01m7kpncy9xzk6a0rhv0vxd4db
 parent_id: is-01m7kh4k0qtd75277xcq14dt1b
+hold: null
+hold_until: null
 created_at: 2026-11-17T02:51:30.714Z
-updated_at: 2026-11-17T04:31:37.019Z
+updated_at: 2026-11-17T06:43:46.184Z
+started_at: 2026-11-17T06:43:46.184Z
 ---
 Phase 2 of plan-2026-11-16-fast-ci.md: Jobs, A Red main, and Proposed Workflow. The owner answered Q1, Q3, and Q5; Q6 was decided 2026-11-17.
 
