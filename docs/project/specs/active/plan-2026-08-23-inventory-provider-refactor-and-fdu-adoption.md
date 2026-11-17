@@ -425,29 +425,30 @@ fan-out to the coordinator’s host stream.
 The 2B checklist above records two items differently from what shipped.
 Portable-path completeness was replaced by a total canonical escape, so no path is ever
 incomplete.
-The host coalescing boundary is opportunistic: the coordinator merges what is already
-queued, and no rule bounds how a recursive change is split.
+The host coalescing boundary is opportunistic: the coordinator merges what is
+already queued, and no rule bounds how a recursive change is split.
 Checkpoint 2C’s first slice states that rule.
 
 The [revisited research](../../research/research-2026-11-17-fdu-backend-revisited.md)
 re-derived the remaining work against fdu 0.6.0 and a new Linux spike in
 [`explorations/fdu-provider-spike/`](../../../../explorations/fdu-provider-spike/README.md).
-Its decisions (D1 to D12), fdu changes (F1 to F22), and Metabrowser refactors (R1 to
-R26) are referenced by number below; the research holds their reasons and evidence.
+Its decisions (D1 to D12), fdu changes (F1 to F23), and Metabrowser refactors (R1 to
+R28) are referenced by number below; the research holds their reasons and evidence.
 
 #### Checkpoint 2C: Neutral Contract, Selectable Providers, Native Projections
 
 Slice 1, provider-neutral contract (Python only, no fdu dependency):
 
-- [ ] Record decisions D1 to D11 in the inventory-provider architecture document.
+- [ ] Record decisions D1 to D12 in the inventory-provider architecture document.
 - [ ] Rewrite conformance as semantics and bounds, register every parametrized case, and
-  state and pin the implicit rules (R1, R2).
+  state and pin the implicit rules (R1, R2), and make `refresh()` read-your-writes at
+  the host (R27).
 - [ ] Move rollup and navigation wire shaping and registry identity to the host behind
   contract-owned aggregate types (R3), and type the watch vocabulary (R4).
 - [ ] Apply shared bounds, batched lookups, and page assembly (R5).
-- [ ] Apply the unreadable-directory, live-ignore, and watch-scope decisions in the Python
-  provider and host status (R6, R7), and lift the Git ignore oracle and File Rollup
-  packet to provider cases (R8).
+- [ ] Apply the unreadable-directory, live-ignore, and watch-scope decisions in the
+  Python provider and host status (R6, R7), and lift the Git ignore oracle and File
+  Rollup packet to provider cases (R8).
 - [ ] Pass an engine-facing classification document to providers (R9).
 
 Slice 2, selection and measurement (still Python-only in CI):
@@ -460,7 +461,8 @@ Slice 2, selection and measurement (still Python-only in CI):
   wheel attestation and a semantic-equality precheck, and keep the engine-only harness
   (R16 to R18).
 
-Slice 3, an explicit experimental fdu provider (after fdu F1 to F8 and F19 release):
+Slice 3, an explicit experimental fdu provider (after fdu’s open-time group, F1 to F6
+and F19, releases):
 
 - [ ] Implement `providers/fdu_inventory.py` as described in the research’s production
   adapter section, with fallbacks for any projection fdu does not yet answer.
@@ -468,16 +470,17 @@ Slice 3, an explicit experimental fdu provider (after fdu F1 to F8 and F19 relea
   naming the fdu change that removes it (D12).
 - [ ] Run the conformance registry, File Rollup packet, and route and SSE suites against
   both providers in a Linux CI job with the extra installed.
-- [ ] Delete `explorations/fdu-inventory-adapter/`’s materializing adapter once the
-  production adapter covers its measurements; keep its README and evidence as the 2A
-  record.
+- [ ] Delete the spike adapters in `explorations/fdu-inventory-adapter/` and
+  `explorations/fdu-provider-spike/` once the production adapter and maintained
+  harnesses cover their measurements; keep their READMEs and evidence as the Checkpoint
+  2A and 2026-11-17 records.
 
 Slice 4, native projections:
 
-- [ ] As fdu releases F9 to F13, replace each fallback with the native projection, pinned
-  by the same conformance cases.
-- [ ] Land the host-cost refactors (R19 to R22) that the paired measurements show mask
-  engine differences.
+- [ ] As fdu releases F7 to F13, replace each fallback with the native projection,
+  pinned by the same conformance cases.
+- [ ] Land the host-cost refactors (R19 to R22, R28) that the paired measurements show
+  mask engine differences.
 
 #### Checkpoint 2D: Prove the Composed Product
 
@@ -492,8 +495,8 @@ Slice 4, native projections:
   every supported Python and platform job.
   A source-tree import must not make integration pass.
 - [ ] Run the paired campaign in the research’s measuring section (U3, `mb-wb7e`) on
-  Linux and on the M1 Pro that holds the Python baseline, including the macOS
-  validation list.
+  Linux and on the M1 Pro that holds the Python baseline, including the macOS validation
+  list.
 - [ ] Resolve every correctness, resource, interaction, recovery, packaging, and
   supported-platform regression.
   The adoption gate requires zero fallbacks.
