@@ -630,8 +630,14 @@ least) updates its parity registry row, the views-models-routes map, and
   every five seconds.
 - **R22:** Re-measure Python-motivated host tuning (`grouped_tree_admission`, the
   cold-start wait loop, page sizes) per provider.
-- **R28:** Stop bundling navigation tallies into every `/api/tree` page read; request
-  them only where the response uses them.
+- **R28:** Measure what `/api/tree` pays for the navigation tallies it bundles into page
+  reads, and request them only where the response uses them if the cost is material.
+  The spike’s first evidence for this was a harness artifact (its tree timing waited on
+  a rollup readiness gate), so the change waits on a measurement.
+- **R31:** Handle an unpinned `VersionUnavailableError` in the routes: retry within a
+  bound or answer 503 with a retry hint, never an unhandled exception.
+  With fdu, `/api/rollup` raised it unhandled three to six times per server log on
+  `project-10` during discovery.
 
 **Close the bypasses.**
 
@@ -785,7 +791,7 @@ projections until every kind is native.
 
 **Costs:**
 
-- a sizable fdu work list (F1 to F25) and a Metabrowser refactor list (R1 to R30);
+- a sizable fdu work list (F1 to F25) and a Metabrowser refactor list (R1 to R31);
 - measurements through the harness are slower than Python for first folder counts until
   F10, F12, and F14 land.
 
@@ -854,7 +860,7 @@ Revisit only if F14 and R20 together leave the catalog bound by conversion.
 - [ ] Validate this spike on macOS using its README (tracked as a bead; the pull request
   carrying this research leaves the checklist open).
 - [ ] Record decisions D1 to D19 in the inventory-provider architecture document.
-- [ ] Track R1 to R30 as Metabrowser beads under `mb-hej8`, linking the existing beads
+- [ ] Track R1 to R31 as Metabrowser beads under `mb-hej8`, linking the existing beads
   each one absorbs.
 - [ ] Propose the fdu changes to the fdu project, starting with F2 to F6, F19, and F24,
   and correct the stale bullets in fdu’s opened-root plan (removing ignored-last ranking

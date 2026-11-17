@@ -433,7 +433,7 @@ The [revisited research](../../research/research-2026-11-17-fdu-backend-revisite
 re-derived the remaining work against fdu 0.6.0 and a new Linux spike in
 [`explorations/fdu-provider-spike/`](../../../../explorations/fdu-provider-spike/README.md).
 Its decisions (D1 to D19), fdu changes (F1 to F25), and Metabrowser refactors (R1 to
-R30) are referenced by number below; the research holds their reasons and evidence.
+R31) are referenced by number below; the research holds their reasons and evidence.
 
 #### Checkpoint 2C: Neutral Contract, Thin Adapter, Native Projections
 
@@ -470,7 +470,8 @@ releases):
 - [ ] In one change, implement `providers/fdu_inventory.py` as described in the
   research’s production adapter section, answering natively or failing typed per
   unsupported kind, with the `fdu` factory entry, `metab --inventory-provider`, and the
-  `metabrowser[fdu]` extra and its supply-chain review (D12, R10, R11, R14).
+  `metabrowser[fdu]` extra and its supply-chain review, and route handling for an
+  unpinned `VersionUnavailableError` (D12, R10, R11, R14, R31).
 - [ ] Register fdu in the serving benchmark with wheel attestation (R17), and keep the
   fallback composite as a maintained harness outside `src/` (R29).
 - [ ] Run the conformance registry, File Rollup packet, and route and SSE suites against
