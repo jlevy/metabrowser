@@ -4074,16 +4074,18 @@ a.tab-btn {
    directory by enough that it is effectively gone before one narrows, and a
    directory outshrinks the current segment the same way.
 
-   Measured on a 296px header, which is a 620px window at the default nav
-   width, showing a served root 494px wide followed by three components.
    At the header's size, the main view's 14px, the root has nothing left to
    give below a 367px header (Chrome 152, root / src / metabrowser /
    color_oklch.py), and at every header from 249px to 689px a filename cut
    short ends in an ellipsis and the copy control stays inside the box.
-   Without the rules below, the next 55px came out of the end of the run
-   rather than the start: at 320px the filename was cut 19px short with no
-   ellipsis, and the copy control sat 45px outside the clipped box, where it
-   could be neither seen nor clicked. */
+   The rules below make that so. Measured with the path at 13px,
+   on a 296px header, which is a 620px window at the default nav width,
+   showing a served root 494px wide followed by three components, the root
+   had nothing left to give below a 375px header, and without these rules
+   the next 55px came out of the end of the run rather than the start: at
+   320px the filename was cut 19px short with no ellipsis, and the copy
+   control sat 45px outside the clipped box, where it could be neither seen
+   nor clicked. */
 .folder-breadcrumb .folder-crumb {
   flex: 0 4 auto;
   min-width: 0;
@@ -4146,9 +4148,9 @@ a.tab-btn {
 
    A crumb that gave up 0.031px read clean and one that gave up 0.164px
    showed an ellipsis. 20000 is under the first with room, and still finite
-   so the ordering below stays real. Once the root reaches zero flex freezes it and
-   redistributes the rest, so the 4-to-1 ordering between the directories and
-   the filename applies from there down. */
+   so the ordering below stays real. Once the root reaches zero flex freezes
+   it and redistributes the rest, so the 4-to-1 ordering between the
+   directories and the filename applies from there down. */
 .file-header-root {
   color: var(--muted);
   min-width: 0;

@@ -1592,7 +1592,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
     ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
 }
-# Who may set the micro size, a step under the controls': a mark, never text a reader reads.
+# Who may set the micro size, a step under the controls': a mark, never running text.
 _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".chip-badge"): "a chip's count badge, a filled mark inside the chip",
     ("github/styles.css", ".github-pull-stack-dot"): "the dot between a stack's badges",
