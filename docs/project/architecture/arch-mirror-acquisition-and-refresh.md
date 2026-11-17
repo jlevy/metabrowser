@@ -330,9 +330,12 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   mirror, never through revision syntax, and serves it under a new generation.
   With the page’s `/view/` address it answers `view_href`, where that page goes on the
   new pin. Its refusals are the `SelectionError` subclasses in `mirror_refresh.py`. A
-  commit pinned by ID is served under the ref the request names as `under`, the ref last
-  served, or a pull request’s head ref, the first whose tip it is; View on branch and
-  Browse code name the pull request’s `refs/pull/<n>/head`.
+  commit pinned by ID is served under the ref last served, or a pull request’s head ref,
+  the first whose tip it is.
+  A request may name the ref as `under`, as View on branch and Browse code name the pull
+  request’s `refs/pull/<n>/head`; when that ref is not at the commit, because the pull
+  request moved on after the page was drawn, nothing is switched and the answer is
+  `409 ref_moved`.
 
 The two POST routes change state or start work, so each takes a JSON body behind the
 application’s same-origin guard, and a link inside a served page cannot reach them.

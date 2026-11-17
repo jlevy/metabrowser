@@ -185,6 +185,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["switch_on_branch"] = _switch(
                 client, {"oid": ids["second"], "under": _PULL_REF, "view": readme}
             )
+            # The pull request moved on after a page was drawn for that head: its ref is at
+            # another commit, as after a push. The same View on branch switches nothing.
+            subprocess.run(
+                ["git", "--git-dir", str(published.git_dir), "update-ref", _PULL_REF, ids["base"]],
+                check=True,
+                capture_output=True,
+            )
+            recorded["switch_head_moved"] = _switch(
+                client, {"oid": ids["second"], "under": _PULL_REF, "view": readme}
+            )
         # A page left open while its server was restarted on another repository: that
         # mirror has neither commit. A server fetches once for a commit its mirror
         # lacks, then says the origin does not have it.
@@ -258,6 +268,8 @@ def test_recording_is_what_the_servers_answer(
     assert (on_branch["status"], on_branch["body"]["changed"]) == (200, True)
     assert on_branch["body"]["status"]["ref"] == _PULL_REF
     assert on_branch["body"]["view_href"] == recorded["views"]["readme"]
+    moved = recorded["switch_head_moved"]
+    assert (moved["status"], moved["body"]["code"]) == (409, "ref_moved")
     assert recorded["other_pending"]["status"] == 202
     assert recorded["other_pending"]["body"]["code"] == "selection_pending"
     assert recorded["other_not_found"]["status"] == 404

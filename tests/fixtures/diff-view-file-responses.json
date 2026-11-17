@@ -1434,6 +1434,18 @@
       "view_href": "/view/g1-UkVBRE1FLm1k"
     }
   },
+  "switch_head_moved": {
+    "request": {
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+      "under": "refs/pull/7/head",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 409,
+    "body": {
+      "error": "refs/pull/7/head is no longer at that commit",
+      "code": "ref_moved"
+    }
+  },
   "other_pending": {
     "request": {
       "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",

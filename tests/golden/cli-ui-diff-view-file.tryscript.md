@@ -29,6 +29,8 @@ On a pull request’s Changes the control is **View on branch**, offered only wh
 diff shows the pull request’s head, which the pull request’s page names with its head
 ref. On a mirror it follows the same rule, and a switch names that ref (`under`) beside
 the commit, so the page lands on the pull request’s code as Browse code lands on it.
+When the pull request moved on after the page was drawn, that ref is at another commit,
+and the server switches nothing (`409 ref_moved`); the page says the head moved.
 A diff of another commit than the head has none.
 Beside a checkout the page has no pin: the control is a link to the working-tree file
 while the checkout’s HEAD is the diff’s head, mapped into the served folder when that is
@@ -299,6 +301,17 @@ $ node tests/dom/diff-view-file-session.js
       "navigated": [
         "/view/g1-UkVBRE1FLm1k"
       ]
+    },
+    {
+      "step": "a pull request whose head moved since the page was drawn switches nothing",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef",
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+      ],
+      "busy": [],
+      "notices": {
+        "M README.md": "[role=status] This pull request's head has moved; reload to see the newer changes."
+      }
     },
     {
       "step": "a pull request's diff of another commit than its head has no controls",

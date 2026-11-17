@@ -1217,6 +1217,9 @@ All notable changes to Metabrowser are documented here.
   checkout’s `HEAD` is the head.
   A file with nowhere to open, such as a deleted one, has no control.
   A tab whose served commit another tab switched turns its links into the switch back.
+  A page drawn before the pull request moved on switches nothing and says that the head
+  has moved, for **View on branch** and **Browse code** alike, rather than opening the
+  earlier head as a bare commit.
   Rendered Markdown’s links to other files of the head open there only while the page
   shows the head, and its images load as before.
 

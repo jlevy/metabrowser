@@ -694,6 +694,17 @@ async function main() {
   // Back to Changes: the browser brings the page back, and the page's switch lets go.
   pageshow(true);
 
+  // The pull request moved on after this page was drawn: its ref is at another commit now.
+  // The page still names the head it was drawn for, under that ref, and the server switches
+  // nothing rather than serve the earlier head as a bare commit; the page says why.
+  await open(recorded.page_at_parent, { comparison: pullPage });
+  control(container, readme, "View on branch").click();
+  await settle();
+  await answer(recorded.switch_head_moved);
+  step("a pull request whose head moved since the page was drawn switches nothing", {
+    busy: busy(container),
+  });
+
   // Changes shows a commit that is not the pull request's head (here, a page on an earlier
   // head while the record names a newer one): no branch holds that file, so nothing opens,
   // and nothing is loaded to decide so.

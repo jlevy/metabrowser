@@ -227,8 +227,12 @@ a button that switches the pin with `POST /api/source/pin`, naming the address s
 answer’s `view_href` says where to go.
 A pull request’s switch names the commit and, as `under`, its `refs/pull/<n>/head`, so
 the page lands on the pull request rather than a bare commit or another pull request
-with the same head. Beside a checkout, which has no pin, View on branch is a link to the
-working-tree file while the checkout’s `HEAD` is the diff’s head.
+with the same head. When that ref is no longer at the commit, because the pull request
+moved on after the page was drawn, the pin route refuses with `409 ref_moved` and
+switches nothing, so View on branch and Browse code on that page say the head moved
+instead of opening a bare commit.
+Beside a checkout, which has no pin, View on branch is a link to the working-tree file
+while the checkout’s `HEAD` is the diff’s head.
 The old side has no control: a parent is a bare commit, and a merge base is on no
 branch. Only a regular file’s side gets a control, since a submodule’s side is another
 repository’s commit and a symbolic link’s would open its target.

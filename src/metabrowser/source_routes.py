@@ -508,8 +508,10 @@ async def api_source_pin(request: Request) -> JSONResponse:
     The body is ``{"ref": "<branch or tag>"}`` or ``{"oid": "<commit ID>"}``, and
     optionally ``"view"``, the ``/view/`` address the page shows: the answer's
     ``view_href`` is then where that page goes on the new pin (:func:`view_on_pin`).
-    With ``"oid"``, ``"under"`` names the full ref the commit is served under when the
-    mirror's ref is at it, as View on branch names ``refs/pull/<n>/head``.
+    With ``"oid"``, ``"under"`` names the full ref the commit is served under, as View on
+    branch names ``refs/pull/<n>/head``; when the mirror's ref is not at the commit, as
+    for a page drawn before the pull request moved on, nothing is switched and the answer
+    is ``409`` with ``ref_moved``.
     The selection is resolved in the mirror alone: a branch, then a tag, then a commit ID.
     In a server, one the mirror lacks answers ``202`` with ``selection_pending`` and
     starts one background fetch; asking again after it ends answers the switch or

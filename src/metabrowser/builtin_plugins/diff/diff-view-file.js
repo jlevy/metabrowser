@@ -232,6 +232,11 @@ export function switchRefusal(commit, status, body) {
   if (code === "selection_fetch_failed") {
     return `Commit ${at} is not in the mirror, and fetching it failed.`;
   }
+  if (code === "ref_moved") {
+    // Only a pull request's switch names the ref it is served under (`under`), and the
+    // server says it moved when the page was drawn for an earlier head than its ref's.
+    return "This pull request's head has moved; reload to see the newer changes.";
+  }
   return `Could not switch to ${at} (${code || `HTTP ${status}`}).`;
 }
 
