@@ -3,9 +3,9 @@ type: is
 id: is-01m7ksbsx0kcg5rk05fy23nxc5
 title: "PR #494 KPress 0.3.8: senior review with supply-chain depth (confirm 0.3.8 covers every removed TOC and code bridge; tests and goldens pin KPress behavior), address, merge first"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -20,6 +20,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:43.488Z
-updated_at: 2026-11-17T04:32:47.213Z
+updated_at: 2026-11-17T04:59:07.629Z
 started_at: 2026-11-17T03:38:55.069Z
+closed_at: 2026-11-17T04:59:07.629Z
+close_reason: "PR #494 merged at f13967795 after Review A (senior, supply-chain depth) and Review B (follow-up); every finding dispositioned; CI green at 472523f00."
+resolution: null
+duplicate_of: null
 ---
