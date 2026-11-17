@@ -703,12 +703,17 @@ _READINGS: dict[int, str] = {
 }
 
 
-def test_a_kept_manifest_names_how_it_was_read(repo: tuple[Path, str, str]) -> None:
+def test_a_kept_manifest_names_how_it_was_read(repo: tuple[Path, str, str], tmp_path: Path) -> None:
     """A change to what a listing reads as changes the manifest of the fixture's change
-    taxonomy. Its kept manifests must then miss: raise ``MANIFEST_READING`` and record the
-    new reading under it, rather than replace this one's."""
+    taxonomy, listed from a store as the bank lists it. Kept manifests must then miss:
+    raise ``MANIFEST_READING`` and record the new reading under it. A change to the
+    fixture itself, with the reading unchanged, replaces the digest instead."""
     root, base, target = repo
-    source = GitDiffSource(root)
+    store = tmp_path / "store.git"
+    subprocess.run(
+        ["git", "clone", "-q", "--bare", "--template=", str(root), str(store)], check=True
+    )
+    source = GitDiffSource(GitLocation.revision(repository_store_target(git_dir=store), target))
     resolved = asyncio.run(source.resolve({"left": base, "right": target}))
     manifest = asyncio.run(source.manifest(resolved))
     reading = hashlib.sha256(

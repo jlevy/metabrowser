@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import zlib
 from dataclasses import replace
 from pathlib import Path
@@ -15,7 +16,7 @@ from starlette.testclient import TestClient
 from metabrowser import http_caching, server
 from metabrowser.builtin_plugins.diff import sidekick as diff
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
-from metabrowser.builtin_plugins.github import pull_manifest, pull_route
+from metabrowser.builtin_plugins.github import pull_manifest
 from metabrowser.builtin_plugins.github.pull_prefetch import lane_of
 from metabrowser.builtin_plugins.github.pull_record import Comparison, PullRecord
 from metabrowser.builtin_plugins.github.pull_route import pull_host
@@ -200,8 +201,10 @@ def test_attributes_listings_and_slot_collisions_are_cache_misses_and_builds_are
     monkeypatch.setattr(GitDiffSource, "manifest", counted)
     _fresh(monkeypatch)
     # Another build reads the manifest this one kept: its identity names no build (mb-g8oe).
-    for module in (http_caching, pull_route, diff):
-        monkeypatch.setattr(module, "BUILD_TAG", "another-build")
+    tag = http_caching.BUILD_TAG
+    for module in list(sys.modules.values()):
+        if getattr(module, "BUILD_TAG", None) == tag:
+            monkeypatch.setattr(module, "BUILD_TAG", "another-build")
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     assert "build=another-build" in route
     assert client.get(route).status_code == 200

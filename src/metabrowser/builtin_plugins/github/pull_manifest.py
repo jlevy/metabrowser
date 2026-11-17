@@ -30,8 +30,14 @@ from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import store_directory
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import MANIFEST_LISTING, MAX_MANIFEST_FILES, GitDiffSource
-from metabrowser.diff.format import FILE_DIFF_SCHEMA_VERSION, ChangeSetDocument
-from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
+from metabrowser.diff.format import FILE_DIFF_SCHEMA, FILE_DIFF_SCHEMA_VERSION, ChangeSetDocument
+from metabrowser.git.process import (
+    GIT_COMMON_ARGS,
+    STORE_READ_POLICY,
+    GitError,
+    GitLocation,
+    RepositoryStoreTarget,
+)
 from metabrowser.home import (
     PrivateStorageError,
     ensure_private_directory,
@@ -61,18 +67,35 @@ class _ManifestRecord(BaseModel):
 
     schema_version: Literal[3] = 3
     epoch: str = Field(pattern=r"^[0-9a-f]{64}$")
-    identity: tuple[str, ...] = Field(min_length=7, max_length=7)
+    identity: tuple[str, ...] = Field(min_length=8, max_length=8)
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     document: ChangeSetDocument
 
 
+# What of a store read's process shapes a listing's output: Git's common options, and the
+# configuration and attributes the store's Git is kept from. A store's own attributes
+# are in its token, in *key*. The bounds and the timeout are not here: they refuse a
+# listing, never change one.
+_STORE_READ: Final = repr(
+    (
+        GIT_COMMON_ARGS,
+        STORE_READ_POLICY.isolate_user_config,
+        sorted((STORE_READ_POLICY.extra_env or {}).items()),
+        STORE_READ_POLICY.attributes_from_empty_tree,
+    )
+)
+
+
 def _identity(key: tuple[str, ...]) -> tuple[str, ...]:
-    """What a kept manifest answers for: the document's schema, the listing, and *key*.
+    """What a kept manifest answers for: the document's schema, the listing, how the store
+    is read, and *key*.
 
     Not the build, so a manifest outlives an upgrade and an edit of the source (mb-g8oe);
-    a change to the schema or to the listing moves it (`MANIFEST_LISTING`).
+    a change to the schema, to the listing's options, or to the store read's isolation
+    moves it, and so does raising `MANIFEST_READING`.
     """
-    return (f"file-diff-v{FILE_DIFF_SCHEMA_VERSION}", MANIFEST_LISTING, *key)
+    schema = f"{FILE_DIFF_SCHEMA}.{FILE_DIFF_SCHEMA_VERSION}"
+    return (schema, MANIFEST_LISTING, _STORE_READ, *key)
 
 
 def _directory(published: PublishedSource) -> str:
@@ -158,7 +181,7 @@ def _write(
     published: PublishedSource, key: tuple[str, ...], answer: ResolvedManifest, epoch: str
 ) -> None:
     document = ChangeSetDocument(
-        schema="file-diff-v1",
+        schema=FILE_DIFF_SCHEMA,
         schema_version=FILE_DIFF_SCHEMA_VERSION,
         resolved=answer.resolved,
         manifest=answer.manifest,

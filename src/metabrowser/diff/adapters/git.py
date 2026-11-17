@@ -107,14 +107,16 @@ endpoints. The run that prints the patch after its listing prints the same listi
 MANIFEST_READING = 1
 """The version of how a listing's output is read into a manifest (`_manifest_of` and the
 parsers it calls). A manifest kept on disk names it, not the build, so it outlives an
-upgrade or an edit of the source; one that changes what a listing reads as moves it, and
+upgrade or an edit of the source. Raise it with a change to what a listing reads as, and
 every kept manifest is listed again. `test_a_kept_manifest_names_how_it_was_read` in
-`tests/test_diff_git_adapter.py` pins the fixture comparison's manifest to it."""
+`tests/test_diff_git_adapter.py` pins the fixture comparison's manifest to it, so such a
+change fails there until it is raised."""
 
 MANIFEST_LISTING = (
     f"{' '.join(MANIFEST_LISTING_OPTIONS)} files<={MAX_MANIFEST_FILES} reading={MANIFEST_READING}"
 )
-"""Everything a manifest's listing depends on beyond its store and its endpoints."""
+"""The listing a kept manifest names: its options, the file cap, and how it is read. How
+the store's Git is run is named beside it (`_STORE_READ` in `pull_manifest.py`)."""
 
 MAX_FILE_PATCH_BYTES = MAX_PATCH_BYTES
 """One file's patch, and what one run hydrates. A comparison is not a patch file a reader
