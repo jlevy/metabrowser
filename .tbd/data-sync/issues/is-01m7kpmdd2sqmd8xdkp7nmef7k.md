@@ -3,9 +3,9 @@ type: is
 id: is-01m7kpmdd2sqmd8xdkp7nmef7k
 title: "CI speed 1.1: add the serial and chrome markers, the --shard option, and their gates; make test still runs everything in one process"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
 labels: []
@@ -16,7 +16,11 @@ parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 hold: null
 hold_until: null
 created_at: 2026-11-17T02:50:59.874Z
-updated_at: 2026-11-17T04:22:16.720Z
+updated_at: 2026-11-17T04:33:31.352Z
 started_at: 2026-11-17T04:22:16.720Z
+closed_at: 2026-11-17T04:33:31.352Z
+close_reason: "Committed c830cc74: serial and chrome markers (chrome only from chrome_profile), --shard=I/N after -m, gates in tests/suite_gates.py for require_chrome outside chrome, chrome without chrome_profile, serial without reason, and serial/chrome in ADMITTED_GIT_TESTS; tests in tests/test_suite_tiers.py. Collection at c830cc74: 6648 = 6575 parallel + 34 serial + 39 chrome; shards N=1..5 of each tier disjoint and covering."
+resolution: null
+duplicate_of: null
 ---
 Phase 1 of plan-2026-11-16-fast-ci.md, Tiers Within make test. Two markers for two properties (review A1 of #496): serial means the test measures wall-clock time and needs the machine to itself, and it runs on every interpreter before the merge; chrome means the test drives headless Chrome, and it is the one marker that lets a pull request check a test on one interpreter. tests/conftest.py gives chrome to every test that uses the chrome_profile fixture, which is its only source. A module adds serial by hand, as pytest.mark.serial(reason=...) with the measurement that forced it; tests/test_process_group.py is the first, so its process-group, signal, and thread checks are the serial tier and its one Chrome test is in the Chrome tier. The three pytest tiers are -m 'not serial and not chrome', -m 'serial and not chrome', and -m chrome: a partition by construction. Add --shard=I/N: keep the collected tests whose index in node-ID order is I modulo N, applied after -m. Gates in tests/suite_gates.py: a test that calls require_chrome and is not chrome fails; a chrome marker on a test that does not use chrome_profile fails; a serial marker without a reason fails; a serial or chrome test in an ADMITTED_GIT_TESTS module fails. Accept when pytest --collect-only shows the three tier expressions summing to the whole collection, and the shards of each tier summing to the tier, for N from 1 to 5, with a unit test of the partition and a test for each gate. No workflow file changes.
