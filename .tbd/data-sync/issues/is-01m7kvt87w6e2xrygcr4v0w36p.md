@@ -3,14 +3,18 @@ type: is
 id: is-01m7kvt87w6e2xrygcr4v0w36p
 title: "PR #496 review B3: the plan does not state that a pull request's own code runs the plan and ci-ok decisions"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
 parent_id: is-01m7kvt6zsgb9m5xpanazw7prr
 created_at: 2026-11-17T04:21:34.075Z
-updated_at: 2026-11-17T04:21:34.075Z
+updated_at: 2026-11-17T04:23:03.836Z
+closed_at: 2026-11-17T04:23:03.836Z
+close_reason: "Fixed in 008a68b9: Proposed Workflow names the trust boundary and keeps pull_request, never pull_request_target (check_ci.py, mb-to1c); Q5 says the required check names GitHub Actions as its source."
+resolution: null
+duplicate_of: null
 ---
 plan:430-443, :524-530, :566-568. Name the trust boundary, keep pull_request (never pull_request_target), and have the required check name GitHub Actions as its source.
