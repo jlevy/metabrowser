@@ -44,6 +44,8 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     PriorityRequest,
+    QueryKind,
+    QueryLimitProjection,
     ReadRequest,
     RecentProjection,
     RecentQuery,
@@ -1347,3 +1349,214 @@ def test_evicted_continuation_fails_explicitly(
             await handle.close()
 
     asyncio.run(run())
+
+
+# What the provider conformance cases leave to a provider, pinned for this one. Each case
+# below names the conformance case that states the provider-neutral rule.
+
+
+def test_budget_stop_admits_the_first_files_level_order_lists_and_ends_the_watch(
+    tmp_path: Path,
+) -> None:
+    """The store admits files in its walker's order, the names' order within a directory,
+    and reports the stopped watch in its own words. The rule every provider meets is
+    `test_provider_budget_stop_is_explicit_and_absence_remains_unknown`, which leaves
+    which files a stop admits unspecified (D17)."""
+
+    for name in ("a.txt", "b.txt", "c.txt", "d.txt", "z.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    async def run() -> tuple[set[str], str, str]:
+        handle = await _open_settled(tmp_path, InventoryConfig(budget=DiscoveryBudget(max_files=2)))
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        CatalogQuery(query_id="catalog", max_rows=10, include_ignored=True),
+                        DiagnosticsQuery(query_id="diagnostics"),
+                    )
+                )
+            )
+            catalog = result.projection("catalog")
+            diagnostics = result.projection("diagnostics")
+            assert isinstance(catalog, CatalogProjection)
+            assert isinstance(diagnostics, DiagnosticsProjection)
+            return (
+                {record.path for record in catalog.records},
+                diagnostics.payload.watch_state,
+                diagnostics.payload.watch_reason,
+            )
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == ({"a.txt", "b.txt"}, "off", "resource_budget")
+
+
+def test_replay_capacity_counts_the_stores_own_batches(tmp_path: Path) -> None:
+    """The store's replay history holds `change_queue_size` of its own batches, and one
+    refresh of one file is one batch. The rule every provider meets is
+    `test_provider_changes_resume_and_report_history_gaps_as_reset` (D8), which pins
+    neither unit."""
+
+    async def run() -> None:
+        handle = await _open_settled(
+            tmp_path, InventoryConfig(change_queue_size=1, watch_mode="off")
+        )
+        try:
+            initial = await handle.read(ReadRequest())
+            (tmp_path / "first.txt").write_text("first", encoding="utf-8")
+            await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="first.txt"),))
+            )
+            first_stream = handle.changes(after=initial.cursor)
+            first = await asyncio.wait_for(anext(first_stream), timeout=1)
+            assert first.reset is False
+            assert "first.txt" in first.dirty_paths
+            assert first.cursor.session == initial.cursor.session
+            await first_stream.aclose()
+
+            (tmp_path / "second.txt").write_text("second", encoding="utf-8")
+            await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="second.txt"),))
+            )
+            resumed_stream = handle.changes(after=first.cursor)
+            resumed = await asyncio.wait_for(anext(resumed_stream), timeout=1)
+            assert resumed.reset is False
+            assert "second.txt" in resumed.dirty_paths
+            await resumed_stream.aclose()
+
+            gap_stream = handle.changes(after=initial.cursor)
+            gap = await asyncio.wait_for(anext(gap_stream), timeout=1)
+            assert gap.reset is True
+            assert gap.cursor.session == initial.cursor.session
+            assert gap.cursor.sequence >= resumed.cursor.sequence
+            await gap_stream.aclose()
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_every_kind_refuses_at_a_hard_work_limit_charged_the_bound(tmp_path: Path) -> None:
+    """The store's work bound is hard for every kind, tree pages included, and a refusal
+    is charged the bound itself. The rule every provider meets is
+    `test_provider_returns_typed_query_limits_without_partial_answers`, under which a
+    tree page may instead spend a soft budget (D6)."""
+
+    for index in range(6):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        queries = (
+            DirectoryQuery(query_id="directory", max_depth=1, max_work=2),
+            FilteredTreeQuery(query_id="filtered", max_depth=1, max_work=2),
+            RollupQuery(query_id="rollup", max_work=2),
+            NavigationQuery(query_id="navigation", max_work=2),
+            RecentQuery(query_id="recent", max_rows=1, as_of_ns=1, max_work=2),
+            CatalogQuery(query_id="catalog", max_rows=1, max_work=2),
+        )
+        try:
+            result = await handle.read(ReadRequest(queries=queries))
+            for query in queries:
+                assert result.projection(query.query_id) == QueryLimitProjection(
+                    query_id=query.query_id,
+                    query_kind=query.kind,
+                    max_work=2,
+                    rows_visited=2,
+                )
+            assert result.work.rows_visited == 12
+            assert result.work.rows_returned == 0
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_a_continuation_page_is_charged_the_rows_it_returns(tmp_path: Path) -> None:
+    """A retained page is charged the rows it serves, so a bound below them refuses it at
+    that bound, and the same token then serves them. The rule every provider meets is
+    `test_provider_applies_work_bounds_to_continuation_pages`."""
+
+    for index in range(6):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    def page(kind: QueryKind, **bounds: Any) -> DirectoryQuery | FilteredTreeQuery | CatalogQuery:
+        if kind is QueryKind.DIRECTORY:
+            return DirectoryQuery(query_id=kind, max_depth=1, **bounds)
+        if kind is QueryKind.FILTERED_TREE:
+            return FilteredTreeQuery(query_id=kind, max_depth=1, **bounds)
+        return CatalogQuery(query_id=kind, **bounds)
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        try:
+            for kind in (QueryKind.DIRECTORY, QueryKind.FILTERED_TREE, QueryKind.CATALOG):
+                first = await handle.read(ReadRequest(queries=(page(kind, max_rows=2),)))
+                first_page = first.projection(kind)
+                assert isinstance(
+                    first_page, (DirectoryProjection, FilteredTreeProjection, CatalogProjection)
+                )
+                after = first_page.next_page
+                assert after is not None
+                limited = await handle.read(
+                    ReadRequest(
+                        queries=(page(kind, max_rows=4, max_work=1, after=after),),
+                        at_version=first.version,
+                    )
+                )
+                assert limited.projection(kind) == QueryLimitProjection(
+                    query_id=kind, query_kind=kind, max_work=1, rows_visited=1
+                )
+                assert (limited.work.rows_visited, limited.work.rows_returned) == (1, 0)
+                retry = await handle.read(
+                    ReadRequest(
+                        queries=(page(kind, max_rows=4, max_work=4, after=after),),
+                        at_version=first.version,
+                    )
+                )
+                assert not isinstance(retry.projection(kind), QueryLimitProjection)
+                assert (retry.work.rows_visited, retry.work.rows_returned) == (4, 4)
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="a live change updates a directory's newest_mtime_ns but keeps its discovered "
+    "mtime_ns (_update_ancestor_aggregates in python_inventory.py)",
+)
+def test_a_live_change_moves_a_directory_mtime_with_its_newest_file(tmp_path: Path) -> None:
+    """A directory's `mtime_ns` is its newest regular file's, as at discovery.
+
+    `test_provider_directory_times_are_their_newest_regular_file` pins the rule at
+    discovery and `newest_mtime_ns` after a live change; this is the half the store
+    misses.
+    """
+
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    (folder / "old.txt").write_text("old", encoding="utf-8")
+    os.utime(folder / "old.txt", ns=(100_000_000_000, 100_000_000_000))
+
+    async def run() -> tuple[int, int | None]:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        try:
+            (folder / "new.txt").write_text("new", encoding="utf-8")
+            os.utime(folder / "new.txt", ns=(200_000_000_000, 200_000_000_000))
+            await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="folder/new.txt"),))
+            )
+            result = await handle.read(
+                ReadRequest(queries=(EntryQuery(query_id="folder", path="folder"),))
+            )
+            entry = result.projection("folder")
+            assert isinstance(entry, EntryProjection)
+            assert entry.entry is not None
+            return entry.entry.mtime_ns, entry.entry.newest_mtime_ns
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == (200_000_000_000, 200_000_000_000)

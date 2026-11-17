@@ -473,7 +473,16 @@ def _require_admitted_object_kinds(value: object) -> None:
 
 @dataclass(frozen=True, slots=True)
 class DiscoveryBudget:
-    """Execution bound for progressive discovery, separate from semantic scope."""
+    """Execution bound for progressive discovery, separate from semantic scope.
+
+    Only regular files count against `max_files`; directories and symlinks never do.
+    Reaching the bound is the stop: once discovery has admitted `max_files` regular
+    files it stops, with coverage partial for `budget`, a `resource_budget` issue, and
+    observation ended. So a tree holding exactly `max_files` regular files reports a
+    budget stop although discovery left nothing out. Which files a stop admits is
+    unspecified, because it follows directory read order, which differs across
+    filesystems (decision D17).
+    """
 
     max_files: int = DEFAULT_DISCOVERY_MAX_FILES
 
@@ -816,7 +825,12 @@ class BoundaryMetrics:
 
 @dataclass(frozen=True, slots=True)
 class ProviderDiagnostics:
-    """Constant-size provider facts consumed by the host and performance tools."""
+    """Constant-size provider facts consumed by the host and performance tools.
+
+    `files_indexed` counts retained regular files, and `directories_indexed` every
+    retained directory, the served root included. The `watch_*` fields are the
+    provider's own words, which nothing provider-neutral may compare.
+    """
 
     provider: str
     contract: str
@@ -844,7 +858,13 @@ class EntryType(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class InventoryEntry:
-    """Provider-owned filesystem facts for one served-root-relative path."""
+    """Provider-owned filesystem facts for one served-root-relative path.
+
+    A directory's `mtime_ns` and `newest_mtime_ns` are the newest modification time of
+    any regular file below it, at any depth, and 0 when it holds none: neither a
+    symlink's time nor the directory's own counts, so a folder's age is the age of its
+    content.
+    """
 
     path: str
     parent: str
@@ -975,6 +995,15 @@ class EntryQuery:
 
 @dataclass(frozen=True, slots=True)
 class DirectoryQuery:
+    """Rows below *path* in breadth-first level order, one bounded page at a time.
+
+    A path discovery has not listed yet, a directory it has reached but not enumerated
+    or a path below one, answers an empty page with no continuation rather than an
+    error; `/api/tree` relies on that while discovery runs. Whether `max_work` is a
+    ceiling on one page or a budget the page may finish spending is decision D6, open
+    pending fdu: a page either answers the typed limit or makes progress.
+    """
+
     query_id: str
     path: str = ""
     max_depth: int = 2
@@ -1610,6 +1639,21 @@ class ReadResult:
 
 @dataclass(frozen=True, slots=True)
 class ChangeBatch:
+    """What changed between the version before this batch and its own.
+
+    `dirty_paths` names each entry the batch inserted, updated, or removed, and every
+    ancestor directory whose aggregates the change moved, up to and including the root,
+    so a consumer that rereads only dirty paths sees current folder totals. A change
+    too broad to name that way is `all_dirty`. What else a dirty path promises, and how
+    a removed subtree is named, is decision D20, open pending fdu.
+
+    A batch is one coherent provider version and may carry state alone, so how many
+    batches one change takes is the provider's own. A cursor inside the provider's
+    replay capacity, which `InventoryConfig.change_queue_size` sizes in the provider's
+    own units, replays every batch after it; one outside it gets a `reset`, never a
+    suffix presented as complete (decision D8).
+    """
+
     cursor: ChangeCursor
     version: EngineVersion
     state: IndexState

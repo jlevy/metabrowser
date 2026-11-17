@@ -40,6 +40,10 @@ and read projection for one root.
   stops its watcher, reports `stopped` with a `resource_budget` issue, and leaves
   unscanned directories pending: the end-of-walk repair is skipped, because descendant
   counts are incomplete and a repaired total would be wrong.
+  The walker lists a directory’s subdirectories first and then its other entries in name
+  order, so a stop admits the first files level order reaches, and diagnostics report
+  the watch as `off` for `resource_budget`
+  (`tests/test_python_inventory_provider.py::test_budget_stop_admits_the_first_files_level_order_lists_and_ends_the_watch`).
 - **Delivery.** `_run_walker` groups stored entries into changes of `WALKER_EMIT_BATCH`
   ops, so the first walk produces a bounded number of change batches rather than one per
   file.
@@ -189,8 +193,15 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
   rather than evicting each other’s pages.
   A grouped read whose own continuations do not fit evicts its oldest, retries, and
   fails with `VersionUnavailableError`.
-- **Change history** is bounded by the change-queue size; a cursor older than the
+- **Change history** is bounded by the change-queue size, counted in the store’s own
+  batches, of which one refresh of one file is one
+  (`test_replay_capacity_counts_the_stores_own_batches`); a cursor older than the
   history, or from another session, gets a reset.
+- **A directory’s `mtime_ns` stays at its discovered value.** A live change moves
+  `newest_mtime_ns` up the ancestors (`_update_ancestor_aggregates`) but not `mtime_ns`,
+  which the contract makes equal to it;
+  `test_a_live_change_moves_a_directory_mtime_with_its_newest_file` records the gap as
+  an expected failure.
 
 ## Work Charges
 
@@ -198,6 +209,19 @@ The store fills three `WorkCounters` fields: `rows_visited`, `rows_returned`, an
 `maintained_index_work`. Every other field stays zero, the walk reads
 (`directories_read`, `entries_visited`, `files_visited`, `bytes_visited`) among them, so
 its work compares with another provider’s only on those three.
+
+What it charges is its own, because the contract pins no exact charge, and
+`tests/test_python_inventory_provider.py` holds it:
+
+- A query that scans the index (filtered and grouped trees, rollup, navigation, recent,
+  catalog) is charged the index size and refuses when that exceeds its `max_work`; a
+  directory query is charged the entries it visits within its depth, and an entry lookup
+  is charged one row.
+- Every bound is hard, a tree page’s included, and a refusal is charged the bound itself
+  (`test_every_kind_refuses_at_a_hard_work_limit_charged_the_bound`), where the contract
+  allows a tree page a soft budget (D6).
+- A continuation page is served from the retained projection and charged the rows it
+  returns (`test_a_continuation_page_is_charged_the_rows_it_returns`).
 
 ## Unit Costs
 
