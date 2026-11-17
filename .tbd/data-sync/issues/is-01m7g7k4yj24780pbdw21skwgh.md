@@ -3,9 +3,9 @@ type: is
 id: is-01m7g7k4yj24780pbdw21skwgh
 title: "PR page title: icon and title start left, the number right-aligned above the stack chip"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:30:26.513Z
-updated_at: 2026-11-17T05:58:59.920Z
+updated_at: 2026-11-17T06:01:39.020Z
 started_at: 2026-11-15T18:30:45.366Z
+closed_at: 2026-11-17T06:01:39.020Z
+close_reason: "Shipped in PR #451 (merged 2026-11-16T16:30Z, in afda3599f); the beads were left in_progress by an earlier session. Found during plan-2026-11-15 currency (PR #500)."
+resolution: null
+duplicate_of: null
 ---
 Found while doing mb-cf0l (#451, 5efb99b7, 2026-11-15). The user described "the right aligned PR number" when placing the stack chip: "put it right aligned below the right aligned PR number, on same line as author".
 

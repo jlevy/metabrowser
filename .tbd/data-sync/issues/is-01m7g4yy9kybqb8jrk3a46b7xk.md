@@ -3,9 +3,9 @@ type: is
 id: is-01m7g4yy9kybqb8jrk3a46b7xk
 title: "Files tab: Show ignored sits beside Group by on the filter row"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T17:44:27.186Z
-updated_at: 2026-11-17T05:58:28.420Z
+updated_at: 2026-11-17T06:01:38.714Z
 started_at: 2026-11-15T17:45:10.438Z
+closed_at: 2026-11-17T06:01:38.714Z
+close_reason: "Shipped in PR #445 (merged 2026-11-16T16:30Z, in afda3599f); the bead was left in_progress by an earlier session. Found during plan-2026-11-15 currency (PR #500)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 
