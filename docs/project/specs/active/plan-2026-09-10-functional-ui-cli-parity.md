@@ -151,6 +151,8 @@ When the host lacks `IntersectionObserver`, a scoped adapter supplies only the m
 observation signal while KPress initializes, then restores the global runtime.
 The fallback coalesces scroll bursts through animation frames, selects headings with
 logarithmic geometry reads, and removes every listener and pending frame on disposal.
+KPress 0.3.8 ships this fallback in its own `toc.js`, so the adapter was removed with
+that upgrade and the mount calls KPress directly.
 
 ### Checked evidence registry
 
@@ -207,7 +209,8 @@ responsible for declaring the smaller set of observable aspects within each surf
 
 - [x] Preserve primary-document fragment links while retaining delegated navigation;
   give embedded-document fragments their canonical source-aware links.
-- [x] Add a scoped observation fallback for hosts without `IntersectionObserver`.
+- [x] Add a scoped observation fallback for hosts without `IntersectionObserver`
+  (removed when KPress 0.3.8 shipped its own).
 - [x] Run the link enhancer and KPress’s exact production TOC module over the same
   anchors in one browserless long-document session.
 - [x] Pin active-section changes, expand-all state, frame coalescing, native-observer
@@ -266,7 +269,8 @@ installed KPress TOC module through the production observation fallback.
 It records the enhanced href and delegated target, active sections at the top, at a
 heading, through the middle of a long section, and after a scroll burst.
 It then proves that native observation is left untouched and disposal removes scheduled
-work and listeners.
+work and listeners. Since KPress 0.3.8 the session drives KPress’s own fallback and
+viewport helpers instead of the adapter, and adds a pane resize.
 
 Focused tests remain beside the golden so a failure says whether parsing, provider
 selection, clustering, or interaction changed.

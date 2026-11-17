@@ -2,6 +2,7 @@
 
 The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``,
 ``test_control_chords_chrome.py``, ``test_diff_markdown_fold_chrome.py``,
+``test_files_totals_stable_chrome.py``,
 ``test_git_commit_summary_chrome.py``,
 ``test_github_pull_header_chrome.py``, ``test_github_pull_text_chrome.py``,
 ``test_github_pull_timeline_chrome.py``, ``test_github_pulls_stacks_chrome.py``,
@@ -97,6 +98,7 @@ CHROME_TESTS = (
     "tests.test_diff_markdown_fold_chrome",
     "tests.test_folder_overview_alignment",
     "tests.test_files_tab_chrome",
+    "tests.test_files_totals_stable_chrome",
     "tests.test_git_commit_summary_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
