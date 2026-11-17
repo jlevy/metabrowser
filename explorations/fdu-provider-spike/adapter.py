@@ -1669,11 +1669,19 @@ class FduInventoryHandle:
             raise InventoryContractError("fdu change outcome omitted its impact")
         paths: list[str] = []
         seen: set[str] = set()
-        for native in impact.dirty_paths:
-            canonical = self._canonical(native)
-            if canonical is not None and canonical not in seen:
-                seen.add(canonical)
-                paths.append(canonical)
+        # A state-only commit (a refresh entering reconciliation, a verification) still
+        # names the paths it concerns, but nothing about them changed. Taking those as
+        # dirty made the host reread and publish a removal before the commit that
+        # performed it, splitting one recursive removal into two envelopes; only commits
+        # with a data domain contribute dirty paths.
+        for commit in poll.outcome.commits:
+            if not _DATA_DOMAINS.intersection(commit.impact.domains):
+                continue
+            for native in commit.impact.dirty_paths:
+                canonical = self._canonical(native)
+                if canonical is not None and canonical not in seen:
+                    seen.add(canonical)
+                    paths.append(canonical)
         removed_files: set[str] = set()
         non_file: list[str] = []
         for commit in poll.outcome.commits:

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # The timed series behind evidence/performance.json. Run from the Metabrowser checkout
 # with WHEEL set to the exact fdu wheel; raw results land in the gitignored
-# .bench/fdu-spike/ and summarize.py normalizes them. STAGES selects a subset: the
-# recorded series ran "synthetic" first, then "tree floor projections discovery" as a
-# second invocation after a harness fix to the tree mode's response parsing.
+# .bench/fdu-spike/ and summarize.py normalizes them. STAGES selects a subset.
+#
+# Before anything is timed, every script the series runs must be committed and
+# unmodified, and their commit and digests are written to
+# .bench/fdu-spike/frozen-digests.txt, so a record always names sources a commit holds.
+# The performance loop's series lock serializes timed runs across worktrees; a lock left
+# by a crashed run is reported and left for a person to remove, never removed here.
 set -euo pipefail
 : "${WHEEL:?set WHEEL to the fdu wheel path}"
 RUN=(uv --config-file uv.toml run --frozen --with "$WHEEL" python)
@@ -13,6 +17,36 @@ STAGES=${STAGES:-synthetic tree floor projections discovery}
 SYNTHETIC_TRIALS=${SYNTHETIC_TRIALS:-3}
 TREE_TRIALS=${TREE_TRIALS:-2}
 FLOOR_TRIALS=${FLOOR_TRIALS:-4}
+OUT=.bench/fdu-spike
+SOURCES=(adapter.py probe.py launcher.py bench.py projections.py discovery.py series.sh)
+
+mkdir -p "$OUT"
+for source in "${SOURCES[@]}"; do
+  if ! git ls-files --error-unmatch "$SPIKE/$source" >/dev/null 2>&1 ||
+    ! git diff --quiet HEAD -- "$SPIKE/$source"; then
+    echo "error: $SPIKE/$source is not committed as it stands; commit it before timing" >&2
+    exit 1
+  fi
+done
+
+lock="$(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock"
+if ! mkdir "$lock" 2>/dev/null; then
+  echo "error: the series lock $lock is held:" >&2
+  cat "$lock/owner" >&2 2>/dev/null || echo "(no owner file)" >&2
+  exit 1
+fi
+printf 'pid %s\nstarted %s\nby %s series.sh\n' "$$" "$(date -u +%FT%TZ)" "$SPIKE" >"$lock/owner"
+trap 'rm -r -- "$lock"' EXIT
+
+{
+  echo "commit $(git rev-parse HEAD)"
+  echo "started $(date -u +%FT%TZ)"
+  echo "stages $STAGES"
+  echo "wheel $(basename "$WHEEL") $(shasum -a 256 "$WHEEL" 2>/dev/null | cut -d' ' -f1 || sha256sum "$WHEEL" | cut -d' ' -f1)"
+  for source in "${SOURCES[@]}"; do
+    echo "source $(shasum -a 256 "$SPIKE/$source" 2>/dev/null | cut -d' ' -f1 || sha256sum "$SPIKE/$source" | cut -d' ' -f1) $source"
+  done
+} >"$OUT/frozen-digests.txt"
 
 for stage in $STAGES; do
   case $stage in

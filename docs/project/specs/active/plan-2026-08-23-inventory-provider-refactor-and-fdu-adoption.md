@@ -452,8 +452,8 @@ Slice 1, provider-neutral contract (Python only, no fdu dependency):
   Python provider and host status (R6, R7), and lift the Git ignore oracle and File
   Rollup packet to provider cases (R8).
 - [ ] Pass an engine-facing classification document to providers (R9).
-- [ ] Update parity rows, the views-models-routes map, and `CHANGELOG.md` with each slice
-  item that changes observable behavior or a wire field.
+- [ ] Update parity rows, the views-models-routes map, and `CHANGELOG.md` with each
+  slice item that changes observable behavior or a wire field.
 
 Slice 2, provider-neutral tests and measurement (still Python only):
 
@@ -484,12 +484,12 @@ releases):
 
 Slice 4, native projections and cost:
 
-- [ ] As fdu releases F7 to F13, make each kind native in the adapter, pinned by the same
-  conformance cases.
-- [ ] Adopt F14 (row cost), F15 (prompt open), F16 (discovery commits), and F25 (wakeable
-  poll) as they release, and decide whether D13’s re-reads need F22.
-- [ ] Land the host-cost refactors (R19 to R22, R28) that the paired measurements show
-  mask engine differences.
+- [ ] As fdu releases F7 to F13, make each kind native in the adapter, pinned by the
+  same conformance cases.
+- [ ] Adopt F14 (row cost), F15 (prompt open), F16 (discovery commits), and F25
+  (wakeable poll) as they release, and decide whether D13’s re-reads need F22.
+- [ ] Land the host-cost refactors (R19 to R22) that the paired measurements show mask
+  engine differences.
 
 #### Checkpoint 2D: Prove the Composed Product
 
@@ -510,8 +510,7 @@ Slice 4, native projections and cost:
   list.
 - [ ] Resolve every correctness, resource, interaction, recovery, packaging, and
   supported-platform regression, including the concurrency and memory budgets (D15,
-  D16).
-  The adoption gate requires every query kind native, with F14 and F15 adopted.
+  D16). The adoption gate requires every query kind native, with F14 and F15 adopted.
   Any default change is a separate reversible decision after these gates; this
   implementation phase does not add an `auto` fallback.
 

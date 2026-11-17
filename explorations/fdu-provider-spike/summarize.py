@@ -4,16 +4,21 @@
 """Normalize the raw timed series in .bench/fdu-spike/ into evidence/performance.json.
 
 For every metric it reports each provider's samples, the A/A ratio of each provider's
-two interleaved arms within a trial (the noise band), and the fdu/Python ratio of the
-arms run back to back. An effect is called only when every paired ratio lies outside the
-union of both providers' A/A bands; otherwise the verdict is "within noise".
+two arms within a trial (the noise band), and the fdu/Python ratio of the same-letter
+arms within a trial. Arms run in a rotated order, so same-letter arms are in the same
+trial but can be up to three runs apart. An effect is called only when every paired
+ratio lies outside the union of both providers' A/A bands; otherwise the verdict is
+"within noise". An effect under 2x called with fewer than five runs per side is marked
+provisional, as the performance loop's accept rule asks for at least five.
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime
 import json
-import re
 import statistics
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -142,7 +147,15 @@ def paired(runs: list[dict[str, Any]], extract: Any) -> dict[str, Any]:
                 verdict = "fdu higher, beyond A/A noise"
             else:
                 verdict = "within A/A noise"
+        paired_median = statistics.median(pair) if pair else None
+        provisional = (
+            verdict.endswith("beyond A/A noise")
+            and min(len(python), len(native)) < 5
+            and paired_median is not None
+            and 0.5 < paired_median < 2.0
+        )
         table[name] = {
+            "provisional": provisional,
             "python_median": round(statistics.median(python), 2) if python else None,
             "python_range": [min(python), max(python)] if python else None,
             "fdu_median": round(statistics.median(native), 2) if native else None,
@@ -226,11 +239,75 @@ def _corpus_counts(runs: list[dict[str, Any]], key: str) -> dict[str, Any]:
     return counts
 
 
+# The script versions the recorded Linux series ran, against what the repository holds.
+# series.sh now records these itself and refuses uncommitted scripts; this series ran
+# before it did, so the account is kept here, stated once.
+_TIMED_SOURCES_NOTE = (
+    "Stage synthetic ran adapter.py c19ea02d, probe.py 6d75b74e, launcher.py ed6370c9, "
+    "bench.py 7ec88bec, and projections.py 4cc120b1, all held by commit 101b476d. Stages "
+    "tree, floor, projections, and discovery ran the same adapter, probe, launcher, and "
+    "projections, with bench.py 0d150f94 (7ec88bec plus the tree-response key fix), "
+    "discovery.py 2da2983f, and series.sh 02732cc2; the floor stage was rerun with "
+    "bench.py 91baaa4a (plus the observed-phase wait). bench.py 0d150f94 and 91baaa4a "
+    "and discovery.py 2da2983f were never committed: the committed bench.py 786bc8d5 and "
+    "discovery.py 5cb86f76 add only ruff formatting, lint, and typing casts, and later "
+    "copies add a portable host record. firstread.py and binding.py ran adapter c03c8851, "
+    "held by commit b6129b1c, which has every review fix except the change-batch "
+    "dirty-path fix."
+)
+
+
+def _asgi_exceptions(stage_started: str) -> dict[str, Any]:
+    """Unhandled server exceptions per recorded tree run, from its server log."""
+
+    started = datetime.datetime.fromisoformat(stage_started.replace("Z", "+00:00"))
+    rows: list[dict[str, Any]] = []
+    for log in sorted((RAW / "logs").glob("tree-*.log")):
+        stamp = datetime.datetime.fromtimestamp(int(log.stem.split("-")[-1]) / 1000, datetime.UTC)
+        if stamp < started:
+            continue
+        text = log.read_text(errors="replace")
+        corpus = "project-10" if "project-10" in text[:4000] else "checkout"
+        rows.append(
+            {
+                "provider": log.stem.split("-")[1],
+                "corpus": corpus,
+                "asgi_exceptions": text.count("Exception in ASGI application"),
+                "raised_in_api_rollup": text.count("in api_rollup"),
+            }
+        )
+    return {
+        "source": "server logs of the recorded tree runs (adapter c19ea02d)",
+        "per_run": rows,
+        "cause": (
+            "an unpinned /api/rollup read during discovery: the timed adapter retried a "
+            "moved version four times, then raised VersionUnavailableError, which the "
+            "route does not handle. Adapter c03c8851 and later retry with back-off instead; "
+            "firstread-* records zero such exceptions with it."
+        ),
+    }
+
+
+def _labelled(pattern: str, key: str) -> dict[str, Any]:
+    return {
+        path.stem.split("-", 1)[1]: json.loads(path.read_text())[key]
+        for path in sorted(RAW.glob(pattern))
+    }
+
+
 def main() -> int:
-    digests = (RAW / "frozen-digests.txt").read_text().splitlines()
+    parser = argparse.ArgumentParser()
+    suffix = "" if sys.platform.startswith("linux") else f"-{sys.platform}"
+    parser.add_argument(
+        "--output", type=Path, default=HERE / "evidence" / f"performance{suffix}.json"
+    )
+    args = parser.parse_args()
+    digests_file = RAW / "frozen-digests.txt"
+    digests = digests_file.read_text().splitlines() if digests_file.exists() else []
     record: dict[str, Any] = {
-        "schema": "fdu-provider-spike-performance-v1",
+        "schema": "fdu-provider-spike-performance-v2",
         "frozen_sources": [line for line in digests if line.strip()],
+        "timed_sources_note": _TIMED_SOURCES_NOTE if sys.platform.startswith("linux") else None,
         "method": (
             "Each trial runs four arms in a rotated order (python-A, fdu-A, python-B, fdu-B); "
             "A/A is the B/A ratio of one provider within one trial; paired is fdu/python for "
@@ -292,10 +369,14 @@ def main() -> int:
         for path in sorted(RAW.glob("discovery-*.json"))
     }
     record["projections"] = projections()
+    record["binding_split"] = _labelled("binding-*.json", "binding_split")
+    record["first_route_answer_socket_readiness"] = _labelled("firstread-*.json", "summary")
+    series2 = RAW / "series2.log"
+    if series2.exists():
+        record["asgi_exceptions"] = _asgi_exceptions(series2.read_text().splitlines()[0])
     text = json.dumps(record, indent=2, sort_keys=True)
     text = text.replace(str(REPO), "<METABROWSER>").replace(str(Path.home()), "<HOME>")
-    text = re.sub(r'"virtualized": (true|false)', r'"virtualized": \1', text)
-    out = HERE / "evidence" / "performance.json"
+    out = args.output
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text + "\n", encoding="utf-8")
     print(out)

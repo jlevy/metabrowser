@@ -1,0 +1,53 @@
+{
+  "isolation": "a fresh process per run, providers alternating",
+  "runs_per_provider": 32,
+  "tests": {
+    "tests/test_e2e_filesystem_to_sse.py::test_rm_directory_coalesces_descendant_removals": {
+      "failing_assertions": {
+        "fdu": {},
+        "python": {}
+      },
+      "fdu_backends_per_run": {
+        "fdu": {
+          "1": 32
+        },
+        "python": {
+          "0": 32
+        }
+      },
+      "outcomes": {
+        "fdu": {
+          "passed": 32
+        },
+        "python": {
+          "passed": 32
+        }
+      }
+    },
+    "tests/test_e2e_filesystem_to_sse.py::test_touch_existing_file_emits_one_upsert_path": {
+      "failing_assertions": {
+        "fdu": {
+          "assert event_types <= {\"fs.change\", \"catalog.change\"}": 20
+        },
+        "python": {}
+      },
+      "fdu_backends_per_run": {
+        "fdu": {
+          "1": 32
+        },
+        "python": {
+          "0": 32
+        }
+      },
+      "outcomes": {
+        "fdu": {
+          "failed": 20,
+          "passed": 12
+        },
+        "python": {
+          "passed": 32
+        }
+      }
+    }
+  }
+}

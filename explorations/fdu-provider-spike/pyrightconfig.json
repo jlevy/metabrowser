@@ -9,7 +9,10 @@
     "launcher.py",
     "bench.py",
     "projections.py",
-    "summarize.py"
+    "summarize.py",
+    "binding.py",
+    "firstread.py",
+    "flake.py"
   ],
   "extraPaths": [".", "../../src", "../../tests", "../.."],
   "typeCheckingMode": "strict",

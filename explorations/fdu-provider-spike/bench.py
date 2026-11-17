@@ -40,17 +40,34 @@ from metabrowser import smoke_probes
 ARMS: tuple[tuple[str, str], ...] = (("python", "A"), ("fdu", "A"), ("python", "B"), ("fdu", "B"))
 
 
+def _memory_bytes() -> int | None:
+    """Physical memory, from /proc on Linux and sysctl on macOS; None elsewhere."""
+
+    meminfo = Path("/proc/meminfo")
+    if meminfo.is_file():
+        for line in meminfo.read_text().splitlines():
+            if line.startswith("MemTotal:"):
+                return int(line.split()[1]) * 1024
+    if sys.platform == "darwin":
+        completed = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, check=False
+        )
+        if completed.returncode == 0 and completed.stdout.strip().isdigit():
+            return int(completed.stdout.strip())
+    return None
+
+
 def host_record() -> dict[str, Any]:
     load = os.getloadavg()
-    meminfo = Path("/proc/meminfo").read_text().splitlines()[0]
     return {
         "platform": platform.platform(),
         "machine": platform.machine(),
         "cpus": os.cpu_count(),
-        "memory": meminfo,
+        "memory_bytes": _memory_bytes(),
         "python": platform.python_version(),
         "load_1_5_15": [round(value, 2) for value in load],
-        "virtualized": Path("/sys/hypervisor").exists() or "vm" in platform.node(),
+        # Recorded, not inferred: the Linux series ran in a VM, which this does not detect.
+        "hypervisor_flag": Path("/sys/hypervisor").exists(),
     }
 
 

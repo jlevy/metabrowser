@@ -33,6 +33,31 @@ _COMPARED = (
     "content_family",
 )
 _NOT_EXPOSED = ("confidence", "detection_source")
+# The wording of fdu's refusal that names the defect each invalid case was written for,
+# read from fdu's parser messages. `invalid-toml` has none: fdu's dependency-free parser
+# reports a structural error, not TOML syntax. A schema-4 document is valid to fdu.
+_EXPECTED_REASON: dict[str, str] = {
+    "unsupported-schema": "unsupported schema_version",
+    "previous-schema-version": "unsupported schema_version",
+    "unsupported-components": "max_extension_components",
+    "invalid-field": "registry_revision",
+    "undeclared-deviation": "requires a deviation",
+    "undeclared-chroma-deviation": "requires a deviation",
+    "invalid-id": "invalid group id",
+    "missing-fallback": "must declare the other group",
+    "duplicate-order": "duplicate group order",
+    "unknown-group": "unknown group",
+    "unknown-family": "unknown family",
+    "invalid-content-family": "invalid content_family",
+    "invalid-extension": "invalid extension",
+    "duplicate-evidence": "belongs to",
+    "invalid-hue": "hue must be",
+    "linguist-without-color": "linguist and linguist_color",
+    "familyless-kind-without-group": "neither family nor group",
+    "family-group-mismatch": "group conflicts with family",
+    "empty-family": "no declared extension evidence",
+    "missing-evidence": "declares no evidence",
+}
 
 
 def _settle(index: fdu.OpenedIndex) -> None:
@@ -100,22 +125,31 @@ def run_corpus(probe: AdapterProbe) -> dict[str, Any]:
         rows.append({"name": case["name"], "agrees": not diffs, "differences": diffs})
     invalid_rows: list[dict[str, Any]] = []
     for case in corpus["invalid_registry_cases"]:
+        # The same shim the adapter applies, so a case is not refused merely for being
+        # schema 5; then the refusal must name the defect the case was written for.
+        document = downlevel_registry(case["toml"], AdapterProbe())
+        message: str | None = None
         try:
             with tempfile.TemporaryDirectory(prefix="fdu-spike-registry-") as raw:
-                fdu.OpenedIndex.open(raw, fdu.OpenedOptions(type_rules=case["toml"])).close()
+                fdu.OpenedIndex.open(raw, fdu.OpenedOptions(type_rules=document)).close()
         except (fdu.OpenedIndexError, ValueError) as error:
-            invalid_rows.append(
-                {
-                    "id": case["id"],
-                    "metabrowser_error": case["error_code"],
-                    "fdu_rejected": True,
-                    "fdu_message": str(error)[:200],
-                }
-            )
+            message = str(error)
+        keyword = _EXPECTED_REASON.get(case["id"])
+        if message is None:
+            verdict = "accepted"
+        elif keyword is not None and keyword in message:
+            verdict = "refused_for_the_case_reason"
         else:
-            invalid_rows.append(
-                {"id": case["id"], "metabrowser_error": case["error_code"], "fdu_rejected": False}
-            )
+            verdict = "refused_for_another_reason"
+        invalid_rows.append(
+            {
+                "id": case["id"],
+                "metabrowser_error": case["error_code"],
+                "expected_fdu_wording": keyword,
+                "fdu_message": (message or "")[:200],
+                "verdict": verdict,
+            }
+        )
     return {
         "registry": corpus["registry"],
         "metadata_cases": len(cases),
@@ -125,10 +159,18 @@ def run_corpus(probe: AdapterProbe) -> dict[str, Any]:
         "metadata_disagreements": [row for row in rows if not row["agrees"]],
         "fields_not_exposed_by_fdu": list(_NOT_EXPOSED),
         "invalid_registry_cases": len(invalid_rows),
-        "invalid_registry_rejected_by_fdu": sum(row["fdu_rejected"] for row in invalid_rows),
-        "invalid_registry_accepted_by_fdu": [
-            row["id"] for row in invalid_rows if not row["fdu_rejected"]
-        ],
+        "invalid_registry_method": (
+            "each case down-leveled through the adapter's schema-5 shim, then fdu's refusal "
+            "compared with the defect the case names, by the wording in expected_fdu_wording"
+        ),
+        "invalid_registry_verdicts": {
+            verdict: [row["id"] for row in invalid_rows if row["verdict"] == verdict]
+            for verdict in (
+                "refused_for_the_case_reason",
+                "refused_for_another_reason",
+                "accepted",
+            )
+        },
         "invalid_registry_rows": invalid_rows,
         "aggregate_cases": len(corpus["aggregate_cases"]),
         "aggregate_cases_status": (

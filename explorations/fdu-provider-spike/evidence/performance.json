@@ -1,4 +1,618 @@
 {
+  "asgi_exceptions": {
+    "cause": "an unpinned /api/rollup read during discovery: the timed adapter retried a moved version four times, then raised VersionUnavailableError, which the route does not handle. Adapter c03c8851 and later retry with back-off instead; firstread-* records zero such exceptions with it.",
+    "per_run": [
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "fdu",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "fdu",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 1,
+        "corpus": "checkout",
+        "provider": "fdu",
+        "raised_in_api_rollup": 1
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "fdu",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 4,
+        "corpus": "project-10",
+        "provider": "fdu",
+        "raised_in_api_rollup": 4
+      },
+      {
+        "asgi_exceptions": 3,
+        "corpus": "project-10",
+        "provider": "fdu",
+        "raised_in_api_rollup": 3
+      },
+      {
+        "asgi_exceptions": 6,
+        "corpus": "project-10",
+        "provider": "fdu",
+        "raised_in_api_rollup": 6
+      },
+      {
+        "asgi_exceptions": 5,
+        "corpus": "project-10",
+        "provider": "fdu",
+        "raised_in_api_rollup": 5
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "checkout",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "project-10",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "project-10",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "project-10",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      },
+      {
+        "asgi_exceptions": 0,
+        "corpus": "project-10",
+        "provider": "python",
+        "raised_in_api_rollup": 0
+      }
+    ],
+    "source": "server logs of the recorded tree runs (adapter c19ea02d)"
+  },
+  "binding_split": {
+    "checkout": {
+      "catalog_page_split": {
+        "adapter_convert_ms": {
+          "max": 6.621,
+          "median": 6.516,
+          "min": 6.42
+        },
+        "adapter_convert_us_per_row": {
+          "max": 3.646,
+          "median": 3.588,
+          "min": 3.535
+        },
+        "native_read_ms": {
+          "max": 12.463,
+          "median": 11.933,
+          "min": 11.322
+        },
+        "native_read_us_per_row": {
+          "max": 6.863,
+          "median": 6.571,
+          "min": 6.235
+        },
+        "pages": 1,
+        "python_rebuild_ms": {
+          "max": 9.038,
+          "median": 7.891,
+          "min": 7.719
+        },
+        "python_rebuild_us_per_row": {
+          "max": 4.977,
+          "median": 4.345,
+          "min": 4.25
+        },
+        "reps": 5,
+        "rows": 1816
+      },
+      "directory_page_split": {
+        "adapter_convert_ms": {
+          "max": 2.002,
+          "median": 1.926,
+          "min": 1.906
+        },
+        "adapter_convert_us_per_row": {
+          "max": 3.707,
+          "median": 3.567,
+          "min": 3.53
+        },
+        "native_read_ms": {
+          "max": 1.27,
+          "median": 1.22,
+          "min": 1.171
+        },
+        "native_read_us_per_row": {
+          "max": 2.352,
+          "median": 2.259,
+          "min": 2.169
+        },
+        "pages": 1,
+        "python_rebuild_ms": {
+          "max": 2.691,
+          "median": 2.676,
+          "min": 2.566
+        },
+        "python_rebuild_us_per_row": {
+          "max": 4.984,
+          "median": 4.956,
+          "min": 4.752
+        },
+        "reps": 5,
+        "rows": 540
+      },
+      "full_index": {
+        "compact": {
+          "adapter_convert_ms": {
+            "max": 43.681,
+            "median": 38.436,
+            "min": 37.391
+          },
+          "adapter_convert_us_per_row": {
+            "max": 4.17,
+            "median": 3.67,
+            "min": 3.57
+          },
+          "native_read_ms": {
+            "max": 41.062,
+            "median": 34.458,
+            "min": 33.511
+          },
+          "native_read_us_per_row": {
+            "max": 3.92,
+            "median": 3.29,
+            "min": 3.199
+          },
+          "pages": 3,
+          "python_rebuild_ms": {
+            "max": 81.736,
+            "median": 53.822,
+            "min": 52.242
+          },
+          "python_rebuild_us_per_row": {
+            "max": 7.804,
+            "median": 5.139,
+            "min": 4.988
+          },
+          "reps": 5,
+          "rows": 10474
+        },
+        "full": {
+          "adapter_convert_ms": {
+            "max": 38.385,
+            "median": 37.048,
+            "min": 36.707
+          },
+          "adapter_convert_us_per_row": {
+            "max": 3.665,
+            "median": 3.537,
+            "min": 3.505
+          },
+          "native_read_ms": {
+            "max": 69.887,
+            "median": 37.09,
+            "min": 36.434
+          },
+          "native_read_us_per_row": {
+            "max": 6.672,
+            "median": 3.541,
+            "min": 3.479
+          },
+          "pages": 3,
+          "python_rebuild_ms": {
+            "max": 59.105,
+            "median": 58.135,
+            "min": 53.826
+          },
+          "python_rebuild_us_per_row": {
+            "max": 5.643,
+            "median": 5.55,
+            "min": 5.139
+          },
+          "reps": 5,
+          "rows": 10474
+        }
+      },
+      "whole_answer_at_fresh_version": {
+        "catalog_10000": {
+          "fdu": {
+            "max_ms": 73.454,
+            "median_ms": 36.498,
+            "min_ms": 34.42
+          },
+          "python": {
+            "max_ms": 8.484,
+            "median_ms": 5.055,
+            "min_ms": 4.687
+          }
+        },
+        "directory_depth2": {
+          "fdu": {
+            "max_ms": 7.702,
+            "median_ms": 7.04,
+            "min_ms": 6.059
+          },
+          "python": {
+            "max_ms": 2.784,
+            "median_ms": 1.934,
+            "min_ms": 1.592
+          }
+        }
+      }
+    },
+    "project-10": {
+      "catalog_page_split": {
+        "adapter_convert_ms": {
+          "max": 219.498,
+          "median": 199.734,
+          "min": 196.223
+        },
+        "adapter_convert_us_per_row": {
+          "max": 4.167,
+          "median": 3.791,
+          "min": 3.725
+        },
+        "native_read_ms": {
+          "max": 336.432,
+          "median": 306.058,
+          "min": 299.84
+        },
+        "native_read_us_per_row": {
+          "max": 6.386,
+          "median": 5.81,
+          "min": 5.692
+        },
+        "pages": 13,
+        "python_rebuild_ms": {
+          "max": 521.22,
+          "median": 480.297,
+          "min": 472.203
+        },
+        "python_rebuild_us_per_row": {
+          "max": 9.894,
+          "median": 9.117,
+          "min": 8.964
+        },
+        "reps": 5,
+        "rows": 52680
+      },
+      "directory_page_split": {
+        "adapter_convert_ms": {
+          "max": 0.574,
+          "median": 0.526,
+          "min": 0.495
+        },
+        "adapter_convert_us_per_row": {
+          "max": 4.098,
+          "median": 3.759,
+          "min": 3.533
+        },
+        "native_read_ms": {
+          "max": 0.781,
+          "median": 0.317,
+          "min": 0.273
+        },
+        "native_read_us_per_row": {
+          "max": 5.578,
+          "median": 2.262,
+          "min": 1.949
+        },
+        "pages": 1,
+        "python_rebuild_ms": {
+          "max": 0.913,
+          "median": 0.807,
+          "min": 0.79
+        },
+        "python_rebuild_us_per_row": {
+          "max": 6.52,
+          "median": 5.767,
+          "min": 5.645
+        },
+        "reps": 5,
+        "rows": 140
+      },
+      "full_index": {
+        "compact": {
+          "adapter_convert_ms": {
+            "max": 578.152,
+            "median": 565.153,
+            "min": 525.7
+          },
+          "adapter_convert_us_per_row": {
+            "max": 3.895,
+            "median": 3.807,
+            "min": 3.541
+          },
+          "native_read_ms": {
+            "max": 588.329,
+            "median": 561.261,
+            "min": 414.999
+          },
+          "native_read_us_per_row": {
+            "max": 3.963,
+            "median": 3.781,
+            "min": 2.796
+          },
+          "pages": 37,
+          "python_rebuild_ms": {
+            "max": 1391.573,
+            "median": 1365.232,
+            "min": 1022.534
+          },
+          "python_rebuild_us_per_row": {
+            "max": 9.375,
+            "median": 9.197,
+            "min": 6.889
+          },
+          "reps": 5,
+          "rows": 148440
+        },
+        "full": {
+          "adapter_convert_ms": {
+            "max": 588.514,
+            "median": 579.149,
+            "min": 545.742
+          },
+          "adapter_convert_us_per_row": {
+            "max": 3.965,
+            "median": 3.902,
+            "min": 3.677
+          },
+          "native_read_ms": {
+            "max": 654.089,
+            "median": 620.101,
+            "min": 485.543
+          },
+          "native_read_us_per_row": {
+            "max": 4.406,
+            "median": 4.177,
+            "min": 3.271
+          },
+          "pages": 37,
+          "python_rebuild_ms": {
+            "max": 1470.796,
+            "median": 1422.714,
+            "min": 1150.775
+          },
+          "python_rebuild_us_per_row": {
+            "max": 9.908,
+            "median": 9.584,
+            "min": 7.752
+          },
+          "reps": 5,
+          "rows": 148440
+        }
+      },
+      "whole_answer_at_fresh_version": {
+        "catalog_10000": {
+          "fdu": {
+            "max_ms": 357.529,
+            "median_ms": 201.586,
+            "min_ms": 191.44
+          },
+          "python": {
+            "max_ms": 278.915,
+            "median_ms": 107.813,
+            "min_ms": 103.082
+          }
+        },
+        "directory_depth2": {
+          "fdu": {
+            "max_ms": 3.522,
+            "median_ms": 2.123,
+            "min_ms": 1.918
+          },
+          "python": {
+            "max_ms": 0.874,
+            "median_ms": 0.598,
+            "min_ms": 0.589
+          }
+        }
+      }
+    },
+    "synthetic-100000": {
+      "catalog_page_split": {
+        "adapter_convert_ms": {
+          "max": 386.717,
+          "median": 367.249,
+          "min": 347.763
+        },
+        "adapter_convert_us_per_row": {
+          "max": 3.867,
+          "median": 3.672,
+          "min": 3.478
+        },
+        "native_read_ms": {
+          "max": 421.184,
+          "median": 322.142,
+          "min": 296.565
+        },
+        "native_read_us_per_row": {
+          "max": 4.212,
+          "median": 3.221,
+          "min": 2.966
+        },
+        "pages": 25,
+        "python_rebuild_ms": {
+          "max": 840.751,
+          "median": 702.775,
+          "min": 664.985
+        },
+        "python_rebuild_us_per_row": {
+          "max": 8.408,
+          "median": 7.028,
+          "min": 6.65
+        },
+        "reps": 5,
+        "rows": 100000
+      },
+      "directory_page_split": {
+        "adapter_convert_ms": {
+          "max": 0.971,
+          "median": 0.905,
+          "min": 0.846
+        },
+        "adapter_convert_us_per_row": {
+          "max": 4.095,
+          "median": 3.819,
+          "min": 3.572
+        },
+        "native_read_ms": {
+          "max": 0.887,
+          "median": 0.679,
+          "min": 0.633
+        },
+        "native_read_us_per_row": {
+          "max": 3.744,
+          "median": 2.867,
+          "min": 2.669
+        },
+        "pages": 1,
+        "python_rebuild_ms": {
+          "max": 1.621,
+          "median": 1.478,
+          "min": 1.372
+        },
+        "python_rebuild_us_per_row": {
+          "max": 6.841,
+          "median": 6.238,
+          "min": 5.79
+        },
+        "reps": 5,
+        "rows": 237
+      },
+      "full_index": {
+        "compact": {
+          "adapter_convert_ms": {
+            "max": 405.54,
+            "median": 373.264,
+            "min": 364.326
+          },
+          "adapter_convert_us_per_row": {
+            "max": 4.011,
+            "median": 3.692,
+            "min": 3.603
+          },
+          "native_read_ms": {
+            "max": 448.775,
+            "median": 336.585,
+            "min": 312.564
+          },
+          "native_read_us_per_row": {
+            "max": 4.439,
+            "median": 3.329,
+            "min": 3.092
+          },
+          "pages": 25,
+          "python_rebuild_ms": {
+            "max": 815.959,
+            "median": 739.883,
+            "min": 720.834
+          },
+          "python_rebuild_us_per_row": {
+            "max": 8.07,
+            "median": 7.318,
+            "min": 7.13
+          },
+          "reps": 5,
+          "rows": 101104
+        },
+        "full": {
+          "adapter_convert_ms": {
+            "max": 391.268,
+            "median": 382.779,
+            "min": 352.611
+          },
+          "adapter_convert_us_per_row": {
+            "max": 3.87,
+            "median": 3.786,
+            "min": 3.488
+          },
+          "native_read_ms": {
+            "max": 393.458,
+            "median": 364.045,
+            "min": 333.474
+          },
+          "native_read_us_per_row": {
+            "max": 3.892,
+            "median": 3.601,
+            "min": 3.298
+          },
+          "pages": 25,
+          "python_rebuild_ms": {
+            "max": 873.856,
+            "median": 788.598,
+            "min": 596.193
+          },
+          "python_rebuild_us_per_row": {
+            "max": 8.643,
+            "median": 7.8,
+            "min": 5.897
+          },
+          "reps": 5,
+          "rows": 101104
+        }
+      },
+      "whole_answer_at_fresh_version": {
+        "catalog_10000": {
+          "fdu": {
+            "max_ms": 275.916,
+            "median_ms": 163.847,
+            "min_ms": 161.367
+          },
+          "python": {
+            "max_ms": 308.142,
+            "median_ms": 169.347,
+            "min_ms": 145.151
+          }
+        },
+        "directory_depth2": {
+          "fdu": {
+            "max_ms": 5.899,
+            "median_ms": 3.039,
+            "min_ms": 2.757
+          },
+          "python": {
+            "max_ms": 0.931,
+            "median_ms": 0.817,
+            "min_ms": 0.782
+          }
+        }
+      }
+    }
+  },
   "discovery": {
     "project-10": {
       "fdu:directory_depth1": {
@@ -373,6 +987,212 @@
       }
     }
   },
+  "first_route_answer_socket_readiness": {
+    "checkout": {
+      "fdu": {
+        "asgi_exceptions": [0, 0, 0],
+        "listening_s": {
+          "max": 0.68,
+          "min": 0.61,
+          "n": 3,
+          "p50": 0.64,
+          "p95": 0.68
+        },
+        "rollup_overview": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 1.15,
+            "min": 0.71,
+            "n": 3,
+            "p50": 1.14,
+            "p95": 1.15
+          },
+          "non_200_statuses": 0
+        },
+        "tree_depth1": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 0.7,
+            "min": 0.62,
+            "n": 3,
+            "p50": 0.65,
+            "p95": 0.7
+          },
+          "non_200_statuses": 0
+        },
+        "tree_root_summary_depth0": {
+          "carries_tallies": ["True"],
+          "first_answer_s": {
+            "max": 1.15,
+            "min": 1.06,
+            "n": 3,
+            "p50": 1.13,
+            "p95": 1.15
+          },
+          "non_200_statuses": 0
+        },
+        "walk_ms": {
+          "max": 242,
+          "min": 217,
+          "n": 3,
+          "p50": 222,
+          "p95": 242
+        }
+      },
+      "python": {
+        "asgi_exceptions": [0, 0, 0],
+        "listening_s": {
+          "max": 0.66,
+          "min": 0.56,
+          "n": 3,
+          "p50": 0.61,
+          "p95": 0.66
+        },
+        "rollup_overview": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 0.68,
+            "min": 0.57,
+            "n": 3,
+            "p50": 0.62,
+            "p95": 0.68
+          },
+          "non_200_statuses": 0
+        },
+        "tree_depth1": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 0.68,
+            "min": 0.57,
+            "n": 3,
+            "p50": 0.62,
+            "p95": 0.68
+          },
+          "non_200_statuses": 0
+        },
+        "tree_root_summary_depth0": {
+          "carries_tallies": ["True"],
+          "first_answer_s": {
+            "max": 0.67,
+            "min": 0.57,
+            "n": 3,
+            "p50": 0.62,
+            "p95": 0.67
+          },
+          "non_200_statuses": 0
+        },
+        "walk_ms": {
+          "max": 372,
+          "min": 346,
+          "n": 3,
+          "p50": 362,
+          "p95": 372
+        }
+      }
+    },
+    "project-10": {
+      "fdu": {
+        "asgi_exceptions": [0, 0, 0],
+        "listening_s": {
+          "max": 1.81,
+          "min": 1.65,
+          "n": 3,
+          "p50": 1.67,
+          "p95": 1.81
+        },
+        "rollup_overview": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 7.75,
+            "min": 7.2,
+            "n": 3,
+            "p50": 7.68,
+            "p95": 7.75
+          },
+          "non_200_statuses": 0
+        },
+        "tree_depth1": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 1.83,
+            "min": 1.67,
+            "n": 3,
+            "p50": 1.68,
+            "p95": 1.83
+          },
+          "non_200_statuses": 0
+        },
+        "tree_root_summary_depth0": {
+          "carries_tallies": ["True"],
+          "first_answer_s": {
+            "max": 7.64,
+            "min": 1.75,
+            "n": 3,
+            "p50": 7.46,
+            "p95": 7.64
+          },
+          "non_200_statuses": 0
+        },
+        "walk_ms": {
+          "max": 2691,
+          "min": 2530,
+          "n": 3,
+          "p50": 2571,
+          "p95": 2691
+        }
+      },
+      "python": {
+        "asgi_exceptions": [0, 0, 0],
+        "listening_s": {
+          "max": 1.63,
+          "min": 1.6,
+          "n": 3,
+          "p50": 1.62,
+          "p95": 1.63
+        },
+        "rollup_overview": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 1.64,
+            "min": 1.61,
+            "n": 3,
+            "p50": 1.63,
+            "p95": 1.64
+          },
+          "non_200_statuses": 0
+        },
+        "tree_depth1": {
+          "carries_tallies": ["False"],
+          "first_answer_s": {
+            "max": 1.64,
+            "min": 1.61,
+            "n": 3,
+            "p50": 1.63,
+            "p95": 1.64
+          },
+          "non_200_statuses": 0
+        },
+        "tree_root_summary_depth0": {
+          "carries_tallies": ["True"],
+          "first_answer_s": {
+            "max": 1.64,
+            "min": 1.61,
+            "n": 3,
+            "p50": 1.63,
+            "p95": 1.64
+          },
+          "non_200_statuses": 0
+        },
+        "walk_ms": {
+          "max": 5770,
+          "min": 5504,
+          "n": 3,
+          "p50": 5510,
+          "p95": 5770
+        }
+      }
+    }
+  },
   "frozen_sources": [
     "c19ea02d1aa9a62ea67c82649d9e8588e21e26ff1267a4efced07b183042fa26  adapter.py",
     "6d75b74e525a8775c932e2b25eba8cea1643f71df5f9a5d116908a9521bbbecb  probe.py",
@@ -700,7 +1520,7 @@
       }
     }
   },
-  "schema": "fdu-provider-spike-performance-v1",
+  "schema": "fdu-provider-spike-performance-v2",
   "synthetic_100000": {
     "caveats": [
       "attached_rollup_* and attached_rollup_requests are not comparable: bench_serving's startup probe inside Server.__enter__ absorbed every rollup fdu could not answer during discovery, so fdu's one timed rollup came after settle; use attached_first_count_s.",
@@ -731,6 +1551,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [0.7, 0.5, 0.556, 0.6, 0.556, 0.5],
         "paired_median": 0.556,
+        "provisional": false,
         "python_median": 10.0,
         "python_range": [9.0, 10.0],
         "verdict": "fdu lower, beyond A/A noise"
@@ -743,6 +1564,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [5.922, 5.14, 5.023, 5.315, 4.457, 4.62],
         "paired_median": 5.082,
+        "provisional": false,
         "python_median": 0.92,
         "python_range": [0.87, 1.03],
         "verdict": "fdu higher, beyond A/A noise"
@@ -755,6 +1577,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [2.274, 1.681, 1.488, 1.443, 1.545, 1.496],
         "paired_median": 1.52,
+        "provisional": false,
         "python_median": 162350.0,
         "python_range": [162320, 162392],
         "verdict": "fdu higher, beyond A/A noise"
@@ -767,6 +1590,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [0.436, 0.643, 0.471, 0.434, 0.463, 0.4],
         "paired_median": 0.45,
+        "provisional": false,
         "python_median": 5.45,
         "python_range": [5.1, 5.6],
         "verdict": "fdu lower, beyond A/A noise"
@@ -779,6 +1603,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [0.261, 0.409, 0.293, 0.271, 0.294, 0.242],
         "paired_median": 0.282,
+        "provisional": false,
         "python_median": 8.65,
         "python_range": [8.2, 9.2],
         "verdict": "fdu lower, beyond A/A noise"
@@ -791,6 +1616,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [0.001, 0.001, 0.001, 0.001, 0.001, 0.001],
         "paired_median": 0.001,
+        "provisional": false,
         "python_median": 1727.5,
         "python_range": [1689, 1765],
         "verdict": "fdu lower, beyond A/A noise"
@@ -803,6 +1629,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [0.592, 0.485, 0.458, 0.5, 0.427, 0.434],
         "paired_median": 0.472,
+        "provisional": false,
         "python_median": 9.85,
         "python_range": [9.6, 10.3],
         "verdict": "fdu lower, beyond A/A noise"
@@ -815,6 +1642,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.0, 1.4, 0.5, 0.75, 1.25, 1.25],
         "paired_median": 1.125,
+        "provisional": false,
         "python_median": 4.0,
         "python_range": [4.0, 5.0],
         "verdict": "within A/A noise"
@@ -827,6 +1655,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.545, 2.173, 1.701, 1.61, 1.667, 1.662],
         "paired_median": 1.664,
+        "provisional": false,
         "python_median": 157342.0,
         "python_range": [157268, 157408],
         "verdict": "fdu higher, beyond A/A noise"
@@ -839,6 +1668,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [0.232, 0.205, 0.252, 0.308, 0.247, 0.269],
         "paired_median": 0.249,
+        "provisional": false,
         "python_median": 4107.5,
         "python_range": [3951, 4696],
         "verdict": "fdu lower, beyond A/A noise"
@@ -851,6 +1681,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [4.879, 4.913, 4.358, 3.821, 4.923, 4.82],
         "paired_median": 4.849,
+        "provisional": false,
         "python_median": 462.3,
         "python_range": [417.9, 535.4],
         "verdict": "fdu higher, beyond A/A noise"
@@ -863,6 +1694,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.256, 1.091, 0.952, 0.804, 0.43, 1.135],
         "paired_median": 1.022,
+        "provisional": false,
         "python_median": 4.3,
         "python_range": [3.7, 9.3],
         "verdict": "within A/A noise"
@@ -875,6 +1707,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.63, 1.375, 1.032, 1.028, 1.517, 0.942],
         "paired_median": 1.204,
+        "provisional": false,
         "python_median": 6.6,
         "python_range": [5.6, 7.3],
         "verdict": "within A/A noise"
@@ -887,6 +1720,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.208, 1.042, 1.316, 1.0, 1.316, 1.316],
         "paired_median": 1.262,
+        "provisional": false,
         "python_median": 2.15,
         "python_range": [1.9, 2.4],
         "verdict": "within A/A noise"
@@ -899,6 +1733,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [5.833, 5.167, 5.333, 5.5, 5.5, 5.167],
         "paired_median": 5.417,
+        "provisional": false,
         "python_median": 6.0,
         "python_range": [6.0, 6.0],
         "verdict": "fdu higher, beyond A/A noise"
@@ -911,6 +1746,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.162, 1.172, 1.249, 1.206, 1.172, 1.205],
         "paired_median": 1.188,
+        "provisional": false,
         "python_median": 281.9,
         "python_range": [222.5, 321.6],
         "verdict": "within A/A noise"
@@ -923,6 +1759,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [2.562, 2.105, 2.6, 1.944, 1.737, 2.714],
         "paired_median": 2.333,
+        "provisional": false,
         "python_median": 1.7,
         "python_range": [1.4, 1.9],
         "verdict": "fdu higher, beyond A/A noise"
@@ -935,6 +1772,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [2.153, 1.884, 2.224, 1.838, 2.2, 2.123],
         "paired_median": 2.138,
+        "provisional": false,
         "python_median": 174814.0,
         "python_range": [174684, 176496],
         "verdict": "fdu higher, beyond A/A noise"
@@ -947,6 +1785,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.25, 1.118, 1.056, 0.857, 1.187, 1.235],
         "paired_median": 1.153,
+        "provisional": false,
         "python_median": 1.7,
         "python_range": [1.6, 2.1],
         "verdict": "within A/A noise"
@@ -959,6 +1798,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [139.918, 139.276, 119.749, 99.996, 126.958, 133.158],
         "paired_median": 130.058,
+        "provisional": false,
         "python_median": 21.1,
         "python_range": [20.2, 27.3],
         "verdict": "fdu higher, beyond A/A noise"
@@ -971,6 +1811,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [137.317, 120.916, 113.051, 97.704, 100.656, 115.877],
         "paired_median": 114.464,
+        "provisional": false,
         "python_median": 24.85,
         "python_range": [22.1, 29.4],
         "verdict": "fdu higher, beyond A/A noise"
@@ -983,6 +1824,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.136, 1.19, 1.0, 0.852, 1.143, 1.19],
         "paired_median": 1.139,
+        "provisional": false,
         "python_median": 2.15,
         "python_range": [2.1, 2.7],
         "verdict": "within A/A noise"
@@ -995,6 +1837,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [2.153, 1.884, 2.224, 1.838, 2.2, 2.123],
         "paired_median": 2.138,
+        "provisional": false,
         "python_median": 174814.0,
         "python_range": [174684, 176496],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1007,6 +1850,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.368, 1.1, 1.294, 0.957, 1.278, 1.048],
         "paired_median": 1.189,
+        "provisional": false,
         "python_median": 1.95,
         "python_range": [1.7, 2.3],
         "verdict": "within A/A noise"
@@ -1019,6 +1863,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.652, 1.136, 1.421, 0.958, 1.263, 0.714],
         "paired_median": 1.2,
+        "provisional": false,
         "python_median": 2.25,
         "python_range": [1.9, 3.5],
         "verdict": "within A/A noise"
@@ -1031,6 +1876,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [2.026, 1.698, 1.848, 1.512, 2.139, 1.73],
         "paired_median": 1.789,
+        "provisional": false,
         "python_median": 3.75,
         "python_range": [3.3, 4.3],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1043,6 +1889,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [2.275, 1.894, 2.029, 1.735, 3.071, 1.821],
         "paired_median": 1.962,
+        "provisional": false,
         "python_median": 4.1,
         "python_range": [3.4, 4.9],
         "verdict": "within A/A noise"
@@ -1055,6 +1902,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.462, 1.609, 1.5, 1.061, 1.818, 1.5],
         "paired_median": 1.5,
+        "provisional": false,
         "python_median": 2.4,
         "python_range": [2.2, 3.3],
         "verdict": "within A/A noise"
@@ -1067,6 +1915,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.367, 1.481, 1.538, 1.057, 1.833, 1.462],
         "paired_median": 1.472,
+        "provisional": false,
         "python_median": 2.65,
         "python_range": [2.4, 3.5],
         "verdict": "within A/A noise"
@@ -1079,6 +1928,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.788, 2.102, 2.144, 1.435, 2.059, 2.045],
         "paired_median": 2.052,
+        "provisional": false,
         "python_median": 9.95,
         "python_range": [8.9, 12.4],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1091,6 +1941,7 @@
         "n_python": 6,
         "paired_fdu_over_python": [1.312, 1.766, 1.534, 1.033, 1.519, 1.429],
         "paired_median": 1.474,
+        "provisional": false,
         "python_median": 14.75,
         "python_range": [13.1, 18.2],
         "verdict": "within A/A noise"
@@ -1183,6 +2034,7 @@
       }
     ]
   },
+  "timed_sources_note": "Stage synthetic ran adapter.py c19ea02d, probe.py 6d75b74e, launcher.py ed6370c9, bench.py 7ec88bec, and projections.py 4cc120b1, all held by commit 101b476d. Stages tree, floor, projections, and discovery ran the same adapter, probe, launcher, and projections, with bench.py 0d150f94 (7ec88bec plus the tree-response key fix), discovery.py 2da2983f, and series.sh 02732cc2; the floor stage was rerun with bench.py 91baaa4a (plus the observed-phase wait). bench.py 0d150f94 and 91baaa4a and discovery.py 2da2983f were never committed: the committed bench.py 786bc8d5 and discovery.py 5cb86f76 add only ruff formatting, lint, and typing casts, and later copies add a portable host record. firstread.py and binding.py ran adapter c03c8851, held by commit b6129b1c, which has every review fix except the change-batch dirty-path fix.",
   "tree_checkout": {
     "corpus_counts": {
       "fdu": {
@@ -1212,6 +2064,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [2.0, 2.0, 2.0, 2.0],
         "paired_median": 2.0,
+        "provisional": false,
         "python_median": 3.0,
         "python_range": [3.0, 3.0],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1224,6 +2077,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.55, 1.695, 1.536, 1.446],
         "paired_median": 1.543,
+        "provisional": true,
         "python_median": 0.83,
         "python_range": [0.77, 0.846],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1236,6 +2090,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.555, 1.701, 1.539, 1.451],
         "paired_median": 1.547,
+        "provisional": true,
         "python_median": 0.82,
         "python_range": [0.766, 0.842],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1248,6 +2103,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [4.768, 4.924, 5.547, 4.762],
         "paired_median": 4.846,
+        "provisional": false,
         "python_median": 9.84,
         "python_range": [9.24, 10.37],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1260,6 +2116,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [3.817, 5.686, 4.603, 3.917],
         "paired_median": 4.26,
+        "provisional": false,
         "python_median": 13.63,
         "python_range": [11.56, 15.47],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1272,6 +2129,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [7.017, 7.86, 8.909, 8.386],
         "paired_median": 8.123,
+        "provisional": false,
         "python_median": 34.28,
         "python_range": [33.53, 37.58],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1284,6 +2142,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [6.483, 9.452, 8.718, 6.451],
         "paired_median": 7.601,
+        "provisional": false,
         "python_median": 39.09,
         "python_range": [34.7, 53.3],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1296,6 +2155,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.078, 1.131, 1.233, 0.997],
         "paired_median": 1.105,
+        "provisional": false,
         "python_median": 30.45,
         "python_range": [30.13, 34.88],
         "verdict": "within A/A noise"
@@ -1308,6 +2168,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.48, 0.571, 0.685, 0.568],
         "paired_median": 0.569,
+        "provisional": true,
         "python_median": 77.32,
         "python_range": [69.44, 78.46],
         "verdict": "fdu lower, beyond A/A noise"
@@ -1320,6 +2181,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [5.532, 5.875, 6.199, 6.074],
         "paired_median": 5.974,
+        "provisional": false,
         "python_median": 3.62,
         "python_range": [3.52, 3.87],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1332,6 +2194,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [5.692, 6.831, 6.211, 7.469],
         "paired_median": 6.521,
+        "provisional": false,
         "python_median": 3.89,
         "python_range": [3.74, 4.15],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1344,6 +2207,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.52, 1.406, 1.806, 1.556],
         "paired_median": 1.538,
+        "provisional": true,
         "python_median": 7.72,
         "python_range": [7.38, 7.88],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1356,6 +2220,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.23, 1.556, 1.852, 1.737],
         "paired_median": 1.647,
+        "provisional": false,
         "python_median": 8.64,
         "python_range": [7.85, 12.83],
         "verdict": "within A/A noise"
@@ -1368,6 +2233,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.94, 1.149, 1.102, 0.994],
         "paired_median": 1.048,
+        "provisional": false,
         "python_median": 24.37,
         "python_range": [22.05, 26.09],
         "verdict": "within A/A noise"
@@ -1380,6 +2246,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.931, 0.821, 1.471, 1.17],
         "paired_median": 1.05,
+        "provisional": false,
         "python_median": 28.88,
         "python_range": [26.3, 37.85],
         "verdict": "within A/A noise"
@@ -1392,6 +2259,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.138, 1.161, 1.281, 1.052],
         "paired_median": 1.149,
+        "provisional": false,
         "python_median": 19.98,
         "python_range": [19.51, 21.76],
         "verdict": "within A/A noise"
@@ -1404,6 +2272,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.128, 1.291, 1.63, 0.983],
         "paired_median": 1.209,
+        "provisional": false,
         "python_median": 23.38,
         "python_range": [21.22, 25.74],
         "verdict": "within A/A noise"
@@ -1416,6 +2285,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.303, 1.184, 1.382, 1.325],
         "paired_median": 1.314,
+        "provisional": true,
         "python_median": 2.29,
         "python_range": [2.17, 2.56],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1428,6 +2298,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.016, 1.05, 1.088, 1.428],
         "paired_median": 1.069,
+        "provisional": false,
         "python_median": 3.05,
         "python_range": [2.83, 3.18],
         "verdict": "within A/A noise"
@@ -1440,6 +2311,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.989, 1.867, 2.106, 1.872],
         "paired_median": 1.931,
+        "provisional": true,
         "python_median": 6.75,
         "python_range": [6.6, 6.99],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1452,6 +2324,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.918, 1.757, 2.047, 1.691],
         "paired_median": 1.837,
+        "provisional": true,
         "python_median": 8.82,
         "python_range": [7.94, 9.18],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1464,6 +2337,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.896, 1.638, 1.969, 1.854],
         "paired_median": 1.875,
+        "provisional": true,
         "python_median": 9.45,
         "python_range": [9.19, 10.76],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1476,6 +2350,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.774, 2.134, 1.967, 1.762],
         "paired_median": 1.871,
+        "provisional": true,
         "python_median": 11.36,
         "python_range": [11.16, 11.73],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1488,6 +2363,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.557, 1.705, 1.54, 1.454],
         "paired_median": 1.548,
+        "provisional": true,
         "python_median": 0.82,
         "python_range": [0.762, 0.838],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1500,6 +2376,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [],
         "paired_median": null,
+        "provisional": false,
         "python_median": 0.0,
         "python_range": [0, 0],
         "verdict": "insufficient"
@@ -1512,6 +2389,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.683, 0.679, 0.708, 0.689],
         "paired_median": 0.686,
+        "provisional": true,
         "python_median": 78.58,
         "python_range": [76.23, 79.61],
         "verdict": "fdu lower, beyond A/A noise"
@@ -1524,6 +2402,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.525, 0.568, 0.542, 0.57],
         "paired_median": 0.555,
+        "provisional": true,
         "python_median": 99.97,
         "python_range": [95.86, 103.62],
         "verdict": "fdu lower, beyond A/A noise"
@@ -1536,6 +2415,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.42, 1.416, 1.47, 1.416],
         "paired_median": 1.418,
+        "provisional": true,
         "python_median": 91646.0,
         "python_range": [91236, 92844],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1548,6 +2428,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.282, 1.176, 1.235, 1.145],
         "paired_median": 1.206,
+        "provisional": true,
         "python_median": 1.77,
         "python_range": [1.7, 1.87],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1560,6 +2441,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.408, 1.444, 1.52, 1.453],
         "paired_median": 1.449,
+        "provisional": true,
         "python_median": 2.09,
         "python_range": [1.98, 2.14],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1572,6 +2454,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.003, 1.133, 1.165, 1.092],
         "paired_median": 1.113,
+        "provisional": false,
         "python_median": 28.57,
         "python_range": [27.31, 31.06],
         "verdict": "within A/A noise"
@@ -1584,6 +2467,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.251, 1.228, 1.351, 1.347],
         "paired_median": 1.299,
+        "provisional": true,
         "python_median": 1.65,
         "python_range": [1.51, 1.75],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1596,6 +2480,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.198, 1.109, 1.283, 1.303],
         "paired_median": 1.24,
+        "provisional": false,
         "python_median": 1.62,
         "python_range": [1.55, 1.72],
         "verdict": "within A/A noise"
@@ -1608,6 +2493,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.998, 1.031, 1.171, 0.984],
         "paired_median": 1.014,
+        "provisional": false,
         "python_median": 23.76,
         "python_range": [22.33, 25.46],
         "verdict": "within A/A noise"
@@ -1620,6 +2506,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.121, 1.141, 1.118, 1.052],
         "paired_median": 1.119,
+        "provisional": false,
         "python_median": 20.04,
         "python_range": [19.27, 20.85],
         "verdict": "within A/A noise"
@@ -1632,6 +2519,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.312, 1.355, 1.355, 1.333],
         "paired_median": 1.344,
+        "provisional": true,
         "python_median": 2.12,
         "python_range": [2.0, 2.21],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1644,6 +2532,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.975, 2.028, 1.833, 2.011],
         "paired_median": 1.993,
+        "provisional": true,
         "python_median": 6.51,
         "python_range": [6.28, 6.76],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1656,6 +2545,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.82, 1.801, 2.194, 1.893],
         "paired_median": 1.857,
+        "provisional": true,
         "python_median": 9.3,
         "python_range": [8.82, 10.18],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1668,6 +2558,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.0, 1.0, 1.0, 1.0],
         "paired_median": 1.0,
+        "provisional": false,
         "python_median": 1.0,
         "python_range": [1.0, 1.0],
         "verdict": "within A/A noise"
@@ -1680,6 +2571,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.476, 1.422, 1.464, 1.417],
         "paired_median": 1.443,
+        "provisional": true,
         "python_median": 82198.0,
         "python_range": [82056, 82784],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1692,6 +2584,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.908, 0.95, 0.912, 0.861],
         "paired_median": 0.91,
+        "provisional": true,
         "python_median": 1.39,
         "python_range": [1.374, 1.444],
         "verdict": "fdu lower, beyond A/A noise"
@@ -1704,6 +2597,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.486, 0.347, 0.418, 0.457],
         "paired_median": 0.438,
+        "provisional": false,
         "python_median": 616.0,
         "python_range": [595, 660],
         "verdict": "fdu lower, beyond A/A noise"
@@ -1950,6 +2844,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [2.435, 2.435, 2.375, 2.333],
         "paired_median": 2.405,
+        "provisional": false,
         "python_median": 23.5,
         "python_range": [23.0, 24.0],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1962,6 +2857,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [4.265, 4.276, 3.997, 4.262],
         "paired_median": 4.263,
+        "provisional": false,
         "python_median": 2.06,
         "python_range": [2.003, 2.185],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1974,6 +2870,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [4.268, 1.05, 4.001, 4.265],
         "paired_median": 4.133,
+        "provisional": false,
         "python_median": 2.06,
         "python_range": [2.001, 2.182],
         "verdict": "within A/A noise"
@@ -1986,6 +2883,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [6.918, 6.612, 5.682, 7.643],
         "paired_median": 6.765,
+        "provisional": false,
         "python_median": 218.69,
         "python_range": [200.77, 266.11],
         "verdict": "fdu higher, beyond A/A noise"
@@ -1998,6 +2896,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [2.618, 3.688, 5.745, 3.304],
         "paired_median": 3.496,
+        "provisional": false,
         "python_median": 441.69,
         "python_range": [299.51, 579.65],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2010,6 +2909,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [10.066, 10.209, 9.024, 9.563],
         "paired_median": 9.815,
+        "provisional": false,
         "python_median": 444.46,
         "python_range": [431.31, 488.63],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2022,6 +2922,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [9.507, 11.691, 8.27, 9.002],
         "paired_median": 9.255,
+        "provisional": false,
         "python_median": 479.0,
         "python_range": [445.59, 562.17],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2034,6 +2935,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.399, 1.329, 1.297, 1.006],
         "paired_median": 1.313,
+        "provisional": false,
         "python_median": 220.82,
         "python_range": [200.93, 280.04],
         "verdict": "within A/A noise"
@@ -2046,6 +2948,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.121, 1.087, 0.897, 1.052],
         "paired_median": 1.07,
+        "provisional": false,
         "python_median": 425.56,
         "python_range": [397.81, 475.16],
         "verdict": "within A/A noise"
@@ -2058,6 +2961,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [85.581, 113.791, 109.427, 110.701],
         "paired_median": 110.064,
+        "provisional": false,
         "python_median": 4.11,
         "python_range": [4.01, 4.31],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2070,6 +2974,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [121.106, 121.317, 102.484, 30.068],
         "paired_median": 111.795,
+        "provisional": false,
         "python_median": 4.53,
         "python_range": [4.16, 16.73],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2082,6 +2987,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [5.605, 4.726, 5.374, 4.942],
         "paired_median": 5.158,
+        "provisional": false,
         "python_median": 17.62,
         "python_range": [17.35, 18.05],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2094,6 +3000,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [4.853, 10.692, 5.655, 2.96],
         "paired_median": 5.254,
+        "provisional": false,
         "python_median": 22.57,
         "python_range": [18.28, 43.21],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2106,6 +3013,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.081, 1.083, 1.054, 1.139],
         "paired_median": 1.082,
+        "provisional": false,
         "python_median": 303.99,
         "python_range": [295.12, 331.79],
         "verdict": "within A/A noise"
@@ -2118,6 +3026,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.25, 1.212, 0.981, 1.063],
         "paired_median": 1.137,
+        "provisional": false,
         "python_median": 344.97,
         "python_range": [304.98, 394.64],
         "verdict": "within A/A noise"
@@ -2130,6 +3039,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.237, 1.297, 1.442, 1.193],
         "paired_median": 1.267,
+        "provisional": true,
         "python_median": 186.52,
         "python_range": [185.47, 202.1],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2142,6 +3052,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.309, 1.47, 1.452, 1.598],
         "paired_median": 1.461,
+        "provisional": true,
         "python_median": 198.95,
         "python_range": [191.61, 213.48],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2154,6 +3065,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.523, 1.426, 1.39, 1.295],
         "paired_median": 1.408,
+        "provisional": true,
         "python_median": 2.02,
         "python_range": [1.95, 2.17],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2166,6 +3078,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.401, 1.386, 1.542, 1.472],
         "paired_median": 1.437,
+        "provisional": true,
         "python_median": 2.28,
         "python_range": [2.25, 2.33],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2178,6 +3091,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.807, 1.677, 1.698, 1.631],
         "paired_median": 1.688,
+        "provisional": true,
         "python_median": 3.0,
         "python_range": [2.85, 3.31],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2190,6 +3104,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [2.195, 1.551, 1.905, 0.733],
         "paired_median": 1.728,
+        "provisional": false,
         "python_median": 3.96,
         "python_range": [3.13, 7.74],
         "verdict": "within A/A noise"
@@ -2202,6 +3117,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [2.171, 2.274, 2.131, 1.929],
         "paired_median": 2.151,
+        "provisional": false,
         "python_median": 19.97,
         "python_range": [18.87, 22.37],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2214,6 +3130,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.919, 2.345, 1.537, 2.743],
         "paired_median": 2.132,
+        "provisional": false,
         "python_median": 25.21,
         "python_range": [21.29, 44.06],
         "verdict": "within A/A noise"
@@ -2226,6 +3143,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [4.273, 1.033, 4.005, 4.269],
         "paired_median": 4.137,
+        "provisional": false,
         "python_median": 2.06,
         "python_range": [1.998, 2.179],
         "verdict": "within A/A noise"
@@ -2238,6 +3156,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [],
         "paired_median": null,
+        "provisional": false,
         "python_median": 0.0,
         "python_range": [0, 0],
         "verdict": "insufficient"
@@ -2250,6 +3169,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.709, 0.712, 0.755, 0.85],
         "paired_median": 0.734,
+        "provisional": true,
         "python_median": 74.09,
         "python_range": [64.22, 76.67],
         "verdict": "fdu lower, beyond A/A noise"
@@ -2262,6 +3182,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.591, 0.691, 0.629, 0.732],
         "paired_median": 0.66,
+        "provisional": false,
         "python_median": 83.82,
         "python_range": [75.07, 117.98],
         "verdict": "within A/A noise"
@@ -2274,6 +3195,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.697, 1.688, 1.644, 1.641],
         "paired_median": 1.666,
+        "provisional": true,
         "python_median": 287344.0,
         "python_range": [282332, 291872],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2286,6 +3208,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.2, 1.08, 0.983, 0.933],
         "paired_median": 1.032,
+        "provisional": false,
         "python_median": 4.62,
         "python_range": [4.25, 4.78],
         "verdict": "within A/A noise"
@@ -2298,6 +3221,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [3.945, 2.951, 3.119, 3.075],
         "paired_median": 3.097,
+        "provisional": false,
         "python_median": 2.42,
         "python_range": [2.01, 2.44],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2310,6 +3234,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.22, 1.37, 1.135, 1.406],
         "paired_median": 1.295,
+        "provisional": true,
         "python_median": 216.0,
         "python_range": [205.79, 242.59],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2322,6 +3247,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.662, 1.601, 1.581, 1.816],
         "paired_median": 1.631,
+        "provisional": true,
         "python_median": 1.62,
         "python_range": [1.51, 1.74],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2334,6 +3260,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.669, 1.545, 1.389, 1.679],
         "paired_median": 1.607,
+        "provisional": true,
         "python_median": 1.72,
         "python_range": [1.66, 1.85],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2346,6 +3273,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.129, 1.153, 0.994, 1.044],
         "paired_median": 1.087,
+        "provisional": false,
         "python_median": 302.94,
         "python_range": [274.91, 347.2],
         "verdict": "within A/A noise"
@@ -2358,6 +3286,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.183, 1.169, 1.343, 1.169],
         "paired_median": 1.176,
+        "provisional": true,
         "python_median": 184.56,
         "python_range": [181.97, 187.8],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2370,6 +3299,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.455, 1.338, 1.319, 1.451],
         "paired_median": 1.395,
+        "provisional": true,
         "python_median": 1.89,
         "python_range": [1.84, 1.98],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2382,6 +3312,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.782, 1.679, 2.011, 1.756],
         "paired_median": 1.769,
+        "provisional": true,
         "python_median": 2.87,
         "python_range": [2.7, 3.08],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2394,6 +3325,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [2.311, 2.18, 2.104, 2.31],
         "paired_median": 2.245,
+        "provisional": false,
         "python_median": 17.88,
         "python_range": [17.66, 19.14],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2406,6 +3338,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.0, 1.0, 1.0, 0.923],
         "paired_median": 1.0,
+        "provisional": false,
         "python_median": 12.0,
         "python_range": [12.0, 13.0],
         "verdict": "within A/A noise"
@@ -2418,6 +3351,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [1.557, 1.511, 1.628, 1.396],
         "paired_median": 1.534,
+        "provisional": true,
         "python_median": 246044.0,
         "python_range": [233024, 259944],
         "verdict": "fdu higher, beyond A/A noise"
@@ -2430,6 +3364,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.679, 0.703, 0.676, 0.664],
         "paired_median": 0.677,
+        "provisional": true,
         "python_median": 12.8,
         "python_range": [12.585, 13.073],
         "verdict": "fdu lower, beyond A/A noise"
@@ -2442,6 +3377,7 @@
         "n_python": 4,
         "paired_fdu_over_python": [0.275, 0.282, 0.285, 0.26],
         "paired_median": 0.278,
+        "provisional": false,
         "python_median": 10682.5,
         "python_range": [10608, 11067],
         "verdict": "fdu lower, beyond A/A noise"

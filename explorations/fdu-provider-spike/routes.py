@@ -54,17 +54,27 @@ class _InjectFdu:
         self.backends_built = 0
         self.per_test: dict[str, int] = {}
         self.phase_failures: list[dict[str, object]] = []
+        self._original: Any = None
 
     def pytest_configure(self) -> None:
         if not self.inject:
             return
         runtime = importlib.import_module("metabrowser.inventory_engine.runtime")
+        self._original = runtime.create_inventory_backend
 
         def build(_provider: object) -> FduInventoryBackend:
             self.backends_built += 1
             return FduInventoryBackend(probe=self.probe)
 
         setattr(runtime, "create_inventory_backend", build)  # noqa: B010
+
+    def pytest_unconfigure(self) -> None:
+        # Restore the constructor, or every later session in this process (a Python
+        # baseline, a repeated isolation run) would silently keep building fdu backends.
+        if self.inject and self._original is not None:
+            runtime = importlib.import_module("metabrowser.inventory_engine.runtime")
+            setattr(runtime, "create_inventory_backend", self._original)  # noqa: B010
+            self._original = None
 
     @pytest.hookimpl(hookwrapper=True)
     def pytest_runtest_protocol(self, item: Any, nextitem: Any) -> Generator[None]:
@@ -93,7 +103,9 @@ def run_selection(
     selection: tuple[str, ...], probe: AdapterProbe, *, inject: bool
 ) -> dict[str, object]:
     plugin = _InjectFdu(probe, inject=inject)
-    exit_code = pytest.main(["-q", "--tb=short", "-p", "no:cacheprovider", *selection], plugins=[plugin])
+    exit_code = pytest.main(
+        ["-q", "--tb=short", "-p", "no:cacheprovider", *selection], plugins=[plugin]
+    )
     for row in plugin.results:
         row["fdu_backends_built"] = plugin.per_test.get(cast("str", row["test"]), 0)
     return {
