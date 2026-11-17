@@ -16,8 +16,8 @@ nightly soak, and `devtools/check_ci.py`. No repository setting has changed; the
 that requires `ci-ok` is the owner’s (Q5). The first step of each phase replaces that
 phase’s estimates with measurements; an estimate is marked “est.”
 Phase 1’s are in [Phase 1 Measurements](#phase-1-measurements): the parallel tier ran
-2.0 to 2.4 times faster on four workers, under the 2.3 the estimates assumed on three of
-the four interpreters.
+2.0 to 2.2 times faster on four workers, under the 2.3 the estimates assumed on all four
+interpreters.
 
 ## Overview
 
@@ -182,7 +182,7 @@ Phase 1’s measurement split it in two, by the rule in [Time Limits](#time-limi
 The estimates divide the measured serial seconds by an assumed 2.5 to 3.2 for four
 workers and add 0.4 to 0.6 minutes of setup and worker start.
 That factor was the plan’s main unmeasured number.
-Phase 1 measured 2.0 to 2.4 ([Phase 1 Measurements](#phase-1-measurements)), so the job
+Phase 1 measured 2.0 to 2.2 ([Phase 1 Measurements](#phase-1-measurements)), so the job
 times above are optimistic.
 
 The serial tier rides in the `goldens` job, after the goldens finish, so it has the
@@ -686,7 +686,12 @@ pull requests. Phase 3 is independent of both.
 ### Phase 1: The Suite on Four Processors
 
 Expected: a `test` leg from 17 to 20 minutes to 10.5 to 13 (est.), with the workflow
-unchanged, since it calls `make test`.
+unchanged, since it calls `make test`. Measured: 14.3 to 15.7 minutes at the median, so
+the estimate was missed ([Phase 1 Measurements](#phase-1-measurements)). The Chrome
+tier, which this phase does not change, is the larger part of each leg, at 351 to 467 s;
+the top of that range came after `main` gained an 85-second Chrome test.
+The parallel tier’s factor, 2.0 to 2.2 against the 2.5 to 3.2 the estimate assumed,
+accounts for the rest.
 
 - [x] `mb-a1le`: Add the `serial` and `chrome` markers, the `--shard` option, and their
   gates. `make test` still runs everything in one process.
@@ -701,8 +706,9 @@ unchanged, since it calls `make test`.
 
 #### Phase 1 Measurements
 
-Taken on 2026-11-17 from CI run 44026747033 of jlevy/metabrowser#499, its three
-attempts, at commit `d5a05e20`, against the green push runs of `main` before it.
+Taken on 2026-11-17 from the green CI runs of jlevy/metabrowser#499: the three attempts
+of run 44026747033 at `d5a05e20`, and runs 44041121764 and 44043995823 at `dbcfd321` and
+`5c9365cc`, each on `main` as it then stood.
 pytest-xdist started four workers on every leg (`PYTEST_WORKERS=logical`).
 
 The parallel tier, in seconds.
@@ -710,44 +716,52 @@ The baseline is the same modules’ time in one process, read by
 `devtools/suite_report.py` from the logs of eight green `main` runs, 43956278180 to
 44007745684, and summed over the modules the tier selects:
 
-| Leg | Under xdist, three attempts | Median | In one process on `main`, median of 8 | Factor |
+| Leg | Under xdist, five runs | Median | In one process on `main`, median of 8 | Factor |
 | --- | --- | ---: | ---: | ---: |
-| 3.12 | 243, 296, 311 | 296 | 590 | 2.0 |
-| 3.13 | 194, 296, 299 | 296 | 611 | 2.1 |
-| 3.14 | 279, 198, 295 | 279 | 604 | 2.2 |
-| 3.14t | 239, 275, 344 | 275 | 663 | 2.4 |
+| 3.12 | 243, 296, 311, 260, 299 | 296 | 590 | 2.0 |
+| 3.13 | 194, 296, 299, 282, 205 | 282 | 611 | 2.2 |
+| 3.14 | 279, 198, 295, 277, 259 | 277 | 604 | 2.2 |
+| 3.14t | 239, 275, 344, 297, 353 | 297 | 663 | 2.2 |
 
 - **The factor is below the 2.3 that [Testing Strategy](#testing-strategy) sets** on
-  three of the four interpreters, so by that row Phase 2 splits the `unit` jobs in two
-  from the start.
+  every interpreter, so by that row Phase 2 splits the `unit` jobs in two from the
+  start.
 - **The limit is the runner, not the schedule.** The tests’ own times, summed by
   `--file-durations`, came to 3.4 to 3.6 times each session’s wall clock, so four
   workers were busy for most of the run.
-  The same tests took 1.1 to 1.8 times as long as their median in one process: they
+  The same tests took 1.1 to 1.9 times as long as their median in one process: they
   contend for the runner’s processors, with the Git, Node, and `metab` processes they
   start.
-- **Run-to-run variation is large.** One leg’s attempts differed by up to 54 percent, as
-  the serial baseline’s runs differed by up to 46 percent.
-  The 10 runs the Testing Strategy asks for were not taken; three were.
+- **Run-to-run variation is large.** One leg’s runs differed by up to 54 percent, as the
+  serial baseline’s runs differed by up to 46 percent.
+  The 10 runs the Testing Strategy asks for were not taken; five were.
 
-The rest of the `test` leg, in seconds over the same three attempts: the serial tier 55
-to 57, the Chrome tier 351 to 386, and the goldens 73 to 131, against 197 to 258 one at
-a time.
+The rest of the `test` leg, in seconds over the same runs: the serial tier 55 to 57; the
+Chrome tier 351 to 386, and 443 to 466 once `main` gained an 85-second Chrome test; and
+the goldens 73 to 131, against 197 to 258 one at a time.
 
-`make ci-report` over the same runs, in minutes:
+`make ci-report` in minutes, over #499’s runs and the last 25 push runs of `main`:
 
-| Job | #499, median of its successful jobs | `main`, median over its last 20 push runs |
+| Job | #499, median of its successful jobs | `main`, median |
 | --- | ---: | ---: |
-| `test (3.12)` | 14.7 | 20.4 |
-| `test (3.13)` | 14.5 | 21.4 |
-| `test (3.14)` | 14.1 | 20.8 |
-| `test (3.14t)` | 13.9 | 22.2 |
-| `admitted-git (2.43.7)` | 3.1 | 6.4 |
-| `admitted-git (2.50.1)` | 3.5 | 6.7 |
+| `test (3.12)` | 14.8 | 20.1 |
+| `test (3.13)` | 14.3 | 21.4 |
+| `test (3.14)` | 14.3 | 20.8 |
+| `test (3.14t)` | 15.7 | 22.2 |
+| `admitted-git (2.43.7)` | 3.2 | 6.4 |
+| `admitted-git (2.50.1)` | 3.5 | 6.6 |
 
-The first attempt reached green 14.2 minutes after its push, on 60.6 runner minutes,
-against `main`’s median of 22.9 and 99.5. Both `admitted-git` legs passed in all three
-attempts, each with the 1,388 tests a run in one process collects.
+Its three green first attempts reached green a median of 17.1 minutes after their push,
+on 70.3 runner minutes, against `main`’s 22.9 and 99.2. Both `admitted-git` legs passed
+in every green run, each with the 1,388 tests a run in one process collects.
+
+Not every run was green.
+In attempt 2 of run 44033895259, one worker of `test (3.12)` ended, which under xdist is
+what a test that runs out of time does, and the job then hung for 30 minutes until it
+was cancelled.
+No trace named the test, because the timeout’s stack dump is lost with the
+worker’s output. `tests/suite_workers.py` now writes every stack to the log before each
+test’s budget ends, and bead `mb-pc9v` tracks the hang.
 
 ### Phase 2: Split Jobs in the Workflow
 
@@ -894,7 +908,7 @@ result the state rule gives:
 
 ## Risks
 
-- **The xdist factor is under 2.3.** Phase 1 measured 2.0 to 2.4 on four workers
+- **The xdist factor is under 2.3.** Phase 1 measured 2.0 to 2.2 on four workers
   ([Phase 1 Measurements](#phase-1-measurements)), so the `unit` jobs are split in two,
   which costs four more jobs and no coverage.
 - **Tests that are sensitive to load.** A test that passes alone and fails beside three

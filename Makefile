@@ -126,7 +126,9 @@ STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 # Workers for the parallel tier and test-admitted-git, one per logical processor. xdist's
 # `auto` counts physical cores through psutil, which this project installs, and a CI
 # runner's four processors can be two cores with two threads each. A shared or loaded
-# machine lowers it, as in `make test PYTEST_WORKERS=2`.
+# machine lowers it, as in `make test PYTEST_WORKERS=2`. Measured only at three workers
+# (a shared 4-processor machine) and four (CI's runners), as the fast CI plan's Phase 1
+# Measurements record; a machine with more processors may want a cap.
 PYTEST_WORKERS ?= logical
 # `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py);
 # empty runs the whole tier.

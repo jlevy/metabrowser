@@ -257,7 +257,9 @@ marked.
 by node ID, so that one tier can be split across machines.
 `--shard-by=file` deals whole files instead, so that a module runs in one part, its
 tests in order; `make test-parallel` passes it, since its files run that way on their
-workers (`tests/suite_tiers.py`).
+workers (`tests/suite_tiers.py`). A tier or a shard that selects no test passes, with a
+line that says so; a `-m` that is not one of `TIERS`, or a run that collected nothing,
+still fails when nothing is left.
 
 `make test` runs the default tier as four targets, in this order, and each also runs
 alone, as a CI job can call it:
