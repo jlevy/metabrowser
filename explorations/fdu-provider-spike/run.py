@@ -28,15 +28,15 @@ from typing import Any, cast
 
 os.environ.setdefault("FDU_SPIKE_VERIFY_EXT", "1")
 
-import adapter  # noqa: E402
-import fdu as fdu_package  # noqa: E402
-from adapter import FduInventoryBackend  # noqa: E402
-from conformance import provider_cases, run_case, run_conformance  # noqa: E402
-from probe import AdapterProbe  # noqa: E402
-from rollup_corpus import run_corpus  # noqa: E402
-from routes import SELECTED_2A, SELECTED_NEWER, run_selection  # noqa: E402
+import adapter
+import fdu as fdu_package
+from adapter import FduInventoryBackend
+from conformance import provider_cases, run_case, run_conformance
+from probe import AdapterProbe
+from rollup_corpus import run_corpus
+from routes import SELECTED_2A, SELECTED_NEWER, run_selection
 
-from metabrowser.inventory_engine.contract import (  # noqa: E402
+from metabrowser.inventory_engine.contract import (
     CatalogQuery,
     ChangeBatch,
     DiagnosticsQuery,
@@ -57,11 +57,12 @@ from metabrowser.inventory_engine.contract import (  # noqa: E402
     RollupQuery,
     TreeGroupFilter,
 )
-from metabrowser.inventory_engine.coordinator import InventoryCoordinator  # noqa: E402
-from metabrowser.inventory_engine.runtime import default_inventory_config  # noqa: E402
+from metabrowser.inventory_engine.coordinator import InventoryCoordinator
+from metabrowser.inventory_engine.runtime import default_inventory_config
 
 HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parents[1]
+FDU_CHECKOUT = REPO_ROOT.parent / "fdu"
 FDU_REVISION = "4450be7"
 FDU_VERSION = "0.6.0"
 WHEEL_NAME = "fdu-0.6.0-cp312-abi3-manylinux_2_34_x86_64.whl"
@@ -135,6 +136,15 @@ CLASSIFIED_ROUTES: dict[str, tuple[str, str]] = {
         "be publishing the intermediate one when refresh returns. The contract permits "
         "sub-batches; the coordinator does not wait for its relay to reach the receipt.",
     ),
+    "tests/test_e2e_filesystem_to_sse.py::test_rm_directory_coalesces_descendant_removals": (
+        "c",
+        "Intermittent for both providers. With observation on, the live observer and the "
+        "test's explicit refresh both verify one recursive removal, and whether that "
+        "lands in one provider batch or two is timing; the host coalesces within a batch, "
+        "so two batches give two envelopes against an assertion of exactly one. Repeated "
+        "on this host: Python failed 5 of 32 runs, fdu 9 of 32 (20 in one process and 12 "
+        "in separate processes each).",
+    ),
     "tests/test_catalog_feed_server.py::test_api_catalog_is_incomplete_while_discovery_is_blocked": (
         "d",
         "Monkeypatches python_inventory.walk_tree to block discovery.",
@@ -156,10 +166,16 @@ def _git(path: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def provenance(wheel: Path, fdu_checkout: Path) -> dict[str, Any]:
+def provenance(
+    wheel: Path,
+    fdu_checkout: Path,
+    *,
+    expected_name: str = WHEEL_NAME,
+    expected_sha256: str = WHEEL_SHA256,
+) -> dict[str, Any]:
     digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
-    if wheel.name != WHEEL_NAME or digest != WHEEL_SHA256:
-        raise RuntimeError(f"wheel {wheel.name} {digest} is not the reviewed {WHEEL_SHA256}")
+    if wheel.name != expected_name or digest != expected_sha256:
+        raise RuntimeError(f"wheel {wheel.name} {digest} is not the reviewed {expected_sha256}")
     package_path = Path(fdu_package.__file__).resolve()
     source_tree = (fdu_checkout / "crates/fdu-py/python").resolve()
     if package_path.is_relative_to(source_tree) or package_path.is_relative_to(fdu_checkout):
@@ -415,12 +431,11 @@ async def identity_and_bounds() -> dict[str, Any]:
                 catalog = read.projection("c")
                 lookup = read.projection("b")
                 return {
-                    "directory_order": [entry.path for entry in getattr(directory, "entries")],
-                    "catalog_order": [record.path for record in getattr(catalog, "records")],
-                    "backslash_lookup": getattr(lookup, "presence").value,
+                    "directory_order": [entry.path for entry in directory.entries],
+                    "catalog_order": [record.path for record in catalog.records],
+                    "backslash_lookup": lookup.presence.value,
                     "forty_entry_bundle_present": sum(
-                        getattr(item, "presence") is EntryPresence.PRESENT
-                        for item in many.projections
+                        item.presence is EntryPresence.PRESENT for item in many.projections
                     ),
                     "hundred_path_priority": "accepted",
                 }
@@ -446,7 +461,7 @@ def _normalize(value: object, *, key: str | None = None) -> object:
         return [_normalize(item) for item in sequence]
     if isinstance(value, str):
         text = value.replace(str(REPO_ROOT), "<METABROWSER>")
-        text = text.replace(str(Path("/home/user/fdu")), "<FDU>")
+        text = text.replace(str(FDU_CHECKOUT), "<FDU>")
         text = text.replace(str(Path.home()), "<HOME>")
         text = re.sub(r"/[^\s'\":]*/site-packages/", "<SITE_PACKAGES>/", text)
         text = re.sub(r"/tmp/[^\s'\":]*", "<TMP>", text)
@@ -469,14 +484,28 @@ def classify(rows: list[dict[str, Any]], table: dict[str, tuple[str, str]], key:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--wheel", type=Path, required=True)
-    parser.add_argument("--fdu-checkout", type=Path, default=Path("/home/user/fdu"))
+    # The fdu checkout the wheel was built from, conventionally beside this checkout.
+    parser.add_argument("--fdu-checkout", type=Path, default=FDU_CHECKOUT)
     parser.add_argument("--corpus", type=Path, default=REPO_ROOT)
     parser.add_argument("--output", type=Path, default=HERE / "evidence" / "correctness.json")
     parser.add_argument("--skip-routes", action="store_true")
+    # A wheel built on another platform has its own name and digest; name both, so the
+    # check stays exact rather than being skipped.
+    parser.add_argument("--expect-wheel-name", default=WHEEL_NAME)
+    parser.add_argument("--expect-wheel-sha256", default=WHEEL_SHA256)
     args = parser.parse_args()
 
     record: dict[str, Any] = {"schema": "fdu-provider-spike-correctness-v1"}
-    record["provenance"] = provenance(args.wheel.resolve(), args.fdu_checkout.resolve())
+    record["provenance"] = provenance(
+        args.wheel.resolve(),
+        args.fdu_checkout.resolve(),
+        expected_name=args.expect_wheel_name,
+        expected_sha256=args.expect_wheel_sha256,
+    )
+    record["sources_sha256"] = {
+        name: hashlib.sha256((HERE / name).read_bytes()).hexdigest()
+        for name in ("adapter.py", "probe.py", "run.py", "conformance.py", "routes.py")
+    }
     record["adapter_modes"] = {
         "image_memo": adapter.IMAGE_MEMO,
         "verify_extensions": adapter.VERIFY_EXTENSIONS,
@@ -534,7 +563,9 @@ def main() -> int:
     )
     biome = REPO_ROOT / "node_modules/.bin/biome"
     if biome.is_file():
-        subprocess.run([str(biome), "format", "--write", str(args.output)], cwd=REPO_ROOT, check=False)
+        subprocess.run(
+            [str(biome), "format", "--write", str(args.output)], cwd=REPO_ROOT, check=False
+        )
     print(args.output)
     print("unclassified:", unclassified)
     return int(bool(unclassified))

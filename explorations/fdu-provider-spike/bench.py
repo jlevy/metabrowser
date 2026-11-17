@@ -34,9 +34,8 @@ REPO = HERE.parents[1]
 OUT = REPO / ".bench" / "fdu-spike"
 sys.path.insert(0, str(REPO))
 
-from devtools import bench_serving  # noqa: E402
-
-from metabrowser import smoke_probes  # noqa: E402
+from devtools import bench_serving
+from metabrowser import smoke_probes
 
 ARMS: tuple[tuple[str, str], ...] = (("python", "A"), ("fdu", "A"), ("python", "B"), ("fdu", "B"))
 
@@ -245,7 +244,7 @@ def _first_subdir(base: str) -> str | None:
     status, payload, _elapsed, _etag = _json(f"{base}/api/tree?path=&depth=1")
     if status != 200 or not isinstance(payload, dict):
         return None
-    nodes = cast("list[dict[str, Any]]", payload.get("nodes") or payload.get("children") or [])
+    nodes = cast("list[dict[str, Any]]", cast("dict[str, Any]", payload).get("tree") or [])
     dirs = [node for node in nodes if node.get("type") == "dir" and not node.get("gitignored")]
     if not dirs:
         dirs = [node for node in nodes if node.get("type") == "dir"]
@@ -262,9 +261,10 @@ def tree_trial(corpus: Path, provider: str, log_dir: Path, rounds: int) -> dict[
     log = log_dir / f"tree-{provider}-{int(time.time() * 1000)}.log"
     started = time.monotonic()
     result: dict[str, Any] = {"provider": provider}
-    with bench_serving.Server(corpus, log, build, provider=provider) as server, _Sampler(
-        server
-    ) as sampler:
+    with (
+        bench_serving.Server(corpus, log, build, provider=provider) as server,
+        _Sampler(server) as sampler,
+    ):
         base = server.base_url
         result["listening_s"] = round(time.monotonic() - started, 3)
         first_useful: float | None = None
@@ -274,15 +274,22 @@ def tree_trial(corpus: Path, provider: str, log_dir: Path, rounds: int) -> dict[
         while time.monotonic() - started < bench_serving.SCAN_TIMEOUT_S:
             polls += 1
             status, payload, _elapsed, _etag = _json(f"{base}/api/tree?path=&depth=1")
-            if first_useful is None and status == 200 and isinstance(payload, dict):
-                if payload.get("nodes") or payload.get("children"):
-                    first_useful = time.monotonic() - started
-            status, rollup, _elapsed, _etag = _json(f"{base}/api/rollup?{bench_serving.OVERVIEW_QUERY}")
+            if (
+                first_useful is None
+                and status == 200
+                and isinstance(payload, dict)
+                and cast("dict[str, Any]", payload).get("tree")
+            ):
+                first_useful = time.monotonic() - started
+            status, rollup, _elapsed, _etag = _json(
+                f"{base}/api/rollup?{bench_serving.OVERVIEW_QUERY}"
+            )
             if status == 200 and isinstance(rollup, dict):
-                node = cast("dict[str, Any]", rollup.get("node") or {})
+                envelope = cast("dict[str, Any]", rollup)
+                node = cast("dict[str, Any]", envelope.get("node") or {})
                 if first_count is None and node.get("total_files"):
                     first_count = time.monotonic() - started
-                if rollup.get("index_status") in ("done", "truncated"):
+                if envelope.get("index_status") in ("done", "truncated"):
                     settled = time.monotonic() - started
                     break
             time.sleep(0.02)
@@ -333,9 +340,7 @@ def tree_trial(corpus: Path, provider: str, log_dir: Path, rounds: int) -> dict[
         result["live_change_missed"] = missed
         result["fresh_route_ms"] = {name: summarize(values) for name, values in fresh.items()}
         result["retained_route_ms"] = {name: summarize(values) for name, values in retained.items()}
-        result["route_statuses"] = {
-            name: sorted(set(values)) for name, values in statuses.items()
-        }
+        result["route_statuses"] = {name: sorted(set(values)) for name, values in statuses.items()}
         final = server.diagnostics()
         result["final_rss_kb"] = final["process"]["rss_kb"]
         result["final_cpu_s"] = final["process"]["cpu_seconds"]
@@ -343,7 +348,13 @@ def tree_trial(corpus: Path, provider: str, log_dir: Path, rounds: int) -> dict[
         result["provider_reported"] = final.get("provider")
         result["diagnostics"] = {
             key: final.get(key)
-            for key in ("provider", "contract", "files_indexed", "directories_indexed", "watch_state")
+            for key in (
+                "provider",
+                "contract",
+                "files_indexed",
+                "directories_indexed",
+                "watch_state",
+            )
         }
     return result
 
@@ -400,12 +411,17 @@ if which == "fdu-observed":
     index = fdu.OpenedIndex.open(root, options)
     open_returned_s = time.monotonic() - wall0
     discovered_s = None
-    while True:
+    phases_seen = []
+    # With observation, fdu leaves discovery for `ready`, then reconciles the whole root
+    # once (`reconciling`) before `watching`; wait for the terminal observation phase.
+    while time.monotonic() - wall0 < 300:
         phase = index.state().state.phase
+        if not phases_seen or phases_seen[-1] != phase.value:
+            phases_seen.append(phase.value)
         if discovered_s is None and phase is not fdu.LifecyclePhase.DISCOVERING:
             discovered_s = time.monotonic() - wall0
-        if phase in (fdu.LifecyclePhase.WATCHING, fdu.LifecyclePhase.READY,
-                     fdu.LifecyclePhase.STOPPED, fdu.LifecyclePhase.FAILED):
+        if phase in (fdu.LifecyclePhase.WATCHING, fdu.LifecyclePhase.STOPPED,
+                     fdu.LifecyclePhase.FAILED):
             break
         time.sleep(0.002)
     watching_s = time.monotonic() - wall0
@@ -448,7 +464,8 @@ extra = {}
 if which == "fdu-observed":
     extra = {"open_returned_s": round(open_returned_s, 4),
              "discovered_s": round(discovered_s or 0, 4),
-             "watching_s": round(watching_s, 4), "final_phase": final_phase}
+             "watching_s": round(watching_s, 4), "final_phase": final_phase,
+             "phases_seen": phases_seen}
 print(json.dumps({"engine": which, "wall_s": round(wall, 4), "cpu_s": round(cpu, 4),
     "max_rss_kb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, "files": files,
     "entries": entries, **extra}))

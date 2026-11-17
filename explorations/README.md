@@ -7,6 +7,7 @@ rule, and a ledger generated from the record.
 
 | Loop | Subject |
 | --- | --- |
+| [fdu-provider-spike](fdu-provider-spike/README.md) | Whether fdu 0.6.0 can back the current inventory-provider contract, and Python versus fdu through the real server path, with every temporary fallback named by the fdu addition that removes it |
 | [git-history](git-history/README.md) | The server and browser cost shape for continuous, virtualized Git history, including the frozen v0.9.0 structural budgets |
 | [performance-loop](performance-loop/README.md) | How fast Metabrowser becomes usable — loading, responsiveness, visual stability, assets, the scan, and the server underneath, using the reusable [Web Performance Framework](../docs/web-performance-framework.md) |
 | [repository-cache](repository-cache/README.md) | Acquisition strategy and layout for the worktree-free repository store, blobless reads and lazy fetch, concurrent readers and fetches, maintenance, and the lock and rename primitives behind cache publication |

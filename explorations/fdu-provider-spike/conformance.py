@@ -9,7 +9,7 @@ import time
 import traceback
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from adapter import FduInventoryBackend
@@ -48,7 +48,7 @@ def run_case(suite: Any, name: str, factory: Callable[[], Any]) -> dict[str, obj
             getattr(suite, name)(factory, Path(raw_root))
         except pytest.skip.Exception as error:
             outcome, detail = "skipped", str(error)
-        except BaseException as error:  # noqa: BLE001 - the outcome is the evidence
+        except BaseException as error:
             outcome = "failed"
             detail = "".join(
                 traceback.format_exception(type(error), error, error.__traceback__, limit=6)
@@ -88,14 +88,13 @@ def main() -> int:
     rows = run_conformance(probe, only)
     failures = 0
     for row in rows:
-        python = row["python"]
-        fdu_row = row["fdu"]
-        assert isinstance(python, dict) and isinstance(fdu_row, dict)
-        print(f"{python['outcome']:8} {fdu_row['outcome']:8} {row['test']}")
+        python = cast("dict[str, object]", row["python"])
+        fdu_row = cast("dict[str, object]", row["fdu"])
+        print(f"{python['outcome']!s:8} {fdu_row['outcome']!s:8} {row['test']}")
         if fdu_row["outcome"] == "failed":
             failures += 1
             print("    " + str(fdu_row["detail"]).replace("\n", "\n    ")[-900:])
-    print(probe.snapshot()["fallbacks"].keys())
+    print(sorted(cast("dict[str, object]", probe.snapshot()["fallbacks"])))
     return int(failures > 0)
 
 

@@ -1,3 +1,6 @@
+# pyright: standard
+# This module only reshapes untyped JSON written by bench.py; strict mode would add a
+# cast per key without checking anything the JSON itself does not decide.
 """Normalize the raw timed series in .bench/fdu-spike/ into evidence/performance.json.
 
 For every metric it reports each provider's samples, the A/A ratio of each provider's
@@ -12,7 +15,7 @@ import json
 import re
 import statistics
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -22,16 +25,18 @@ RAW = REPO / ".bench" / "fdu-spike"
 def _get(value: Any, *path: object) -> Any:
     for key in path:
         if isinstance(value, dict) and key in value:
-            value = value[key]
+            value = cast("dict[object, Any]", value)[key]
         elif isinstance(value, list) and isinstance(key, int) and key < len(value):
-            value = value[key]
+            value = cast("list[Any]", value)[key]
         else:
             return None
     return value
 
 
 def synthetic_metrics(result: dict[str, Any]) -> dict[str, float | None]:
-    cold, attached, settled = (result.get(name, {}) for name in ("cold_scan", "scan_with_client", "settled"))
+    cold, attached, settled = (
+        result.get(name, {}) for name in ("cold_scan", "scan_with_client", "settled")
+    )
     metrics: dict[str, float | None] = {
         "cold_walk_ms": cold.get("walk_ms"),
         "cold_peak_rss_kb": _get(cold, "diagnostics", "process", "peak_rss_kb"),
@@ -127,8 +132,9 @@ def paired(runs: list[dict[str, Any]], extract: Any) -> dict[str, Any]:
         band = (min(aa), max(aa)) if aa else None
         verdict = "insufficient"
         if pair and band:
-            low, high = min(band[0], 1 / band[1] if band[1] else band[0]), max(
-                band[1], 1 / band[0] if band[0] else band[1]
+            low, high = (
+                min(band[0], 1 / band[1] if band[1] else band[0]),
+                max(band[1], 1 / band[0] if band[0] else band[1]),
             )
             if all(value < low for value in pair):
                 verdict = "fdu lower, beyond A/A noise"
@@ -162,7 +168,14 @@ def floors() -> dict[str, Any]:
         for engine, runs in engines.items():
             good = [run for run in runs if "wall_s" in run]
             entry: dict[str, Any] = {"n": len(good), "errors": len(runs) - len(good)}
-            for key in ("wall_s", "cpu_s", "max_rss_kb", "open_returned_s", "discovered_s", "watching_s"):
+            for key in (
+                "wall_s",
+                "cpu_s",
+                "max_rss_kb",
+                "open_returned_s",
+                "discovered_s",
+                "watching_s",
+            ):
                 values = [run[key] for run in good if key in run]
                 if values:
                     entry[f"{key}_median"] = round(statistics.median(values), 4)
@@ -232,8 +245,13 @@ def main() -> int:
             "host": data["host"],
             "corpus": _get(data, "runs", 0, "result", "corpus"),
             "runs": [
-                {"trial": run["trial"], "provider": run["provider"], "arm": run["arm"], "exit": run["exit"],
-                 "errors": _get(run, "result", "settled", "errors")}
+                {
+                    "trial": run["trial"],
+                    "provider": run["provider"],
+                    "arm": run["arm"],
+                    "exit": run["exit"],
+                    "errors": _get(run, "result", "settled", "errors"),
+                }
                 for run in data["runs"]
             ],
             "metrics": paired(data["runs"], synthetic_metrics),
@@ -260,7 +278,19 @@ def main() -> int:
                 ],
                 "metrics": paired(data["runs"], tree_metrics),
             }
+    if "synthetic_100000" in record:
+        record["synthetic_100000"]["caveats"] = [
+            "attached_rollup_* and attached_rollup_requests are not comparable: bench_serving's "
+            "startup probe inside Server.__enter__ absorbed every rollup fdu could not answer "
+            "during discovery, so fdu's one timed rollup came after settle; use "
+            "attached_first_count_s.",
+            "cpu_s values come from `ps time`, which has one-second resolution.",
+        ]
     record["engine_floor"] = floors()
+    record["discovery"] = {
+        path.stem.removeprefix("discovery-"): json.loads(path.read_text())["summary"]
+        for path in sorted(RAW.glob("discovery-*.json"))
+    }
     record["projections"] = projections()
     text = json.dumps(record, indent=2, sort_keys=True)
     text = text.replace(str(REPO), "<METABROWSER>").replace(str(Path.home()), "<HOME>")

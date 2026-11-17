@@ -14,6 +14,7 @@ fdu cannot express is a typed ``InventoryContractError`` and a probe count.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -149,6 +150,9 @@ _ENTRY_TYPES = {
 }
 _PHASES = {phase.value: LifecyclePhase(phase.value) for phase in fdu.LifecyclePhase}
 _COVERAGE_REASONS = {reason.value: CoverageReason(reason.value) for reason in fdu.CoverageReason}
+type _FallbackQuery = (
+    FilteredTreeQuery | GroupedTreeQuery | RollupQuery | NavigationQuery | RecentQuery
+)
 _FALLBACK_KINDS = (
     FilteredTreeQuery,
     GroupedTreeQuery,
@@ -215,7 +219,9 @@ def _bounded_detail(value: str) -> str:
 
 
 def _work(native: fdu.Work) -> WorkCounters:
-    return WorkCounters(**{name: getattr(native, name) for name in WorkCounters.__dataclass_fields__})
+    return WorkCounters(
+        **{name: getattr(native, name) for name in WorkCounters.__dataclass_fields__}
+    )
 
 
 def _sum_work(left: WorkCounters, right: WorkCounters) -> WorkCounters:
@@ -400,16 +406,13 @@ class FduInventoryHandle:
                 code=IssueCode(issue.kind.value),
                 detail=_bounded_detail(issue.message),
                 path=self._canonical(issue.path),
-                transient=issue.kind
-                in {fdu.IssueKind.DISAPPEARED, fdu.IssueKind.OBSERVATION_GAP},
+                transient=issue.kind in {fdu.IssueKind.DISAPPEARED, fdu.IssueKind.OBSERVATION_GAP},
             )
             for issue in diagnostics.issues[:MAX_INVENTORY_ISSUES]
         ]
         return tuple(issues)
 
-    def _state(
-        self, state: fdu.OpenedState, diagnostics: fdu.ReadDiagnostics | None
-    ) -> IndexState:
+    def _state(self, state: fdu.OpenedState, diagnostics: fdu.ReadDiagnostics | None) -> IndexState:
         issues = self._issues(diagnostics)
         if state.issues.omitted and issues:
             # The contract has no omitted count; summarize in the last retained record.
@@ -423,17 +426,42 @@ class FduInventoryHandle:
                     ),
                 ),
             )
+        phase = _PHASES[state.phase.value]
+        freshness = Freshness(state.freshness.value)
+        complete = state.coverage.kind is fdu.CoverageKind.COMPLETE
+        observing = self._config.watch_mode != "off"
+        if observing and state.phase is fdu.LifecyclePhase.READY:
+            # With observation on, fdu passes through `ready` between discovery and its
+            # pre-watch reconcile pass. An observer failure is `failed`, never `ready`, so
+            # here `ready` can only mean the handoff has not begun: the contract's
+            # `reconciling`, not "open with no live observer".
+            phase = LifecyclePhase.RECONCILING
+            freshness = Freshness.RECONCILING
+        elif observing and state.phase is fdu.LifecyclePhase.FAILED and complete:
+            # A discovery failure sets coverage Partial(Failed); an observer failure leaves
+            # coverage alone. The latter is the contract's readable-but-stale `ready`.
+            phase = LifecyclePhase.READY
+            freshness = Freshness.STALE
+            if not any(issue.code is IssueCode.OBSERVATION_GAP for issue in issues):
+                issues = (
+                    *issues[: MAX_INVENTORY_ISSUES - 1],
+                    InventoryIssue(
+                        code=IssueCode.OBSERVATION_GAP,
+                        detail="fdu reported that filesystem observation failed",
+                        transient=True,
+                    ),
+                )
         return IndexState(
-            phase=_PHASES[state.phase.value],
+            phase=phase,
             coverage=Coverage(
-                complete=state.coverage.kind is fdu.CoverageKind.COMPLETE,
+                complete=complete,
                 reason=(
                     _COVERAGE_REASONS[state.coverage.reason.value]
                     if state.coverage.reason is not None
                     else None
                 ),
             ),
-            freshness=Freshness(state.freshness.value),
+            freshness=freshness,
             source=SourceKind(state.source.value),
             progress=IndexProgress(
                 entries_observed=state.progress.files_retained,
@@ -450,11 +478,11 @@ class FduInventoryHandle:
                 return "native", "off", "resource_budget"
             return "native", "off", "stopped"
         if state.phase is fdu.LifecyclePhase.FAILED:
+            if state.coverage.kind is fdu.CoverageKind.COMPLETE:
+                return "native", "failed", "observer_failed"
             return "native", "failed", "provider_failure"
         if state.phase is fdu.LifecyclePhase.WATCHING:
             return "native", "watching", "native"
-        if state.phase is fdu.LifecyclePhase.READY:
-            return "native", "failed", "observer_stopped"
         return "native", "starting", "discovery"
 
     # Entry conversion ---------------------------------------------------------------
@@ -702,7 +730,7 @@ class FduInventoryHandle:
         projections: list[fdu.Projection] = []
         # (query, native index of main projection, native index of aggregate or -1)
         plan: list[tuple[ReadQuery, int, int]] = []
-        fallback_queries: list[ReadQuery] = []
+        fallback_queries: list[_FallbackQuery] = []
         for query in request.queries:
             if isinstance(query, EntryQuery):
                 native = _native_path(query.path)
@@ -766,11 +794,10 @@ class FduInventoryHandle:
                 plan.append((query, main_index, aggregate_index))
             elif isinstance(query, DiagnosticsQuery):
                 plan.append((query, -1, -1))
-            elif isinstance(query, _FALLBACK_KINDS):
+            else:
+                # The closed algebra leaves exactly the five kinds fdu cannot project.
                 plan.append((query, -1, -1))
                 fallback_queries.append(query)
-            else:  # pragma: no cover - the algebra is closed
-                raise InventoryContractError(f"unsupported query {type(query).__name__}")
         # Helper projections cost native work, so they ride along only when a fallback
         # (entry count, root record) or a diagnostics query needs them. A read whose state
         # carries issues fetches them in a follow-up read at the same version.
@@ -899,7 +926,9 @@ class FduInventoryHandle:
             rows_returned=len(projections),
             wall_time_ns=time.monotonic_ns() - started,
         )
-        native_work = fdu.Work(**{name: getattr(work, name) for name in fdu.Work.__dataclass_fields__})
+        native_work = fdu.Work(
+            **{name: getattr(work, name) for name in fdu.Work.__dataclass_fields__}
+        )
         return replace(first, results=tuple(results), work=native_work)
 
     def _entry_projection(
@@ -1140,9 +1169,7 @@ class FduInventoryHandle:
         if aggregate is not None:
             native_count = aggregate.value
             first_count = CountResult(
-                CountKind.EXACT
-                if native_count.kind is fdu.CountKind.EXACT
-                else CountKind.AT_LEAST,
+                CountKind.EXACT if native_count.kind is fdu.CountKind.EXACT else CountKind.AT_LEAST,
                 native_count.value,
             )
         elif carried is not None:
@@ -1268,7 +1295,7 @@ class FduInventoryHandle:
 
     def _fallback(
         self,
-        queries: Sequence[ReadQuery],
+        queries: Sequence[_FallbackQuery],
         *,
         version: fdu.EngineVersion,
         total_entries: int,
@@ -1280,9 +1307,9 @@ class FduInventoryHandle:
         results: dict[str, ProjectionResult] = {}
         work = WorkCounters()
         metrics = BoundaryMetrics()
-        pending: list[ReadQuery] = []
+        pending: list[_FallbackQuery] = []
         for query in queries:
-            max_work = cast("int", getattr(query, "max_work"))
+            max_work = query.max_work
             # The oracle visits every retained entry, so a bound below that is a typed
             # limit before any materialization, charged at the bound as Python charges it.
             if total_entries > max_work and not (
@@ -1407,10 +1434,8 @@ class FduInventoryHandle:
                     poll = await asyncio.shield(future)
                 except asyncio.CancelledError:
                     # Iterator-only cancellation joins the in-flight poll, never the handle.
-                    try:
+                    with contextlib.suppress(InventoryContractError, VersionUnavailableError):
                         await future
-                    except (InventoryContractError, VersionUnavailableError):
-                        pass
                     raise
                 except InventoryClosedError:
                     return

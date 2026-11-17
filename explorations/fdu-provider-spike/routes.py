@@ -11,7 +11,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from adapter import FduInventoryBackend
@@ -97,8 +97,7 @@ if __name__ == "__main__":
     which = sys.argv[1] if len(sys.argv) > 1 else "2a"
     selection = SELECTED_2A if which == "2a" else SELECTED_NEWER
     outcome = run_selection(selection, AdapterProbe(), inject=sys.argv[2:3] != ["python"])
-    results = outcome["results"]
-    assert isinstance(results, list)
+    results = cast("list[dict[str, object]]", outcome["results"])
     for row in results:
         print(row["outcome"], row["test"])
     print("backends", outcome["fdu_backends_built"], "exit", outcome["exit_code"])

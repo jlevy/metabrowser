@@ -28,7 +28,8 @@ def install() -> None:
             return adapter.FduInventoryBackend()
         return original(provider)
 
-    runtime.create_inventory_backend = create
+    # The composition root's module attribute is the one seam; patched for this process.
+    setattr(runtime, "create_inventory_backend", create)  # noqa: B010
 
 
 def main() -> int:

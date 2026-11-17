@@ -73,19 +73,19 @@ def _classify(names: list[str], registry: str) -> dict[str, fdu.NameClassificati
                 page = fdu.Continue(continuation=result.value.next)
         finally:
             index.close()
-    return {
-        name: found.get(f"case-{position:03d}") for position, name in enumerate(names)
-    }
+    return {name: found.get(f"case-{position:03d}") for position, name in enumerate(names)}
 
 
 def run_corpus(probe: AdapterProbe) -> dict[str, Any]:
     corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
     registry = downlevel_registry(load_file_type_registry_document(), probe)
     cases: list[dict[str, Any]] = corpus["metadata_cases"]
-    representable = [case for case in cases if "/" not in case["name"] and "\x00" not in case["name"]]
+    representable = [
+        case for case in cases if "/" not in case["name"] and "\x00" not in case["name"]
+    ]
     classified = _classify([case["name"] for case in representable], registry)
     rows: list[dict[str, Any]] = []
-    field_mismatches: dict[str, int] = {name: 0 for name in _COMPARED}
+    field_mismatches: dict[str, int] = dict.fromkeys(_COMPARED, 0)
     for case in representable:
         native = classified[case["name"]]
         expected = case["expected"]
@@ -141,4 +141,9 @@ def run_corpus(probe: AdapterProbe) -> dict[str, Any]:
 
 if __name__ == "__main__":
     result = run_corpus(AdapterProbe())
-    print(json.dumps({key: value for key, value in result.items() if key != "invalid_registry_rows"}, indent=1)[:6000])
+    print(
+        json.dumps(
+            {key: value for key, value in result.items() if key != "invalid_registry_rows"},
+            indent=1,
+        )[:6000]
+    )

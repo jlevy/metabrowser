@@ -230,66 +230,66 @@
       "directory_empty_probe": {
         "aggregate_passes": 0,
         "child_bucket_builds": 0,
-        "cpu_time_ns": 557049,
+        "cpu_time_ns": 542998,
         "full_result_sorts": 0,
         "image_reuses": 0,
         "invocations": 9,
         "materialized_path_bytes": 0,
         "materialized_rows": 0,
-        "max_wall_time_ns": 85958,
+        "max_wall_time_ns": 103938,
         "native_calls": 9,
         "native_pages": 9,
         "remedy": "a leaf (file plus symlink) count in PartitionRollUpSummary, so `empty` is known for a directory holding no files without walking its subtree",
         "rows_returned": 0,
-        "wall_time_ns": 557090
+        "wall_time_ns": 543625
       },
       "filtered_tree": {
         "aggregate_passes": 911,
         "child_bucket_builds": 0,
-        "cpu_time_ns": 87844783,
+        "cpu_time_ns": 64738458,
         "full_result_sorts": 911,
         "image_reuses": 907,
         "invocations": 911,
         "materialized_path_bytes": 363,
         "materialized_rows": 29,
-        "max_wall_time_ns": 838978,
+        "max_wall_time_ns": 3996255,
         "native_calls": 4,
         "native_pages": 4,
         "remedy": "native filtered-tree projection: one bounded selection and aggregation pass over portable_children with Metabrowser filter predicates (logical extension, exact name, registry family and display group, age band, minimum size, ignored pruning) returning level-ordered rows plus matching leaf/file/byte totals",
         "rows_returned": 2121,
-        "wall_time_ns": 89744633
+        "wall_time_ns": 65197155
       },
       "grouped_tree": {
         "aggregate_passes": 320,
         "child_bucket_builds": 0,
-        "cpu_time_ns": 38384215,
+        "cpu_time_ns": 24416509,
         "full_result_sorts": 0,
         "image_reuses": 63,
         "invocations": 64,
         "materialized_path_bytes": 860,
         "materialized_rows": 52,
-        "max_wall_time_ns": 6294718,
+        "max_wall_time_ns": 1597455,
         "native_calls": 1,
         "native_pages": 1,
         "remedy": "native grouped filtered tree: the same pass with up to MAX_TREE_GROUPS group predicates (display group, age band) evaluated per leaf",
         "rows_returned": 1059,
-        "wall_time_ns": 40156002
+        "wall_time_ns": 24407408
       },
       "navigation": {
         "aggregate_passes": 1,
         "child_bucket_builds": 0,
-        "cpu_time_ns": 146544,
+        "cpu_time_ns": 104664,
         "full_result_sorts": 0,
         "image_reuses": 1,
         "invocations": 1,
         "materialized_path_bytes": 0,
         "materialized_rows": 0,
-        "max_wall_time_ns": 146486,
+        "max_wall_time_ns": 104761,
         "native_calls": 0,
         "native_pages": 0,
         "remedy": "native navigation projection derived from the maintained root partitions, semantic type tallies, declared exact-name tallies, and global recency order",
         "rows_returned": 1,
-        "wall_time_ns": 146486
+        "wall_time_ns": 104761
       },
       "page_chaining": {
         "aggregate_passes": 0,
@@ -300,28 +300,28 @@
         "invocations": 2,
         "materialized_path_bytes": 0,
         "materialized_rows": 0,
-        "max_wall_time_ns": 418009,
+        "max_wall_time_ns": 477980,
         "native_calls": 8,
         "native_pages": 8,
         "remedy": "a native page bound at least as large as Metabrowser's page requests (catalog pages are `budget.max_files` rows), or a provider page-size hint the host assembly honours; fdu 0.6.0 refuses a page limit above 4096",
         "rows_returned": 10,
-        "wall_time_ns": 654270
+        "wall_time_ns": 683576
       },
       "recent": {
         "aggregate_passes": 3,
         "child_bucket_builds": 0,
-        "cpu_time_ns": 538238,
+        "cpu_time_ns": 551011,
         "full_result_sorts": 3,
         "image_reuses": 2,
         "invocations": 3,
         "materialized_path_bytes": 80,
         "materialized_rows": 9,
-        "max_wall_time_ns": 380594,
+        "max_wall_time_ns": 397526,
         "native_calls": 1,
         "native_pages": 1,
         "remedy": "native ranked-recency projection over the maintained global recency order (ignored last, mtime descending, path), with an Aggregate-style capped count",
         "rows_returned": 8,
-        "wall_time_ns": 538349
+        "wall_time_ns": 550724
       },
       "registry_downlevel": {
         "aggregate_passes": 0,
@@ -342,18 +342,18 @@
       "rollup": {
         "aggregate_passes": 3,
         "child_bucket_builds": 2,
-        "cpu_time_ns": 1257551,
+        "cpu_time_ns": 1087369,
         "full_result_sorts": 0,
         "image_reuses": 1,
         "invocations": 3,
         "materialized_path_bytes": 14,
         "materialized_rows": 4,
-        "max_wall_time_ns": 532863,
+        "max_wall_time_ns": 465095,
         "native_calls": 2,
         "native_pages": 2,
         "remedy": "native File Rollup projection: DirectoryRollUp plus the maintained per-directory semantic type tallies, emitting the node/children, extension tallies, and file-type breakdown that Metabrowser's RollupResult carries",
         "rows_returned": 3,
-        "wall_time_ns": 1257142
+        "wall_time_ns": 1087093
       }
     },
     "native": {
@@ -373,7 +373,7 @@
         "invocations": 4,
         "native_calls": 4,
         "rows_returned": 4,
-        "wall_time_ns": 941324
+        "wall_time_ns": 824357
       }
     },
     "priorities": 0,
@@ -553,11 +553,11 @@
   },
   "lifecycle": {
     "first_phase": "watching",
-    "iterator_cancel_ms": 200.3,
+    "iterator_cancel_ms": 200.4,
     "live_change": {
       "all_dirty": false,
       "dirty_paths": ["", "live.txt"],
-      "latency_ms": 52.2,
+      "latency_ms": 51.9,
       "reset": false
     },
     "live_reread_presence": "present",
@@ -575,13 +575,23 @@
     "fdu_version": "0.6.0",
     "import_origin": "<HOME><SITE_PACKAGES>/fdu/__init__.py",
     "metabrowser_dirty_paths": [
-      "M explorations/fdu-provider-spike/adapter.py",
+      "M explorations/README.md",
+      " M explorations/fdu-provider-spike/adapter.py",
       " M explorations/fdu-provider-spike/bench.py",
-      " M explorations/fdu-provider-spike/probe.py",
-      "?? explorations/fdu-provider-spike/research-inputs/fdu-api-and-gaps.md",
-      "?? explorations/fdu-provider-spike/run.py"
+      " M explorations/fdu-provider-spike/conformance.py",
+      " M explorations/fdu-provider-spike/evidence/correctness.json",
+      " M explorations/fdu-provider-spike/launcher.py",
+      " M explorations/fdu-provider-spike/rollup_corpus.py",
+      " M explorations/fdu-provider-spike/routes.py",
+      " M explorations/fdu-provider-spike/run.py",
+      " M explorations/fdu-provider-spike/series.sh",
+      " M explorations/fdu-provider-spike/summarize.py",
+      "?? explorations/fdu-provider-spike/README.md",
+      "?? explorations/fdu-provider-spike/discovery.py",
+      "?? explorations/fdu-provider-spike/evidence/performance.json",
+      "?? explorations/fdu-provider-spike/pyrightconfig.json"
     ],
-    "metabrowser_head": "9637b122c919a83f934374299e5243a6ae5cdaad",
+    "metabrowser_head": "101b476d1981ea2c2e23769706d681c5e01a45ee",
     "platform": "Linux 6.18.44-fc-v509 x86_64",
     "python": "3.13.18",
     "source_tree_import": false,
@@ -589,64 +599,64 @@
     "wheel_sha256": "d4b9071b377be9201ad95dedaebc19328e0a255cd76dc072fe5fa0cc91fdac1f"
   },
   "representative_read": {
-    "bundle_python_peak_bytes": 25436960,
-    "bundle_wall_ms": 2729.4,
+    "bundle_python_peak_bytes": 25439813,
+    "bundle_wall_ms": 2437.0,
     "corpus": "metabrowser-checkout",
-    "files": 9951,
+    "files": 9962,
     "probe": {
       "change_batches": 0,
       "change_polls": 0,
-      "extension_checks": 20379,
+      "extension_checks": 20401,
       "extension_mismatch_examples": [],
       "extension_mismatches": 0,
       "fallbacks": {
         "filtered_tree": {
           "aggregate_passes": 1,
           "child_bucket_builds": 0,
-          "cpu_time_ns": 1392415222,
+          "cpu_time_ns": 1281704463,
           "full_result_sorts": 1,
           "image_reuses": 0,
           "invocations": 1,
-          "materialized_path_bytes": 489970,
-          "materialized_rows": 10471,
-          "max_wall_time_ns": 1394817366,
+          "materialized_path_bytes": 490572,
+          "materialized_rows": 10483,
+          "max_wall_time_ns": 1284047442,
           "native_calls": 3,
           "native_pages": 3,
           "remedy": "native filtered-tree projection: one bounded selection and aggregation pass over portable_children with Metabrowser filter predicates (logical extension, exact name, registry family and display group, age band, minimum size, ignored pruning) returning level-ordered rows plus matching leaf/file/byte totals",
-          "rows_returned": 410,
-          "wall_time_ns": 1394817366
+          "rows_returned": 412,
+          "wall_time_ns": 1284047442
         },
         "grouped_tree": {
           "aggregate_passes": 2,
           "child_bucket_builds": 0,
-          "cpu_time_ns": 99377953,
+          "cpu_time_ns": 74301601,
           "full_result_sorts": 0,
           "image_reuses": 1,
           "invocations": 1,
           "materialized_path_bytes": 0,
           "materialized_rows": 0,
-          "max_wall_time_ns": 99438222,
+          "max_wall_time_ns": 74298648,
           "native_calls": 0,
           "native_pages": 0,
           "remedy": "native grouped filtered tree: the same pass with up to MAX_TREE_GROUPS group predicates (display group, age band) evaluated per leaf",
           "rows_returned": 568,
-          "wall_time_ns": 99438222
+          "wall_time_ns": 74298648
         },
         "navigation": {
           "aggregate_passes": 1,
           "child_bucket_builds": 0,
-          "cpu_time_ns": 183727864,
+          "cpu_time_ns": 208450035,
           "full_result_sorts": 0,
           "image_reuses": 1,
           "invocations": 1,
           "materialized_path_bytes": 0,
           "materialized_rows": 0,
-          "max_wall_time_ns": 186095632,
+          "max_wall_time_ns": 210550732,
           "native_calls": 0,
           "native_pages": 0,
           "remedy": "native navigation projection derived from the maintained root partitions, semantic type tallies, declared exact-name tallies, and global recency order",
           "rows_returned": 1,
-          "wall_time_ns": 186095632
+          "wall_time_ns": 210550732
         },
         "page_chaining": {
           "aggregate_passes": 0,
@@ -657,28 +667,28 @@
           "invocations": 1,
           "materialized_path_bytes": 0,
           "materialized_rows": 0,
-          "max_wall_time_ns": 340601925,
+          "max_wall_time_ns": 262563291,
           "native_calls": 2,
           "native_pages": 2,
           "remedy": "a native page bound at least as large as Metabrowser's page requests (catalog pages are `budget.max_files` rows), or a provider page-size hint the host assembly honours; fdu 0.6.0 refuses a page limit above 4096",
-          "rows_returned": 9951,
-          "wall_time_ns": 340601925
+          "rows_returned": 9962,
+          "wall_time_ns": 262563291
         },
         "recent": {
           "aggregate_passes": 1,
           "child_bucket_builds": 0,
-          "cpu_time_ns": 38816954,
+          "cpu_time_ns": 35527923,
           "full_result_sorts": 1,
           "image_reuses": 1,
           "invocations": 1,
           "materialized_path_bytes": 0,
           "materialized_rows": 0,
-          "max_wall_time_ns": 38812363,
+          "max_wall_time_ns": 35524487,
           "native_calls": 0,
           "native_pages": 0,
           "remedy": "native ranked-recency projection over the maintained global recency order (ignored last, mtime descending, path), with an Aggregate-style capped count",
           "rows_returned": 200,
-          "wall_time_ns": 38812363
+          "wall_time_ns": 35524487
         },
         "registry_downlevel": {
           "aggregate_passes": 0,
@@ -698,26 +708,26 @@
         },
         "rollup": {
           "aggregate_passes": 1,
-          "child_bucket_builds": 519,
-          "cpu_time_ns": 102950013,
+          "child_bucket_builds": 520,
+          "cpu_time_ns": 115963816,
           "full_result_sorts": 0,
           "image_reuses": 1,
           "invocations": 1,
           "materialized_path_bytes": 0,
           "materialized_rows": 0,
-          "max_wall_time_ns": 103063133,
+          "max_wall_time_ns": 116164550,
           "native_calls": 0,
           "native_pages": 0,
           "remedy": "native File Rollup projection: DirectoryRollUp plus the maintained per-directory semantic type tallies, emitting the node/children, extension tallies, and file-type breakdown that Metabrowser's RollupResult carries",
           "rows_returned": 1,
-          "wall_time_ns": 103063133
+          "wall_time_ns": 116164550
         }
       },
       "native": {
         "catalog": {
           "invocations": 1,
           "native_calls": 1,
-          "rows_returned": 9951,
+          "rows_returned": 9962,
           "wall_time_ns": 0
         },
         "directory": {
@@ -730,7 +740,7 @@
           "invocations": 1,
           "native_calls": 1,
           "rows_returned": 1,
-          "wall_time_ns": 208421157
+          "wall_time_ns": 173825273
         }
       },
       "priorities": 0,
@@ -739,20 +749,20 @@
       "typed_failures": {}
     },
     "projection_rows": {
-      "catalog": 9951,
+      "catalog": 9962,
       "diagnostics": 0,
       "directory": 540,
       "grouped": 0,
-      "markdown": 410,
+      "markdown": 412,
       "navigation": 0,
       "recent": 200,
       "rollup": 0,
       "root": 0
     },
-    "rows_returned": 11675,
-    "settle_s": 2.838,
+    "rows_returned": 11688,
+    "settle_s": 2.536,
     "settled_phase": "ready",
-    "work": "WorkCounters(observations=0, unchanged=0, stale=0, resource_refused=0, rows_visited=73846, rows_returned=11675, maintained_index_work=73843, commits_visited=0, commits_returned=0, directories_read=0, entries_visited=0, files_visited=0, bytes_visited=0)"
+    "work": "WorkCounters(observations=0, unchanged=0, stale=0, resource_refused=0, rows_visited=73930, rows_returned=11688, maintained_index_work=73927, commits_visited=0, commits_returned=0, directories_read=0, entries_visited=0, files_visited=0, bytes_visited=0)"
   },
   "routes": {
     "inventory_suites": {
@@ -760,7 +770,7 @@
       "failures": [
         {
           "class": "b",
-          "detail": "   return await anext(self.gen)\n           ^^^^^^^^^^^^^^^^^^^^^\ntests/inventory_harness.py:54: in inventory_harness\n    await runtime.open(root)\nsrc/metabrowser/inventory_engine/runtime.py:108: in open\n    version = await self.coordinator.open(root)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/metabrowser/inventory_engine/coordinator.py:320: in open\n    published = await self._replace_root_locked(canonical_root)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/metabrowser/inventory_engine/coordinator.py:595: in _replace_root_locked\n    handle = await self._backend.open(root, self._config)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nexplorations/fdu-provider-spike/adapter.py:1640: in open\n    raise InventoryContractError(\nE   metabrowser.inventory_engine.contract.InventoryContractError: fdu 0.6.0 has no polling observer; the spike will not fake one",
+          "detail": "   return await anext(self.gen)\n           ^^^^^^^^^^^^^^^^^^^^^\ntests/inventory_harness.py:54: in inventory_harness\n    await runtime.open(root)\nsrc/metabrowser/inventory_engine/runtime.py:108: in open\n    version = await self.coordinator.open(root)\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/metabrowser/inventory_engine/coordinator.py:320: in open\n    published = await self._replace_root_locked(canonical_root)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/metabrowser/inventory_engine/coordinator.py:595: in _replace_root_locked\n    handle = await self._backend.open(root, self._config)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nexplorations/fdu-provider-spike/adapter.py:1665: in open\n    raise InventoryContractError(\nE   metabrowser.inventory_engine.contract.InventoryContractError: fdu 0.6.0 has no polling observer; the spike will not fake one",
           "fdu_outcome": "failed",
           "root_cause": "Uses watch_mode='poll'. fdu 0.6.0 has no polling observer; the adapter refuses it with a typed InventoryContractError rather than faking one.",
           "test": "tests/test_browser_lifespan_e2e.py::test_watcher_detects_new_file_after_walker_completes"
@@ -781,7 +791,7 @@
         },
         {
           "class": "c",
-          "detail": "\n                                                                 ^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/runners.py:196: in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/runners.py:119: in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/base_events.py:726: in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\ntests/test_rollup_route.py:464: in run\n    assert await _engine_version(harness) == served, \"the version must hold\"\nE   AssertionError: the version must hold\nE   assert EngineVersion...42230880aea1') == EngineVersion...42230880aea1')\nE     \nE     Omitting 3 identical items, use -vv to show\nE     Differing attributes:\nE     ['sequence']\nE     \nE     Drill down into differing attribute sequence:\nE       sequence: 6 != 5",
+          "detail": "tests/test_rollup_route.py:474: in test_rollup_payload_and_etag_share_one_version\n    assert first_files == 2\nE   assert 1 == 2",
           "fdu_outcome": "failed",
           "root_cause": "Gates python_inventory.build_rollup (engaged only because the spike's rollup is the Python oracle) and asserts the host version holds right after refresh. fdu's refresh publishes three native commits (freshness->reconciling, insert, verified->fresh); the receipt names the terminal one, but the host relay can still be publishing the intermediate one when refresh returns. The contract permits sub-batches; the coordinator does not wait for its relay to reach the receipt.",
           "test": "tests/test_rollup_route.py::test_rollup_payload_and_etag_share_one_version"
@@ -853,7 +863,14 @@
   "semantic_digest_with_provider_identity_masked": {
     "detail": "",
     "outcome": "passed",
-    "wall_time_ms": 115.6
+    "wall_time_ms": 110.8
+  },
+  "sources_sha256": {
+    "adapter.py": "e449ec22fdcf6418f9b61a1583aab62a9b6558b5a04007b7e1a9aa02096ddf9f",
+    "conformance.py": "7c75980cbf258a6a9b8cde9c77c8e4b6232dc71581dceaa342eda6f5753eb7bb",
+    "probe.py": "6d75b74e525a8775c932e2b25eba8cea1643f71df5f9a5d116908a9521bbbecb",
+    "routes.py": "7d6d6d77239866b678342ef2f4ef5c8b5172265a76f316fe022db01336ae4790",
+    "run.py": "3658631dea02fbe36317d05127d8641c708fb26f571d66507d0bd0954bd1e5da"
   },
   "unclassified_failures": []
 }
