@@ -368,14 +368,6 @@ type MetabrowserTreeSummaryFormat = {
   formatSize(bytes: number): string;
 };
 
-/** The served root's tracked and ignored files and bytes, the server's `summary` shape. */
-type MetabrowserRootTotals = {
-  files: number;
-  size: number;
-  ignored_files: number;
-  ignored_size: number;
-};
-
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
   /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
@@ -456,11 +448,6 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     fromSummary(summary: unknown, status: unknown): void;
     totals(): MetabrowserRootTotals | null;
     keepsIgnoredLine(): boolean;
-    state(): Readonly<{
-      fromEntry: MetabrowserRootTotals | null;
-      fromTally: MetabrowserRootTotals | null;
-      kept: boolean;
-    }>;
   }>;
   /** The served root's tracked and ignored totals from its own entry, or null. */
   rootTotalsFromEntry(
@@ -3684,6 +3671,13 @@ declare global {
    * letter: "D"}]`, and its text is the parts joined.
    */
   type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
+  /** The served root's tracked and ignored files and bytes, the server's `summary` shape. */
+  type MetabrowserRootTotals = {
+    files: number;
+    size: number;
+    ignored_files: number;
+    ignored_size: number;
+  };
 
   /**
    * What a brief change line is built from (formatters.js, `changeLine`): the statuses in

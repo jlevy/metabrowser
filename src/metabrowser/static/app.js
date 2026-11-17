@@ -1083,8 +1083,7 @@ function withTreeIdScope(scope, build) {
 // paint from a snapshot the server took at page-render time would be a
 // regression, not a shortcut.
 let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
-// What the Files totals line is drawn from (navigation.js, `createRootTotals`): the
-// root's totals the shell inlined, then each root upsert and each settled tally.
+// The Files totals line's source (`rootTotals`).
 /** @type {ReturnType<Window["MetabrowserNavigationRoute"]["createRootTotals"]> | null} */
 let _rootTotals = null;
 // The exact rows that reached the DOM from the shell. The first /api/tree
@@ -1130,8 +1129,6 @@ function renderInitialTreeRows() {
   // before it there were no rows in place to push.
   _lastTreeRender = {
     tree: rows,
-    // The root's totals came inlined with these rows when the walk had finished the
-    // root, so the line paints at its settled height, its ignored line included or not.
     chromeHtml: treeSummaryHtml(rootTotals().totals(), null, null),
     tallyCacheStatus: "scanning",
   };
@@ -1243,17 +1240,12 @@ async function loadTree(options = {}) {
       // Summary row sits at the top of the scrollable tree listing, not
       // in the sticky header — visible on first paint, scrolls away with
       // the rest of the tree. Keeps the upper nav header clean.
-      // The line is drawn from the root's totals, which a row request does not carry,
-      // so it keeps those it has rather than going back to the combined figure. They are
-      // never partial: the root's entry has none until the walk finishes it, and a
-      // provisional tally is not taken (`createRootTotals`).
+      // The root's totals, never partial (docs/design-system.md, "The Files totals").
       if (data.summary) {
         rootTotals().fromSummary(data.summary, data.tally_cache_status);
       }
       var stableSummary = rootTotals().totals();
-      // A line holding its ignored line keeps its figures pending too: the top level's
-      // combined figure counts the ignored files, and read over the held line it said
-      // "9,670 files" for a moment before the split said 1,772.
+      // Held, the figures stay pending: the combined figure counts the ignored files.
       var holding = !stableSummary && rootTotals().keepsIgnoredLine();
       var summaryHtml = treeSummaryHtml(
         stableSummary,
@@ -1920,7 +1912,7 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
   );
 }
 
-// Built on first use: the source kind is a page global the shell sets before this file.
+// What the Files totals line is drawn from (navigation.js, `createRootTotals`).
 function rootTotals() {
   _rootTotals ??= window.MetabrowserNavigationRoute.createRootTotals({
     gitRevision: isGitRevisionSource(),
@@ -1929,14 +1921,12 @@ function rootTotals() {
   return _rootTotals;
 }
 
-// Draw the totals line in place from the root's totals, and keep both caches of it in
-// step: chromeHtml feeds a source swap back to the tree, and _lastTreeSummaryHtml is what
-// the recency source prepends. Updating only the first left the tally showing
-// first-paint figures under a recency filter.
+// Draw the totals line in place, and keep both caches of it in step: chromeHtml feeds a
+// source swap back to the tree, and _lastTreeSummaryHtml is what the recency source
+// prepends.
 /** @param {string} html */
 function paintTreeSummary(html) {
   var row = document.querySelector(".tree-summary");
-  // A live tree upserts its root on every write, mostly with the same totals.
   if (row && row.outerHTML !== html) {
     row.outerHTML = html;
   }
@@ -1949,10 +1939,8 @@ function paintTreeSummary(html) {
   }
 }
 
-// The root's tallies, asked of the server again: the filter menus' counts come only from
-// its pass over every file, which also answers the line's totals. Each root upsert
-// redraws the line itself from the root's own totals (updateRootAggregatePresentation);
-// depth=0 so the response is the tally and nothing else.
+// The root's tallies, asked of the server again, for the filter menus' counts and the
+// totals line while the root's entry has none; depth=0 so the response is the tally.
 //
 // One request at a time, however many callers ask (createRootSummaryRefresh in
 // navigation.js). A live tree upserts its root on every write, and each answer is a
@@ -2063,8 +2051,6 @@ async function fetchRootSummary() {
   if (!data?.summary || !_lastTreeRender) {
     return true;
   }
-  // The filter menus take every answer; the line only a settled one, and only while the
-  // root's entry has no totals of its own (createRootTotals).
   rootTotals().fromSummary(data.summary, data.tally_cache_status);
   if (!document.querySelector(".tree-summary")) {
     return true;
@@ -8665,16 +8651,12 @@ function updateRootAggregatePresentation(entry) {
   var totalFiles = entry.total_files == null ? null : entry.total_files;
   var totalSize = entry.total_size == null ? null : entry.total_size;
   var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
-  // The root's own totals tell tracked from ignored once the walk has finished it, so
-  // the line is drawn whole from them, and a line holding its ignored line fills it
-  // there, without waiting on the server's pass over every file (`fetchRootSummary`).
   if (rootTotals().fromRootEntry(entry)) {
     if (_lastTreeRender) {
       paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
     }
   } else if (!rootTotals().totals()) {
-    // Until then the fallback's two figures follow the aggregate. When the split row is
-    // on screen these selectors find nothing by design (see treeSummaryHtml).
+    // Until the root has totals, the fallback's two figures follow its aggregate.
     var countEl = queryHtml(".tree-summary-count");
     var sizeEl = queryHtml(".tree-summary-size");
     if (countEl) {
