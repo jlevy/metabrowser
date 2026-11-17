@@ -27,6 +27,8 @@ All notable changes to Metabrowser are documented here.
   Metabrowser now maps KPress’s color and corner tokens on every `.kpress` element in
   the page, not only under `.metabrowser-kpress-host`, so a plugin’s own KPress fragment
   draws in the app’s palette.
+  A plugin that wants other values on its own fragment sets them on the `.kpress`
+  element, in its own stylesheet, with a selector of at least two classes.
 
 - Each pull request’s row in the Pulls tab has a third line, its brief change line, “21
   A, 7 D, 15 M · +1,234 −567”, in the coloring of the Diff summary’s, with no file

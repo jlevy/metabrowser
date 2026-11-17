@@ -264,8 +264,8 @@
      (below) bridges them to platform stacks; `data-prose-font="sans"` bridges
      just --kpress-host-font-prose to --prose-sans-font. The mono hook is always
      bridged, to --app-mono, so document code matches the shell's. Embedded
-     document colors use KPress's public --kpress-doc-* seam in the scoped
-     bridge below. */
+     document colors use KPress's public --kpress-doc-* seam in the bridge
+     below, on every .kpress in the page. */
   --kpress-host-font-mono: var(--app-mono);
   /* No --kpress-measure here. KPress declares it on
      `:root, .kpress, .kpress-page-main, .kpress-tooltip`, so a value set here

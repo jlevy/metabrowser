@@ -623,8 +623,9 @@ the bridge maps the public `--kpress-doc-*` color tokens to Metabrowser’s sema
 surface, text, border, muted, and link tokens, and KPress’s corner tokens to the app’s
 square corners. It keys on every KPress fragment in the page, not on
 `.metabrowser-kpress-host`: a rendered Markdown diff mounts its `article.kpress` in the
-diff plugin’s host, and KPress portals tooltips to the body, so a bridge on the document
-host left both in KPress’s own palette.
+diff plugin’s host, so a bridge on the document host left it in KPress’s own palette.
+Tooltips, which KPress portals to the body, have always had a rule of their own,
+`:root .kpress-tooltip`.
 `test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment` holds the scope,
 and `tests/test_diff_markdown_fold_chrome.py` measures a rendered diff’s quote and code
 against a document’s in both themes.
