@@ -26,8 +26,8 @@ member, and a raw HTML heading with an `id` of its own; the entries drawn; that 
 KPress drew no table of contents for gets none; that an entry which does not point at an
 anchor in the document is left out and a depth out of range is clamped; and the state
 after scrolling, after a heading loses its layout box (as one inside a closed disclosure
-does, so the section above it stays active), opening the drawer, clicking an entry, and
-clicking the backdrop.
+does, so the section above it stays active) and after a run of them to the last heading
+does, opening the drawer, clicking an entry, and clicking the backdrop.
 Disposal removes every listener.
 
 ```console
@@ -114,6 +114,7 @@ $ node tests/dom/markdown-inert-toc-session.js
     "toggleShown": true
   },
   "shownAgain": "#user-content-constructor",
+  "hiddenRun": "#user-content-usage-1",
   "toggleNamed": {
     "accessible": "Table of contents",
     "tooltip": "Table of contents",

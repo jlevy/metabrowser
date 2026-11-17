@@ -196,12 +196,12 @@ def _kpress_values(css: str, selector: str, prop: str) -> list[str]:
 
 
 def _is_toc_entry(selector: str) -> bool:
-    """Whether *selector* styles a table-of-contents entry, its link, or its title."""
+    """Whether *selector* styles a table-of-contents entry, its link, or its title, in any
+    state: the last compound starts with the tag or class, as `a.active` or `a:hover` does."""
 
     subject = re.split(r"\s*[>+~]\s*|\s+", selector.strip())[-1]
     return "kpress-toc" in selector and (
-        subject in {"a", "li"}
-        or re.fullmatch(r"\.kpress-toc-(?:title|level-\d)", subject) is not None
+        re.match(r"(?:a|li)\b|\.kpress-toc-(?:title|level-\d)", subject) is not None
     )
 
 

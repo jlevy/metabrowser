@@ -358,6 +358,33 @@ async function main() {
   flush();
   transcript.shownAgain = state(article, viewport).active;
 
+  // A run of hidden headings that reaches the end of the search range: the step forward
+  // finds no laid-out heading, and the section above the run stays active.
+  const lastHeadings = headings.filter((heading) =>
+    ["user-content-constructor", "user-content-troubleshooting"].includes(
+      heading.getAttribute("id"),
+    ),
+  );
+  const shown = lastHeadings.map((heading) => heading.getBoundingClientRect);
+  for (const heading of lastHeadings) {
+    heading.getBoundingClientRect = () => ({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+    });
+  }
+  viewport.dispatch("scroll");
+  flush();
+  transcript.hiddenRun = state(article, viewport).active;
+  lastHeadings.forEach((heading, index) => {
+    heading.getBoundingClientRect = shown[index];
+  });
+  viewport.dispatch("scroll");
+  flush();
+
   const toggle = article.querySelector(".kpress-toc-toggle");
   transcript.toggleNamed = {
     accessible: toggle.getAttribute("aria-label"),
