@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- On Python 3.12, `metab --api` asking the diff plugin for a Git comparison could,
+  rarely, hang without answering when Git failed to list it.
+  The check for a textconv driver that runs beside the listing was left running, and
+  Python 3.12 could wait forever, on its way out, for that check’s Git.
+  Now whichever of the two fails first stops the other, and its Git, before the
+  comparison answers, so a failed check no longer leaves the listing’s `git diff`
+  running either.
+
 - The Files panel’s totals no longer move the tree when the count of ignored files
   arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
   ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
