@@ -209,6 +209,44 @@ release and the newest patched one.
 matrix to agree, and requires the matrix to include both floors from the version-gates
 fixture. Moving a floor therefore means pinning and reviewing the new release here.
 
+## Apple Developer ID Intermediate (November 17, 2026)
+
+`apps/macos/packaging/DeveloperIDG2CA.cer` is Apple’s “Developer ID - G2” intermediate
+certificate, committed so that the release Mac, and later a CI release job, installs it
+from the repository instead of downloading it.
+codesign builds a Developer ID identity’s chain from the keychains on the search list,
+and macOS’s own roots hold only the G1 intermediate, so without this file a G2 identity
+is not valid.
+
+| File | SHA-256 |
+| --- | --- |
+| `DeveloperIDG2CA.cer` | `f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a` |
+
+- **Source.** Downloaded on November 17, 2026, from
+  `https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer`, the link
+  [Apple PKI](https://www.apple.com/certificateauthority/) gives for it, and committed
+  unchanged (DER, 1,090 bytes).
+  Its subject is `CN=Developer ID Certification Authority, OU=G2, O=Apple Inc., C=US`,
+  its issuer is Apple Root CA, and it is valid from September 22, 2021, to September 17,
+  2031\.
+- **Chain.** `openssl verify` accepts it against Apple Root CA, downloaded from Apple
+  PKI at `https://www.apple.com/appleca/AppleIncRootCertificate.cer`, whose SHA-256
+  fingerprint is `b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024`.
+  That root is committed as `apps/macos/scripts/fixtures/AppleIncRootCertificate.cer`,
+  so `apps/macos/scripts/test-release-logic.sh` repeats the check on every test run, and
+  the signing doctor (`apps/macos/scripts/check-signing.sh`) repeats it on the release
+  Mac against the Apple Root CA in macOS’s own roots.
+- **Pin.** `g2_intermediate_sha256` in `apps/macos/scripts/signing-lib.sh` holds the
+  SHA-256 above. The doctor refuses a file that does not match it, and an installed
+  certificate with this subject and other contents.
+  `apple_root_ca_sha256` in `apps/macos/scripts/test-release-logic.sh` holds the root’s,
+  and the test checks the fixture against it before the chain.
+  `tests/test_macos_release_scripts.py` holds both values here to their pins, and each
+  pin to its file.
+- **Reach.** It is a public certificate and grants nothing by itself: installing it lets
+  macOS build the chain of an identity Apple already issued.
+  Replacing it is a new review here, with the pin changed in the same commit.
+
 ## Verification
 
 ### Development HTTP Client Review (September 8, 2026)

@@ -49,6 +49,7 @@ from metabrowser.mirror_refresh import (
     SelectionNotFoundError,
 )
 from tests.child_io import read_line
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _git, _git_env
 
@@ -379,7 +380,7 @@ def test_cleanup_finishes_before_the_lock_goes_however_often_it_is_cancelled(
         job = asyncio.ensure_future(
             update_store(home, key, remote_url=mirror.published.source.normalized)
         )
-        await asyncio.to_thread(started.wait, 30)
+        await held_until(started, 30)
         for _ in range(3):
             job.cancel()
             await asyncio.sleep(0.05)

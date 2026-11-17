@@ -68,6 +68,7 @@ from tests.github_pull_fixture import (
     seed_catalog,
 )
 from tests.golden_harness import JSON_BODY, check_recording, read_recording, run_session
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -186,8 +187,8 @@ def _record(
     original: Callable[..., Awaitable[Any]] = pull_list_refresh.refresh_pull_list
 
     async def held(*args: Any, **kwargs: Any) -> Any:
-        # The test thread sets it; a worker thread waits, so the job runs until then.
-        await asyncio.to_thread(gate.wait, 30)
+        # The test thread sets it; the job is held on the loop until then.
+        await held_until(gate, 30)
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
