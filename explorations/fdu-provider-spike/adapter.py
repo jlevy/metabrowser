@@ -101,6 +101,9 @@ _CONTRACT_ID = "inventory-provider-v1"
 # several native pages at one pinned version.
 NATIVE_MAX_PAGE_ROWS = 4_096
 _MATERIALIZE_PAGE_ROWS = NATIVE_MAX_PAGE_ROWS
+# fdu 0.6.0's MAX_READ_PROJECTIONS and MAX_PRIORITY_PATHS (crates/fdu-core).
+NATIVE_MAX_PROJECTIONS = 16
+NATIVE_MAX_PRIORITY_PATHS = 64
 _MATERIALIZE_PAGE_WORK = 1_000_000
 # The 2A spike measured iterator cancellation joining within this poll interval.
 _CHANGE_POLL_SECONDS = 0.25
@@ -253,6 +256,19 @@ def _combine_semantics(version: fdu.EngineVersion) -> str:
 
 def _native_path(path: str) -> str | None:
     return native_inventory_path(path)
+
+
+def _canonical_portable(portable: str, probe: AdapterProbe) -> str:
+    """fdu's portable path is Metabrowser's canonical path except for a POSIX backslash.
+
+    Both escape `%` as `%25` and undecodable bytes as `%XX`; only Metabrowser escapes a
+    backslash, as `%5C`. The identity translates exactly; native row order does not.
+    """
+
+    if "\\" not in portable:
+        return portable
+    probe.fallback("backslash_identity", rows_returned=1)
+    return portable.replace("\\", "%5C")
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,7 +473,7 @@ class FduInventoryHandle:
     def _contract_entry(
         self, entry: fdu.Entry, *, complete: bool, empty: bool | None = None
     ) -> InventoryEntry:
-        path = entry.portable_path
+        path = _canonical_portable(entry.portable_path, self._probe)
         parent, separator, name = path.rpartition("/")
         if not separator:
             parent = ""
@@ -769,7 +785,7 @@ class FduInventoryHandle:
             projections.append(fdu.Diagnostics())
 
         native_started = time.monotonic_ns()
-        first = _translate(self._index.read, *projections, expected=expected)
+        first = self._read_chunked(projections, expected)
         native_wall = time.monotonic_ns() - native_started
         self._remember(first.version)
         version = first.version
@@ -850,6 +866,41 @@ class FduInventoryHandle:
             work=work,
             metrics=metrics,
         )
+
+    def _read_chunked(
+        self, projections: list[fdu.Projection], expected: fdu.EngineVersion | None
+    ) -> fdu.ReadResponse:
+        """One coherent read of any number of projections, 16 at a time at one version."""
+
+        first = _translate(
+            self._index.read, *projections[:NATIVE_MAX_PROJECTIONS], expected=expected
+        )
+        if len(projections) <= NATIVE_MAX_PROJECTIONS:
+            return first
+        started = time.monotonic_ns()
+        results = list(first.results)
+        work = _work(first.work)
+        calls = 0
+        for offset in range(NATIVE_MAX_PROJECTIONS, len(projections), NATIVE_MAX_PROJECTIONS):
+            calls += 1
+            try:
+                chunk = _translate(
+                    self._index.read,
+                    *projections[offset : offset + NATIVE_MAX_PROJECTIONS],
+                    expected=first.version,
+                )
+            except VersionUnavailableError as error:
+                raise _VersionMoved() from error
+            results.extend(chunk.results)
+            work = _sum_work(work, _work(chunk.work))
+        self._probe.fallback(
+            "projection_chunking",
+            native_calls=calls,
+            rows_returned=len(projections),
+            wall_time_ns=time.monotonic_ns() - started,
+        )
+        native_work = fdu.Work(**{name: getattr(work, name) for name in fdu.Work.__dataclass_fields__})
+        return replace(first, results=tuple(results), work=native_work)
 
     def _entry_projection(
         self, query: EntryQuery, result: fdu.ProjectionResult | None, complete: bool
@@ -1078,7 +1129,7 @@ class FduInventoryHandle:
         )
         records = tuple(
             CatalogRecord(
-                path=row.portable_path,
+                path=_canonical_portable(row.portable_path, self._probe),
                 logical_extension=self._extension(row, row.portable_path.rpartition("/")[2]),
                 size=row.attrs.size,
                 mtime_ns=row.attrs.mtime_ns,
@@ -1499,12 +1550,19 @@ class FduInventoryHandle:
         self._ensure_open()
         self._probe.count("priorities")
         natives = [native for native in map(_native_path, request.paths) if native is not None]
-        try:
-            await asyncio.to_thread(_translate, self._index.prioritize, natives)
-        except InventoryContractError as error:
-            if isinstance(error.__cause__, fdu.OpenedIndexStoppedError):
-                return
-            raise
+        chunks = [
+            natives[offset : offset + NATIVE_MAX_PRIORITY_PATHS]
+            for offset in range(0, len(natives), NATIVE_MAX_PRIORITY_PATHS)
+        ]
+        if len(chunks) > 1:
+            self._probe.fallback("priority_chunking", native_calls=len(chunks))
+        for chunk in chunks:
+            try:
+                await asyncio.to_thread(_translate, self._index.prioritize, chunk)
+            except InventoryContractError as error:
+                if isinstance(error.__cause__, fdu.OpenedIndexStoppedError):
+                    return  # Priority hints are inert after a resource stop.
+                raise
 
     async def close(self) -> None:
         task = self._close_task

@@ -56,6 +56,18 @@ FALLBACK_REMEDIES: dict[str, str] = {
         "pages are `budget.max_files` rows), or a provider page-size hint the host "
         "assembly honours; fdu 0.6.0 refuses a page limit above 4096"
     ),
+    "projection_chunking": (
+        "a read bound at least MAX_QUERIES_PER_READ projections (fdu 0.6.0 refuses more "
+        "than 16, MAX_READ_PROJECTIONS), or a batched lookup projection; the coordinator "
+        "bundles one EntryQuery per dirty path"
+    ),
+    "priority_chunking": (
+        "a prioritize bound of MAX_COMMAND_PATHS (fdu 0.6.0 refuses more than 64 paths)"
+    ),
+    "backslash_identity": (
+        "one shared escape rule: Metabrowser escapes a POSIX backslash as %5C, fdu's "
+        "portable path keeps it, so identity needs translation and native order differs"
+    ),
     "continuation_identity_ledger": (
         "a Continue that carries (or validates) the resubmitted query, so a continuation "
         "presented with a different path, depth, or filter is refused natively"

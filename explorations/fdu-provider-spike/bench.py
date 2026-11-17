@@ -390,7 +390,31 @@ from metabrowser.inventory_engine.runtime import default_inventory_config
 from dataclasses import replace
 config = replace(default_inventory_config(), watch_mode="off")
 cpu0 = time.process_time(); wall0 = time.monotonic()
-if which == "fdu-opened":
+if which == "fdu-observed":
+    from fdu import opened as fdu
+    from adapter import downlevel_registry
+    from probe import AdapterProbe
+    options = fdu.OpenedOptions(prune_hidden=True, hidden_allow=config.hidden_allowlist,
+        exclude_special=True, max_files=config.budget.max_files, observe=True,
+        type_rules=downlevel_registry(config.registry_document, AdapterProbe()))
+    index = fdu.OpenedIndex.open(root, options)
+    open_returned_s = time.monotonic() - wall0
+    discovered_s = None
+    while True:
+        phase = index.state().state.phase
+        if discovered_s is None and phase is not fdu.LifecyclePhase.DISCOVERING:
+            discovered_s = time.monotonic() - wall0
+        if phase in (fdu.LifecyclePhase.WATCHING, fdu.LifecyclePhase.READY,
+                     fdu.LifecyclePhase.STOPPED, fdu.LifecyclePhase.FAILED):
+            break
+        time.sleep(0.002)
+    watching_s = time.monotonic() - wall0
+    final_phase = phase.value
+    state = index.state().state
+    files = state.progress.files_retained
+    entries = index.read(fdu.Diagnostics()).results[0].value.entries
+    index.close()
+elif which == "fdu-opened":
     from fdu import opened as fdu
     from adapter import downlevel_registry
     from probe import AdapterProbe
@@ -420,9 +444,14 @@ elif which == "python-store":
         return files, entries
     files, entries = asyncio.run(go())
 wall = time.monotonic() - wall0; cpu = time.process_time() - cpu0
+extra = {}
+if which == "fdu-observed":
+    extra = {"open_returned_s": round(open_returned_s, 4),
+             "discovered_s": round(discovered_s or 0, 4),
+             "watching_s": round(watching_s, 4), "final_phase": final_phase}
 print(json.dumps({"engine": which, "wall_s": round(wall, 4), "cpu_s": round(cpu, 4),
     "max_rss_kb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, "files": files,
-    "entries": entries}))
+    "entries": entries, **extra}))
 """
 
 
@@ -430,9 +459,9 @@ def run_floor(corpus: Path, trials: int, label: str) -> Path:
     runs: list[dict[str, Any]] = []
     record_path = OUT / f"{label}.json"
     OUT.mkdir(parents=True, exist_ok=True)
-    engines = ("fdu-opened", "python-store")
+    engines = ("fdu-opened", "python-store", "fdu-observed")
     for trial in range(trials):
-        order = engines if trial % 2 == 0 else tuple(reversed(engines))
+        order = engines[trial % 3 :] + engines[: trial % 3]
         for engine in order:
             completed = subprocess.run(
                 [sys.executable, "-c", _FLOOR_SCRIPT, engine, str(corpus), str(HERE)],
