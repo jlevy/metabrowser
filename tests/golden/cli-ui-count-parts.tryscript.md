@@ -6,9 +6,9 @@ sandbox: false
 
 Every count summary comes in one shape of parts: words as strings, a number as
 `{number}`, a list’s comma as `{punctuation}`, the dot between a line’s groups as
-`{separator}`, and a file change status as `{status, letter}`. A separator on a line
-whose name does not say it in words carries `spoken`, what a screen reader is told in
-its place. `static/formatters.js` paints them, `countPartsNodes` as nodes and
+`{separator}`, and a status count, “21 A”, as `{status, letter, count}`. A separator on
+a line whose name does not say it in words carries `spoken`, what a screen reader is
+told in its place. `static/formatters.js` paints them, `countPartsNodes` as nodes and
 `countPartsHtml` as markup, and the plugin SDK’s `mb.countPartsNodes` hands its parts to
 the same function, so the Diff summary, a pull request’s Checks summary, a commit’s
 hover card, and every shell count summary paint each kind in its one class.
@@ -28,8 +28,9 @@ markup they paint. The transcript pins these behaviors:
   `span.summary-punctuation`, which it draws muted.
 - A separator is a `span.summary-punctuation` hidden from assistive technology, and its
   `spoken`, when it has one, follows it in a `span.visually-hidden`.
-- A status is its letter in a `span.file-change-status` that carries the status, which
-  the shell inks by it.
+- A status count is one `span.summary-status-count.file-change-status` that carries the
+  status: its number in a `span.summary-number`, then a space and its letter, which the
+  shell draws bold, number and letter alike, in the status’s ink.
 - Words are text, escaped in markup.
 - A brief change line is one `span.change-line`: its statuses in a
   `span.change-line-statuses`, which is one `span.change-line-group` with the dot after
@@ -93,14 +94,21 @@ $ node tests/dom/count-parts-session.js
         "text": ", "
       }
     ],
-    "a status": [
+    "a status count": [
       {
         "tag": "span",
-        "class": "file-change-status",
+        "class": "summary-status-count file-change-status",
         "attributes": {
           "data-file-status": "added"
         },
-        "text": "A"
+        "children": [
+          {
+            "tag": "span",
+            "class": "summary-number",
+            "text": "21"
+          },
+          " A"
+        ]
       }
     ],
     "words with markup in them": [
@@ -126,17 +134,18 @@ $ node tests/dom/count-parts-session.js
                   "children": [
                     {
                       "tag": "span",
-                      "class": "summary-number",
-                      "text": "10"
-                    },
-                    " ",
-                    {
-                      "tag": "span",
-                      "class": "file-change-status",
+                      "class": "summary-status-count file-change-status",
                       "attributes": {
                         "data-file-status": "added"
                       },
-                      "text": "A"
+                      "children": [
+                        {
+                          "tag": "span",
+                          "class": "summary-number",
+                          "text": "10"
+                        },
+                        " A"
+                      ]
                     },
                     {
                       "tag": "span",
@@ -146,17 +155,18 @@ $ node tests/dom/count-parts-session.js
                     " ",
                     {
                       "tag": "span",
-                      "class": "summary-number",
-                      "text": "5"
-                    },
-                    " ",
-                    {
-                      "tag": "span",
-                      "class": "file-change-status",
+                      "class": "summary-status-count file-change-status",
                       "attributes": {
                         "data-file-status": "removed"
                       },
-                      "text": "D"
+                      "children": [
+                        {
+                          "tag": "span",
+                          "class": "summary-number",
+                          "text": "5"
+                        },
+                        " D"
+                      ]
                     },
                     {
                       "tag": "span",
@@ -166,17 +176,18 @@ $ node tests/dom/count-parts-session.js
                     " ",
                     {
                       "tag": "span",
-                      "class": "summary-number",
-                      "text": "4"
-                    },
-                    " ",
-                    {
-                      "tag": "span",
-                      "class": "file-change-status",
+                      "class": "summary-status-count file-change-status",
                       "attributes": {
                         "data-file-status": "modified"
                       },
-                      "text": "M"
+                      "children": [
+                        {
+                          "tag": "span",
+                          "class": "summary-number",
+                          "text": "4"
+                        },
+                        " M"
+                      ]
                     }
                   ]
                 },
@@ -213,7 +224,7 @@ $ node tests/dom/count-parts-session.js
     "on a line with no name": {
       "text": "1 R · +5 −2",
       "label": "1 renamed; 5 lines added, 2 deleted",
-      "html": "<span class=\"change-line\"><span class=\"change-line-group\"><span class=\"change-line-statuses\"><span class=\"summary-number\">1</span> <span class=\"file-change-status\" data-file-status=\"renamed\">R</span></span><span class=\"summary-punctuation\" aria-hidden=\"true\">·</span><span class=\"visually-hidden\">, </span></span><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+5</span><span class=\"diff-stat-del\">−2</span></span></span>"
+      "html": "<span class=\"change-line\"><span class=\"change-line-group\"><span class=\"change-line-statuses\"><span class=\"summary-status-count file-change-status\" data-file-status=\"renamed\"><span class=\"summary-number\">1</span> R</span></span><span class=\"summary-punctuation\" aria-hidden=\"true\">·</span><span class=\"visually-hidden\">, </span></span><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+5</span><span class=\"diff-stat-del\">−2</span></span></span>"
     },
     "no statuses": {
       "text": "+0 −0",
@@ -223,7 +234,7 @@ $ node tests/dom/count-parts-session.js
     "line counts unknown": {
       "text": "? M · +? −?",
       "label": "? modified; line counts unknown",
-      "html": "<span class=\"change-line\"><span class=\"change-line-group\"><span class=\"change-line-statuses\"><span class=\"summary-number\">?</span> <span class=\"file-change-status\" data-file-status=\"modified\">M</span></span><span class=\"summary-punctuation\" aria-hidden=\"true\">·</span></span><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+?</span><span class=\"diff-stat-del\">−?</span></span></span>"
+      "html": "<span class=\"change-line\"><span class=\"change-line-group\"><span class=\"change-line-statuses\"><span class=\"summary-status-count file-change-status\" data-file-status=\"modified\"><span class=\"summary-number\">?</span> M</span></span><span class=\"summary-punctuation\" aria-hidden=\"true\">·</span></span><span class=\"change-line-stats\"><span class=\"diff-stat-add\">+?</span><span class=\"diff-stat-del\">−?</span></span></span>"
     }
   },
   "summaries": {

@@ -246,6 +246,8 @@ finish the work, each of which adds its row here and its phase below:
 | 26 | `claude/folder-home` | `mb-5lzl` | On pull request 25 (#476); makes the folder’s name and `0` go home, resetting the main tabs pull request 14 reveals into, the Files tab’s Group by and filters pull requests 2, 10, and 16 change, and the tooltips pull request 11 trims |
 | 27 | `claude/comparison-cache` | `mb-neg9` | On pull request 26 (#477); keeps the comparison the Diff summary of pull request 20 is drawn from for the document, so a revisit draws it in the paint that shows the record, and warms it from the Pulls tab, beside the wait pull request 25 shows |
 | 28 | `claude/diff-summary-letters` | `mb-vb51`, `mb-khm6`, `mb-9ekj` (its first half) | On pull request 27 (#478), and merged on `main` once #478 had; rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, says a commit’s hover card in the same words, makes the brief change line after the file count one component, and resizes the pending placeholder pull request 25 holds in its row |
+| 29 | `claude/stack-change-lines` | `mb-9ekj` (its second half) | On `main`, after pull request 28 merged (#484); draws the brief change line that pull request 28 makes one component on each Pulls stack heading pull request 5 adds, read from a new route that accumulates the stack’s members’ own changed files from the cache, within a read cap of its own apart from the one pull request 27 sets |
+| 30 | `claude/pulls-row-change-line` | `mb-3zc8`: `mb-d0a3`, `mb-h0ml`, `mb-1l4i` | On pull request 29 (#484), as #491; gives each Pulls row a third line, its pull request’s brief change line, summed by the one function pull request 29 accumulates a stack with, and moves the row’s chevron for its changed files onto it |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
@@ -993,6 +995,70 @@ it, and ideally cached it up front”.
   control that shows the sweep can fail; the totals line writes its spaces, so it reads
   right without the diff plugin’s stylesheet; and the startup scripts’ growth, 2,340
   bytes compressed after the comments were cut, is recorded beside the budget.
+
+### Phase 29: Stack Change Lines (pull request 29)
+
+- [ ] `mb-9ekj`: each “Stack #N” heading in the Pulls tab shows its stack’s brief change
+  line, “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”, drawn through the SDK’s one
+  component. The numbers are the stack’s combined change, the accumulation of its
+  members’ own changed files, merged or open: each member’s cached list, the one its
+  expanded row shows, every file once with a composed status and every member’s lines
+  summed (`pull_change_sums.py`), which a new cache-only route, `GET stack-change`,
+  accumulates with no GitHub call, no fetch, and no Git, and keeps by each member’s list
+  file; summing each layer’s own file counts would count a file twice that two layers
+  change. Measured on GitHub’s lists of #446’s 28 members and #218’s 46: 754 and 1,925
+  files summed per pull request, 263 and 672 accumulated.
+  #446’s 16 cached lists read and accumulate in 6 to 16 ms, a repeat in 0.2 ms.
+  The line is read for the stacks the list draws, when the browser is idle, once for
+  each stack’s members and their heads, within the lines’ own hourly cap, and kept in
+  the document’s comparison keep; the heading holds the pending placeholder only while
+  its stack’s read is on its way, its name saying the change is pending, and shows
+  nothing for a stack whose change cannot be had.
+  Review A’s round: the stack’s change no longer starts at the bottom’s record, whose
+  base could be older than the base the top sits on, so the line counted the base
+  branch’s own changes (A1); asked what a merged stack shows, the owner decided “A stack
+  should simply be an accumulation of PRs, so it makes no sense to hide the diff.
+  The stack historically is the set of PRs it consists of,” so the change is the
+  members’ own, accumulated.
+  The lines are read again when a stack’s identity changes, not every five minutes
+  against the warms’ hourly cap, which with ten or more stacks drawn they spent (A2); a
+  failed read keeps the line it had (A3); a stack with no line never waits again (A4);
+  and a list that stops short is answered `too_large` and kept (A8). Review B’s round:
+  the answer names the members not yet settled, a list missing or read for an older
+  head, and the lane reads such a stack again, silently, and when the prefetch or a row
+  reports a member’s list, so a list fetched after the first read reaches the heading
+  (B1); the prefetch asks for the lists a drawn stack lacks, in places kept for them
+  (B2); a member the list holds no row of is taken as unchanged (B3); inexact totals say
+  “(estimated)” (B4); and each list is folded in as it is read (B5). Pinned by the
+  route’s server test and CLI golden, the stack lines session and golden, and in
+  headless Chrome from 420 px to 180 px in both themes, where nothing moves when the
+  line arrives, the row stays one line, and the line’s statuses give way first and the
+  whole line goes where its totals have no room.
+
+### Phase 30: Pulls Row Change Lines (pull request 30)
+
+- [ ] `mb-d0a3`: each pull request’s row in the Pulls tab has a third line, its brief
+  change line, “21 A, 7 D, 15 M · +1,234 −567”, with no file total, drawn through the
+  SDK’s one component.
+  It sums the pull request’s cached list of changed files, the one its expanded row
+  shows, with the one function a stack’s line accumulates its members with
+  (`pull_change_sums.py`), so a stack of one says what its row says.
+  A new cache-only route, `GET pull-files-summary`, answers every row the list draws in
+  one request, with no GitHub call and no Git, and keeps each sum by its list file.
+  Measured on this repository’s own lists of pull requests 440 to 488: 100 rows in 0.7
+  to 1.0 ms once summed, 293 to 411 bytes a listed row.
+  The line is read again when the row’s head moves, when the prefetch lane reports it
+  listed the row’s files, or when the row’s tree reads another refresh’s list; the row
+  holds the pending placeholder meanwhile, from its first paint, so nothing moves when
+  the line arrives.
+- [ ] `mb-h0ml`: the row’s chevron for its changed files moves to that line, the row’s
+  one child item, which alone toggles the files; they start collapsed, a press on the
+  row opens the pull request and expands nothing, and no row expands on its own.
+- [ ] `mb-1l4i`: Up and Down walk the pull requests and expand nothing; Right goes to
+  the change line, where Enter and Space toggle the files, Right opens or enters them,
+  Left closes them and then goes back to the row, and Up goes back too.
+  Pinned by the route’s server test and CLI golden, the row lines session and golden,
+  the Pulls sessions, and in headless Chrome from 420 px to 180 px in both themes.
 
 ## Testing Strategy
 

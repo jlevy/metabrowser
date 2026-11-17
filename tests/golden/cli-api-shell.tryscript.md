@@ -610,6 +610,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-files-summary",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-markdown",
       "methods": [
         "GET",
@@ -668,6 +676,14 @@ status: 200
       "path": "/api/plugin/github/pulls-refresh",
       "methods": [
         "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/stack-change",
+      "methods": [
+        "GET",
+        "HEAD"
       ],
       "kind": "api"
     },
@@ -858,7 +874,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 65
+  "count": 67
 }
 ? 0
 ```

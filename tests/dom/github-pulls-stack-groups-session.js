@@ -181,8 +181,29 @@ async function mountStory() {
     const drawnRows = () =>
       list.childNodes.filter((item) => item.classList.contains("github-pulls-item")).map(rowOf);
     const stackRow = () => drawnRows().find((row) => row.dataset.stack === "286");
-    const pull = (number) => drawnRows().find((row) => row.dataset.number === String(number));
-    /** The tree as drawn, to the first pull request in no stack, with its roles and places. */
+    // A pull request's change line, its third line and its one child item (mb-h0ml), which
+    // owns its changed files.
+    const changeOf = (row) =>
+      row.parentNode.childNodes.find((node) =>
+        node.classList?.contains("github-pulls-change-group"),
+      )?.firstElementChild ?? null;
+    const change = (number) =>
+      changeOf(drawnRows().find((row) => row.dataset.number === String(number)));
+    /** One item as drawn: its name, role, level, place, expansion, Tab stop, and focus. */
+    const said = (row, name) =>
+      [
+        name,
+        row.getAttribute("role"),
+        `level ${row.getAttribute("aria-level")}`,
+        `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`,
+        `expanded ${row.getAttribute("aria-expanded")}`,
+        row.getAttribute("tabindex") === "0" ? "Tab stop" : null,
+        document.activeElement === row ? "focused" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    /** The tree as drawn, to the first pull request in no stack, with its roles and places:
+     * each pull request's row, then its change line, the row's child. */
     const tree = () => {
       const rows = drawnRows();
       const end = rows.findIndex(
@@ -190,17 +211,13 @@ async function mountStory() {
       );
       return rows
         .slice(0, end + 1)
-        .map((row) =>
-          [
-            row.dataset.stack ? `Stack #${row.dataset.stack}` : `#${row.dataset.number}`,
-            row.getAttribute("role"),
-            `level ${row.getAttribute("aria-level")}`,
-            `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`,
-            `expanded ${row.getAttribute("aria-expanded")}`,
-            row.getAttribute("tabindex") === "0" ? "Tab stop" : null,
-          ]
-            .filter(Boolean)
-            .join(" · "),
+        .flatMap((row) =>
+          row.dataset.stack
+            ? [said(row, `Stack #${row.dataset.stack}`)]
+            : [
+                said(row, `#${row.dataset.number}`),
+                said(changeOf(row), `  #${row.dataset.number}'s change line`),
+              ],
         );
     };
     const steps = [];
@@ -251,14 +268,22 @@ async function mountStory() {
     await step("Right on the stack's row goes to its first pull request, which opens", () =>
       handle.expand(),
     );
-    await step("Right on that pull request opens its files", () => handle.expand());
-    const filesOpen = pull(8).getAttribute("aria-expanded");
-    await step("Left first closes its files, keeping the pull request", () => handle.collapse());
-    const filesClosed = pull(8).getAttribute("aria-expanded");
+    await step("Right on that pull request goes to its change line, and opens nothing", () =>
+      handle.expand(),
+    );
+    await step("Right on the change line opens its files", () => handle.expand());
+    const filesOpen = change(8).getAttribute("aria-expanded");
+    await step("Left first closes its files, keeping the change line", () => handle.collapse());
+    const filesClosed = change(8).getAttribute("aria-expanded");
+    await step("Left again goes back to the pull request", () => handle.collapse());
     await step("Left again goes to the stack's row", () => handle.collapse());
     await step("Left on the stack's row closes it", () => handle.collapse());
-    // A press on the stack's label, as a click lands: the row takes the anchor and opens.
-    const label = stackRow().childNodes.find((node) =>
+    // A press on the stack's label, in its heading, as a click lands: the row takes the
+    // anchor and opens.
+    const heading = stackRow().childNodes.find((node) =>
+      node.classList?.contains("github-pulls-stack-heading"),
+    );
+    const label = heading.childNodes.find((node) =>
       node.classList?.contains("github-pull-stack-label"),
     );
     await step("a press on the stack's row opens it", () =>
@@ -268,11 +293,13 @@ async function mountStory() {
     // opens #8's files, walks to the first pull request in no stack, and closes the stack;
     // Home opens it, closes #8's files, and gives the Tab stop back to the stack's row. The
     // address it opens names no pull request, which the host tells the list next.
-    await step("Right, Right: #8 opens, and then its files", () => {
+    await step("Right, Right, Right: #8 opens, then its change line, then its files", () => {
+      handle.expand();
       handle.expand();
       return handle.expand();
     });
-    await step("J past the stack, then Space on its row closes it", () => {
+    await step("K back to #8's row, J past the stack, then Space on its row closes it", () => {
+      handle.move(-1);
       for (let press = 0; press < 3; press += 1) {
         handle.move(1);
       }
@@ -286,10 +313,10 @@ async function mountStory() {
     const homed = steps.at(-1).tree;
     assert.ok(homed[0].startsWith("Stack #286") && homed[0].endsWith("Tab stop"), homed[0]);
     assert.ok(
-      homed.every((row) => !row.includes("expanded true") || row.startsWith("Stack")),
+      homed.every((row) => !row.includes("change line") || row.includes("expanded false")),
       "no pull request's files are open",
     );
-    assert.equal(pull(8).getAttribute("aria-expanded"), "false", "#8's files closed");
+    assert.equal(change(8).getAttribute("aria-expanded"), "false", "#8's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
     handle.dispose();
     return {

@@ -5,7 +5,8 @@
 // and hands back what a reader does to them.
 //
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
-// one `.tree-children[role="group"]` after the pull request's row, folders that lead with the
+// one `.tree-children[role="group"]` after the pull request's change line, the row's third
+// line and the item that owns the group (pulls-panel.js), folders that lead with the
 // registry's chevron in the tree's icon slot and file rows with the change letter a patch's
 // children carry in place of an icon, the tree's indent and row height, and the inline change
 // stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
@@ -102,7 +103,8 @@ export function mountFileTree(host) {
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   group.replaceChildren(line, notice, list, live);
 
-  /** @type {HTMLAnchorElement | null} */
+  /** The item the tree hangs from: the pull request's change line (pulls-panel.js). */
+  /** @type {HTMLElement | null} */
   let owner = null;
   /** @type {FileTreeModel | null} */
   let model = null;
@@ -127,7 +129,7 @@ export function mountFileTree(host) {
     return rowHeight;
   }
 
-  /** The level of the pull request's row the tree hangs from. */
+  /** The level of the change line the tree hangs from, a level under its pull request's row. */
   function ownerLevel() {
     const level = Number(owner?.getAttribute("aria-level"));
     return Number.isInteger(level) && level > 0 ? level : 1;
@@ -219,8 +221,8 @@ export function mountFileTree(host) {
     element.style.top = `${at * heightOfRow()}px`;
     element.style.setProperty("--github-pull-file-depth", String(row.depth + 1));
     element.setAttribute("tabindex", row.id === controller.anchor() ? "0" : "-1");
-    // A level under the pull request's row, which is itself a level under a stack's row
-    // while the list is grouped by stack (pulls-panel.js).
+    // A level under the change line, which is a level under the pull request's row, itself a
+    // level under a stack's row while the list is grouped by stack (pulls-panel.js).
     element.setAttribute("aria-level", String(row.depth + 1 + ownerLevel()));
     element.setAttribute("aria-posinset", String(row.position));
     element.setAttribute("aria-setsize", String(row.setSize));
@@ -443,7 +445,7 @@ export function mountFileTree(host) {
     }
     paintWindow();
     // A pressed offer goes as its rows are drawn: focus moves to the tree's anchor, as Right
-    // takes it, and to the pull request's row when the tree has none.
+    // takes it, and to the change line the tree hangs from when the tree has none.
     if (focusedOffer && offer.hidden) {
       const anchor = controller.anchor();
       const arriving = anchor === null ? null : drawnElement(anchor);
@@ -599,10 +601,11 @@ export function mountFileTree(host) {
     group,
     controller,
     /**
-     * Hang the tree under a pull request's row, which a repaint of the list may build again.
+     * Hang the tree under a pull request's change line, the item that owns it, which a
+     * repaint of the list may build again.
      *
      * @param {HTMLElement} item
-     * @param {HTMLAnchorElement} row
+     * @param {HTMLElement} row
      */
     attach(item, row) {
       owner = row;

@@ -416,9 +416,11 @@
   --pull-number-weight: var(--weight-bold);
   /* A count's numeral in a count summary, "8" of "8 files changed": bold, while the
      words around it keep their line's weight, so the counts read at a glance. Every
-     count numeral takes this token, `.summary-number` and `.heading-tally-figure`, and
-     not --pull-number-weight, which is a pull request's number's (docs/design-system.md,
-     "Count Summaries Bold Their Numbers" and "Heading Tallies"; mb-roa9;
+     count numeral takes this token, `.summary-number` and `.heading-tally-figure`, and a
+     status count, "21 A", takes it for its number and its letter alike
+     (`.summary-status-count`), and none takes --pull-number-weight, which is a pull
+     request's number's (docs/design-system.md, "Count Summaries Bold Their Numbers" and
+     "Heading Tallies"; mb-roa9, mb-8iwn;
      test_count_summaries_bold_their_numbers_through_one_token). */
   --count-numeral-weight: var(--weight-bold);
 
@@ -6568,8 +6570,9 @@ pre.code-block.metabrowser-source-lines > code {
 /* A number in a count summary, "8 files changed · 8 M", "15,458 files (324.1 MB)",
    "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
    line's weight, so the counts read at a glance. It sets the weight alone: the number
-   keeps its line's ink, muted in a muted half, and its size. Every count summary in the
-   shell and the built-in plugins puts each of its numbers in one, inline with its words
+   keeps its line's ink, muted in a muted half, and its size; in a status count it takes
+   the count's status ink (`.summary-status-count`). Every count summary in the shell and
+   the built-in plugins puts each of its numbers in one, inline with its words
    (formatters.js, countPartsHtml and countPartsNodes; docs/design-system.md, "Count
    Summaries Bold Their Numbers"; mb-roa9). */
 .summary-number {
@@ -6578,7 +6581,7 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* A count summary's punctuation: the " · " that sets its groups apart and the comma
    between a list's entries, as in the Diff summary's "19 files changed · 10 A, 5 D, 4 M ·
-   +1,234 −567". Muted, so the numbers, the status letters, and the words read and the marks
+   +1,234 −567". Muted, so the numbers, the status counts, and the words read and the marks
    recede; it sets the ink alone, so a mark keeps its line's size and weight. Every count
    summary puts each of its marks in one (formatters.js, countPartsHtml and countPartsNodes;
    docs/design-system.md, "Count Summaries Bold Their Numbers"; mb-vb51). */
@@ -6586,15 +6589,33 @@ pre.code-block.metabrowser-source-lines > code {
   color: var(--muted);
 }
 
+/* A status count in a count summary, "21 A" of "21 A, 15 M, 7 D": its number and its
+   letter one unit, both bold, at --count-numeral-weight, and both in its status's ink,
+   which the status primitive on the same span sets by the status it carries
+   (`.file-change-status[data-file-status]`, the inks every change letter takes), so the
+   count reads as its status and the counts of a list apart from one another. The commas
+   between the counts and the dots between a line's groups stay `.summary-punctuation`,
+   muted, and a count that is not a status's, "19 files changed", keeps its line's ink.
+   formatters.js paints every one (countPartsHtml and countPartsNodes, from a
+   `{status, letter, count}` part; docs/design-system.md, "Count Summaries Bold Their
+   Numbers"; mb-8iwn). Each status ink keeps a text's 4.5:1 on --bg, --sidebar-bg,
+   --hover-bg, and a tooltip's --viz-surface-raised in both themes
+   (test_file_status_ink_is_shared_and_legible), and tests/dom/diff-summary-chrome.mjs and
+   tests/dom/git-commit-summary-chrome.mjs read it on the page in Chrome. */
+.summary-status-count {
+  font-weight: var(--count-numeral-weight);
+}
+
 /* A brief change line, "10 A, 5 D, 4 M · +1,234 −567": a change set's statuses and line
    totals, the one component every surface that says them in brief draws (formatters.js,
    changeLine and changeLineNodes; docs/design-system.md, "Brief Change Line"; mb-9ekj): the
    Diff summary's header after its "N files changed · ", a commit's hover card, and a
-   commit page's totals line. Its statuses and the muted dot after them are one item
-   (`.change-line-group`), so a line that wraps breaks after the dot and no line starts with
-   one, and one 6 px gap, the Diff summary's, spaces the dot on both sides. Its line totals
-   are the inline change stats, bold, in their statuses' inks. It sets no size or ink of its
-   own: it takes its line's. */
+   commit page's totals line. Its statuses are status counts (`.summary-status-count`), each
+   number and letter bold in its status's ink, with muted commas between them. They and the
+   muted dot after them are one item (`.change-line-group`), so a line that wraps breaks
+   after the dot and no line starts with one, and one 6 px gap, the Diff summary's, spaces
+   the dot on both sides. Its line totals are the inline change stats, bold, in their
+   statuses' inks. It sets no size or ink of its own: it takes its line's. */
 .change-line {
   display: inline-flex;
   flex-wrap: wrap;
@@ -6840,12 +6861,12 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* A commit's changes in its hover card, in the Diff summary's words and paint: "32 files
    changed · 4 A, 28 M · +1,921 −160" (git-panel.js, renderCommitChangeStats;
-   docs/design-system.md, "Git Commit Summary"). Its numbers are the shell's bold
-   `.summary-number` in the line's ink, its letters the status primitive at the line's
-   weight, its commas and dots `.summary-punctuation`, and its line totals the inline change
-   stats: its file count, then the brief change line (`.change-line`). Its groups are items
-   of one line, spaced as the Diff summary's are, and each dot is one item with the group
-   before it, so a line that wraps breaks after a dot. */
+   docs/design-system.md, "Git Commit Summary"). Its file count is the shell's bold
+   `.summary-number` in the line's ink, its status counts `.summary-status-count`, number
+   and letter bold in their status's ink, its commas and dots `.summary-punctuation`, and its
+   line totals the inline change stats: its file count, then the brief change line
+   (`.change-line`). Its groups are items of one line, spaced as the Diff summary's are, and
+   each dot is one item with the group before it, so a line that wraps breaks after a dot. */
 .git-commit-change-stats {
   margin-top: 6px;
   color: var(--text);
@@ -7041,7 +7062,9 @@ pre.code-block.metabrowser-source-lines > code {
   }
 }
 
-/* A change letter has one semantic ink across Git, diffs and pull request trees. */
+/* A change letter has one semantic ink across Git, diffs and pull request trees, and a
+   count summary's status count, "21 A", takes it for its number and its letter alike
+   (`.summary-status-count`). */
 .file-change-status[data-file-status] {
   color: var(--muted);
 }

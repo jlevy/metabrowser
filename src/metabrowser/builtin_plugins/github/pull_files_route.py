@@ -280,7 +280,10 @@ _PARSED_LOCK: Final = threading.Lock()
 _MAX_PARSED: Final = 16
 
 
-def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | None:
+def list_file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | None:
+    """The cached list file's inode, modification time in nanoseconds, and size, which an
+    atomic replacement changes, or ``None`` with no regular file. One stat."""
+
     try:
         status = os.lstat(home / source_pull_files(slug, number))
     except OSError:
@@ -294,7 +297,7 @@ def _cached_files(
     home: Path, slug: str, number: int
 ) -> tuple[PullFileList | RecordAbsence, list[FileRowWire]]:
     key = (str(home), slug, number)
-    stamp = _file_stamp(home, slug, number)
+    stamp = list_file_stamp(home, slug, number)
     with _PARSED_LOCK:
         hit = _PARSED.get(key)
     if hit is not None and stamp is not None and hit.stamp == stamp:
@@ -398,6 +401,21 @@ def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) 
     return "current" if fresh else "stale"
 
 
+def list_settled(home: Path, slug: str, listed: PullFileList) -> bool:
+    """Whether *listed*, pull request *listed.number*'s cached list, is ``current`` by this
+    route's freshness rule, so that nothing would refresh it. Blocking and bounded: the
+    list's refresh stamp, and the record and the catalog row through their parse caches.
+
+    A list from the local comparison is current while the record names the same comparison,
+    whatever head the catalog has seen since, and a list from GitHub while it was read for
+    the newest known head; a stack's change line waits on the same rule
+    (:mod:`.pull_stack_change`).
+    """
+
+    stamp = read_files_refresh(home, slug, listed.number)
+    return _state(listed, stamp, _facts(home, slug, listed.number)) == "current"
+
+
 def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:
     if stamp is None:
         return None
@@ -478,7 +496,7 @@ def files_file_stamp(view: FilesView) -> tuple[int, int, int] | None:
     repository = view.repository
     if repository is None:
         return None
-    return _file_stamp(repository.home, repository.slug, view.number)
+    return list_file_stamp(repository.home, repository.slug, view.number)
 
 
 def envelope_etag(envelope: PullFilesEnvelope, stamp: tuple[int, int, int] | None) -> str:
@@ -661,6 +679,8 @@ __all__ = [
     "files_refresh_wanted",
     "files_view",
     "files_window",
+    "list_file_stamp",
+    "list_settled",
     "pull_files_envelope",
     "start_files_refresh",
     "status_route",

@@ -21,11 +21,11 @@ A “ · ” sets apart the file count, the statuses, and the line totals, and a
 statuses. Counts use the shell’s number format, the minus sign is U+2212, and
 “(estimated)” follows totals that are not exact.
 `numbers` are the counts the header paints bold, the file count and then each status’s,
-each apart from its words, which stay regular (`docs/design-system.md`, “Count Summaries
-Bold Their Numbers”). `parts` are the file count’s and the statuses’ parts as they are
-painted: a bold number between asterisks, a status’s letter with its status in braces,
-which the letter is inked by, and a muted mark in angle quotes; the header paints a
-muted dot between its groups.
+the file count apart from its words, which stay regular (`docs/design-system.md`, “Count
+Summaries Bold Their Numbers”). `parts` are the file count’s and the statuses’ parts as
+they are painted: a bold number between asterisks, a status count, its number and its
+letter, bold between asterisks with its status in braces, which the count is inked by,
+and a muted mark in angle quotes; the header paints a muted dot between its groups.
 A list cut short at its bound, on a page that knows the whole change set’s totals, as a
 commit’s page does, says those, with no breakdown of the listed files alone, and how
 many files are listed.
@@ -68,7 +68,7 @@ $ node tests/dom/diff-summary-session.js
       ],
       "parts": {
         "files": "*35* files changed",
-        "statuses": "*2* A{added}‹,› *3* D{removed}‹,› *30* M{modified}"
+        "statuses": "*2 A*{added}‹,› *3 D*{removed}‹,› *30 M*{modified}"
       }
     },
     "every kind, in the header's order": {
@@ -87,7 +87,7 @@ $ node tests/dom/diff-summary-session.js
       ],
       "parts": {
         "files": "*11* files changed",
-        "statuses": "*3* A{added}‹,› *1* D{removed}‹,› *3* M{modified}‹,› *1* R{renamed}‹,› *1* C{copied}‹,› *1* T{changed}‹,› *1* U{unmerged}"
+        "statuses": "*3 A*{added}‹,› *1 D*{removed}‹,› *3 M*{modified}‹,› *1 R*{renamed}‹,› *1 C*{copied}‹,› *1 T*{changed}‹,› *1 U*{unmerged}"
       }
     },
     "each change as a row": [
@@ -119,7 +119,7 @@ $ node tests/dom/diff-summary-session.js
       ],
       "parts": {
         "files": "*11* files changed",
-        "statuses": "*3* A{added}‹,› *1* D{removed}‹,› *3* M{modified}‹,› *1* R{renamed}‹,› *1* C{copied}‹,› *1* T{changed}‹,› *1* U{unmerged}"
+        "statuses": "*3 A*{added}‹,› *1 D*{removed}‹,› *3 M*{modified}‹,› *1 R*{renamed}‹,› *1 C*{copied}‹,› *1 T*{changed}‹,› *1 U*{unmerged}"
       }
     },
     "one status, one file of it": {
@@ -132,7 +132,7 @@ $ node tests/dom/diff-summary-session.js
       ],
       "parts": {
         "files": "*2* files changed",
-        "statuses": "*2* M{modified}"
+        "statuses": "*2 M*{modified}"
       }
     },
     "one file, renamed": {
@@ -145,7 +145,7 @@ $ node tests/dom/diff-summary-session.js
       ],
       "parts": {
         "files": "*1* file changed",
-        "statuses": "*1* R{renamed}"
+        "statuses": "*1 R*{renamed}"
       }
     },
     "no files": {
