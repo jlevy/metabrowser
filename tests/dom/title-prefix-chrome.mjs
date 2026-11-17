@@ -265,6 +265,7 @@ const MEASURE = `async (titles) => {
         refChipHtml: mb.refChipHtml,
         mergeRefs: mb.mergeRefs,
         mountRefCopies: mb.mountRefCopies,
+        actorIdentity: mb.actorIdentity,
         titleNodes: mb.titleNodes,
         countPartsNodes: mb.countPartsNodes,
         formatAge: () => ({ label: "2mo ago", className: "age-old" }),

@@ -60,6 +60,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
+  a draft for one modeled object per file, folder, commit, and pull request, drawn in
+  several view shapes; its key decisions are open
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked

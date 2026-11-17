@@ -244,7 +244,7 @@ const MEASURE = `async (widths) => {
     const { stage, place, handle } = draw(width, true);
     await frames();
     const subject = stage.querySelector(".git-commit-subject");
-    const meta = stage.querySelector(".git-commit-meta");
+    const meta = stage.querySelector(".git-commit-ages");
     const body = stage.querySelector(".git-commit-body");
     const toggle = place.querySelector(".diff-summary");
     out.widths[width] = {
@@ -342,7 +342,7 @@ const MEASURE = `async (widths) => {
       line: line ? box(line) : null,
       rowHeight: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")) || null,
       place: box(place),
-      meta: box(stage.querySelector(".git-commit-meta")),
+      meta: box(stage.querySelector(".git-commit-ages")),
       spacing: line ? spacing() : null,
     };
     // Without the diff plugin's stylesheet, as where the plugin is absent or its assets did
@@ -359,7 +359,7 @@ const MEASURE = `async (widths) => {
     out.empty = {
       display: getComputedStyle(place).display,
       height: box(place).height,
-      meta: box(stage.querySelector(".git-commit-meta")),
+      meta: box(stage.querySelector(".git-commit-ages")),
       body: box(stage.querySelector(".git-commit-body")),
     };
   }
@@ -488,7 +488,7 @@ async function main() {
           JSON.stringify(at),
         );
         check(
-          `${where}: the summary is under the commit's identity`,
+          `${where}: the summary is under the commit's metadata lines, its age the last`,
           at.place.top >= at.meta.bottom - 0.5,
           JSON.stringify({ meta: at.meta, place: at.place }),
         );
@@ -513,7 +513,8 @@ async function main() {
         );
       }
       // One row where the header fits on one line: at 420 px and wider, as the design system
-      // says (B4 of review B on #479). Measured 2026-11-16 in Chrome, it fits from 354 px.
+      // says (B4 of review B on #479). Measured 2026-11-16 in Chrome, it fits from 373 px at the
+      // body size, and from 354 px at the navigation rows' size it had before (mb-kisi).
       for (const width of WIDTHS.filter((each) => each >= 420)) {
         const at = measured.widths[width];
         check(

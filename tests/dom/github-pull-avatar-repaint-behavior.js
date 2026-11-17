@@ -19,8 +19,8 @@
 // polls, so its avatars stay lazy, and one far down a long conversation is not asked for
 // until the reader nears it. This is a check of attributes and of which nodes a repaint
 // keeps or builds, not of paint, which is the engine's: every avatar created has its
-// placement's loading, decodes asynchronously, keeps its 18 px slot, and hides itself
-// rather than its slot when it fails to load.
+// placement's loading, decodes asynchronously, sits in its 18 px box, and gives the box to
+// the person glyph when it fails to load.
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -208,7 +208,7 @@ async function run() {
   await settle();
 
   const header = () => container.querySelector(".github-pull-header");
-  const headerAvatar = () => header()?.querySelector(".github-pull-avatar") ?? null;
+  const headerAvatar = () => header()?.querySelector(".actor-avatar-image") ?? null;
   const steps = [];
   /** Where an avatar sits: the header or the conversation under it. */
   const placement = (image) => {
@@ -230,7 +230,11 @@ async function run() {
   const step = (name, expected = AVATAR) => {
     const avatar = headerAvatar();
     assert.ok(avatar, `${name}: the header shows the actor's avatar`);
-    assert.ok(avatar.parentNode.classes.has("github-pull-identity"), `${name}: in its identity`);
+    assert.ok(avatar.parentNode.classes.has("actor-avatar"), `${name}: in its box`);
+    assert.ok(
+      avatar.parentNode.parentNode.classes.has("github-pull-identity"),
+      `${name}: in its identity`,
+    );
     assert.equal(avatar.getAttribute("src"), expected, `${name}: the header's avatar`);
     const created = { header: 0, conversation: 0 };
     for (const image of images.slice(seen)) {
@@ -278,7 +282,7 @@ async function run() {
       detached:
         before === null ? 0 : [...now].filter((node) => before.has(node) && left(node)).length,
       created,
-      shown: container.querySelectorAll(".github-pull-avatar").length,
+      shown: container.querySelectorAll(".actor-avatar-image").length,
     });
     previous = avatar;
     before = now;
@@ -354,28 +358,34 @@ async function run() {
   );
   step("another actor merges it", OTHER_AVATAR);
 
-  // A broken image keeps its slot: it hides, and its box and the name stay.
+  // Each placement's loading, read while every image is where the page put it.
+  const loading = Object.fromEntries(
+    Object.keys(POLICY).map((where) => [
+      where,
+      [
+        ...new Set(
+          images
+            .filter((image) => placement(image) === where)
+            .map((image) => image.getAttribute("loading")),
+        ),
+      ],
+    ]),
+  );
+  // A broken image gives its box to the person glyph: the box and the name stay.
   const broken = headerAvatar();
-  broken.events.get("error")();
-  assert.equal(broken.style.visibility, "hidden");
+  const box = broken.parentNode;
   assert.equal(broken.getAttribute("width"), "18");
-  assert.equal(broken.parentNode.textContent, "octo");
+  broken.events.get("error")();
+  assert.equal(box.children.length, 0, "the failed image leaves its box");
+  // The shell's person glyph, Lucide's `circle-user-round`.
+  assert.match(
+    box.innerHTML,
+    /<circle cx="12" cy="12" r="10"\/><\/svg>$/,
+    "the glyph takes the box",
+  );
+  assert.equal(box.parentNode.textContent, "octo");
   handle.dispose();
-  return {
-    steps,
-    loading: Object.fromEntries(
-      Object.keys(POLICY).map((where) => [
-        where,
-        [
-          ...new Set(
-            images
-              .filter((image) => placement(image) === where)
-              .map((image) => image.getAttribute("loading")),
-          ),
-        ],
-      ]),
-    ),
-  };
+  return { steps, loading };
 }
 
 if (require.main === module) {

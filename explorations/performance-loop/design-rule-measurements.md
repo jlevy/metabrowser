@@ -8,6 +8,23 @@ These are records: they keep the date, the engine, and what was compared, and th
 not rewritten when the code moves on.
 Rerun one before changing the rule it supports.
 
+## Page Headers
+
+For [Page Headers](../../docs/design-system.md#page-headers) and
+[Actor Identity](../../docs/design-system.md#actor-identity), recorded on 2026-11-16,
+when every line under a commit’s and a pull request’s titles took the body size and the
+commit’s page took a pull request’s order (mb-26zj): measured in headless Chrome 152 at
+980, 560, and 360 px by `tests/test_page_header_chrome.py`, every line and every run of
+text under both titles is 14 px, but chips and the 13 px revision; both titles are 24 px
+on 30 px lines, two lines tall; every line is 6 px under the one before; and both
+authors’ 18 px boxes start on the header’s content edge, both names 22 px in.
+The commit’s author, revision, and age lines are 21 px each, and its Diff summary 24 px
+at 560 px and wider and 40 px at 360 px, where it wraps; a pull request’s row of ages
+and status line are 21 px, and its header is 235 px with no labels and 261 px with them.
+Before, at 760 px, the Diff summary was 13 px on both pages, a pull request’s row of
+ages and status line were 12 px and 18 px tall, its header 229 and 255 px, and the
+commit’s metadata one line 8 px under its subject.
+
 ## Row Baselines
 
 For
@@ -162,6 +179,11 @@ became Git’s letters: the summary sits where it did, and for “35 files chang
 D, 30 M · +1,234 −3,423” its header is one 24 px row at 420 px and wider and wraps to
 two lines at 320 px, breaking after a dot, all before the page is shown.
 
+Measured again on 2026-11-16 in Chrome 152, when its lines took a pull request’s order
+and the body size (mb-26zj): the summary sits 6 px under the age line and 16 px over the
+description, and its header is one 24 px row from a 373 px pane, where it was from 354
+px at 13 px, and wraps to two lines at 320 px.
+
 ## Diff Summary
 
 For [Diff Summary](../../docs/design-system.md#diff-summary).
@@ -186,6 +208,9 @@ A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 fil
 +120 −30”, ends 13.88 to 15.88 em from the row’s start, its text 13.42 to 15.42 em, and
 the block ends between the two; one of three statuses, “35 files changed · 2 A, 3 D, 30
 M · +1,234 −3,423”, ends its text at 22.18 em.
+
+Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
+the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
 
 ### A Kept Comparison
 

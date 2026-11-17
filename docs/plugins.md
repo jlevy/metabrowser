@@ -458,6 +458,18 @@ Useful helpers include:
   disposer on unmount; `copy: false` is passive;
 - `mergeRefs(source, target, options)` for a merge between two branches, the design
   system’s one notation ([Merge Direction](design-system.md#merge-direction));
+- `actorIdentity(name, options)` and `actorIdentityHtml(name, options)` for a person: an
+  avatar’s box, held from first paint, then the bold name
+  ([Actor Identity](design-system.md#actor-identity)). The box holds `avatar`, an https
+  address you vouch for, and the host’s person glyph without one or when the image
+  fails, so nothing moves.
+  The image is requested in anonymous CORS mode with no referrer, so its host must send
+  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
+  GitHub’s avatar host; any other image shows the glyph.
+  `loading` is lazy unless the placement is built again on a repaint; `className` and
+  `nameClass` add classes; `placeholder: false` draws no box for a person with no
+  avatar, for a dense list row.
+  `actorIdentityHtml` writes the same markup, its box holding the glyph;
 - `renderSourceView(container, data, options)` for the standard bounded, copyable Source
   surface, with truncation controls, the shared language mapping, a line-number gutter,
   and `#L10`-style line anchors; `options.parts`, a list of `{text, language}` that
