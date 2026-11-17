@@ -1015,6 +1015,118 @@
     };
   }
 
+  /**
+   * The neutral person in an avatar's box where there is no avatar: Lucide 1.17.0's
+   * `circle-user-round.svg`, at upstream commit 896aba0d195a4fec38ad7c4a90d00cb3389ebfea, as
+   * the icon registry's glyphs are Lucide's (icons.js), drawn in the box's muted ink. Its ISC
+   * copyright and license are the Lucide notice beside `destinationGlyphs` below, and
+   * NOTICE.md lists it. It is here, beside the one component that draws it, in this view
+   * bundle, and not in the registry, a startup script every folder's first paint fetches,
+   * where it cost 92 compressed bytes (devtools/check_startup_scripts.py, 2026-11-16).
+   */
+  const PERSON_GLYPH = // Lucide `circle-user-round`
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M17.925 20.056a6 6 0 0 0-11.851.001"/><circle cx="12" cy="11" r="4"/>' +
+    '<circle cx="12" cy="12" r="10"/></svg>';
+
+  function personGlyph() {
+    return PERSON_GLYPH;
+  }
+
+  /**
+   * A person, as every page draws one (docs/design-system.md, "Actor Identity"): an
+   * avatar's box, then the bold name in the shell's person-name primitive, `.actor-name`.
+   * The box is `--actor-avatar-size` square from first paint whatever it holds, so the name
+   * starts in one place with an avatar or without one, and an avatar that arrives later or
+   * fails moves nothing. It holds the avatar where the caller has one, and the shell's
+   * neutral person glyph where it has none; an avatar that fails to load gives its box to
+   * the glyph.
+   *
+   * `avatar` is an https address the caller vouches for, as the GitHub plugin vouches for
+   * GitHub's avatars (`avatarUrl` in its pull-page.js); anything else draws the glyph. The
+   * image says nothing the name beside it does not, so its text is empty, and it sends no
+   * referrer and no credentials, its size and privacy attributes set before its `src`.
+   * Requested in anonymous CORS mode, it loads only from a host that sends
+   * `Access-Control-Allow-Origin`, and in a folder served untrusted only from GitHub's
+   * avatar host, which the page's policy admits (capabilities.py, `untrusted_shell_csp`);
+   * any other image shows the glyph.
+   * When it loads is its placement's, lazy unless the caller asks for eager
+   * (docs/design-system.md, "A Repaint Keeps Its Images"). `placeholder: false` draws no box
+   * for a person with no avatar, for a dense list row whose avatar comes with its row.
+   *
+   * @param {string} name
+   * @param {{avatar?: string | null, loading?: "lazy" | "eager", className?: string,
+   *   nameClass?: string, placeholder?: boolean}} [options]
+   * @returns {HTMLElement}
+   */
+  function actorIdentity(name, options = {}) {
+    const identity = document.createElement("span");
+    identity.className = `actor-identity${options.className ? ` ${options.className}` : ""}`;
+    const avatar =
+      typeof options.avatar === "string" && options.avatar.startsWith("https://")
+        ? options.avatar
+        : null;
+    if (avatar !== null || options.placeholder !== false) {
+      const box = document.createElement("span");
+      box.className = "actor-avatar";
+      box.setAttribute("aria-hidden", "true");
+      if (avatar === null) {
+        box.innerHTML = personGlyph();
+      } else {
+        const image = document.createElement("img");
+        image.className = "actor-avatar-image";
+        for (const [attribute, value] of Object.entries({
+          alt: "",
+          width: "18",
+          height: "18",
+          loading: options.loading === "eager" ? "eager" : "lazy",
+          decoding: "async",
+          fetchpriority: "low",
+          crossorigin: "anonymous",
+          referrerpolicy: "no-referrer",
+        })) {
+          image.setAttribute(attribute, value);
+        }
+        image.addEventListener(
+          "error",
+          () => {
+            box.replaceChildren();
+            box.innerHTML = personGlyph();
+          },
+          { once: true },
+        );
+        image.setAttribute("src", avatar);
+        box.append(image);
+      }
+      identity.append(box);
+    }
+    const label = document.createElement("strong");
+    label.className = `actor-name${options.nameClass ? ` ${options.nameClass}` : ""}`;
+    label.textContent = name;
+    identity.append(label);
+    return identity;
+  }
+
+  /**
+   * The same identity as markup, for a view that writes its markup as text, as the Git
+   * panel's commit summary does: the box with the person glyph, then the bold name. A view
+   * with an avatar to show builds `actorIdentity`, whose image can give its box back to the
+   * glyph if it fails.
+   *
+   * @param {string} name
+   * @param {{className?: string, nameClass?: string}} [options]
+   * @returns {string}
+   */
+  function actorIdentityHtml(name, options = {}) {
+    return (
+      `<span class="actor-identity${options.className ? ` ${escapeHtml(options.className)}` : ""}">` +
+      `<span class="actor-avatar" aria-hidden="true">${personGlyph()}</span>` +
+      `<strong class="actor-name${options.nameClass ? ` ${escapeHtml(options.nameClass)}` : ""}">` +
+      `${escapeHtml(name)}</strong></span>`
+    );
+  }
+
   // Age buckets shared with the shell's tree column. The thresholds
   // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
   // <7d, wk <30d, old beyond); keep the two lists in sync so a
@@ -1671,7 +1783,8 @@
   const destinationGlyphs = {
     github:
       '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg>',
-    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks.
+    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks, and
+     * circle-user-round.svg, the person in an actor identity's box (PERSON_GLYPH above).
      * https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
      * ISC License
      * Copyright (c) 2026 Lucide Icons and Contributors
@@ -1760,6 +1873,8 @@
   }
 
   Object.assign(mb, {
+    actorIdentity,
+    actorIdentityHtml,
     decorateExternalLink,
     loadChangedFilesTree,
     refChipHtml,

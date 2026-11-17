@@ -563,7 +563,7 @@ intersects browser-local UTF-16 ranges with the token runs established by this p
 syntax foregrounds, exact text, layout switching, folding, hydration, and disposal
 retain one source of truth.
 The supporting product and algorithm review is in the
-[web diff viewer research](../../research/research-2026-07-17-web-diff-viewer-architecture.md#2026-08-25-addendum-intraline-refinement).
+[web diff viewer research](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md#2026-08-25-addendum-intraline-refinement).
 
 ## Open Questions
 
@@ -574,7 +574,7 @@ explicit later decisions rather than hidden dependencies of syntax or split layo
 ## References
 
 - [General Diff Rendering](../active/plan-2026-08-17-general-diff-rendering.md)
-- [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 - [File Diff Format](../../architecture/file-diff-format/file-diff-format.md)
 - [Rendering large content](../../../large-content-rendering.md)
 - [GitHub: Reviewing proposed changes in a pull request](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/reviewing-proposed-changes-in-a-pull-request)

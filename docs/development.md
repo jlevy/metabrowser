@@ -4,43 +4,37 @@ Metabrowser uses uv for Python environments and dependency resolution.
 The repository checks Python with Ruff and BasedPyright, browser assets with Biome and
 TypeScript check-JS, Markdown with Flowmark, and behavior with pytest, tryscript CLI
 goldens, and Node contract tests.
+[AGENTS.md](../AGENTS.md) holds the rules every change follows; this guide says how to
+work within them and why they are what they are.
 
 ## Set Up
 
-Install uv 0.11.26 or newer using the
-[official uv instructions](https://docs.astral.sh/uv/getting-started/installation/),
-install Node 24.18.0 or a newer Node 24 release with npm 11.10 or newer, clone the
-repository, and run:
+Install uv at the version `required-version` in `uv.toml` names, using the
+[official uv instructions](https://docs.astral.sh/uv/getting-started/installation/).
+Install the Node release `.nvmrc` and `.node-version` pin, with an npm in the range
+`engines` in `package.json` gives, and select it with `fnm use`, `nvm use`, or
+`mise install`; `npm ci` refuses an older Node with an `EBADENGINE` error.
+The tests also need Git on `PATH`, and stop when Node or Git is missing
+([Running Tests](e2e-testing.md#running-tests)). Then clone the repository and run:
 
 ```shell
 make install
-```
-
-This installs the exact Python and JavaScript dependency locks with
-`uv --config-file uv.toml sync --locked` and `npm ci`. `--locked` also asserts that
-`uv.lock` matches `pyproject.toml` and `uv.toml`, so a stale or locally contaminated
-lock fails at install instead of shipping.
-The required Node version is pinned in `.node-version` for fnm and mise and in `.nvmrc`
-for nvm. Select it with `fnm use`, `nvm use`, or `mise install` before running the Make
-targets. `npm ci` refuses to run under an older Node with an `EBADENGINE` error.
-Install the repository’s Lefthook git hooks once after setup:
-
-```shell
 make hooks-install
 ```
 
-Do not activate `.venv` or invoke `python` or `pip` directly.
-Use `uv --config-file uv.toml run --frozen`, exact-version `uvx`, repository-configured
-dependency commands, and the Make targets so commands use the locked environment and
-repository supply-chain policy.
+`make install` installs the exact Python and JavaScript dependency locks with
+`uv --config-file uv.toml sync --locked` and `npm ci`. `--locked` also asserts that
+`uv.lock` matches `pyproject.toml` and `uv.toml`, so a stale or locally contaminated
+lock fails at install instead of shipping.
+`make hooks-install` installs the Lefthook pre-commit and pre-push gates once per
+checkout.
 
-A machine-global uv configuration such as `~/.config/uv/uv.toml` merges into direct `uv`
-invocations and can silently rewrite the `[options]` block of `uv.lock`. The Make
-targets pass `--config-file` explicitly to select the repository `uv.toml`, and
-`make install` fails on a contaminated lock.
-Pass `--config-file uv.toml` to direct dependency commands outside Make.
-After running them, check `git diff uv.lock` before committing and restore the lock if
-the options block changed.
+Never activate `.venv` or invoke `python` or `pip` directly.
+A machine-global uv configuration such as `~/.config/uv/uv.toml` merges into a bare `uv`
+invocation and can rewrite the `[options]` block of `uv.lock`, so the Make targets pass
+`--config-file` explicitly.
+Outside Make, run `uv --config-file uv.toml run --frozen ...`, and check
+`git diff uv.lock` before committing.
 
 ## Everyday Commands
 
@@ -51,423 +45,128 @@ make format
 # Check lint and formatting without changing files.
 make lint-check
 
-# Run all tests.
+# Run the default test tier.
 make test
 
-# Run every release gate, including the built-wheel smoke test.
+# Run every gate before a pull request or release.
 make verify
 
 # Audit the frozen Python and npm dependency graphs.
 make audit
 
-# Run a targeted test.
+# Run one test.
 uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
 
-# Run acquisition and full-clone acceptance tests on the installed Git, with the
-# acquisition floor unpatched. They skip when that floor refuses the installed Git.
-make test-admitted-git
-
-# On a Mac, run the tests only macOS can run. No CI job runs them.
-make test-macos
-
-# Run the read-only smoke tests against public repositories on github.com.
-make test-live-github
-
-# Report the size of the test suite by area, at the working tree or at named commits.
-make test-report
-
-# Regenerate every golden (tests/golden/) and every recorded response fixture
-# a session replays (tests/fixtures/*.json) after an intended surface change,
-# then review the diff.
+# Regenerate every golden and recorded response fixture after an intended change.
 make golden-update
 
-# Exercise the full navigation API scenario in-process.
+# Exercise the full navigation API scenario in process.
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
 
 # Start the development server with the manual browser corpus.
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
-`make test` fails when Node or Git is missing instead of skipping the tests that need
-them. [Test Tiers](e2e-testing.md#test-tiers) says what each test target covers, when it
-runs, and which skips are expected.
-[Measuring the Suite](e2e-testing.md#measuring-the-suite) says what `make test-report`
-counts and how it times a run from a CI log.
+[End-to-End Testing](e2e-testing.md) covers the test layers, the outer tiers
+(`make test-admitted-git`, `make test-macos`, and `make test-live-github`), the skips
+each tier allows, and `make test-report`. `tests/golden/cli-check-api.tryscript.md` pins
+a normalized transcript of the `--check-api` sequence against a small fixture.
 
-Start v0.12 testing with the
-[alpha test plan](project/specs/done/plan-2026-09-22-v012-alpha-testing.md), which
-defines the milestones from the local Git foundation through GitHub URLs and pull
-requests, and the landing checklist.
-The step-by-step checks, including the HTML regression steps, are in
-[QA: v0.12 Repository Library](qa-v012-repository-library.md).
+The quality, test, audit, and build targets install both locked environments first, and
+Make keeps the stages ordered under parallel jobs.
+`make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
+(public hygiene, file-type colors, tooltips, supply chain, artifact contracts, parity,
+and goldens); `make lint-check` runs the same checks without changing files, plus the
+startup-script budget and a Flowmark check.
 
-The quality, test, audit, and build targets install both locked environments before
-running. Make keeps these stages ordered even when invoked with parallel jobs.
+### The Verify Gate
 
-`tests/golden/cli-check-api.tryscript.md` pins a normalized transcript of the same
-navigation sequence against a small fixture.
-A focused concurrency regression test forces inventory mutation at the summary boundary;
-the golden then checks that the application lifecycle, routes, response envelopes, and
-CLI reporting remain connected.
+`make verify` runs `install`, `lint-check`, `test`, `audit`, and `build`, and
+[AGENTS.md](../AGENTS.md#build-and-test) makes it the handoff gate.
+The build step inspects the wheel and rejects local environments, build trees, and
+repository-only metadata, then runs an isolated installed-wheel smoke test of the
+`metab` command and the `metabrowser` alias, packaged assets, built-in plugin discovery,
+KPress rendering, the in-process navigation API check, and `metab --doctor`. The last
+makes the release gate validate the plugin diagnostics a user sees rather than only
+importing plugin internals.
 
-`make lint` applies the ordinary auto-fixes and then runs supply-chain and
-public-hygiene checks.
-`make verify` is the handoff standard before a pull request or release.
-It also audits both locked dependency graphs.
-Its artifact gate rejects local environments, build trees, and repository-only metadata
-before an isolated wheel smoke test exercises the installed `metab` command and
-`metabrowser` compatibility alias, packaged assets, built-in plugin discovery, KPress
-rendering, and the in-process navigation API check.
-The installed wheel must also pass `metab --doctor`, so the release gate validates the
-user-facing plugin diagnostics rather than only importing plugin internals.
+## Inventory Providers
 
-## Inventory Provider Development
-
-The application lifespan owns one inventory runtime and coordinator for the served root.
-Routes, browser-event projection, activity tracking, and watcher integration use that
-provider-neutral boundary; only the sealed factory imports a concrete provider.
-The exact contract and query-to-consumer map are in the
-[Inventory Provider Contract](project/architecture/arch-inventory-provider.md).
-
-The Python reference provider is the only Phase 1 runtime selection.
-Select it explicitly when testing the provider axis:
-
-```shell
-METABROWSER_INVENTORY_PROVIDER=python METABROWSER_DEBUG=1 \
-  uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
-```
-
-An unknown provider fails at startup instead of falling back.
-With debug mode enabled, `/_debug/inventory` reports the selected provider, contract,
-lifecycle state, version, and cumulative work counters.
-Use `--provider python` in `devtools/bench_serving.py` and
-`explorations/performance-loop/run.py`; Phase 2 adds fdu to those same axes rather than
-creating provider-specific harnesses.
-
-## Asset Loading Tiers
-
-Every browser asset has a loading tier, and the tier is chosen from what the asset costs
-rather than from what is convenient to write.
-The rule exists because parse and evaluate are paid on load whether or not anything uses
-the code: a library in the shell’s eager path costs every reader on every document, and
-that cost is invisible in a request count.
-
-**Eager.** A blocking `<script>` in the shell, for code without which the first render
-is wrong. This is the core module list in `server.py` and it stays small.
-
-**Prefetched.** Fetched after first paint, during idle, before anything asks.
-For code small relative to how likely it is to be wanted, where arriving late would be
-visible. A consumer awaits it rather than discovering it missing.
-Mustache’s idle prefetch and the required plugin-initialization gate share the same
-`mustache` bundle, so a direct file view can demand it before idle without a second
-load.
-
-**On demand.** Fetched the first time something needs it, and never otherwise.
-For code that is large, narrowly used, or both.
-
-The tier applies to data as well as code.
-A bulk payload that only one surface reads follows the same rule as a library that only
-one view calls. A pull request’s page prepares the initial Changes comparison, which its
-header’s Diff summary reads on every tab, and the diff plugin’s modules;
-`builtin_plugins/github/comparison-prefetch.js` records what that costs.
-
-### The Lazy Loading Mechanism
-
-The mechanism follows the library’s module format.
-Both shapes keep a loaded set and an in-flight promise map, so concurrent callers share
-one load and a repeat costs nothing.
-
-**A library that installs a global** loads through `static/asset-loader.js`. The server
-publishes named bundles as `window.METABROWSER_ASSET_BUNDLES`, and `ensureAsset(name)`
-appends that bundle’s scripts with `async = false` so they run in order — a Chart.js
-plugin is inert without `Chart`. `plugin-sdk.js` republishes it as
-`metabrowser.ensureAsset`, so a plugin reaches the loader through the documented SDK
-rather than a private global.
-
-**An ES module tree** loads through dynamic `import()`, as `loadKpressAssets` in
-`plugin-sdk.js` shows: import the module, capture its named export, and hold it.
-Two properties keep a vendored ESM tree loadable without a build step.
-Its specifiers must be relative, so no import map is needed; and where its filenames
-already carry content hashes, only the entry point needs the `?v=` cache-buster that
-`_static_asset_url` adds.
-
-A library moved off the eager path needs an absence contract at every consumer: a guard
-that today reads “if the global is missing, skip” becomes “await the loader.”
-Late arrival must also re-enhance what is already on screen, which is what the
-`metabrowser:optional-asset-loaded` event exists for.
-
-### Idle Work
-
-`metabrowser.whenIdle(callback, {timeout})` in `static/plugin-sdk.js` is the one way the
-shell and the built-in plugins schedule work for when the page is free, the prefetched
-tier’s chain among it, and it returns a function that cancels the work.
-`tests/test_idle_work_js.py` fails on any other `requestIdleCallback` call, so the
-fallback below is everyone’s.
-
-Where the engine has `requestIdleCallback`, the helper is that.
-The app’s WebKit does not: `WKWebView` on macOS 26.5.2 had none when measured on
-2026-11-11, and WebKit enabled it in February 2025 and backed it out (WebKit bug
-285049). The five call sites used to fall back to fixed timers, which start prefetch on
-a clock rather than when the page is free.
-There, the helper waits for `metabrowser:first-view-settled`, which `app.js` dispatches
-once the startup navigation has settled, whether it showed its view or failed, and then
-until `IDLE_INPUT_QUIET_MS` (250 ms) has passed with no `pointerdown`, `keydown`, or
-`wheel`. It listens for those, passively, only where it can run.
-A `timeout` bounds the whole wait, as it bounds `requestIdleCallback`’s.
-
-Untimed work has no ceiling: it waits for the first view as long as that takes, which
-`tests/dom/idle-work-behavior.js` pins.
-That is a decision, not an omission.
-The one untimed caller is a pull request page’s comparison prefetch, and a page whose
-first view has not settled, as a hidden web view’s does not, would have that prefetch
-compete with the view it is still drawing.
-Every caller that must run regardless passes a timeout.
-
-The same engine has no `longtask`, `long-animation-frame`, or `layout-shift` observer.
-Where `longtask` is missing, `metabrowser.perf.responsiveness()` reports
-`raf_frame_gaps`: the count of `requestAnimationFrame` intervals over `FRAME_GAP_MS` (50
-ms, the Long Tasks threshold) while the page is visible, the longest, the count over 200
-ms, and the time sampled.
-A gap is a frame the page did not draw, whatever the cause, not a task’s measured
-length, so it is never written into the Long Task fields, which keep `longtask` in
-`unsupported`. A frame loop costs power, so it runs for `FRAME_SAMPLE_WINDOW_MS` (10 s)
-after load, after `reset()`, and after each trusted click or key.
-When one of those starts it, the first interval is measured from that moment, so the
-work a waking click does before its frame is a gap like any other; a gap that ends after
-the window closes is not counted.
-After a load, that first interval runs from `perf.js`’s evaluation to the first frame,
-so it is mostly the rest of startup: a round that wants transitions alone calls
-`reset()` once the first view has settled.
-Where Long Tasks exist, `raf_frame_gaps` is null and no loop runs.
-Where `layout-shift` is missing, `cls` stays null; the transition harness measures
-region movement instead.
-
-**Not measured in the app’s engine.** The 250 ms pause and the 10 s window were chosen,
-not measured: the pause is the tree’s hover prefetch delay
-(`FILE_PREFETCH_HOVER_DELAY_MS`), longer than a held key’s repeat or a wheel’s event
-interval, and the window covers a transition and its settling.
-When each idle call site’s work starts, and what the loop costs and misses, can only be
-read in `WKWebView`, which needs the probe the macOS app plan names; until a round there
-reads them, they are the values to test, not results.
-These two files are startup scripts, so the code is kept to what the startup budget
-leaves room for, and this section holds what their comments would otherwise say.
-
-### Justifying a Tier
-
-State the measurement, not the intuition.
-Take it in a real browser against a real corpus, the way
-[rendering large content](large-content-rendering.md) requires for size limits, and
-record it with the change.
-`devtools/bench_serving.py` covers the serving side; the page-load side is measured the
-same way and against the same corpus, so a tier change and a serving change are
-comparable.
-
-The transfer the eager tier may cost is a gate, not a habit: `startup_script_requests`
-and `startup_script_transfer_kb` in
-[`performance-budgets.toml`](../explorations/performance-loop/performance-budgets.toml)
-bound the scripts requested before `DOMContentLoaded`. A module whose evaluation costs
-nothing still spends that budget.
-
-`devtools/check_startup_scripts.py` applies both ceilings on every `make lint-check`. It
-renders a folder’s shell through the application and counts every `<script src>` in it,
-whatever its attributes, compresses each file as the application’s gzip middleware does,
-and adds the 300 bytes Resource Timing reports for a response’s headers, which is how
-the browser arrives at the number the gate reads when the server compresses toward it.
-A server started for local use sends a loopback browser its scripts uncompressed, so
-`run.py record` reads the gate’s number the same way, from the scripts the page
-requested, as the remote path sends them; the note beside the budget says why.
-Its module documentation records the two agreeing, script for script.
-A script can also ask for another one, which no tag shows and the gate still counts.
-So the check runs the shell’s own scripts without a browser
-(`tests/dom/shell-startup-requests.js`) and fails on any script one of them requests
-before `DOMContentLoaded` has been handled.
-A script a page needs at startup is therefore a tag of the shell that needs it, as
-`git-path.js` is on a pinned revision’s shell and `pull-route.js` on a pull-request
-address’s; the check reports those two shells beside the budget without gating them.
-When it fails, move code out of a startup script or behind the first usable tree;
-raising the ceiling needs a measurement that shows the headroom is still real.
-
-A decision is recorded beside the constant that makes it.
-These are the ones with a measurement on record, and where it is:
-
-| Asset | Tier | Decided at | Measurement |
-| --- | --- | --- | --- |
-| Core shell modules | Eager | the script tags in `server.py`’s shell template | the note beside the startup gates in `performance-budgets.toml` |
-| Search, Help, keyboard, and Git tools | On demand, once the first tree is usable | `shell-tools` in `on_demand_script_bundles` | the same note |
-| The Pulls tab’s host | With those tools, only in a shell that drew the tab, so a folder never fetches it | `shell-tools`, by `pulls_tab` in `server.py` | The view’s code is the GitHub plugin’s, on demand: see `static/pulls-nav.js` |
-| The Shift key reveal and the shell keymap | With those tools, beside the registry, since neither has work before it exists | `shell-tools` in `on_demand_script_bundles` | none needed: on demand, they cost no startup request or byte |
-| The plugin shortcut queue | Eager, in `plugin-sdk.js`, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | the comment beside it: 233 bytes of the startup scripts’ transfer |
-| The plugin shortcut facade | With those tools, beside the registry it binds plugin keys to | `shell-tools` in `on_demand_script_bundles` | none needed: on demand |
-| Source line gutter with `#L` anchors, SDK view helpers, and the syntax service | On demand, one file, fetched beside the view compositor and before any plugin’s code runs | `sdk-views` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
-| Pull-request routes and page host | Eager on the shell of an address under `/pull/`; on demand for a page that reaches one through history | `PULL_PAGE_STARTUP_SCRIPTS` and `pull-route` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
-| GitPath wire codec | Eager, on a pinned revision’s shell; on demand beside a checkout, at a pull request’s first diff with View file controls | `PIN_STARTUP_SCRIPTS` in `server.py`, and `viewFileOpener` in `builtin_plugins/diff/index.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
-| Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
-| Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
-| The step that places a Markdown render | On demand, in the Markdown plugin’s module tree at the first Markdown render, a folder’s README included | `builtin_plugins/markdown/place-rendered.js` | the comment at its head |
-| A diff’s View file controls | On demand, at the first diff that has them: a pinned page’s, or a pull request’s Changes beside a checkout; a served folder’s commit diffs never request them | `viewFileOpener` in `builtin_plugins/diff/index.js` | the comment beside it |
-| The changed-files tree every diff and the Pulls tab draw changed files with | On demand: a diff asks beside its comparison, a pull request’s page warms it with the diff plugin on every tab, for its header’s Diff summary and for Changes, and the Pulls tab asks as it mounts | `changed-files-tree` in `on_demand_script_bundles`, reached through `metabrowser.loadChangedFilesTree()` | 8,715 compressed bytes (9,015 transferred); a cold load with the cache off took 4.1 and 4.6 ms (medians of 9 and 7, at most 8.7), its fetch 3.1 to 3.4 ms, in headless Chrome 152 from 127.0.0.1 on 2026-11-15 |
-| The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | the comment at the head of `builtin_plugins/diff/diff-summary.js` |
-| A pull request’s rendered Markdown layer | On demand, requested beside the comparison for a comparison that names a rendered route, and by Conversation’s prefetch; mounted only when the manifest lists a Markdown file | `markdownLayer` in `builtin_plugins/diff/index.js` | a cold import took 1.2-4.2 ms from 127.0.0.1 (review C of #349, 10 imports) |
-
-What would move next, if the budget tightens or a startup script has to grow, measured
-2026-10-01 as the compressed bytes each saves where it stands (gzip level 6, as the
-middleware compresses):
-
-| Code | In | Saves | Who calls it |
-| --- | --- | --- | --- |
-| KPress document loading and its table of contents | `plugin-sdk.js` | 2,595 bytes | a Markdown view’s renderer |
-| Rollup fetch and watch | `plugin-sdk.js` | 1,368 bytes | a folder view’s renderer |
-| Plugin data and text fetch helpers | `plugin-sdk.js` | 1,178 bytes | a view’s renderer |
-| The chart helper | `plugin-sdk.js` | 673 bytes | a view that draws a chart |
-| File rendering: the staged render, tabs and print, Load more, the live stream | `app.js` | 7,339 bytes | an opened file |
-
-The first four are the rest of the SDK’s view-phase surface and would join
-`plugin-sdk-views.js` under the guarantee it already gives: there before any plugin’s
-code runs. Together they would put the pull-request shell, which the check reports as
-over, back under the ceiling.
-The last would sit beside the view compositor, and a page that loads at a file’s address
-wants it at once, so it needs the measurement this section asks for before it moves.
+The served root’s inventory comes from one provider behind the provider-neutral
+contract; only the sealed factory imports a concrete one.
+Selecting a provider, its debug report, and running a benchmark against it are in the
+[Inventory Provider Contract](project/architecture/arch-inventory-provider.md), and
+[Adding a Provider](project/architecture/arch-inventory-provider.md#adding-a-provider)
+lists what a new one brings.
 
 ## Benchmarking Scan and Serve
 
-Two harnesses, and they answer different questions.
+Two harnesses answer different questions.
 [`explorations/performance-loop/`](../explorations/performance-loop/README.md) is the
 measured-improvement loop: one hypothesis per round, measured against the unchanged
-build on the same corpus, with the verdict written down either way — including when the
-answer is no. Its browser half follows the reusable
-[Web Performance Framework](web-performance-framework.md): navigation-time observation,
-an application adapter, explicit TOML budgets, and invalid-evidence and responsiveness
-gates in `record` and `compare`. Nothing there runs in CI. `devtools/bench_serving.py`
-below is the standing benchmark.
-An exploration answers a question once; a benchmark defends an answer forever, and only
-the second earns a place in the release gate.
+build on the same corpus, with the verdict written down either way; its browser half
+follows the [Web Performance Framework](web-performance-framework.md).
+`devtools/bench_serving.py` is the standing benchmark, which
+[Scale Benchmark](scale-benchmark.md) runs at fixed sizes.
+An exploration answers a question once; a benchmark defends an answer, and only the
+second belongs in a release gate.
+Both run on one corpus, built once per machine into the gitignored `.bench/` by
+[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus)
+from this repository’s own locked installs, so one commit gives one tree.
 
-Both run on one corpus, and it is neither committed nor generated on demand: `.bench/`
-is gitignored, so a fresh checkout has none and every command that needs it fails until
-it is built. Build it once per machine —
-[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus) —
-before benchmarking a change or checking a release candidate for regressions.
-It is assembled from this repository’s own locked installs, so one commit with one pair
-of lockfiles gives one tree and the two builds under comparison face an identical one.
+Run `devtools/bench_serving.py` before and after a change to the walker, the derived
+index state, or the delivery layer, and record the comparison in the pull request; its
+docstring has the commands, why it reports a cold scan, a scan with a client attached,
+and three settled rollup rows, and the in-page probe for the client half.
 
-`devtools/bench_serving.py` measures how fast a tree becomes usable and stays usable.
-Use it whenever a change touches the walker, the derived index state, or the delivery
-layer, and record the comparison in the pull request.
+### Measurement Discipline
 
-```shell
-# Establish a baseline, then measure the change against it.
-uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
-  --metab /path/to/release/bin/metab \
-  --files 100000 --label before --json bench-before.json
+These rules hold for every timing claim, in either harness and for any engine.
 
-uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
-  --files 100000 --label after --baseline bench-before.json
-```
+- **Pair the sides.** Take both back to back, on the same machine and corpus size.
+  Only the comparison carries over; absolute numbers move with the filesystem, the page
+  cache, and whatever else runs.
+  A stored `--json` from an earlier session is a weak baseline, and a uniform shift
+  across every row is the tell of load rather than change: a real change moves the rows
+  its mechanism touches.
+- **Counts before times.** A count is the same under any load, on any host, in any
+  order, so where two engines walking one corpus differ in a count, that difference is
+  the finding. Use wall-clock time to confirm a count-level result, not to discover one.
+- **A run that did not finish is not a slower run.** A comparison reads back how much
+  work each side did, entries indexed and completion state, and refuses to report when
+  they differ.
+- **A live tree is not a corpus.** A tree something else is writing changes between
+  runs. Real trees are worth measuring for shapes no generator produces; record the load
+  and entry count beside the number, and iterate against a synthetic corpus.
+- **Deterministic profilers overstate high-call-count functions.** Use such a profile to
+  find where, then price the candidates in isolation.
+- **Order and warmup are part of the measurement.** Interleave builds and alternate
+  passes, so drift is not charged to whichever ran second, and time and discard a warmup
+  pass.
+- **Record what was compared:** commit and clean-or-dirty state for each build, and a
+  mark on profiled runs so they are never quoted as measurements.
 
-The corpus, server logs, and result JSON live in `.bench/`, which is not committed.
-A corpus is reused when it already matches `--files`, so repeat runs skip the build.
-Pass `--metab` on both sides when comparing installed artifacts.
-The harness resolves the console script, runs its `--version` command before measuring,
-and records both in the result; this prevents `PATH` order from silently changing the
-build under test.
+`explorations/performance-loop/scan_bench.py` is the engine bench: an in-process mode
+for iterating a per-entry change and an interleaved build-against-build mode, both
+enforcing the completeness and equal-work checks above.
+`explorations/performance-loop/run.py` owns the performance loop’s gates.
+`make verify` checks the harnesses but runs no timing experiment.
+The per-entry rule these measure is in the
+[Engine Performance Model](engine-performance-model.md).
 
-Take both sides back to back, on the same machine and the same corpus size.
-Only the comparison carries over; the absolute numbers move a great deal with the
-filesystem, the page cache, and whatever else is running.
-A stored `--json` from an earlier session is a weak baseline for that last reason —
-under an unrelated load spike every row of a comparison shifted by 1.2× to 1.8×, which
-reads convincingly like a regression and was not one.
-A uniform shift across every row is the tell: real changes move the rows their mechanism
-touches and leave the rest alone.
-Re-measure both sides together before believing any of it.
+### Comparing File Navigation Without a Browser
 
-Three of the reported rows exist because a single blended latency hides what matters.
-
-- The **cold scan** runs with nothing attached and is walker throughput alone.
-  It is read from the walker’s own completion record rather than by polling, because
-  polling is what the next phase deliberately does.
-  A change that leaves this row alone and moves the next one has removed contention, not
-  work.
-- The **scan with a client attached** is what a reader experiences.
-  Rollup work and the walker take CPU from each other, so this is not the cold number.
-- The **settled rollup** is reported as three rows, because a real aggregation, a
-  retained body, and a `304` revalidation are three different amounts of work.
-  Averaging them reports a cache hit rate rather than a latency, and a build with no
-  validators shows up as an absent `304` row instead of a fast one.
-
-Tree latency is reported against response size for the same reason: a request that costs
-more than a larger response is doing work proportional to something other than its
-answer.
-
-The client half is not visible from the server.
-`--browser-probe` prints `devtools/bench-browser-probe.js`; load it in an open folder
-view and call `await metabrowser.bench.run({clients: 8})`. It reads the `Server-Timing`
-header every route already emits, because request count cannot distinguish a shared
-computation from a repeated one — N requests are N requests either way, and what differs
-is the work the server did.
-It reports, per query shape, whether validators are working and what N simultaneous
-clients cost, and it separates coalescing from the retained body rather than crediting
-one for the other.
-
-## File Rollup Format Maintenance
-
-The [File Rollup Format](project/architecture/file-rollup-format/file-rollup-format.md)
-defines the application-independent classification and aggregation contract.
-Its
-[recommended file-type definitions](project/architecture/file-rollup-format/recommended-file-types.toml)
-are a generated documentation copy of the packaged source at
-`src/metabrowser/data/file-rollup-format/recommended-file-types.toml`. Edit the packaged
-TOML source, not the documentation copy.
-
-For a definitions-only change, increment `registry_revision` in the packaged TOML. Use
-the version boundaries in the format’s Evolution section when a change affects the
-registry structure, a serialized component, or the overall rollup semantics.
-Stable IDs are compatibility keys and must not be reassigned to a different meaning.
-
-Regenerate the documentation copy, projected registry, conformance corpus, and empty
-example after changing the definitions or their reference behavior:
-
-```shell
-uv --config-file uv.toml run --frozen python devtools/file_type_contract.py --write
-```
-
-Review every generated diff, then run the checker without a mode to prove that all
-checked artifacts match the source and validate against their JSON Schemas:
-
-```shell
-uv --config-file uv.toml run --frozen python devtools/file_type_contract.py
-uv --config-file uv.toml run --frozen pytest \
-  tests/test_file_type_contract.py \
-  tests/test_file_type_registry.py \
-  tests/test_file_type_taxonomy_js.py
-make verify
-```
-
-To hand the format to another implementation, export a self-contained packet into an
-explicit destination and record the reviewed source revision:
-
-```shell
-uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
-  --export /explicit/destination/file-rollup-format \
-  --source-revision SOURCE_GIT_REVISION
-
-uv --config-file uv.toml run --frozen python devtools/file_type_contract.py \
-  --verify /explicit/destination/file-rollup-format
-```
-
-Export replaces stale packet contents and immediately verifies the result.
-The manifest pins the source revision, registry schema and data revisions, normalized
-registry fingerprint, exact file list, and SHA-256 digest of every artifact.
-Verification rejects unsafe paths, symbolic links, missing or extra content, duplicate
-entries, and hash mismatches.
-The packet has no network, sibling-repository, or package-import dependency; its format
-document, recommended definitions, schemas, conformance cases, and empty example are the
-complete adoption boundary.
+`devtools/bench_navigation.py` runs baseline, candidate, candidate, baseline on one
+existing tree, each fresh process completing discovery before it is measured, and
+compares warm text reads, ETag revalidation, optional Markdown rendering, and concurrent
+inventory traffic without writing to the tree.
+Its docstring has the setup, the command, and the agreement checks that must pass before
+timings compare.
 
 ## Dependencies
 
 Read [supply-chain security](../SUPPLY-CHAIN-SECURITY.md) before adding or upgrading a
-dependency. Use uv and retain the 14-day cool-off:
+dependency. Use uv and keep the 14-day cool-off for third-party packages:
 
 ```shell
 uv --config-file uv.toml add --exclude-newer "14 days" package-name
@@ -477,490 +176,388 @@ uv --config-file uv.toml lock --upgrade-package package-name
 
 Commit `uv.lock` with every Python dependency change and `package-lock.json` with every
 JavaScript tool change.
-Do not add requirements files, Poetry, or another environment manager.
+`pyproject.toml` declares each direct runtime requirement’s minimum version and
+`uv.lock` the resolved graph; run the complete gate after a dependency change.
 
-The cool-off is a control on third-party code, where an upstream publisher could be
-compromised without us knowing.
-First-party packages — the ones published from repositories this project controls, tbd
-among them — are outside it, because that risk is already managed by the process that
-releases them. Install and upgrade those the standard way their own documentation
-describes:
+First-party packages, published from repositories this project controls, are outside the
+cool-off, and
+[Audited First-Party Exceptions](../SUPPLY-CHAIN-SECURITY.md#audited-first-party-exceptions)
+records each selection with its review.
+Install and upgrade those the standard way their own documentation describes, and commit
+what their setup generates exactly as generated.
+For tbd:
 
 ```shell
 npm install -g get-tbd@latest
 tbd setup --auto
 ```
 
-`tbd setup` owns the hook configs, session scripts, and agent skills it writes.
-Commit them exactly as generated and commit the diff the upgrade reports.
-
-Three consequences of that are worth knowing rather than rediscovering, since each one
-was previously patched locally and is now left as generated:
+Fix a defect in tbd’s generated hook configs, session scripts, or skills upstream in its
+generator, not here: the next `tbd setup` reverts a local edit, and a test that pins
+generated contents turns a routine upgrade into a repair.
+Three such defects are known:
 
 - **Hook commands resolve against the working directory.** `.claude/settings.json` and
-  `.codex/hooks.json` invoke `bash .claude/...` and `bash .codex/...` with no root
-  anchoring, so a session whose cwd is not the repository root runs nothing.
-- **The `npx` fallback fails for fourteen days after every tbd release**, because the
-  generated invocation omits `--min-release-age=0` and `.npmrc` sets a 14-day cool-off.
-  It is only reached when the local `tbd` CLI is missing or format-incompatible.
-  See
-  [supply-chain security](../SUPPLY-CHAIN-SECURITY.md#audited-first-party-exceptions).
+  `.codex/hooks.json` invoke `bash .claude/...` and `bash .codex/...` unanchored, so a
+  session whose working directory is not the repository root runs nothing.
+- **The `npx` fallback fails for 14 days after every tbd release**, because the
+  generated invocation omits `--min-release-age=0` and `.npmrc` sets a cool-off.
+  It is reached only when the local `tbd` CLI is missing or format-incompatible.
 - **`ensure-gh-cli.sh` exits non-zero on a platform with no pinned checksum**, so the
-  session hook fails there rather than skipping an optional convenience.
-  Checksums cover linux and macOS on amd64 and arm64.
+  session hook fails there rather than skipping.
 
-Fix any of these upstream in tbd’s generator rather than in this repository, or the next
-`tbd setup` reverts the fix and someone has to notice.
-Do not hand-patch them and do not add tests that assert their contents: the same upgrade
-runs across many repositories, and a local edit is silently reverted by the next one
-while a test that pins their contents turns a routine upgrade into a repair job.
-This repository learned that twice.
-
-Every direct runtime requirement declares the minimum version covered by the frozen
-release graph. `pyproject.toml` owns those requirements, while `uv.lock` records the
-resolved graph. Update both through uv and run the complete release gate after a
-dependency change.
-
-Third-party browser libraries are not loaded from a CDN. They are exact-pinned npm dev
-dependencies vendored into the wheel by `make vendor-assets`, which copies each file out
-of the lockfile-verified `node_modules` into `src/metabrowser/static/vendor/` with its
-license text and a hash manifest.
-The test suite verifies the committed files against the manifest and that the served
-page references no external origins, so Metabrowser works offline.
-To bump a browser library, update its pin in `package.json`, run `npm install` to
-refresh `package-lock.json`, run `make vendor-assets`, and commit the vendored files
-with the lock.
-
-Configuration files own their respective tool versions, entry points, lint and type
-ratchets, and build behavior.
-The verification gate proves those settings by running the locked tools, tests, audits,
-build, distribution inspection, and installed-wheel smoke tests.
-`devtools/check_supply_chain.py` adds only the cross-file safety checks that those tools
-do not provide.
-
-KPress is an exact runtime dependency because its Python and browser rendering contract
-is part of the Metabrowser release surface.
-Changing the KPress version requires the same rendering, wheel, and public-hygiene
-validation as a source change.
-KPress 0.3.0 provides the versioned asset-manifest and declarative fragment contracts
-used by the browser host.
-Metabrowser serves the complete declared closure, treats entry points as authoritative,
-honors stylesheet, module, and classic loading modes, and installs any import map before
-module entry points.
-KPress fragments carry no theme state and omit the standalone resolver by default;
-Metabrowser stamps one resolved theme on the root.
-The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived type ramp to
-Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
-secondary-text, and label divergences.
+Browser libraries are exact-pinned npm dev dependencies, never a CDN:
+`make vendor-assets` copies each from the lockfile-verified `node_modules` into
+`src/metabrowser/static/vendor/` with its license and a hash manifest, which the suite
+checks, so Metabrowser works offline.
+To bump one, update its pin in `package.json`, run `npm install` and
+`make vendor-assets`, and commit the vendored files with the lock.
+KPress is an exact runtime dependency, because its rendering contract is part of the
+release surface, so a KPress bump takes the same validation as a source change.
 
 ## Deferred Imports
 
 Imports go at the top of a module.
-An import inside a function is an exception that has to argue for itself rather than
-cite precedent. There are three kinds, each written down here with the test that holds
-its boundary, so that the list of them is what a test enforces and not a count in this
-document:
+An import inside a function argues for itself, and each kind has a test that holds its
+boundary:
 
-- **The KPress runtime**, in `metabrowser/kpress_adapter.py`, described below.
+- **The KPress runtime**, in `metabrowser/kpress_adapter.py`.
 - **A mode’s own module**, imported in that mode’s branch of the command line, so that
   `--version` and `--help` do not build the application.
   `test_version_command_does_not_load_git_source_or_server_modules` in
   `tests/test_plugin_public_api.py` holds it.
-- **What only a Git source needs**: the revision tree source, the routes that answer
-  from it, acquisition, and `--diff`. A folder’s process never opens a repository, so a
-  handler imports them behind the subject check (`source.as_git_revision_subject`). The
-  same test module runs every mode, every route a folder’s page asks for, and the page
-  routes themselves in a fresh interpreter and fails when one of `_GIT_SOURCE_MODULES`
-  is loaded. A served pin imports its routes as it starts (`cli/git_pin_cli.py`), so its
-  first request does not import them on the event loop.
-  The measurements are in
-  [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md).
+- **What only a Git source needs**: the revision tree source, its routes, acquisition,
+  and `--diff`. A folder’s process never opens a repository, so a handler imports them
+  behind the subject check (`source.as_git_revision_subject`). The same test module runs
+  every mode and every route a folder’s page asks for in a fresh interpreter and fails
+  when one of `_GIT_SOURCE_MODULES` is loaded.
+  A served pin imports its routes as it starts (`cli/git_pin_cli.py`), so its first
+  request does not import them on the event loop.
 
-**Why the first one.** A CLI’s startup cost is a tax on every invocation, paid by humans
+**Why KPress is deferred.** A CLI’s startup cost is paid on every invocation, by people
 waiting and by agents making many calls.
-Importing `metabrowser.server` cost about 345 ms, of which KPress and its rendering
-stack were the largest single contributor.
-Only three request surfaces need the runtime: `/api/kpress/render`,
-`/api/kpress/export`, and `/kpress-static/*`. The browser shell needs KPress font URLs,
-but derives them from package metadata without loading the renderer.
-No data route touches KPress, so every `--api` call was paying for a renderer it never
-used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%; the later
-[cold-shell experiment](../explorations/performance-loop/experiments/exp-028-v091-candidate-rejected-on-cold-shell-import.md)
-measures the shell-specific boundary.
+KPress and its rendering stack were the largest single cost of importing
+`metabrowser.server`, and only `/api/kpress/render`, `/api/kpress/export`, and
+`/kpress-static/*` need them; the shell derives KPress font URLs from package metadata
+without loading the renderer.
+[exp-028](../explorations/performance-loop/experiments/exp-028-v091-candidate-rejected-on-cold-shell-import.md)
+and
+[exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md)
+hold the measurements.
+Serve is the exception: right after its delayed server import, and before Uvicorn starts
+the inventory lifespan, it initializes KPress and resolves the stylesheets every shell
+requests, so a render-blocking request does not pay for the import while it competes
+with inventory startup.
 
-Serve is the deliberate exception within this deferred boundary.
-Immediately after its delayed server import, and before Uvicorn starts the inventory
-lifespan, it initializes KPress and resolves the Source Sans font and style-token
-stylesheet that every shell requests.
-An exact 300,000-file cold trace measured the first stylesheet request doing 196.6 ms of
-server work when it also owned the KPress import, compared with 20.9 ms for the ordinary
-shell stylesheet. Moving that fixed cost ahead of the server prevents a render-blocking
-request from competing with inventory startup.
-Non-serve modes remain lazy.
-
-**What a deferral costs.** It trades a startup cost for a first-call cost, and it turns
-a missing dependency from an import error into a run-time one.
-Deferring the KPress *models* immediately proved the point: `KPressExportRequest` is
-constructed, not merely annotated, and moving it under `TYPE_CHECKING` broke four tests.
+**What a deferral costs.** It trades a startup cost for a first-call cost, and turns a
+missing dependency from an import error into a run-time one.
 Annotations are free to defer under `from __future__ import annotations`; anything
-called or constructed is not.
+called or constructed, as `KPressExportRequest` is, is not.
 
-**The bar for another one.** All three of:
-
-1. the saving is *measured*, not assumed;
-2. the dependency is heavy and genuinely optional to most callers; and
-3. the module keeps a patchable seam, so tests that substitute the dependency still
-   work.
-
-`kpress_adapter` keeps `_kpress_runtime` as a module attribute for exactly that third
-reason — `monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake)` behaves as it
-did when the import was at the top.
-
-If a deferral cannot meet all three, put the import back at the top and find the time
-somewhere else.
+**The bar for another one** is all three of: the saving is measured, the dependency is
+heavy and optional to most callers, and the module keeps a patchable seam.
+`kpress_adapter` keeps `_kpress_runtime` as a module attribute for that third reason, so
+`monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake)` still works.
+If a deferral cannot meet all three, put the import back at the top.
 
 ## CLI and Functional UI Parity
 
-A selection travels four layers — route, kind, model, view.
-Three of those are data and need no screen.
-The fourth is not one indivisible exemption: view code mixes deterministic product
-behavior with paint and browser-platform behavior, and only the latter requires a
-browser. The rule itself is in [AGENTS.md](../AGENTS.md); the reasoning is here.
+The rule is in [AGENTS.md](../AGENTS.md#cli-and-functional-ui-parity), and the tables
+`devtools/check_parity.py` reads are in the
+[parity registry](project/architecture/arch-parity-registry.md).
+This section is the reasoning behind them.
 
-**Why a rule rather than a habit.** Two of eleven data surfaces had CLI coverage when
-this was written, and the two that did — the tree and the diff — are where this project
-had done its hardest debugging.
-That is the argument for the rule rather than a coincidence.
+A selection travels four layers: route, kind, model, and view.
+Three of those are data and need no screen.
+The view is not one indivisible exemption either: view code mixes deterministic product
+behavior with paint and platform behavior, and only the latter needs a browser.
 
 **Model parity is not wire parity.** `--walk` and `--diff` reach their models through
-the library, so they prove the model and not the route.
-A route can accept a parameter the library never sees, or drop an envelope key, with
-those transcripts still green — which is what happened when the nav filter shipped.
+the library, so they prove the model and not the route: a route can accept a parameter
+the library never sees, or drop an envelope key, with those transcripts still green.
 `--api` closes that gap by issuing the request the browser would issue.
-So a golden counts as evidence only if it exercises the route: either a `$ metab`
-command names it, or the row names a mode that resolves it internally, which is how
-`--show` stands for `/api/file` without spelling it.
-`check_parity.py` enforces that distinction, and `--api` is deliberately not such a
-mode, because it always names its route.
-The same check reads the built-in manifests and requires each registered kind to appear
-as exact `kind: <id>` console output in a golden.
-A prose mention does not count.
+So a golden counts as evidence for a route only when a `$ metab` command names it, or
+names a mode that resolves it internally, as `--show` resolves `/api/file` and
+`--check-api` resolves `/api/tree`. `--api` is never such a mode, because it always
+names its route.
+The same check requires each kind a built-in manifest declares to appear
+as exact `kind: <id>` output in a golden’s console block; a prose mention does not
+count.
 
-**Functional UI parity is about ownership, not simulation.** Membership, ordering,
-counts, bounds, state, actions, and errors move behind a route or model and are
-exercised through `metab`. Focus, disclosure, pagination, and lifecycle may remain in
-JavaScript, but a browserless CLI session loads the exact production module and records
-the composed behavior.
-Do not create a Python mirror of JavaScript behavior and do not grow a general fake DOM.
-Geometry, animation, real paint timing, and browser APIs are the narrow browser-only
-tier, with an explicit reason in the functional parity table.
+**What counts as evidence.** A command is evidence for a route when it exits 0, in a
+tryscript transcript or in an in-process `.txt` golden, whose `# command` and `exit:`
+lines the check reads the same way; `devtools/check_goldens.py` fails a `.txt` golden no
+test compares. In-process goldens exist for commands a subprocess cannot run, such as a
+pull-request refresh that needs `gh`, and a tryscript transcript then pins the same
+route failing without `gh`. A golden may write into the tryscript sandbox, as
+`/api/kpress/export` does, when what it writes is the same on every run.
+A command may start with environment assignments, such as
+`METABROWSER_CACHE_DIR=$PWD/<home>`, because tryscript frontmatter cannot name the
+sandbox path; the check skips those and nothing else.
 
-**Why goldens rather than more integration tests.**
-`tbd guidelines golden-testing-guidelines` makes the case: capture a broad, stable slice
-of what the system does, keep it in the repository, and read the diffs.
-The CLI starts the real application in process, so these transcripts exercise route,
-kind, and model behavior without browser automation.
-Browserless JavaScript sessions cover deterministic interaction behavior against
-production modules; real-browser tests stay focused on paint and platform integration.
-The discipline that keeps this honest is that `make golden-update` records an *intended*
-change and is never run to clear a failure.
-A regenerated transcript nobody read converts a regression into a committed expectation.
-
-**Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the stated
-session schema. Revisions and mtimes stay real, because fixture repositories build
-deterministically and fixtures pin mtimes with `touch -t`; hiding a value the fixture
-controls removes the coverage the golden existed to provide.
-Placeholders use angle brackets, because tryscript reads `[NAME]` in expected output as
-an elision pattern and `[ROOT]` is one of its built-ins.
-
-**State counts too.** The cache persists layout, identity, entry state, and abandoned
-staging, none of which appears in a response envelope.
-Those are read through `/api/cache/*` like any other model rather than through a bespoke
+**State counts too.** The repository cache persists layout, identity, entry state, and
+abandoned staging, none of which appears in a response envelope.
+Those are read through `/api/cache/*` like any other model rather than through an
 inspection command, which is the practical reason to prefer a route to a CLI mode.
-`/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, and
-`/api/cache/stores` project those records, and `tests/golden/cli-api-cache.tryscript.md`
-pins them against homes that `tests/cache_home_fixture.py` builds with the production
-writers. `--no-serve` is the one command that writes the cache.
-Its sessions, including interrupted and refused acquisitions, run in-process in
-`tests/test_cli_cache_acquire_golden.py` and `tests/test_cli_cache_recovery_golden.py`,
-with the acquisition floor substituted and the clock fixed, because a transcript must
-pass on whatever Git the machine has and the floor refuses an older one.
-Ubuntu 24.04 packages Git 2.43.0, which is below the floor.
-The hosted CI runner currently ships a newer Git that the floor admits, but nothing here
-pins it. The fixed clock is what lets these transcripts print every recorded time; see
-[CLI-first delivery](project/specs/done/plan-2026-08-28-cli-first-delivery-map.md).
+`tests/golden/cli-api-cache.tryscript.md` pins them against homes that
+`tests/cache_home_fixture.py` builds with the production writers.
+`--no-serve`, the one command that writes the cache, runs in process with the
+acquisition floor substituted and the clock fixed, because a transcript must pass on
+whatever Git the machine has.
+
+**The exempt rows are the honest boundary.** A server-sent-event response has no
+terminating envelope, so `--api` bounds the request and fails rather than hanging; that
+is behavior worth having, not a model a transcript can assert, and `tests/dom/` and the
+event tests cover the content instead.
+A covered row can also pin less than the others: `/api/activity` marks a file active
+only after two polls, which a one-shot process never reaches, so its transcript pins the
+envelope and `tests/test_browser_active_tracker.py` asserts the nonempty case.
+
+**Functional UI parity is about ownership, not simulation.** Route reachability is
+necessary and insufficient: a view can combine two correct models incorrectly, such as a
+tally that counts the complete response beside folder visibility that depends on the
+rows mounted in the DOM. So every user-visible aspect has a tier.
+Membership, ordering, counts, bounds, state, actions, and errors are **data**, behind a
+route or model and exercised through `metab`. Focus, disclosure, pagination, and
+lifecycle may stay in JavaScript as **interaction**, where a browserless session loads
+the exact production module and records the composed behavior.
+Geometry, animation, real paint timing, and browser APIs are **paint-exempt**, each with
+a specific reason and focused evidence.
+Do not mirror JavaScript behavior in Python, and do not grow a general fake DOM.
+
+The check makes those tiers executable.
+For an interaction row it runs the session under V8 coverage and credits an owner only
+when the session executed that production file and one named function in it, so a
+transitive import, a stdout claim, or a relabeled snippet is not evidence.
+The **Data inputs** column states provenance: a data row declares `owned-route`, a
+paint-exempt row `local-only`, and an interaction row names registered, parity-covered
+routes, `local-only`, or `transport-exempt:/api/events` for the event stream whose
+snapshot its data routes already own.
+The check cannot infer an undeclared behavior from source code, so review requires a row
+whenever a change adds or alters an observable contract.
+
+**Why goldens.** `tbd guidelines golden-testing-guidelines` makes the case: capture a
+broad, stable slice of what the system does, keep it in the repository, and read the
+diffs. The CLI starts the real application in process, so transcripts exercise route,
+kind, and model behavior without browser automation, and real-browser tests stay focused
+on paint and platform integration.
+`make golden-update` records an intended change and is never run to clear a failure: a
+regenerated transcript nobody read turns a regression into an expectation.
+
+**Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the session
+schema. Revisions and mtimes stay real, because fixture repositories build
+deterministically and fixtures pin mtimes with `touch -t`; hiding a value the fixture
+controls removes the coverage the golden exists for.
+Placeholders use angle brackets, because tryscript reads `[NAME]` in expected output as
+an elision pattern.
 
 ## Compatibility and Legacy Code
 
-`tbd guidelines backward-compatibility-rules` owns the general rules: the deciding
-question, what does not count as a consumer, why versioning is not backward
-compatibility, and why an unreachable compatibility layer is worse than unused code.
-Read it rather than the summary that used to live here.
-This section records only what that guideline cannot know — the facts about this
-repository, and the standing answers it asks each project to record once.
+`tbd guidelines backward-compatibility-rules` owns the general rules.
+This section records the facts about this repository and its standing answers.
 
-**Speculative compatibility layers are forbidden.** The deciding question is whether a
-real consumer cannot update alongside the producer, or whether a released version wrote
-data that needs migrating.
-For almost everything here, none does, and the reason is structural rather than
-stylistic.
-
-Metabrowser ships the server, the browser shell, and the built-in plugins as one
-artifact from one repository.
+The deciding question is whether a real consumer cannot update alongside the producer,
+or whether a released version wrote data that needs migrating.
+For almost everything here, none does, for a structural reason: the server, the browser
+shell, and the built-in plugins ship as one artifact from one repository.
 A newly loaded page receives the running build’s shell and inlined settings through an
-uncached index response and versioned local asset URLs.
-After replacing a local server build, reload existing tabs: an already-open document
-retains its loaded JavaScript until the document reloads.
-That ordinary reload boundary does not create a separately versioned client contract or
-justify compatibility shims between the two halves.
+uncached index response and versioned asset URLs.
+An already-open tab keeps its loaded JavaScript until it reloads, so reload tabs after
+replacing a local server build; that reload boundary is not a separately versioned
+client contract. `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the
+plugin manifest, and the built-in plugin interfaces are therefore internal contracts.
 
-`/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the plugin manifest, and
-the built-in plugin interfaces are therefore internal contracts.
-Change one everywhere in one commit, and record it in `CHANGELOG.md` when the change is
-observable to someone using Metabrowser or writing a plugin.
+**The macOS app is internal too.** It runs the installed `metab` with the flags in
+`ServerSupervisor` and reads `GET /api/identity`, and Metabrowser keeps no compatibility
+with an older app: change a flag or the route and the app in the same commit, and raise
+`MetabRequirement.minimumRelease` when the app needs the newer `metab`
+([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
 
-**The one genuinely external artifact** is an exported File Rollup Format packet, which
-leaves the repository for another implementation.
-It carries a schema version, registry revision, and fingerprint so a consumer that sees
-an unfamiliar identity refuses the payload rather than guessing.
-Follow the format’s Evolution section when that identity changes, and do not add a
-second reader for the previous one.
+**The one external artifact** is an exported File Rollup Format packet, which leaves the
+repository for another implementation.
+It carries a schema version, registry revision, and fingerprint, so a consumer that sees
+an unfamiliar identity refuses the payload; follow the format’s Evolution section when
+that identity changes, and do not add a second reader for the previous one.
 
 **Plugins are upgraded, not accommodated.** `PLUGIN_SDK_VERSION` in
 `plugin_loader/manifest.py` is the contract the host provides; a manifest declaring
-anything else is refused at load time with a message naming the required version, and
+anything else is refused at load with a message naming the required version, and
 `metab --doctor` reports it.
-Bare manifests accepted by Metabrowser 0.4.0 resolve to the original SDK `0.1`, a pinned
-meaning backed by known installed plugins; omission never follows the moving host
-version.
-Bump that constant only when the contract actually breaks, update every built-in
-manifest in the same commit, and note the break in `CHANGELOG.md`. An external plugin
-updates and declares the new version; the host ships no shim for the older surface.
+A manifest that omits `sdk_version` resolves to `_IMPLICIT_PLUGIN_SDK_VERSION`, the
+original SDK, a pinned meaning backed by known installed plugins and never the moving
+host version. An external plugin updates and declares the new version; the host ships no
+shim.
 
-**The user’s own data is not a compatibility layer.** Never require a rewrite of the
-served tree — those files belong to the user.
+**The user’s data is not a compatibility layer.** Never require a rewrite of the served
+tree.
 Read persisted browser state defensively, falling back to the default when a stored
-value is absent or unusable, and carry a migration only for a key some released version
-actually wrote, which today means none.
+value is absent or unusable, and carry a migration only for a key a released version
+wrote, which today means none.
 
 ### Standing Compatibility Answers
 
 These are this repository’s answers to the template in
-`tbd guidelines backward-compatibility-rules`, recorded once so no change has to ask
-again:
+`tbd guidelines backward-compatibility-rules`:
 
 | Area | Standing answer | Why |
 | --- | --- | --- |
 | Internal code | DO NOT MAINTAIN | One repository, one artifact |
 | Library APIs | DO NOT MAINTAIN | `window.metabrowser` ships with the shell that uses it |
-| Server APIs | DO NOT MAINTAIN | `/api/*` is consumed only by the co-shipped client |
+| Server APIs and the CLI | DO NOT MAINTAIN | `/api/*` and the flags are consumed only by the shell and the macOS app, both built from this repository; the app’s version floor refuses a `metab` too old for it |
 | Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
 | File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
 | Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |
-| Database schemas | VERSION + FAIL FAST, else REBUILD | The GitHub plugin’s PR catalog is a disposable cache that names its versions: one newer or unreadable is kept and refused with the command that clears it, any other rebuilt; see [Lists of pull requests](project/architecture/arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests) |
+| Database schemas | VERSION + FAIL FAST, else REBUILD | The GitHub plugin’s PR catalog is a disposable cache that names its versions: one newer or unreadable is kept and refused with the command that clears it, any other rebuilt; see [the catalog](project/architecture/arch-github-pull-requests.md#the-catalog) |
 
-Raise it with the maintainers if a change needs a different answer; do not assume a
-stricter one and build the layer anyway.
-Revisit the table when the deciding question’s answer changes — a first external plugin
-author, a published format, a client that starts shipping separately.
+Raise it with the maintainers if a change needs a different answer, and revisit the
+table when the deciding question’s answer changes: a first external plugin author, a
+published format, or a client outside this repository.
 
 ## Python
 
-- Support the Python range declared in `pyproject.toml`.
-- Add complete type annotations to new or changed functions.
-- Prefer small typed values and explicit error boundaries over unstructured mappings.
-- Catch only errors the current layer can handle; preserve causes with `raise ... from`.
-- Keep filesystem and parsing work bounded, especially on request and event-loop paths.
-- Use existing safe-path, compression, manifest, and inventory helpers instead of
-  creating parallel implementations.
-
-Run Ruff and BasedPyright through `make lint-check` before handoff.
-BasedPyright runs in strict mode globally.
-Its remaining exceptions are the `executionEnvironments` entries in `pyproject.toml`,
-scoped separately to `src` and `tests`; `devtools` receives the unmodified strict floor.
-Each entry names the diagnostics it suppresses, so `pyproject.toml` is the current
-statement of that debt.
+[AGENTS.md](../AGENTS.md#python-and-dependencies) sets the Python rules.
+Run Ruff and BasedPyright through `make lint-check`. BasedPyright runs in strict mode
+globally; its remaining exceptions are the `executionEnvironments` entries in
+`pyproject.toml`, scoped to `src` and `tests`, each naming the diagnostics it
+suppresses, while `devtools` gets the unmodified strict floor.
 Narrow an entry when a category reaches zero, and never add a broad global suppression.
 
 ## Browser Code
 
-Core browser code lives in `src/metabrowser/static/`; built-in renderers live in
+Core browser code lives in `src/metabrowser/static/` and built-in renderers in
 `src/metabrowser/builtin_plugins/`.
+[AGENTS.md](../AGENTS.md#browser-and-plugin-boundary) sets the boundary rules, and
+[the browser shell](project/architecture/arch-browser-shell.md) holds the shell’s
+modules and the asset loading tiers.
 
-`server.py` and `app.js` remain compatibility coordination shells for the initial
-release. New feature logic belongs in focused route, service, store, or renderer modules
-rather than expanding those files.
-Extract existing behavior when a change has contract coverage and a clear boundary; do
-not combine an unrelated rewrite with a release fix.
+`server.py` and `app.js` are coordination shells: new feature logic belongs in a focused
+route, service, store, or renderer module.
+Extract existing behavior when a change has contract coverage and a clear boundary, and
+do not combine an unrelated rewrite with a release fix.
 
-- Plugins use `window.metabrowser`, not private variables in `app.js`.
-- Generic source tabs render through `metabrowser.renderSourceView`; custom source
-  renderers emit the language class returned by `langForPath`. The shell enhances every
-  default or lazy-mounted view after its render settles and after first paint, so
-  plugins do not call Highlight.js directly.
-  The extension and basename registries in `file_extensions.py` and the measured bound
-  in `settings.py` are injected together as the browser authority.
-  `test_plugin_sdk_syntax_token_contracts` checks every mapping against the vendored
-  grammar registry, and `test_syntax_language_extensions_are_always_browser_text` checks
-  that every mapped extension reaches a Source view at any file size.
-- New renderer state must have an explicit disposal path.
-- Colors come from design tokens.
-- Large collections need lazy mounting, virtualization, or a bounded display.
-- First-party JavaScript and TypeScript filenames use lowercase kebab-case because the
-  same names appear in imports, manifests, URLs, documentation, and test shims.
-  Standard dotted roles such as `types.d.ts` remain valid, and vendored assets retain
-  their upstream names.
-  `make lint-check` enforces the rule for tracked and newly added files.
-- Run Biome and TypeScript check-JS through the Make targets.
+- Generic source tabs render through `metabrowser.renderSourceView`, and custom source
+  renderers emit the language class `langForPath` returns.
+  The shell highlights every default or lazily mounted view after its render settles, so
+  plugins do not call Highlight.js.
+  The registries in `file_extensions.py` and the bound in `settings.py` are injected
+  together as the browser’s authority; `test_plugin_sdk_syntax_token_contracts` checks
+  every mapping against the vendored grammar registry.
+- First-party JavaScript and TypeScript filenames use lowercase kebab-case, because the
+  same names appear in imports, manifests, URLs, documents, and test shims.
+  Standard dotted roles such as `types.d.ts` are valid, and vendored assets keep their
+  upstream names. `make lint-check` enforces it.
 
-`tsconfig.json` applies full strict checking, including `noImplicitAny`, to new browser
-modules automatically.
-`tsconfig.legacy.json` is an explicit allowlist of older modules that still permit
-implicit `any` while retaining strict null and other strict checks.
-Its `files` array is the allowlist; read it there rather than from a count in prose.
-No new file may enter it as an ordinary implementation shortcut, and a file leaves it
-once its JSDoc contracts are complete.
-To see the work remaining for a file, run
-`npx --no-install tsc --noEmit -p tsconfig.legacy.json --noImplicitAny`.
-`apps/macos/webkit-gate/tsconfig.json` checks the WebKit gate’s Node modules with the
-same strictness and Node’s types (`@types/node`); its in-page `probe.js` is a browser
-module under `tsconfig.json`. Their verdicts inform the app’s engine decision, so a
-developer tool is held to the same gates as shipped code.
-
-Biome checks every shipped browser module, including the legacy application shell, with
-the recommended rule set.
-Its overrides are file-scoped and listed in `biome.json`. Shrink each override list as
-those files become clean.
-`make lint-check` treats Biome warnings as failures, so a recommended-rule regression
-cannot hide in otherwise green output.
-Globals invoked from generated HTML retain their public names through narrow inline
-suppressions because those call sites are not visible to static analysis.
-All Biome and TypeScript commands run from `package-lock.json` with `npx --no-install`,
-so quality checks cannot fetch tools at runtime.
+`tsconfig.json` applies full strict checking to new browser modules, and
+`tsconfig.legacy.json`’s `files` array is the allowlist of older modules that still
+permit implicit `any`: a file leaves it once its JSDoc contracts are complete, and none
+enters it as a shortcut.
+`node_modules/.bin/tsc --noEmit -p tsconfig.legacy.json --noImplicitAny` shows what
+remains for a file. Biome runs the recommended rule set over every shipped browser
+module, its file-scoped overrides in `biome.json` shrink as files become clean, and
+`make lint-check` fails on a Biome warning.
 
 ## Documentation
 
-Human-authored Markdown is formatted with the exact Flowmark release pinned in the
-Makefile. Run `make format` after editing docs and `make lint-check` to verify the tree
-without modifications.
-Apply `tbd guidelines common-doc-guidelines` to the README, guidance, specifications,
-and other human-authored documents; retain the standard footer.
+Human-authored Markdown is formatted with the Flowmark release `FLOWMARK_VERSION` in the
+`Makefile` pins: run `make format` after editing, and `make lint-check` verifies the
+tree. Apply `tbd guidelines common-doc-guidelines` to every human-authored document and
+keep its standard footer.
 
-Documentation is organized by lifecycle.
-`docs/` holds durable user and contributor guides.
-`docs/project/`, indexed by its own README, holds project design and planning records:
-maintained architecture documents under `architecture/`, dated feature plans the
-implementation must track under `specs/active/`, completed plans under `specs/done/`,
-and dated research briefs under `research/`. Dated records capture rationale as of their
-date and receive addenda rather than rewrites; when a research brief produces decisions
-the code must follow, extract them into a plan under `specs/active/` instead of treating
-the brief as the contract.
+`docs/` holds durable user and contributor guides, indexed by the README’s Documentation
+section. `docs/project/`, indexed by its own README, holds project records: architecture
+documents under `architecture/`, dated plans the implementation tracks under
+`specs/active/`, completed plans under `specs/done/`, research briefs under `research/`,
+and QA records under `qa/`. Dated records capture rationale as of their date and receive
+addenda rather than rewrites; when a research brief produces decisions the code must
+follow, extract them into a plan rather than treating the brief as the contract.
+
+Three conventions apply to every document:
+
+- **Values live in code.** A constant, limit, default, timeout, or enumerated list that
+  code defines is documented beside it, in its docstring or comment, with the
+  measurement that set it where there is one.
+  A document names the constant and the file that holds it and says what it means, but
+  does not restate its value.
+  The reason is drift: a copied value goes stale the moment the constant changes, and
+  nothing fails when it does.
+  Restate a value only where a test pins the copy to the code, as `tests/test_keymap.py`
+  does for the keyboard table.
+- **Describe the present.** Write what is, not what it replaced; Git holds the history.
+  Planned work is labeled as planned and links its plan.
+- **No tracker IDs in user guides.** Bead IDs and branch names change state without the
+  document changing, so they belong in specs, records, `TODO.md`, and architecture
+  status lines.
 
 ### Architecture Documents
 
-Architecture documents are reference material, so their layout is a convention rather
-than a preference, and the parts a machine can hold are enforced by
-`tests/test_docs_discipline.py`:
+Architecture documents are reference material, so their layout is a convention, and
+`tests/test_docs_discipline.py` enforces the parts a machine can hold:
 
-- **Start with the map.**
-  [Views, models, and routes](project/architecture/arch-views-models-routes.md) is the
-  index of what the browser shows, from what, and at what address; every architecture
-  document is reachable from it or from `docs/project/README.md`, and the test fails
-  when one is not.
+- **Start at the entry point.** [Architecture](architecture.md) maps the layers and
+  links every architecture document; each one is also linked from
+  `docs/project/README.md`, and the test fails when one is not.
 - **State status first.** A `**Status:**` line near the top says whether the document
   describes what exists, what is partly built, or what is only designed.
-  It is the first thing a reader needs and the first thing to go stale.
-- **One subject per document, linked rather than repeated.** A fact belongs in exactly
-  one document; everywhere else links to it.
-  Duplicated prose is duplicated maintenance, and the copies diverge silently.
+- **One subject per document, linked rather than repeated.** A fact belongs in one
+  document, and duplicated prose diverges silently.
 - **A table of registered surfaces names its check.** A document that tabulates what the
-  code registers — kinds, views, routes, formats — must name the test that compares the
-  table to the code, so a reader knows the table is enforced rather than hopeful.
-  A table nothing checks is worse than no table.
+  code registers, such as kinds, views, routes, or formats, names the test that compares
+  the table to the code; a table nothing checks is worse than none.
 - **Update the document in the change that moves the code.** Registering a kind, view,
-  route, or format is not finished until the map and any affected document say so; the
-  tests above make that a gate rather than a habit.
+  route, or format is finished when the documents that list it say so.
 
-The public-hygiene gate rejects references to the private guidance tree and other
-non-public residue; see `devtools/public_hygiene.py` for the enforced rules.
-`make lint-check` runs it on every change, so a release needs no separate pass.
-Run it directly only when changing repository visibility, which the ordinary gate never
-sees:
+### Public Hygiene
+
+`devtools/public_hygiene.py` rejects references to private trees, personal absolute
+paths, and other non-public residue, and checks the footer; `make lint-check` runs it on
+every change. Run it directly only when changing repository visibility:
 
 ```shell
 uv --config-file uv.toml run --frozen python devtools/public_hygiene.py
 ```
 
-Keep documentation public-safe.
-Do not include private repository names, internal issue identifiers, personal absolute
-paths, credentials, customer data, or copied operational files.
+What a document must never include is in
+[AGENTS.md](../AGENTS.md#documentation-and-public-hygiene).
 
 ### Changing This Guidance
 
-This document and `AGENTS.md` constrain everyone who works here, so a rule has to earn
-its place the same way code does.
-
-- State the reason with the rule.
-  A reader who cannot reconstruct why a rule exists cannot tell when it stops applying,
-  and will either cargo-cult it or quietly ignore it.
-- Prefer a check over a sentence.
-  Anything a linter, type checker, test, or Make target can enforce belongs there
-  instead; guidance that restates what `make verify` already enforces only adds a second
-  place to drift.
-- Do not put numbers in prose that nothing maintains.
-  Hand-typed counts and baselines rot silently and then mislead — cite the file or the
-  command that reports the current value.
-- Delete a rule whose reason no longer holds.
-  Guidance is not append-only, and a stale restriction costs more than the absent rule
-  would.
-
-Challenging an existing rule from first principles is ordinary work, not an overstep.
+[Changing This Guidance](../AGENTS.md#changing-this-guidance) in `AGENTS.md` holds the
+rules for adding, checking, and deleting guidance here and there, each with its reason.
 
 ## Issue Tracking
 
-The repository uses tbd for git-native issues and plans.
-`.tbd/config.yml` records the setup version; `tbd --version` reports the installed CLI:
+The repository uses tbd for git-native issues and plans; `tbd prime` loads the workflow.
+`.tbd/config.yml` records the setup version, and `tbd --version` reports the installed
+CLI.
 
 ```shell
-tbd prime
 tbd ready
 tbd create "Describe the work" --type task
 tbd close <issue-id>
 tbd sync
 ```
 
-Track implementation work before changing code, record meaningful dependencies, and
-close issues only after validation.
-Run `tbd sync` before the final push.
-
-The tracker is a first-party package with an audited cool-off exception; see
-[supply-chain security](../SUPPLY-CHAIN-SECURITY.md) for the rationale.
+Track work before changing code, record meaningful dependencies, close issues only after
+validation, and run `tbd sync` before the final push.
 Node version managers keep a separate global package tree per Node version, so install
-the same release into every Node version used with this repository—at minimum the
-manager’s default and the version pinned in `.node-version`. A stale copy under another
-Node version can silently revert caches and forked documents written by the newer one.
-After upgrading, run `tbd setup --auto` and commit its generated hook configs, session
-scripts, skills, and configuration exactly as generated.
-Fix generator defects upstream rather than hand-patching outputs that the next setup run
-will replace.
+the same tbd release into every Node version used here, at least the manager’s default
+and the one `.node-version` pins: a stale copy can revert caches and documents the newer
+one wrote.
 
 ## Shared Working Tree
 
-This repository is commonly worked by several agents and worktrees at once, so files can
-appear modified mid-session that the current session never touched.
-The Lefthook pre-push gate compounds this: it runs the quality and test targets over the
-**working tree**, not over the commit being pushed.
-Another session’s uncommitted file can therefore block an unrelated push, and a tree
-that verifies green can still push a commit that fails CI.
+Several agents and worktrees often work this repository at once, so files can appear
+modified that the current session never touched.
+The Lefthook pre-push gate runs over the working tree, not the commit being pushed, so
+another session’s uncommitted file can block a push, and a tree that verifies green can
+still push a commit that fails CI.
 
 - Check `git status` before committing and stage only your own hunks.
-- Never commit a file you did not write merely because it shows as modified.
-  Half of another session’s paired edit — a test without the change it covers — passes
-  locally against the newer tree and fails in CI.
-- When the gate fails, first check whether the offending file is yours.
-  A failure in another session’s work is something to raise, not to silently fix.
-- Lefthook cannot run from a git worktree created outside the repository, so pushing
-  from a clean temporary worktree is not a workaround for a dirty one.
+- Never commit a file you did not write because it shows as modified: half of another
+  session’s paired edit passes locally against the newer tree and fails in CI.
+- When the gate fails, first check whether the failing file is yours.
+- Lefthook cannot run from a worktree created outside the repository, so a clean
+  temporary worktree elsewhere is not a way around a dirty one.
 - A new worktree has no `node_modules`, and `make lint-check`, `make test`, and
   `make format` run `make install` first every time, which runs `npm ci` and replaces
   `node_modules` even when it is present.
@@ -969,70 +566,16 @@ that verifies green can still push a commit that fails CI.
   targets as `make -o install lint-check`; never symlink it, because `npm ci` then
   deletes the other checkout’s copy.
 
-## Durable Storage
-
-Agents are told to put temporary files in a session scratchpad, which lives under
-`/private/tmp`. The operating system empties it, `/tmp`, and the temporary directories
-under `/var/folders` that `$TMPDIR` names, on restart and at other times without
-warning. On 2026-11-14 one restart took a performance campaign’s series lock, its
-coordination scripts, and the protocol files that committed experiment records cite by
-sha256, and they had to be rebuilt from session transcripts.
-Every running subagent and background loop ended with it.
-
-**The rule: a transient location holds only output that rerunning a command recreates.**
-Anything a later step, another session, a record, or a lock depends on goes somewhere
-durable:
-
-| What | Where |
-| --- | --- |
-| An experiment’s protocol, criteria, and amendments | Committed beside its record as `exp-NNN-protocol.txt`, named in the record’s `method.protocol` |
-| Samples, analysis and figure scripts a record cites | Committed beside the record, and linked from it or named in `method.record` |
-| Logs, drivers, and probe output that hold local paths | The worktree’s gitignored `attic/` |
-| Raw bench output and corpora | The gitignored `.bench/` |
-| A lock that serializes timed rounds across worktrees | `$(git rev-parse --path-format=absolute --git-common-dir)/metabrowser-series.lock`, which every worktree of the checkout shares |
-| A series driver or analysis a later round reuses | Committed, without local paths, under `explorations/performance-loop/`; its per-round config, which holds them, in that round’s `attic/` |
-| Coordination scripts for one campaign only | A worktree’s gitignored `attic/` |
-| Rebuilt intermediates, such as a filtered sample file or a scratch worktree in a “Reproducing” recipe | `/tmp/` or `$TMPDIR`, inside the recipe’s fenced block |
-
-**Write a protocol so it can be committed.** Name builds by their version line and
-commit, and machine paths by placeholders such as `$CONTROL` and `$CORPUS`, so the
-public-hygiene check accepts it.
-It is plain text (`.txt`), not Markdown, so `make format` never rewrites it and its
-sha256 holds, and so the records’ `exp-*.md` glob does not read it as a record.
-Commit it before the first timed run, and commit each amendment, with its timestamp,
-before the measurement it governs; the history then shows which version governed what.
-
-**A lock outlives a crash.** The series lock is taken by a campaign’s driver, not by the
-transition harness, which takes none.
-It is a directory made with one atomic `mkdir`, with an `owner` file naming the process
-and the start time, as `explorations/performance-loop/wkprobe-lock.mjs` makes the
-WKWebView probe’s. A lock whose owner is no longer running is reported as stale and left
-for a person or the coordinating agent to remove; it is never removed automatically,
-because a process id can be reused after a restart and an owner file can be written some
-other way.
-
-**After a restart,** expect every subagent, background loop, and timed series to have
-ended. Check what a timed series recorded before it stopped, resume agents by message,
-and re-arm any watcher from its durable copy.
-
-`tests/test_experiment_storage.py` holds the rule for experiment records:
-- no record points its evidence at a session scratchpad, or, outside a fenced recipe, at
-  an operating system temporary directory;
-- every file a record names is in the repository: its protocol, with the sha256 the
-  record’s `method.protocol` gives, each script `method.analysis` registers, with its
-  sha256, the files `method.record` names, and every relative link;
-- a record that cites a pre-registration by sha256, or is dated from the rule on, names
-  its committed protocol.
+Experiment and campaign files follow the
+[durable storage](../explorations/performance-loop/README.md#durable-storage) rules.
 
 ## Pull Requests
 
-1. Start from current `main` and create a focused branch.
-2. Add or update the failing test before a regression fix where practical.
-3. Keep implementation, documentation, and public-hygiene changes together when they
-   describe one contract.
-4. Run `make verify`.
-5. Review the diff and wheel contents for unintended files or private residue.
-6. Commit, push, open the pull request, and watch CI to completion.
+[Git](../AGENTS.md#git) in `AGENTS.md` lists the handoff steps.
+Start from current `main` on a focused branch, add the failing test before a regression
+fix where practical, keep implementation, documentation, and public-hygiene changes
+together when they describe one contract, and review the wheel contents as well as the
+diff for unintended files or private residue.
 
 **A reference pull request can read as merged.** GitHub marks a pull request merged, and
 deletes its branch, as soon as its head commit is reachable from `main`. A reference
@@ -1045,32 +588,23 @@ Cite the preserved code by its commit, never by the pull request’s state.
 ## Troubleshooting
 
 **`fatal: this operation must be run in a work tree`.** Check `git config core.bare`
-before suspecting worktree configuration, test pollution, or a concurrent session.
-A subprocess that runs `git init` while a repository-pinning environment variable is set
-re-initializes the surrounding repository instead of the intended directory, and writes
-`core.bare = true` into the shared configuration.
-`GIT_DIR` outranks both the working directory and `git -C`, and git hooks export it, so
-anything a hook-run test suite spawns inherits it.
-Repair with `git config core.bare false` from any worktree; it writes the shared
-configuration. The signature is distinctive: the suite passes standalone and fails only
-under `git push`, and later unrelated git commands keep failing after the hook exits.
-Code that spawns `git` must first scrub the repository-pinning variables — `GIT_DIR`,
-`GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`,
-`GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_PREFIX`, `GIT_NAMESPACE`, and
-`GIT_CEILING_DIRECTORIES` — and a test should pin that behavior.
-A push from a linked worktree is the case that exports `GIT_DIR`; one from the primary
-checkout does not, which is why the bug can look unreproducible.
-The pre-push command in `lefthook.yml` and `tests/conftest.py` each clear the list for
-everything they start, and `tests/test_git_hook_environment.py` checks both, along with
-the console goldens that build repositories and every Python fixture that runs
-`git init`.
+first. A subprocess that runs `git init` while a repository-pinning environment variable
+is set re-initializes the surrounding repository and writes `core.bare = true` into the
+shared configuration.
+`GIT_DIR` outranks both the working directory and `git -C`, and git hooks export it from
+a linked worktree, so anything a hook-run test suite spawns inherits it; a push from the
+primary checkout does not, which is why the failure can look unreproducible.
+Repair with `git config core.bare false` from any worktree.
+Code that spawns `git` first scrubs the repository-pinning variables,
+`_REPO_PINNING_GIT_VARS` in `git/process.py`; the pre-push command in `lefthook.yml` and
+`tests/conftest.py` clear the same list, and `tests/test_git_hook_environment.py` checks
+both, the goldens that build repositories, and every fixture that runs `git init`.
 
-**`npm` refuses to install.** npm 11.10 and newer enforce the `before` and
-`minimum-release-age` settings and error when a shell environment sets both.
-Pushes run `make install` through the pre-push gate, so this surfaces as a failing push
-rather than a failing install.
-Select the pinned Node version first, and unset the conflicting environment variable for
-the invocation rather than weakening the repository’s cool-off configuration.
+**`npm` refuses to install.** npm enforces the `before` and `minimum-release-age`
+settings and errors when a shell environment sets both.
+Pushes run `make install` through the pre-push gate, so this shows as a failing push.
+Select the pinned Node first, and unset the conflicting variable for the invocation
+rather than weakening the repository’s cool-off.
 
 **A killed `tbd sync` blocks later runs.** It leaves a lock directory under
 `.git/tbd/locks/`. Remove it after confirming no tbd process is still running.
@@ -1079,8 +613,8 @@ the invocation rather than weakening the repository’s cool-off configuration.
 
 The project was bootstrapped from
 [simple-modern-uv](https://github.com/jlevy/simple-modern-uv).
-Review future template updates as ordinary code changes: preserve project-specific
-tooling, compare workflow pins, and rerun the full verification gate.
+Review template updates as ordinary code changes: keep project-specific tooling, compare
+workflow pins, and rerun the full gate.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

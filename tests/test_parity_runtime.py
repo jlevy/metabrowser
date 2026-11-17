@@ -12,7 +12,7 @@ than quietly leaving a route ungoverned.
 
 from __future__ import annotations
 
-from devtools.check_parity import MAP_DOC, parity_rows, registered_surfaces
+from devtools.check_parity import REGISTRY_DOC, parity_rows, registered_surfaces
 
 
 def _runtime_api_routes() -> set[str]:
@@ -36,7 +36,7 @@ def test_the_static_scan_finds_every_route_the_app_mounts() -> None:
 
 
 def test_every_mounted_route_has_a_parity_row() -> None:
-    listed = {row.surface for row in parity_rows(MAP_DOC.read_text(encoding="utf-8"))}
+    listed = {row.surface for row in parity_rows(REGISTRY_DOC.read_text(encoding="utf-8"))}
     missing = _runtime_api_routes() - listed
 
     assert not missing, f"mounted but absent from the parity table: {sorted(missing)}"
@@ -56,7 +56,7 @@ def _runtime_browser_routes() -> set[str]:
 def test_browser_routes_are_governed_too() -> None:
     """`/view` and `/commit` are the addresses a reader lands on, not internals."""
 
-    listed = {row.surface for row in parity_rows(MAP_DOC.read_text(encoding="utf-8"))}
+    listed = {row.surface for row in parity_rows(REGISTRY_DOC.read_text(encoding="utf-8"))}
     missing = _runtime_browser_routes() - listed
 
     assert not missing, (

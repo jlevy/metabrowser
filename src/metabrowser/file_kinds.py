@@ -1,9 +1,12 @@
 """File-kind classification + view registry for the browser preview pane.
 
 The preview pane decides which renderer to show by mapping a file's kind
-to an ordered list of views. Kinds are inferred by a small detector
-chain — the first detector that returns a string wins. The chain is
-mutable: plugins can extend it via :func:`register_file_kind_detector`.
+to an ordered list of views. The manifest classifier
+(``plugin_loader/classify.py``) runs first; the small detector chain here
+is the fallback, and the first detector that returns a string wins.
+Manifest ``[[kind]]`` rules are the plugin classification surface:
+:func:`register_file_kind_detector` is not part of the plugin API. See
+``docs/project/architecture/arch-plugin-system.md``.
 """
 
 from __future__ import annotations
@@ -18,6 +21,9 @@ from ruamel.yaml.error import YAMLError
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.gz_io import ArtifactPath
 
+# Bounds the decompressed bytes read while looking for a compressed Markdown
+# file's frontmatter, so a large `.md.gz` cannot turn classification into an
+# unbounded decode.
 _FRONTMATTER_MAX_BYTES = 256 * 1024
 
 # VIEW_REGISTRY carries the built-in kinds owned by metabrowser core.
@@ -210,8 +216,9 @@ class FileContext:
 
     @property
     def yaml_top_level(self) -> dict[str, Any] | None:
-        """Lazily-loaded top-level mapping from the first 16 KiB of a `.yaml`
-        / `.yml` file, used by the classifier's ``yaml_has_key`` /
+        """Lazily-loaded top-level mapping from a bounded prefix
+        (``classify._YAML_PREFIX_BYTES``) of a `.yaml` / `.yml` file, used by
+        the classifier's ``yaml_has_key`` /
         ``yaml_value_prefix`` matchers. Cached per FileContext so multiple
         rules consulting the same file don't trigger multiple bounded reads
         + PyYAML parses. Returns None when the file is unreadable, the
@@ -277,10 +284,9 @@ def classify_file_kind(
 
 
 def classify_by_ext(ext: str, adapter: str | None = None) -> str:
-    """Compatibility classifier for call sites without a path handy.
-    Used by the charts endpoint for .jsonl files where adapter has been sniffed
-    from the first log lines. Prefer classify_file_kind(path, ext, adapter)
-    for everything else."""
+    """Fallback classifier for call sites with no file on disk, such as Git
+    blobs (``git/content_routes.py``), after the manifest rules found no
+    kind. Prefer classify_file_kind(path, ext, adapter) when a path exists."""
     if ext == ".jsonl":
         return _detect_jsonl(FileContext(Path(), ext, adapter)) or "unknown-jsonl"
     if ext == ".md":

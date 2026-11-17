@@ -80,13 +80,18 @@ public nonisolated struct AdmittedSession: Equatable, Sendable {
 /// How much of a saved session a launch rebuilds; the rest is dropped.
 ///
 /// Measured on macOS 26.5.2 by building windows that each hold a never-loaded web view,
-/// as a restore builds them: tabbed into one window, 20 took 588 ms, 50 took 1.76 s,
-/// and 100 took 4.47 s on the main thread, about 1.1 MB each; 20 separate windows took
-/// 187 ms. Each window's shown tab then loads its page, one WebContent process of 111
-/// to 143 MB (`TabDiscardPolicy`), and each distinct root starts a server of about
-/// 65 MB (the server-topology brief). The standard budget keeps a launch under two
-/// seconds of building and under 3 GB of pages at the measured upper figure: far past
-/// an everyday session, and a bound on an edited or corrupted file.
+/// as a restore builds them, as main-thread time and the footprint added to the app:
+///
+/// - 20 tabs in one window: 588 ms, 23 MB
+/// - 50 tabs in one window: 1.76 s, 55 MB
+/// - 100 tabs in one window: 4.47 s, 113 MB
+/// - 20 separate windows: 187 ms, 16 MB
+///
+/// Each window's shown tab then loads its page, one WebContent process of 111 to 143 MB
+/// (`TabDiscardPolicy`), and each distinct root starts a server of about 65 MB (the
+/// server-topology brief). The standard budget keeps a launch under two seconds of
+/// building and under 3 GB of pages at the measured upper figure: far past an everyday
+/// session, and a bound on an edited or corrupted file.
 public nonisolated struct RestoreBudget: Equatable, Sendable {
     public static let standard = RestoreBudget(windows: 20, tabs: 50)
 

@@ -5,7 +5,8 @@ address of a render in the page (``builtin_plugins/markdown/links.js``) and poin
 ``/raw?path=<identity>``. The render route answers, beside the HTML, a version for each of
 those identities (``raw_versions``), and the enhancer puts it in the address, so a
 replaced file is a new address and a browser cannot show the copy it holds of the old one
-(``SECURITY.md``, ``docs/design-system.md``, "A Repaint Keeps Its Images").
+(``arch-server-and-content.md``, "Raw Responses"; ``docs/design-system.md``, "A Repaint
+Keeps Its Images").
 
 This predicts the identities the enhancer will compute, with its rule for a source-relative
 or root-relative path on a served folder. The prediction need not be complete: a version

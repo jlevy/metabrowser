@@ -244,6 +244,7 @@ const MEASURE = `async (name, change, tab, width) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "now", className: "age" }),
@@ -257,16 +258,16 @@ const MEASURE = `async (name, change, tab, width) => {
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
-  // The avatar slot authorLabel draws, without a request: no fixture names an avatar the
-  // page may load, and most authors have one.
+  // An avatar in the box the shell's identity draws, in the person glyph's place, without a
+  // request: no fixture names an avatar the page may load, and most authors have one.
   if (change.avatar) {
-    for (const identity of container.querySelectorAll(".github-pull-meta .github-pull-identity")) {
+    for (const box of container.querySelectorAll(".github-pull-meta .actor-avatar")) {
       const image = document.createElement("img");
-      image.className = "github-pull-avatar";
+      image.className = "actor-avatar-image";
       image.alt = "";
       image.width = 18;
       image.height = 18;
-      identity.prepend(image);
+      box.replaceChildren(image);
     }
     await frames();
   }
@@ -734,6 +735,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       refChipHtml: mb.refChipHtml,
       mergeRefs: mb.mergeRefs,
       mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       countPartsNodes: mb.countPartsNodes,
       formatAge: () => ({ label: "now", className: "age" }),
@@ -874,6 +876,7 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     refChipHtml: mb.refChipHtml,
     mergeRefs: mb.mergeRefs,
     mountRefCopies: mb.mountRefCopies,
+    actorIdentity: mb.actorIdentity,
     titleNodes: mb.titleNodes,
     countPartsNodes: mb.countPartsNodes,
     formatAge: () => ({ label: "now", className: "age" }),
@@ -1006,18 +1009,24 @@ const PULLS_ROWS = `async (rows, width) => {
     node.append(...children);
     return node;
   };
-  // The panel's own container, as pulls-panel.js#mountPullsPanel marks it: it carries the
-  // avatar's size and gap, without which an avatar had no size here and an author no floor.
+  // The panel's own container, as pulls-panel.js#mountPullsPanel marks it. The avatar's size
+  // and gap are the shell's, --actor-avatar-size and --actor-identity-gap, on its root.
   const nav = h("div", { class: "github-pulls" });
   nav.style.width = width + "px";
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   nav.append(list);
   document.getElementById("preview-pane").replaceChildren(nav);
   const built = rows.map((row) => {
-    const identity = page.authorLabel(row.author, null, "github-pulls-author");
+    const identity = page.authorLabel(window.metabrowser, row.author, null, "github-pulls-author", {
+      placeholder: false,
+    });
     if (row.avatar) {
-      // The slot authorLabel draws for an avatar, without a request.
-      identity.prepend(h("img", { class: "github-pull-avatar", alt: "", width: "18", height: "18" }));
+      // The box authorLabel draws for an avatar, with its image, without a request.
+      identity.prepend(
+        h("span", { class: "actor-avatar", "aria-hidden": "true" }, [
+          h("img", { class: "actor-avatar-image", alt: "", width: "18", height: "18" }),
+        ]),
+      );
     }
     const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
     const place = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
@@ -1121,10 +1130,10 @@ const PULLS_ROWS = `async (rows, width) => {
     const panel = getComputedStyle(nav);
     const floor =
       by.querySelector(".github-pulls-sep").getBoundingClientRect().width +
-      (by.querySelector(".github-pull-avatar") === null
+      (by.querySelector(".actor-avatar") === null
         ? 0
-        : parseFloat(panel.getPropertyValue("--github-pull-avatar-size")) +
-          parseFloat(panel.getPropertyValue("--github-pull-identity-gap"))) +
+        : parseFloat(panel.getPropertyValue("--actor-avatar-size")) +
+          parseFloat(panel.getPropertyValue("--actor-identity-gap"))) +
       1.75 * parseFloat(getComputedStyle(by).fontSize);
     const name = by.querySelector(".github-pulls-author").getBoundingClientRect();
     return {

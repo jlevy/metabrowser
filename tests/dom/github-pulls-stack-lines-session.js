@@ -171,12 +171,16 @@ async function laneStory(lines, prefetch) {
     await answer();
     await idleOnce();
   });
-  await step("#290's answer: a member's list is not cached, so its heading shows nothing", answer);
+  await step(
+    "#290's answer: a member's list is not cached, and it names it: no line, asked again later",
+    answer,
+  );
   const kept = changes.current.body;
   const key = stackChangeKey(kept.number, kept.revision);
   assert.deepEqual(keep.snapshot().kept, [key], "the change is kept under its stack and revision");
-  await step("drawn again: the line in the paint that draws it, and nothing is read", () =>
-    lane.want(shared, SOURCE),
+  await step(
+    "drawn again within the minute: the line in the paint that draws it, nothing read",
+    () => lane.want(shared, SOURCE),
   );
   assert.equal(idle.length, 0);
   // A Pulls tab mounted again in the document: its lane shares the document's keep and index.
@@ -186,24 +190,61 @@ async function laneStory(lines, prefetch) {
     lane.want(shared, SOURCE),
   );
   assert.equal(idle.length, 0, "a remount reads nothing");
-  // An hour on, past any window: an answer holds until what it depends on changes.
-  now += 3_600_000;
-  await step("an hour on, with nothing changed: nothing is read, and no heading waits", () =>
-    lane.want(shared, SOURCE),
-  );
-  assert.equal(idle.length, 0, "an answer is not read again on a timer");
-  // Any member's change moves the accumulation: here the bottom's.
-  moved(286, MOVED, 0);
+  now += STACK_LINE_RETRY_MS;
   await step(
-    "#286's bottom moves: it is read again, and its line stays shown meanwhile",
+    "a minute on, #290 is asked again, silently; still not cached, it waits longer",
     async () => {
       lane.want(shared, SOURCE);
       await idleOnce();
+      assert.equal(lane.line(shared[1], SOURCE).phase, "none", "a stack still settling waits not");
+      await answer();
     },
   );
-  await step("its answer arrives: the line it names", answer);
+  // A filter that holds no row of #286's top leaves its head unknown: unchanged (B3).
+  moved(286, null);
+  await step("a filter holds no row of #286's top: nothing is read again", () =>
+    lane.want(shared, SOURCE),
+  );
+  assert.equal(idle.length, 0, "an unknown head is no move");
+  // The prefetch lists #290's member: the stacks that hold it are read at once (B1).
+  answers = (number) => (number === 290 ? changes.arrived : answerFor(number));
+  await step(
+    "the prefetch lists a member of #290: it is read at once, and its line arrives",
+    async () => {
+      lane.listed(shared[1].pulls.at(-1));
+      await runIdle();
+    },
+  );
+  now += 3_600_000;
+  await step("an hour on, every stack settled: nothing is read, and no heading waits", () =>
+    lane.want(shared, SOURCE),
+  );
+  assert.equal(idle.length, 0, "a settled answer is not read again on a timer");
+  // Any member's change moves the accumulation: here one below the top, whose list is still
+  // of the head before, so the answer names it.
+  moved(286, MOVED, 1);
+  answers = (number) =>
+    number === 286 ? changes.moving : number === 290 ? changes.arrived : answerFor(number);
+  await step(
+    "a member of #286 moves: read again, the line stays; its list is still settling",
+    async () => {
+      lane.want(shared, SOURCE);
+      await runIdle();
+    },
+  );
+  now += STACK_LINE_RETRY_MS;
+  answers = (number) => (number === 290 ? changes.arrived : answerFor(number));
+  await step(
+    "a minute on it is asked again, silently, and the refreshed list settles it",
+    async () => {
+      lane.want(shared, SOURCE);
+      await idleOnce();
+      assert.equal(lane.line(shared[0], SOURCE).phase, "shown", "the line stays while it settles");
+      await answer();
+    },
+  );
   moved(286, MOVED_AGAIN);
-  answers = (number) => (number === 286 ? new Error("connection dropped") : answerFor(number));
+  answers = (number) => (number === 286 ? new Error("connection dropped") : changes.arrived);
   await step("#286's top moves again and the read fails: the line it had stays shown", async () => {
     lane.want(shared, SOURCE);
     await runIdle();
@@ -213,7 +254,7 @@ async function laneStory(lines, prefetch) {
   );
   assert.equal(idle.length, 0);
   now += STACK_LINE_RETRY_MS;
-  answers = (number) => (number === 286 ? { status: 304, body: null } : answerFor(number));
+  answers = (number) => (number === 286 ? { status: 304, body: null } : changes.arrived);
   await step("a minute on it is asked again; a 304 says its last answer holds", async () => {
     lane.want(shared, SOURCE);
     await runIdle();
@@ -221,15 +262,15 @@ async function laneStory(lines, prefetch) {
   // The keep let the line go: the stack is read again, and that read fails.
   keep.clear();
   answers = (number) =>
-    number === 286 ? { status: 500, body: { error: "boom" } } : answerFor(number);
-  await step("the keep let #286's line go and its read failed: no line, and no wait", async () => {
+    number === 286 ? { status: 500, body: { error: "boom" } } : changes.arrived;
+  await step("the keep let the lines go and #286's read failed: no line, and no wait", async () => {
     lane.want(shared, SOURCE);
     await runIdle();
   });
   now += STACK_LINE_RETRY_MS;
-  answers = (number) => answerFor(number);
+  answers = (number) => (number === 290 ? changes.arrived : answerFor(number));
   await step(
-    "a minute on, it is asked again, with no placeholder, and its line is back",
+    "a minute on, #286 is asked again, with no placeholder, and its line is back",
     async () => {
       lane.want(shared, SOURCE);
       await idleOnce();
@@ -237,12 +278,6 @@ async function laneStory(lines, prefetch) {
       await answer();
     },
   );
-  moved(290, MOVED);
-  await step("a member of #290 moves: its first read under the new identity waits", async () => {
-    lane.want(shared, SOURCE);
-    await idleOnce();
-  });
-  await step("still not cached: nothing, and no wait again", answer);
   // A server that refuses every stack: one answer says so, and the lane asks a minute on.
   for (const [refusal, what] of [["not_github", "a server with no repository"]]) {
     keep.clear();
@@ -317,7 +352,7 @@ async function headingStory() {
     Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
   const requests = [];
   /** The stack changes the server answers, by stack, each held until the session lets it go. */
-  const changeFor = (number) => answerFor(number);
+  let changeFor = (number) => answerFor(number);
   /** @type {(() => void)[]} */
   const held = [];
   const globals = {
@@ -382,50 +417,53 @@ async function headingStory() {
     await settle();
   };
   try {
-    const container = new PanelElement("div");
+    let container = new PanelElement("div");
     const sdk = require("./sdk-ref-fixture.js").refHelpers(document);
-    const handle = panel.mountPullsPanel(
-      container,
-      {
-        kind: "pull-request-list",
-        pullsNav: {
-          filter: "all",
-          current: null,
-          shown: true,
-          refreshAhead: false,
-          scrollRoot: null,
-          open() {},
-          file: null,
-          fileHref: (number, file) => `/pull/${number}/files/${file}`,
-          pageFor: () => null,
-          onPageChange: () => () => {},
-          filterChanged() {},
-        },
-      },
-      {
-        ...sdk,
-        perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
-        filterControls: {
-          groupHtml({ options }) {
-            filterOptions = options;
-            return "<div></div>";
+    const mount = (into) =>
+      panel.mountPullsPanel(
+        into,
+        {
+          kind: "pull-request-list",
+          pullsNav: {
+            filter: "all",
+            current: null,
+            shown: true,
+            refreshAhead: false,
+            scrollRoot: null,
+            open() {},
+            file: null,
+            fileHref: (number, file) => `/pull/${number}/files/${file}`,
+            pageFor: () => null,
+            onPageChange: () => () => {},
+            filterChanged() {},
           },
-          bind: () => () => {},
         },
-        formatAge: () => ({ label: "1m", className: "age-min" }),
-        formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
-        whenIdle(callback) {
-          idle.push(callback);
-          return () => {
-            idle = idle.filter((queued) => queued !== callback);
-          };
+        {
+          ...sdk,
+          perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+          filterControls: {
+            groupHtml({ options }) {
+              filterOptions = options;
+              return "<div></div>";
+            },
+            bind: () => () => {},
+          },
+          formatAge: () => ({ label: "1m", className: "age-min" }),
+          formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+          whenIdle(callback) {
+            idle.push(callback);
+            return () => {
+              idle = idle.filter((queued) => queued !== callback);
+            };
+          },
         },
-      },
-    );
-    const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
+      );
+    let handle = mount(container);
+    const listNode = () =>
+      container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
     const stackRows = () =>
-      list.childNodes
-        .filter((item) => item.classList.contains("github-pulls-stack-item"))
+      listNode()
+        .childNodes.filter((item) => item.classList.contains("github-pulls-stack-item"))
         .map((item) => item.childNodes[0]);
     const childByClass = (node, name) =>
       node.childNodes.find((child) => child.classList?.contains(name));
@@ -553,6 +591,30 @@ async function headingStory() {
     ]);
     assert.deepEqual(arrived["Stack #286"].change, expected, "the heading draws the component");
     assert.equal(arrived["Stack #286"].name.startsWith(`Stack #286: ${said.label}; `), true);
+    handle.dispose();
+    // Totals a member's list could not count, a binary file, are followed by the muted
+    // "(estimated)", which the name says too (B4 of review B on #484): a fresh document.
+    const lines = await import(pathToFileURL(path.join(GITHUB, "stack-lines.js")).href);
+    const prefetch = await import(pathToFileURL(path.join(GITHUB, "comparison-prefetch.js")).href);
+    lines.documentStackLines.clear();
+    prefetch.documentComparisons.clear();
+    changeFor = (number) => (number === 286 ? changes.inexact : answerFor(number));
+    container = new PanelElement("div");
+    handle = mount(container);
+    await paint();
+    while (idle.length > 0 || held.length > 0) {
+      await idleOnce();
+      await release();
+    }
+    const estimated = headings()["Stack #286"];
+    steps.push({
+      step: "a member's list could not count a binary file: “(estimated)” follows the totals",
+      headings: { "Stack #286": estimated },
+      requests: requests.splice(0),
+    });
+    assert.equal(estimated.change.at(-1).class, "github-pulls-stack-change-note");
+    assert.equal(estimated.text.endsWith("(estimated)"), true);
+    assert.match(estimated.name, /^Stack #286: .+, estimated; 3 pull requests/);
     handle.dispose();
     for (const [name, descriptor] of Object.entries(saved)) {
       if (descriptor === undefined) {

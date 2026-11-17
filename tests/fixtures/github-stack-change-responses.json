@@ -9,6 +9,7 @@
         7,
         11
       ],
+      "pending": [],
       "revision": "b280d37bdcd9e1369bf74031e86dc7a1",
       "files": 2,
       "additions": 5,
@@ -33,6 +34,9 @@
       "reason": "not_cached",
       "number": 290,
       "pulls": [],
+      "pending": [
+        12
+      ],
       "revision": null,
       "files": null,
       "additions": null,
@@ -48,12 +52,99 @@
       "reason": "not_stacked",
       "number": 999,
       "pulls": [],
+      "pending": [],
       "revision": null,
       "files": null,
       "additions": null,
       "deletions": null,
       "exact": false,
       "statuses": []
+    }
+  },
+  "arrived": {
+    "status": 200,
+    "body": {
+      "state": "current",
+      "reason": null,
+      "number": 290,
+      "pulls": [
+        7,
+        12
+      ],
+      "pending": [],
+      "revision": "f821b2360d77e6f5756c9c1304cf1165",
+      "files": 3,
+      "additions": 3,
+      "deletions": 0,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 2
+        },
+        {
+          "status": "modified",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "moving": {
+    "status": 200,
+    "body": {
+      "state": "current",
+      "reason": null,
+      "number": 286,
+      "pulls": [
+        7,
+        11
+      ],
+      "pending": [
+        7
+      ],
+      "revision": "b280d37bdcd9e1369bf74031e86dc7a1",
+      "files": 2,
+      "additions": 5,
+      "deletions": 0,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 1
+        },
+        {
+          "status": "modified",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "inexact": {
+    "status": 200,
+    "body": {
+      "state": "current",
+      "reason": null,
+      "number": 286,
+      "pulls": [
+        7,
+        11
+      ],
+      "pending": [],
+      "revision": "acbe61baa5b14d69f115e20206971c50",
+      "files": 3,
+      "additions": 5,
+      "deletions": 0,
+      "exact": false,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 2
+        },
+        {
+          "status": "modified",
+          "count": 1
+        }
+      ]
     }
   },
   "not_github": {
@@ -63,6 +154,7 @@
       "reason": "not_github",
       "number": 286,
       "pulls": [],
+      "pending": [],
       "revision": null,
       "files": null,
       "additions": null,

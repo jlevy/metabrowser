@@ -30,8 +30,8 @@ Every route, kind, and model the browser consumes, and every state the system pe
 has a `metab` equivalent and a golden transcript.
 Every user-visible functional aspect is also runnable from a command line.
 
-- Data semantics — membership, ordering, grouping inputs, counts, bounds, persisted
-  state, actions, and errors — belong to a route or model reached through `metab` and a
+- Data semantics (membership, ordering, grouping inputs, counts, bounds, persisted
+  state, actions, and errors) belong to a route or model reached through `metab` and a
   nontrivial golden.
 
 - Browser-owned interaction state machines run browserlessly against the exact
@@ -47,8 +47,8 @@ Every user-visible functional aspect is also runnable from a command line.
   route is inspectable and golden-pinned for free.
 
 - `devtools/check_parity.py` enforces route and functional evidence and names what is
-  missing. The tables, exemption list, and reasons live in
-  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+  missing. The tables, exemption list, and reasons live in the
+  [Parity Registry](docs/project/architecture/arch-parity-registry.md).
 
 - A new route arrives with its parity row and a golden, or the build fails.
   There is no `gap` status: every registered surface is either covered by a transcript
@@ -67,6 +67,9 @@ this repository’s structural facts and standing answers.
   `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
   contracts. Change one everywhere in one commit, and note it in `CHANGELOG.md` when a
   user or plugin author can observe the change.
+- The macOS app is internal too: change a `metab` flag or route it uses and the app in
+  the same commit, and raise `MetabRequirement.minimumRelease` when the app needs the
+  newer `metab`.
 - `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
   update every built-in manifest in the same commit.
 
@@ -103,11 +106,12 @@ this repository’s structural facts and standing answers.
 - Run Biome and TypeScript check-JS through the Make targets for browser changes.
 - Keep new browser modules under the fully strict `tsconfig.json` gate.
   Do not expand the explicit legacy allowlist without a documented reason.
-- Give every browser asset a loading tier — eager, prefetched, or on demand — and pick
-  it from measured cost, not from convenience.
+- Give every browser asset a loading tier (eager, prefetched, or on demand), and pick it
+  from measured cost, not from convenience.
   A script in the shell’s eager path is fetched, parsed, and evaluated whether or not
   anything uses it, so a large or narrowly used library does not belong there.
-  See [asset loading tiers](docs/development.md#asset-loading-tiers).
+  See
+  [asset loading tiers](docs/project/architecture/arch-browser-shell.md#asset-loading-tiers).
 
 ## Documentation and Public Hygiene
 
@@ -116,6 +120,16 @@ this repository’s structural facts and standing answers.
 - Format all human-authored Markdown through `make format`, which invokes the exact
   `flowmark-rs` pin the Makefile records in `FLOWMARK_VERSION`.
 - Link to source documentation instead of duplicating long policy text.
+- Values live in code: document a constant, limit, default, timeout, or enumerated list
+  beside its definition, with the measurement that set it where there is one.
+  A document names the constant and its file and says what it means, and restates the
+  value only where a test pins the copy, as `tests/test_keymap.py` does for the keyboard
+  table and `tests/test_user_guide_values.py` for the values user guides state.
+  A restated value drifts silently from its constant, as the large-content limits
+  table’s copy of `DEFAULT_ACCENT_RUN_BUDGET` did.
+  No check can find an unpinned copy, so this is a rule; `tests/test_docs_discipline.py`
+  checks the rest: that links and document paths in source resolve, and that every
+  document is reachable from its index.
 - Architecture documents follow the layout convention in
   [Architecture Documents](docs/development.md#architecture-documents): status first,
   one subject per document, and a named check for any table of registered surfaces.
@@ -131,14 +145,14 @@ transient location**: `/tmp`, `$TMPDIR`, or an agent’s session scratchpad unde
 `/private/tmp`. A restart empties them; on 2026-11-14 one took a measurement campaign’s
 lock, scripts, and the protocols its records cite by hash.
 A transient location is only for output that rerunning a command recreates.
-[Durable Storage](docs/development.md#durable-storage) says where each kind of file and
-lock belongs instead, and `tests/test_experiment_storage.py` checks experiment records.
+[Durable Storage](explorations/performance-loop/README.md#durable-storage) says where
+each kind of file and lock belongs instead, and `tests/test_experiment_storage.py`
+checks experiment records.
 
 ## Changing This Guidance
 
 Do not add a rule or restriction here or in `docs/development.md` without deciding from
 first principles that it is necessary.
-See [Changing This Guidance](docs/development.md#changing-this-guidance).
 
 - State the reason with the rule, so a later reader can tell when it stops applying.
 - Prefer a check to a sentence: if `make verify` can enforce it, put it there instead of
@@ -181,10 +195,13 @@ For what each policy means, run `tbd guidelines agent-policy-grants`; to change 
 run `tbd policy`. Only the copy committed on the default branch is in effect; a branch
 or working-tree copy is a proposal, and `tbd policy show` reports the effective grants.
 
+- `github-workflows`: granted
 - `github-editing`: granted
+- `github-merge`: autonomous
+- `github-stacked-prs`: granted
 - `subagents`: granted
 
-Recorded 2026-11-12.
+Recorded 2026-11-16.
 <!-- END TBD POLICY GRANTS -->
 <!-- END TBD INTEGRATION -->
 

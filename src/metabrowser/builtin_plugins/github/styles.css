@@ -3,15 +3,6 @@
    markup. What is here is their placement, and the few forms only this page has, all from host
    tokens. Colors are design tokens. */
 
-/* An author's avatar and the gap after it (`.github-pull-identity`), on the page and on a
-   Pulls row. The Conversation timeline's geometry is theirs: where a commit's subject starts,
-   the x of the line down the avatars' centers, an absent avatar's empty slot, and the floor
-   an author keeps before it ends in an ellipsis. */
-.github-pull,
-.github-pulls {
-  --github-pull-avatar-size: 18px;
-  --github-pull-identity-gap: 4px;
-}
 .github-pull {
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
@@ -29,10 +20,8 @@
   padding: 0;
   color: var(--text);
 }
+/* A page header (`.page-header`, static/styles.css): the title, then its lines 6 px apart. */
 .github-pull-header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
 /* The header's box is decided at first paint: each row is one line, or the title's two,
@@ -204,7 +193,7 @@
   align-self: stretch;
   align-items: center;
   min-height: var(--ui-row-height);
-  font-size: var(--nav-font-size);
+  font-size: var(--body-font-size);
 }
 .github-pull-summary-pending > .tally-pending {
   width: min(100%, 14.5em);
@@ -221,9 +210,12 @@
   min-width: 0;
   white-space: nowrap;
 }
-/* One line tall whatever it holds: the GitHub mark in its link made it 0.6 px taller. */
+/* One line tall whatever it holds: the GitHub mark in its link made it 0.6 px taller. Its
+   quiet text is the muted ink at its line's size, the body's, as every line under the title
+   is (`.page-header-line`); elsewhere on the page quiet text is the small size. */
 .github-pull-opened > .github-pull-quiet {
   flex: 0 1 auto;
+  font-size: var(--body-font-size);
   min-width: 0;
   height: 1lh;
   overflow: hidden;
@@ -416,12 +408,14 @@
     calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
   );
 }
-/* One of the header's metadata lines, under the row of ages and as tall as it: one line of
-   the small type, ending in Refresh's slot on every tab. Refresh, Fetch, and Switch to the
-   head are text actions (`.github-pull-text-action`), a line tall, as Browse code on the row
-   of ages is (mb-2u08). As bordered `.btn`s they made this row 26 px where the row of ages is
-   18, and with the empty labels row it stood 32 px under that row against the 6 px between
-   the others (Chrome 152). Its text is cut short before it wraps; its controls never are.
+/* One of the header's metadata lines, under the row of ages and as tall as it: one line at
+   the body size, as every line under the title is (`.page-header-line`), ending in Refresh's
+   slot on every tab; it was the small type, a step under the lines above it (mb-kisi).
+   Refresh, Fetch, and Switch to the head are text actions (`.github-pull-text-action`), a
+   line tall, as Browse code on the row of ages is (mb-2u08). As bordered `.btn`s they made
+   this row 26 px where the row of ages was 18, and with the empty labels row it stood 32 px
+   under that row against the 6 px between the others (Chrome 152). Its text is cut short
+   before it wraps; its controls never are.
    A failure is the exception: it says what to do, so the row wraps to show all of it, the
    one state where the tab bar may move. */
 .github-pull-failure {
@@ -433,7 +427,6 @@
   align-items: center;
   gap: 4px 10px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   white-space: nowrap;
 }
 .github-pull-status > :is(.github-pull-freshness, .github-pull-message, .github-pull-failure) {
@@ -534,7 +527,7 @@
 /* ── The Conversation timeline ──────────────────────────────────
    docs/design-system.md, "Conversation Timeline". A commit row is set in a card head's type
    and line, and its subject starts where an author's name does after the avatar, or its
-   empty slot, and the identity's gap (--github-pull-avatar-size, --github-pull-identity-gap,
+   box, and the identity's gap (--actor-avatar-size, --actor-identity-gap,
    18 px and 4 px): its frame is as wide as a card's and draws
    nothing. Its box is its line, with no room of its own above or below, so its text is as
    far from the events beside it as their boxes are, the rhythm (mb-w7rt). Its hash takes a
@@ -547,11 +540,7 @@
   align-items: baseline;
   gap: 2px 10px;
   padding: 0 var(--github-pull-text-inset) 0
-    calc(
-      var(--github-pull-text-inset) +
-      var(--github-pull-avatar-size) +
-      var(--github-pull-identity-gap)
-    );
+    calc(var(--github-pull-text-inset) + var(--actor-avatar-size) + var(--actor-identity-gap));
   border-inline: 1px solid transparent;
   font-size: var(--body-font-size);
 }
@@ -576,7 +565,7 @@
   --github-pull-line: 2px;
   --github-pull-node: 8px;
   /* The avatar's center: the head's inset and half the avatar. */
-  --github-pull-rail: calc(var(--github-pull-text-inset) + var(--github-pull-avatar-size) / 2);
+  --github-pull-rail: calc(var(--github-pull-text-inset) + var(--actor-avatar-size) / 2);
   /* A commit's first line: half of it. */
   --github-pull-node-y: 0.5lh;
   position: relative;
@@ -1532,6 +1521,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* "(estimated)" after totals that are not exact, muted as the Diff summary's is, a qualifier
+   of the totals. It gives way first, before the statuses, and never takes the totals' room:
+   its floor is nothing. */
+.github-pulls-stack-change-note {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  white-space: nowrap;
+}
 /* While the line is read, the heading holds the shell's pending placeholder where it will
    be: the navigation tally's gray block and slow pulse (`.tally-pending`), shown after the
    quiet period (`.mb-delayed-loading`). It gives way as a line does: as wide as a typical
@@ -1558,42 +1557,21 @@
   height: calc(var(--ui-row-height) * 3);
 }
 
-.github-pull-identity {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--github-pull-identity-gap);
-  vertical-align: baseline;
-}
-.github-pull-avatar {
-  display: inline-block;
-  flex: none;
-  align-self: center;
-  width: var(--github-pull-avatar-size);
-  height: var(--github-pull-avatar-size);
-  border-radius: 50%;
-}
-/* A Conversation card head's author with no usable avatar keeps the avatar's box, empty,
-   so the timeline's line and the commits beside it line up with every head ("Conversation
-   Timeline"). */
-.github-pull-avatar-slot {
-  display: inline-block;
-  flex: none;
-  align-self: center;
-  width: var(--github-pull-avatar-size);
-  height: var(--github-pull-avatar-size);
-}
-/* In the pull request's author row the author gives way after the action
-   (`.github-pull-meta-details`): down to its avatar, if it has one, and a little of the name,
-   which then ends in an ellipsis, as a Pulls row's author does (`.github-pulls-by`). Without
-   a floor of its own a long login kept its whole width and pushed what followed it out of
-   the row. The avatar's share is its size and the identity's gap. */
+/* An author is the shell's identity (`.actor-identity`, static/styles.css;
+   docs/design-system.md, "Actor Identity"): the avatar's box, `--actor-avatar-size`, then
+   the bold name, the identity's gap apart. The box is there for every author on the page,
+   the person glyph in it where GitHub gave no avatar or the image failed, so the
+   Conversation timeline's line meets every head where an avatar is; a Pulls row draws no
+   box for an author with no avatar.
+   In the pull request's author row the author gives way after the action
+   (`.github-pull-meta-details`): down to its avatar's box and a little of the name, which
+   then ends in an ellipsis, as a Pulls row's author does (`.github-pulls-by`). Without a
+   floor of its own a long login kept its whole width and pushed what followed it out of the
+   row. The box's share is its size and the identity's gap. */
 .github-pull-meta-details > .github-pull-identity {
   flex: 0 100 auto;
-  min-width: 1.75em;
+  min-width: calc(var(--actor-avatar-size) + var(--actor-identity-gap) + 1.75em);
   overflow: hidden;
-}
-.github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar) {
-  min-width: calc(var(--github-pull-avatar-size) + var(--github-pull-identity-gap) + 1.75em);
 }
 .github-pull-meta-details .github-pull-author {
   min-width: 0;
@@ -1606,8 +1584,8 @@
    that, the author and its separator move to the next line together, which the number's
    line's one-line box clips (`.github-pulls-meta`), so the author leaves the row's view.
    Above it the name ends in an ellipsis. The avatar's share is its size and the identity's
-   gap (`.github-pull-avatar`, `.github-pull-identity`); a failed avatar keeps that slot,
-   hidden, so the name's share is still there. */
+   gap (`.actor-avatar`, `.actor-identity`); a failed avatar gives its box to the person
+   glyph, so the name's share is still there. */
 .github-pulls-by {
   display: flex;
   flex: 1 1 0;
@@ -1617,11 +1595,11 @@
   max-width: max-content;
   overflow: hidden;
 }
-.github-pulls-by:has(.github-pull-avatar) {
+.github-pulls-by:has(.actor-avatar) {
   min-width: calc(
     var(--github-pulls-sep) +
-    var(--github-pull-avatar-size) +
-    var(--github-pull-identity-gap) +
+    var(--actor-avatar-size) +
+    var(--actor-identity-gap) +
     1.75em
   );
 }

@@ -1,190 +1,35 @@
 # Reviewing Pull Requests
 
-Metabrowser reviews GitHub pull requests from a repository URL, an existing checkout, or
-a pull-request URL. The Pulls tab lists the repository’s pull requests; each page shows
-the description, conversation, reviews, checks, and changes.
-Records and Git objects are cached locally, so previously fetched data remains readable
-offline while those objects are available.
+Metabrowser reads GitHub pull requests from a repository URL, a pull-request URL, or a
+checkout you already have.
+The Pulls tab lists the repository’s pull requests, and each pull request’s page shows
+its description, conversation, reviews, checks, and changes.
+What it fetches is cached, so a pull request you have read stays readable offline.
 
-To fetch new GitHub data, install a current GitHub CLI (`gh`) release and sign in.
-Acquiring or refreshing Git objects also needs Git.
-[Git and GitHub setup](installation.md#git-and-github-setup) gives the installation
-commands and the sign-in check.
-Local file browsing and cached PR metadata do not require `gh`.
+![A pull request’s page on its Conversation tab, with its changed files in the Pulls list](../images/screenshot-pull-request.jpg)
 
-## Open a Repository
+Cloning needs Git, and reading pull requests from GitHub needs GitHub CLI (`gh`), signed
+in; [installation](installation.md#git-and-github-setup) says how to set them up.
+Cached pull requests stay readable without `gh`.
 
-Point `metab` at its GitHub URL or a checkout you already have:
+## Open a Repository or a Pull Request
 
 ```shell
-metab https://github.com/owner/repo
-metab ~/src/repo
-metab ~/src/repo-worktree
-metab ~/src/repo/src
+metab https://github.com/owner/repo           # a repository
+metab https://github.com/owner/repo/pull/123  # one pull request
+metab ~/src/repo                              # a checkout, a linked worktree, or a folder in one
 ```
 
-A repository URL opens a managed copy in the cache, pinned to a commit.
-A local path serves that folder, including its local changes.
-The main checkout, a linked worktree, and a subdirectory can all show **Pulls** when
-Metabrowser recognizes a github.com `origin` and can read the checkout’s `HEAD`. On a
-fork, the list belongs to `origin`, usually the fork; the tab names the repository.
-A folder without a recognized GitHub repository has no Pulls tab.
+- **A repository or pull-request URL** clones the repository into your cache once and
+  serves it pinned to one commit: a pull-request URL pins the pull request’s head.
+  Later runs reuse the clone.
+- **A local path** serves that folder as it is on disk, local changes included.
+  It shows **Pulls** when its checkout’s `origin` is on github.com and its `HEAD` can be
+  read. On a fork, the list belongs to `origin`, usually the fork, and the tab names the
+  repository.
 
-Choose **Pulls** beside Files and Commits.
-It starts on **Open**; the filters are **Open**, **Closed**, and **All**. Closed
-includes merged pull requests.
-Small tallies show each filter’s total when the catalog knows it.
-Switching back to Files or Pulls restores that tab’s last selection; switching to
-Commits selects the newest commit.
-The list shows the newest pull requests first, with their open, draft, merged, or closed
-state. The status gives the repository’s total and name, with the number in bold.
-
-Metabrowser caches a lightweight catalog of titles, authors, states, branches, and dates
-in the background, publishing each page as it arrives and resuming unfinished work.
-The list has no limit: scrolling toward the end loads the next page for the current
-filter, through its oldest pull request.
-While pages are still being read or fetched from GitHub, a spinner below the last row
-says how many matching pull requests have been fetched so far, as the file scan does.
-The catalog fetches pages in the background while GitHub’s API budget allows; when it
-runs low, the pull requests you scroll to are still fetched, and the rest wait.
-After initial Files work is idle, Metabrowser prepares lightweight PR headers and
-descriptions in both managed repositories and existing checkouts.
-The current filter warms first, visible rows take priority as you scroll, and
-preparation continues through the cached catalog.
-Small transport batches limit in-flight work without capping total coverage.
-Busy preparation retries while demand remains; hiding the browser or losing the network
-pauses the unfinished pass, and returning resumes it.
-Validated descriptions persist locally across later batches and server restarts.
-A changed summary can show its older description while new metadata is prepared.
-A selected refresh takes priority.
-Selecting a row shows its prepared description when available.
-For a missing full record, the selected refresh still verifies a fresh description and
-completes the record.
-The background step never fetches comments, reviews, checks, or Git objects.
-Diffs are generated from the Git objects in the cache.
-Mounted content creates lazy author images; the browser controls when nearby images load
-and caches their bytes.
-Cached metadata remains readable when images cannot load.
-After a metadata projection change, the next accepted catalog refresh enriches existing
-rows through the same resumable background scan; cached rows and counts remain
-available. A detail record whose metadata projection changed revalidates its
-representations once on an accepted refresh; later refreshes reuse conditional responses
-as usual. A failed refresh retains the displayed record.
-
-Each PR row has a third line, the PR’s brief change line, “21 A, 7 D, 15 M · +1,234
-−567”: how many files it adds, deletes, modifies, and renames, and its lines added and
-deleted, with no file total, so walking the list shows the size of each change.
-It sums the PR’s cached list of changed files, the same list its tree shows, and a stack
-of one PR shows the same line on its heading.
-It never asks GitHub: the lists come from what the Pulls tab already reads behind you
-for the rows in view and from trees you open, so a row whose files have not been listed
-yet shows its line once they are, and a gray placeholder holds its place meanwhile.
-
-The change line carries the chevron for the PR’s changed files, which start collapsed.
-Click a row’s title or number to open the PR; its files stay as they were.
-Click the chevron or the change line to expand or collapse the files.
-No row expands on its own, when you open it, select it, or walk the list.
-The tree shows cached files immediately when available and automatically lists them when
-needed: it says “Listing changed files…” until they arrive, however long GitHub takes,
-and then shows them.
-Once files are shown, a change to them that arrives while you are not interacting with
-the list waits for you: its later pages, and a refresh that changes it, are offered as
-**Show N more files** or **Show the updated list of N files**, on the tree’s line or
-floating over its top, so the rows you are reading never move under you.
-A refresh that finds no changed files is offered the same way, as **Show the updated
-list (no files)**, and a list Metabrowser no longer holds as **Show the updated list
-(not listed)**, while the files you see stay as they were last listed.
-Selecting a file opens **Changes** at that file.
-Use J, K, or the up and down arrows to walk rows without changing which trees are
-expanded. Enter opens the focused PR. Right moves to the row’s change line, where Enter
-or Space expands or collapses the files in place, Right expands them or moves into them,
-Left collapses them and then returns to the row, and Up returns to the row.
-Keyboard walks keep focus in the tree and replace one browser history entry, so Back
-leaves the walk in one step.
-The selected file follows the diff as you scroll; Back and Forward restore the selected
-file and reading position.
-
-A served folder can show Pulls and Conversation without a comparison store.
-Opening **Changes** prepares a missing comparison automatically.
-Metabrowser reuses a healthy cached store or creates one that borrows the checkout’s
-objects and fetches what it lacks into the cache.
-Git runs in the store and leaves the served folder and Commits tab on your checkout.
-If preparation fails, **Changes** reports the reason and offers a retry.
-
-Only **Changes** creates that store.
-The first one fetches every branch and tag the checkout lacks, and once it exists each
-later refresh of a PR fetches that PR into it, so reading Conversation never starts that
-cost: a Conversation-only session runs no Git at all.
-The trade-off is that the first **Changes** on a checkout without a store waits for it.
-Once the checkout has a store, from an earlier **Changes** in this session or another,
-Conversation can prepare the comparison of a PR record fetched within the last minute in
-the background. That work fetches only the PR’s head and base, and its only sign on
-Conversation is the gray pulsing block in the header’s Diff summary row while it runs.
-It gives way to anything you ask for: opening **Changes** takes it over, and any other
-refresh stops it.
-See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing
-workflow.
-
-## Keep Pulls Up to Date
-
-Metabrowser watches the repository while Pulls or a PR page is visible.
-New PRs, state changes, and edits to titles or other list metadata arrive in the
-background. The list catches up when you return to it.
-
-The connection status is below the Pulls tally.
-Cached PRs remain readable during a disconnection, and Metabrowser retries when the
-network returns. Use **Reload** to request a new check.
-If the status asks you to install GitHub CLI, sign in, or check repository access,
-follow its instructions and choose **Reload**. See
-[Git and GitHub Setup](installation.md#git-and-github-setup).
-
-## Native Stack Navigation
-
-With the optional [gh-stack extension](installation.md#git-and-github-setup), the Pulls
-list groups each native GitHub stack’s PRs under a **Stack #N** row, open by default,
-with the stack’s PRs under it from the stack’s top to its base and the PRs in no stack
-after the stacks. A stack’s row opens and closes like a folder.
-Each member row’s first line shows its place before its number, such as **1/6 · #455 ·
-jlevy**, and its second line the title.
-A PR in two stacks sits under the first, and its place names the other stack by its
-number, such as **3/4 · ⧉300 2/2**. Until the stacks are known, or when they cannot be
-read, the list stays flat.
-
-On the PR page, the stack button at the right end of the author’s row shows a Layers
-icon and the same position; a PR in two stacks has a button for each, which names its
-stack, such as **⧉300 2/2**. Open it for the stack number and members ordered from stack
-top to base, with each member’s title, ordinal, and PR number.
-Titles come from the matching local catalog; a missing title falls back to the PR
-number. On macOS, press Control-N for the next member toward the stack’s top and
-Control-P for the previous one toward its base; Shift makes no difference.
-Help lists both shortcuts, and text fields and open dialogs keep their normal keys:
-Control-N and Control-P move a field’s caret.
-On Windows and Linux, Ctrl+N and Ctrl+P stay the browser’s, a new window and Print, so
-use the stack menu there ([Control Chords](design-system.md#control-chords)).
-[Keyboard Shortcuts](design-system.md#keyboard-shortcuts) has the rest of the keys.
-Moving between members keeps the current PR tab selected and clears the previous PR’s
-file selection.
-Expanded trees retain their keyboard position; the current-file highlight
-belongs to the PR being viewed.
-
-Stack metadata refreshes as one shared repository snapshot, independently of PR details.
-Missing tooling, unavailable APIs, or a partial snapshot do not prevent normal PR
-reading and do not establish that a PR is unstacked.
-Matching cached membership remains usable.
-Metabrowser reads stack metadata; it does not create or change GitHub or local stacks.
-
-## Review a Pull Request
-
-```shell
-metab https://github.com/owner/repo/pull/123
-```
-
-`metab` prints the address it serves and opens your browser there.
-Press Ctrl-C in that terminal to stop it.
-
-Without an existing store or `--checkout`, a repository or pull-request URL first clones
-the whole repository into your cache, with progress on stderr.
-A pull-request URL then reads that PR:
+`metab` prints the address it serves and opens your browser there; Ctrl-C in that
+terminal stops it. A first clone reports its progress on stderr:
 
 ```text
 cloning https://github.com/pallets/click into ~/.cache/metabrowser
@@ -192,387 +37,302 @@ cloned https://github.com/pallets/click in 4.9 s (5.3 MiB); starting the server
 Serving https://github.com/pallets/click at http://127.0.0.1:8411/pull/3866
 ```
 
-Later runs reuse that clone and say so
-(`using the clone of … cached in ~/.cache/metabrowser, fetched 3 hours ago`).
+A GitHub URL ending in `/pull/123/files` or `/pull/123/checks` opens that tab, and one
+ending in `/pull/123/commits` opens the conversation, where the commits appear.
+If you already have the repository checked out, `--checkout` lets the clone borrow its
+objects instead of copying them; see
+[beside a checkout](command-line.md#beside-a-checkout).
 
-GitHub URLs ending in `/pull/123/files` or `/pull/123/checks` open **Changes** or
-**Checks** at the matching local address.
-The `Serving` line prints the address.
-A GitHub `/pull/123/commits` URL opens **Conversation**, where commit summaries appear
-with the discussion.
+## The Pulls Tab
 
-To start over, click the folder’s name at the top of the navigation, or press `0`. That
-is Home: the folder’s home view as a fresh load shows it, with every tab at its first.
-**Pulls** then opens its list, and a pull request you open from it opens on
-**Conversation**, whichever tab you last read ([Home](design-system.md#home)).
+Choose **Pulls** beside Files and Commits, or press `P`. The list starts on **Open**;
+**Closed** includes merged pull requests, and **All** shows both.
+Each filter shows its total when the catalog knows it.
 
-## What the Page Shows
+Rows are newest first, each with its open, draft, merged, or closed state.
+Metabrowser fetches the repository’s list of pull requests in the background and shows
+each page as it arrives; scroll toward the end to load more, and a spinner below the
+last row says how many have been fetched so far.
 
-The header has the title and its PR number; the author’s sentence, such as “jlevy wants
-to merge 2 commits”, with the stack button, if any, at its end; the head and base
-branches on a line of their own, head → base; the state badge before the dates; and the
-labels. Each label is in the color GitHub gives it, as github.com draws it in either
-theme, and hovering one shows its description when it has one.
-The header’s last row, on every tab, is the PR’s Diff summary, collapsed: its files and
-lines changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”. Opened, it
-lists the changed files as a tree, and pressing a file opens **Changes** at that file.
-While the comparison it counts is on its way, the row holds a gray pulsing block after a
-moment ([Diff Summary](design-system.md#diff-summary)). PR numbers use bold dark text,
-usernames use bold normal text ink at the surface’s normal size, and branch names use
-ref chips slightly smaller than the text around them, as in Git history.
-Hover or focus a copyable branch chip to reveal its copy control; it copies the full
-branch name. The author’s small circular avatar appears beside the username when
-available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
-condensed navigation keeps short ages.
-An initially empty page shows gray pulsing loading blocks.
-When switching from useful content, that content stays visible until the new description
-or an actionable failure is ready.
-The description can appear while comments, reviews, checks, and changes are still
-loading; those sections show gray pulsing blocks after a moment, and nothing spins.
-A visible PR opened from a row or a direct link fetches its record on the first visit.
-A cached full page renders from disk at once and stays as it is while it refreshes in
-the background: no spinner covers it, and only the line saying when it was fetched
-breathes gently until the refresh lands.
-A row’s changed-files tree does the same with its folder and file names, and the Pulls
-list with its “Updated” line.
-**View on GitHub** opens the pull request on github.com with a leading GitHub brand
-icon. External GitHub links in conversation text carry a destination icon; an unknown
-issue or PR state uses a neutral entity icon.
-The page has three tabs.
+Each row’s third line is its pull request’s brief change line, “21 A, 7 D, 15 M · +1,234
+−567”: how many files it adds, deletes, modifies, and renames, and its lines added and
+deleted, so walking the list shows the size of each change.
+It sums the same list of changed files the row’s tree shows, as a stack’s heading sums
+its pull requests’, and asks GitHub for nothing: the lists come from what the Pulls tab
+already reads behind you for the rows in view and from trees you open, and a gray
+placeholder holds the line’s place until one arrives.
 
-- **Conversation** shows the description, followed by comments, reviews, and commit
-  summaries. Commits that arrive after the page has painted are added after what it
-  shows, so nothing you are reading moves; shown again with its commits known, as after
-  another tab, the conversation follows GitHub’s order.
-  A short commit ID opens the exact commit on GitHub.
-  Cached timelines are readable offline.
-  **Review comments** lists inline review comments with their files and diff hunks.
-- **Changes** shows the comparison from the merge base to the head, split or unified.
-  Markdown changes open in **Rendered** when Metabrowser can map the Git hunks to the
-  document. **Source** keeps the exact patch and is used automatically for the files
-  [Rendered Markdown in Changes](#rendered-markdown-in-changes) lists.
-  The changed-files tree in Pulls navigates this comparison.
-- **Checks** summarizes check runs and status contexts, with links to their details.
-  Open or share it directly at `/pull/<n>/checks`.
+Click a row’s title or number to open its pull request; its files stay as they were.
+The change line carries the chevron for the files, which start collapsed: click it to
+show or hide them under the row.
+No row expands on its own.
+Click a file to open **Changes** at that file.
+Move between rows with `J` and `K` or the arrow keys, and Enter opens the focused pull
+request. Right moves to the row’s change line, where Enter or Space shows or hides the
+files, Right shows them or moves into them, Left hides them and then returns to the row,
+and Up returns to the row.
+The file list says **Listing changed files…** until GitHub answers.
+Once the files show, a later page or an updated list does not move the rows you are
+reading: it is offered as **Show N more files** or **Show the updated list of N files**.
 
-The code controls depend on how the repository was opened:
+To start over, click the folder’s name at the top of the navigation pane, or press `0`.
+That is Home: the folder as a fresh load shows it, with every tab at its first, so
+**Pulls** opens its list and a pull request you open from it opens on **Conversation**,
+whichever tab you last read.
+
+### Stacks
+
+With the optional [gh-stack extension](installation.md#git-and-github-setup), the Pulls
+tab groups the pull requests of each native GitHub stack under a **Stack #N** row, open
+by default, top of the stack first; pull requests in no stack follow, and a stack’s row
+opens and closes like a folder.
+A member’s row shows its place before its number, such as **1/6 · #455 · octo**, and its
+title on the line under it.
+A pull request in two stacks sits under the first, and its place names the other stack
+by its number, such as **3/4 · ⧉300 2/2**.
+
+On the page, a stack button at the end of the author’s line shows the same position, and
+a pull request in two stacks has a button for each, which names its stack, such as
+**⧉300 2/2**. The button opens a menu of the stack’s members, from top to base.
+On macOS, Control-N goes to the next member toward the top and Control-P to the previous
+one toward the base; on Windows and Linux, where those keys are the browser’s, use the
+menu. Without the extension, or when GitHub cannot answer, pull requests read as usual
+and the list stays flat, unless stacks are cached.
+Metabrowser reads stacks and never changes them.
+
+## The Pull Request Page
+
+The header gives the title and number; the author’s sentence, such as “octo wants to
+merge 2 commits”, with any stack button at its end; the head and base branches on a line
+of their own, head → base; the state and dates, with **View on GitHub**; and the labels,
+each in the color GitHub gives it, with its description, if any, shown on hover.
+The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
+where GitHub gave none, as on a commit’s page; a Pulls row shows none.
+Its last row is the **Diff summary**, on every tab, collapsed: the files and lines
+changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”, which opens into
+the tree of changed files with rolled-up line counts, and a file there opens **Changes**
+at that file.
+While the comparison it counts is on its way, as when Conversation prepares
+it in the background, the row holds a gray pulsing block after a moment; that block is
+the only sign of the background work.
+A cached page shows at once and refreshes in the background; the
+[design system](design-system.md#the-pull-request-page) describes how it draws.
+
+The page has three tabs:
+
+- **Conversation** (`C`): the description, then comments, reviews, and commits in
+  GitHub’s order, joined by a timeline line.
+  Commits that arrive while you read are added after what is shown.
+  A short commit ID opens that commit on GitHub.
+  **Review comments** lists the inline review comments with their files and diff hunks.
+- **Changes** (`G`): the diff from the merge base to the head, **Split** or **Unified**
+  (`L` switches). Markdown files open as rendered changes, as the next section describes.
+  The changed-file list on the Pulls tab moves through this diff, and the selected file
+  follows the diff as you scroll.
+- **Checks** (`E`): the check runs and commit statuses, with links to their details.
+
+### Code Controls
 
 | Opened with | Code controls |
 | --- | --- |
-| A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. |
-| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page has no **Browse code**: the working files may differ from the PR commits. Once Changes are fetched, **View file** and **View at base** open each side from the cache. |
+| A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. When the head has moved since, **Switch to the head** offers the new one. |
+| A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
-**View file** and **View at base** never move the server’s pin.
-A side the page does not show opens on its own revision page, at that exact commit, in
-your theme; the link keeps working after the pull request moves on, for its last 16
-comparisons.
-On a managed source pinned at the head, **View file** opens in the app’s own
-viewer. **Browse code** returns to the PR head, or **Switch to the head** does so when
-the page shows that offer.
-A pin is shared by the pages of that server.
+Each changed file offers **View file** at the head and **View at base** at the merge
+base.
+A side the page does not show opens on its own revision page, at that exact commit,
+and never moves the server’s pin.
 
 ### Rendered Markdown in Changes
 
 **Rendered** shows each changed block of a Markdown file as removed and added, with the
 changed words marked.
-A changed list item or quoted paragraph is shown alone, and long runs of unchanged
-blocks fold. A file’s **Rendered** | **Source** chooser switches between the two.
+Long runs of unchanged blocks fold into one quiet line that opens them in place, and a
+file’s **Rendered** | **Source** chooser switches between the two.
 
-Rendered shows what a change does to the document as it reads.
-A change that does not show in the rendered document appears only in **Source**, and
-Rendered does not mark it: a link or image destination or title, a link whose label now
-points somewhere else, an image’s alt text, an HTML comment, attribute syntax such as
-`{#name}`, a code fence’s language, or only whitespace and line wrapping.
-A block that changed only in those ways reads as unchanged.
-One whose destination, title, alt text, comment, attribute, or fence language changed is
-never folded away with the unchanged blocks around it, but one whose only change is
-whitespace or line wrapping can stay inside a fold.
-An added code block’s fence text other than exactly one language name, such as `python`
-or `mermaid`, likewise appears only in Source.
+Rendered shows what a change does to the document as it reads, so a change that does not
+show in the document appears only in **Source**: a link or image destination or title,
+an image’s alt text, an HTML comment, attribute syntax such as `{#name}`, a code fence’s
+language, or only whitespace and line wrapping.
+A block whose destination, title, alt text, comment, attribute, or fence language
+changed is never folded away.
 
 These files open in **Source**:
 
-- files with raw HTML, including inline tags such as `<br>` and blocks such as
-  `<details>` (HTML comments are allowed),
-- task lists (`- [ ]` items) and footnotes,
-- files past the rendered view’s limits, such as more than 48 KiB of Markdown across the
-  two sides.
+- files with raw HTML other than comments, such as `<br>` or `<details>`
+- files with task lists (`- [ ]`) or footnotes
+- files too large for the rendered view
 
-Rendered differs from the file’s own document view in two ways: math (`$…$`) and Mermaid
-diagrams show as their source text, and code blocks are not highlighted.
+Rendered also shows math and Mermaid diagrams as their source text, and does not
+highlight code blocks.
 
-## Beside a Checkout
+## Find a Pull Request with Quick Search
 
-If you already have the repository checked out, name that checkout once.
-The managed mirror borrows its objects instead of copying them, reducing the time and
-disk space needed when the checkout already holds most of the repository:
+Press `/` or `T` to open Quick Search, and type `#` to see recent pull requests in every
+state. Digits after it, such as `#30`, complete pull-request numbers with the exact
+number first; words after it match titles.
+Ordinary text matches files and pull-request titles together.
+Each result shows its title, number, and state, and Enter opens its Conversation.
 
-```shell
-metab https://github.com/owner/repo/pull/123 --checkout ~/src/repo
-metab https://github.com/owner/repo/pull/124    # remembered from then on
-```
+Search reads the cached catalog, so it works offline.
+Number completion covers the whole catalog, and a title search reads only its newest
+entries.
 
-As a guide, a 1.2 GB repository that took 185 s and 1.2 GB as a full mirror took 5 s and
-about 1 MB, and 43 MB when a branch had been pushed since the checkout’s last fetch
-(measured 2026-11-02, under load, with `gh` adding its own seconds for the pull
-request’s data).
+## Staying Current
 
-Name any worktree of the repository; every worktree shares the same objects.
+The page says when GitHub CLI fetched what it shows, as in
+`Fetched 3 min ago via GitHub CLI`. While the Pulls tab or a pull request’s page is
+visible, Metabrowser rescans the repository’s list of pull requests, so new pull
+requests, state changes, and edits arrive by themselves.
+A record counts as current for 60 seconds after its fetch, the freshness window, and for
+as long after that as the list says GitHub has not changed the pull request; the page
+then reads `Checked just now · fetched 3 h ago via GitHub CLI`. The list does not track
+checks, statuses, or mergeability, so an open pull request’s page reads those again on
+their own once a window.
 
-`metab` prints `borrowing objects from ~/src/repo`, and the heading’s tooltip says the
-same. The pages, the commands, and the untrusted profile are the ones you would get from
-a full mirror, and nothing is ever written to your checkout.
+A visible page refreshes a record that has gone stale, and the Pulls tab also fetches,
+behind you, the pull requests you are likely to open next, within hourly limits and
+while enough of your GitHub rate limit remains.
+The page names a problem only when it cannot refresh: `Offline`, a rate limit with the
+time of its next check, or the last failure with **Refresh**. The page tries a failure
+again once a window while it stays open, except one you must fix, such as GitHub CLI
+missing or signed out, which waits for **Refresh**. The Pulls tab’s **Reload** asks for
+a new check of the list.
 
-This flag chooses a managed, pinned view of the URL; `metab ~/src/repo` keeps serving
-your working folder instead.
-Both can review pull requests.
+A refresh never moves the diff you are reading.
+When the head moves, the conversation and checks update, **Changes** says
+`New commits were pushed; updating.` over the diff it keeps, and **Show the newer
+changes** moves it. On a repository URL the served code stays put too, until **Switch to
+the head**. The foot of the navigation pane says separately when the repository’s mirror
+was fetched.
 
-Only a checkout you name or have previously named lends.
-A healthy existing store is reused, including an overlay with its remembered lender.
-On a cache miss without a named lender, `metab <url>` clones a full mirror.
-If the current directory is a checkout of that source, it prints the command that would
-have borrowed instead; it never infers permission to borrow from that directory.
-A directory you merely stand in can be made to look like a checkout of anything.
+### Several Pull Requests at Once
 
-Three things are worth knowing:
+One server opens any pull request of its repository, from the Pulls tab or at
+`/pull/<n>`, without changing the code it serves.
+To browse the code of several heads at once, run a server for each; servers of one
+repository share one clone, so only the first one clones.
+Each takes the first free port from `--port` up and prints it on its `Serving` line;
+`--no-open` keeps the browser closed.
 
-- **A shallow checkout may not settle the comparison at once.** If its history stops
-  before the pull request’s merge base, `metab` fetches more history into the mirror.
-  Until that succeeds, and offline, **Changes** says the history is too shallow to know
-  what the pull request changed, rather than show a guess.
-- **If you move or delete the checkout,** `metab` refuses with `lender_missing`, prints
-  the recorded path, and tells you to run the command again with
-  `--checkout <new path>`.
-- **A mirror that is already there stays.** Naming a checkout does not convert a full
-  mirror, and this release has no command that does.
-  To borrow instead, delete the mirror as [Large Repositories](#large-repositories)
-  describes, and run the command again.
+## Offline and Cached Reading
 
-[The command-line guide](command-line.md#beside-a-checkout) has every case.
+Pull requests, lists, and comparisons you have fetched stay readable offline, as long as
+the Git objects they need are in the cache, and a mirror that borrows from a checkout
+also needs that checkout.
+A failed refresh keeps what was shown and says why.
+A pull request, list page, or comparison never fetched needs the network.
 
-## Private Repositories
+### Private Repositories
 
 They work through your `gh` login, and nothing else is needed.
 `gh` is Git’s credential helper for `https://github.com` and for no other host, and
 Metabrowser never reads or stores a token.
-The mirror and the record stay in your cache, and `metab` refuses a cache directory
+The clone and the records stay in your cache, and `metab` refuses a cache directory
 other users can read.
 
-## When a Pull Request Does Not Open
+### Large Repositories
 
-A clone that fails stops the command with an `Error:` line and exit status 1. When
-opening a PR URL, a pull request that cannot be read does not: `metab` serves the
-default branch, exits 0 in the one-shot modes, and says why on the `Pull request:` line.
-The page gives the reason and offers **Fetch** to retry the missing record.
-Once the cause is fixed, use that action or run the command again.
+A repository URL clones the whole repository, a second copy of its objects, unless you
+name a checkout for it to borrow from.
+Clones and records live in the cache directory that
+[storage locations](command-line.md#storage-locations) names, and `du -sh` on it
+measures them. No command removes a clone: to reclaim the space, stop every server and
+delete the cache directory, and the next run clones again.
 
-| Name | What it means | What to do |
-| --- | --- | --- |
-| `gh_missing` | `gh` is not on `PATH` | Install `gh` |
-| `gh_too_old` | `gh` is older than the version above | Upgrade `gh` |
-| `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login` |
-| `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `gh auth status` names an account with access |
-| `too_large` | The first clone is over the limit | See [Large Repositories](#large-repositories) |
-| `lender_missing` | The checkout this mirror borrows from has moved or gone, or can no longer lend: it borrows objects itself, its objects cannot be read, or it holds another repository now | Run the command again with `--checkout <new path>` |
-| `network_unreachable`, `network_error` | GitHub could not be reached, by Git or by `gh` | See [Offline](#offline) |
-
-The conversation can remain available when the comparison cannot be read:
-
-| Name | What it means | What to do |
-| --- | --- | --- |
-| `no_store` | A served folder has a PR record but no store for its comparison | Open **Changes** to prepare the comparison |
-| `base_uncertain` | Shallow history does not establish the merge base | **Refresh** with the network available to fetch more history |
-| `commits_unavailable`, `object_unavailable` | A commit or object needed for the comparison is missing or unreadable | **Refresh** can try to recover missing objects; it may still fail if the origin no longer serves them |
-| `object_corrupt` | Read bytes do not match their Git object ID | Repair the damaged cache or use a healthy lender, then **Refresh**; Metabrowser does not overwrite the checkout’s objects |
-| `comparison_timeout` | Checking the comparison took too long | **Refresh** to try again |
-| `comparison_too_large` | Checking or repairing the comparison exceeded a bound | Use **View on GitHub** if the local comparison remains unavailable |
-
-Reattach a moved lender with `--checkout <new path>`, or name another healthy checkout
-of the repository. An unreadable lender must be made readable or replaced before the
-store can use it again.
-Beside a served folder, comparison preparation reuses a healthy store or borrows from
-the checkout. Partial clones and checkouts that borrow objects themselves cannot lend.
-Metabrowser reports a borrowing refusal in **Changes** and never falls back to a full
-clone. The URL-based `--checkout` command has its own
-[documented fallback cases](command-line.md#beside-a-checkout).
-
-A managed source whose cached pinned tree is missing can fail before the server starts.
-It reports an error without a traceback or automatic replacement clone; the page’s
-Refresh is unavailable until the source can open.
-Repair the affected cache or lender before restarting.
-
-If a changed-file refresh cannot admit the application cache, its error remains visible
-and automatic retries pause in the current server.
-The rejected refresh does not contact GitHub or write into the refused cache; correct
-the reported cache problem before retrying.
-A provider rate-limit hold remains in force without replacing a newer cache error with
-an older outcome. Work admitted before the cache refusal can still finish in another
-process.
-[The source reference](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-requests-beside-a-checkout)
-describes the recovery limits.
-
-[The command-line guide](command-line.md#pull-requests) lists the record’s failure
-names.
-
-## Find a Pull Request With Quick Search
-
-Press `/` or `T` to open Quick Search.
-Type `#` to see recent PRs across all states.
-Keep typing digits, such as `#30`, to complete PR numbers, with the exact number first.
-Type `#` followed by words to match PR titles.
-Ordinary text continues to match files and PR titles.
-A result shows its title, number, and state.
-Press Enter to open its Conversation tab.
-
-The catalog grows in the background, and cached results are available offline.
-Number completions cover the whole cached catalog.
-Title searches check up to the 50,000 newest entries.
-
-## Large Repositories
-
-A **mirror** is a full bare clone of the repository, so it is a second copy of the
-repository’s objects, unless you [name a checkout](#beside-a-checkout) for it to borrow
-them from. Mirrors are kept in `~/.cache/metabrowser/repository-stores`, and each pull
-request’s record is a JSON file under `~/.cache/metabrowser/sources`. See
-[storage locations](command-line.md#storage-locations) to move them.
-A mirror’s size is about the repository’s: measure the whole cache with
-`du -sh ~/.cache/metabrowser`. Nothing deletes a mirror and no `metab` command removes
-one, so to reclaim the space, stop any servers and delete that directory.
-The next run clones again.
-
-A first clone is refused before it starts when GitHub reports the repository over a size
-limit. The refusal gives the repository’s size, the limit, and the deadline every clone
-must meet. If your network can finish in time, go past the limit by naming a size in
-kilobytes (`gh api repos/owner/repo --jq .size` reports the repository’s):
+A first clone is refused before it starts when GitHub reports the repository over the
+size limit. The refusal gives the repository’s size, the limit, and the deadline every
+clone must meet. If your network is fast enough, set a larger limit in kilobytes:
 
 ```shell
 METABROWSER_MAX_FIRST_CLONE_KB=<size> metab https://github.com/owner/repo/pull/123
 ```
 
-As a guide to the cost, a 1.2 GB private repository cloned in 185 s on a home connection
-(measured 2026-11-02). To pay it ahead of time, run the same URL with `--no-serve`,
-which clones and reads the pull request and starts no server.
+To pay for a long clone ahead of time, run the same URL with `--no-serve`.
 
-## Several Pull Requests at Once
+To discard everything cached of a repository’s pull requests, the list, records, changed
+files, and refresh outcomes, while keeping its clone, run:
 
-One server can review several pull requests through Pulls or `/pull/<n>`. Opening a PR
-page does not switch the code being served.
-A managed server has one pin, shared by its pages; use its code controls to switch it.
-Run separate servers when you want different PR heads available for code browsing at
-once. A served folder keeps its working files throughout.
-Each server takes the first free port from 8411 up and reports it on its `Serving` line:
-
-```text
-Serving https://github.com/pallets/click at http://127.0.0.1:8412/pull/3866
+```shell
+echo '{}' | metab https://github.com/owner/repo --api /api/plugin/github/cache-clear --data -
 ```
 
-Choose a port yourself with `--port`, and keep the browser closed with `--no-open`.
+In a checkout, run it as `metab .` instead, since the address would clone the
+repository. The cache-related failures below name this command.
 
-Servers of one repository share one mirror, so only the first clones.
-A further pull request took about 8 s to reach its `Serving` line on the 1.2 GB
-repository above and about 7 s on `pallets/click`, and one already cached about 2 s on
-`pallets/click` (measured 2026-11-02).
+## When Something Does Not Open
 
-## Staying Current
+A clone that fails stops the command with an `Error:` line and exit status 1. A pull
+request that cannot be read does not: `metab` serves the default branch, exits 0 in the
+one-shot modes, and says why on its `pull_request` line.
+The page says why too, and offers **Fetch** to try again once the cause is fixed.
 
-The page shows when GitHub CLI fetched the record, for example
-`Fetched 3 min ago via GitHub CLI`. A description preview reports when GitHub CLI
-fetched the description while discussion and checks load.
-A record is current for a minute, and for as long after that as the repository’s list of
-pull requests, which Metabrowser rescans about once a minute while its Pulls tab or the
-page is visible, says GitHub has not changed it: the page then says
-`Checked just now · fetched 3 h ago via GitHub CLI`. That list does not track checks,
-statuses, or mergeability, so while you have an open pull request’s page open, those are
-read again on their own each minute: a check that starts, a re-run, or a conflict a
-newer base commit made shows within about a minute.
-The Pulls tab also asks Metabrowser to read, behind you and within hourly limits, the
-pull requests you are likely to open next: the rows around the one you opened and the
-top of the list, when they are missing or changed, and their changed files.
-It stops while less than a quarter of your GitHub rate limit remains.
-A managed PR URL refreshes a stale record when the server starts.
-A visible stale PR page refreshes it too: at once when you clicked its row, after a
-short pause when you reached it by a key or an address, and again each time it goes
-stale while you keep it open, at most once a minute.
-It keeps showing the plain age meanwhile, never a note that it may be out of date.
-The page names a problem only when it cannot refresh: `Offline`,
-`GitHub rate limit · next check at` a time, after which it tries again by itself, or the
-last failure, with **Refresh**. It tries a failure again once a minute while you keep it
-open, except one you must fix, such as GitHub CLI missing or signed out, which waits for
-your **Refresh**. **Refresh** is available after a failed refresh or an unavailable
-comparison, on a stale record whose automatic refresh did not run, and on **Changes**
-even while the record is current, but not while GitHub’s rate limit holds the page, as
-the Pulls tab’s **Reload** waits too.
-The time the page names is when it asks again: not before GitHub’s reset, and not within
-a minute of the attempt the limit refused.
-A managed source’s row at the foot of the navigation pane separately reports when its
-Git store was fetched and can refresh it.
+| Name | What it means | What to do |
+| --- | --- | --- |
+| `gh_missing` | `gh` is not on `PATH` | Install `gh` |
+| `gh_too_old` | This `gh` cannot report its active account | Upgrade `gh` |
+| `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login --hostname github.com` |
+| `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `gh auth status` names an account with access |
+| `rate_limited` | GitHub’s rate limit, with its reset time when GitHub gives one | Wait; the page tries again after the reset |
+| `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Refresh** |
+| `too_large` | The first clone is over the size limit | See [large repositories](#large-repositories) |
+| `lender_missing` | The checkout this clone borrows from has moved, gone, or can no longer lend | Run the command again with `--checkout <new path>` |
+| `account_changed`, `head_mismatch` | The `gh` account changed, or the pull request kept moving, during the read | **Refresh** |
+| `fetch_failed`, `git_failed` | Git failed | **Refresh**; for a clone, `--log-level debug` shows Git’s own message |
+| `cache_unwritable` | The cache refused the write | Fix what the message names, or clear the repository’s cache |
+| `newer_cache`, `unknown_cache` | A newer Metabrowser wrote the repository’s list, or its version cannot be read | Upgrade, or clear the repository’s cache |
 
-A refresh does not select a newer comparison for you.
-When the list of pull requests shows the head moved, **Changes** says
-`New commits were pushed; updating.` over the diff it keeps.
-When the PR head advances, the conversation and checks update while the displayed diff
-stays on its original commits.
-Choose **Show the newer changes** to move the diff.
-On a managed source the code pin also stays put; **Switch to the head** or the footer’s
-**Switch** moves it when offered.
-A folder’s working files are never switched.
+A pull request’s conversation can stand while its **Changes** cannot.
+The record names why in `unavailable.comparison`:
 
-If a displayed comparison has missing objects, its explicit **Refresh** attempts to
-recover the objects observed missing from that comparison.
-A successful repair reloads the same comparison and preserves your reading position,
-even when the PR’s head has advanced.
-A failed repair leaves the displayed selection and cached record in place and reports
-the reason. It does not automatically select the newer changes.
-Reading a cached comparison starts no fetch, and automatic metadata refresh is not an
-object-repair scan.
+| Name | What it means | What to do |
+| --- | --- | --- |
+| `no_store` | A checkout has the record but no comparison yet | Open **Changes**, which prepares it |
+| `base_uncertain` | The checkout’s shallow history does not settle the merge base, and Metabrowser does not guess | **Refresh** with the network, which fetches more history into the cache |
+| `commits_unavailable`, `object_unavailable` | A commit or object the comparison needs is missing, as when the checkout lending objects has pruned it | **Refresh** tries to recover them from the origin |
+| `object_corrupt` | An object does not match its ID | Repair the checkout or the cache, then **Refresh**; Metabrowser never writes to your checkout |
+| `no_merge_base` | The base and head share no history | Read the diff on GitHub |
+| `comparison_timeout`, `comparison_too_large` | Checking the comparison took too long or went past its bounds | **Refresh**, or read the diff on GitHub |
 
-An old comparison link can remain readable after a server restart without being eligible
-for network repair: repair needs a comparison associated with that PR in the running
-session. Open the current PR comparison before retrying in that case.
-
-## Offline
-
-Cached records, lists, and comparisons remain readable while their required objects are
-available. A borrowed store also needs its lender to remain readable.
-A failed refresh reports its reason and retains the cached data; **Refresh** tries
-again. A PR record, list page, or comparison whose data has not been fetched needs the
-network.
+Every reason comes with a message that says more, and a rarer one, such as a failed TLS
+security check or a proxy that requires authentication, is named in its message.
+[GitHub pull requests](project/architecture/arch-github-pull-requests.md) describes how
+records are prepared and how the cache refuses, and
+[mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
+the cases of borrowing from a checkout.
 
 ## From a Terminal or an Agent
 
-Everything the page shows is available without a browser, a port, or a server left
-running:
+Everything the page shows is available without a browser:
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
-
-metab "$URL" --no-serve                      # clone or reuse, and refresh the record
-metab "$URL" --show /pull/123                # kind, views, and counts
-metab "$URL" --show /pull/123/files          # the same, with the comparison route
-metab "$URL" --show README.md                # one file at the head
-metab "$URL" --api '/api/plugin/github/pull?number=123'   # the whole record, and comparison_route
+metab "$URL" --no-serve                                  # clone or reuse, and refresh the record
+metab "$URL" --show /pull/123                            # kind, views, and counts
+metab "$URL" --api '/api/plugin/github/pull?number=123'  # the whole record, with comparison_route
 ```
 
 Issue the record’s `comparison_route` with `--api` to get the diff as data.
 [The command-line guide](command-line.md#pull-requests) is the reference, with worked
-examples.
+examples, and [working with agents](working-with-agents.md) shows an agent handing you
+the page.
 
 ## Trust
 
-A pull request’s text and diff are untrusted and inert, including beside a checkout:
-nothing in them runs, and they cannot make the page load anything from another site.
-Repository URLs use the untrusted profile.
-Other files served from a local folder keep that folder’s content-trust settings;
-reviewing a PR does not change them.
-The [security policy](../SECURITY.md#content-trust-model) has the details.
+A pull request’s text and diff are untrusted and inert, beside a checkout too: nothing
+in them runs, and they cannot make the page load anything from another site.
+A repository URL is served under the untrusted profile.
+Files of a local folder keep that folder’s
+[content-trust](command-line.md#content-trust) settings; reviewing a pull request does
+not change them.
 
 ## What It Does Not Do Yet
 
-- **No inline comments on the diff.** They are listed under **Review comments** on the
-  Conversation tab.
+- **No comments on the diff.** Inline review comments are listed under **Review
+  comments** on the Conversation tab.
 - **No writing to GitHub.** Comment, approve, and merge on GitHub through **View on
   GitHub**.
-- **Only github.com.** A pull-request URL on any other host is read as a Git address and
+- **Only github.com.** A pull-request URL on another host is read as a Git address and
   fails.
 
 <!-- This document follows common-doc-guidelines.md.

@@ -125,7 +125,7 @@ def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
     Eager loading measured about 374 ms of every document's load event whether
     or not that view was ever opened, so the shell must publish it as a bundle
     for asset-loader.js and must not put it in the chain that runs on load.
-    See docs/development.md "Asset Loading Tiers".
+    See docs/project/architecture/arch-browser-shell.md, "Asset Loading Tiers".
     """
     html = _index_html()
     bundles_start = html.index("window.METABROWSER_ASSET_BUNDLES=")
@@ -169,7 +169,7 @@ def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> Non
     bench corpus, median of three cold loads, ``load`` was 3,883 ms with the
     chain on DOMContentLoaded and 750 ms with it on the first idle callback.
     The timeout is the floor, so a busy main thread cannot defer highlighting
-    forever. See docs/development.md "Asset Loading Tiers".
+    forever. See docs/project/architecture/arch-browser-shell.md, "Asset Loading Tiers".
     """
     html = _index_html()
     chain_start = html.index("var assets = ")

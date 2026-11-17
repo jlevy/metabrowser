@@ -88,6 +88,9 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
   const avatar = "https://avatars.githubusercontent.com/u/123?s=40";
+  // The shell's person glyph, Lucide's `circle-user-round`.
+  const PERSON_GLYPH =
+    /^<svg [^>]+><path d="M17\.925 20\.056a6 6 0 0 0-11\.851\.001"\/><circle cx="12" cy="11" r="4"\/><circle cx="12" cy="12" r="10"\/><\/svg>$/;
   for (const unsafe of [
     null,
     "",
@@ -106,8 +109,17 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     page.avatarUrl("https://avatars.githubusercontent.com/in/42?s=40"),
     "https://avatars.githubusercontent.com/in/42?s=40",
   );
-  const identity = page.authorLabel("octo", avatar);
-  const image = identity.children[0];
+  // An author is the shell's identity (docs/design-system.md, "Actor Identity"): the avatar's
+  // box, holding GitHub's avatar, then the bold name.
+  const sdk = require("./sdk-ref-fixture.js").refHelpers(document);
+  const identity = page.authorLabel(sdk, "octo", avatar);
+  assert.deepEqual([...identity.classes], ["actor-identity", "github-pull-identity"]);
+  const box = identity.children[0];
+  assert.ok(box.classes.has("actor-avatar") && box.getAttribute("aria-hidden") === "true");
+  const image = box.children[0];
+  assert.ok(image.classes.has("actor-avatar-image"));
+  assert.equal(identity.children[1].tag, "strong");
+  assert.deepEqual([...identity.children[1].classes], ["actor-name", "github-pull-author"]);
   assert.equal(identity.textContent, "octo");
   for (const [name, value] of Object.entries({
     alt: "",
@@ -127,11 +139,25 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "src",
     "privacy/layout attributes precede the request",
   );
-  image.style = {};
+  // A failed image gives its box to the person glyph: the box stays, so nothing moves.
   image.events.get("error")();
-  assert.equal(image.style.visibility, "hidden");
-  assert.equal(identity.children.length, 2, "failed image retains its fixed slot");
-  assert.equal(page.authorLabel("ghost", "https://evil.example/track").children.length, 1);
+  assert.equal(box.children.length, 0, "the failed image leaves its box");
+  assert.match(box.innerHTML, PERSON_GLYPH, "the glyph takes the box");
+  assert.equal(identity.children.length, 2, "failed image retains its fixed box");
+  // An avatar that is not GitHub's is never asked for: the box holds the glyph instead.
+  const ghost = page.authorLabel(sdk, "ghost", "https://evil.example/track");
+  assert.equal(ghost.children.length, 2, "an author with no avatar keeps the box");
+  assert.equal(ghost.children[0].children.length, 0, "no image is made");
+  assert.match(ghost.children[0].innerHTML, PERSON_GLYPH);
+  // A Pulls row asks for no box for an author with no avatar; its row carries the avatar.
+  const row = page.authorLabel(sdk, "ghost", null, "github-pulls-author", {
+    placeholder: false,
+  });
+  assert.equal(row.children.length, 1, "a Pulls row's avatarless author has no box");
+  assert.deepEqual(
+    [...row.children[0].classes],
+    ["actor-name", "github-pull-author", "github-pulls-author"],
+  );
   const merged = structuredClone(recorded.current.body);
   merged.record.pull.merged = true;
   merged.record.pull.merged_by = "merger";

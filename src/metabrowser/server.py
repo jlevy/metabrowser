@@ -1,24 +1,20 @@
-"""Metabrowser: an extensible, web-based file browser.
+"""Metabrowser's Starlette application: the shell page, the core routes, the
+middleware stack, and the application lifespan.
 
-Serves a single-page application with:
-  - File/folder tree browser (left pane)
-  - Detail view (right pane) with interpreted and raw tabs
-  - JSONL log parsing for Claude Code, Gemini, Pi
-  - Markdown rendering, YAML/JSON syntax highlighting (server-side structure
-    + client-side highlight.js)
-
-This module is intentionally thin: it owns the Starlette routes and the
-``main()`` entry point. The heavy lifting lives in dedicated modules:
+The request flow, safe paths, validators, and the content-trust model are described in
+``docs/project/architecture/arch-server-and-content.md``. Work beyond routing lives in
+dedicated modules, among them:
 
 * ``file_kinds``  — file kind taxonomy + view registry
 * ``paths_safe``  — ROOT_DIR + path-safety helpers
-* ``tree``        — directory walk with scandir + caches
-* ``activity``    — file activity tracking (scoped to .logs/.state)
+* ``http_caching`` — the only producer of validators
+* ``capabilities`` — the trust profile and its CSP and sandbox policies
+* ``events_route`` — the inventory routes, the event stream, and the inventory lifespan
+* ``tree``        — tree-row helpers and the gitignore checker
 * ``jsonl_view``  — single-pass JSONL parser
 * ``charts``      — chart-data extractors
 
-Names that tests/serve.py used to import from this module are re-exported
-below so external callers don't break.
+The ``__all__`` below forwards internal names that tests import from this module.
 
 Usage::
 
@@ -997,7 +993,8 @@ def _request_header(scope: Mapping[str, Any], name: bytes) -> bytes:
 class _RawTrustHeaderMiddleware:
     """Sandbox every ``/raw`` response, whichever layer produced it.
 
-    SECURITY.md promises the opaque-origin sandbox on *every* raw
+    The content-trust model (``docs/project/architecture/arch-server-and-content.md``)
+    promises the opaque-origin sandbox on *every* raw
     response, and a wrapper applied per ``return`` inside ``raw_file``
     cannot keep that promise. It misses the responses the handler never
     builds — Starlette's 400 and 416 for a malformed or unsatisfiable
@@ -1058,8 +1055,9 @@ class _RawTrustHeaderMiddleware:
                     and not _profile_independent(headers.get("content-type", ""))
                 )
                 # Never kept as fresh, whichever branch answered: its headers are this
-                # profile's (SECURITY.md). raw_file sets it with its tag; this covers the
-                # rest -- the decompressed stream, a 404 or a 403 -- by construction.
+                # profile's (arch-server-and-content.md, "Raw Responses"). raw_file sets
+                # it with its tag; this covers the rest -- the decompressed stream, a 404
+                # or a 403 -- by construction.
                 if "cache-control" not in headers:
                     headers["Cache-Control"] = "no-cache"
                 headers["X-Content-Type-Options"] = "nosniff"
@@ -1115,12 +1113,11 @@ class _SlowRequestLogMiddleware:
         self.threshold_ms = threshold_ms
         self.verbose = verbose
 
-    # Long-poll endpoints we never want flagged as slow. The SSE
-    # transport intentionally holds the connection open (heartbeat
-    # cadence is ~15 s, see SSE_HEARTBEAT_INTERVAL_S); the slow-
-    # request threshold is ~3 s. Without this skip every connected
-    # browser tab would emit a slow-request warning at the heartbeat
-    # interval.
+    # Long-lived endpoints we never want flagged as slow. The SSE
+    # transport intentionally holds the connection open for as long as the
+    # tab does, far past ``_SLOW_SERVER_REQUEST_MS``, so without this skip
+    # every connected browser tab would emit a slow-request warning. These
+    # paths also get no ``Server-Timing`` header. ``/api/tail`` has no route.
     _LONG_LIVED_PATHS: tuple[str, ...] = ("/api/events", "/api/tail", "/api/stream")
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
@@ -1842,7 +1839,8 @@ async def index(
     # below starts them on the first idle callback after DOMContentLoaded, so
     # they do not compete with the tree render, and no later than
     # PREFETCH_IDLE_TIMEOUT_MS so a busy main thread cannot defer them
-    # indefinitely. See docs/development.md "Asset Loading Tiers".
+    # indefinitely. See docs/project/architecture/arch-browser-shell.md,
+    # "Asset Loading Tiers".
     optional_script_assets = [
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
@@ -1850,8 +1848,8 @@ async def index(
     # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
     # Chart.js and its two plugins are 297,531 bytes read by one view, and
     # eager loading measured ~374 ms of every document's load event whether or
-    # not that view was ever opened. See docs/development.md "Asset Loading
-    # Tiers" and the load-time plan for the measurement.
+    # not that view was ever opened. See docs/project/architecture/arch-browser-shell.md,
+    # "Asset Loading Tiers", and the load-time plan for the measurement.
     main_tabs_asset = {"src": _static_asset_url("main-tabs.js"), "provides": "MetabrowserMainTabs"}
     on_demand_script_bundles = {
         # Idle prefetch and plugin demand share this loader. A plugin may call
@@ -1919,7 +1917,10 @@ async def index(
         # The tree of a change set's files that both the Pulls tab and a diff's Diff summary
         # draw, which two plugins share through metabrowser.loadChangedFilesTree(). Only a
         # page that shows a pull request's files or a multi-file diff asks for it: a diff
-        # asks beside its comparison, and the Pulls tab when it mounts.
+        # asks beside its comparison, and the Pulls tab when it mounts. Measured on
+        # 2026-11-15 in headless Chrome 152 from 127.0.0.1: 8,715 compressed bytes (9,015
+        # transferred), a cold load with the cache off 4.1 and 4.6 ms (medians of 9 and 7,
+        # at most 8.7), its fetch 3.1 to 3.4 ms.
         "changed-files-tree": [
             {
                 "src": _static_asset_url("changed-files-tree.js"),
@@ -4254,7 +4255,8 @@ def _raw_version(target: Path, stat: os.stat_result) -> str:
     """The version a ``/raw`` address carries: the file as it is now, and the trust profile.
 
     A raster image at its versioned address is kept for a year without asking
-    (``SECURITY.md``), so the version names everything that answer depends on: the file
+    (``docs/project/architecture/arch-server-and-content.md``), so the version names
+    everything that answer depends on: the file
     by its resolved path and by what a replacement moves -- size, modification and change
     times, inode, and device -- and the headers by the trust profile and the sandbox
     policy it sends. The build is folded in by
@@ -4326,11 +4328,10 @@ async def raw_file(request: Request) -> Response:
     accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
     # Uncompressed path: stream the file as-is. ``FileResponse`` streams in
-    # fixed-size chunks via aiofiles; the earlier ``read_bytes()`` +
-    # ``Response`` shape allocated the entire file before the first byte
-    # hit the wire (a 100 MB image stalled and spiked memory). Streaming
-    # keeps the event loop responsive and bounds memory regardless of
-    # file size. ``_safe_path`` already rejected paths outside ROOT_DIR.
+    # fixed-size chunks rather than reading the whole file before the first
+    # byte, so the event loop stays responsive and memory stays bounded
+    # regardless of file size. ``_safe_path`` already rejected paths outside
+    # ROOT_DIR.
     #
     # Passthrough: client accepts gzip → ship the on-disk bytes verbatim
     # with ``Content-Encoding: gzip`` so the browser decompresses
@@ -4356,7 +4357,8 @@ async def raw_file(request: Request) -> Response:
         # SVG or HTML document's at its current version included, is revalidated on every
         # use: a 304 answers only the tag, which names the profile; a date cannot, so
         # If-Modified-Since alone is answered in full. The path form is a document's
-        # address, for its relative references, and is never versioned. See SECURITY.md.
+        # address, for its relative references, and is never versioned. See "Raw
+        # Responses" in docs/project/architecture/arch-server-and-content.md.
         version = request.query_params.get("v")
         current = (
             version is not None
@@ -4442,7 +4444,8 @@ from metabrowser.tree import (
 )
 
 # Honor the CLI's --plugins-dir flags (merged into METABROWSER_PLUGINS_DIRS
-# by the CLI) and direct-import settings loaded from .env / .env.local above.
+# by the CLI) and that variable when it is exported. A dotenv file cannot
+# supply it (``metabrowser.dotenv.ALLOWED_KEYS``).
 # Anything in this list is operator-named — auto-discovery from the served
 # root or the user's home is intentionally NOT a source (trust model).
 _extra_plugin_dirs: list[Path] = []
@@ -4470,8 +4473,8 @@ _PLUGIN_ASSET_TREES = plugin_asset_trees(_LOADED_PLUGINS)
 
 
 # Pre-compile plugin kind rules and view bindings for fast lookup at
-# request time. Order is the discovery order; ties broken by plugin
-# name. Higher priority wins.
+# request time. Higher priority wins; within a priority, the plugin
+# discovered first wins (``CompiledKindRule.sort_key``).
 _PLUGIN_KIND_RULES: list[CompiledKindRule] = []
 _PLUGIN_VIEWS_BY_KIND: dict[str, list[dict[str, Any]]] = {}
 for _idx, _plugin in enumerate(_LOADED_PLUGINS):

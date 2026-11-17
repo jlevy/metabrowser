@@ -445,6 +445,9 @@ async function createPage(start, options = {}) {
       icons: { copy: "" },
       // A row's ref chips' copy controls, which a row of the panel mounts; none has refs.
       mountRefCopies: () => () => {},
+      // The commit page's author, the SDK's identity, whose markup this session does not
+      // read (tests/dom/git-panel-behavior.js holds it).
+      actorIdentityHtml: () => '<span class="actor-identity"></span>',
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       tooltip: { hide() {}, show() {} },
     },

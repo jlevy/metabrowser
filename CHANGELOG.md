@@ -36,15 +36,40 @@ All notable changes to Metabrowser are documented here.
   opened, every file counted once, and every pull request’s added and deleted lines
   summed. A file one layer adds and another edits counts once, as added.
   They are read from the local cache with no GitHub request, for the stacks in view,
-  when the browser is idle, and read again only when one of a stack’s pull requests
-  moves or its members change; a gray placeholder holds the line’s place while it is
-  read, and a screen reader hears that the change is pending.
-  A stack with a pull request whose changed files have not been fetched shows no line.
+  when the browser is idle, and read again when one of a stack’s pull requests moves,
+  its members change, or one of its pull requests’ changed files arrives or is read
+  again, so a heading fills in as its pull requests’ files are fetched; a gray
+  placeholder holds the line’s place while it is first read, and a screen reader hears
+  that the change is pending.
+  The Pulls tab fetches the changed files of a drawn stack’s pull requests that it
+  lacks, after the rows you are looking at, so a closed stack’s heading fills in too.
+  Line totals that could not be counted exactly, as for a binary file, are followed by a
+  muted “(estimated)”, which a screen reader hears too.
   In a narrow Pulls column the line’s file statuses are cut short first, and the whole
   line goes where its totals do not fit, so the heading stays one line.
   Screen readers hear the line in words after the stack’s name.
   A new cache-only route, `/api/plugin/github/stack-change`, answers a stack’s combined
   change. See [Stacks](docs/design-system.md#stack-groups-in-the-pulls-tab).
+
+- A commit’s page and a pull request’s page share one header design.
+  Every line under the title is the regular body size, 14 px, the Diff summary’s header
+  included, which was 13 px on both pages, and a pull request’s “Opened …” and “Fetched
+  … via GitHub CLI” lines, which were 12 px; the Diff summary is 14 px in a patch’s
+  toolbar too. On both pages the title is followed by the author, drawn the same way, a
+  profile icon and then the bold name.
+  A commit’s page then has its revision and refs on their own line, where a pull request
+  has its branches, then “Committed 3d ago”, where a pull request has “Opened …”, and
+  then the Diff summary, as a pull request’s header ends.
+  The profile icon is the author’s GitHub avatar where a pull request has one, and a
+  neutral person icon in the same place where there is none, so the name starts where it
+  would beside an avatar; a commit’s author shows the person icon.
+  A pull request’s author with no avatar on GitHub now shows it too, in the header and
+  on the Conversation; a Pulls row still shows no icon for one.
+  For plugin authors, `metabrowser.actorIdentity(name, options)` and
+  `metabrowser.actorIdentityHtml(name, options)` draw a person as the shell does, and
+  `PLUGIN_SDK_VERSION` remains `0.7`. See
+  [Page Headers](docs/design-system.md#page-headers) and
+  [Actor Identity](docs/design-system.md#actor-identity).
 
 - A Files tree row’s tooltip stays under a pointer that has not moved when something
   else on the page repaints.
@@ -109,8 +134,8 @@ All notable changes to Metabrowser are documented here.
   [Home](docs/design-system.md#home).
 
 - A pull request’s “Fetched … via GitHub CLI” line is one of its header’s metadata
-  lines: 18 px tall, as the “Opened …” line above it is, and 6 px under it, or under the
-  labels where the pull request has them.
+  lines: as tall as the “Opened …” line above it, and 6 px under it, or under the labels
+  where the pull request has them.
   Its Refresh or Fetch and Switch to the head are text actions, as Browse code is, in
   place of bordered buttons that made the line 26 px.
   While the comparison its Diff summary is drawn from is on its way and read, the
@@ -762,8 +787,7 @@ All notable changes to Metabrowser are documented here.
   Python keeps GitHub’s blue, and no other family’s color changes.
   The type registry gains `chroma_ratio`, the chroma counterpart of `lightness_rank`,
   which likewise requires a `deviation`, and the registry projection carries it.
-  See
-  [Declared deviations](docs/project/architecture/file-rollup-format/file-rollup-format.md#declared-deviations).
+  See [Declared deviations](docs/design-system.md#declared-deviations).
 
 - The type registry’s schema version is now `5` and its projection is
   `file-type-registry-v5`, because `chroma_ratio` changes its structure.

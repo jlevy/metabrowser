@@ -99,8 +99,9 @@ _BATCH_ARGS: Final[tuple[str, ...]] = (
     "--batch-command",
     "--buffer",
 )
-# Whole-tree reads peaked at four actors and fell with eight. See
-# docs/project/architecture/arch-repository-sources-and-provider-mirrors.md.
+# Whole-tree read throughput peaked at four actors (54.8-57.2 k blobs/s against
+# 31.3-31.7 k for one) and fell with eight (45.0-46.4 k). The run is recorded in
+# docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md.
 MAX_BATCH_READERS_PER_STORE: Final[int] = 4
 # ``info`` commands per flush. Each chunk gets the batch deadline to itself, so
 # the deadline bounds a stalled actor rather than the size of the tree. Measured

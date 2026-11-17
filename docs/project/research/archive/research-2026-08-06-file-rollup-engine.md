@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-06 (moved 2026-08-08)
 
-**Status:** Complete — outcome adopted, document moved.
+**Status:** Archived.
+Complete; the outcome was adopted and the full document moved to the fdu repository.
 
 ## Outcome
 

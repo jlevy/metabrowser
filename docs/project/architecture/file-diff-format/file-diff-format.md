@@ -4,18 +4,16 @@
 
 The File Diff Format is a small, reusable format for describing a change set between two
 file-tree snapshots: resolved identity, a manifest of file changes, and per-file
-patches. It is deliberately tool-neutral — nothing in a document references Metabrowser
-concepts — so command-line tools, libraries, services, and user interfaces can share one
+patches. It is deliberately tool-neutral (nothing in a document references Metabrowser
+concepts), so command-line tools, libraries, services, and user interfaces can share one
 validated model of “what changed.”
 Metabrowser hosts the reference implementations and emits the format from
 `metab --diff --format json`. Sources (a `.patch` file, git, a hosted provider, a
 document’s edit history) produce this format; the renderer and the CLI consume it;
 nothing downstream knows which source produced a document.
-Design rationale lives in the
-[general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md);
-this document is the normative contract.
-[Diff sources, context, and anchoring](diff-sources-and-anchoring.md) maps where
-documents come from and what a repository context adds.
+This document is the normative contract.
+The [diff pipeline](../arch-diff-pipeline.md) covers where documents come from, what a
+repository context adds, and how they are hydrated and kept.
 
 ## Authority and Implementations
 
@@ -42,7 +40,7 @@ A `ChangeSetDocument` is:
 | `schema`, `schema_version` | `"file-diff-v1"`, `1` |
 | `resolved` | Frozen identity: source, endpoints, options, a self-describing `comparison_id` |
 | `manifest` | One `FileChange` per changed path, plus totals and truncation |
-| `patches` | `FilePatch` by file id — only the hydrated ones |
+| `patches` | `FilePatch` by file id, only the hydrated ones |
 
 A document with an empty `patches` map is a valid, useful thing: it is a manifest-only
 response, and each file’s `availability` states why its patch is absent.
@@ -57,7 +55,7 @@ the content can move underneath the comparison (index, worktree).
 ### File changes
 
 `kind` is one of `added`, `deleted`, `modified`, `renamed`, `copied`, `type_changed`,
-`unmerged` — git’s A D M R C T U. Side requirements are structural, enforced by schema
+`unmerged`: git’s A D M R C T U. Side requirements are structural, enforced by schema
 and both implementations:
 
 | kind | `old` | `new` | `similarity` |
@@ -77,7 +75,7 @@ submodule’s content is its gitlink oid.
 
 Line totals count text lines only, following git’s shortstat semantics: a binary change
 carries null per-file counts, contributes nothing, and does not make `totals.exact`
-false. `exact: false` means some parseable text change is uncounted — unhydrated,
+false. `exact: false` means some parseable text change is uncounted: unhydrated,
 truncated, or unsupported.
 
 ### Patches
@@ -104,7 +102,7 @@ conformance decision; it must not appear as an undeclared v1 property.
 ## The Apply Oracle
 
 “Fully modeled” is testable: applying a hydrated document to its base tree must
-reproduce the target tree — entries, modes, entry types, and exact bytes, including a
+reproduce the target tree: entries, modes, entry types, and exact bytes, including a
 missing final newline.
 `metabrowser.diff.apply` implements this, and the corpus `apply_cases` each carry
 `base`, `document`, and `target` trees.
@@ -116,14 +114,14 @@ A document that cannot be applied because content is missing must say so through
 Git’s extended unified format is the interchange surface: GitHub serves it for any pull
 request, Mercurial documents plain unified diffs as lossy and adopts git’s extension,
 and Jujutsu emits it.
-This format wraps that surface rather than replacing it — parsed text becomes a
-validated document; a document should print back to git-applyable text (the emitter is
-tracked work). What the document adds over any text patch: snapshot identity and
-anchoring, availability states instead of ambiguous absence, machine-validatable
-structure, and apply semantics with an oracle.
+This format wraps that surface rather than replacing it: parsed text becomes a validated
+document; a document should print back to git-applyable text, though no emitter exists
+yet. What the document adds over any text patch: snapshot identity and anchoring,
+availability states instead of ambiguous absence, machine-validatable structure, and
+apply semantics with an oracle.
 The full survey, including agent edit formats and the ingest/emit compatibility matrix,
 is in the
-[file patch formats research](../../research/research-2026-08-19-file-patch-formats.md).
+[file patch formats research](../../research/archive/research-2026-08-19-file-patch-formats.md).
 
 ## Conformance Corpus
 
