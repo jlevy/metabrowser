@@ -1,0 +1,22 @@
+---
+type: is
+id: is-01m7nazd8r0g7bx08cyhvcxhyp
+title: Remove the npm audit exception for GHSA-fc5q-39xc-vjpf (picomatch ReDoS via tryscript)
+kind: task
+status: open
+priority: 2
+version: 1
+labels: []
+dependencies: []
+created_at: 2026-11-17T18:05:46.135Z
+updated_at: 2026-11-17T18:05:46.135Z
+---
+The npm audit gate tolerates exactly one advisory, GHSA-fc5q-39xc-vjpf (high, picomatch ReDoS through single-branch repeated extglobs, affects picomatch <= 4.0.7, no patched release when the exception was taken on 2026-11-17). The owner approved the narrow exception on 2026-11-17; mb-3ncz is the CI failure it resolves.
+
+It is reached only through the dev dependency tryscript 0.3.1 -> tinyglobby 0.2.17 -> fdir 6.5.0 / picomatch 4.0.7, and tryscript only expands the repository's own committed glob patterns (the Makefile's 'tests/golden/*.tryscript.md' and tryscript's built-in ignores), never untrusted input. The exception is held in devtools/npm_audit_exceptions.py, applied by devtools/npm_audit.sh, tested in tests/test_npm_audit.py, and recorded in SUPPLY-CHAIN-SECURITY.md.
+
+Remove it when either holds:
+- picomatch publishes a release that fixes GHSA-fc5q-39xc-vjpf and that release clears the 14-day cool-off: update package-lock.json to it, confirm npm audit passes with no exception, then delete the exception, its test and fixture, and the SUPPLY-CHAIN-SECURITY.md entry; or
+- tryscript (first-party) drops tinyglobby/picomatch or pins a fixed picomatch: take that release under the first-party review in SUPPLY-CHAIN-SECURITY.md, then delete the exception the same way.
+
+The exception lapses by itself, failing the audit, if the advisory's affected range, the installed picomatch version, or the package path npm reports changes; a lapse is a reason to re-review, not to widen the exception.
