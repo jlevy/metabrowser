@@ -74,11 +74,10 @@ It links each document below and the contributor standards in `docs/`.
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
-- [Fast CI](specs/active/plan-2026-11-16-fast-ci.md): a proposal to bring a pull
-  request’s CI from 20 minutes to about 5 with the same checks, by running the suite on
-  every processor, splitting it into unit, golden, and browser jobs, and cutting what a
-  flake costs; the owner approved Phases 1 and 2 on 2026-11-16, and nothing is
-  implemented
+- [Fast CI](specs/active/plan-2026-11-16-fast-ci.md): bringing a pull request’s CI from
+  20 minutes to about 5 with the same checks, by running the suite on every processor,
+  splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
+  owner approved Phases 1 and 2 on 2026-11-16, and nothing is implemented
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps

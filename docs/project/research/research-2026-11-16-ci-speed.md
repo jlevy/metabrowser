@@ -181,7 +181,8 @@ Over the 18 runs, in seconds:
 
 The Chrome tier takes the same 6.3 minutes on every Python version, which is what a tier
 bounded by the browser’s clock and not by the interpreter would show.
-It is 35 to 39 percent of pytest’s time and about a third of a `test` leg.
+It is 40 to 44 percent of pytest’s median time by leg, 35 to 39 percent of its 90th
+percentile, and about a third of a `test` leg.
 The other modules vary by interpreter, and for one commit they vary from run to run: the
 five `main` runs at 6,507 tests took 446 to 647 seconds for them.
 
@@ -355,9 +356,12 @@ A standard GitHub-hosted Linux runner for a public repository has 4 processors a
 of memory ([GitHub-hosted runners](#references)). pytest runs in one process and
 tryscript runs one command at a time, so a `test` leg uses about one of the four.
 
-Up to 65 jobs of this workflow ran at once, and 20 or more ran for 10.1 of the 64.3
-hours. A job waited a median of 2 seconds for a runner, 1.5 minutes at the 90th
-percentile, and up to 8.8 minutes; 12 percent of jobs waited more than a minute.
+At most 40 jobs of this workflow ran at once, counted from each job’s start to its end.
+The count sat at exactly 40 for over an hour and never passed it, which matches the 40
+concurrent jobs of GitHub’s Pro plan ([Actions limits](#references)), so the account’s
+limit is most likely 40. Twenty or more ran for 10.1 of the 64.3 hours.
+A job waited a median of 2 seconds for a runner, 1.5 minutes at the 90th percentile, and
+up to 8.8 minutes; 12 percent of jobs waited more than a minute.
 
 ## Key Insights
 
@@ -525,11 +529,12 @@ GitHub merge queue, or run them on `main` after the merge.
 
 ## Recommendations
 
-1. Use the runner’s processors: pytest-xdist for every module outside a serial tier, and
-   concurrent tryscript files.
-2. Give the serial tier, which is the Chrome tier and the process-group timing tests,
-   its own sharded jobs on one interpreter for a pull request, and run it on every
-   interpreter for every commit on `main`.
+1. Use the runner’s processors: pytest-xdist for every module outside the serial and
+   Chrome tiers, and concurrent tryscript files.
+2. Give the Chrome tier its own sharded jobs on one interpreter for a pull request, and
+   run it on every interpreter for every commit on `main`. Run the process-group timing
+   tests, and any other test that needs the machine to itself without a browser, one at
+   a time on every interpreter before the merge.
 3. Split the `test` job into unit, golden, and Chrome jobs, so that the wall clock is
    the slowest of them.
 4. Turn `fail-fast` off, cancel superseded pull request runs, and add one job that
@@ -542,7 +547,7 @@ GitHub merge queue, or run them on `main` after the merge.
 8. Then consider path classes for documentation-only and macOS-only changes.
 
 With 1 through 5, a pull request’s wall clock is estimated at 4 to 5 minutes and its
-runner minutes at about 38, against 20.5 and 84 today.
+runner minutes at 39 to 49, against 20.5 and 84 today.
 The [fast CI plan](../specs/active/plan-2026-11-16-fast-ci.md) gives the design, the
 argument for each check’s coverage, and the order.
 
@@ -573,6 +578,10 @@ argument for each check’s coverage, and the order.
   of the same commit.
 - **Reruns.** A job counts as re-executed in an attempt when its `started_at` differs
   from the same job’s in the attempt before.
+- **Concurrency.** Counted again on 2026-11-17 from the job records of every attempt of
+  the 301 runs the API returns for the sample’s window.
+  Each job execution counts once, from its `started_at` to its `completed_at`, so a job
+  an attempt carried over from the attempt before is not counted twice.
 - **Stacks.** The `stack-integration` log of every second stacked first attempt, 69 of
   them, read for `Already up to date.`
 - **Pull request classes.** `gh pr list --state merged --limit 150 --json files`, each
@@ -601,8 +610,9 @@ argument for each check’s coverage, and the order.
 - **Tree identity for stacks.** `Already up to date.` shows that `main` was in the head.
   That the tree then equals the one the `test` jobs checked out also needs the base
   branch to be in the head, which the logs do not show, so 48 percent is an upper bound.
-- **Merge queue availability** for a repository owned by a user account, and the
-  account’s concurrent-job limit.
+- **Merge queue availability** for a repository owned by a user account.
+  The account’s concurrent-job limit was not read from its settings; it is inferred from
+  the ceiling in [Runner Capacity and Queueing](#runner-capacity-and-queueing).
 - **No headless Chrome test was run locally.**
 
 ## References
