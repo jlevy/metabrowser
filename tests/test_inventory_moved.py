@@ -29,6 +29,8 @@ from metabrowser.inventory_engine import runtime as runtime_module
 from metabrowser.inventory_engine.contract import (
     CatalogQuery,
     InventoryBackend,
+    InventoryConfig,
+    ProviderFailureError,
     QueryKind,
     ReadQuery,
     ReadRequest,
@@ -37,13 +39,19 @@ from metabrowser.inventory_engine.factory import InventoryProvider
 from metabrowser.inventory_engine.seams import ProviderSeams
 from metabrowser.inventory_moved import (
     INVENTORY_MOVED_CODE,
+    INVENTORY_PROVIDER_FAILED_CODE,
     INVENTORY_RETRY_AFTER_S,
     inventory_moved_message,
     inventory_moved_payload,
 )
 from tests.golden_harness import run_metab
 from tests.inventory_harness import inventory_harness
-from tests.perturbed_provider import Perturbation, PerturbedBackend, reads_asking_for
+from tests.perturbed_provider import (
+    Perturbation,
+    PerturbedBackend,
+    PerturbedHandle,
+    reads_asking_for,
+)
 
 type ReadSelector = Callable[[ReadRequest], bool]
 
@@ -221,3 +229,74 @@ def test_walk_reports_the_outcome_as_a_typed_error(
     assert result.exit_code == 1, result.stdout + result.stderr
     assert result.stdout == ""
     assert result.stderr == f"Error: {inventory_moved_message()}\n"
+
+
+def _failing_once(kind: QueryKind) -> Callable[[InventoryBackend], InventoryBackend]:
+    """Wrap the backend so the first read of *kind* reports a provider failure (D14)."""
+
+    def wrap(backend: InventoryBackend) -> InventoryBackend:
+        perturbed = PerturbedBackend(backend, Perturbation())
+        real_open = perturbed.open
+
+        async def open_failing(root: Path, config: InventoryConfig) -> PerturbedHandle:
+            handle = await real_open(root, config)
+            if len(perturbed.handles) == 1:
+                handle.fail_next_read(
+                    ProviderFailureError("poisoned root"), matching=reads_asking_for(kind)
+                )
+            return handle
+
+        perturbed.open = open_failing  # type: ignore[method-assign]
+        return perturbed
+
+    return wrap
+
+
+def test_a_provider_failure_answers_a_retryable_503_under_its_own_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read the provider fails is the same outcome, and once the supervisor has
+    reopened the root the same request answers."""
+
+    root = build_moved_fixture(tmp_path / "root")
+    real = runtime_module.create_inventory_backend
+    wrap = _failing_once(QueryKind.DIRECTORY)
+
+    def failing(
+        provider: InventoryProvider | str = InventoryProvider.PYTHON,
+        *,
+        seams: ProviderSeams | None = None,
+    ) -> InventoryBackend:
+        return wrap(real(provider, seams=seams))
+
+    monkeypatch.setattr(runtime_module, "create_inventory_backend", failing)
+
+    async def run() -> tuple[ApiResponse, ApiResponse]:
+        async with InProcessClient(server.app, label="failed") as client:
+            settled = await wait_for_index(client)
+            assert settled.completed, settled.detail
+            failed = await client.get("/api/tree?depth=2")
+            settled = await wait_for_index(client)
+            assert settled.completed, settled.detail
+            return failed, await client.get("/api/tree?depth=2")
+
+    server._set_root_dir(root)
+    failed, retried = asyncio.run(run())
+    assert failed.status_code == 503, failed.text()
+    assert failed.headers.get("retry-after") == str(INVENTORY_RETRY_AFTER_S)
+    assert failed.json() == inventory_moved_payload(INVENTORY_PROVIDER_FAILED_CODE)
+    assert retried.status_code == 200, retried.text()
+
+
+def test_a_provider_failure_during_the_snapshot_asks_the_stream_to_resync(
+    tmp_path: Path,
+) -> None:
+    root = build_moved_fixture(tmp_path / "root")
+
+    async def run() -> list[dict[str, str]]:
+        async with inventory_harness(root, wrap=_failing_once(QueryKind.DIRECTORY)) as harness:
+            return await _frames(_stream_events(cast(Any, _StreamRequest(harness.app))))
+
+    frames = asyncio.run(run())
+    assert [frame["event"] for frame in frames] == ["fs.resync_required"]
+    assert json.loads(frames[0]["data"])["reason"] == INVENTORY_PROVIDER_FAILED_CODE

@@ -139,6 +139,7 @@ class PerturbedHandle:
         self._inner = inner
         self._perturbation = perturbation
         self._read_fault: BaseException | None = None
+        self._read_fault_matches: Callable[[ReadRequest], bool] = lambda _request: True
         self._changes_fault: BaseException | None = None
         self._changes_fault_armed = asyncio.Event()
         self._close_delay_s = 0.0
@@ -149,10 +150,16 @@ class PerturbedHandle:
 
         self._close_delay_s = seconds
 
-    def fail_next_read(self, error: BaseException) -> None:
-        """Make the next :meth:`read` raise *error* instead of reading."""
+    def fail_next_read(
+        self,
+        error: BaseException,
+        *,
+        matching: Callable[[ReadRequest], bool] = lambda _request: True,
+    ) -> None:
+        """Make the next :meth:`read` that *matching* selects raise *error* instead."""
 
         self._read_fault = error
+        self._read_fault_matches = matching
 
     def fail_changes(self, error: BaseException) -> None:
         """Make the change iterator raise *error* at once, or when it next starts."""
@@ -161,7 +168,11 @@ class PerturbedHandle:
         self._changes_fault_armed.set()
 
     async def read(self, request: ReadRequest) -> ReadResult:
-        fault, self._read_fault = self._read_fault, None
+        fault = self._read_fault
+        if fault is not None and self._read_fault_matches(request):
+            self._read_fault = None
+        else:
+            fault = None
         if fault is not None:
             raise fault
         unavailable = self._perturbation.unavailable

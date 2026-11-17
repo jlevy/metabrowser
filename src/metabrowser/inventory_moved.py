@@ -22,11 +22,19 @@ consumer reports it as this one outcome, never as a 500 or a partial answer:
 
 ``metab --api`` reaches the routes in process, so it prints the 503 envelope and exits
 non-zero. `tests/golden/cli-api-inventory-moved.txt` pins all of it.
+
+A read the provider fails with `ProviderFailureError`, while the coordinator's
+supervisor replaces the handle or after it has left the root failed (D14), is the same
+outcome under its own code, `INVENTORY_PROVIDER_FAILED_CODE`: retrying is again the
+remedy, since a reopen or a later open usually answers, but the cause is the provider,
+not the files. `inventory_retry_code` picks the code for an error.
 """
 
 from __future__ import annotations
 
 from typing import Final
+
+from metabrowser.inventory_engine.contract import ProviderFailureError
 
 INVENTORY_RETRY_AFTER_S: Final = 1
 """Seconds a client waits before it asks again, sent as ``Retry-After``.
@@ -42,15 +50,33 @@ usually settled by then.
 INVENTORY_MOVED_CODE: Final = "inventory_version_moved"
 """The stable token for this outcome: a route body's ``code`` and the SSE resync reason."""
 
-_SUMMARY: Final = "Inventory changed while this answer was read"
+INVENTORY_PROVIDER_FAILED_CODE: Final = "inventory_provider_failed"
+"""The same outcome's token when the provider failed rather than the version moved."""
+
+_SUMMARIES: Final = {
+    INVENTORY_MOVED_CODE: "Inventory changed while this answer was read",
+    INVENTORY_PROVIDER_FAILED_CODE: "The inventory provider failed while this answer was read",
+}
+_MESSAGES: Final = {
+    INVENTORY_MOVED_CODE: "the inventory changed while this answer was read",
+    INVENTORY_PROVIDER_FAILED_CODE: "the inventory provider failed while this answer was read",
+}
 
 
-def inventory_moved_payload() -> dict[str, str | int]:
+def inventory_retry_code(error: Exception) -> str:
+    """The outcome's code for *error*: a provider failure, or else a moved version."""
+
+    if isinstance(error, ProviderFailureError):
+        return INVENTORY_PROVIDER_FAILED_CODE
+    return INVENTORY_MOVED_CODE
+
+
+def inventory_moved_payload(code: str = INVENTORY_MOVED_CODE) -> dict[str, str | int]:
     """The 503 body: the existing ``error`` and ``code`` envelope, plus the retry hint."""
 
     return {
-        "error": _SUMMARY,
-        "code": INVENTORY_MOVED_CODE,
+        "error": _SUMMARIES[code],
+        "code": code,
         "retry_after_s": INVENTORY_RETRY_AFTER_S,
     }
 
@@ -61,19 +87,18 @@ def inventory_moved_headers() -> dict[str, str]:
     return {"Retry-After": str(INVENTORY_RETRY_AFTER_S)}
 
 
-def inventory_moved_message() -> str:
+def inventory_moved_message(code: str = INVENTORY_MOVED_CODE) -> str:
     """The command-line error for the same outcome."""
 
-    return (
-        f"the inventory changed while this answer was read; retry in "
-        f"{INVENTORY_RETRY_AFTER_S}s ({INVENTORY_MOVED_CODE})"
-    )
+    return f"{_MESSAGES[code]}; retry in {INVENTORY_RETRY_AFTER_S}s ({code})"
 
 
 __all__ = [
     "INVENTORY_MOVED_CODE",
+    "INVENTORY_PROVIDER_FAILED_CODE",
     "INVENTORY_RETRY_AFTER_S",
     "inventory_moved_headers",
     "inventory_moved_message",
     "inventory_moved_payload",
+    "inventory_retry_code",
 ]

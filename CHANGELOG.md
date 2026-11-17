@@ -22,7 +22,9 @@ All notable changes to Metabrowser are documented here.
   reconnects for a fresh snapshot as after any other gap; it used to fail the stream.
   `metab --walk` stops with an error naming the code, and `metab --api` prints the 503
   envelope and exits non-zero.
-  The retry hint is `INVENTORY_RETRY_AFTER_S` in `inventory_moved.py`.
+  The retry hint is `INVENTORY_RETRY_AFTER_S` in `inventory_moved.py`. A read the
+  inventory provider failed answers the same way with the code
+  `inventory_provider_failed`, while the server reopens the folder.
 
 - `/_debug/inventory` reports `discovery`, when the served root’s first discovery ended
   as the server observed it: its index status and phase, and how long the inventory

@@ -138,6 +138,7 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     PriorityRequest,
+    ProviderFailureError,
     QueryWorkLimitError,
     ReadQuery,
     ReadRequest,
@@ -163,7 +164,11 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     assemble_grouped_tree,
     assemble_tree_pages,
 )
-from metabrowser.inventory_moved import inventory_moved_headers, inventory_moved_payload
+from metabrowser.inventory_moved import (
+    inventory_moved_headers,
+    inventory_moved_payload,
+    inventory_retry_code,
+)
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 from metabrowser.keymap import check_view_keys, live_view_keys
@@ -5063,14 +5068,18 @@ async def _inventory_moved_response(
 
     Every route reaches it the same way: a tree, grouped-tree, or catalog assembly that
     ran out of bounded attempts, and a rollup whose unpinned fallback the provider could
-    not answer either, all raise `VersionUnavailableError` (`inventory_moved.py`).
+    not answer either, all raise `VersionUnavailableError` (`inventory_moved.py`). A
+    read the provider failed with `ProviderFailureError` answers the same, under its own
+    code.
     """
 
-    if not isinstance(error, VersionUnavailableError):  # pragma: no cover - Starlette dispatches
+    if not isinstance(error, (VersionUnavailableError, ProviderFailureError)):  # pragma: no cover
         raise error
-    LOG.info("inventory moved during %s; answering 503: %s", request.url.path, error)
+    LOG.info("inventory read failed during %s; answering 503: %s", request.url.path, error)
     return JSONResponse(
-        inventory_moved_payload(), status_code=503, headers=inventory_moved_headers()
+        inventory_moved_payload(inventory_retry_code(error)),
+        status_code=503,
+        headers=inventory_moved_headers(),
     )
 
 
@@ -5090,6 +5099,7 @@ app = Starlette(
     exception_handlers={
         QueryWorkLimitError: _query_work_limit_response,
         VersionUnavailableError: _inventory_moved_response,
+        ProviderFailureError: _inventory_moved_response,
         UnsupportedSourceCapabilityError: _unsupported_source_response,
     },
 )
