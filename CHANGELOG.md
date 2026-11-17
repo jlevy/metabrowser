@@ -4,14 +4,38 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- KPress moves to 0.3.7. The table of contents now follows the section you are reading
+- KPress moves to 0.3.8. The table of contents now follows the section you are reading
   in webviews without `IntersectionObserver` through KPress’s own fallback, which
-  replaces Metabrowser’s, and a reader-pane reload on a URL with a fragment returns to
-  the saved position in WebKit.
-  Inline code, code blocks, blockquotes, and the table of contents look the same as
-  before; the styles Metabrowser added for them are now KPress’s defaults.
+  replaces Metabrowser’s and steps past headings inside a closed disclosure, and a
+  reader-pane reload on a URL with a fragment returns to the saved position in WebKit.
+  Keyboard input (`kbd`), sample output (`samp`), and code in a link’s preview popover
+  are set in the app’s code face, as other code is, instead of the browser’s default
+  monospace. Inline code, code blocks, blockquotes, and the table of contents look the
+  same as before; the styles Metabrowser added for them are now KPress’s defaults.
   For plugin authors: `--kpress-code-border` and `--kpress-code-radius` set the edge and
   corners of inline and block code, and KPress’s inline code is square by default.
+
+- Each “Stack #N” heading in the Pulls tab shows what the whole stack changes, in the
+  brief change line the Diff summary uses: “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”.
+  A stack is the pull requests it is made of, merged or open, so the numbers are theirs
+  accumulated: each pull request’s own changed files, the list its row shows when
+  opened, every file counted once, and every pull request’s added and deleted lines
+  summed. A file one layer adds and another edits counts once, as added.
+  They are read from the local cache with no GitHub request, for the stacks in view,
+  when the browser is idle, and read again when one of a stack’s pull requests moves,
+  its members change, or one of its pull requests’ changed files arrives or is read
+  again, so a heading fills in as its pull requests’ files are fetched; a gray
+  placeholder holds the line’s place while it is first read, and a screen reader hears
+  that the change is pending.
+  The Pulls tab fetches the changed files of a drawn stack’s pull requests that it
+  lacks, after the rows you are looking at, so a closed stack’s heading fills in too.
+  Line totals that could not be counted exactly, as for a binary file, are followed by a
+  muted “(estimated)”, which a screen reader hears too.
+  In a narrow Pulls column the line’s file statuses are cut short first, and the whole
+  line goes where its totals do not fit, so the heading stays one line.
+  Screen readers hear the line in words after the stack’s name.
+  A new cache-only route, `/api/plugin/github/stack-change`, answers a stack’s combined
+  change. See [Stacks](docs/design-system.md#stack-groups-in-the-pulls-tab).
 
 - A commit’s page and a pull request’s page share one header design.
   Every line under the title is the regular body size, 14 px, the Diff summary’s header
@@ -112,9 +136,9 @@ All notable changes to Metabrowser are documented here.
   [Diff Summary](docs/design-system.md#diff-summary).
 
 - Every count summary bolds its numbers and keeps its words regular, with its separators
-  and commas gray and each file status its letter in its status’s color.
-  The numbers are now bold in the Diff summary’s header, “**8** files changed · **8**
-  M”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar; in the
+  and commas gray, and each status count, number and letter, bold in its status’s color.
+  The numbers are now bold in the Diff summary’s header, “**8** files changed · **8
+  M**”, on a commit’s page, in a pull request’s header, and in a patch’s toolbar; in the
   Files totals, as in “**15,458** files (**324.1 MB**)”, and the filter’s “Filtered to”
   line; in the Commits tally; in a pull request’s Checks summary; and in a commit’s
   files outside the served folder.
@@ -123,13 +147,14 @@ All notable changes to Metabrowser are documented here.
   already. The Pulls count’s number stays bold, as it was in 0.12.0. A size is bold with
   its unit, and what a screen reader hears is unchanged.
   A commit’s hover card in the Commits tab says its changes as the Diff summary’s header
-  does, “**32** files changed · **4** A, **28** M · +1,921 −160”, in place of its two
+  does, “**32** files changed · **4 A**, **28 M** · +1,921 −160”, in place of its two
   rows, “28 M 4 A files” and “+1921 −160 lines”, whose added and deleted counts were
   green and red; a screen reader hears them in words.
   Plugins can paint a count summary as the shell does with
-  `metabrowser.countPartsNodes(parts)`, and a brief change line, “10 A, 5 D, 4 M ·
-  +1,234 −567”, the one component the Diff summary’s header and the hover card share,
-  with `metabrowser.changeLine(change)` and `metabrowser.changeLineNodes(line)`. See
+  `metabrowser.countPartsNodes(parts)`, a status count among its parts as
+  `{status, letter, count}`, and a brief change line, “10 A, 5 D, 4 M · +1,234 −567”,
+  the one component the Diff summary’s header and the hover card share, with
+  `metabrowser.changeLine(change)` and `metabrowser.changeLineNodes(line)`. See
   [Count Summaries Bold Their Numbers](docs/design-system.md#count-summaries-bold-their-numbers)
   and [Plugins](docs/plugins.md).
 
@@ -139,20 +164,23 @@ All notable changes to Metabrowser are documented here.
 
 - A change set’s totals are now a Diff summary, collapsed, in place of the line a diff
   opened with, “41 changed files +6526 −555”: a header such as “**35** files changed ·
-  **2** A, **3** D, **30** M · +1,234 −3,423” that opens to the changed files as a tree
+  **2 A**, **3 D**, **30 M** · +1,234 −3,423” that opens to the changed files as a tree
   by folder; one file reads “1 file changed”.
   A commit’s page and a pull request’s page each have one, at the top of the page, and a
   patch file of more than one file has it at the top of its diff.
   The header lists only the statuses some file has, in one order (added, deleted,
-  modified, renamed, then the rest), each the letter its files carry in the tree, in the
-  same green, red, ochre, or blue, with the dots and commas gray; it writes its numbers
-  in the shell’s format and still says “(estimated)”, in gray, when the totals are not
-  exact. A screen reader hears the statuses in words, “35 files changed: 2 added, 3
-  deleted, 30 modified”.
-  On a commit’s page it sits under the commit’s identity, in place of the `M`, `A`, and
-  `D` file counts and the line totals, and it is there for a commit of one file too.
-  Until the commit’s diff draws it, and where the diff cannot be drawn, its place says
-  the commit’s totals in one line.
+  modified, renamed, then the rest), each a status count, its number and the letter its
+  files carry in the tree, both bold in the same green, red, ochre, or blue, with the
+  dots and commas gray.
+  Each status’s color keeps a text’s 4.5:1 contrast on the page, the sidebar, a hovered
+  header, and a tooltip, in both themes.
+  The header writes its numbers in the shell’s format and still says “(estimated)”, in
+  gray, when the totals are not exact.
+  A screen reader hears the statuses in words, “35 files changed: 2 added, 3 deleted, 30
+  modified”. On a commit’s page it sits under the commit’s identity, in place of the `M`,
+  `A`, and `D` file counts and the line totals, and it is there for a commit of one file
+  too. Until the commit’s diff draws it, and where the diff cannot be drawn, its place
+  says the commit’s totals in one line.
   For a commit past the diff’s bound of 2,000 files, its header says the whole commit’s
   totals and how many files its list holds, as “5,000 files changed · +15,000 −3,000
   (2,000 listed)”. On a pull request’s page it is the header’s last row on every tab,

@@ -175,6 +175,7 @@ export function stackRowKey(number) {
  * @typedef {{
  *   kind: "stack", key: number, stack: NativeStack, label: string, hint: string,
  *   members: number[], expanded: boolean, level: 1, posinset: number, setsize: number,
+ *   shown: number, elsewhere: ReadonlyMap<number, number>,
  * }} StackGroupRow
  * @typedef {{
  *   kind: "pull", key: number, number: number, level: 1 | 2, stack: number | null,
@@ -259,6 +260,9 @@ export function groupByStack(numbers, index, identity, options = {}) {
       level: 1,
       posinset: at + 1,
       setsize: firstLevel,
+      // What its accessible name counts, for a heading that adds its change line to it.
+      shown,
+      elsewhere,
     });
     if (expanded) {
       for (const [place, number] of members.entries()) {
@@ -294,20 +298,28 @@ export function groupByStack(numbers, index, identity, options = {}) {
  * stack sit, so a count of listed pull requests that is more than the rows under it says
  * why.
  *
+ * A heading that shows the stack's brief change line (stack-lines.js) says it in words after
+ * the label, as the Diff summary's name does after its file count: "Stack #286: 10 added, 5
+ * deleted, 4 modified; 1,234 lines added, 567 deleted; 4 pull requests".
+ *
  * @param {NativeStack} stack
  * @param {number} shown How many of its pull requests the list holds.
  * @param {ReadonlyMap<number, number>} [elsewhere] How many sit under each earlier stack.
+ * @param {string | null} [change] The change line's `label`, its words, when it is shown.
  */
-export function stackGroupHint(stack, shown, elsewhere = new Map()) {
+export function stackGroupHint(stack, shown, elsewhere = new Map(), change = null) {
   const total = stack.pulls.length;
-  const parts = [stackLabel(stack.number), `${total} pull request${total === 1 ? "" : "s"}`];
+  const parts = [`${total} pull request${total === 1 ? "" : "s"}`];
   if (shown < total) {
     parts.push(`${shown} in this list`);
   }
   for (const [under, count] of elsewhere) {
     parts.push(`${count} under ${stackLabel(under)}`);
   }
-  return parts.join(", ");
+  const label = stackLabel(stack.number);
+  return change === null
+    ? [label, ...parts].join(", ")
+    : `${label}: ${change}; ${parts.join(", ")}`;
 }
 
 /** A member selection has the same explicit-reader fetch intent as a catalog click.

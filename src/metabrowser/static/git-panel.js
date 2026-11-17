@@ -334,12 +334,12 @@
    * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
    * −160", through the same parts (formatters.js, `changeSummary`) and painters
    * (`countPartsHtml`, and `changeLineHtml` for the brief change line after the file
-   * count), so each number is bold in the line's ink, each status its letter in
-   * its status's ink at the line's weight, and the commas and dots muted. A family no file
-   * has is left out, and a count the commit does not know is "?". Each dot is one item with
-   * the group before it, so a line that wraps breaks after a dot. A screen reader is told
-   * the line in words, "32 files changed: 4 added, 28 modified; 1,921 lines added, 160
-   * deleted", in place of its letters and marks.
+   * count), so the file count is bold in the line's ink, each status count, "4 A", bold
+   * in its status's ink, number and letter alike, and the commas and dots muted. A family
+   * no file has is left out, and a count the commit does not know is "?". Each dot is one
+   * item with the group before it, so a line that wraps breaks after a dot. A screen reader
+   * is told the line in words, "32 files changed: 4 added, 28 modified; 1,921 lines added,
+   * 160 deleted", in place of its letters and marks.
    *
    * @param {Record<string, unknown>} stats
    * @returns {string}

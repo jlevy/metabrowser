@@ -411,15 +411,22 @@ A number is the whole figure: its grouping and decimal marks, a sign, a lower bo
 an age keeps the [age primitive](#age), which has a weight of its own.
 
 **In a count summary, the separators and the list punctuation are muted, the numbers
-bold, and each status letter in its status’s color.** The “ · ” that sets a line’s
-groups apart and the comma between a list’s entries are `.summary-punctuation`, which
-sets `--muted` and nothing else, so the numbers, the letters, and the words read and the
-marks recede: “**19** files changed · **10** A, **5** D, **4** M · +1,234 −567”, its
-dots and commas gray.
-A file change status is its letter, the badge its rows carry, in the shell’s status
-primitive, `.file-change-status` ([File Change Status](#file-change-status)), at the
-line’s weight; its count is a number, bold, in the line’s ink; and the words, as “files
-changed”, keep the line’s ink.
+bold, and each status count bold in its status’s color, its number and its letter
+alike.** The “ · ” that sets a line’s groups apart and the comma between a list’s
+entries are `.summary-punctuation`, which sets `--muted` and nothing else, so the counts
+and the words read and the marks recede: “**19** files changed · **10 A**, **5 D**, **4
+M** · +1,234 −567”, its dots and commas gray, and “10 A” green, “5 D” red, and “4 M”
+ochre. A status count, “10 A”, is a file change status’s count and its letter, the badge
+its rows carry, as one unit, `.summary-status-count`: both are bold, at
+`--count-numeral-weight`, and both are in the status’s color, which the shell’s status
+primitive on the same span, `.file-change-status`, sets
+([File Change Status](#file-change-status)), so each count reads as its status and the
+counts of a list read apart from one another.
+Each status’s color keeps a text’s 4.5:1 contrast, at the line’s size and bold weight,
+on every ground a count summary is drawn on, the page, the sidebar, a hovered header,
+and a tooltip, in both themes.
+A count that is not a status’s, as “19 files changed”, is a number, bold, in the line’s
+ink, and its words keep the line’s ink and weight.
 The dot is hidden from assistive technology, as a heading tally’s is, and a line that
 shows letters tells a screen reader its statuses in words, “19 files changed: 10 added,
 5 deleted, 4 modified”, so no letter is read out.
@@ -435,14 +442,16 @@ number, are not this punctuation.
 A count summary’s text comes in one shape of parts (`MetabrowserCountPart` in
 `static/types.d.ts`): the words as strings, each number as `{number}`, a list’s comma as
 `{punctuation}`, a separator’s dot as `{separator}`, with `spoken` for the comma said in
-its place, and a status as `{status, letter}`; “12,797 files” is
-`[{number: "12,797"}, " files"]`. They have one painter, in `static/formatters.js`,
-which paints each kind in its one class: the shell paints through `countPartsHtml` and
-`countPartsNodes` on `window.MetabrowserFormatters`, and a plugin through the SDK’s
-`metabrowser.countPartsNodes` ([plugins](plugins.md)), as the Diff summary and the
-Checks summary do. What a change set holds is said once, by `changeSummary` beside them,
-as its file count and its [brief change line](#brief-change-line): the Diff summary’s
-header and a commit’s hover card say it in its words.
+its place, and a status count as `{status, letter, count}`; “12,797 files” is
+`[{number: "12,797"}, " files"]`, and “10 A” is
+`[{status: "added", letter: "A", count: "10"}]`. They have one painter, in
+`static/formatters.js`, which paints each kind in its one class: the shell paints
+through `countPartsHtml` and `countPartsNodes` on `window.MetabrowserFormatters`, and a
+plugin through the SDK’s `metabrowser.countPartsNodes` ([plugins](plugins.md)), as the
+Diff summary and the Checks summary do.
+What a change set holds is said once, by `changeSummary` beside them, as its file count
+and its [brief change line](#brief-change-line): the Diff summary’s header and a
+commit’s hover card say it in its words.
 The words and numbers of one phrase sit in one inline element: in a flex line, as a
 navigation metadata line is, each would be an item of its own, parted by the line’s gap
 and read as a run of its own.
@@ -452,7 +461,7 @@ keeps it.
 
 | Count summary | Where its numbers are painted |
 | --- | --- |
-| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status letters and its muted dots and commas, and through `listedNote` for a list cut short, “(2,000 listed)”; its line totals are the inline change stats, bold already |
+| The [Diff summary](#diff-summary)’s header and its fallback totals line, on a commit’s page, in a pull request’s header, and in a patch’s toolbar | `renderDiffSummary` and `summaryOrTotals` in the diff plugin’s `diff-view.js`, through `metabrowser.countPartsNodes` for its file count and `metabrowser.changeLine` and `metabrowser.changeLineNodes` for the [brief change line](#brief-change-line) after it, from `describeChanges` (`filesParts`, `line`) and `plainTotals` (`filesParts`, `change`), with its status counts and its muted dots and commas, and through `listedNote` for a list cut short, “(2,000 listed)”; its line totals are the inline change stats, bold already |
 | A commit’s totals line, in its Diff summary’s place until the commit’s diff draws the summary there, and where it is not drawn | `renderCommitTotals` in `static/git-panel.js`, through `changeSummary`, `countPartsHtml`, and `changeLineHtml`, in the Diff summary’s words and paint ([Git Commit Summary](#git-commit-summary)) |
 | The Files totals, tracked and ignored, and the live figures | `treeSummaryHtml`, `treeSummaryCountHtml`, and `treeSummarySizeHtml` in `static/navigation.js` |
 | The Files filter’s remark, “Filtered to 1,234 files.” | `filteredTallyParts` in `static/tree-filter-model.js`, painted by `_renderFilteredTally` in `static/app.js` in one span of its line |
@@ -490,21 +499,24 @@ Diff summary, a commit’s, and the Files totals and Commits tally beside it, an
 `tests/dom/nav-metadata-chrome.mjs` the Files filter’s remark and the Pulls count’s;
 both hold that every number is inline with its words, and the second that the remark
 reads as one run.
-`test_count_summaries_mute_their_punctuation_and_ink_their_status_letters` holds
-`.summary-punctuation` to `--muted` alone, every surface to the one painter, and the
-diff plugin and the Checks summary to writing none of its classes themselves.
+`test_count_summaries_mute_their_punctuation_and_ink_their_status_counts` holds
+`.summary-punctuation` to `--muted` alone, `.summary-status-count` to the count’s weight
+alone, every surface to the one painter, and the diff plugin and the Checks summary to
+writing none of its classes themselves, and `test_file_status_ink_is_shared_and_legible`
+each status’s color to 4.5:1 on each ground in both themes.
 `tests/dom/count-parts-session.js` pins each kind’s markup, the SDK’s nodes to the
 shell’s, and `changeSummary`’s words (`cli-ui-count-parts.tryscript.md`);
-`tests/dom/diff-view-behavior.js` holds the Diff summary’s letters and marks by class,
-`tests/dom/git-panel-behavior.js` the hover card’s, word for word the Diff summary’s,
-and `tests/dom/github-pull-core-preview-behavior.js` the Checks summary’s.
-`tests/dom/diff-summary-chrome.mjs` reads the inks on a commit’s Diff summary in both
-themes, each letter at its status’s token and each mark at `--muted`, and
-`tests/dom/git-commit-summary-chrome.mjs` the hover card’s, each number bold in the
-line’s ink and each letter at the line’s weight; the latter holds that the commit page’s
-header starts no line with a dot at any width from 60 to 400 px, and the hover card none
-from 60 to 360 px, 1 px apart, and that with each dot’s group dissolved both sweeps find
-a dot starting a line.
+`tests/dom/diff-view-behavior.js` holds the Diff summary’s status counts and marks by
+class, `tests/dom/git-panel-behavior.js` the hover card’s, word for word the Diff
+summary’s, and `tests/dom/github-pull-core-preview-behavior.js` the Checks summary’s.
+`tests/dom/diff-summary-chrome.mjs` reads the inks and weights on a commit’s Diff
+summary in both themes, and `tests/dom/git-commit-summary-chrome.mjs` the hover card’s:
+each status count’s number and letter bold at its status’s token, with its contrast on
+the ground under it, the file count bold at `--text` with its words regular, and each
+mark at `--muted`; with `.summary-status-count`’s rule removed, both fail.
+The latter holds too that the commit page’s header starts no line with a dot at any
+width from 60 to 400 px, and the hover card none from 60 to 360 px, 1 px apart, and that
+with each dot’s group dissolved both sweeps find a dot starting a line.
 A heading tally’s dot (`.heading-tally-dot`) is muted with the rest of its tally, and is
 not painted from these parts.
 
@@ -1139,12 +1151,12 @@ The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` c
 sits below the identity metadata and says the commit’s changes in the Diff summary’s
 words and paint, through the same parts and painters (`changeSummary`, `countPartsHtml`,
 and the [brief change line](#brief-change-line) after its file count): “**32** files
-changed · **4** A, **28** M · +1,921 −160”, in the summary’s order, each count bold in
-the line’s ink, each letter in its status’s color at the line’s weight, and the commas
-and dots muted. Its families are Git’s, exact file-status families with Git’s letters:
-`A` contains added and copied files, `D` deleted files, and `M` modified, renamed, and
-type-changed files, so a rename that the commit page’s Diff summary counts as `R` is an
-`M` here. These families cover every supported file status exactly once.
+changed · **4 A**, **28 M** · +1,921 −160”, in the summary’s order, painted by the
+[count summary](#count-summaries-bold-their-numbers)’s rule.
+Its families are Git’s, exact file-status families with Git’s letters: `A` contains
+added and copied files, `D` deleted files, and `M` modified, renamed, and type-changed
+files, so a rename that the commit page’s Diff summary counts as `R` is an `M` here.
+These families cover every supported file status exactly once.
 A zero family is omitted.
 The server computes all counts before bounding the returned file list, so a large commit
 remains exact. Line totals are the [inline change stats](#inline-change-stats), in the
@@ -1352,7 +1364,9 @@ The page’s session holds the order, the arrow’s name, and the literal refs i
 
 File-summary letters share one muted semantic palette across Git history, commit
 summaries, diff headers, PR changed-file trees, and the [Diff summary](#diff-summary)’s
-header and a commit’s hover card, whose status counts read “10 A, 5 D, 4 M”. The letter
+header and a commit’s hover card, whose status counts read “10 A, 5 D, 4 M”, each count
+bold in its status’s color with its letter
+([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)). The letter
 and accessible status name carry the meaning even without color.
 
 | Change | Letter | Color |
@@ -1390,17 +1404,16 @@ Kind letters reuse the same mapping (added is `--status-success`, deleted is
 
 ### Brief Change Line
 
-**A change set said in brief, its statuses and its line totals, “**10** A, **5** D,
-**4** M · +1,234 −567”, is one component, the brief change line.** It has one builder
-and one painter: `changeLine` builds it from the model `describeChanges` reads, the
-statuses in the header’s order, each with its letter, word, and count, and the line
-totals, and `changeLineNodes` and `changeLineHtml` paint it (`static/formatters.js`). A
-plugin reaches both through the SDK, `metabrowser.changeLine` and
-`metabrowser.changeLineNodes` ([plugins](plugins.md)). It is the
+**A change set said in brief, its statuses and its line totals, “**10 A**, **5 D**, **4
+M** · +1,234 −567”, is one component, the brief change line.** It has one builder and
+one painter: `changeLine` builds it from the model `describeChanges` reads, the statuses
+in the header’s order, each with its letter, word, and count, and the line totals, and
+`changeLineNodes` and `changeLineHtml` paint it (`static/formatters.js`). A plugin
+reaches both through the SDK, `metabrowser.changeLine` and `metabrowser.changeLineNodes`
+([plugins](plugins.md)). It is the
 [count summary](#count-summaries-bold-their-numbers)’s rule in one element,
-`.change-line` in the shell’s stylesheet: each count bold in the line’s ink, each status
-its letter in its status’s color at the line’s weight, the commas and the dot muted, and
-the totals the [inline change stats](#inline-change-stats).
+`.change-line` in the shell’s stylesheet: each status a status count, the commas and the
+dot muted, and the totals the [inline change stats](#inline-change-stats).
 The statuses and the dot after them are one item (`.change-line-group`), so a line that
 wraps breaks after the dot and no line starts with one, and its gap is the Diff
 summary’s. A change set of no statuses is its totals alone, “+0 −0”, and a count it does
@@ -1408,10 +1421,11 @@ not know is “?”. Its `label` says it in words for a screen reader, “10 add
 4 modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its
 hidden dot says a comma in its place (`spoken`). The [Diff summary](#diff-summary)’s
 header is its file count, “35 files changed · ”, then this component; a commit’s
-[hover card](#git-commit-summary) and a commit page’s totals line draw it too.
+[hover card](#git-commit-summary), a commit page’s totals line, and a stack’s heading in
+the Pulls tab ([Stack Groups](#stack-groups-in-the-pulls-tab)) draw it too.
 It sets no size or ink of its own, so it takes its line’s.
 `tests/dom/count-parts-session.js` pins its markup (`cli-ui-count-parts.tryscript.md`),
-and `test_count_summaries_mute_their_punctuation_and_ink_their_status_letters` its rule
+and `test_count_summaries_mute_their_punctuation_and_ink_their_status_counts` its rule
 and that no plugin writes its classes itself.
 
 ### Diff Summary
@@ -1466,14 +1480,12 @@ totals, “2 A, 3 D, 30 M · +1,234 −3,423”; each dot is one item with the g
 so a header that wraps breaks after a dot and no line starts with one, and one gap
 spaces it on both sides, on a toggle and on a line alike.
 The statuses are only those some file has, in one order (added, deleted, modified,
-renamed, then copied, type changed, unmerged, and any other), each its count and the
-letter its rows carry, in its status’s color
-([File Change Status](#file-change-status)), with a muted comma between each two;
-numbers use the shell’s number format and are bold, the file count’s and each status’s,
-in the line’s ink, with the words regular
-([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)); the totals
-are the [inline change stats](#inline-change-stats); and “(estimated)” follows totals
-that are not exact, muted with its parentheses, a qualifier of the totals.
+renamed, then copied, type changed, unmerged, and any other), each a status count, its
+count and the letter its rows carry, with a muted comma between each two; numbers use
+the shell’s number format; the file count and the status counts are painted by the
+[count summary](#count-summaries-bold-their-numbers)’s rule; the totals are the
+[inline change stats](#inline-change-stats); and “(estimated)” follows totals that are
+not exact, muted with its parentheses, a qualifier of the totals.
 Its accessible name says the same in words, each status by its name: “35 files changed:
 2 added, 3 deleted, 30 modified; 1,234 lines added, 3,423 deleted”.
 A list cut short at its bound, on a page that knows the whole change set’s totals, as a
@@ -2294,7 +2306,7 @@ surface keeps a copy of either.
 | Label, “Stack #N” | `.group-heading.github-pull-stack-label`: the shell’s [group heading](#groups-in-a-menu), so the label register (`--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`, `--label-text-transform`): gray, all caps, and tracked | The stack menu’s heading; a stack group’s row in the Pulls tab |
 | Position, “2/4” | `.github-pull-stack-position`, tabular, at the pull request number’s weight (`--pull-number-weight`); on the stack button, after the Layers icon, `.github-pull-stack-icon`, at `--icon-glyph`, and after its stack’s number when the pull request is in another stack too, “⧉300 2/2” | The stack button on the page, at the right end of the author’s row; a Pulls row’s place, before its number, with no icon |
 | Member row | Its position, bold; its title, bold in normal text ink; its `#number`, bold ([Pull Request Numbers](#pull-request-numbers)); and on the current pull request a check, `aria-current="page"`, and the Pulls list’s current-row mark, `--highlight-bg` and a 2px `--highlight-bar` at its left edge | The stack menu |
-| Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)) | The Pulls tab |
+| Stack group row | The registry’s chevron, the Layers icon, and the label, with no count, since its pull requests are the rows under it ([Heading Tallies](#heading-tallies)); then, after a muted dot, the stack’s [brief change line](#brief-change-line) | The Pulls tab |
 
 - **Label.** A stack is “Stack #N”, with GitHub’s number for it, in the label register:
   the register the menu’s heading has, so the menu’s heading and a stack group’s row are
@@ -2341,7 +2353,10 @@ surface keeps a copy of either.
   has no words of its own, and the place’s accessible name names each stack, “Stack
   #300, position 2 of 2”. A stack group’s row’s accessible name says its size, how many
   the list holds when that is fewer, and how many of those sit under an earlier stack:
-  “Stack #286, 4 pull requests, 3 in this list, 1 under Stack #290”.
+  “Stack #286, 4 pull requests, 3 in this list, 1 under Stack #290”. Once its change
+  line is shown, the name says the line in words after the label, as the Diff summary’s
+  does after its file count: “Stack #286: 10 added, 5 deleted, 4 modified; 1,234 lines
+  added, 567 deleted; 4 pull requests”.
 
 ### Stack Groups in the Pulls Tab
 
@@ -2382,16 +2397,57 @@ width.
   the revealed row out of view.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
   stack’s row passed over, and the first pull requests drawn.
+- **Change line.** A stack’s row shows the stack’s combined change as its
+  [brief change line](#brief-change-line), after its label and a muted dot: “Stack #286
+  · 10 A, 5 D, 4 M · +1,234 −567”. A stack is the accumulation of its pull requests,
+  merged or open, so its change is theirs: each member’s own changed files, the list its
+  expanded row shows, bottom first, every file once with a status composed from what the
+  members did to it (removed if the last one removed it, else added if the first one
+  added it, else renamed or modified), and every member’s lines summed
+  (`pull_change_sums.py`). The server accumulates them from the cache
+  (`GET stack-change`); it never asks GitHub, fetches, or runs Git.
+  Totals a member’s list could not count, a binary file it listed, are followed by the
+  Diff summary’s muted “(estimated)”, which gives way first, and the accessible name
+  says “estimated” after the line’s words.
+  It is read for the stacks the list draws, one at a time when the browser is idle,
+  within the lines’ own hourly cap, apart from the comparison warms’, and read again
+  never on a timer but when what it is made of may have changed: when a member moves or
+  the members change, as the list’s rows report them, a member the list holds no row of
+  taken as unchanged; when a member’s list arrives or is refreshed, as the prefetch or a
+  row’s own read sees it; and, silently, while its answer names members not yet settled,
+  a list missing or one its row would refresh, a minute on and less often each time.
+  The prefetch asks for those members’ lists after the reader’s own rows, in a few
+  places kept for them, so a closed stack’s line fills in too.
+  The answer is kept for the document under its stack and its revision, so a heading
+  drawn again has it in its first paint, and a line stays shown while its stack is read
+  again and when that read fails (`builtin_plugins/github/stack-lines.js`). While its
+  stack’s first read is on its way, the heading holds the shell’s pending placeholder
+  where the line will be, after the quiet period, and its accessible name says “change
+  pending”, in the filter chips’ words; a heading whose read is queued behind another’s
+  does not wait. A stack whose change cannot be had yet, a member whose changed files are
+  not cached, shows neither, and a read again of it, or of a stack still settling, shows
+  no placeholder, so its heading never pulses and goes blank twice.
+  The row stays one line at every pane width: the label is never cut for the line, the
+  line’s statuses are cut short first, as the pull request header’s are, its totals stay
+  whole, and where even its dot and totals have no room the whole line goes.
 
 `tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the keys, and what
 an open reads ahead against the production code on the server’s recorded answers, and
 mounts the panel and the page’s stack menu to hold the tree’s roles, places, and order.
-`tests/test_github_pulls_stacks_chrome.py` measures the same design in headless Chrome
-against a running server with two native stacks: the shared label tokens, a stack’s row
-that shows its label alone with its size in its accessible name, where rows start, hover
-and focus, the toolbar’s fit, real keys and presses, the scroll, a pull request’s row of
-two lines with the chevron and the state icon centered on its number’s line and the
-title under it, a member’s place and its missing icon, and the menu’s order and ink.
+`tests/dom/github-pulls-stack-lines-session.js` runs what each heading shows of its
+change line, and when it is read, against the production code on the route’s recorded
+answers, and mounts the panel to print a heading waiting, with its line, with none, and
+with “(estimated)”. `tests/test_github_pulls_stack_lines_chrome.py` measures in headless
+Chrome, at every width down to the pane’s minimum in both themes, that nothing in a
+stack’s row moves when its line arrives, that the row stays one line with its label
+whole and the line whole, its statuses cut short, or out of view, and that the line’s
+inks and weights are the component’s. `tests/test_github_pulls_stacks_chrome.py`
+measures the same design in headless Chrome against a running server with two native
+stacks: the shared label tokens, a stack’s row that shows its label alone with its size
+in its accessible name, where rows start, hover and focus, the toolbar’s fit, real keys
+and presses, the scroll, a pull request’s row of two lines with the chevron and the
+state icon centered on its number’s line and the title under it, a member’s place and
+its missing icon, and the menu’s order and ink.
 `tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width down to
 the pane’s minimum and holds that a place arriving moves nothing else in its row, sits
 before the number, and ends inside the row with nothing scrolling sideways; that one
@@ -4340,7 +4396,8 @@ read as a total of the heading’s row rather than the size of its group.
 - **No tally where its rows are the count.** A heading over rows that each stand for one
   of what it would count carries none, since the rows show it: a Pulls stack group’s row
   shows no count of its pull requests ([Stacks](#stacks)). Its accessible name still
-  says how many.
+  says how many. Its [brief change line](#brief-change-line) is no tally: it says what
+  the stack changes, not how many rows it heads.
 
 The headings that carry a tally, each with the builder that writes its markup:
 
@@ -4362,8 +4419,8 @@ its numeral at `--count-numeral-weight`, and leaves the section and its tree nam
 the heading’s words without the dot, and that at 180 px a name cut short shows its whole
 in a tooltip and a whole one shows none; `tests/dom/github-pull-timeline-chrome.mjs`
 holds the Review comments heading to the same place and register, and
-`tests/dom/github-pulls-stacks-chrome.mjs` holds that a stack’s row shows its label
-alone.
+`tests/dom/github-pulls-stacks-chrome.mjs` holds that a stack’s row shows its label and
+no tally.
 
 ### Menu Height
 
