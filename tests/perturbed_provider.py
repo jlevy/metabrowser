@@ -9,9 +9,11 @@ provider behavior. This wrapper reproduces them deterministically over any provi
 the Python one included, so a host fix can be tested without fdu:
 
 - ``split_batches`` delivers every provider batch that carries data as a state-only
-  batch followed by the data batch. It doubles every sequence (provider ``N`` is
-  ``2N``; the state-only batch before it is ``2N - 1``) and maps a pinned read or a
-  resume cursor back with ``sequence // 2``, so a pin at a state-only version reads the
+  batch followed by the data batch. The state-only batch reports freshness
+  ``reconciling``, as fdu's first commit of a refresh did, and the data batch the
+  wrapped provider's own state. It doubles every sequence (provider ``N`` is ``2N``;
+  the state-only batch before it is ``2N - 1``) and maps a pinned read or a resume
+  cursor back with ``sequence // 2``, so a pin at a state-only version reads the
   provider version before the data, as a provider that commits state first would.
 - ``provider_name`` renames the provider in diagnostics, so identity is not pinned.
 - ``replay_capacity`` shrinks the provider's change history, in its own batches.
@@ -39,6 +41,7 @@ from metabrowser.inventory_engine.contract import (
     ChangeCursor,
     DiagnosticsProjection,
     EngineVersion,
+    Freshness,
     InventoryBackend,
     InventoryConfig,
     InventoryHandle,
@@ -198,7 +201,9 @@ class PerturbedHandle:
             return (whole,)
         state_version = replace(version, sequence=version.sequence - 1)
         state_only = ChangeBatch(
-            cursor=state_version.cursor, version=state_version, state=batch.state
+            cursor=state_version.cursor,
+            version=state_version,
+            state=replace(batch.state, freshness=Freshness.RECONCILING),
         )
         return (state_only, whole)
 

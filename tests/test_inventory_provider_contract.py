@@ -203,6 +203,7 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_answers_an_unlisted_directory_with_an_empty_final_page",
         "test_provider_allows_only_one_active_change_iterator",
         "test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint",
+        "test_provider_change_stream_reaches_every_refresh_receipt_version",
         "test_provider_close_joins_change_delivery_and_is_idempotent",
         "test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session",
     }
@@ -2551,6 +2552,61 @@ def test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint(
                 projection = result.projection(query_id)
                 assert isinstance(projection, EntryProjection)
                 assert projection.presence is EntryPresence.PRESENT
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_change_stream_reaches_every_refresh_receipt_version(
+    provider_factory: ProviderFactory,
+    tmp_path: Path,
+) -> None:
+    """A receipt names a version the change stream delivers, or one it already has.
+
+    The coordinator returns a refresh only once its relay has published the receipt's
+    version (R27), so a receipt ahead of every batch the stream will deliver would hang
+    that wait. Each refresh here, one that changes nothing and one whose path vanished
+    among them, must be followed by a batch at or past its receipt's version.
+    """
+
+    (tmp_path / "kept.txt").write_text("kept", encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        try:
+            checkpoint = await handle.read(ReadRequest())
+            stream = cast(
+                "AsyncGenerator[ChangeBatch, None]", handle.changes(after=checkpoint.cursor)
+            )
+            delivered = checkpoint.version.sequence
+            steps: tuple[tuple[str, ObservationKind, Callable[[], object]], ...] = (
+                (
+                    "new.txt",
+                    ObservationKind.CREATED,
+                    lambda: (tmp_path / "new.txt").write_text("n"),
+                ),
+                ("new.txt", ObservationKind.MODIFIED, lambda: None),
+                (
+                    "kept.txt",
+                    ObservationKind.MODIFIED,
+                    lambda: (tmp_path / "kept.txt").write_text("k2"),
+                ),
+                ("new.txt", ObservationKind.DELETED, lambda: (tmp_path / "new.txt").unlink()),
+                ("never.txt", ObservationKind.CREATED, lambda: None),
+            )
+            for path, kind, mutate in steps:
+                mutate()
+                receipt = await handle.refresh(
+                    RefreshRequest(observations=(RefreshObservation(path=path, kind=kind),))
+                )
+                async with asyncio.timeout(5):
+                    while delivered < receipt.version.sequence:
+                        delivered = (await anext(stream)).version.sequence
+            await stream.aclose()
         finally:
             await handle.close()
 
