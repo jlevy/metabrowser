@@ -8,7 +8,9 @@
 Checkpoint 2A was measured.
 Checkpoints 2C and 2D (`mb-hej8`) were revised on 2026-11-17 against fdu 0.6.0 by the
 [revisited fdu backend research](../../research/research-2026-11-17-fdu-backend-revisited.md)
-and have not started: Python is the only provider the factory builds.
+after two review rounds, and have not started: Python is the only provider the factory
+builds. Their first seven layers need no fdu release; items that depend on a decision
+open pending fdu wait for fdu’s answer.
 
 ## Overview
 
@@ -427,69 +429,117 @@ Portable-path completeness was replaced by a total canonical escape, so no path 
 incomplete.
 The host coalescing boundary is opportunistic: the coordinator merges what is
 already queued, and no rule bounds how a recursive change is split.
-Checkpoint 2C’s first slice states that rule.
+Checkpoint 2C states that rule as D8 and pins it in its second and third layers.
 
 The [revisited research](../../research/research-2026-11-17-fdu-backend-revisited.md)
 re-derived the remaining work against fdu 0.6.0 and a new Linux spike in
 [`explorations/fdu-provider-spike/`](../../../../explorations/fdu-provider-spike/README.md).
-Its decisions (D1 to D19), fdu changes (F1 to F25), and Metabrowser refactors (R1 to
-R31) are referenced by number below; the research holds their reasons and evidence.
+Its decisions (D1 to D22), fdu changes (F1 to F28), and Metabrowser refactors (R1 to
+R31) are referenced by number below; the research holds their reasons and evidence, and
+marks each decision decided or open pending fdu.
 
 #### Checkpoint 2C: Neutral Contract, Thin Adapter, Native Projections
 
-Slice 1, provider-neutral contract (Python only, no fdu dependency):
+The fdu-independent work lands as a stack of seven layers, each with only the Python
+provider and each pull request a separate review unit.
+A layer item that depends on a decision open pending fdu waits for fdu’s answer, and the
+layers after it do not.
 
-- [ ] Record decisions D1 to D19 in the inventory-provider architecture document, with
-  D13 (paging under version movement) and D14 (native failure isolation) pinned by new
-  conformance cases.
-- [ ] Rewrite conformance as semantics and bounds, register every parametrized case,
-  state and pin the implicit rules and the host coalescing rule (R1, R2), and make
-  `refresh()` read-your-writes at the host (R27).
-- [ ] Move rollup and navigation wire shaping and registry identity to the host behind
-  contract-owned aggregate types (R3), and type the watch vocabulary (R4).
-- [ ] Apply shared bounds, batched lookups, and page assembly under D13 (R5).
-- [ ] Apply the unreadable-directory, live-ignore, and watch-scope decisions in the
-  Python provider and host status (R6, R7), and lift the Git ignore oracle and File
-  Rollup packet to provider cases (R8).
-- [ ] Pass an engine-facing classification document to providers (R9).
-- [ ] Update parity rows, the views-models-routes map, and `CHANGELOG.md` with each
-  slice item that changes observable behavior or a wire field.
-
-Slice 2, provider-neutral tests and measurement (still Python only):
+Layer 1, test and benchmark seams (three pull requests):
 
 - [ ] Make harnesses and the conformance registry provider-selectable with
-  provider-owned discovery seams, and run goldens per provider with a named placeholder
-  (R12, R13).
-- [ ] Replace the log-line completion signal, add a semantic-equality precheck, and keep
-  the engine-only harness (R16, R18).
+  provider-owned discovery seams, and add the test-only wrapper provider that perturbs
+  batch granularity, identity, replay capacity, relay timing, and faults (R12).
+- [ ] Run goldens per provider with a named placeholder for provider identity (R13).
+- [ ] Replace the log-line completion signal and keep the engine-only harness, which
+  does not poll the engine it times (R16, R18).
+
+Layer 2, decisions and neutral conformance:
+
+- [ ] Record decisions D1 to D22 in the inventory-provider architecture document, with
+  Metabrowser’s unilateral decisions marked decided and the rest open pending fdu.
+- [ ] Rewrite conformance as semantics and bounds, register every parametrized case,
+  make the registration check two-way, and state and pin the implicit rules (R1, R2).
+  Python-exact assertions move to provider-specific tests rather than being deleted.
+
+Layer 3, host consistency:
+
+- [ ] Make `refresh()` read-your-writes at the host, with a relay wait that fails fast
+  on a dead or reset relay, and coalesce transient freshness transitions under D8 (R27).
+- [ ] Recover the change relay from a supervisor task with a bounded close and capped
+  reopen attempts, exercised through the wrapper provider’s fault seam (D14, R26).
+- [ ] Map an exhausted assembly or an unpinned provider failure to one typed retryable
+  outcome for every multi-page assembly consumer, pinned by one golden (R31).
+
+Layer 4, honest Python semantics:
+
+- [ ] Lift the Git ignore oracle and the File Rollup packet to provider cases (R8).
+- [ ] Route `metab --walk` text and stream modes through the runtime (R23).
+- [ ] Report unreadable directories honestly and merge the host status helpers (R6, D1).
+- [ ] Observe exactly the admitted scope and live ignore edits in the Python watcher
+  (R7, D3, D4).
+
+Layer 5, contract types:
+
+- [ ] Type the watch vocabulary (R4).
+- [ ] Move rollup and navigation wire shaping and registry identity to the host behind
+  contract-owned aggregate types, once fdu answers D22 (R3).
+- [ ] Pass the engine-facing classification profile to providers, once D9’s profile is
+  agreed (R9).
+
+Layer 6, bounds and paging:
+
+- [ ] Carry bounded entry facts on change batches and remove per-row revalidation first
+  (R19, R20), then measure page sizes.
+- [ ] Apply shared bounds and the batched lookup query (R5, D11).
+- [ ] Apply D6’s progress rule to directory pages and make selected trees
+  complete-or-limit (R5, D6, D7); both adopt designs fdu has recorded, so they need
+  fdu’s confirmation rather than new fdu work.
+- [ ] Apply D13’s paging rule and D20’s dirty-path rules, with the coordinator’s
+  per-session dirty ledger and the churn property test, only after fdu agrees (R5).
+
+Layer 7, package and host costs:
+
+- [ ] Delete the dead tree helpers and fix the remaining scope bypass (R24), as its own
+  pull request ahead of the package move so it carries no dead code.
+- [ ] Move the walker, watcher, and ignore builder under the Python provider package
+  (R25).
+- [ ] Feed the activity tracker incrementally and re-measure Python-motivated host
+  tuning per provider (R21, R22).
 - [ ] Re-measure the corrected Python provider as the “before” arm (R30).
 
-Slice 3, the thin fdu adapter (after fdu’s open-time group, F2 to F6, F19, and F24,
-releases):
+Every layer item that changes observable behavior or a wire field updates its parity
+row, the views-models-routes map, and `CHANGELOG.md` in the same change.
+
+The thin fdu adapter, after fdu’s open-time group (F1, F3, F5, F6, F19, F24, and F26)
+releases:
 
 - [ ] In one change, implement `providers/fdu_inventory.py` as described in the
-  research’s production adapter section, answering natively or failing typed per
-  unsupported kind, with the `fdu` factory entry, `metab --inventory-provider`, and the
-  `metabrowser[fdu]` extra and its supply-chain review, and route handling for an
-  unpinned `VersionUnavailableError` (D12, R10, R11, R14, R31).
-- [ ] Register fdu in the serving benchmark with wheel attestation (R17), and keep the
-  fallback composite as a maintained harness outside `src/` (R29).
+  research’s production adapter section, answering natively or with a per-projection
+  typed unsupported result, with the `fdu` factory entry, `metab --inventory-provider`
+  marked experimental in `CHANGELOG.md`, and the `metabrowser[fdu]` extra and its
+  supply-chain review (D12, R10, R11, R14).
+- [ ] Keep the fallback composite as a maintained harness outside `src/` (R29), and
+  register fdu in the serving benchmark with wheel attestation and the semantic-equality
+  precheck (R17).
 - [ ] Run the conformance registry, File Rollup packet, and route and SSE suites against
   both providers in a Linux CI job with the extra installed, reporting per query kind
-  whether fdu answered natively.
+  whether fdu answered natively against a checked-in expected-unsupported list that may
+  only shrink and fails CI on drift either way.
+  No fdu goldens are recorded until every kind is native.
 - [ ] Delete the spike adapters in `explorations/fdu-inventory-adapter/` and
   `explorations/fdu-provider-spike/` once the production adapter and maintained
   harnesses cover their measurements; keep their READMEs and evidence as the Checkpoint
   2A and 2026-11-17 records.
 
-Slice 4, native projections and cost:
+Native projections and cost:
 
-- [ ] As fdu releases F7 to F13, make each kind native in the adapter, pinned by the
-  same conformance cases.
-- [ ] Adopt F14 (row cost), F15 (prompt open), F16 (discovery commits), and F25
-  (wakeable poll) as they release, and decide whether D13’s re-reads need F22.
-- [ ] Land the host-cost refactors (R19 to R22) that the paired measurements show mask
-  engine differences.
+- [ ] As fdu releases the first-answers group (F10, F12, F14, F15) and then the rest of
+  the algebra (F7 to F9, F11, F13), make each kind native in the adapter, pinned by the
+  same conformance cases, and remove it from the expected-unsupported list.
+- [ ] Adopt the cost, observation, and test-support group (F4, F16 to F18, F21, F25,
+  F27) as it releases, and turn to retained versions (F22) only if D13’s re-reads
+  dominate under churn.
 
 #### Checkpoint 2D: Prove the Composed Product
 
@@ -510,9 +560,10 @@ Slice 4, native projections and cost:
   list.
 - [ ] Resolve every correctness, resource, interaction, recovery, packaging, and
   supported-platform regression, including the concurrency and memory budgets (D15,
-  D16). The adoption gate requires every query kind native, with F14 and F15 adopted.
-  Any default change is a separate reversible decision after these gates; this
-  implementation phase does not add an `auto` fallback.
+  D16). The adoption gate requires every query kind native, F14 and F15 adopted, and the
+  adoption-gate group resolved: the path grammar (F2, D10) and observation on remote or
+  unknown filesystems (F20 or F28, D21). Any default change is a separate reversible
+  decision after these gates; this implementation phase does not add an `auto` fallback.
 
 **Phase 2 exit:** both providers pass the same contract and product suites; the fdu
 adapter retains no mirror state; explicit fdu operation is reliable on supported
