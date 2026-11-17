@@ -3,10 +3,10 @@
 `apps/macos/scripts/test-release-logic.sh` runs what the release scripts decide on
 stand-ins for Apple's tools: the arguments codesign and notarytool get, the notary log
 reader, `notarize.sh` end to end, and the signing doctor's checks on generated
-certificates. It needs bash, jq, openssl, and shasum, and nothing from Xcode, so `make
-test` runs it here, and Linux CI with it; `make macos-test` runs it on a Mac too, with
-macOS's bash and LibreSSL. Without one of those tools the script stops and names it, and
-the test fails: a skip would drop the only Linux coverage of these scripts.
+certificates. It needs bash, jq, openssl, pgrep, and shasum, and nothing from Xcode, so
+`make test` runs it here, and Linux CI with it; `make macos-test` runs it on a Mac too,
+with macOS's bash and LibreSSL. Without one of those tools the script stops and names
+it, and the test fails: a skip would drop the only Linux coverage of these scripts.
 
 The pins below hold the copies `SUPPLY-CHAIN-SECURITY.md` makes of the scripts'
 values: the SHA-256 of the committed G2 intermediate, which

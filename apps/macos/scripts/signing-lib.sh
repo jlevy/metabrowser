@@ -198,7 +198,12 @@ doctor_keychain() {
       listed=1
     fi
   done <<<"$listing"
-  if ((listed)); then
+  if [[ -z "$restore" ]]; then
+    # A list this doctor did not read gives no keychains to keep, and a `-s` command
+    # without them would take the login keychain, which holds the G2 intermediate, off
+    # the list, so no command is printed.
+    doctor_fail "the user search list could not be read: security list-keychains -d user failed or listed nothing, so whether the release keychain is on it is unknown (O1)"
+  elif ((listed)); then
     doctor_ok "it is on the user search list"
   else
     # `security create-keychain` does not add it, and `-s` replaces the whole list, so the
@@ -407,7 +412,7 @@ doctor_intermediate() {
 # decides: the lookup uses notarytool's undocumented item name, so it never fails a
 # profile that works.
 doctor_notary() {
-  local keychain="$1" status="$2" for_release="$3" profile found output online=0
+  local keychain="$1" status="$2" for_release="$3" profile found output online=0 reason next
   local -a auth=()
   [[ "${ONLINE:-0}" != 1 ]] || online=1
   case "$(notary_credential_kind)" in
@@ -457,7 +462,15 @@ doctor_notary() {
 
   ((online)) || return 0
   if [[ "$(notary_credential_kind)" != api-key && "$(status_value unlocked <<<"$status")" != 1 ]]; then
-    doctor_fail "ONLINE=1 needs the release keychain unlocked, since notarytool reads the profile's key and this doctor never unlocks it; unlock it, run this again, and lock it"
+    # A preflight reaches this without ONLINE=1, when the lookup missed the profile.
+    if [[ "${ONLINE:-0}" == 1 ]]; then
+      reason="ONLINE=1 asks the notary service"
+      next="unlock it, run this again, and lock it"
+    else
+      reason="the keychain lookup missed the profile, so this preflight asks the notary service whether it works"
+      next="unlock it and run this again"
+    fi
+    doctor_fail "$reason, which needs the release keychain unlocked, since notarytool reads the profile's key and this doctor never unlocks it; $next"
     return
   fi
   if output="$(bounded "$notary_history_timeout_seconds" xcrun notarytool history "${auth[@]}" 2>&1)"; then

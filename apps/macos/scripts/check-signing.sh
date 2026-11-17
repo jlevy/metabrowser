@@ -13,7 +13,10 @@
 # SIGN_IDENTITY names, its expiry and issuer), a copy left in the login keychain, the
 # committed G2 intermediate (the reviewed file, chained to Apple Root CA, installed),
 # Xcode and notarytool, and the notary credentials. --for-release also requires the
-# keychain unlocked, which is the owner's go-ahead for a release, and SIGN_IDENTITY set.
+# keychain unlocked, which is the owner's go-ahead for a release, and SIGN_IDENTITY set,
+# and when the keychain lookup misses the notary profile it asks the notary service, as
+# ONLINE=1 does. Each `notarytool history` it runs is stopped after
+# notary_history_timeout_seconds (signing-lib.sh).
 #
 # Environment:
 #   SIGN_KEYCHAIN           the release keychain (default: release_keychain in common.sh)
@@ -21,7 +24,9 @@
 #   APPLE_KEYCHAIN_PROFILE  the notary profile in the release keychain (default
 #                           metabrowser-notary); or APPLE_API_KEY, APPLE_API_KEY_ID, and
 #                           APPLE_API_ISSUER, as scripts/notarize.sh takes them
-#   ONLINE                  1 runs `notarytool history`, which needs the keychain unlocked
+#   ONLINE                  1 runs `notarytool history`, which needs the keychain
+#                           unlocked; --for-release runs it too when the profile
+#                           lookup misses
 #
 # It exits 0 when nothing failed; warnings do not fail it. It never prints a secret.
 set -euo pipefail

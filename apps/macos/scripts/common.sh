@@ -262,9 +262,22 @@ epoch_of_date() {
   fi
 }
 
+# Stops the process "$1" and every process under it. Each is stopped before its
+# children are listed, so it starts no more, and killed after them. A child left running
+# would keep the caller waiting on a `$(…)` capture until it closed its output.
+stop_process_tree() {
+  local child
+  kill -STOP "$1" 2>/dev/null || return 0
+  for child in $(pgrep -P "$1" 2>/dev/null || true); do
+    stop_process_tree "$child"
+  done
+  kill -KILL "$1" 2>/dev/null || true
+}
+
 # Runs "$@" (after the first argument, a number of seconds) and returns its status, or
-# stops it and returns 124 once it has run that long: for a call that could wait on the
-# network, or on a prompt, forever. macOS has no timeout(1).
+# stops it and every process it started, and returns 124, once it has run that long: for
+# a call that could wait on the network, or on a prompt, forever. macOS has no
+# timeout(1).
 bounded() {
   local seconds="$1" pid tenths=0
   shift
@@ -272,7 +285,7 @@ bounded() {
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if ((tenths >= seconds * 10)); then
-      kill -KILL "$pid" 2>/dev/null || true
+      stop_process_tree "$pid"
       wait "$pid" 2>/dev/null || true
       echo "stopped after $seconds s: $1" >&2
       return 124

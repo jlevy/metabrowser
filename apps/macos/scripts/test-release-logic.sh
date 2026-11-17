@@ -2,9 +2,9 @@
 # Tests what the release scripts decide, on stand-ins for Apple's tools, so that it runs
 # on Linux as well as on a Mac: `make test` runs it through
 # tests/test_macos_release_scripts.py, and `make macos-test` through
-# scripts/test-scripts.sh. It needs bash, jq, openssl, and shasum, and none of Apple's
-# tools. What only a Mac can show, a signed build or a real keychain, is the runbook's
-# signing-session checks (README.md, Building a Release).
+# scripts/test-scripts.sh. It needs bash, jq, openssl, pgrep, and shasum, and none of
+# Apple's tools. What only a Mac can show, a signed build or a real keychain, is the
+# runbook's signing-session checks (README.md, Building a Release).
 #
 #   scripts/test-release-logic.sh
 #
@@ -34,7 +34,7 @@ source scripts/signing-lib.sh
 # shellcheck source=notary-lib.sh
 source scripts/notary-lib.sh
 
-for tool in jq openssl shasum; do
+for tool in jq openssl pgrep shasum; do
   command -v "$tool" >/dev/null || die "$tool is missing; these tests need it"
 done
 
@@ -424,6 +424,13 @@ test_login="$HOME/Library/Keychains/login.keychain-db"
 # Not $work, which the doctor names a local of its own.
 history_call="$work/history-call"
 : >"$test_login"
+# A notary service that does not answer: a script whose sleep is its child, as a tool
+# that forks would leave one, which keeps the doctor's capture of its output open until
+# the sleep is stopped too.
+stall="$work/stall"
+stall_seconds=30
+printf '#!/usr/bin/env bash\nsleep %s\necho "the stall was not stopped"\n' "$stall_seconds" >"$stall"
+chmod +x "$stall"
 
 # Each case sets these, and the stand-ins below read them.
 reset_case() {
@@ -444,8 +451,12 @@ security() {
   local keychain="${*: -1}" entry cert
   case "$1" in
     list-keychains)
-      printf '    "%s"\n' "$test_login"
-      ((case_listed == 0)) || printf '    "%s"\n' "$test_release"
+      case "$case_listed" in
+        failed) return 50 ;;
+        empty) ;;
+        0) printf '    "%s"\n' "$test_login" ;;
+        *) printf '    "%s"\n    "%s"\n' "$test_login" "$test_release" ;;
+      esac
       ;;
     login-keychain) printf '    "%s"\n' "$test_login" ;;
     find-identity)
@@ -486,7 +497,10 @@ xcrun() {
     "notarytool --version") echo 1.1.2 ;;
     "notarytool history")
       echo "history $*" >"$history_call"
-      [[ "$case_history" != hang ]] || command sleep 5
+      if [[ "$case_history" == hang ]]; then
+        "$stall"
+        return 1
+      fi
       return "$case_history"
       ;;
     *) return 99 ;;
@@ -609,6 +623,18 @@ reset_case
 case_listed=0
 doctor 0 1 1 "a release keychain off the search list fails, with the command that keeps the list" \
   "FAIL: it is not on the user search list (O1: security list-keychains -d user -s \"$test_login\" \"$test_release\")"
+# `-s` replaces the whole list, so with no list read, a printed command would take the
+# login keychain off it. The intermediate is looked for on the same list, so it is not
+# found either.
+for unread in failed empty; do
+  reset_case
+  case_listed="$unread"
+  doctor 0 1 2 "a search list read as $unread fails, and prints no command that would replace it" \
+    "FAIL: the user search list could not be read" "FAIL: the Developer ID - G2 intermediate is not installed"
+  if said "list-keychains -d user -s"; then
+    fail "doctor, a search list read as $unread: it printed a -s command: $(cat "$work/out")"
+  fi
+done
 reset_case
 case_status="${case_status/profile=found/profile=absent}"
 doctor 0 0 0 "a profile item the lookup misses warns, since its name is undocumented, and names the check" \
@@ -638,10 +664,19 @@ reset_case
 case_status="${case_status/unlocked=0/unlocked=1}"
 export ONLINE=1
 case_history=hang
+saved_history_timeout="$notary_history_timeout_seconds"
 notary_history_timeout_seconds=1
+started="$SECONDS"
 doctor 0 1 1 "a notary service that does not answer is a failure after notary_history_timeout_seconds" \
   "FAIL: notarytool history failed (O2, O3)" "stopped after 1 s"
-notary_history_timeout_seconds=60
+# The rest of the doctor takes a second or two; a wait for the stall's sleep, its child,
+# would take all of stall_seconds.
+if ((SECONDS - started < stall_seconds / 2)); then
+  pass "bounded stops the stalled call and its child, in $((SECONDS - started)) s"
+else
+  fail "the stalled call took $((SECONDS - started)) s, past its bound of 1 s: bounded left its child running"
+fi
+notary_history_timeout_seconds="$saved_history_timeout"
 
 # The API key, as notarize.sh takes it, and the same choice when both kinds are set.
 api_key="$work/AuthKey_DOCTOR.p8"
@@ -681,7 +716,17 @@ doctor 0 1 1 "an empty release keychain fails" "FAIL: the release keychain holds
 
 reset_case
 export ONLINE=1
-doctor 0 1 1 "ONLINE=1 never unlocks the keychain" "FAIL: ONLINE=1 needs the release keychain unlocked"
+doctor 0 1 1 "ONLINE=1 never unlocks the keychain" \
+  "FAIL: ONLINE=1 asks the notary service, which needs the release keychain unlocked"
+reset_case
+case_status="${case_status/profile=found/profile=absent}"
+export SIGN_IDENTITY="$identity_name"
+doctor 1 1 2 "a locked preflight that would ask the notary service says why, without naming ONLINE=1" \
+  "FAIL: it is locked; unlocking it is the go-ahead for this release" \
+  "FAIL: the keychain lookup missed the profile, so this preflight asks the notary service whether it works, which needs the release keychain unlocked"
+if said "ONLINE=1"; then
+  fail "a locked preflight named ONLINE=1, which it was not given: $(cat "$work/out")"
+fi
 reset_case
 export ONLINE=1
 case_status="${case_status/unlocked=0/unlocked=1}"
