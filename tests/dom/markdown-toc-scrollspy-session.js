@@ -10,8 +10,8 @@ function dataUrl(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 }
 
-function installedKpressTocPath() {
-  const relative = path.join("site-packages", "kpress", "format", "static", "js", "toc.js");
+function installedKpressModulePath(name) {
+  const relative = path.join("site-packages", "kpress", "format", "static", "js", name);
   const candidates = [path.join(repoRoot, ".venv", "Lib", relative)];
   const unixLib = path.join(repoRoot, ".venv", "lib");
   if (fs.existsSync(unixLib)) {
@@ -23,7 +23,7 @@ function installedKpressTocPath() {
   }
   const found = candidates.find((candidate) => fs.existsSync(candidate));
   if (!found) {
-    throw new Error("installed KPress toc.js not found; run make install first");
+    throw new Error(`installed KPress ${name} not found; run make install first`);
   }
   return found;
 }
@@ -31,19 +31,12 @@ function installedKpressTocPath() {
 async function loadProductionModules() {
   const overlayUrl = dataUrl("export function toggleBackdrop(){}");
   const runtimeUrl = dataUrl("export const behaviors={register(){}};");
-  // These follow KPress's viewport.js for a pane that is its own scroll container: its
-  // bounds are the pane's rect, and with no ResizeObserver in Node it hears only window
-  // resizes, which the disposal counts below cover.
-  const viewportUrl = dataUrl(
-    "export function resolveKpressViewport(){return globalThis.__tocViewport;}" +
-      "export function viewportScrollContext(){return globalThis.__tocViewportContext;}" +
-      "export function viewportBounds(viewport){return viewport.getBoundingClientRect();}" +
-      "export function addViewportResizeListener(viewport,callback){" +
-      'window.addEventListener("resize",callback);' +
-      'return()=>window.removeEventListener("resize",callback);}',
-  );
+  // KPress's own viewport helpers, which import nothing: they find the pane marked
+  // `[data-kpress-viewport]`, register its scroll listener, read its bounds, and hear its
+  // resizes through a ResizeObserver and the window's.
+  const viewportUrl = dataUrl(fs.readFileSync(installedKpressModulePath("viewport.js"), "utf8"));
   const tocSource = fs
-    .readFileSync(installedKpressTocPath(), "utf8")
+    .readFileSync(installedKpressModulePath("toc.js"), "utf8")
     .replace('"./overlay.js"', JSON.stringify(overlayUrl))
     .replace('"./runtime.js"', JSON.stringify(runtimeUrl))
     .replace('"./viewport.js"', JSON.stringify(viewportUrl));
@@ -120,8 +113,10 @@ class ClassListShim {
 class ElementShim extends EventTargetShim {
   constructor(tagName, attributes = {}) {
     super();
+    this.nodeType = 1;
     this.tagName = tagName.toUpperCase();
     this.attributes = new Map(Object.entries(attributes));
+    this.style = {};
     this.classList = new ClassListShim();
     this.className = attributes.class || "";
     this.parentElement = null;
@@ -134,7 +129,22 @@ class ElementShim extends EventTargetShim {
   }
 
   closest(selector) {
-    return this.closestMatches?.get(selector) || null;
+    const mapped = this.closestMatches?.get(selector);
+    if (mapped) {
+      return mapped;
+    }
+    for (let element = this; element; element = element.parentElement) {
+      if (element.matches(selector)) {
+        return element;
+      }
+    }
+    return null;
+  }
+
+  // Only a bare attribute selector, such as KPress's `[data-kpress-viewport]`.
+  matches(selector) {
+    const attribute = /^\[([\w-]+)\]$/.exec(selector);
+    return attribute !== null && this.hasAttribute(attribute[1]);
   }
 
   contains(candidate) {
@@ -191,9 +201,17 @@ function plainClick(target) {
   const { enhanceRenderedLinks } = linkEnhancer;
   const { initKpressToc } = kpressToc;
   const { mountRenderedMarkdown } = rendered;
-  const viewport = new ElementShim("main");
+  // The preview pane, marked as KPress's viewport and its own scroll container.
+  const viewport = new ElementShim("main", { "data-kpress-viewport": "" });
   viewport.clientHeight = 800;
-  viewport.getBoundingClientRect = () => ({ height: 800, top: 100 });
+  viewport.getBoundingClientRect = () => ({
+    bottom: 100 + viewport.clientHeight,
+    height: viewport.clientHeight,
+    left: 0,
+    right: 1_200,
+    top: 100,
+    width: 1_200,
+  });
   const windowTarget = new EventTargetShim();
   windowTarget.innerHeight = 800;
   let headingGeometryReads = 0;
@@ -260,6 +278,7 @@ function plainClick(target) {
   }
   toc.parentElement = scope;
   scope.parentElement = container;
+  container.parentElement = viewport;
 
   const documentTarget = new EventTargetShim();
   documentTarget.documentElement = { clientHeight: 800, clientWidth: 1_200 };
@@ -288,20 +307,29 @@ function plainClick(target) {
       geometryReadsPerUpdate.push(headingGeometryReads - readsBefore);
     }
   };
-  const viewportContext = {
-    el: viewport,
-    lock() {},
-    observerRoot: () => viewport,
-    offScroll: (listener) => viewport.removeEventListener("scroll", listener),
-    onScroll: (listener) => viewport.addEventListener("scroll", listener, { passive: true }),
-    scrollToTop() {
-      viewport.scrollTop = 0;
-    },
-    scrollTop: () => viewport.scrollTop,
-    unlock() {},
+  // What KPress's addViewportResizeListener observes the pane with: each observer, what it
+  // observes, and its callback, which a pane resize calls.
+  const resizeObservers = [];
+  global.ResizeObserver = class {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = new Set();
+      resizeObservers.push(this);
+    }
+
+    observe(target) {
+      this.targets.add(target);
+    }
+
+    unobserve(target) {
+      this.targets.delete(target);
+    }
+
+    disconnect() {
+      this.targets.clear();
+    }
   };
-  global.__tocViewport = viewport;
-  global.__tocViewportContext = viewportContext;
+  const paneObservers = () => resizeObservers.filter((observer) => observer.targets.has(viewport));
   global.window = windowTarget;
   global.requestAnimationFrame = schedule;
   global.cancelAnimationFrame = cancel;
@@ -406,7 +434,11 @@ function plainClick(target) {
   embeddedContainer.dispatch("click", embeddedNewTabClick);
   embeddedHandle.dispose();
 
-  const passiveScrollListener = viewport.listenerOptions("scroll")[0]?.passive === true;
+  // KPress's viewportScrollContext registers the pane's scroll listeners.
+  const passiveScrollListener =
+    viewport.listenerCount("scroll") > 0 &&
+    viewport.listenerOptions("scroll").every((options) => options?.passive === true);
+  const paneResizeObservers = paneObservers().length;
   flush();
   const catalogSnapshotsAfterFirstFlush = catalogSnapshots;
 
@@ -443,6 +475,21 @@ function plainClick(target) {
   flush();
   record("testing section after scroll burst");
 
+  // A pane resize with no scroll moves the reading line, and KPress's ResizeObserver on the
+  // pane updates the active section: the design heading, 150px under the pane's top, is
+  // above a quarter of 800px and below a quarter of 400px.
+  viewport.scrollTop = 450;
+  viewport.dispatch("scroll");
+  flush();
+  record("design heading above the reading line");
+  viewport.clientHeight = 400;
+  for (const observer of paneObservers()) {
+    observer.callback([], observer);
+  }
+  flush();
+  record("pane resized to half height");
+  viewport.clientHeight = 800;
+
   viewport.scrollTop = 600;
   viewport.dispatch("scroll");
   mountHandle.dispose();
@@ -454,6 +501,7 @@ function plainClick(target) {
     tocExpandAll: expandAllButton.totalListenerCount(),
     tocLinks: links.reduce((total, link) => total + link.totalListenerCount(), 0),
     viewport: viewport.listenerCount("scroll"),
+    viewportResizeObservers: paneObservers().length,
     window: windowTarget.totalListenerCount(),
   };
   const tocBindingDisposed = toc.getAttribute("data-kpress-toc-bound") === null;
@@ -478,9 +526,11 @@ function plainClick(target) {
       enhancedHref,
     },
     maxHeadingGeometryReadsPerUpdate: Math.max(...geometryReadsPerUpdate),
+    paneResizeObservers,
     passiveScrollListener,
     productionModules: {
       kpressToc: true,
+      kpressViewport: true,
       renderedMarkdownMount: true,
     },
     productionOrder: {
@@ -496,6 +546,8 @@ function plainClick(target) {
     "implementation-plan",
     "implementation-plan",
     "testing",
+    "design",
+    "overview",
   ];
   const actualActive = steps.map((step) => step.active);
   const expectedTarget = { path: sourcePath, fragment: "implementation-plan" };
@@ -518,6 +570,7 @@ function plainClick(target) {
     catalogSnapshotsAfterFirstFlush !== 0 ||
     result.maxHeadingGeometryReadsPerUpdate > Math.ceil(Math.log2(headings.length)) + 1 ||
     !passiveScrollListener ||
+    paneResizeObservers !== 1 ||
     tocExpansion.beforeExpand.collapsedRows !== 65 ||
     tocExpansion.afterExpand.collapsedRows !== 0 ||
     tocExpansion.afterExpand.expanded !== "true" ||
