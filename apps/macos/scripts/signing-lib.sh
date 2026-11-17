@@ -31,6 +31,10 @@ g1_intermediate_expiry=2027-02-01
 # The notary profile the owner steps store, when APPLE_KEYCHAIN_PROFILE names none.
 default_notary_profile=metabrowser-notary
 
+# How long `notarytool history` may take before the doctor gives up on it: a stalled
+# network would otherwise hang ONLINE=1 and a release's preflight.
+notary_history_timeout_seconds=60
+
 # Where macOS keeps its root certificates and the system-wide ones.
 system_roots=/System/Library/Keychains/SystemRootCertificates.keychain
 system_keychain=/Library/Keychains/System.keychain
@@ -180,21 +184,26 @@ doctor_tools() {
 # and whether it is unlocked, which only a release may need.
 doctor_keychain() {
   local keychain="$1" status="$2" for_release="$3" entry listed=0 unlocked settings
-  local on_sleep uses_interval interval
+  local on_sleep uses_interval interval listing="" restore=""
   if [[ "$(status_value exists <<<"$status")" != 1 ]]; then
     doctor_fail "the release keychain does not exist (O1: create it)"
     return
   fi
   doctor_ok "the release keychain exists"
+  listing="$(security list-keychains -d user 2>/dev/null | parse_keychain_list)" || listing=""
   while IFS= read -r entry; do
-    if [[ -n "$entry" && "$entry" -ef "$keychain" ]]; then
+    [[ -n "$entry" ]] || continue
+    restore="$restore \"$entry\""
+    if [[ "$entry" -ef "$keychain" ]]; then
       listed=1
     fi
-  done <<<"$(security list-keychains -d user 2>/dev/null | parse_keychain_list)"
+  done <<<"$listing"
   if ((listed)); then
     doctor_ok "it is on the user search list"
   else
-    doctor_fail "it is not on the user search list (O1: keep it there)"
+    # `security create-keychain` does not add it, and `-s` replaces the whole list, so the
+    # command keeps every keychain on it now.
+    doctor_fail "it is not on the user search list (O1: security list-keychains -d user -s$restore \"$keychain\")"
   fi
 
   unlocked="$(status_value unlocked <<<"$status")"
@@ -221,14 +230,17 @@ doctor_keychain() {
     doctor_warn "its lock settings could not be read ($settings); unlock it, run this again, and lock it"
     return
   fi
+  # The idle lock is the interval: after `set-keychain-settings -l -u -t 600`, macOS 26
+  # reports use_lock_interval=0 with lock_interval=600, so that flag decides nothing and is
+  # only reported. With no -t, the interval is INT_MAX, "no timeout", which fails here.
   on_sleep="$(status_value lock_on_sleep <<<"$status")"
   uses_interval="$(status_value use_lock_interval <<<"$status")"
   interval="$(status_value lock_interval <<<"$status")"
-  if [[ "$on_sleep" == 1 && "$uses_interval" == 1 && "$interval" =~ ^[0-9]+$ ]] &&
-    ((interval <= release_keychain_lock_seconds)); then
+  if [[ "$on_sleep" == 1 && "$interval" =~ ^[0-9]+$ ]] &&
+    ((interval > 0 && interval <= release_keychain_lock_seconds)); then
     doctor_ok "it locks on sleep and after $interval s idle"
   else
-    doctor_fail "it must lock on sleep and after at most $release_keychain_lock_seconds s idle, and it is set to lock on sleep: ${on_sleep:-?}, after an idle time: ${uses_interval:-?}, of ${interval:-?} s (O1: security set-keychain-settings -l -u -t $release_keychain_lock_seconds \"$keychain\")"
+    doctor_fail "it must lock on sleep and after at most $release_keychain_lock_seconds s idle, and it is set to lock on sleep: ${on_sleep:-?}, after ${interval:-?} s idle (use-lock-interval: ${uses_interval:-?}) (O1: security set-keychain-settings -l -u -t $release_keychain_lock_seconds \"$keychain\")"
   fi
 }
 
@@ -388,56 +400,68 @@ doctor_intermediate() {
   fi
 }
 
-# The notary credentials: the profile in the release keychain, or the API key variables,
-# and with ONLINE=1 an answer from the notary service.
+# The notary credentials, chosen as scripts/notarize.sh chooses them
+# (notary_credential_kind in notary-lib.sh): a profile in the release keychain, or the
+# API key variables. With ONLINE=1, or in a release's preflight when the keychain lookup
+# did not find the profile, notarytool history asks the notary service, and its answer
+# decides: the lookup uses notarytool's undocumented item name, so it never fails a
+# profile that works.
 doctor_notary() {
-  local keychain="$1" status="$2" profile found output
+  local keychain="$1" status="$2" for_release="$3" profile found output online=0
   local -a auth=()
-  if [[ -n "${APPLE_API_KEY:-}" ]]; then
-    if [[ ! -f "$APPLE_API_KEY" ]]; then
-      doctor_fail "APPLE_API_KEY names no file; it is the path of the App Store Connect API key (.p8)"
-      return
-    fi
-    if [[ -n "$(find "$APPLE_API_KEY" -prune \( -perm -g+r -o -perm -o+r \) 2>/dev/null)" ]]; then
-      doctor_warn "$APPLE_API_KEY can be read by other accounts; chmod 600 it"
-    fi
-    if [[ -z "${APPLE_API_KEY_ID:-}" ]]; then
-      doctor_fail "APPLE_API_KEY_ID is not set; APPLE_API_KEY needs it"
-      return
-    fi
-    auth=(--key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID")
-    if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
-      auth+=(--issuer "$APPLE_API_ISSUER")
-    else
-      doctor_warn "APPLE_API_ISSUER is not set; a team key needs its issuer, and only an individual key has none"
-    fi
-    doctor_ok "the notary credentials are an API key (APPLE_API_KEY, APPLE_API_KEY_ID)"
-  else
-    profile="$(notary_profile_name)"
-    if [[ "$(status_value exists <<<"$status")" != 1 ]]; then
-      doctor_fail "no notary profile $profile: it belongs in the release keychain, which does not exist (O3)"
-      return
-    fi
-    found="$(status_value profile <<<"$status")"
-    case "$found" in
-      found) doctor_ok "the release keychain holds the notary profile $profile" ;;
-      absent)
-        doctor_fail "the release keychain holds no notary profile $profile (O3: xcrun notarytool store-credentials $profile --keychain \"$keychain\")"
-        ;;
-      *)
-        doctor_warn "whether the release keychain holds the notary profile $profile could not be read (${found:-no answer}); unlock it and run this again, or run it with ONLINE=1"
-        ;;
-    esac
-    auth=(--keychain-profile "$profile" --keychain "$keychain")
-  fi
+  [[ "${ONLINE:-0}" != 1 ]] || online=1
+  case "$(notary_credential_kind)" in
+    api-key)
+      if [[ ! -f "$APPLE_API_KEY" ]]; then
+        doctor_fail "APPLE_API_KEY names no file; it is the path of the App Store Connect API key (.p8)"
+        return
+      fi
+      if [[ -n "$(find "$APPLE_API_KEY" -prune \( -perm -g+r -o -perm -o+r \) 2>/dev/null)" ]]; then
+        doctor_warn "$APPLE_API_KEY can be read by other accounts; chmod 600 it"
+      fi
+      if [[ -z "${APPLE_API_KEY_ID:-}" ]]; then
+        doctor_fail "APPLE_API_KEY_ID is not set; APPLE_API_KEY needs it"
+        return
+      fi
+      auth=(--key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID")
+      if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
+        auth+=(--issuer "$APPLE_API_ISSUER")
+      else
+        doctor_warn "APPLE_API_ISSUER is not set; a team key needs its issuer, and only an individual key has none"
+      fi
+      doctor_ok "the notary credentials are an API key (APPLE_API_KEY, APPLE_API_KEY_ID)"
+      ;;
+    *)
+      profile="$(notary_profile_name)"
+      if [[ "$(status_value exists <<<"$status")" != 1 ]]; then
+        doctor_fail "no notary profile $profile: it belongs in the release keychain, which does not exist (O3)"
+        return
+      fi
+      auth=(--keychain-profile "$profile" --keychain "$keychain")
+      found="$(status_value profile <<<"$status")"
+      case "$found" in
+        found) doctor_ok "the release keychain holds the notary profile $profile" ;;
+        absent)
+          if ((online == 0 && for_release)); then
+            online=1
+          elif ((online == 0)); then
+            doctor_warn "the release keychain holds no item named as notarytool 1.1 names the profile $profile, a name Apple does not document; with it unlocked, ONLINE=1 says whether the profile works (O3: xcrun notarytool store-credentials $profile --keychain \"$keychain\")"
+          fi
+          ;;
+        *)
+          doctor_warn "whether the release keychain holds the notary profile $profile could not be read (${found:-no answer}); unlock it and run this again, or run it with ONLINE=1"
+          ;;
+      esac
+      ;;
+  esac
 
-  [[ "${ONLINE:-0}" == 1 ]] || return 0
-  if [[ -z "${APPLE_API_KEY:-}" && "$(status_value unlocked <<<"$status")" != 1 ]]; then
+  ((online)) || return 0
+  if [[ "$(notary_credential_kind)" != api-key && "$(status_value unlocked <<<"$status")" != 1 ]]; then
     doctor_fail "ONLINE=1 needs the release keychain unlocked, since notarytool reads the profile's key and this doctor never unlocks it; unlock it, run this again, and lock it"
     return
   fi
-  if output="$(xcrun notarytool history "${auth[@]}" 2>&1)"; then
-    doctor_ok "the notary service answered notarytool history"
+  if output="$(bounded "$notary_history_timeout_seconds" xcrun notarytool history "${auth[@]}" 2>&1)"; then
+    doctor_ok "the notary service answered notarytool history${profile:+ with the profile $profile}"
   else
     doctor_fail "notarytool history failed (O2, O3): $(tail -n 3 <<<"$output" | tr '\n' ' ')"
   fi
@@ -463,7 +487,7 @@ run_signing_doctor() {
   doctor_identities "$keychain" "$status" "$work" "$for_release"
   doctor_login_keychain "$keychain"
   doctor_intermediate "$work"
-  doctor_notary "$keychain" "$status"
+  doctor_notary "$keychain" "$status" "$for_release"
   echo "Signing doctor: $doctor_failures problem(s), $doctor_warnings warning(s)."
   ((doctor_failures == 0))
 }

@@ -157,10 +157,10 @@ release_keychain() {
 }
 
 # Signs a bundle or disk image: ad hoc ("-") without a timestamp, or with the given
-# identity, found only in the release keychain, and a secure timestamp. `codesign
-# --keychain` looks for the identity in that keychain alone and still builds the
-# certificate chain from the user's search list (man codesign). Extra arguments go to
-# codesign.
+# identity, of any kind, found only in the release keychain, and a secure timestamp.
+# `codesign --keychain` looks for the identity in that keychain alone and still builds
+# the certificate chain from the user's search list (man codesign). Extra arguments go
+# to codesign.
 sign() {
   local identity="$1" target="$2"
   shift 2
@@ -256,6 +256,27 @@ epoch_of_date() {
   else
     date -u -d "$1" +%s
   fi
+}
+
+# Runs "$@" (after the first argument, a number of seconds) and returns its status, or
+# stops it and returns 124 once it has run that long: for a call that could wait on the
+# network, or on a prompt, forever. macOS has no timeout(1).
+bounded() {
+  local seconds="$1" pid tenths=0
+  shift
+  "$@" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if ((tenths >= seconds * 10)); then
+      kill -KILL "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      echo "stopped after $seconds s: $1" >&2
+      return 124
+    fi
+    command sleep 0.1
+    tenths=$((tenths + 1))
+  done
+  wait "$pid"
 }
 
 # Detaches a mounted image, retrying while Spotlight or Finder still holds it.

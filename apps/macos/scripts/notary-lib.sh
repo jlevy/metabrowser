@@ -13,15 +13,30 @@
 notary_log_tries=5
 notary_log_retry_seconds=15
 
+# Which credentials notarytool gets, the one choice notarize.sh and the signing doctor
+# share: "profile" when APPLE_KEYCHAIN_PROFILE is set, whatever else is; "api-key" when
+# only APPLE_API_KEY is; "none" otherwise.
+notary_credential_kind() {
+  if [[ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]]; then
+    echo profile
+  elif [[ -n "${APPLE_API_KEY:-}" ]]; then
+    echo api-key
+  else
+    echo none
+  fi
+}
+
 # Sets the array notary_auth to notarytool's credential arguments: a keychain profile,
 # read from the release keychain (release_keychain in common.sh), or an App Store
 # Connect API key. Returns 1 when there are no credentials, and stops when they are
 # incomplete.
 notary_credentials() {
   notary_auth=()
-  if [[ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]]; then
+  local kind
+  kind="$(notary_credential_kind)"
+  if [[ "$kind" == profile ]]; then
     notary_auth=(--keychain-profile "$APPLE_KEYCHAIN_PROFILE" --keychain "$(release_keychain)")
-  elif [[ -n "${APPLE_API_KEY:-}" ]]; then
+  elif [[ "$kind" == api-key ]]; then
     [[ -f "$APPLE_API_KEY" ]] || die "APPLE_API_KEY must be the path of an App Store Connect API key (.p8)"
     [[ -n "${APPLE_API_KEY_ID:-}" ]] || die "APPLE_API_KEY_ID is required with APPLE_API_KEY"
     notary_auth=(--key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID")

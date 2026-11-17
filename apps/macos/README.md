@@ -47,7 +47,9 @@ the variant’s identity and the version, copies the variant’s icon, and signs
 It signs ad hoc by default, which runs on this Mac only.
 Set `SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"` to sign with the hardened
 runtime and a secure timestamp.
-Its header documents `BUILD`, `ARCHES`, and `ICON`.
+Any identity it names, of whatever kind, is looked for only in the release keychain,
+`SIGN_KEYCHAIN` (by default `release_keychain` in `scripts/common.sh`). Its header
+documents `BUILD`, `ARCHES`, `ICON`, and `SIGN_KEYCHAIN`.
 
 ### Versions
 

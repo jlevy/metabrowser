@@ -30,6 +30,8 @@ cd "$(dirname "$0")/.."
 source scripts/common.sh
 # shellcheck source=signing-lib.sh
 source scripts/signing-lib.sh
+# shellcheck source=notary-lib.sh
+source scripts/notary-lib.sh
 
 for_release=0
 case "${1:-}" in

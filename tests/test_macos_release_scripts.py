@@ -5,16 +5,19 @@ stand-ins for Apple's tools: the arguments codesign and notarytool get, the nota
 reader, `notarize.sh` end to end, and the signing doctor's checks on generated
 certificates. It needs bash, jq, openssl, and shasum, and nothing from Xcode, so `make
 test` runs it here, and Linux CI with it; `make macos-test` runs it on a Mac too, with
-macOS's bash and LibreSSL.
+macOS's bash and LibreSSL. Without one of those tools it skips locally, and fails in CI,
+where a skip would drop the only Linux coverage of these scripts.
 
-The pin below holds the one copy a document makes of those scripts' values: the
-SHA-256 of the committed G2 intermediate, which `SUPPLY-CHAIN-SECURITY.md` records as
-reviewed and `apps/macos/scripts/signing-lib.sh` checks.
+The pins below hold the copies `SUPPLY-CHAIN-SECURITY.md` makes of the scripts'
+values: the SHA-256 of the committed G2 intermediate, which
+`apps/macos/scripts/signing-lib.sh` checks, and of the Apple Root CA fixture, which the
+logic tests check before they verify the intermediate's chain against it.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import subprocess
@@ -26,23 +29,27 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 APP = REPO_ROOT / "apps/macos"
 LOGIC_TESTS = APP / "scripts/test-release-logic.sh"
 SIGNING_LIB = APP / "scripts/signing-lib.sh"
+ROOT_FIXTURE = APP / "scripts/fixtures/AppleIncRootCertificate.cer"
 SUPPLY_CHAIN = REPO_ROOT / "SUPPLY-CHAIN-SECURITY.md"
 
-# The script makes a handful of RSA keys and runs notarize.sh six times; it takes a few
+# The script makes a handful of RSA keys and runs notarize.sh about ten times; it takes
 # seconds, so this bounds a hang, not the work.
 LOGIC_TIMEOUT_S = 300
 
 
-def _shell_value(name: str) -> str:
-    match = re.search(rf"^{name}=(\S+)$", SIGNING_LIB.read_text(), re.MULTILINE)
-    assert match, f"{SIGNING_LIB.relative_to(REPO_ROOT)} no longer sets {name}"
+def _shell_value(script: Path, name: str) -> str:
+    match = re.search(rf"^{name}=(\S+)$", script.read_text(), re.MULTILINE)
+    assert match, f"{script.relative_to(REPO_ROOT)} no longer sets {name}"
     return match.group(1)
 
 
 def test_release_logic_runs_without_apples_tools() -> None:
     missing = [tool for tool in ("bash", "jq", "openssl", "shasum") if shutil.which(tool) is None]
     if missing:
-        pytest.skip(f"the release-logic checks need {', '.join(missing)} on PATH")
+        message = f"the release-logic checks need {', '.join(missing)} on PATH"
+        if os.environ.get("CI"):
+            pytest.fail(message)
+        pytest.skip(message)
     result = subprocess.run(
         ["bash", str(LOGIC_TESTS)],
         capture_output=True,
@@ -54,10 +61,21 @@ def test_release_logic_runs_without_apples_tools() -> None:
     assert "Release-logic checks passed" in result.stdout
 
 
-def test_the_committed_intermediate_is_the_reviewed_one() -> None:
-    reviewed = _shell_value("g2_intermediate_sha256")
-    certificate = APP / _shell_value("g2_intermediate")
-    assert hashlib.sha256(certificate.read_bytes()).hexdigest() == reviewed
+@pytest.mark.parametrize(
+    ("script", "name", "file_name", "certificate"),
+    [
+        (SIGNING_LIB, "g2_intermediate_sha256", "g2_intermediate", None),
+        (LOGIC_TESTS, "apple_root_ca_sha256", None, ROOT_FIXTURE),
+    ],
+    ids=["g2-intermediate", "apple-root-ca"],
+)
+def test_the_committed_certificates_are_the_reviewed_ones(
+    script: Path, name: str, file_name: str | None, certificate: Path | None
+) -> None:
+    reviewed = _shell_value(script, name)
+    path = APP / _shell_value(script, file_name) if file_name else certificate
+    assert path is not None
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == reviewed
     assert f"`{reviewed}`" in SUPPLY_CHAIN.read_text(), (
-        "SUPPLY-CHAIN-SECURITY.md must record the SHA-256 that signing-lib.sh checks"
+        f"SUPPLY-CHAIN-SECURITY.md must record the SHA-256 that {script.name} checks"
     )

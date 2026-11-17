@@ -236,8 +236,10 @@ is not valid.
 - **Pin.** `g2_intermediate_sha256` in `apps/macos/scripts/signing-lib.sh` holds the
   SHA-256 above. The doctor refuses a file that does not match it, and an installed
   certificate with this subject and other contents.
-  `tests/test_macos_release_scripts.py` holds this table to the pin and the pin to the
-  file.
+  `apple_root_ca_sha256` in `apps/macos/scripts/test-release-logic.sh` holds the root’s,
+  and the test checks the fixture against it before the chain.
+  `tests/test_macos_release_scripts.py` holds both values here to their pins, and each
+  pin to its file.
 - **Reach.** It is a public certificate and grants nothing by itself: installing it lets
   macOS build the chain of an identity Apple already issued.
   Replacing it is a new review here, with the pin changed in the same commit.

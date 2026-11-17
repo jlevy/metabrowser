@@ -338,66 +338,93 @@ else
 fi
 
 # ── The keychain reader and the signing doctor, on a real keychain ──
-# Only on a CI runner, which is discarded after the job: this creates a keychain, which
-# security adds to the search list, and deletes it. A keychain prompt would hang rather
-# than fail, so each run is stopped after 120 s, and a stop is a failure.
-bounded() {
-  local pid tenths=0
-  "$@" &
-  pid=$!
-  while kill -0 "$pid" 2>/dev/null; do
-    if ((tenths >= 1200)); then
-      kill -KILL "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
-      echo "stopped after 120 s: $*" >&2
-      return 124
-    fi
-    sleep 0.1
-    tenths=$((tenths + 1))
-  done
-  wait "$pid"
+# Only on a CI runner, which is discarded after the job: this creates a keychain, puts
+# it on the search list, changes its settings, and deletes it, restoring the list. A
+# keychain prompt would hang rather than fail, so each run is bounded (common.sh), and a
+# stop is a failure. Each check prints what macOS reported, so a run records it.
+ci_bound=120
+# Whether the user search list holds the keychain "$1", as security prints the list.
+listed() {
+  security list-keychains -d user | parse_keychain_list | grep -qxF -- "$1"
+}
+# Runs the signing doctor on the keychain into "$1", and sets doctor_status.
+doctor_on() {
+  set +e
+  SIGN_KEYCHAIN="$keychain" bounded "$ci_bound" scripts/check-signing.sh >"$1" 2>&1
+  doctor_status=$?
+  set -e
 }
 if [[ "${CI:-}" == true && -n "${RUNNER_TEMP:-}" ]]; then
+  # shellcheck source=signing-lib.sh
+  source scripts/signing-lib.sh
   keychain="$RUNNER_TEMP/signing-doctor-test.keychain-db"
   # A throwaway password for a throwaway keychain, deleted below; it guards nothing.
   password="$(openssl rand -hex 16)"
+  search_list="$(security list-keychains -d user | parse_keychain_list)"
   quietly swiftc -suppress-warnings -O scripts/keychain-status.swift -o "$work/keychain-status"
   quietly security create-keychain -p "$password" "$keychain"
+  if listed "$keychain"; then created_listed=1; else created_listed=0; fi
+  echo "note: after security create-keychain, the user search list is: $(security list-keychains -d user | parse_keychain_list | tr '\n' ' ')"
   quietly security set-keychain-settings -l -u -t 600 "$keychain"
   quietly security lock-keychain "$keychain"
-  if locked="$(bounded "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" &&
+  if locked="$(bounded "$ci_bound" "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" &&
     grep -qx exists=1 <<<"$locked" && grep -qx unlocked=0 <<<"$locked"; then
-    pass "the keychain reader sees a locked keychain as locked, without a prompt: $(grep -E '^(settings|profile|lock_)' <<<"$locked" | tr '\n' ' ')"
+    pass "the keychain reader sees a locked keychain as locked, without a prompt: $(grep -E '^(settings|profile|lock_|use_)' <<<"$locked" | tr '\n' ' ')"
   else
     fail "the keychain reader on a locked keychain: $locked"
   fi
-  set +e
-  SIGN_KEYCHAIN="$keychain" bounded scripts/check-signing.sh >"$work/doctor-locked" 2>&1
-  doctor_status=$?
-  set -e
-  if ((doctor_status == 1)) && grep -q "holds no Developer ID Application identity" "$work/doctor-locked"; then
-    pass "the signing doctor reads a locked keychain without a prompt, and finds no identity in it"
+  # The doctor's search-list check against the list itself, before anything adds it.
+  doctor_on "$work/doctor-locked"
+  if ((created_listed)); then expected_line="ok: it is on the user search list"; else expected_line="FAIL: it is not on the user search list"; fi
+  if ((doctor_status == 1)) && grep -q "holds no Developer ID Application identity" "$work/doctor-locked" &&
+    grep -qF "$expected_line" "$work/doctor-locked"; then
+    pass "the signing doctor reads a locked keychain without a prompt, finds no identity, and agrees with security that create-keychain left it $( ((created_listed)) && echo on || echo off) the search list"
   else
-    fail "the signing doctor on a locked keychain exited $doctor_status: $(cat "$work/doctor-locked")"
+    fail "the signing doctor on a locked keychain exited $doctor_status (create-keychain left it listed: $created_listed): $(cat "$work/doctor-locked")"
+  fi
+  if ((created_listed == 0)); then
+    # The command the doctor prints for it, which keeps the keychains listed now.
+    remedy="$(sed -n 's/^FAIL: it is not on the user search list (O1: \(.*\))$/\1/p' "$work/doctor-locked")"
+    if [[ "$remedy" == "security list-keychains -d user -s "*"\"$keychain\"" ]] && eval "$remedy" && listed "$keychain" &&
+      [[ -z "$(comm -23 <(sort <<<"$search_list") <(security list-keychains -d user | parse_keychain_list | sort))" ]]; then
+      pass "the doctor's command adds the keychain to the search list and keeps the keychains on it: $remedy"
+    else
+      fail "the doctor's search-list command, '$remedy', left: $(security list-keychains -d user | parse_keychain_list | tr '\n' ' ')"
+    fi
   fi
   quietly security unlock-keychain -p "$password" "$keychain"
-  unlocked="$(bounded "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" || true
-  if [[ "$(grep -E '^(exists|unlocked|lock_on_sleep|use_lock_interval|lock_interval|profile)=' <<<"$unlocked" | tr '\n' ' ')" == "exists=1 unlocked=1 lock_on_sleep=1 use_lock_interval=1 lock_interval=600 profile=absent " ]]; then
-    pass "the keychain reader reads an unlocked keychain's lock settings and finds no profile"
+  unlocked="$(bounded "$ci_bound" "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" || true
+  if grep -qx unlocked=1 <<<"$unlocked" && grep -qx lock_on_sleep=1 <<<"$unlocked" &&
+    grep -qx lock_interval=600 <<<"$unlocked" && grep -qx profile=absent <<<"$unlocked"; then
+    pass "the keychain reader reads an unlocked keychain's lock settings and finds no profile: $(grep -E '^(lock_|use_)' <<<"$unlocked" | tr '\n' ' ')"
   else
     fail "the keychain reader on an unlocked keychain: $unlocked"
   fi
-  set +e
-  SIGN_KEYCHAIN="$keychain" bounded scripts/check-signing.sh >"$work/doctor-unlocked" 2>&1
-  doctor_status=$?
-  set -e
-  if ((doctor_status == 1)) && grep -q "it locks on sleep and after 600 s idle" "$work/doctor-unlocked" &&
-    grep -q "holds no notary profile metabrowser-notary" "$work/doctor-unlocked"; then
-    pass "the signing doctor reads an unlocked keychain's settings and finds no profile in it"
+  doctor_on "$work/doctor-unlocked"
+  if ((doctor_status == 1)) && grep -q "^ok: it is on the user search list" "$work/doctor-unlocked" &&
+    grep -q "^ok: it locks on sleep and after 600 s idle" "$work/doctor-unlocked" &&
+    grep -q "^warn: the release keychain holds no item named as notarytool 1.1 names the profile metabrowser-notary" "$work/doctor-unlocked" &&
+    ! grep -q "notary profile" <(grep '^FAIL' "$work/doctor-unlocked"); then
+    pass "the signing doctor passes -l -u -t 600, and warns, not fails, that it found no profile item"
   else
     fail "the signing doctor on an unlocked keychain exited $doctor_status: $(cat "$work/doctor-unlocked")"
   fi
+  # A keychain that locks on sleep but never when idle, which the doctor must refuse.
+  quietly security set-keychain-settings -l "$keychain"
+  sleep_only="$(bounded "$ci_bound" "$work/keychain-status" "$keychain" 2>&1)" || true
+  doctor_on "$work/doctor-sleep-only"
+  if grep -q "^FAIL: it must lock on sleep and after at most $release_keychain_lock_seconds s idle" "$work/doctor-sleep-only"; then
+    pass "the signing doctor refuses a keychain set with -l alone, which reads: $(grep -E '^(lock_|use_)' <<<"$sleep_only" | tr '\n' ' ')"
+  else
+    fail "the signing doctor on a keychain set with -l alone ($(grep -E '^(lock_|use_)' <<<"$sleep_only" | tr '\n' ' ')): $(cat "$work/doctor-sleep-only")"
+  fi
   quietly security delete-keychain "$keychain"
+  # delete-keychain takes it off the list; put back exactly what was there.
+  restore_list=()
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] && restore_list+=("$entry")
+  done <<<"$search_list"
+  quietly security list-keychains -d user -s ${restore_list[@]+"${restore_list[@]}"}
 else
   echo "note: the keychain reader's live checks run only on a CI runner (CI=true, RUNNER_TEMP set)"
 fi

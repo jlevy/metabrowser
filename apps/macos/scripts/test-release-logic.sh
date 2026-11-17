@@ -210,7 +210,9 @@ ditto() {
 xcrun() {
   echo "xcrun $*" >>"$stub_calls"
   case "$1 $2" in
-    "notarytool submit") echo '{"id":"0B4C3B1E-7A2D-4F55-9E1C-2D6A8F0E5C11","message":"Processing complete","status":"Accepted"}' ;;
+    "notarytool submit")
+      echo "{\"id\":\"0B4C3B1E-7A2D-4F55-9E1C-2D6A8F0E5C11\",\"message\":\"Processing complete\",\"status\":\"${stub_status:-Accepted}\"}"
+      ;;
     "notarytool log")
       [[ "$stub_log" != none ]] || return 1
       cp "$fixtures/notary/$stub_log" "${*: -1}"
@@ -271,6 +273,57 @@ if ((status == 0)) && said "its warnings are unknown" && grep -q "stapler staple
 else
   fail "under NOTARIZE=auto, a missing log: status $status: $(cat "$work/out")"
 fi
+notarize stub_status="In Progress" stub_log=accepted.json NOTARIZE=1
+if ((status != 0)) && said "has no verdict yet (status In Progress), submission 0B4C3B1E-7A2D-4F55-9E1C-2D6A8F0E5C11" &&
+  said "notarytool wait 0B4C3B1E-7A2D-4F55-9E1C-2D6A8F0E5C11" && ! grep -q "notarytool log" "$stub_calls"; then
+  pass "a submission with no verdict stops with its status and ID, without waiting on a log"
+else
+  fail "a submission with no verdict: status $status: $(cat "$work/out")"
+fi
+
+# The image: notarize.sh mounts it, checks the one app inside, and detaches it, also when
+# it stops. An hdiutil stand-in mounts a folder holding stub_apps apps.
+hdiutil() {
+  echo "hdiutil $*" >>"$stub_calls"
+  case "$1" in
+    attach)
+      local i
+      mkdir -p "${*: -2:1}"
+      for ((i = 1; i <= ${stub_apps:-1}; i++)); do mkdir -p "${*: -2:1}/App$i.app"; done
+      ;;
+    detach) rm -rf "${*: -1}" ;;
+    *) return 99 ;;
+  esac
+}
+export -f hdiutil
+printf 'image\n' >"$work/release/Metabrowser-0.0.0-arm64.dmg"
+notarize_image() {
+  : >"$stub_calls"
+  run env SIGN_KEYCHAIN="$work/release.keychain-db" APPLE_KEYCHAIN_PROFILE=metabrowser-notary "$@" \
+    scripts/notarize.sh "$work/release/Metabrowser-0.0.0-arm64.dmg"
+}
+notarize_image stub_log=accepted.json NOTARIZE=1
+if ((status == 0)) && grep -q "syspolicy_check notary-submission .*/App1.app" "$stub_calls" &&
+  grep -q "hdiutil detach" "$stub_calls" && grep -q "notarytool submit $work/release/Metabrowser-0.0.0-arm64.dmg" "$stub_calls"; then
+  pass "an image's one app is checked before the image is submitted, and the image is detached"
+else
+  fail "an image with one app: status $status: $(cat "$work/out"); calls: $(cat "$stub_calls")"
+fi
+notarize_image stub_apps=0 stub_log=accepted.json NOTARIZE=1
+if ((status != 0)) && said "must hold exactly one app" && grep -q "hdiutil detach" "$stub_calls" &&
+  ! grep -q "notarytool submit" "$stub_calls"; then
+  pass "an image without an app stops, detached, before anything is submitted"
+else
+  fail "an image without an app: status $status: $(cat "$work/out"); calls: $(cat "$stub_calls")"
+fi
+notarize_image stub_presubmission=fail stub_log=accepted.json NOTARIZE=1
+if ((status != 0)) && said "the app in Metabrowser-0.0.0-arm64.dmg fails the notary service's checks" &&
+  grep -q "hdiutil detach" "$stub_calls" && ! grep -q "notarytool submit" "$stub_calls"; then
+  pass "an image whose app fails the pre-submission check stops, detached, before anything is submitted"
+else
+  fail "an image whose app fails the check: status $status: $(cat "$work/out"); calls: $(cat "$stub_calls")"
+fi
+unset -f hdiutil
 unset -f codesign syspolicy_check ditto xcrun spctl sleep
 
 # ── The signing doctor ───────────────────────────────────────
@@ -304,6 +357,15 @@ hash_of() {
 }
 identity_name="Developer ID Application: Example Developer (A1B2C3D4E5)"
 
+# Apple Root CA's SHA-256, as Apple PKI serves the file, reviewed in
+# SUPPLY-CHAIN-SECURITY.md: the fixture must be that file, so the chain check below starts
+# from a pinned root rather than from whatever the fixture holds.
+apple_root_ca_sha256=b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024
+if [[ "$(shasum -a 256 "$fixtures/AppleIncRootCertificate.cer" | cut -d' ' -f1)" == "$apple_root_ca_sha256" ]]; then
+  pass "the Apple Root CA fixture is the reviewed file"
+else
+  fail "fixtures/AppleIncRootCertificate.cer is not the reviewed Apple Root CA"
+fi
 if [[ "$(shasum -a 256 "$g2_intermediate" | cut -d' ' -f1)" == "$g2_intermediate_sha256" &&
   "$(developer_id_generation "$(cert_subject "$certs/apple-g2.pem")")" == G2 ]] &&
   openssl verify -CAfile "$certs/apple-root.pem" "$certs/apple-g2.pem" >/dev/null 2>&1; then
@@ -344,7 +406,9 @@ history_call="$work/history-call"
 
 # Each case sets these, and the stand-ins below read them.
 reset_case() {
-  case_status=$'exists=1\nunlocked=0\nlock_on_sleep=1\nuse_lock_interval=1\nlock_interval=900\nprofile=found'
+  # What macOS 26 reports for a keychain set with `set-keychain-settings -l -u -t`
+  # (macOS CI, scripts/test-scripts.sh): use_lock_interval stays 0.
+  case_status=$'exists=1\nunlocked=0\nlock_on_sleep=1\nuse_lock_interval=0\nlock_interval=900\nprofile=found'
   case_release_identities="leaf400|"
   case_login_identities=""
   case_listed=1
@@ -352,7 +416,7 @@ reset_case() {
   case_roots="apple-root"
   case_history=0
   : >"$test_release"
-  unset SIGN_IDENTITY ONLINE APPLE_KEYCHAIN_PROFILE
+  unset SIGN_IDENTITY ONLINE APPLE_KEYCHAIN_PROFILE APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER
 }
 
 security() {
@@ -401,6 +465,7 @@ xcrun() {
     "notarytool --version") echo 1.1.2 ;;
     "notarytool history")
       echo "history $*" >"$history_call"
+      [[ "$case_history" != hang ]] || command sleep 5
       return "$case_history"
       ;;
     *) return 99 ;;
@@ -514,11 +579,81 @@ case_status=$'exists=1\nunlocked=0\nsettings=unreadable: User interaction is not
 doctor 0 0 0 "what a locked keychain hides is a warning, not a pass" \
   "warn: its lock settings could not be read" "warn: whether the release keychain holds the notary profile"
 reset_case
+case_status="${case_status/lock_interval=900/lock_interval=2147483647}"
+doctor 0 1 1 "a keychain with no idle timeout (INT_MAX) fails" "after 2147483647 s idle"
+reset_case
+case_status="${case_status/lock_interval=900/lock_interval=0}"
+doctor 0 1 1 "a keychain with a zero idle timeout fails" "after 0 s idle"
+reset_case
 case_listed=0
-doctor 0 1 1 "a release keychain off the search list fails" "FAIL: it is not on the user search list (O1"
+doctor 0 1 1 "a release keychain off the search list fails, with the command that keeps the list" \
+  "FAIL: it is not on the user search list (O1: security list-keychains -d user -s \"$test_login\" \"$test_release\")"
 reset_case
 case_status="${case_status/profile=found/profile=absent}"
-doctor 0 1 1 "a missing profile names its owner step" "FAIL: the release keychain holds no notary profile metabrowser-notary (O3"
+doctor 0 0 0 "a profile item the lookup misses warns, since its name is undocumented, and names the check" \
+  "warn: the release keychain holds no item named as notarytool 1.1 names the profile metabrowser-notary" "ONLINE=1 says whether the profile works"
+reset_case
+case_status="${case_status/profile=found/profile=absent}"
+case_status="${case_status/unlocked=0/unlocked=1}"
+export ONLINE=1
+doctor 0 0 0 "ONLINE=1 overrides a missed profile item when the notary service answers" \
+  "ok: the notary service answered notarytool history with the profile metabrowser-notary"
+reset_case
+case_status="${case_status/profile=found/profile=absent}"
+case_status="${case_status/unlocked=0/unlocked=1}"
+export SIGN_IDENTITY="$identity_name"
+rm -f "$history_call"
+doctor 1 0 0 "a release's preflight asks the notary service when the profile item is missed" \
+  "ok: the notary service answered notarytool history with the profile metabrowser-notary"
+[[ -s "$history_call" ]] || fail "the preflight did not ask the notary service about a missed profile item"
+reset_case
+case_status="${case_status/profile=found/profile=absent}"
+case_status="${case_status/unlocked=0/unlocked=1}"
+export SIGN_IDENTITY="$identity_name"
+case_history=1
+doctor 1 1 1 "a release's preflight fails a missed profile item the notary service refuses" \
+  "FAIL: notarytool history failed (O2, O3)"
+reset_case
+case_status="${case_status/unlocked=0/unlocked=1}"
+export ONLINE=1
+case_history=hang
+notary_history_timeout_seconds=1
+doctor 0 1 1 "a notary service that does not answer is a failure after notary_history_timeout_seconds" \
+  "FAIL: notarytool history failed (O2, O3)" "stopped after 1 s"
+notary_history_timeout_seconds=60
+
+# The API key, as notarize.sh takes it, and the same choice when both kinds are set.
+api_key="$work/AuthKey_DOCTOR.p8"
+: >"$api_key"
+chmod 600 "$api_key"
+reset_case
+export APPLE_API_KEY="$api_key" APPLE_API_KEY_ID=KEYID APPLE_API_ISSUER=ISSUER
+doctor 0 0 0 "an API key with its ID and issuer passes" "ok: the notary credentials are an API key"
+reset_case
+export APPLE_API_KEY="$api_key" APPLE_API_KEY_ID=KEYID APPLE_API_ISSUER=ISSUER ONLINE=1
+rm -f "$history_call"
+doctor 0 0 0 "ONLINE=1 asks the notary service with the API key" "ok: the notary service answered notarytool history"
+if grep -qF -- "--key $api_key --key-id KEYID --issuer ISSUER" "$history_call" 2>/dev/null; then
+  pass "notarytool history gets the API key's path, ID, and issuer"
+else
+  fail "notarytool history ran with the API key as: $(cat "$history_call" 2>/dev/null)"
+fi
+reset_case
+export APPLE_API_KEY="$api_key"
+doctor 0 1 1 "an API key without its ID fails" "FAIL: APPLE_API_KEY_ID is not set"
+reset_case
+chmod 644 "$api_key"
+export APPLE_API_KEY="$api_key" APPLE_API_KEY_ID=KEYID
+doctor 0 0 0 "an API key others can read, and no issuer, warn" "can be read by other accounts" "APPLE_API_ISSUER is not set"
+chmod 600 "$api_key"
+reset_case
+case_status="${case_status/profile=found/profile=absent}"
+export APPLE_KEYCHAIN_PROFILE=metabrowser-notary APPLE_API_KEY="$api_key" APPLE_API_KEY_ID=KEYID
+doctor 0 0 0 "with both kinds set, the doctor checks the profile, as notarize.sh uses it" \
+  "the profile metabrowser-notary"
+if said "the notary credentials are an API key"; then
+  fail "with both kinds set, the doctor checked the API key, which notarize.sh does not use"
+fi
 reset_case
 case_release_identities=""
 doctor 0 1 1 "an empty release keychain fails" "FAIL: the release keychain holds no Developer ID Application identity (O1"

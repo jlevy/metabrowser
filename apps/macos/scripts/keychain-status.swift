@@ -85,6 +85,8 @@ if arguments.count == 3 {
         kSecMatchSearchList as String: [keychain],
         kSecMatchLimit as String: kSecMatchLimitOne,
         kSecReturnAttributes as String: true,
+        // A second guard beside SecKeychainSetUserInteractionAllowed(false): fail, never ask.
+        kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
     ]
     var item: CFTypeRef?
     let itemStatus = SecItemCopyMatching(query as CFDictionary, &item)

@@ -89,6 +89,13 @@ for file in "$@"; do
   echo "$result"
   id="$(jq -er '.id | strings' <<<"$result" 2>/dev/null)" || die "notarize: no submission id for $name"
   status="$(jq -er '.status | strings' <<<"$result" 2>/dev/null)" || status="unknown"
+  # Without a verdict the wait ran out (NOTARY_TIMEOUT), and there is no log to read yet.
+  case "$status" in
+    Accepted | Invalid | Rejected) ;;
+    *)
+      die "notarize: $name has no verdict yet (status $status), submission $id; with the same credentials, run xcrun notarytool wait $id, then xcrun notarytool log $id"
+      ;;
+  esac
 
   # Read the log even after an Accepted verdict: it lists warnings too.
   log="$(dirname "$file")/notary-${name// /-}.json"  # beside the file: both variants are Metabrowser.app
