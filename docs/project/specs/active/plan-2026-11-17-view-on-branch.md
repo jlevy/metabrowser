@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** In review.
+**Status:** Approved 2026-11-17; being implemented.
 Bead `mb-ej0w` tracks it.
 The design below merges a survey of `origin/main` at `e442ed10d` with an independent
 adversarial review of the same code; the open questions at the end are the owner’s.
@@ -60,7 +60,7 @@ request.
 | Mirror, the pin is elsewhere | a button: switch the pin to the head, then open the server’s `view_href` |
 | Mirror, Changes shows an earlier head than the pull request’s (`headMoved`) | none: the file on the branch would not be the file in the diff |
 | Checkout whose `HEAD` is the diff’s head | a link to the working-tree file |
-| Checkout otherwise; a deleted file; a symbolic link or submodule; a patch file | none (see Q1) |
+| Checkout otherwise; a deleted file; a symbolic link or submodule; a patch file | none (Q1) |
 
 - **Head side only.** The diff’s old side is the merge base, not the base branch’s tip,
   so it has no branch; after a merge the base branch holds the change, and a deleted
@@ -110,7 +110,8 @@ Two consequences to handle in this change:
 - The revision page’s document, source, and download modes, their constants and helpers,
   `pull-snapshot.css`, `disclosure-chevron.svg` if nothing else uses it, the page’s
   preference scripts, and the diff plugin’s `snapshotHost` and `snapshotHref`.
-- “View at base” and “View at parent” on pull requests (and on commits, per Q2).
+- “View at base” and “View at parent” on pull requests (a commit’s diff keeps one “View
+  file”, Q2).
 - Its parity rows, goldens, and docs, changed in the same commit: the two active plans
   that specify the page (`plan-2026-08-17-general-diff-rendering.md`,
   `plan-2026-11-02-pr-review-mirror-and-checkout.md`), the two architecture documents
@@ -144,14 +145,15 @@ rather than deleting them (Q3).
 - A Chrome check that a pinned page’s `/view/` of a Markdown file bigger than the
   measured bound renders within it.
 
-## Open Questions
+## Decisions
+
+The owner answered on 2026-11-17:
 
 - **Q1.** Where there is no in-app target (a checkout not at the head, a deleted file),
-  is there no control, or a “View on GitHub” link to the file at that commit?
-- **Q2.** A commit’s diff has no branch.
-  Does it keep “View file” and “View at parent”, or drop to one “View file”?
-- **Q3.** Move the large-file bounds to the pinned viewer in this change (recommended),
-  or as a follow-up?
+  there is no control, rather than a link to the file on GitHub.
+- **Q2.** A commit’s diff drops “View at parent” and keeps one “View file”, at the
+  commit, by the same link-or-switch rule as today.
+- **Q3.** The large-file bounds move to the pinned viewer in this change.
 
 ## References
 
