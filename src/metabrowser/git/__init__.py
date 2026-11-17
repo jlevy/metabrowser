@@ -1,21 +1,23 @@
-"""Read-only git access for the Git graph panel.
-
-Core already depends on git for gitignore semantics and repository-root
-discovery (see :mod:`metabrowser.ignore_filter` and
-:func:`metabrowser.tree.build_gitignore_check`); this package extends that
-dependency to reading history.
+"""Read-only Git access: history, commit detail, and pinned-revision trees.
 
 Layering, outermost first:
 
 * :mod:`metabrowser.git.routes` — the ``/api/git/`` route table.
+* :mod:`metabrowser.git.content_routes` — the content routes on a pinned revision.
+* :mod:`metabrowser.git.history` — bounded, replayable history sessions.
 * :mod:`metabrowser.git.log` / :mod:`metabrowser.git.detail` — argument
-  vectors and parsers for the two queries the panel needs.
+  vectors and parsers for refs, log records, and one commit.
 * :mod:`metabrowser.git.repo` — repository identity, TTL-cached.
-* :mod:`metabrowser.git.process` — the only place that spawns ``git``.
-* :mod:`metabrowser.git.wire` — the JSON shapes all of the above emit.
+* :mod:`metabrowser.git.ref_state` / :mod:`metabrowser.git.route_memo` — the
+  refs' state, and answers kept under it.
+* :mod:`metabrowser.git.tree_source` — ``GitPath`` and batch blob reads.
+* :mod:`metabrowser.git.process` — where every ``git`` process starts.
+* :mod:`metabrowser.git.wire` — the JSON shapes the routes emit.
 
-Everything here is read-only. Nothing in this package stages, commits,
-checks out, fetches, or otherwise mutates a repository.
+Nothing here stages, commits, or checks out. The readers and routes never
+fetch; :mod:`metabrowser.git.process` also runs the fetches that
+:mod:`metabrowser.cache` asks for, under its acquisition policy.
+``docs/project/architecture/arch-git.md`` describes the package.
 """
 
 from __future__ import annotations

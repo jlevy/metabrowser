@@ -1,9 +1,13 @@
 """Typed event model for the browser realtime-streaming surface.
 
 Single source of truth for the event envelope, the discriminated
-``StreamEvent`` union, and the SSE wire format. Both
-``/api/events`` (inventory channel) and ``/api/tail`` (multiplexed
-log-tail channel) emit through these types.
+``StreamEvent`` union, and the SSE wire format that ``/api/events``
+emits. The tail-event types below (``FileAppend`` through
+``ParserReset``) and ``Heartbeat`` have no producer: live log tailing
+is ``/api/stream`` in :mod:`metabrowser.sse`, with its own frames,
+and ``/api/events`` keeps a quiet connection alive with
+:func:`encode_heartbeat_comment`. The live path is described in
+``docs/project/architecture/arch-live-delivery.md``.
 
 This module is pure types + small helpers — no I/O, no async, no
 filesystem access. The inventory coordinator projects provider-neutral
@@ -32,8 +36,8 @@ from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
-# Re-exported: the record moved to `fs_record` so the scanner can name it without
-# importing this module, and every existing importer keeps working.
+# Re-exported from `fs_record`, which the scanner imports without depending on this
+# browser-delivery module.
 from metabrowser.fs_record import FsEntry as FsEntry
 from metabrowser.fs_record import WriteToken as WriteToken
 
@@ -137,14 +141,18 @@ class CapabilityUpdate:
 
 @dataclass(slots=True, frozen=True)
 class Heartbeat:
-    """Empty frame on a 15 s cadence. Keeps proxies / load
-    balancers from culling idle SSE connections; client ignores."""
+    """A heartbeat event, defined but not sent: ``/api/events`` sends a
+    comment frame (:func:`encode_heartbeat_comment`) after
+    ``SSE_HEARTBEAT_INTERVAL_S`` without an event instead."""
 
     ts_ns: int
     type: Literal["heartbeat"] = "heartbeat"
 
 
 # ── Tail-event wire types ──────────────────────────────────────
+#
+# Defined and round-trip tested, but nothing constructs them: live log tailing is
+# `/api/stream` (metabrowser.sse), whose frames are `append` and `closed`.
 
 
 @dataclass(slots=True, frozen=True)

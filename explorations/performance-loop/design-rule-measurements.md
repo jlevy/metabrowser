@@ -1,0 +1,330 @@
+# Design Rule Measurements
+
+Measurements taken once, in a real engine, to decide a rule in the
+[design system](../../docs/design-system.md).
+Each section names the rule it set; the rule itself lives in the design system, and a
+bound’s own measurement lives beside its constant.
+These are records: they keep the date, the engine, and what was compared, and they are
+not rewritten when the code moves on.
+Rerun one before changing the rule it supports.
+
+## Row Baselines
+
+For
+[Row Text Shares a Baseline](../../docs/design-system.md#row-text-shares-a-baseline):
+
+- The diff file bar’s View file controls, set at `--ui-small-font-size` beside the path,
+  sat off the path’s baseline, a link by 0.75px and a button by 0.5px, measured in
+  Chromium at a device pixel ratio of 2. Set at the path’s own size, they center onto
+  one baseline.
+- A mirror’s location note at the far end of the file header, centered rather than
+  baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1.
+- Aligning the Git commit summary’s monospace revision on one baseline with the
+  body-size sans beside it grows that line by 1.25px at a device pixel ratio of 2, so it
+  stays centered.
+
+## Disclosure Motion
+
+For [Disclosure Motion](../../docs/design-system.md#disclosure-motion): a deep reveal
+that navigation opened with the travelling animation moved the rows below it 43 to 131
+px a frame with no input, which is why such a reveal lands in place with
+`.tree-children-instant`.
+
+## Disclosure Toggle Selection
+
+For
+[Disclosure Toggles Never Select Text](../../docs/design-system.md#disclosure-toggles-never-select-text).
+Without the rule, a triple click on a rendered Markdown diff’s **5 unchanged blocks**
+fold selected its label and every paragraph it revealed, in Chrome; in WebKit, a double
+click on a folder row selected the folder’s name, because WebKit reads only the prefixed
+`-webkit-user-select` and the tree rows had only the unprefixed rule.
+
+Measured on 2026-11-13 with real double and triple clicks, in headless Chrome on a
+folder row’s name, padding, and size and on the fold’s label and padding, and in a
+`WKWebView` on a folder row’s name and a section trigger: with the rule, nothing was
+selected, and a `mousedown` handler that prevented the default of the second and third
+presses changed nothing in either engine, so the app has none.
+
+## Branch Chip Sizes
+
+For [Branch Chips](../../docs/design-system.md#one-ratio), measured in Chrome, light
+theme: the text each context sets, the chip it gets at `--git-ref-font-scale`, and the
+fixed chip size the ratio replaced.
+
+| Context | Text around the chip | Chip | Fixed chip |
+| --- | --- | --- | --- |
+| A Git history row | 13px subject | 11.7px | 12px |
+| A commit’s summary and its tooltip | 14px metadata | 12.6px | 12px |
+| A pull request’s header | 14px branch line | 12.6px | 12px |
+| The ref selector’s button and list | 12px | 10.8px | 12px |
+
+## Regions That Moved
+
+For [Regions Keep Their Boxes](../../docs/design-system.md#regions-keep-their-boxes):
+before each region kept its slot, chrome that came and went moved more than content did.
+The filter bar moved the content 37 px on every main-tab switch, the view tab bar 30 px
+between files, a scrollbar 11 px, and the Commits tab 78 px on every landing.
+
+## A Repaint Keeps Its Images
+
+For
+[A Repaint Keeps Its Images](../../docs/design-system.md#a-repaint-keeps-its-images).
+
+### A Rebuilt Avatar
+
+Measured in the app’s WKWebView (WebKit 21624, macOS 26.5) on 2026-11-13, when the pull
+request header built its actor on every tab switch, with the avatar served locally after
+80 ms, by reading the header’s avatar at each animation frame and counting requests at
+the server: on each of 9 tab switches the rebuilt lazy avatar was requested again, and
+its `complete` was false and its `naturalWidth` 0 for 3 frames, 100 ms at that window’s
+30 frames a second.
+Eager, it made no request, and `complete` and `naturalWidth` were set
+in its first frame on all 9. That the eager avatar then paints in that frame is an
+inference: a page cannot read WebKit’s decoding or paint.
+Pixels were read only in headless Chrome 152, whose screencast showed no blank avatar
+frame in 9 switches either way; Chrome had the lazy image complete in its first frame
+too, so the blank was WebKit’s.
+
+### A Node Replaced Under the Pointer
+
+Measured in headless Chrome 152 on 2026-11-13, with the pointer resting on the header’s
+head branch chip while the page switched tabs: when the header built its parts again,
+the new chip was not hovered and its copy button was hidden in the task that replaced
+it, and read at the next animation frame Chrome had hovered it again and fired
+`mouseenter` on it again.
+That no frame painted the button hidden is an inference from those readings.
+That `mouseenter` gives the shell’s tooltip a new anchor and restarts its delay
+(`showTooltip` in `static/app.js`). Keyboard focus on the chip’s copy button went to the
+document body on each tab switch.
+With the header keeping its parts, the chip is the same node, no `mouseenter` fires, and
+the focus stays. WebKit’s hover after such a replacement was not measured.
+
+### A Re-entered Markdown Document
+
+Measured in the same WKWebView on 2026-11-13, on a document with three images in its
+first screen and one 4,800 px down, served by Metabrowser behind a proxy that delayed
+each image 80 ms and counted requests, and reading each of the three at each animation
+frame and again after layout.
+Leaving for another file and coming back, each of 5 returns asked for all three images
+again and left each without its image for 3 frames, 100 ms at 30 frames a second.
+With the held images eager, the returns asked for none, and each image was complete,
+with its width, in its first frame.
+Making the shown images eager in the first frame, after they had been created lazy,
+changed nothing: each return still asked for all three, and each was blank for 3 or 4
+frames. So WebKit had given up the copy when it deferred them, an inference from the
+counts. Without removing the authored address first, each return also asked the server
+for the three images at their authored addresses.
+Switching to Source and back built nothing, before and after: no request and no blank
+frame. Headless Chrome 152 asked for nothing and had every image complete in its first
+frame, before and after, and neither engine asked for the image far down.
+
+### Versioned Addresses
+
+Measured again on 2026-11-14, in the same WKWebView (WebKit 21624.2.5.11.8, macOS
+26.5.2) and in headless Chrome 152, against the code before versions (7e27e32b), with
+the same document and an image from another origin added to its first screen, served
+with `max-age=300` and delayed 80 ms like the rest.
+Each return was read the same way, and the replaced image, 240 by 120 and red, became
+360 by 90 and magenta at the same path, told apart by its natural size and by a pixel
+drawn from it:
+
+| Engine | Code | 5 returns, nothing changed | Return after editing the document | Return after replacing the image | Reload after that |
+| --- | --- | --- | --- | --- | --- |
+| WKWebView | before | served images: no request, no blank frame; outside image: asked again each time, 3 or 4 blank frames | asked again, 3 blank frames | asked again, 3 blank frames, new image | new image |
+| WKWebView | versions | no request, no blank frame, outside image included | no request, no blank frame | asked at its new address, 3 or 4 blank frames, new image | new image |
+| Chrome 152 | before | no request, no blank frame | no request | no request, old image | asked again, new image |
+| Chrome 152 | versions | no request, no blank frame | no request | asked at its new address, 6 blank frames at 60 a second, new image | no request, new image |
+
+Before versions, Chrome showed the old image on the return without asking, because it
+reuses an image the page has loaded at the same address whatever its headers say; its
+reload asked again because `/raw` was `no-cache`. With versions, a change to the
+document costs its images no round trip in WebKit, since nothing forgets them, and a
+replaced image is asked for once, at its new address, in both engines.
+After the reload Chrome kept the new image from its cache without asking, the PNG’s
+answer at the current version being kept for a year; WebKit asked for it again.
+With an SVG added to the first screen, whose answer is revalidated, and an image from
+another origin at a scheme-relative address, each of 5 returns in WKWebView asked for
+neither and had both complete in their first frame, as Chrome did for the SVG.
+
+## Git Commit Summary
+
+For [Git Commit Summary](../../docs/design-system.md#git-commit-summary), recorded on
+2026-11-15, when the Diff summary took the place of the commit’s change counts: measured
+in Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16 px over
+the description, its place on the subject’s edge and its toggle hung 4 px into the
+gutter; its header is one 24 px row at 560 px and wider and wraps to two lines at 420 px
+and three at 320 px, all before the page is shown; opened, its tree is under it and
+above the description; with no diff the totals line is one row under the identity; and
+an empty place takes no room.
+
+Measured again on 2026-11-16 in Chrome 152 at 980 to 320 px, when the summary’s statuses
+became Git’s letters: the summary sits where it did, and for “35 files changed · 2 A, 3
+D, 30 M · +1,234 −3,423” its header is one 24 px row at 420 px and wider and wraps to
+two lines at 320 px, breaking after a dot, all before the page is shown.
+
+## Diff Summary
+
+For [Diff Summary](../../docs/design-system.md#diff-summary).
+
+### Its First Level
+
+Recorded on 2026-11-15, when the tree’s first level moved one indentation step in from
+its header: before, a diff’s toolbar started the first level 4 px in from the header.
+
+### The Pending Placeholder
+
+Recorded on 2026-11-16, when a pull request header’s Diff summary row took the pending
+placeholder: measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is
+221 by 11.05 px, at the row’s start and centred on its line, the row is 24 px before and
+after the summary arrives, and the tab bar under it does not move.
+
+Recorded again on 2026-11-16, when the summary’s statuses became Git’s letters: measured
+in Chrome 152 at 560, 420, and 360 px in both themes, the block is 188.5 by 11.05 px
+(14.5 em of the header’s type), at the row’s start and centred on its line, the row is
+24 px before and after the summary arrives, and the tab bar under it does not move.
+A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 files changed · 8 M ·
++120 −30”, ends 13.88 to 15.88 em from the row’s start, its text 13.42 to 15.42 em, and
+the block ends between the two; one of three statuses, “35 files changed · 2 A, 3 D, 30
+M · +1,234 −3,423”, ends its text at 22.18 em.
+
+### A Kept Comparison
+
+Recorded on 2026-11-16, when a pull request’s page began keeping the comparisons it read
+for the document (`createComparisonKeep`, whose comment has the same readings).
+Before, every visit read the comparison again once the browser was idle, and a page is
+not idle while it draws its record: measured in headless Chrome 152 on the GitHub
+stand-in at a load average of 9 to 12, moving between pull requests of 26 to 121 files
+from the Pulls tab, a revisit’s summary arrived 22 to 50 ms after the click, and 175 to
+238 ms at four times slower CPU, most of it the wait for idle; with no
+`requestIdleCallback`, where the wait is for 250 ms with no input after a press, a
+revisit’s arrived 253 to 256 ms after it.
+With the keep, measured again after review at a load average of 19 to 47, a revisit’s
+summary arrived with its record: 16 to 27 ms after the click, 46 to 63 ms at four times
+slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull request first opened
+on Changes included; and a first visit to a row the pointer rested on for 250 ms, 9 to
+12 ms after the click, where it was 283 to 343 ms.
+
+## The Pull Request Header
+
+For [Layout](../../docs/design-system.md#layout), on the pull request page.
+
+Recorded on 2026-11-15, when the header’s last row became the Diff summary: measured in
+Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first paint; a summary
+of “35 changed files (2 added, 3 removed, 30 modified) +1,234 −3,423” arriving moved no
+row and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut short
+at 320 px with the whole header as its tooltip; the row starts on the header’s content
+edge, and its toggle hangs 4 px into the gutter.
+The row adds its 24 px and one 6 px gap to the header.
+
+Recorded on 2026-11-16, when the freshness line became a metadata line and the empty
+labels row went: measured in Chrome 152 at 560, 420, and 360 px in both themes, every
+row is 6 px under the one before it and the freshness line is 18 px, the row of ages’
+height; the header is 229 px with no labels and 255 px with labels or while its record
+is on its way, so a labels row that comes or goes moves the tab bar 26 px.
+Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px labels
+row stood between it and the row of ages, 32 px under that row, and the header was 263
+px in every state.
+
+Recorded again on 2026-11-16, when the Diff summary’s statuses became Git’s letters:
+measured in Chrome 152 at 980 to 320 px on every tab, a summary of “35 files changed · 2
+A, 3 D, 30 M · +1,234 −3,423” arriving moved no row and not the tab bar, and kept its
+row’s 24 px on one line, its breakdown cut short at 320 px with the whole header as its
+tooltip.
+
+## Pull Request Stacks and the Timeline
+
+Recorded on 2026-11-15, when the files-grouping and pull-stacks stack landed.
+
+For [Stacks](../../docs/design-system.md#stacks), the header’s stack chip: measured in
+Chrome 152 at 980 to 320 px, one stack’s chip is 54.75 px and two stacks’ 113.5 px; a
+late chip moved no part’s start and no row, kept 8 px from the sentence, and cut the
+sentence only where it needed the room: at 560 px two stacks cut a long author’s
+sentence by 34.88 px, and at 360 px two stacks cut “forker wants to merge 2 commits” by
+38.04 px. Measured again on 2026-11-15 once two stacks’ chips named their stacks, “⧉286
+4/4” and “⧉300 2/2”: one stack’s chip, “⧉2/3”, is 54.75 px and two stacks’ named chips
+156.31 px; a late chip still moved no part’s start and no row and kept 8 px from the
+sentence, and at 560 px two stacks cut a long author’s sentence by 77.69 px, and at 360
+px “forker wants to merge 2 commits” by 80.85 px.
+
+For
+[Stack Groups in the Pulls Tab](../../docs/design-system.md#stack-groups-in-the-pulls-tab):
+at the default pane width, 299 px, a worded group-by-stack chip reached 36 px past the
+pane and a glyph-only one 7 to 17 px, where the toolbar, the Show group and Reload, has
+23 px to spare. A member’s title had 166 px at that width, where a position on the title
+line left it 65 to 125.
+
+For [Conversation Timeline](../../docs/design-system.md#conversation-timeline): in
+Chrome 152 and in the app’s WebKit alike, a run’s first commit’s glyphs sit 23.5 px
+below the card above, and its last commit’s 23.5 px above the card below, against 20 px
+between two commits’; before the run kept its room outside it, both were 16 px.
+Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
+px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
+joined the events. In the macOS app’s web view (WebKit 21624.2.5.11.8 on macOS 26.5.2),
+run through the WebKit gate’s `webkit-driver measure` (`apps/macos/webkit-gate`) on the
+same page and layouts, every one of that test’s layout checks passes in both themes,
+apart from its pixel reads, which the driver cannot make: an event card computes to
+`overflow-x: clip` and `overflow-y: visible`, and in every gap between joined events
+WebKit hit-tests the line’s x to the following event’s connector, which it would not do
+for a clipped one, and 9 px beside it to the page.
+Each node sits 0.5 px below its first line’s middle there, as in Chrome.
+
+Recorded again on 2026-11-15, when every two events took one rhythm,
+`--github-pull-rhythm`, at commit 4a46ec4: in Chrome 152 every two events’ boxes are 20
+px apart, in both themes and at 980 and 420 px, and their text 20 to 21 px apart, a
+commit’s read from its text nodes.
+At 420 px a commit row that wraps so that its hash ends it on a line of its own shows
+22.5 px below it: the hash’s smaller monospace face leaves 2.5 px of its line under its
+glyphs. Review comments stands 28 px below a card; with the rhythm as the body’s gap it
+stood 36 px below. Measured once outside that test, the Files and Checks tabs’ notices
+are 12 px from what they show, as before the rhythm; with the rhythm as the body’s gap
+they were 20 px. Before the rhythm, two cards were 12 px apart, a card and a commit 23.5
+px, and two commits 20 px.
+In the macOS app’s web view, through the same driver on the same page and layouts at
+that commit, the test’s type, spacing, and line checks as they were then pass in both
+themes, apart from its pixel reads; each node sits 0.5 px below its first line’s middle,
+and every pair of events is 20 px apart, as in Chrome.
+What the test holds since has not run in WebKit: the heading checks, the spacing read
+from a commit’s text nodes, the break above Review comments, and the rhythm as a margin
+above each event rather than the body’s gap.
+
+## Tree Icon Slot
+
+For [One Glyph Size](../../docs/design-system.md#one-glyph-size), recorded 2026-11-15:
+at a 16px slot a Files name started 22px from the row’s content edge and a Pulls title
+44px, past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
+wider.
+
+## Grouping Cost
+
+For [Grouping the Files Tree](../../docs/design-system.md#grouping-the-files-tree),
+measured in headless Chrome on a served folder on 2026-11-15: grouping costs the server
+a pass over the index per group.
+On 22,104 files File type answered in 106 ms where the ungrouped tree took 34 ms, and on
+100,000 files in 0.72 to 0.91 s against 0.12 to 0.19 s. Opening a folder inside a
+section took 24 to 32 ms, the same as outside one, with no spinner shown.
+On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
+two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
+position, the focused row inside that folder, and the open folders held through all of
+them.
+
+Recorded again on 2026-11-15, once the server read every group from one pass over the
+index (`GroupedTreeQuery`), measured in process, warm, against the read per group it
+replaced, with identical answers:
+
+| Folder | Ungrouped rows | By file type | By age |
+| --- | --- | --- | --- |
+| 100,000 files (the bench corpus) | 2 ms | 92–96 ms, was 622–688 ms | 72–98 ms, was 404–505 ms |
+| 270,000 files and 110,000 folders | 3–4 ms | 0.42–0.48 s, was 4.0–4.5 s | 0.34–0.47 s, was 3.3–3.6 s |
+
+In headless Chrome on the 100,000-file corpus, a click on By file type painted its
+sections 130–132 ms later when the press asked for nothing ahead, and 27–47 ms later
+after a 100 ms press had asked for it; By age took 98–116 ms and 29–32 ms; No grouping
+painted its tree in 29–49 ms.
+On the larger folder By file type took 0.50–0.53 s, or 0.39–0.48 s after a 100 ms press,
+and No grouping 41–95 ms.
+Two groupings asked for at once each took twice as long there, 0.86 s against about 0.42
+s.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

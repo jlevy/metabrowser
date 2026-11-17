@@ -1434,8 +1434,8 @@ def test_git_raw_blobs_are_sandboxed_like_filesystem_raw(
 
     ``raw_file`` dispatches a pinned subject to ``git_revision_raw`` before it
     reaches the filesystem branch, so trust-header evidence taken on that branch
-    is evidence for the filesystem only. SECURITY.md promises the sandbox on
-    every raw response; this asserts it against the Git bytes themselves.
+    is evidence for the filesystem only. arch-server-and-content.md promises the
+    sandbox on every raw response; this asserts it against the Git bytes themselves.
     """
 
     store, commit = fast_import_store(

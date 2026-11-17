@@ -22,8 +22,9 @@ letters name known meanings and mean the same wherever they are pressed, the dig
 9 number the situational links and actions on a screen in reading order, ``0`` is Home,
 and ancillary actions such as copying have no key. The one exception to the letters is an
 open menu that has focus, whose rows' letters come first until it closes
-(``docs/design-system.md``, "Keys in a Menu"). ``tests/test_keymap.py`` holds the
-"Keyboard Shortcuts" table to this one and to the keys the registry registers.
+(``docs/design-system.md``, "Keys in a Menu"). ``docs/keyboard-shortcuts.md`` is the
+users' table of the keys, and ``tests/test_keymap.py`` holds it to this one and to the
+keys the registry registers.
 
 This module imports nothing beyond the standard library, so the manifest loader and
 ``metab --doctor`` can use it without loading content classification or the server.

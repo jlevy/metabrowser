@@ -21,7 +21,7 @@ from metabrowser.server import app
 
 _RAW_CSP = "sandbox allow-scripts allow-popups allow-forms allow-downloads"
 # A raster image runs nothing, so its sandbox allows no scripts under either profile, and a
-# copy a browser keeps is the same under both (SECURITY.md).
+# copy a browser keeps is the same under both (arch-server-and-content.md, "Raw Responses").
 _RASTER_CSP = "sandbox allow-popups allow-forms allow-downloads"
 
 # A real one-pixel RGBA PNG (signature, IHDR, IDAT, IEND, CRCs valid), so the

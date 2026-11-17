@@ -25,11 +25,11 @@ glance more than they are worth matching GitHub. Python keeps GitHub's blue.
 allowed to leave its color rather than nudge it.
 
 **Lightness and chroma are a band, not a constant.** One lightness and one
-chroma for everything is what this palette did first, and it discarded the two
-dimensions GitHub's own colors are mostly separated by. Html and svelte differ
-by 0.65 degrees of hue but by 0.032 of lightness and 0.040 of chroma; ruby and
-yaml by 1.13 degrees and 0.179 of lightness. Flattened onto one tone they came
-out as the same color: html rendered ``#dd5230`` against svelte's ``#dd5232``.
+chroma for everything would discard the two dimensions GitHub's own colors are
+mostly separated by. Html and svelte differ by 0.65 degrees of hue but by 0.032
+of lightness and 0.040 of chroma; ruby and yaml by 1.13 degrees and 0.179 of
+lightness. Flattened onto one tone they come out as the same color: html renders
+``#dd5230`` against svelte's ``#dd5232``.
 Fifty-six families average 6.4 degrees of hue spacing, at or under the
 just-noticeable difference at fixed lightness and chroma, so hue alone cannot
 carry the set.
@@ -41,18 +41,19 @@ upstream *extremes* are not, which is the point: GitHub's lightness runs from
 Lua's 0.27 navy to JavaScript's 0.90 yellow, a palette assembled by hundreds of
 people over a decade that looks like it.
 
-One property is given up deliberately. Lightness is no longer constant, so a
+One property is given up deliberately. Lightness is not constant, so a
 stacked-bar segment can read slightly heavier than a neighbour of the same
-size, and guaranteeing it did not was why the flat tone was chosen. The band is
-narrow to keep that small, and the measured alternative was worse: at one tone
-the closest pair in the light theme sits at an Oklab delta-E of 0.0020, which
-is not a difference anyone can see.
+size, which a flat tone would prevent. The band is narrow to keep that small,
+and the measured alternative is worse: at one tone the closest pair in the
+light theme sits at an Oklab delta-E of 0.0020, which is not a difference
+anyone can see.
 
 A family may leave the band, and only by saying so. Where the derivation cannot
 separate a family that matters — or where GitHub's own placement puts it on top
 of a better-known neighbour — the registry lets it declare a lightness rank of
 its own alongside the reason, and a chroma ratio of its own inside the chroma
-band. That is the whole escape hatch: prose, checked, and visible in the palette
+band. Either override replaces only its own axis, and the other stays derived.
+That is the whole escape hatch: prose, checked, and visible in the palette
 report rather than buried in a diff. TypeScript uses both: a yellow inside the
 lightness band is mustard, and the chroma its upstream blue earned is less than
 the yellow can hold.
@@ -181,7 +182,7 @@ class ToneBand:
 
 LIGHT_THEME = ToneBand(lightness=0.62, spread=0.06, chroma=0.180, chroma_spread=0.25)
 """Filled swatches on a near-white ground. Paints 0.560-0.680 lightness and
-reaches 0.225 chroma where the gamut allows, against a flat 0.180 before."""
+reaches 0.225 chroma where the gamut allows."""
 
 DARK_THEME = ToneBand(lightness=0.75, spread=0.06, chroma=0.150, chroma_spread=0.25)
 """The same hues on a dark ground. Lighter, because a color needs more

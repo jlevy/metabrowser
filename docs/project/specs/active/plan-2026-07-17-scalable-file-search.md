@@ -4,9 +4,11 @@
 
 **Author:** Metabrowser maintainers
 
-**Status.** The client file catalog and fuzzy finder are implemented (decision
-`mb-ci04`). The Pulls stack adds repository PR completions (`mb-s3fi`). Full-text search
-and further indexing are planned.
+**Status:** The client file catalog and its complete feed, the fuzzy finder (decision
+`mb-ci04`), and pull-request completions (`mb-s3fi`) are implemented.
+Bounded full-text search (Phase 3, `mb-wzy6`), evidence-gated indexing (Phase 4), and
+the unchecked items of Phases 0 and 2 are planned; bounded server filename search is
+deferred (`mb-3arq`).
 
 ## Overview
 
@@ -380,7 +382,7 @@ results within a bounded window.
 The response separates catalog completeness, the title scan’s work limit, and the result
 limit. The palette labels a list that has more matching results.
 See
-[Search From the Catalog](plan-2026-10-01-github-pulls-tab.md#search-from-the-catalog).
+[Search From the Catalog](../done/plan-2026-10-01-github-pulls-tab.md#search-from-the-catalog).
 
 A PR option shows its title, number, and state in the same listbox as file options.
 The accessible name identifies the result as a pull request.

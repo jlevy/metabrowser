@@ -29,6 +29,30 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
 /**
  * Enhance the safe HTML emitted by KPress with Metabrowser navigation semantics.
  *
+ * The plugin decides what an authored link names, and the shell decides how that target is
+ * spelled as a `/view/` address. The resolvers do no I/O, so each decision is testable
+ * against a catalog snapshot, and a target passes through them in this order:
+ *
+ * 1. Scheme dispatch (`links.js`): `http`, `https`, `mailto`, and `tel` stay external, and
+ *    an unsafe scheme is disabled with a visible reason.
+ * 2. Exact resolution (`links.js`): relative, `./`, `../`, and leading-slash targets resolve
+ *    from the source document as GitHub resolves them. A missing target keeps its URL and
+ *    opens the ordinary not-found state; nothing guesses by basename. Media goes through
+ *    `/raw`.
+ * 3. GitHub localization (`github-localizer.js`): a `github.com` blob or tree URL opens
+ *    locally only when the served repository's identity, which `repository_context.py`
+ *    reads from Git metadata with bounded reads and no Git process, proves it names the
+ *    served tree: origin, branch or exact revision, and served subdirectory. Anything
+ *    unproven stays an outbound link.
+ * 4. Published-site routes (`project-adapters.js`): with an MkDocs, Docusaurus, or Jekyll
+ *    configuration at the served root, a published route such as `/guide/` maps to the
+ *    source document behind it; it stays inert until the pinned catalog pass decides.
+ * 5. Wiki links (`wiki-resolver.js`, through `wiki-enhancer.js`): `[[...]]` resolves to an
+ *    exact path, then the source directory, then a unique catalog match. An ambiguous or
+ *    missing note renders visibly with its candidates, and a name unique in an incomplete
+ *    catalog stays pending until the catalog is complete, so a target never depends on
+ *    walk order.
+ *
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb

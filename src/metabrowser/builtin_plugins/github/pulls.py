@@ -20,10 +20,10 @@ list marked incomplete; an optional field that cannot be read, such as an ``http
 link, is left empty. Everything else that fails raises :class:`PullDataError`, and
 nothing else escapes.
 
-Its integration point is the background refresh coordinator: a job keyed by the store
-and the pull-request number that ``POST`` routes start or join. Until that lands, the
-CLI is its only caller: the first ``--show`` or ``--api`` of a pull-request URL runs it
-when no usable record is cached, and ``--no-serve`` runs it every time.
+It runs as a refresh-coordinator job keyed by the store and the pull-request number
+(:mod:`.served_pull`), which ``POST`` routes start or join. The one-shot CLI also runs it:
+the first ``--show`` or ``--api`` of a pull-request URL when no usable record is cached,
+and ``--no-serve`` every time.
 
 ``gh api`` refuses every request while gh is signed out (checked 2026-09-23 with gh
 2.98.0, which exits 4 and asks for ``gh auth login``), so a record is always read by a

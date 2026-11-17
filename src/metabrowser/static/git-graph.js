@@ -12,7 +12,7 @@
 //
 // The port is deliberately faithful. Lane geometry, path commands, and
 // assignment order match upstream so a future layout fix can be diffed
-// against this file rather than reverse-engineered. Four changes were
+// against this file rather than reverse-engineered. Five changes were
 // made, each noted at its site:
 //
 //   1. Colors are design tokens (`var(--git-lane-N)`) instead of VS Code

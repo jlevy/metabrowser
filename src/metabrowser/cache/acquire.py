@@ -147,6 +147,8 @@ from metabrowser.home import (
 log = logging.getLogger(__name__)
 
 _ACQUIRED_TRANSPORTS: Final[frozenset[str]] = frozenset({"file", "https"})
+# Measured 2026-09-16 (explorations/repository-cache/README.md): with maintenance left on, each fetch spawned
+# ``git maintenance run --auto`` in the store.
 _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("maintenance.auto", "false"),
     ("gc.auto", "0"),
@@ -524,6 +526,9 @@ async def acquire_into_staging(
             _note(on_note, f"borrowing objects from {show_path(lender.root)}")
             if await asyncio.to_thread(os.path.exists, lender.common_dir / "shallow"):
                 _note(on_note, "history is shallow, as the checkout's is")
+        # Bare, not ``--no-checkout``: measured 2026-09-16 at the same cost, a no-checkout
+        # store keeps ``core.bare=false``, an empty work tree, reflogs, and a local branch
+        # (explorations/repository-cache/README.md).
         # No ``--ref-format=files``: the flag arrived in Git 2.45 and the admitted
         # floor is 2.43. The isolated environment drops GIT_DEFAULT_REF_FORMAT and
         # reads no user configuration, so nothing ambient selects reftable.

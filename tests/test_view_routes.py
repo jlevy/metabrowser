@@ -1,7 +1,8 @@
 """Canonical browser-route validation.
 
 The route names the address space; the path after it is written in that
-space's own terms (see the Browser URL Grammar in docs/architecture.md).
+space's own terms (see the Browser URL Grammar in
+docs/project/architecture/arch-views-models-routes.md).
 """
 
 from __future__ import annotations

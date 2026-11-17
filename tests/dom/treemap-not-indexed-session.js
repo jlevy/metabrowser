@@ -32,7 +32,8 @@ async function main() {
   };
   global.setTimeout = unexpected("a timer");
   let render;
-  let tooltipHides = 0;
+  // What each hide was given: a disposal puts away only the view's own tooltip (mb-alff).
+  const tooltipHides = [];
   const navigation = [];
   const mb = new Proxy(
     {
@@ -45,7 +46,7 @@ async function main() {
       escapeHtml: (value) =>
         String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;"),
       navigation: { open: (...args) => navigation.push(args) },
-      tooltip: { hide: () => tooltipHides++ },
+      tooltip: { hide: (within) => tooltipHides.push(within) },
     },
     {
       get(target, name) {
@@ -101,7 +102,7 @@ async function main() {
           return parent;
         },
       };
-      const beforeHides = tooltipHides;
+      const beforeHides = tooltipHides.length;
       const shown = render(container, { path: folder, raw: { dir: { not_indexed: reason } } });
       const text = container.innerHTML
         .replace(/<[^>]*>/g, " ")
@@ -119,7 +120,8 @@ async function main() {
       shown.dispose();
       assert.equal(listeners.size, 0);
       assert.equal(removals, 1);
-      assert.equal(tooltipHides - beforeHides, 1);
+      assert.equal(tooltipHides.length - beforeHides, 1);
+      assert.equal(tooltipHides.at(-1), container);
       if (mount === 0) {
         output.push({ reason, text, parent: navigation.at(-1) });
       }

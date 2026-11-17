@@ -26,7 +26,8 @@ public nonisolated enum WebAuthorization: Equatable, Sendable {
 ///
 /// The supervisor and the windows depend only on this, so the brief's host mode (port
 /// 0, a JSON ready line, a stdin token, `/healthz`, a session cookie) replaces
-/// `CLIServeLaunch` without touching either. See README.md, "Gaps to Close".
+/// `CLIServeLaunch` without touching either. See "Planned" in
+/// `docs/project/architecture/arch-macos-app.md`.
 public nonisolated protocol ServerLaunch: Sendable {
     /// The arguments after the executable that serve `root`.
     func arguments(serving root: URL) -> [String]
@@ -48,6 +49,8 @@ public nonisolated protocol ServerLaunch: Sendable {
 /// rejected), and prints `Serving <root> at http://127.0.0.1:<port>/view/…` to stdout
 /// before its socket listens, which is why readiness also polls for a 2xx.
 public nonisolated struct CLIServeLaunch: ServerLaunch {
+    /// Where the port walk starts: `metab`'s own default, `DEFAULT_BROWSER_PORT` in
+    /// `src/metabrowser/settings.py`.
     public static let defaultBasePort = 8411
     public static let host = "127.0.0.1"
     /// The flag that ends a server when its stdin closes. `RuntimeDiscovery.validate`

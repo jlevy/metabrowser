@@ -1512,6 +1512,19 @@ async function main() {
       cutHeader.find("change-line-statuses").length === 0,
     cutHeader?.reads() ?? "",
   );
+  // The note's figure is a count's number: bold, and muted with the note (B4 of review B on
+  // #478).
+  const listedNumbers = (place) =>
+    JSON.stringify(
+      place
+        ?.find("diff-summary-note")
+        .map((note) => note.find("summary-number").map((number) => number.reads())),
+    );
+  check(
+    "and its listed figure is a bold number in its note",
+    listedNumbers(cutHeader) === JSON.stringify([["2"]]),
+    listedNumbers(cutHeader),
+  );
   check(
     "and names them for a screen reader",
     cutHeader?.getAttribute("aria-label") ===
@@ -1527,6 +1540,11 @@ async function main() {
     "a list cut short says them without the shared tree too",
     cutPlain.reads().includes("5 files changed") && cutPlain.reads().includes("(2 listed)"),
     cutPlain.reads(),
+  );
+  check(
+    "and its listed figure is a bold number in its note there too",
+    listedNumbers(cutPlain) === JSON.stringify([["2"]]),
+    listedNumbers(cutPlain),
   );
   const wholePlace = new FakeElement("div");
   mountDiffView(new FakeElement("div"), twoFiles, undefined, {

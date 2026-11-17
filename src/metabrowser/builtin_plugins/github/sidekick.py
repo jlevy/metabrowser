@@ -1,7 +1,11 @@
-"""The pull routes: one pull request's, ``pull`` and ``pull-refresh``, the lists', ``pulls``
-and ``pulls-refresh``, a pull request's changed files, ``pull-files`` and
-``pull-files-refresh``, background prefetch, ``pulls-prefetch``, and ``cache-clear``,
-which discards all of a repository's, all under ``/api/plugin/github/``.
+"""The plugin's data routes, every one the manifest names, all under ``/api/plugin/github/``:
+one pull request's (``pull``, ``pull-refresh``, and the routes of its texts, timeline,
+comparison, snapshots, and rendered diffs), the catalog's (``pulls``, ``pulls-refresh``,
+``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
+(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``), and
+``cache-clear``, which discards all of a repository's. The table in
+``docs/project/architecture/arch-github-pull-requests.md``, checked against the manifest
+by ``tests/test_github_route_table.py``, names each one.
 
 :mod:`metabrowser.builtin_plugins.github.pull_route`,
 :mod:`metabrowser.builtin_plugins.github.pull_list_route`, and

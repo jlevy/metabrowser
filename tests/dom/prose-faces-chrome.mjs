@@ -32,9 +32,11 @@
 import { launchChrome } from "./chrome-session.mjs";
 
 const [base, commit] = process.argv.slice(2);
-// How long a page has to show what it is probed for. A page took 72 to 305 ms from its
-// navigation to its last probe, in CI and on a Mac at a load average of 7, so this is
-// generous; a probe that never shows fails by name well inside the test's 30 s run budget.
+// How long a page has to show what it is probed for. Each page's time from its navigation
+// to the end of its read, the figure to weigh this against, is on the session's stderr as
+// `<pass>, <path>: N ms`. A probe that never shows fails by name as it is found (`check`),
+// so it is named even when its waits, one per pass, carry the run past the test's budget:
+// the timeout's message includes this stderr.
 const PROBE_WAIT_MS = 4000;
 const PROBE_POLL_MS = 25;
 // How long Chrome is asked again for the faces of a text it reports none for, as it does
@@ -55,9 +57,18 @@ const check = (label, ok, detail = "") => {
 
 // In the page: wait for every probe's text, then mark the element that holds it directly
 // and return its computed family, and the families the font set's tokens compute to.
+//
+// A probe's text is the one the pane shows. The shell builds a view in a connected, inert,
+// transparent stage and moves its nodes into the pane when it commits (stagePreviewNode and
+// createFilePreviewStage, app.js). A commit's body, found in its stage while its diff
+// loaded, was read there: a rule that set the body in serif in the pane alone passed, and
+// the move, which ends the node ID Chrome gave the node, came between DOM.querySelector
+// and CSS.getPlatformFontsForNode ("Could not find node with given id", in CI). So a probe
+// waits for its text outside any inert subtree, where the shell leaves it.
 const MARK = `async (probes, waitMs, pollMs) => {
+  const unstaged = (node) => node.closest("[inert]") === null;
   const holder = (probe) => {
-    const scope = document.querySelector(probe.selector);
+    const scope = [...document.querySelectorAll(probe.selector)].find(unstaged);
     if (!scope) return null;
     return [scope, ...scope.querySelectorAll("*")].find((node) =>
       [...node.childNodes].some(
@@ -67,8 +78,8 @@ const MARK = `async (probes, waitMs, pollMs) => {
   };
   // The probe's h2, by its text, when the probe names one.
   const heading = (probe) =>
-    [...document.querySelectorAll(probe.selector + " h2")].find((node) =>
-      node.textContent.includes(probe.heading),
+    [...document.querySelectorAll(probe.selector + " h2")].find(
+      (node) => unstaged(node) && node.textContent.includes(probe.heading),
     ) ?? null;
   const shown = (probe) =>
     holder(probe) !== null && (probe.heading === undefined || heading(probe) !== null);

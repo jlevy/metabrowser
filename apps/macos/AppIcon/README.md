@@ -47,12 +47,13 @@ The mark is 241.654 units wide, balanced on `centroidX` 262.598; the face runs f
 | `render-svg.swift` | Renders a master to PNG at any size that divides 2048. |
 | `rejects/` | SVGs the renderer must refuse, each naming the reason in its first line. |
 | `review-sheet.swift` | Lays out the review images. |
-| `../scripts/build-icon.sh` | Regenerates every master, builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, writes the title bar’s mark after checking that both masters draw the same one, and with `--review`, the review images. |
+| `../scripts/build-icon.sh` | Regenerates every master, builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, writes the title bar’s mark after checking that both masters draw the same one, writes the README’s icon, and with `--review`, the review images. |
+| `../../../images/metabrowser-icon.png` | The README’s icon: the release master at 512 px, generated; the same image as the release `.icns` holds at that size. |
 
 ## Regenerate
 
 ```shell
-scripts/build-icon.sh                   # from apps/macos: every master, both .icns files, and the title bar's mark
+scripts/build-icon.sh                   # from apps/macos: every master, both .icns files, the title bar's mark, and the README's icon
 scripts/build-icon.sh --review          # also AppIcon/review/ (git ignores it), with a release .icns per variant in review/icns/
 scripts/build-icon.sh --check           # only check that the renderer refuses every file in AppIcon/rejects/
 ```
