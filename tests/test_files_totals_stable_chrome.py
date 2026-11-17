@@ -11,9 +11,10 @@ The count is now a line of its own, the shell inlines the root's totals with its
 rows, and a line drawn without them holds the ignored line with the pending placeholder
 (docs/design-system.md, "Navigation Metadata Line"). ``tests/dom/files-totals-stable-
 chrome.mjs`` serves a folder with ignored files, the same with a longer tracked count,
-and one with nothing ignored, and records each load frame by frame from the document's
-start, in both themes, with the tally answered at once and held 2 s, in the default pane
-and the narrowest. This judges it:
+and one with nothing ignored, each dated days back so that no age on the page changes its
+label during the session (``_AGE_S``), and records each load frame by frame from the
+document's start, in both themes, with the tally answered at once and held 2 s, in the
+default pane and the narrowest. This judges it:
 
 - from first paint, the first frame with rows under a filled filter bar, to the settled
   frame, no box in the navigation (the filter bar, each metadata line, the first twelve
@@ -49,6 +50,7 @@ import json
 import os
 import socket
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +83,19 @@ _WIDE_TRACKED_FILES = 1200
 _TRACKED_BYTES = 40_000
 _IGNORED_FILES = 2000
 _IGNORED_BYTES = 70_000
+# How old the served trees are dated. An age is drawn in buckets, and the main view's
+# folder header shows the folder's: written as the test starts, a folder read "just now"
+# for its first minute and "1m ago" after it. The header refreshes its summary a debounce
+# after the event stream's snapshot (`startFolderHeaderSubscription` in app.js,
+# `ROLLUP_WATCH_DEBOUNCE_MS`), so a load in which a folder's first minute ended redrew its
+# age, and the right-aligned summary moved (mb-j4ts, 2026-11-17). On CI it was the clean
+# folder in "none unknown slow 180px dark", twice: "278 B 41 files just now" became "...
+# 1m ago", the summary's left edge moved 7.9 px, and Chrome scored 1.77e-5. On a Mac it
+# was the folder with ignored files in "ignored unknown slow 180px dark", in 2 of 5 runs,
+# scored 1.2e-4 with the header's root crumb. Three days old, every age reads "3d" from
+# 2.5 to 3.5 days (`AGE_TIERS` in formatters.js rounds), twelve hours either side of a
+# session bounded at SESSION_TIMEOUT_S.
+_AGE_S = 3 * 24 * 60 * 60
 
 
 def _sparse(path: Path, size: int) -> None:
@@ -101,6 +116,13 @@ def _ignoring(root: Path, tracked: int) -> Path:
     return root
 
 
+def _dated(root: Path, when: float) -> None:
+    """Give *root* and everything under it the access and modification time *when*."""
+
+    for path in [root, *root.rglob("*")]:
+        os.utime(path, (when, when))
+
+
 def _folders(root: Path) -> tuple[Path, Path, Path]:
     ignoring = _ignoring(root / "ignoring", _TRACKED_FILES)
     wide = _ignoring(root / "wide", _WIDE_TRACKED_FILES)
@@ -110,6 +132,9 @@ def _folders(root: Path) -> tuple[Path, Path, Path]:
     for index in range(40):
         (clean / "src" / f"m{index:02d}.py").write_text(f"x = {index}\n", encoding="utf-8")
     (clean / "README.md").write_text("# Clean\n", encoding="utf-8")
+    when = time.time() - _AGE_S
+    for folder in (ignoring, wide, clean):
+        _dated(folder, when)
     return ignoring, wide, clean
 
 
@@ -163,7 +188,9 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
         ignored = name.startswith("ignored")
         # Nothing moves from first paint to settled.
         assert not _still(result), f"{name}: {_still(result)}: {result['trail']}"
-        assert result["shift"] == 0, f"{name}: layout shift {result['shift']}: {result['trail']}"
+        # Each shift names its time and the node that moved, which may be outside the panel.
+        shift = f"layout shift {result['shift']}: {result['shifts']}"
+        assert result["shift"] == 0, f"{name}: {shift}: {result['trail']}"
         # And it is not luck: the line paints its settled shape from the first frame, from
         # the root's totals the shell inlined, or holding the ignored line without them,
         # which nothing but the root's totals settles.
