@@ -238,6 +238,8 @@ It fails unless:
   free-threaded build: the `unit` and `goldens` matrices and the `plan` job’s `PYTHONS`,
   and `PR_CHROME_PYTHON` is one of them;
 - the `chrome` matrix is the `plan` job’s output;
+- the `plan` job checks out with `fetch-depth: 0`, which `tests-red` and
+  `git merge-tree` need;
 - no workflow runs on `pull_request_target`.
 
 The tests of `devtools/ci_plan.sh` hold that a push to `main`, and a pull request while
@@ -255,38 +257,44 @@ Two mechanisms close that for every merge an agent makes (Q6):
 - **A red `main` widens the next pull request’s run.** The `plan` job of a pull request
   to `main` reads `main`’s state from the Actions API, with `actions: read` on that one
   job. It reads one page of `ci.yml`’s push runs on `main`, newest first, and the first
-  run with a finished attempt gives the state.
-  A run whose latest attempt is still going or queued counts by the attempt before it,
-  for a rerun, and is passed over, for a first attempt.
-  Only `success` is green; any other conclusion, or no finished attempt in the page, is
-  red.
+  run with a completed attempt gives the state.
+  A run whose latest attempt has any status other than `completed` (in progress, queued,
+  waiting, requested, or pending) counts by the attempt before it, for a rerun, and is
+  passed over, for a first attempt.
+  Only `success` is green; any other conclusion, or no completed attempt in the page, is
+  red. [Testing Strategy](#testing-strategy) lists the result for each kind of run.
   - While `main` is red, the `plan` job gives the run `main`’s whole matrix, the Chrome
     tier on all four interpreters.
   - `ci-ok` still fails only when one of the run’s own jobs fails.
     A pull request whose merge with `main` carries a lasting failure fails it, and only
     one that repairs it passes, which is how `main` is fixed under a required check.
-  - The `plan` job also checks whether the merge commit the run tests contains `main`’s
-    red head (`git merge-base --is-ancestor`). `ci-ok`’s verdict names `main`’s red run
-    and says whether it does, which is what the merge procedure reads.
+  - The `plan` job also checks whether the merge commit the run tests contains the head
+    of the `main` run it read (`git merge-base --is-ancestor`), and writes the reason
+    for a `no` to its summary.
+  - While `main` is red, `ci-ok` writes its verdict as one line in a fixed format,
+    `main-red run=<id> head=<sha> tested=<yes|no>`, to its log and as a `::notice::`
+    annotation, which `gh run view <run id>` lists.
+    `tested=yes` means this run ran `main`’s whole matrix on a merge commit that
+    contains that head. The tests of `ci_verdict.sh` pin the format.
   - Not knowing the state costs runner minutes, never coverage.
 
 - **The merging agent merges by `main`’s state.** Phase 2 adds this procedure to the Git
   section of [Agent Instructions](../../../../AGENTS.md#git):
-  - After each merge, it watches that commit’s `ci.yml` run to its end (`gh run watch`),
-    and it merges into `main` only when the newest push run on `main` has finished.
-  - While that run is red, it merges only a pull request whose latest `ci-ok` run was
-    triggered after the red commit landed and ran `main`’s whole matrix, so that the
-    merge commit it tested contains `main`’s current red head; the verdict names that
-    head. A rerun of an older run does not qualify, since a rerun reuses the merge commit
-    its first trigger built.
-  - It reruns a failure that a bead names as a known flake once, which turns the run
-    green if it was the flake.
-    Any other failure gets a bead and a fix or a revert.
-  - It never arms auto-merge: agents merge directly, so every merge they make passes
-    these rules.
+  - Merge into `main` only when the latest attempt of the newest `ci.yml` push run on
+    `main` has completed (`gh run list`).
+  - If it is not green, merge only a pull request whose latest `ci-ok` passed with a
+    verdict line that says `tested=yes` and names the head SHA of that `main` run.
+  - A rerun never changes the commit a run tested.
+    To get a qualifying run, update the branch from `main` or push to it.
+  - Rerun a failure that a bead names as a known flake once; give any other failure a
+    bead and a fix or a revert.
+    Never arm auto-merge: agents merge directly, so every merge they make passes these
+    rules.
 
   Its reason, which the procedure states: `ci-ok` cannot see a pull request whose run
-  went green before `main` turned red, or a `main` run that has not finished.
+  went green before `main` turned red, or a `main` run that has not completed.
+  The head comparison is what makes a verdict current: a verdict names the head that was
+  red when its run was planned, and `main` may have moved since.
 
 A stacked pull request does not read `main`’s state.
 It merges into its base branch, and it reaches `main` through a run whose base is
@@ -438,9 +446,11 @@ jobs:
       main-sha: ${{ steps.decide.outputs.main-sha }}
       main-state: ${{ steps.decide.outputs.main-state }}
       main-run: ${{ steps.decide.outputs.main-run }}
-      red-sha: ${{ steps.decide.outputs.red-sha }}
+      main-run-sha: ${{ steps.decide.outputs.main-run-sha }}
       tests-red: ${{ steps.decide.outputs.tests-red }}
     steps:
+      # Today's checkout with fetch-depth: 0. tests-red and git merge-tree need the full
+      # history, and check_ci.py holds it on this job.
       - setup: checkout only
       - id: decide
         env:
@@ -541,7 +551,7 @@ jobs:
           INTEGRATION: ${{ needs.plan.outputs.integration }}
           MAIN_STATE: ${{ needs.plan.outputs.main-state }}
           MAIN_RUN: ${{ needs.plan.outputs.main-run }}
-          RED_SHA: ${{ needs.plan.outputs.red-sha }}
+          MAIN_RUN_SHA: ${{ needs.plan.outputs.main-run-sha }}
           TESTS_RED: ${{ needs.plan.outputs.tests-red }}
         run: bash devtools/ci_verdict.sh
 ```
@@ -549,15 +559,29 @@ jobs:
 `devtools/ci_plan.sh` holds the decision, so that it has tests:
 
 ```bash
-main_state=none tests_red=no
+main_state=none tests_red=no why=
 if [ "$EVENT" = pull_request ] && [ "$BASE" = main ]; then
-  # "<green|red> <run> <head sha>", by the rule in A Red main. A failed read is red.
-  main=$(main_state_from_api) || main="red unknown unknown"
-  read -r main_state main_run red_sha <<<"$main"
-  # Whether the merge commit this run tests contains main's red head.
-  if [ "$main_state" = red ] && git merge-base --is-ancestor "$red_sha" HEAD 2>/dev/null; then
-    tests_red=yes
+  # "<green|red> <run id> <head sha>", by the rule in A Red main.
+  if main=$(main_state_from_api); then
+    read -r main_state main_run main_run_sha <<<"$main"
+  else
+    main_state=red why="main's state could not be read"
   fi
+  if [ "$main_state" = red ] && [ -z "$why" ]; then
+    # Whether the merge commit this run tests contains the head of main's red run.
+    # Exit 1 is "not an ancestor"; anything else, such as 128, is a missing commit.
+    git merge-base --is-ancestor "$main_run_sha" HEAD && rc=0 || rc=$?
+    case $rc in
+      0) tests_red=yes ;;
+      1) why="the merge commit this run tests predates $main_run_sha" ;;
+      *) why="git merge-base exited $rc: $main_run_sha is missing from the clone"
+         echo "::warning::tests-red is no because $why" ;;
+    esac
+  fi
+  if [ "$main_state" = green ]; then
+    main_run_sha= # named only while main is red
+  fi
+  echo "main: $main_state $main_run_sha tests-red=$tests_red ${why:+($why)}" >>"$GITHUB_STEP_SUMMARY"
 fi
 if [ "$EVENT" = pull_request ] && [ "$main_state" != red ]; then
   chrome="[\"$PR_CHROME_PYTHON\"]"
@@ -580,9 +604,9 @@ fi
 `devtools/ci_verdict.sh` fails unless every needed job’s result is `success`. It accepts
 `skipped` only for `stack-integration`, and only when `integration` is `none` or
 `identical`; `conflict` fails with today’s message.
-While `MAIN_STATE` is `red`, its verdict names `MAIN_RUN` and `RED_SHA` and says, from
-`TESTS_RED`, whether this run tested that head, which the merge procedure reads.
-It never fails on `MAIN_STATE` alone, which would deadlock a red `main`.
+While `MAIN_STATE` is `red`, it writes the verdict line of [A Red `main`](#a-red-main)
+from `MAIN_RUN`, `MAIN_RUN_SHA`, and `TESTS_RED`, to its log and as a `::notice::`. It
+never fails on `MAIN_STATE` alone, which would deadlock a red `main`.
 
 Under `pull_request`, the workflow, `ci_plan.sh`, and `ci_verdict.sh` come from the pull
 request’s own merge commit, so the `main`-state read and `ci-ok` bind an honest pull
@@ -689,14 +713,27 @@ brief’s methodology and, once it exists, `make ci-report`.
 | The `gh` guard’s summary | A test that makes a guarded `gh` call in a worker | The summary names it |
 | Split jobs | 20 pull request runs after the merge | Median push to green at or under 5 minutes, 90th percentile at or under 6, and `unit`, the serial tier, and `chrome` together collecting the tests today’s `test` job collects on the same commit |
 | `ci-ok` | A pull request with one deliberately failing shard, closed unmerged | `ci-ok` is red and names it; the other jobs finish |
-| `main`’s state | `devtools/ci_plan.sh`’s tests over recorded API answers: success, failure, cancelled, no run, a failed read, a first attempt in progress, a rerun in progress, two runs in progress, a queued run, and no finished attempt in the page | Only `success`, read by the rule in [A Red `main`](#a-red-main), keeps the Chrome tier on `PR_CHROME_PYTHON`; every other answer gives it all of `PYTHONS` |
-| Whether a run tested the red head | `ci_plan.sh`’s tests with a merge commit that contains the red head, one that predates it, and a red head the clone lacks | `tests-red` is `yes` for the first only |
-| A red `main` in CI | The first pull request run after `main` is next red, and a rerun of a run from before | Both have the Chrome tier on all four; `ci-ok`’s verdict names `main`’s run and says the first tested its red head and the rerun did not |
+| `main`’s state | `devtools/ci_plan.sh`’s tests over recorded API answers: success, failure, cancelled, timed out, no run, a failed read, and the unfinished runs in the table below | Only `success` keeps the Chrome tier on `PR_CHROME_PYTHON` (narrow); every other completed answer gives it all of `PYTHONS` |
+| Whether a run tested the red head | `ci_plan.sh`’s tests with a merge commit that contains the red head, one that predates it, and a red head the clone lacks | `tests-red` is `yes` for the first only; the summary gives “predates” for the second and a missing commit, with a warning, for the third |
+| The verdict line | `ci_verdict.sh`’s tests | While `main` is red, the line has the fixed format, in the log and as a `::notice::`; while it is green, there is no line |
+| A red `main` in CI | The first pull request run after `main` is next red, and a rerun of a run from before | Both have the Chrome tier on all four; the first’s verdict line says `tested=yes` with `main`’s head, and the rerun’s says `tested=no` |
 | Cancellation | Two pushes a minute apart | The first run is cancelled; a `main` run is never cancelled |
 | `stack-integration` | A stack behind `main`, one level with it, and one that conflicts | `needed`, `identical`, and `conflict`, each with its summary |
 | Nightly soak | One manual run by `workflow_dispatch` | 5 serial-tier jobs and 20 Chrome shard jobs run and report |
 | Flake fixes | The loaded-machine loop that `mb-alff` and `mb-nvo0` used | The failure reproduces before the fix and not in 30 runs after it |
 | The whole plan | The research brief’s tables, taken again 7 days after Phase 2 | The goals above |
+
+The unfinished runs in `ci_plan.sh`’s tests, each followed by the run behind it, and the
+result the state rule gives:
+
+| Recorded answer | Result |
+| --- | --- |
+| A first attempt in progress, then `success` | Green, narrow |
+| A first attempt in progress, then `failure` | Red; `main-run-sha` is the failed run’s head |
+| Two first attempts in progress, then `success` | Green, narrow |
+| A queued run, then `success` | Green, narrow |
+| A rerun in progress whose earlier attempt failed, then `success` | Red; `main-run-sha` is the rerun’s head |
+| No completed attempt in the page | Red |
 
 ## Rollout Plan
 
@@ -748,9 +785,9 @@ brief’s methodology and, once it exists, `make ci-report`.
   `main`. The merging agent sees it when that run ends, and until `main` is green, a
   pull request merges only by passing `main`’s whole matrix on a tree that contains the
   failure.
-- **Merges wait for `main`.** The agent merges only when `main`’s newest run has
-  finished, so merges are spaced by a `main` run, about 5 minutes (est.), and a stack
-  lands one layer a run.
+- **Merges wait for `main`.** The agent merges only when the latest attempt of `main`’s
+  newest run has completed, so merges are spaced by a `main` run, about 5 minutes
+  (est.), and a stack lands one layer a run.
   That is accepted: without it, a pull request checked on one interpreter could land on
   a `main` nobody has verified.
 - **A red `main` costs every pull request.** While `main` is red, each pull request run
@@ -798,8 +835,9 @@ Decided:
    request run, 18 jobs (est.), for each pull request that waits behind another merge.
 5. **A red `main` (Q6), 2026-11-17.** While `main` is red, a pull request runs `main`’s
    whole matrix, and the merging agent merges only by the rules of
-   [A Red `main`](#a-red-main): after `main`’s newest run has finished, and while it is
-   red, only a pull request whose latest run tested `main`’s red head on that matrix.
+   [A Red `main`](#a-red-main): once the latest attempt of `main`’s newest run has
+   completed, and while it is not green, only a pull request whose `ci-ok` verdict says
+   it tested that run’s head.
    Agents never arm auto-merge.
    The `plan` job gets `actions: read`; no job gets `issues: write`.
 
