@@ -30,6 +30,11 @@ its snapshot carries the same totals in the root’s entry.
 Without that hold the snapshot filled the line 17 to 100 ms after first paint for the
 folder with nothing ignored, and in one CI run it arrived before first paint, so no
 frame recorded the held line, although nothing moved.
+That late snapshot, with the finished totals, stands in for the `fs.change` a server
+still walking the root sends once it finishes it.
+That server’s own snapshot comes at once, with a root entry that has no totals, and
+`tests/dom/tree-summary-line-session.js` holds the reducer’s handling of such an entry
+browserless.
 
 ## Results
 

@@ -32,13 +32,18 @@
 // Line"). Each also holds the event stream until the probe has recorded first paint: its
 // snapshot carries the root's entry, whose totals are the ones the shell inlines, and
 // that server sends them pending until the walk finishes the root (server.py,
-// `_root_totals`). Let through at once, the snapshot settled the line 17 to 100 ms after
-// first paint for the folder with nothing ignored (CI, and a 4-CPU Linux run, on
-// 2026-11-17), and once in CI before it, so no frame recorded the held line, though
-// nothing moved. Two of them ("provisional") answer the first tally as the server does
-// mid-walk, `tally_cache_status: "scanning"` with nothing ignored yet, and hold the stream
-// until 1.5 s after it instead, so the held line must outlast a provisional tally that
-// says nothing is ignored.
+// `_root_totals`). This does not replay that server's stream, whose snapshot comes at
+// once with a root entry that has no totals, the finished root following in an
+// `fs.change`: it sends one late snapshot with the finished totals, which stands in for
+// that `fs.change` and reaches the line by the same path (app.js, `applyCellPatch` to
+// `updateRootAggregatePresentation`); the reducer's handling of a pending entry is
+// tests/dom/tree-summary-line-session.js's. Let through at once, the snapshot settled
+// the line 17 to 100 ms after first paint for the folder with nothing ignored (CI, and a
+// 4-CPU Linux run, on 2026-11-17), and once in CI before it, so no frame recorded the
+// held line, though nothing moved. Two of them ("provisional") answer the first tally as
+// the server does mid-walk, `tally_cache_status: "scanning"` with nothing ignored yet,
+// and hold the stream until 1.5 s after it instead, so the held line must outlast a
+// provisional tally that says nothing is ignored.
 //
 // Once a load settles, the tracked and ignored lines' tooltips are read as the shell
 // decides them (`tipAddsInformation`): each shows only while its line is cut short.
@@ -325,9 +330,10 @@ async function main() {
         const now = await browser.evaluate(
           "({ now: performance.now(), painted: (window.__frames?.length ?? 0) > 0, last: window.__frames?.at(-1)?.at ?? null, held: window.__frames?.at(-1)?.ignoredLine === 'held' })",
         );
-        // An unknown load's stream goes once first paint is recorded, so the root's entry
-        // reaches the page after it, as from a server still walking the root: an order,
-        // not a margin. A provisional load's goes on its own timer.
+        // An unknown load's stream goes once first paint is recorded, so the root's
+        // finished entry reaches the page after it, as its `fs.change` does from a server
+        // still walking the root: an order, not a margin. A provisional load's goes on its
+        // own timer.
         if (!streamsReleased && !provisional && now.painted) {
           await releaseStreams();
         }
