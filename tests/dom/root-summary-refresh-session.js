@@ -63,7 +63,7 @@ function isGitRevisionSource() {
   return false;
 }
 var _rootTotals = null;
-${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml", "treeSummaryHoldsIgnored", "paintTreeSummary"].map(appFunction).join("\n")}
+${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml", "rootTotals", "paintTreeSummary"].map(appFunction).join("\n")}
 var _lastTreeRender = { chromeHtml: treeSummaryHtml(null, null, null) };
 `;
 

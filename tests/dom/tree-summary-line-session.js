@@ -74,11 +74,13 @@ function line(html) {
     reads: reads(html),
     pending: (html.match(/tally-pending/g) ?? []).length,
     // The line the ignored count takes, or holds while it is unknown.
-    ignoredLine: html.includes('class="tree-summary-ignored"')
-      ? "counted"
-      : html.includes("tree-summary-ignored-pending")
-        ? "held"
-        : "none",
+    ignoredLine: html.includes("tree-summary-ignored-none")
+      ? "no ignored files"
+      : html.includes('class="tree-summary-ignored"')
+        ? "counted"
+        : html.includes("tree-summary-ignored-pending")
+          ? "held"
+          : "none",
     // The figures it paints bold (docs/design-system.md, "Count Summaries Bold Their
     // Numbers"), and what it says in the line's weight, which holds no figure.
     numbers: [...html.matchAll(NUMBER)].map((found) => found[1]),
@@ -168,13 +170,107 @@ const totals = {
     total_size: 38,
   }),
 };
-const sequence = {
-  "unknown: the ignored line held": line(route.treeSummaryHtml(null, null, null, format, true)),
-  "counted: the root's entry brings its ignored count": line(
-    route.treeSummaryHtml(totals["a root the walk has finished"], null, null, format, true),
+/**
+ * One page's totals line through a run of what reaches it, drawn as the shell draws it:
+ * `createRootTotals` decides the totals and whether the ignored line is kept, and a line
+ * without totals that keeps it holds its figures pending (app.js, `loadTree`).
+ *
+ * @param {{gitRevision?: boolean, shell?: unknown, fallback?: [number | null | undefined, number | null | undefined]}} page
+ * @param {[string, (totals: ReturnType<typeof route.createRootTotals>) => unknown][]} steps
+ */
+function session(page, steps) {
+  const totals = route.createRootTotals({
+    gitRevision: page.gitRevision ?? false,
+    shell: page.shell ?? null,
+  });
+  const draw = () => {
+    const known = totals.totals();
+    const keeps = totals.keepsIgnoredLine();
+    const [files, size] = !known && keeps ? [null, null] : (page.fallback ?? [null, null]);
+    const drawn = line(route.treeSummaryHtml(known, files, size, format, keeps));
+    return { reads: drawn.reads, ignoredLine: drawn.ignoredLine, pending: drawn.pending };
+  };
+  return [
+    { step: "first paint", ...draw() },
+    ...steps.map(([step, apply]) => {
+      const took = apply(totals);
+      return { step, ...(took === undefined ? {} : { took }), ...draw() };
+    }),
+  ];
+}
+const entry = (total, totalSize, unignored, unignoredSize) => ({
+  path: "",
+  type: "dir",
+  total_files: total,
+  total_size: totalSize,
+  unignored_files: unignored,
+  unignored_size: unignoredSize,
+});
+const sessions = {
+  "a shell drawn mid-walk, whose first tally is provisional and counts nothing ignored yet":
+    session({}, [
+      [
+        "a provisional tally: 9,000 files, nothing ignored yet",
+        (t) =>
+          t.fromSummary(
+            { files: 9000, size: 90000, ignored_files: 0, ignored_size: 0 },
+            "scanning",
+          ),
+      ],
+      ["the walk finishes the root: its entry", (t) => t.fromRootEntry(finishedRoot)],
+    ]),
+  "a shell drawn mid-walk, of a folder with nothing ignored": session({}, [
+    ["the walk finishes the root: its entry", (t) => t.fromRootEntry(cleanRoot)],
+    [
+      "a settled tally, nothing ignored",
+      (t) => t.fromSummary({ files: 51, size: 369, ignored_files: 0, ignored_size: 0 }, "done"),
+    ],
+  ]),
+  "a shell that knew the totals, then an upsert, then a tally older than it": session(
+    { shell: { files: 100, size: 1000, ignored_files: 50, ignored_size: 500 } },
+    [
+      ["a root upsert: two files written", (t) => t.fromRootEntry(entry(152, 1520, 102, 1020))],
+      [
+        "a tally answered from the index before those writes",
+        (t) =>
+          t.fromSummary({ files: 100, size: 1000, ignored_files: 50, ignored_size: 500 }, "done"),
+      ],
+      [
+        "a root the walk has not finished again: no totals",
+        (t) => t.fromRootEntry(entry(null, null, null, null)),
+      ],
+    ],
   ),
-  "none: the root's entry says nothing is ignored": line(
-    route.treeSummaryHtml(totals["a root with nothing ignored"], null, null, format, true),
+  "a shell drawn mid-walk, then a settled tally before the root's entry": session({}, [
+    [
+      "a settled tally",
+      (t) =>
+        t.fromSummary(
+          { files: 12797, size: 413800000, ignored_files: 248189, ignored_size: 10100000000 },
+          "done",
+        ),
+    ],
+    ["the root's entry", (t) => t.fromRootEntry(finishedRoot)],
+  ]),
+  "a shell that knew nothing is ignored": session(
+    { shell: { files: 51, size: 369, ignored_files: 0, ignored_size: 0 } },
+    [
+      ["the first ignored file is written", (t) => t.fromRootEntry(entry(52, 469, 51, 369))],
+      ["it is deleted", (t) => t.fromRootEntry(cleanRoot)],
+    ],
+  ),
+  "a Git revision, which ignores nothing": session(
+    { gitRevision: true, fallback: [4, undefined] },
+    [
+      [
+        "its root's entry, with no ignored totals",
+        (t) => t.fromRootEntry({ path: "", type: "dir", total_files: 4, total_size: 38 }),
+      ],
+      [
+        "its tally",
+        (t) => t.fromSummary({ files: 4, size: 38, ignored_files: 0, ignored_size: 0 }, "done"),
+      ],
+    ],
   ),
 };
 const live = {
@@ -186,7 +282,7 @@ const live = {
   "size omitted": route.treeSummarySizeHtml(undefined, format),
 };
 
-for (const [name, state] of Object.entries({ ...states, ...sequence })) {
+for (const [name, state] of Object.entries(states)) {
   check(`${name}: a metadata line`, state.classes.split(" ").includes("nav-metadata"));
   check(
     `${name}: never the tree rows' chips`,
@@ -198,23 +294,59 @@ check(
   "a line not asked to hold the ignored line holds none",
   Object.values(states).every((state) => state.ignoredLine !== "held"),
 );
-const held = sequence["unknown: the ignored line held"];
+/** @param {string} name */
+const steps = (name) => sessions[name];
+/** @param {{reads: string}[]} run */
+const moved = (run) => run.map((step) => step.ignoredLine);
 check(
   "unknown: both figures and the ignored line pending, the line held after the quiet period",
-  held.pending === 3 &&
-    held.ignoredLine === "held" &&
-    /class="tree-summary-ignored-pending mb-delayed-loading" role="status" aria-label="Counting ignored files"><span class="tally-pending" aria-hidden="true"><\/span><\/span><\/div>$/.test(
-      held.html,
-    ),
+  /class="tree-summary-ignored-pending mb-delayed-loading" role="status" aria-label="Counting ignored files"><span class="tally-pending" aria-hidden="true"><\/span><\/span><\/div>$/.test(
+    route.treeSummaryHtml(null, null, null, format, true),
+  ),
+);
+const cold = steps(
+  "a shell drawn mid-walk, whose first tally is provisional and counts nothing ignored yet",
 );
 check(
-  "counted: the held line becomes the ignored count",
-  sequence["counted: the root's entry brings its ignored count"].ignoredLine === "counted" &&
-    sequence["counted: the root's entry brings its ignored count"].pending === 0,
+  "a provisional tally does not release the held line, and the entry fills it",
+  JSON.stringify(moved(cold)) === JSON.stringify(["held", "held", "counted"]) &&
+    cold[1].pending === 3,
 );
 check(
-  "none: nothing ignored takes the held line away",
-  sequence["none: the root's entry says nothing is ignored"].ignoredLine === "none",
+  "a held line settles as 'No ignored files', never taken away",
+  JSON.stringify(moved(steps("a shell drawn mid-walk, of a folder with nothing ignored"))) ===
+    JSON.stringify(["held", "no ignored files", "no ignored files"]),
+);
+const stale = steps("a shell that knew the totals, then an upsert, then a tally older than it");
+check(
+  "once the entry has totals, an older tally does not step the figures back",
+  stale[1].reads.startsWith("102 files") &&
+    stale[2].reads === stale[1].reads &&
+    stale[3].reads === stale[1].reads &&
+    stale[3].took === false,
+);
+const early = steps("a shell drawn mid-walk, then a settled tally before the root's entry");
+check(
+  "a settled tally fills the line while the entry has no totals, and the entry then wins",
+  early[1].ignoredLine === "counted" && early[2].reads.includes("248,203 ignored"),
+);
+check(
+  "a shell that knew nothing is ignored draws no line for it until something is, then keeps it",
+  JSON.stringify(moved(steps("a shell that knew nothing is ignored"))) ===
+    JSON.stringify(["none", "counted", "no ignored files"]),
+);
+const git = steps("a Git revision, which ignores nothing");
+check(
+  "a Git revision never holds an ignored line",
+  JSON.stringify(moved(git)) === JSON.stringify(["none", "none", "none"]) &&
+    git[0].reads === "4 files" &&
+    git[1].took === false,
+);
+check(
+  "the split's ignored line has its whole phrase as its tooltip",
+  states["the split, with ignored files"].html.includes(
+    'data-tip-text="+ 248,189 ignored (9.4 GB)"',
+  ) && states["the split, with ignored files"].reads.includes("+ 248,189 ignored (9.4 GB)"),
 );
 check(
   "the root's totals are the split the server's pass counts",
@@ -253,4 +385,4 @@ if (failures.length > 0) {
   process.stderr.write(`tree summary line: ${failures.join("; ")}\n`);
   process.exitCode = 1;
 }
-process.stdout.write(`${JSON.stringify({ states, totals, sequence, live }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ states, totals, sessions, live }, null, 2)}\n`);

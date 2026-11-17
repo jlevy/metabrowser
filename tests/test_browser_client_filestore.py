@@ -525,9 +525,10 @@ def test_load_tree_renders_single_file_tally() -> None:
         summary_start : js.index("function scheduleRootSummaryRefresh", summary_start)
     ]
     # The single tally lives in the tree-summary row, drawn from the root's totals the
-    # page already has, since a row request carries none (mb-h3hc).
-    assert 'var scanning = data.tally_cache_status === "scanning";' in fn_block
-    assert "var stableSummary = scanning ? null : _rootTotals;" in fn_block
+    # page already has, since a row request carries none, and never from a provisional
+    # tally, which the reducer does not take (createRootTotals; mb-h3hc).
+    assert "rootTotals().fromSummary(data.summary, data.tally_cache_status);" in fn_block
+    assert "var stableSummary = rootTotals().totals();" in fn_block
     assert (
         "treeSummaryHtml(\n        stableSummary,\n        holding ? null : summaryFiles,"
         in fn_block

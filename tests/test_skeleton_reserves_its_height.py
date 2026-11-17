@@ -135,8 +135,8 @@ def test_the_inline_render_emits_the_tally_row_rather_than_omitting_it() -> None
     from the root's totals the shell inlined, pending without them (mb-h3hc)."""
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     block = _function_source(app, "function renderInitialTreeRows()")
-    assert "treeSummaryHtml(_rootTotals, null, null)" in block
-    assert "let _rootTotals = window.METABROWSER_INITIAL_TREE?.summary ?? null;" in app
+    assert "treeSummaryHtml(rootTotals().totals(), null, null)" in block
+    assert "shell: window.METABROWSER_INITIAL_TREE?.summary ?? null," in app
 
 
 def test_the_inline_span_is_recorded_around_the_paint_not_around_the_decision() -> None:

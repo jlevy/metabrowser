@@ -26,6 +26,8 @@ says what the tree cache holds: the summary line a source swap paints back, whic
 refresh rewrites with each answer.
 The line is the shell’s own markup, so a cache rewrite that stopped matching it would
 leave the first paint’s pending line there.
+The page had no totals from its shell, so its first line held the ignored line, and each
+answer, which counts nothing ignored, keeps that line as “No ignored files”.
 The transcript pins these behaviors:
 
 - A live tree that upserts its root every 100 ms, with each answer taking 3.2 s, gets
@@ -50,13 +52,13 @@ $ node tests/dom/root-summary-refresh-session.js
         "did": [
           "t=500 sent #1 /api/tree?depth=0 (1 in flight)",
           "t=3700 #1 answered",
-          "t=3700 painted \"1 file (1.0 KB)\"",
+          "t=3700 painted \"1 file (1.0 KB) No ignored files\"",
           "t=10100 sent #2 /api/tree?depth=0 (1 in flight)",
           "t=13300 #2 answered",
-          "t=13300 painted \"2 files (2.0 KB)\"",
+          "t=13300 painted \"2 files (2.0 KB) No ignored files\"",
           "t=19700 sent #3 /api/tree?depth=0 (1 in flight)",
           "t=22900 #3 answered",
-          "t=22900 painted \"3 files (3.0 KB)\"",
+          "t=22900 painted \"3 files (3.0 KB) No ignored files\"",
           "t=29300 sent #4 /api/tree?depth=0 (1 in flight)"
         ],
         "after": {
@@ -64,24 +66,24 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 4,
           "maxInFlight": 1,
           "inFlight": 1,
-          "cached": "3 files (3.0 KB)"
+          "cached": "3 files (3.0 KB) No ignored files"
         }
       },
       {
         "step": "the writes stop",
         "did": [
           "t=32500 #4 answered",
-          "t=32500 painted \"4 files (4.0 KB)\"",
+          "t=32500 painted \"4 files (4.0 KB) No ignored files\"",
           "t=38900 sent #5 /api/tree?depth=0 (1 in flight)",
           "t=42100 #5 answered",
-          "t=42100 painted \"5 files (5.0 KB)\""
+          "t=42100 painted \"5 files (5.0 KB) No ignored files\""
         ],
         "after": {
           "asks": 300,
           "requests": 5,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "5 files (5.0 KB)"
+          "cached": "5 files (5.0 KB) No ignored files"
         }
       }
     ]
@@ -94,7 +96,7 @@ $ node tests/dom/root-summary-refresh-session.js
         "did": [
           "t=500 sent #1 /api/tree?depth=0 (1 in flight)",
           "t=20500 #1 answered",
-          "t=20500 painted \"1 file (1.0 KB)\"",
+          "t=20500 painted \"1 file (1.0 KB) No ignored files\"",
           "t=60500 sent #2 /api/tree?depth=0 (1 in flight)"
         ],
         "after": {
@@ -102,7 +104,7 @@ $ node tests/dom/root-summary-refresh-session.js
           "requests": 2,
           "maxInFlight": 1,
           "inFlight": 1,
-          "cached": "1 file (1.0 KB)"
+          "cached": "1 file (1.0 KB) No ignored files"
         }
       }
     ]
@@ -115,14 +117,14 @@ $ node tests/dom/root-summary-refresh-session.js
         "did": [
           "t=500 sent #1 /api/tree?depth=0 (1 in flight)",
           "t=800 #1 answered",
-          "t=800 painted \"1 file (1.0 KB)\""
+          "t=800 painted \"1 file (1.0 KB) No ignored files\""
         ],
         "after": {
           "asks": 1,
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "1 file (1.0 KB)"
+          "cached": "1 file (1.0 KB) No ignored files"
         }
       },
       {
@@ -130,14 +132,14 @@ $ node tests/dom/root-summary-refresh-session.js
         "did": [
           "t=20500 sent #2 /api/tree?depth=0 (1 in flight)",
           "t=20800 #2 answered",
-          "t=20800 painted \"2 files (2.0 KB)\""
+          "t=20800 painted \"2 files (2.0 KB) No ignored files\""
         ],
         "after": {
           "asks": 2,
           "requests": 2,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "2 files (2.0 KB)"
+          "cached": "2 files (2.0 KB) No ignored files"
         }
       }
     ]
@@ -154,14 +156,14 @@ $ node tests/dom/root-summary-refresh-session.js
           "t=5100 #2 failed: 503",
           "t=13100 sent #3 /api/tree?depth=0 (1 in flight)",
           "t=13400 #3 answered",
-          "t=13400 painted \"3 files (3.0 KB)\""
+          "t=13400 painted \"3 files (3.0 KB) No ignored files\""
         ],
         "after": {
           "asks": 1,
           "requests": 3,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "3 files (3.0 KB)"
+          "cached": "3 files (3.0 KB) No ignored files"
         }
       }
     ]
@@ -185,14 +187,14 @@ $ node tests/dom/root-summary-refresh-session.js
         "did": [
           "t=10500 sent #1 /api/tree?depth=0 (1 in flight)",
           "t=10800 #1 answered",
-          "t=10800 painted \"1 file (1.0 KB)\""
+          "t=10800 painted \"1 file (1.0 KB) No ignored files\""
         ],
         "after": {
           "asks": 100,
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "1 file (1.0 KB)"
+          "cached": "1 file (1.0 KB) No ignored files"
         }
       }
     ]
@@ -216,14 +218,14 @@ $ node tests/dom/root-summary-refresh-session.js
         "did": [
           "t=10500 sent #1 /api/tree?depth=0 (1 in flight)",
           "t=10800 #1 answered",
-          "t=10800 painted \"1 file (1.0 KB)\""
+          "t=10800 painted \"1 file (1.0 KB) No ignored files\""
         ],
         "after": {
           "asks": 100,
           "requests": 1,
           "maxInFlight": 1,
           "inFlight": 0,
-          "cached": "1 file (1.0 KB)"
+          "cached": "1 file (1.0 KB) No ignored files"
         }
       }
     ]

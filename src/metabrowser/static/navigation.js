@@ -761,39 +761,144 @@
   }
 
   /**
+   * Totals in the server's `summary` shape, or null for anything else.
+   *
+   * @param {unknown} value
+   * @returns {{files: number, size: number, ignored_files: number, ignored_size: number} | null}
+   */
+  function rootTotalsShape(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+    const totals = /** @type {Record<string, unknown>} */ (value);
+    const count = (/** @type {unknown} */ figure) =>
+      Number.isFinite(figure) && Number(figure) >= 0 ? Number(figure) : null;
+    const files = count(totals.files);
+    const size = count(totals.size);
+    if (files === null || size === null) {
+      return null;
+    }
+    return {
+      files,
+      size,
+      ignored_files: count(totals.ignored_files) ?? 0,
+      ignored_size: count(totals.ignored_size) ?? 0,
+    };
+  }
+
+  /**
+   * What the Files totals line is drawn from: the served root's tracked and ignored totals
+   * as last known, and whether the line keeps a line for the ignored count.
+   *
+   * Two sources say the totals. The root's own entry carries them once the walk has
+   * finished the root, exact and current with every write: the shell inlines them with its
+   * first rows (server.py, `_root_totals`), and each root upsert brings them
+   * (`fromRootEntry`). The server's tally, its pass over every file, says them too, with
+   * the filter menus' counts (`fromSummary`). Once the entry has totals, the line is
+   * drawn from them only: a tally is computed from the index as its request arrived, so
+   * one answered after an upsert is older than it, and painted over it the figures stepped
+   * back. The tally fills the line only while the entry has none, a root the walk has not
+   * finished or a source that keeps no ignored totals (a Git revision), and never with a
+   * provisional answer (`tally_cache_status: "scanning"`): mid-walk it can say "nothing
+   * ignored yet" of a folder whose ignored files the walk has not reached.
+   *
+   * The line keeps its ignored line while the totals are unknown, so the count fills a
+   * box that is already there, and once a page has drawn that line it keeps it: when the
+   * totals say nothing is ignored, it says so there, "No ignored files", rather than take
+   * the line away and move the tree. A page whose shell knew of nothing ignored draws no
+   * such line until something is; a reload draws the band afresh. A Git revision ignores
+   * nothing and holds nothing.
+   *
+   * @param {{gitRevision: boolean, shell?: unknown}} options `shell`: the totals the
+   *   shell inlined, `METABROWSER_INITIAL_TREE.summary`
+   */
+  function createRootTotals({ gitRevision, shell }) {
+    /** @type {{files: number, size: number, ignored_files: number, ignored_size: number} | null} */
+    let fromEntry = gitRevision ? null : rootTotalsShape(shell);
+    /** @type {{files: number, size: number, ignored_files: number, ignored_size: number} | null} */
+    let fromTally = null;
+    const totals = () => fromEntry ?? fromTally;
+    // Whether the page has drawn the ignored line. Its first line is drawn from the
+    // shell's totals: held without them, counted with something ignored.
+    let kept = !gitRevision && (fromEntry === null || fromEntry.ignored_files > 0);
+    const keep = () => {
+      kept ||= !gitRevision && (totals()?.ignored_files ?? 0) > 0;
+    };
+    return Object.freeze({
+      /**
+       * A root entry, from an upsert or a snapshot. Whether it carried totals: a root the
+       * walk has not finished does not, and leaves the totals as they were.
+       *
+       * @param {Parameters<typeof rootTotalsFromEntry>[0]} entry
+       */
+      fromRootEntry(entry) {
+        const next = gitRevision ? null : rootTotalsFromEntry(entry);
+        if (next === null) {
+          return false;
+        }
+        fromEntry = next;
+        keep();
+        return true;
+      },
+      /**
+       * A summary the server answered, with its `tally_cache_status`. A provisional one
+       * says nothing the line uses.
+       *
+       * @param {unknown} summary
+       * @param {unknown} status
+       */
+      fromSummary(summary, status) {
+        const next = status === "scanning" ? null : rootTotalsShape(summary);
+        if (next !== null) {
+          fromTally = next;
+          keep();
+        }
+      },
+      /** The totals the line shows, or null while they are unknown. */
+      totals,
+      /** Whether the line keeps a line for the ignored count. */
+      keepsIgnoredLine: () => !gitRevision && (totals() === null || kept),
+      /** For a session: where each source stands. */
+      state: () => Object.freeze({ fromEntry, fromTally, kept }),
+    });
+  }
+
+  /**
    * The Files tab's totals: a navigation metadata line (`.nav-metadata` in styles.css),
    * the component the Commits tally and the Pulls lines share.
    *
    * Tracked and ignored files are counted separately — "12,582 files, 189.8 MB" hides
    * that almost all of it is node_modules — and the ignored half is muted to match how
    * those rows read in the tree. It is a line of its own, "+ 248,189 ignored (10.1 GB)",
-   * in every pane, so the line's height is decided by whether anything is ignored, and
-   * never by how long its figures are: as half of one line it wrapped only when the two
-   * halves outgrew the pane, so the tree moved down when the split arrived (mb-h3hc).
+   * one line in every pane, so the band's height is decided by whether the line is kept,
+   * and never by how long its figures are: as half of one line it wrapped only when the
+   * two halves outgrew the pane, so the tree moved down when the split arrived (mb-h3hc).
+   * Cut short in a pane too narrow for it, its whole phrase is its tooltip, which the
+   * shell shows only while it is cut (docs/design-system.md, "Tooltips Add Information").
    *
    * Without the split (an index still being counted) the line gives the combined figure,
-   * in the same words, "4 files (38 B)". *holdIgnored* says whether the split may bring an
-   * ignored line; if so, the line holds it from first paint with the shell's pending
-   * placeholder (`.tally-pending`, after the quiet period, `.mb-delayed-loading`), so
-   * the ignored count fills a box that is already there. The shell inlines the split with
-   * its first rows, so a folder with nothing ignored holds no such line.
+   * in the same words, "4 files (38 B)". *keepIgnoredLine* (`createRootTotals`) says
+   * whether the band keeps the ignored line whatever the figures say: without the split it
+   * holds it with the shell's pending placeholder (`.tally-pending`, after the quiet
+   * period, `.mb-delayed-loading`), so the ignored count fills a box that is already
+   * there, and with a split that has nothing ignored it says so there, "No ignored files".
    *
    * The fallback's figures are `.tree-summary-count` and `.tree-summary-size`, which the
    * shell patches as the walker's root aggregate changes (app.js,
    * `updateRootAggregatePresentation`). The split line has neither: the shell repaints it
-   * whole from the root's own totals (`rootTotalsFromEntry`) or the server's summary.
+   * whole from the root's totals.
    *
    * @param {{files?: unknown, size: number, ignored_files?: number, ignored_size?: number} | null | undefined} summary
    * @param {number | null | undefined} fallbackFiles
    * @param {number | null | undefined} fallbackSize
    * @param {{formatCountParts(n: number): MetabrowserCountParts, formatSize(bytes: number): string}} format
-   * @param {boolean} [holdIgnored] without the split, hold the ignored line it may bring
+   * @param {boolean} [keepIgnoredLine] keep the ignored line whatever the figures say
    * @returns {string}
    */
-  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format, holdIgnored = false) {
+  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format, keepIgnoredLine = false) {
     if (!summary || typeof summary.files !== "number") {
       // The held line is a status, named for a screen reader; the block itself is shape.
-      const held = holdIgnored
+      const held = keepIgnoredLine
         ? '<span class="tree-summary-ignored-pending mb-delayed-loading" role="status"' +
           ' aria-label="Counting ignored files">' +
           '<span class="tally-pending" aria-hidden="true"></span></span>'
@@ -810,16 +915,24 @@
       `<span class="tree-summary-tracked">${countSummaryHtml(format.formatCountParts(summary.files))}</span>` +
       `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span>`;
     let ignored = "";
-    if ((summary.ignored_files ?? 0) > 0) {
-      // The count and its word are one item of the line, so the line's gap does not
-      // part them.
-      const count = [{ number: (summary.ignored_files ?? 0).toLocaleString() }, " ignored"];
+    const ignoredFiles = summary.ignored_files ?? 0;
+    if (ignoredFiles > 0) {
+      // The count and its word are one item of the line, so the line's gap does not part
+      // them. The spaces between the items are not drawn, since the line is a flex box,
+      // but they make its text the phrase its tooltip says: digits, separators, and a
+      // unit, with nothing in them to escape.
+      const number = ignoredFiles.toLocaleString();
+      const bytes = format.formatSize(summary.ignored_size ?? 0);
+      const phrase = `+ ${number} ignored (${bytes})`;
       ignored =
-        '<span class="tree-summary-ignored">' +
-        '<span class="tree-summary-plus">+</span>' +
-        `<span>${countSummaryHtml(count)}</span>` +
+        `<span class="tree-summary-ignored" data-tip-text="${phrase}">` +
+        '<span class="tree-summary-plus">+</span> ' +
+        `<span>${countSummaryHtml([{ number }, " ignored"])}</span> ` +
         `<span class="tree-summary-bytes">${sizeHtml(summary.ignored_size ?? 0, format)}</span>` +
         "</span>";
+    } else if (keepIgnoredLine) {
+      ignored =
+        '<span class="tree-summary-ignored tree-summary-ignored-none">No ignored files</span>';
     }
     return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
   }
@@ -1438,6 +1551,7 @@
     createPageConnections,
     createPreviewPaneLifecycle,
     createRootSummaryRefresh,
+    createRootTotals,
     displayPath,
     href,
     navigation,

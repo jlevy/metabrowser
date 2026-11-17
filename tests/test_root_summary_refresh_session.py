@@ -108,7 +108,9 @@ def test_the_last_ask_is_answered_after_the_writes_stop(
     assert stopped["after"]["requests"] == busy["after"]["requests"] + 1, (
         "asks made while a request was in flight need one more request"
     )
-    assert re.search(r'painted "\d+ files \([\d.]+ KB\)"$', stopped["did"][-1])
+    # The page had no totals from its shell, so its line kept the ignored line it held, and
+    # an answer that counts nothing ignored says so there (createRootTotals).
+    assert re.search(r'painted "\d+ files \([\d.]+ KB\) No ignored files"$', stopped["did"][-1])
 
 
 def test_an_isolated_change_waits_only_for_the_debounce(

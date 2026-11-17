@@ -452,8 +452,8 @@ def test_a_folder_with_nothing_ignored_says_so_before_first_paint(tmp_path: Path
 
 def test_a_root_the_walk_has_not_finished_has_no_totals_to_inline() -> None:
     """The root's totals are pending until the walk finishes it; the page then holds the
-    ignored line with the pending placeholder until they arrive (static/app.js,
-    `treeSummaryHoldsIgnored`)."""
+    ignored line with the pending placeholder until they arrive
+    (static/navigation.js, `createRootTotals`)."""
 
     pending = InventoryEntry(
         path="", parent="", name="root", type=EntryType.DIRECTORY, ext="", size=0, mtime_ns=0

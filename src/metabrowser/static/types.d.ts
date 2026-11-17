@@ -368,6 +368,14 @@ type MetabrowserTreeSummaryFormat = {
   formatSize(bytes: number): string;
 };
 
+/** The served root's tracked and ignored files and bytes, the server's `summary` shape. */
+type MetabrowserRootTotals = {
+  files: number;
+  size: number;
+  ignored_files: number;
+  ignored_size: number;
+};
+
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string, sourceKind?: "filesystem" | "git_revision"): string;
   /** The GitPath wire of a path on a pinned revision; null when it has an empty segment. */
@@ -430,8 +438,30 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     fallbackFiles: number | null | undefined,
     fallbackSize: number | null | undefined,
     format: MetabrowserTreeSummaryFormat,
-    holdIgnored?: boolean,
+    keepIgnoredLine?: boolean,
   ): string;
+  /** What the Files totals line is drawn from: the root's totals, and its ignored line. */
+  createRootTotals(options: { gitRevision: boolean; shell?: unknown }): Readonly<{
+    fromRootEntry(
+      entry:
+        | {
+            total_files?: unknown;
+            total_size?: unknown;
+            unignored_files?: unknown;
+            unignored_size?: unknown;
+          }
+        | null
+        | undefined,
+    ): boolean;
+    fromSummary(summary: unknown, status: unknown): void;
+    totals(): MetabrowserRootTotals | null;
+    keepsIgnoredLine(): boolean;
+    state(): Readonly<{
+      fromEntry: MetabrowserRootTotals | null;
+      fromTally: MetabrowserRootTotals | null;
+      kept: boolean;
+    }>;
+  }>;
   /** The served root's tracked and ignored totals from its own entry, or null. */
   rootTotalsFromEntry(
     entry:
@@ -443,7 +473,7 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
         }
       | null
       | undefined,
-  ): { files: number; size: number; ignored_files: number; ignored_size: number } | null;
+  ): MetabrowserRootTotals | null;
   treeSummaryCountHtml(
     files: number | null | undefined,
     format: Pick<MetabrowserTreeSummaryFormat, "formatCountParts">,

@@ -2217,8 +2217,11 @@ html.theme-anim .menu {
    Chrome 152 on 2026-11-16; H54 before it). While the line cannot tell yet
    whether anything is ignored, it holds that line with the shell's pending
    placeholder, after the quiet period (`.tree-summary-ignored-pending`, app.js
-   `treeSummaryHoldsIgnored`); the shell inlines the root's totals, so that is
-   only a shell drawn before the walk finished the root. The tracked count can
+   `rootTotals`, navigation.js `createRootTotals`); the shell inlines the
+   root's totals, so that is only a shell drawn before the walk finished the root.
+   A page keeps a line it has drawn: with nothing ignored it says so,
+   `.tree-summary-ignored-none`, "No ignored files", in the same box. Cut short,
+   the line's whole phrase is its tooltip (`data-tip-text`). The tracked count can
    still wrap between its two figures in a pane too narrow for both, as a
    six-digit count with its size does at the narrowest pane, and such a shell
    then gains that line when the count lands. */

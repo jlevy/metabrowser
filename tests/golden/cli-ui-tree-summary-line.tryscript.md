@@ -28,15 +28,25 @@ The transcript pins these behaviors:
   files (size)”, so the line reads the same when the split replaces it.
 - A Git pin has no size fact, so its line states none.
 - The split adds the gitignored half only when there is one, as a line of its own
-  (`.tree-summary-ignored`).
+  (`.tree-summary-ignored`), whose whole phrase is its tooltip, which the shell shows
+  only while the line is cut short.
 - A line drawn before the root’s totals are known, asked to hold the ignored line, holds
   it with the pending placeholder after the quiet period, a status named for a screen
   reader; no other state holds one.
 - `totals` records what the root’s own entry says: a root the walk has finished gives
   its tracked and ignored files and bytes, in the server’s `summary` shape, and a root
   still being walked, or a Git revision’s, which keeps no ignored totals, gives none.
-- `sequence` records the held line as those totals arrive: it becomes the ignored count,
-  or, with nothing ignored, goes away.
+- `sessions` runs `createRootTotals`, the reducer the shell draws the line from, through
+  what reaches a page, and records the line after each step:
+  - a provisional tally (`scanning`) that counts nothing ignored yet leaves the held
+    line held, and the root’s entry fills it;
+  - a held line whose totals say nothing is ignored keeps its box as “No ignored files”;
+  - once the root’s entry has totals, a tally older than an upsert does not step the
+    figures back, and a root the walk has not finished again leaves them as they were;
+  - a settled tally fills the line while the entry has none, and the entry then wins;
+  - a shell that knew of nothing ignored draws no ignored line until something is
+    ignored, then keeps it;
+  - a Git revision never holds one.
 - Every figure, a count or a size with its unit, is a bold number, `.summary-number`,
   and the words and parentheses keep the line’s weight (`docs/design-system.md`, “Count
   Summaries Bold Their Numbers”).
@@ -101,7 +111,7 @@ $ node tests/dom/tree-summary-line-session.js
         "9.4 GB"
       ],
       "regular": "files ( ) + ignored ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">394.6 MB</span>)</span><span class=\"tree-summary-ignored\"><span class=\"tree-summary-plus\">+</span><span><span class=\"summary-number\">248,189</span> ignored</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">9.4 GB</span>)</span></span></div>"
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">394.6 MB</span>)</span><span class=\"tree-summary-ignored\" data-tip-text=\"+ 248,189 ignored (9.4 GB)\"><span class=\"tree-summary-plus\">+</span> <span><span class=\"summary-number\">248,189</span> ignored</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">9.4 GB</span>)</span></span></div>"
     },
     "an empty folder": {
       "classes": "tree-summary tree-summary-split nav-metadata",
@@ -144,42 +154,141 @@ $ node tests/dom/tree-summary-line-session.js
     "a root still being walked": null,
     "a Git revision's root, which keeps no ignored totals": null
   },
-  "sequence": {
-    "unknown: the ignored line held": {
-      "classes": "tree-summary nav-metadata",
-      "reads": "",
-      "pending": 3,
-      "ignoredLine": "held",
-      "numbers": [],
-      "regular": "",
-      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"count tally-pending\"></span></span><span class=\"tree-summary-size\"><span class=\"size tally-pending\"></span></span><span class=\"tree-summary-ignored-pending mb-delayed-loading\" role=\"status\" aria-label=\"Counting ignored files\"><span class=\"tally-pending\" aria-hidden=\"true\"></span></span></div>"
-    },
-    "counted: the root's entry brings its ignored count": {
-      "classes": "tree-summary tree-summary-split nav-metadata",
-      "reads": "12,797 files (394.6 MB) + 248,203 ignored (9.4 GB)",
-      "pending": 0,
-      "ignoredLine": "counted",
-      "numbers": [
-        "12,797",
-        "394.6 MB",
-        "248,203",
-        "9.4 GB"
-      ],
-      "regular": "files ( ) + ignored ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">394.6 MB</span>)</span><span class=\"tree-summary-ignored\"><span class=\"tree-summary-plus\">+</span><span><span class=\"summary-number\">248,203</span> ignored</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">9.4 GB</span>)</span></span></div>"
-    },
-    "none: the root's entry says nothing is ignored": {
-      "classes": "tree-summary tree-summary-split nav-metadata",
-      "reads": "51 files (369 B)",
-      "pending": 0,
-      "ignoredLine": "none",
-      "numbers": [
-        "51",
-        "369 B"
-      ],
-      "regular": "files ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">51</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">369 B</span>)</span></div>"
-    }
+  "sessions": {
+    "a shell drawn mid-walk, whose first tally is provisional and counts nothing ignored yet": [
+      {
+        "step": "first paint",
+        "reads": "",
+        "ignoredLine": "held",
+        "pending": 3
+      },
+      {
+        "step": "a provisional tally: 9,000 files, nothing ignored yet",
+        "reads": "",
+        "ignoredLine": "held",
+        "pending": 3
+      },
+      {
+        "step": "the walk finishes the root: its entry",
+        "took": true,
+        "reads": "12,797 files (394.6 MB) + 248,203 ignored (9.4 GB)",
+        "ignoredLine": "counted",
+        "pending": 0
+      }
+    ],
+    "a shell drawn mid-walk, of a folder with nothing ignored": [
+      {
+        "step": "first paint",
+        "reads": "",
+        "ignoredLine": "held",
+        "pending": 3
+      },
+      {
+        "step": "the walk finishes the root: its entry",
+        "took": true,
+        "reads": "51 files (369 B) No ignored files",
+        "ignoredLine": "no ignored files",
+        "pending": 0
+      },
+      {
+        "step": "a settled tally, nothing ignored",
+        "reads": "51 files (369 B) No ignored files",
+        "ignoredLine": "no ignored files",
+        "pending": 0
+      }
+    ],
+    "a shell that knew the totals, then an upsert, then a tally older than it": [
+      {
+        "step": "first paint",
+        "reads": "100 files (1000 B) + 50 ignored (500 B)",
+        "ignoredLine": "counted",
+        "pending": 0
+      },
+      {
+        "step": "a root upsert: two files written",
+        "took": true,
+        "reads": "102 files (1020 B) + 50 ignored (500 B)",
+        "ignoredLine": "counted",
+        "pending": 0
+      },
+      {
+        "step": "a tally answered from the index before those writes",
+        "reads": "102 files (1020 B) + 50 ignored (500 B)",
+        "ignoredLine": "counted",
+        "pending": 0
+      },
+      {
+        "step": "a root the walk has not finished again: no totals",
+        "took": false,
+        "reads": "102 files (1020 B) + 50 ignored (500 B)",
+        "ignoredLine": "counted",
+        "pending": 0
+      }
+    ],
+    "a shell drawn mid-walk, then a settled tally before the root's entry": [
+      {
+        "step": "first paint",
+        "reads": "",
+        "ignoredLine": "held",
+        "pending": 3
+      },
+      {
+        "step": "a settled tally",
+        "reads": "12,797 files (394.6 MB) + 248,189 ignored (9.4 GB)",
+        "ignoredLine": "counted",
+        "pending": 0
+      },
+      {
+        "step": "the root's entry",
+        "took": true,
+        "reads": "12,797 files (394.6 MB) + 248,203 ignored (9.4 GB)",
+        "ignoredLine": "counted",
+        "pending": 0
+      }
+    ],
+    "a shell that knew nothing is ignored": [
+      {
+        "step": "first paint",
+        "reads": "51 files (369 B)",
+        "ignoredLine": "none",
+        "pending": 0
+      },
+      {
+        "step": "the first ignored file is written",
+        "took": true,
+        "reads": "51 files (369 B) + 1 ignored (100 B)",
+        "ignoredLine": "counted",
+        "pending": 0
+      },
+      {
+        "step": "it is deleted",
+        "took": true,
+        "reads": "51 files (369 B) No ignored files",
+        "ignoredLine": "no ignored files",
+        "pending": 0
+      }
+    ],
+    "a Git revision, which ignores nothing": [
+      {
+        "step": "first paint",
+        "reads": "4 files",
+        "ignoredLine": "none",
+        "pending": 0
+      },
+      {
+        "step": "its root's entry, with no ignored totals",
+        "took": false,
+        "reads": "4 files",
+        "ignoredLine": "none",
+        "pending": 0
+      },
+      {
+        "step": "its tally",
+        "reads": "4 files (38 B)",
+        "ignoredLine": "none",
+        "pending": 0
+      }
+    ]
   },
   "live": {
     "count still being counted": "<span class=\"count tally-pending\"></span>",
