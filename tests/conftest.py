@@ -58,6 +58,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         metavar="I/N",
         help="run the Ith of N disjoint parts of the selected tests (tests/suite_tiers.py)",
     )
+    parser.addoption(
+        "--shard-by",
+        choices=suite_tiers.SHARD_UNITS,
+        default=suite_tiers.BY_TEST,
+        help="deal --shard's parts by single test, or by whole file (tests/suite_tiers.py)",
+    )
     suite_timing.add_option(parser)
 
 

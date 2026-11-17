@@ -10,6 +10,7 @@ import random
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from tests.suite_gates import (
     unmarked_chrome_request,
 )
 from tests.suite_tiers import (
+    BY_FILE,
     CHROME_FIXTURE,
     CHROME_MARKER,
     CHROME_TIER,
@@ -80,6 +82,39 @@ def test_the_shards_of_any_selection_are_disjoint_and_cover_it(count: int) -> No
         assert sum(len(part) for part in parts) == size
         assert set().union(*parts) == set(nodeids)
         assert max(map(len, parts)) - min(map(len, parts)) <= 1
+
+
+@pytest.mark.parametrize("count", [1, 2, 3, 4, 5])
+def test_the_shards_by_file_are_disjoint_whole_files_and_cover_the_selection(count: int) -> None:
+    """Each file in one part, whatever the order; the parts balanced to a file's size."""
+
+    rng = random.Random(count)
+    nodeids = [
+        f"tests/test_m{module}.py::test_{index}"
+        for module in range(17)
+        for index in range(rng.randint(1, 9))
+    ]
+    sizes = Counter(nodeid.split("::")[0] for nodeid in nodeids)
+    shuffled = rng.sample(nodeids, len(nodeids))
+    parts: list[set[str]] = []
+    for index in range(1, count + 1):
+        shard = Shard(index, count)
+        kept = {
+            nodeid
+            for nodeid, keep in zip(nodeids, dealt(nodeids, shard, BY_FILE), strict=True)
+            if keep
+        }
+        assert kept == {
+            nodeid
+            for nodeid, keep in zip(shuffled, dealt(shuffled, shard, BY_FILE), strict=True)
+            if keep
+        }
+        parts.append(kept)
+    assert sum(len(part) for part in parts) == len(nodeids)
+    assert set().union(*parts) == set(nodeids)
+    for name in sizes:
+        assert sum(any(nodeid.startswith(f"{name}::") for nodeid in part) for part in parts) == 1
+    assert max(map(len, parts)) - min(map(len, parts)) <= max(sizes.values())
 
 
 # ── The tier markers' meaning, as pure judgements ──────────────────────────────
@@ -288,7 +323,9 @@ def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_wor
     names = ("PARALLEL_TIER", "SERIAL_TIER", "CHROME_TIER")
     assert tuple(_makefile_value(makefile, name) for name in names) == TIERS
     workers = "-n $(PYTEST_WORKERS) --dist loadfile"
-    assert recipe(makefile, "test-parallel") == f'\t$(PYTEST) -m "$(PARALLEL_TIER)" {workers}'
+    assert recipe(makefile, "test-parallel") == (
+        f'\t$(PYTEST) -m "$(PARALLEL_TIER)" {workers} --shard-by=file'
+    )
     assert recipe(makefile, "test-serial") == '\t$(PYTEST) -m "$(SERIAL_TIER)"'
     assert recipe(makefile, "test-chrome") == '\t$(PYTEST) -m "$(CHROME_TIER)"'
     assert workers in recipe(makefile, "test-admitted-git")

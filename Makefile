@@ -147,10 +147,15 @@ CHROME_TIER := chrome
 # parallel tier runs on one worker, its tests in order (--dist loadfile), so module-scoped
 # fixtures behave as they do in one process. The serial and Chrome tiers run one test at
 # a time, after the parallel tier and so never beside its workers.
+#
+# For the same reason a SHARD of the parallel tier holds whole files (--shard-by=file).
+# Dealt by test, the CI unit jobs of run 44037230262 failed in two modules whose tests
+# rely on an earlier one in the module: tests/test_cli_git_pin_golden.py, whose first
+# test records the clone the rest reuse, and tests/test_github_pulls.py.
 test: test-parallel test-serial test-chrome test-goldens
 
 test-parallel:
-	$(PYTEST) -m "$(PARALLEL_TIER)" -n $(PYTEST_WORKERS) --dist loadfile
+	$(PYTEST) -m "$(PARALLEL_TIER)" -n $(PYTEST_WORKERS) --dist loadfile --shard-by=file
 
 test-serial:
 	$(PYTEST) -m "$(SERIAL_TIER)"

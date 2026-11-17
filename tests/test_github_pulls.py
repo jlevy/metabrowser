@@ -793,6 +793,10 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
     # conversation must not carry one copy per text, so the route answers none.
     raw: list[str] = []
     render = kpress_adapter.render_kpress_view
+    # The route's stylesheet manifest is one render of an empty document per process,
+    # which whichever test reaches the route first pays. Pay it before the spy counts,
+    # so this test passes alone, or in a shard without the module's earlier tests.
+    kpress_adapter.document_stylesheets()
 
     def spy(**kwargs: Any) -> dict[str, Any]:
         rendered = render(**kwargs)

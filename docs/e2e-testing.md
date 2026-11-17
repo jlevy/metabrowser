@@ -255,6 +255,9 @@ cover each combination of the two markers once, so they partition the suite what
 marked.
 `--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
 by node ID, so that one tier can be split across machines.
+`--shard-by=file` deals whole files instead, so that a module runs in one part, its
+tests in order; `make test-parallel` passes it, since its files run that way on their
+workers (`tests/suite_tiers.py`).
 
 `make test` runs the default tier as four targets, in this order, and each also runs
 alone, as a CI job can call it:
