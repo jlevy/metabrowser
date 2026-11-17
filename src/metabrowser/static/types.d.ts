@@ -1497,9 +1497,11 @@ type MetabrowserSdk = {
     set(name: string, value: unknown): boolean;
   };
   tooltip: {
-    /** Take away the tooltip shown, one of the view's own; a tooltip anchored in the
-     *  nav's header, the shell's chrome, which no view draws, stays. */
-    hide(): void;
+    /** Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     *  whose anchor has left the document, and never one shown with no anchor. With
+     *  none, any tooltip but one anchored in the nav's header. See
+     *  docs/design-system.md, "A Surface Puts Away Only Its Own Tooltip". */
+    hide(within?: Element | null): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip
      *  holds still once shown; see docs/design-system.md. */
     show(html: string, anchor: Element | null): void;
@@ -3950,12 +3952,12 @@ declare global {
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
-      hide(): void;
+      hide(within?: Element | null): void;
       show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
-    /** Container kinds by extension; see arch-nav-containers.md. */
+    /** Container kinds by extension; see arch-plugin-system.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
       /** This build's tag, which a request names to be told its answer cannot change. */

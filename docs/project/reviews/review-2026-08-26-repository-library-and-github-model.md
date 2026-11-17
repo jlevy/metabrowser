@@ -259,7 +259,7 @@ waiting for the GitHub model.
 ## References
 
 - [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [Repository-cache research](../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+- [Repository-cache research](../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
 - [SoftSchema v0.7.0 guide](https://github.com/jlevy/softschema/blob/v0.7.0/docs/softschema-guide.md)
 - [SoftSchema v0.7.0 specification](https://github.com/jlevy/softschema/blob/v0.7.0/docs/softschema-spec.md)
 - [SoftSchema composition research](https://github.com/jlevy/softschema/blob/main/docs/project/research/research-2026-08-23-json-schema-composition-and-enforcement.md)

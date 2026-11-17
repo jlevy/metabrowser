@@ -208,7 +208,7 @@ conveniences or rejected designs; none may become an installed-product requireme
 ### Asset Loading Tiers
 
 Bundling does not erase the eager, prefetched, and on-demand tiers in
-[development](../../development.md#asset-loading-tiers).
+[development](../architecture/arch-browser-shell.md#asset-loading-tiers).
 A generated chunk is still a browser cost.
 The build manifest must preserve enough ownership to show which route or feature loads
 each emitted asset and why.
@@ -262,7 +262,7 @@ baseline.
 The July version of this research surveyed diff products, renderer packages, build
 tools, and Python-backed web applications.
 The diff-product material is already covered by
-[Web Diff Viewer Architecture and Intermediate Representations](research-2026-07-17-web-diff-viewer-architecture.md);
+[Web Diff Viewer Architecture and Intermediate Representations](archive/research-2026-07-17-web-diff-viewer-architecture.md);
 this document retains only the contributor-toolchain question.
 
 The 2026-08-27 update inspected current Metabrowser source, configuration, test, vendor,

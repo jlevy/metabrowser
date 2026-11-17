@@ -12,12 +12,11 @@ The parity mechanism and the rule it rests on stand.
 Three parts below record the earlier design: the cache module table in Part 2, the
 GitHub rows of the golden table, and the sequence under “What lands for the v0.12.0
 PR-first slice”. The modules as built are in
-[Implementation Seams](../../architecture/arch-repository-sources-and-provider-mirrors.md#implementation-seams),
-and the goldens as built are in the
-[parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
+[Implementation Seams](../../../architecture.md#layers), and the goldens as built are in
+the [parity table](../../architecture/arch-parity-registry.md).
 
-**Status:** v0.11.0 released after the parity foundation, with the #209 content-trust
-foundation; the v0.12.0 implementation,
+**Status:** Done. v0.11.0 released after the parity foundation, with the #209
+content-trust foundation; the v0.12.0 implementation,
 [stack #218](https://github.com/jlevy/metabrowser/stack/218), landed on `main` and
 shipped in v0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09. Of the rows
 below, only Git status (rows 3 and 4) remains planned, under its own plan; row 12 is
@@ -30,7 +29,7 @@ The CLI parity mechanism and its route, kind, model, persisted-state, and functi
 aspect checks shipped in v0.10.0. The remaining workstreams are
 [Git status](../active/plan-2026-08-26-git-status-and-working-tree-diffs.md), the
 [repository library](../active/plan-2026-08-11-open-repo-from-git-url.md), and the
-[hosted-review and GitHub provider](../active/plan-2026-08-27-github-provider-and-pull-requests.md).
+[hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
 This document records the delivered foundation, sequences the v0.12.0 PR-first slice,
 and states how backend work is proved end to end without a browser.
 
@@ -93,7 +92,7 @@ parallel.
 | 8 | Hosted-review models | `mb-63ym` | 0 | Phase 0 records were on #134 and were removed from the stack on 2026-09-30; they are kept on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30` |
 | 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | Superseded: the PR data step (#232) runs `gh` and stores one record per pull request; the credential bridge, capability registry, auth-scoped store, and binding are retired, and `mb-cbak` is deferred |
 | 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | Superseded: the PR view step (#233) renders the pull-request page inside the GitHub plugin |
-| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | Implemented successor: the [Pulls tab plan](../active/plan-2026-10-01-github-pulls-tab.md) delivers the resumable catalog and Pulls navigation, superseding the 2026-09-23 deferral; `mb-uh6p` remains retired |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | Implemented successor: the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) delivers the resumable catalog and Pulls navigation, superseding the 2026-09-23 deferral; `mb-uh6p` remains retired |
 | 12 | Anchored review threads | `mb-rldc` | 10 | Deferred by the user’s 2026-09-23 decision |
 
 Row 6 records the trust foundation that landed through #209, which every served pin
@@ -382,7 +381,7 @@ The session/content seams live outside the cache package:
 
 The exact types, invariants, and phase ownership live in the
 [repository plan](../active/plan-2026-08-11-open-repo-from-git-url.md) and
-[repository-source architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+[repository-source architecture](../../architecture/arch-repository-cache.md).
 This map deliberately links to those authorities instead of duplicating signatures that
 can drift.
 
@@ -683,7 +682,7 @@ Still open:
 - [CLI parity and golden coverage](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [Git status and working-tree diffs](../active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](../active/plan-2026-08-11-open-repo-from-git-url.md)
-- [Hosted review model and GitHub provider](../active/plan-2026-08-27-github-provider-and-pull-requests.md)
+- [Hosted review model and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Delivery order review](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - `tbd guidelines golden-testing-guidelines`

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -392,3 +393,50 @@ def test_project_corpus_materializes_linked_install_roots(
         assert "project00/node_modules/dependency.txt" in walked
         assert "project00/.venv/dependency.txt" in walked
         assert result["files"] > 2
+
+
+def test_markdown_summary_prints_the_recorded_row(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--markdown` prints docs/scale-benchmark.md's row from a result of the saved shape."""
+
+    result = {
+        "corpus": {"files": 100_000},
+        "inventory": {"provider": "python", "contract": "test"},
+        "scan_with_client": {
+            "first_count_s": 1.19,
+            "wall_s": 5.5,
+            "diagnostics": {"process": {"peak_rss_kb": 174 * 1024}},
+        },
+    }
+    saved = tmp_path / "benchmark-python-100000.json"
+    saved.write_text(json.dumps(result))
+
+    assert bench_serving.main(["--markdown", str(saved)]) == 0
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].startswith("| Provider | Files | First folder counts (s) |")
+    assert lines[2:] == ["| python | 100,000 | 1.19 | 5.5 | 174 |"]
+
+
+def test_markdown_summary_reads_the_figures_a_run_writes(tmp_path: Path) -> None:
+    """A renamed result key prints `--` instead of failing, so read a real run's result."""
+
+    root = tmp_path / "corpus"
+    corpus = build_corpus(root, 200)
+    result: dict[str, Any] = {
+        "corpus": corpus,
+        "scan_with_client": bench_serving.phase_scan_with_client(
+            root, tmp_path, resolve_metab_build("metab"), "python"
+        ),
+    }
+    _record_inventory_identity(result, "python")
+
+    row = bench_serving.render_markdown_summary([result]).splitlines()[2]
+    provider, files, first_count, wall, peak_mib = (
+        cell.strip() for cell in row.strip("|").split("|")
+    )
+    assert (provider, files) == ("python", f"{corpus['files']:,}")
+    assert float(first_count) > 0
+    assert float(wall) > 0
+    assert int(peak_mib) > 0

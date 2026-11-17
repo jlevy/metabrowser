@@ -36,7 +36,7 @@ history. A renderer that lives inside `git/` would have to be extracted before a
 those could use it, and extraction after the fact is where coupling gets discovered.
 
 The design work is largely done.
-[Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+[Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 surveyed comparison semantics, intermediate representations, backends, renderers, and
 competing products, and its conclusions are adopted here rather than restated.
 This plan is the implementation shape those conclusions imply once diff is core rather
@@ -257,8 +257,8 @@ emitted shape and `validate_manifest`, `validate_file_patch`,
 The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) owns durable
 Git objects, publication, and worktree materialization; its `mb-jlon` extraction owns
 provider jobs and selected-ref fetching.
-The [GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) owns PR
-metadata, the bounded PR index, and selected-PR bundles.
+The [GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md)
+owns PR metadata, the bounded PR index, and selected-PR bundles.
 The diff service consumes resolved object IDs and remains independent of how those
 objects arrived.
 
@@ -382,7 +382,7 @@ Before that point their lifetimes differ and must not share one vague “cache�
 3. **Transient materialization.** A detached worktree, patch anchor, or unpacked archive
    exists only while a container or bounded job needs filesystem bytes, then follows the
    materialization policy in
-   [nav containers](../../architecture/arch-nav-containers.md).
+   [nav containers](../../architecture/arch-plugin-system.md#navigation-containers).
 4. **Recomputable comparison cache.** Manifests, patches, enrichments, and browser
    projections are bounded in-memory or request caches, never repository-library state.
 
@@ -397,10 +397,10 @@ The existing shell maps onto it with three customizations, each extending a mech
 that already exists rather than adding one:
 
 0. **A comparison is a container in the tree.** The durable ontology is in
-   [nav containers](../../architecture/arch-nav-containers.md): every tree entry is
-   item-like (opens views), folder-like (expands to children; selecting the entry itself
-   opens an overview), or both, and directories are the already-working precedent rather
-   than a special case.
+   [nav containers](../../architecture/arch-plugin-system.md#navigation-containers):
+   every tree entry is item-like (opens views), folder-like (expands to children;
+   selecting the entry itself opens an overview), or both, and directories are the
+   already-working precedent rather than a special case.
    A patch file or PR mirror is a folder-like entry whose children are its file changes;
    selecting the container opens the change-set summary, and selecting a child opens
    that file’s diff tabs.
@@ -426,10 +426,10 @@ that already exists rather than adding one:
 3. **The context is addressable, on its own route.** A comparison scopes what the tree
    shows and what the tabs mean, so it lives in the URL like every other selection.
    The grammar is decided and documented in
-   [Browser URL Grammar](../../../architecture.md#browser-url-grammar): one route per
-   address space, with a uniform `<container address>/<inner path>` shape after it —
-   `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one file’s
-   diff, `/compare/<base>..<head>` for an explicit comparison.
+   [Browser URL Grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar):
+   one route per address space, with a uniform `<container address>/<inner path>` shape
+   after it — `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one
+   file’s diff, `/compare/<base>..<head>` for an explicit comparison.
    Revisions get their own route because they are not served-tree paths; the shape after
    the route is the container contract written as a URL, so a patch file
    (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read
@@ -758,8 +758,8 @@ No Git involvement.
   copies, mode changes, binary markers, and malformed input (`mb-rre2`)
 - [ ] Superseded: `diff/service.py`: adapter registry, deterministic comparison IDs,
   bounded caches (`mb-uawv`). Adapters are wired at their call sites with no registry
-  ([comparison sources](../../architecture/arch-git-and-comparison-sources.md#comparison-sources)),
-  and `builtin_plugins/diff/comparison_cache.py` bounds the cache (#284)
+  ([comparison sources](../../architecture/arch-diff-pipeline.md#the-source-port)), and
+  `builtin_plugins/diff/comparison_cache.py` bounds the cache (#284)
 - [ ] Superseded: `diff/routes.py`: the `/api/diff/` collection above (`mb-27dr`). The
   diff plugin’s data hooks serve the browser
 - [x] `diff` file kind wired into classification and the view registry (`mb-yv0g`)
@@ -783,9 +783,9 @@ commit.
 - [x] `--diff-merges=first-parent` for merges, matching the history surface
 - [ ] Superseded: comparison context in the shell as a third Files-tree source
   (`mb-p2mi`). A comparison is a
-  [nav container](../../architecture/arch-nav-containers.md) instead: a patch file
-  expands to its file changes with their indicators (`mb-6ba6`, `mb-um0p`), and a pull
-  request’s Changes tab has its own file tree
+  [nav container](../../architecture/arch-plugin-system.md#navigation-containers)
+  instead: a patch file expands to its file changes with their indicators (`mb-6ba6`,
+  `mb-um0p`), and a pull request’s Changes tab has its own file tree
 - [ ] Superseded in part: comparison views injected into changed files’ view descriptors
   (`mb-p2mi`, which took over `mb-yv0g`’s Phase 2 half).
   An inner change opens with Diff as its default view, and the file bar’s **View file**
@@ -1232,18 +1232,18 @@ model have to render somewhere.
 Settled since this plan was written: the Python adapters produce hunks; comparisons are
 addressed by `/commit/<rev>[/<file>]`, `/pull/<n>/files[/<file>]`, and the specified
 `/compare/` route in the
-[browser URL grammar](../../../architecture.md#browser-url-grammar); and uncommitted
-comparisons use optimistic generations with a `stale` refresh, as the Git-status plan
-specifies.
+[browser URL grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar);
+and uncommitted comparisons use optimistic generations with a `stale` refresh, as the
+Git-status plan specifies.
 
 ## References
 
-- [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
 - [Browser Contributor Toolchain and Distribution](../../research/research-2026-07-18-browser-contributor-toolchain.md)
 - [Git graph nav panel and read-only Git API](../done/plan-2026-08-06-git-graph-view.md)
 - [Rendering large content](../../../large-content-rendering.md)
-- [File Patch Formats](../../research/research-2026-08-19-file-patch-formats.md)
+- [File Patch Formats](../../research/archive/research-2026-08-19-file-patch-formats.md)
 - [Git `diff-highlight`](https://github.com/git/git/tree/master/contrib/diff-highlight)
 - [VS Code default diff computer at the reviewed revision](https://github.com/microsoft/vscode/tree/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/common/diff/defaultLinesDiffComputer)
 - [CodeMirror merge diff algorithm](https://github.com/codemirror/merge/blob/main/src/diff.ts)

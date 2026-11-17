@@ -652,7 +652,7 @@ it, on first build and on every rebuild.
 `key-reveal.js` and `shell-keymap.js` join the `shell-tools` bundle, beside the
 registry, because neither has work before the registry exists; keeping them out of the
 eager path follows the
-[asset loading tiers](../../../development.md#asset-loading-tiers).
+[asset loading tiers](../../architecture/arch-browser-shell.md#asset-loading-tiers).
 Phase 1 needs the reserved shell keys only in Python, for the manifest loader and the
 keymap check: the shell’s own commands are the letters the registry holds.
 Phase 2, whose facade must refuse those letters for plugins, serves the table to the
@@ -1093,8 +1093,8 @@ It replays the queue onto each registry it is given, so keys survive a late regi
 a bfcache rebuild. No request is added to startup, and the eager addition is small by
 construction; its transferred bytes are measured against the gated startup script budget
 and recorded beside the queue, as
-[justifying a tier](../../../development.md#justifying-a-tier) requires, since earlier
-work moved code out of `plugin-sdk.js` for exactly this cost.
+[justifying a tier](../../architecture/arch-browser-shell.md#justifying-a-tier)
+requires, since earlier work moved code out of `plugin-sdk.js` for exactly this cost.
 `plugin-sdk.js` is outside the strict TypeScript gate, which is a second reason to keep
 its share minimal. Phase 2 also adds the permanent `plugin` scope, below `view-tabs`,
 through the mechanism phase 1 adds for `view-tabs`. It serves the reserved shell keys to

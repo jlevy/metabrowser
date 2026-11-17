@@ -2272,7 +2272,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
-    sdk()?.tooltip?.hide();
+    // The history's tooltip, and no other surface's: a rebuild of the panel must not take
+    // a Files row's from under the pointer (mb-alff).
+    sdk()?.tooltip?.hide(panelElement());
     hoverRevision = null;
   }
 
@@ -2707,7 +2709,7 @@
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes
     // the comparison layer instead of growing a diff surface of its own
-    // (arch-nav-containers.md, the general diff rendering plan).
+    // (arch-plugin-system.md, the general diff rendering plan).
     html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
     html += "</div>";
 

@@ -184,9 +184,9 @@ server already knows the path it is rendering (`index(view_path=…)` in `server
   spends time on gzip and Git process starts that the client then waits for.
   U2 tests whether it bounds the cold landing.
 - **Walker costs are CPython’s.** The
-  [Python inventory cost](../architecture/arch-python-inventory-cost.md) numbers “do not
-  carry to another engine”, so tuning the Python walk is worth less until U3 says
-  whether the fdu provider replaces it.
+  [Python inventory engine](../architecture/arch-inventory-engine-python.md) unit costs
+  were measured on CPython, and a native provider documents its own, so tuning the
+  Python walk is worth less until U3 says whether the fdu provider replaces it.
 
 ## Options Considered
 
@@ -349,7 +349,7 @@ Nothing was measured in `WKWebView`, and no pull request route was probed.
 - [Apparent UI performance for the native app](research-2026-11-11-ui-apparent-performance.md)
 - [Native app server topology](research-2026-11-10-native-app-server-topology.md)
 - [Rendering large content](../../large-content-rendering.md)
-- [Python inventory cost](../architecture/arch-python-inventory-cost.md)
+- [Python inventory engine](../architecture/arch-inventory-engine-python.md)
 - [exp-079, the Phase 1 closing round](../../../explorations/performance-loop/experiments/exp-079-every-accepted-change-at-final-main.md)
 - [The performance-loop runbook](../../../explorations/performance-loop/README.md)
 
