@@ -1182,18 +1182,20 @@
    totals. A line of no statuses is its totals alone and keeps the component's own layout.
    Before, the statuses were cut short with an ellipsis, "21 A, 7 D, 1…", which said less than
    the totals beside them and read as a fault. */
-:is(.github-pulls-change-line, .github-pulls-stack-change)
-  > .change-line:has(> .change-line-group) {
+.github-pulls-change-line > .change-line:has(> .change-line-group),
+.github-pulls-stack-change > .change-line:has(> .change-line-group) {
   display: flex;
   flex-direction: row-reverse;
   flex-wrap: wrap;
   justify-content: flex-end;
   overflow: hidden;
 }
-:is(.github-pulls-change-line, .github-pulls-stack-change) > .change-line > .change-line-stats {
+.github-pulls-change-line > .change-line > .change-line-stats,
+.github-pulls-stack-change > .change-line > .change-line-stats {
   order: -1;
 }
-:is(.github-pulls-change-line, .github-pulls-stack-change) > .change-line > .change-line-group {
+.github-pulls-change-line > .change-line > .change-line-group,
+.github-pulls-stack-change > .change-line > .change-line-group {
   flex: none;
   flex-wrap: wrap;
   white-space: normal;
