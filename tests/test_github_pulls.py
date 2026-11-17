@@ -607,6 +607,16 @@ def pinned_pull_on_one_worker(
 
     monkeypatch.setattr(events_route, "DEFAULT_EXECUTOR_WORKERS", 1)
     with _serving_pinned(stand) as client:
+        # The patch reaches the pool only while the lifespan reads that global. Were the
+        # size to come from elsewhere, the server would run its full pool and the tests on
+        # this fixture would pass whatever production keeps a worker for, so check it.
+        assert client.portal is not None
+
+        async def pool_size() -> int:
+            loop: Any = asyncio.get_running_loop()
+            return loop._default_executor._max_workers
+
+        assert client.portal.call(pool_size) == 1, "the server's pool is not one thread"
         yield stand, client
 
 
@@ -2657,9 +2667,14 @@ def test_h82_selected_publication_during_snapshot(
     _exercise_selected_core_wait(pinned_pull, monkeypatch, settle_in_get="captured_snapshot")
 
 
+# How long the selected-core scenario's five reads stay held when nothing opens them, as
+# this module's refresh stubs are bounded. A hold that gives up lets its read go on, so a
+# stall at the scenario's POST fails that one test instead of ending the run at the
+# suite's timeout, as it did in mb-xorh.
+CORE_HOLD_S: Final = 30.0
 # How long the one-thread scenario below may take before it counts as stuck: its five held
-# reads and its requests took 0.3 to 0.4 s on 3.14t (2026-11-17). Stuck, it would wait
-# forever, so the bound only has to sit well past a loaded run and inside the test's budget.
+# reads and its requests took 0.3 to 0.4 s on 3.14t (2026-11-17). Stuck, it waits until
+# its holds give up, so the bound has to sit well past a loaded run and under CORE_HOLD_S.
 ONE_WORKER_SCENARIO_S: Final = 20.0
 
 
@@ -2682,10 +2697,11 @@ def test_a_selected_core_wait_and_its_settlement_run_on_one_worker_thread(
     has none idle for, so only CPython's miscount (``tests/loop_gate.py``) brings it to the
     state a one-thread pool is always in: every live thread busy, the next job queued.
     A hold kept in a worker thread then queues the request's own next step behind it, as
-    ``asyncio.to_thread(release.wait)`` did in CI run 44046980214. The snapshot scenario
-    keeps one worker in its captured read on purpose, so it is not run here.
+    ``asyncio.to_thread(release.wait)`` did in mb-xorh. The snapshot scenario keeps one
+    worker in its captured read on purpose, so it is not run here.
     """
 
+    assert ONE_WORKER_SCENARIO_S < CORE_HOLD_S, "a stuck scenario would end before it counts"
     release = threading.Event()
     failures: list[BaseException] = []
 
@@ -2736,17 +2752,21 @@ def _exercise_selected_core_wait(
     stand.answer(answers)
     release = threading.Event() if release is None else release
     started: set[str] = set()
+    gave_up: list[str] = []
     read_list, get = pulls._read_list, pulls._get  # pyright: ignore[reportPrivateUsage]
 
-    async def held_list(path: str, **kwargs: Any) -> Any:
+    async def hold(path: str) -> None:
         started.add(path)
-        await held_until(release)
+        if not await held_until(release, CORE_HOLD_S):
+            gave_up.append(path)
+
+    async def held_list(path: str, **kwargs: Any) -> Any:
+        await hold(path)
         return await read_list(path, **kwargs)
 
     async def held_get(path: str, **kwargs: Any) -> Any:
         if "/status?" in path:
-            started.add(path)
-            await held_until(release)
+            await hold(path)
         return await get(path, **kwargs)
 
     monkeypatch.setattr(pulls, "_read_list", held_list)
@@ -2860,6 +2880,9 @@ def _exercise_selected_core_wait(
         time.sleep(0.005)
     assert not final["refreshing"] and final["core_preview"] is None
     assert final["record"] is not None and isinstance(stand.record(8), PullRecord)
+    # A read that gave up went on, so a stalled request answered late and the rest may
+    # have passed: the stall is the failure.
+    assert not gave_up, f"held reads gave up before the test opened them: {sorted(gave_up)}"
 
 
 def _assert_full_after_captured_snapshot(

@@ -1,21 +1,23 @@
-"""Hold a stubbed step on its event loop until a test opens its gate.
+"""Hold a step on its event loop until another thread opens a gate.
 
 A test that stands a stub in for an awaited step, a ``gh`` read, a fetch, or a refresh,
 often holds it until the test thread has asked the server something: the stub waits on a
 ``threading.Event`` the test sets. Waiting there in ``asyncio.to_thread(gate.wait)``
 keeps one of the loop's default-executor threads for the whole hold, which the step the
 stub stands in for does not: it awaits pipes or sockets on the loop. The server's own
-next step can then find no thread.
+next step can then find no thread. The same goes for a test's own coroutine that waits
+for a signal from work running in the pool, such as a stub's ``entered.set()`` from a
+worker thread: its wait shares the pool with that work.
 
 CPython's ``ThreadPoolExecutor`` can count an idle thread that is not there: a job
 submitted while a worker has found its queue empty, but not yet counted itself idle,
 starts a thread; the worker takes the job, and the new thread counts itself idle too.
 The next job to spend that count starts no thread, so with every live thread held it
 waits behind them, for a gate the test opens only once the request that submitted it has
-answered. That hung a selected core's ``POST pull-refresh`` on 3.14t in CI run
-44046980214 (mb-xorh). :func:`held_until` waits on the loop instead and keeps no thread;
+answered. That hung a selected core's ``POST pull-refresh`` on 3.14t (mb-xorh).
+:func:`held_until` waits on the loop instead and keeps no thread;
 ``tests/test_suite_gates.py`` fails on a test module that hands a gate's ``wait`` or
-``acquire`` to a worker thread.
+``acquire`` to a worker thread, and ``tests/test_loop_gate.py`` holds the helper.
 """
 
 from __future__ import annotations
@@ -37,10 +39,15 @@ async def held_until(
 ) -> bool:
     """Hold the calling step on its event loop until another thread opens *gate*.
 
-    An ``Event`` opens once it is set, and the answer is what ``gate.wait(timeout_s)``
-    would return. A ``Semaphore`` opens once this step takes one of its permits, and the
-    answer is what ``gate.acquire(timeout=timeout_s)`` would return. Either way no
-    worker thread is kept while the step waits.
+    The step is a stub or a test's own coroutine. An ``Event`` opens once it is set, and
+    the answer is what ``gate.wait(timeout_s)`` would return. A ``Semaphore`` opens once
+    this step takes one of its permits, and the answer is what
+    ``gate.acquire(timeout=timeout_s)`` would return. Either way no worker thread is kept
+    while the step waits.
+
+    Several steps held on one ``Semaphore`` take its permits in whatever order they next
+    look, unlike threads blocked in ``acquire``, which are woken oldest first. A caller
+    whose order matters holds one step at a time.
     """
 
     def opened() -> bool:

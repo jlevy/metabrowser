@@ -137,8 +137,8 @@ def test_no_inner_bound_reaches_the_suites_timeout() -> None:
 
 # ── A gate held in a worker thread ─────────────────────────────────────────────
 
-# What a test's gate blocks its waiter in: an Event's or a Condition's ``wait``, a Lock's
-# or a Semaphore's ``acquire``.
+# The methods a waiter blocks in, matched by name alone: ``wait`` (an Event's, a
+# Condition's, or a child process's) and ``acquire`` (a Lock's or a Semaphore's).
 GATE_METHODS = frozenset({"wait", "acquire"})
 # Where each way of handing a callable to a worker thread takes it, by position.
 HANDED_TO_A_WORKER = {"to_thread": 0, "run_in_executor": 1}
@@ -146,7 +146,9 @@ HELD_IN_A_WORKER = (
     "keeps a worker thread until the test opens its gate, and a step queued behind it can "
     "then wait for that gate until the bound (tests/loop_gate.py says how). Hold the step "
     f"on its loop instead: await {held_until.__module__}.{held_until.__name__}(gate, "
-    "timeout_s)"
+    "timeout_s), for a threading.Event or Semaphore. A wait on something no test opens, "
+    "a child process or a file, is a bounded poll of that outside state in a named "
+    "helper, as _wait_for_pid in tests/test_git_process_group.py is"
 )
 
 
@@ -172,9 +174,12 @@ def _waits_on_a_gate(handed: ast.expr) -> bool:
 def gates_held_in_a_worker(path: Path) -> list[str]:
     """``<file>:<line>: <callable>`` for each gate wait *path* hands to a worker thread.
 
-    That is a ``wait`` or ``acquire`` passed to ``asyncio.to_thread`` or
+    That is a ``wait`` or ``acquire`` passed by position to ``asyncio.to_thread`` or
     ``run_in_executor``: bound, through ``functools.partial``, or called in a lambda.
-    Read from the syntax tree, so a mention in a string or a comment is not one.
+    Read from the syntax tree, so a mention in a string or a comment is not one. It reads
+    names, not types, and only those forms: a wait in a named function, under another
+    name, or passed by keyword or in a starred call is not found. It stops the idiom
+    coming back; it does not prove a module holds no gate.
     """
 
     held = []
@@ -205,7 +210,7 @@ def test_no_test_holds_a_gate_in_a_worker_thread() -> None:
 
 
 def test_a_gate_handed_to_a_worker_thread_is_found(tmp_path: Path) -> None:
-    """Every way a module hands a gate's wait to a worker is found, and nothing else is."""
+    """Each form ``gates_held_in_a_worker`` reads is found, and each near miss is not."""
 
     source = textwrap.dedent(
         """\

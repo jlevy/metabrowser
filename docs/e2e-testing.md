@@ -330,8 +330,11 @@ own `pytest.mark.timeout` with the measurement that forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
 
+### Held Steps
+
 A stub held until the test opens a `threading.Event` or `threading.Semaphore` waits on
 its event loop with `held_until` from `tests/loop_gate.py`, never in a worker thread.
+So does a test’s own coroutine that waits for a signal from work in the pool.
 A wait handed to `asyncio.to_thread` keeps a pool thread for the whole hold, and the
 server’s next step can queue behind it until the bound; `tests/loop_gate.py` says how.
 A test in `tests/test_suite_gates.py` fails on a gate’s `wait` or `acquire` passed to
