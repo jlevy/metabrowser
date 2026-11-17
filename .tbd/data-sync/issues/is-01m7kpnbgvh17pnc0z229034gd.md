@@ -3,9 +3,9 @@ type: is
 id: is-01m7kpnbgvh17pnc0z229034gd
 title: "CI speed 2.1: split ci.yml into unit, goldens, and chrome jobs, with no fail-fast, cancellation of superseded pull request runs, time limits, a ci-ok verdict job, a red main that widens a pull request's matrix, and the merge procedure"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
 labels: []
@@ -20,8 +20,12 @@ parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 hold: null
 hold_until: null
 created_at: 2026-11-17T02:51:30.714Z
-updated_at: 2026-11-17T06:43:46.184Z
+updated_at: 2026-11-17T07:52:06.081Z
 started_at: 2026-11-17T06:43:46.184Z
+closed_at: 2026-11-17T07:52:06.081Z
+close_reason: "Implemented in jlevy/metabrowser#504 (branch claude/ci-split-jobs, stacked on #499 as stack #505): ci.yml split into plan, unit (two whole-file shards per interpreter), goldens and serial, chrome (plan's chrome-pythons), admitted-git, stack-integration, and ci-ok; no fail-fast, superseded PR runs cancelled and main never, measured time limits; ci_plan.sh and ci_verdict.sh with tests for every state-rule case; the merge procedure in AGENTS.md (Git); the actions: read grant in SUPPLY-CHAIN-SECURITY.md. Run 44038762653 green. After-merge acceptance (20 PR runs, red main, cancellation, deliberate failing shard) is mb-ohsk."
+resolution: null
+duplicate_of: null
 ---
 Phase 2 of plan-2026-11-16-fast-ci.md: Jobs, A Red main, and Proposed Workflow. The owner answered Q1, Q3, and Q5; Q6 was decided 2026-11-17.
 
