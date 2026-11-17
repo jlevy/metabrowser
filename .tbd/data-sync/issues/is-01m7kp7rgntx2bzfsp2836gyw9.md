@@ -1,0 +1,20 @@
+---
+type: is
+id: is-01m7kp7rgntx2bzfsp2836gyw9
+title: Thin fdu adapter with factory entry, flag, and extra (R10, R11, R14, R31)
+kind: feature
+status: open
+priority: 1
+version: 3
+spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
+labels: []
+dependencies:
+  - type: blocks
+    target: is-01m7kp7rwg98164mggx64spn2j
+  - type: blocks
+    target: is-01m7kp7s7mp21yntm16hx21cv6
+parent_id: is-01m0r8xt95921dabcddjjm7csf
+created_at: 2026-11-17T02:44:05.269Z
+updated_at: 2026-11-17T02:44:06.004Z
+---
+In one change: providers/fdu_inventory.py answering natively or failing typed per unsupported kind (D12), the fdu factory entry, metab --inventory-provider, the metabrowser[fdu] extra with exact pin, environment marker, and supply-chain review, and route handling for unpinned VersionUnavailableError. See docs/project/research/research-2026-11-17-fdu-backend-revisited.md, The Production Adapter.
