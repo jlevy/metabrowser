@@ -23,6 +23,25 @@ All notable changes to Metabrowser are documented here.
   See [Page Headers](docs/design-system.md#page-headers) and
   [Actor Identity](docs/design-system.md#actor-identity).
 
+- Secondary metadata, such as ages, update and fetch times, counts, and sizes, is the
+  size of the text beside it, where it was a step smaller.
+  In the navigation column it is the rows’ 13 px: a file’s size and age in Files, a
+  commit’s author and age in Commits, a pull request’s author and age in Pulls, and
+  “Fetched just now” at the column’s foot, all 12 px in 0.12.0, so “Updated just now”
+  under the Pulls filters and the ages in the rows under it are one size.
+  In the main view it is the body size, 14 px: a pull request’s Checks summary and each
+  check, its other quiet notes, a treemap’s status line, and a byte view’s note were 12
+  px. A notice, such as a partly loaded file’s, is 14 px in the main view and 13 px in
+  the navigation column, where it was 12 px in both.
+  A file’s or a folder’s header shows its size, count, age, and mirror note at its
+  path’s 13 px, where they were 12 px.
+  A review comment’s file is the size of its card’s head, 14 px, where it was 13 px; a
+  tooltip’s detail lines, a file’s size and age, are the tooltip’s 14 px, where they
+  were 12 px; and Help’s descriptions, Quick Search’s status, and a changed-files tree’s
+  line counts are their lists’ 13 px, where they were 12 px.
+  Chips, badges, buttons, menus, keycaps, labels, and code keep their sizes.
+  See [Type Scale](docs/design-system.md#type-scale).
+
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
   The disclosure appeared above every document ending in the guideline footer comment,

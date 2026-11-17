@@ -124,14 +124,16 @@ OKLCH structure, semantic ordering, and dark-theme surface contrast.
 
 One primitive produces every age: `MetabrowserFormatters.age()` returns a label and
 freshness class (`.age-live` … `.age-old`), and the shared class rule owns its hue,
-weight, small size, and tabular numerals.
-Dense navigation uses the compact style (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata
-and conversation cards use the relative style: `2h ago`, `just now`, or `in 2h` for a
-future timestamp. Unknown times have no age label.
+weight, and tabular numerals.
+It sets no size: an age reads at the size of the text it sits in, a row’s 13px or a
+header line’s 14px ([Type Scale](#type-scale)). Dense navigation uses the compact style
+(`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata and conversation cards use the relative
+style: `2h ago`, `just now`, or `in 2h` for a future timestamp.
+Unknown times have no age label.
 The Pulls sidebar, file tree and compact Git history remain condensed navigation; PR
 headers, comments, reviews, full commit summaries and folder headers use relative ages.
 Call sites choose the presentation style and positioning, never their own suffix,
-abbreviation, color, or weight.
+abbreviation, color, weight, or size.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
 in `data-tip-text`, on a surface that has tooltips
 ([Tooltips Add Information](#tooltips-add-information)). Freshness sentences such as
@@ -344,29 +346,47 @@ Every font size in the app comes from the type-scale tokens defined in
 `static/styles.css` (see the `── Type scale ──` block in `:root`). Never inline a
 font-size literal at a use site.
 
-Chrome (interface) sizes:
+**Text is sized by its role, and secondary metadata reads at the size of the text it
+accompanies.** An age, an update or fetch time, a count, a size, a row’s second line, a
+note, or a caption is never set a step smaller than the text beside it: it steps back by
+its ink, muted, not by its size.
+So “Fetched just now via GitHub CLI” in a pull request’s header reads at the body size
+of the header’s other lines, and “Updated just now” in the Pulls tab at the list size of
+the rows under it, by one rule.
+Metadata had been the small control size on a dozen surfaces, under the 13px rows and
+14px lines beside it, and the owner found one kind of time at three sizes on one screen
+(mb-ctlu).
 
-- `--body-font-size` (14px): primary chrome text — body default, inputs, empty states,
-  stat values, and every line under a page header’s title, the Diff summary’s header
-  among them ([Page Headers](#page-headers)).
-- `--nav-font-size` (13px): dense navigation rows and path breadcrumbs — tree items,
-  header path, file-header path — and the
-  [navigation metadata line](#navigation-metadata-line) that states their totals.
-- `--ui-small-font-size` (12px): secondary chrome — metadata, chips, tooltips, notes,
-  filters, summaries.
-- `--label-font-size` (= ui-small): all-caps section labels — tabs, panel and table
-  headers, stat labels.
-  Labels differ by caps treatment, not by another size.
-- `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
-  views, split and unified diffs, review hunks, logs, raw JSON.
-- `--micro-font-size` (10px): deliberately minimized marks — the brand line.
-- `--page-title-font-size` (24px): the title of a page no file stands behind, a pull
-  request’s. It sits above the 25.5px regular first heading of the text below by its
-  bold weight, not by its size.
-- `--git-ref-font-size` (`--git-ref-font-scale`, 0.9, of the inherited size): a ref
-  chip, slightly smaller than the text it sits in.
-  The ramp’s one relative size, because a chip sits in text of several sizes and reads
-  as part of it; see [Branch Chips](#branch-chips).
+The chrome has two text sizes, and the navigation column takes the smaller for a stated
+reason: it is a dense list in a pane narrower than the main view, 300px by default and
+180px at its narrowest, read by scanning rather than at length, so its rows and the
+metadata in them sit one step under the main view’s reading text.
+The column sets that size once, on `.tree-pane`, so a primitive it shares with the main
+view, a notice or an age, sets no size and takes the column’s there and the body’s in
+the main view.
+
+| Role | Token | Size | Where |
+| --- | --- | --- | --- |
+| Page title | `--page-title-font-size` | 24px | The title of a page no file stands behind, a pull request’s or a commit’s. It sits above the 25.5px regular first heading of the text below by its bold weight, not by its size |
+| Document prose | `--document-body-font-size` | 15px | A rendered document and a message, with KPress’s ramp under it (below) |
+| Reading text | `--body-font-size` | 14px | The main view’s lines, cards, tables, inputs, notes, and empty and error states; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
+| Tooltip | `--tooltip-font-size`, its detail lines `--tooltip-detail-font-size` | 14px | Both the tooltip’s size ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)) |
+| List text | `--nav-font-size` | 13px | The navigation column: Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a tree’s rows wherever one is drawn, the Diff summary’s file list among them; Quick Search’s results and Help’s commands; and a path in a strip of its own, the header path, the file header, and a diff file bar |
+| Secondary metadata | The size of the text it accompanies | 14px or 13px | Ages, update and fetch times, counts, sizes, a row’s second line, notes, and captions: 14px in reading text and 13px in list text |
+| A revision in a line | `--nav-font-size` | 13px | One step below the 14px sans beside it, since monospace at that size reads larger ([Git Commit Summary](#git-commit-summary)) |
+| Controls | `--ui-small-font-size` | 12px | Chips and their counts, badges, buttons, filters, menus and their notes, fold expanders, and a tree row’s leading change letter, its slot’s glyph |
+| Keycaps and their hint strips | `--kbd-font-size` | 12px | A [key](#keyboard-keys), and a strip of hints that labels keys, at the navigation column’s foot and in Quick Search, so a key and its word read as one mark |
+| Labels | `--label-font-size` | 12px | All-caps tabs, table headers, stat labels, group headings, and dialog titles. Labels differ by caps treatment, not by another size |
+| Monospace blocks | `--mono-block-font-size` | 12px | Source, diffs and their hunk headers, review hunks, logs and their event headers, raw JSON, and a verbatim error |
+| Ref chip | `--git-ref-font-size` | 0.9 of its text | `--git-ref-font-scale` of the size it inherits: the ramp’s one relative size, because a chip sits in text of several sizes and reads as part of it ([Branch Chips](#branch-chips)) |
+| Micro marks | `--micro-font-size` | 10px | Deliberately minimized marks: the brand line |
+
+A path is list text in a strip of its own, and takes the line’s size inside a line of
+other text: a review comment’s file, in its card’s head, is 14px. The file header is a
+path strip, so its size, count, age, and mirror note read at the path’s 13px, on one
+baseline with it, where they were 12px. A tooltip’s detail lines, a file’s size and age
+under its name, were a step under the tooltip, at 12px against the 13px row they
+describe; they are its 14px now, muted.
 
 Document (rendered prose) sizes are a single token:
 
@@ -398,13 +418,25 @@ When adding a size, extend the ramp and its documentation; do not create a one-o
 
 `test_font_sizes_come_from_the_type_scale` in `tests/test_design_vocabulary.py` holds
 every stylesheet the app ships to this, plugins included.
-A literal fails the build unless its exemption list names the selector and why.
+A literal, or a `var()` that names no token in the table, fails the build unless its
+exemption list names the selector and why: a treemap cell’s labels, sized from the
+cell’s area, are one.
+`test_secondary_metadata_reads_at_its_texts_size` holds the small size to the controls,
+the keycaps, the labels, and the monospace blocks, each rule that sets it named with its
+role, so a new rule that gives metadata the small size fails until it is classified; it
+holds the navigation column’s one size on `.tree-pane`, the age primitive and the notice
+to setting none, and a tooltip’s detail lines to its size.
+`tests/test_type_scale_chrome.py` reads the computed size of one of each role on the
+Files, Pulls, and Commits panels, a file’s and a folder’s header, a commit’s page, a
+pull request’s Conversation and Checks, a tooltip, a menu, and Help in headless Chrome,
+and holds each to this table and to the text it accompanies.
 
 ### Text Roles
 
 Keep these roles distinct:
 
-- labels and metadata use normal weight and muted text;
+- labels and metadata use normal weight and muted text, and metadata reads at the size
+  of the text it accompanies ([Type Scale](#type-scale));
 - person names use `.actor-name`, and repository names use `.repository-name`: bold
   normal text ink, inheriting the surrounding context’s font size.
   Apply the same person-name primitive to commit authors, PR authors, mergers, comments,
@@ -428,13 +460,13 @@ Prefer truncation with an accessible full-value tooltip or allow a panel to scro
 A commit’s page and a pull request’s page open with one kind of header, a
 `.page-header`: the title, then its lines, each 6 px under the one before.
 Every line under the title is a `.page-header-line` at `--body-font-size`, and so is the
-Diff summary’s header, the last line; an age in a line takes the line’s size, not the
-age primitive’s small one.
-A chip in a line keeps its own size, a ref chip by the [chip ratio](#one-ratio), and a
-state badge and a label at theirs ([Label Colors](#label-colors)), and a revision sits
-its one step down ([Git Commit Summary](#git-commit-summary)). Before, the Diff summary
-was `--nav-font-size` on both pages, and a pull request’s row of ages and its status
-line `--ui-small-font-size`, a step or two under the lines above them.
+Diff summary’s header, the last line; an age in a line takes the line’s size, as an age
+does everywhere ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref
+chip by the [chip ratio](#one-ratio), and a state badge and a label at theirs
+([Label Colors](#label-colors)), and a revision sits its one step down
+([Git Commit Summary](#git-commit-summary)). Before, the Diff summary was
+`--nav-font-size` on both pages, and a pull request’s row of ages and its status line
+`--ui-small-font-size`, a step or two under the lines above them.
 
 The two headers share their parts in one order, and each keeps the lines only it has:
 
@@ -947,8 +979,9 @@ At `--ui-small-font-size` a link sat 0.75px above the path’s baseline and a bu
 A mirror’s location note at the far end of the file header is deliberately not in the
 table.
 It is whole or absent, by wrapping inside a box of its own one line tall, so it is
-centered rather than baseline-aligned, and sits 0.25px above the path at a device pixel
-ratio of 1, with the rest of the row between them.
+centered rather than baseline-aligned.
+At the path’s size, its box is the path’s line, so it sits on the path’s baseline, where
+at the small size it sat 0.25px above it at a device pixel ratio of 1.
 
 The Git commit summary’s metadata line also sets two sizes and is deliberately not in
 the table.
@@ -1208,8 +1241,8 @@ never the age**: an age pushed off the row is information lost, an ellipsized me
 still reads, and a halved branch name does not.
 Rows are independent — no shared column — which is also what lets a new page of history
 be appended to the list instead of rebuilding every row above it.
-The subject and the smaller author and age share a baseline; see
-[Row Text Shares a Baseline](#row-text-shares-a-baseline).
+The subject, the author, and the age share the row’s size and a baseline; see
+[Row Text Shares a Baseline](#row-text-shares-a-baseline) and [Type Scale](#type-scale).
 
 ### Git Commit Summary
 
@@ -2126,7 +2159,7 @@ above each event rather than the body’s gap.
 | Head and base branch | `mb.mergeRefs`, head → base on a line of its own under the author’s sentence: “forker wants to merge 2 commits”, then “forker:count-to-two → octo:topic” | [Merge Direction](#merge-direction): two remote [ref chips](#branch-chips), slightly smaller than the actor and action by the [chip ratio](#one-ratio), and the one arrow the list uses too. [Which Kind Each Context Gets](#which-kind-each-context-gets) says why remote and never trunk |
 | Label | Hairline box with `--radius-tag`, in GitHub’s color for it, its description its tooltip ([Label Colors](#label-colors)) | A name the pull request carries, the corner tag-like chips use, colored as github.com colors it so a label reads as the same label in both places |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
-| File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
+| File of a review comment | Sans, bold, at the card head’s size | A path is chrome. In a line of other text it takes the line’s size; the diff bar’s path, in a strip of its own, is list text ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in each of the three. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
 | Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size` | A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
@@ -2141,7 +2174,8 @@ above each event rather than the body’s gap.
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
 The avatar centers independently beside that text baseline.
-Compact navigation ages and branch chips retain their smaller chrome sizes.
+In the navigation column an age reads at its row’s list size, and a branch chip keeps
+its ratio.
 
 Author avatars are decorative circles beside the visible username, with fixed dimensions
 so image arrival or failure does not move the text.
@@ -2441,7 +2475,7 @@ holds the one helper and the one rule in source.
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the second line, alone, from the text column under the age to the row’s end, cut there with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.formatAge`, at the first line’s end, on the number’s baseline; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
-| Username | `--ui-small-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` | Secondary context stays the same size; usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then leaves the number’s line whole |
+| Username | `--nav-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line, the number’s ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then leaves the number’s line whole |
 | Stack place | `.github-pulls-place`, before the number on the number’s line and at its size, “1/6 · #455”, with what it shows set in [Stacks](#stacks); on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
 | Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
@@ -4185,7 +4219,8 @@ All of them are one component, `.nav-metadata` in `static/styles.css`. They were
 recipes, and the reader saw it: 13px text 6px under the Files filters, 13px text centred
 in the Commits slot, and 12px muted text with no space above it under the Pulls filters.
 
-- **Type.** `--nav-font-size` in regular weight and `--text` ink, line height
+- **Type.** `--nav-font-size`, the navigation column’s list size
+  ([Type Scale](#type-scale)), in regular weight and `--text` ink, line height
   `--nav-metadata-line-height`, and tabular numerals, so a count that grows while it is
   counted does not jitter.
   A remark on the line above it — a filter’s count, a connection’s state or remedy —
@@ -4392,11 +4427,14 @@ name, and a rendered document’s own links and embeds.
 | A short string | `data-tip-text="…"` |
 | Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
 
-**A tooltip reads at body size**, `--tooltip-font-size`, with subordinate lines one step
-down at `--tooltip-detail-font-size`. Neither may be spelled as another token or as a
-literal. Pointing a tooltip at `--ui-small-font-size` — the size of chips, counts, and
-row metadata — makes its size a side effect of a decision about chrome, so the next
-adjustment to small chrome text moves every tooltip with it.
+**A tooltip reads at body size**, `--tooltip-font-size`, and so do its subordinate
+lines, at `--tooltip-detail-font-size`, which is the tooltip’s size: a file’s size and
+age under its name are secondary metadata, muted, at the size of the text they accompany
+([Type Scale](#type-scale)). They were a step down, smaller than the 13px row they
+describe. Neither may be spelled as another token or as a literal.
+Pointing a tooltip at `--ui-small-font-size` — the size of chips and controls — makes
+its size a side effect of a decision about chrome, so the next adjustment to small
+chrome text moves every tooltip with it.
 A tooltip is prose the reader has stopped to read.
 `devtools/check_tooltips.py` holds this alongside the rule above.
 

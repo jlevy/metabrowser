@@ -256,7 +256,7 @@
 
 .metabrowser-diff-host .diff-file-note {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   flex: none;
 }
 
@@ -376,7 +376,7 @@
   white-space: nowrap;
   color: var(--muted);
   background: var(--highlight-bg);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--mono-block-font-size);
 }
 
 .metabrowser-diff-host .diff-line {

@@ -26,7 +26,7 @@
 .binary-bytes-note {
   padding: var(--pane-header-padding-y) var(--content-padding-x);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 
 .binary-bytes-note[hidden] {

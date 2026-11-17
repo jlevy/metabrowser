@@ -233,7 +233,7 @@
   margin-top: 8px;
   max-width: var(--tm-max-width);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
   font-variant-numeric: var(--tabular-numerals);
   -webkit-user-select: text;
   user-select: text;

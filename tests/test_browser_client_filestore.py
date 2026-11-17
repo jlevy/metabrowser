@@ -870,8 +870,9 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     assert "direction" not in note + text
     assert "direction: ltr;" in block(".mirror-source .file-header-root")
     assert "direction: rtl;" in block(".file-header-root")
-    # In the design's tokens: muted, at the summary's size, and no color of its own.
-    assert "color: var(--muted);" in note and "font-size: var(--ui-small-font-size);" in note
+    # In the design's tokens: muted, at the path's size, as the header's metadata is, and no
+    # color of its own (docs/design-system.md, "Type Scale").
+    assert "color: var(--muted);" in note and "font-size: var(--nav-font-size);" in note
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note + text)
 
     # In the navigation heading the ref narrows before the name, and the commit never.

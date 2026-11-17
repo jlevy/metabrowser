@@ -292,14 +292,25 @@
      ramp — never a one-off rem at a single use site.
 
      Chrome (interface) sizes:
-       --body-font-size      14px  primary chrome text (default, inputs,
-                                   empty states, stat values)
-       --nav-font-size       13px  dense navigation rows + path
-                                   breadcrumbs (tree items, header path),
-                                   and the .nav-metadata line under each
-                                   main tab's toolbar that totals them
-       --ui-small-font-size  12px  secondary chrome (metadata, chips,
-                                   tooltips, notes, filters, summaries)
+       --body-font-size      14px  reading text: the main view's lines,
+                                   cards, notes, tables, inputs, empty and
+                                   error states, dialogs, and tooltips
+       --nav-font-size       13px  list text: the navigation column (set
+                                   once, on .tree-pane), a tree's rows
+                                   wherever one is drawn, Quick Search's
+                                   and Help's lists, and a path in a strip
+                                   of its own (the header path, the file
+                                   header, a diff file bar)
+       --ui-small-font-size  12px  controls: chips, badges, buttons,
+                                   filters, menus, and keycaps with the
+                                   hint strips they label
+     Secondary metadata (ages, update and fetch times, counts, sizes, a
+     row's second line, notes, captions) has no size of its own: it reads
+     at the size of the text it accompanies, the body size in reading
+     text and the nav size in list text, and steps back by its ink, never
+     by a smaller size (docs/design-system.md, "Type Scale"; mb-ctlu).
+     test_secondary_metadata_reads_at_its_texts_size holds the small size
+     to the roles above.
        --label-font-size     =ui-small  all-caps section labels (tabs,
                                    panel/table headers, stat labels, and
                                    the embedded-document CONTENTS title
@@ -334,12 +345,16 @@
   /* The app's tooltip reads at body size, not at small-chrome size.
 
      Its own token rather than a reference to --ui-small-font-size, which is
-     the size of chips, counts and row metadata: pointing the tooltip at that
-     made its size a side effect of a decision about chrome, so the next
-     adjustment to small chrome text would have moved every tooltip with it. A
-     tooltip is prose the reader has stopped to read. */
+     the size of chips and controls: pointing the tooltip at that made its
+     size a side effect of a decision about chrome, so the next adjustment to
+     small chrome text would have moved every tooltip with it. A tooltip is
+     prose the reader has stopped to read. Its detail lines, a file's size
+     and age under its name, are secondary metadata, so they read at the
+     tooltip's size, muted, as metadata does everywhere (mb-ctlu); they were
+     a step smaller, the one place a tooltip's measurements read smaller
+     than the row they describe. */
   --tooltip-font-size: var(--body-font-size);
-  --tooltip-detail-font-size: var(--ui-small-font-size);
+  --tooltip-detail-font-size: var(--tooltip-font-size);
   --micro-font-size: 10px;
   --page-title-font-size: 24px;
   /* A ref chip is slightly smaller than the text around it: one ratio, not
@@ -2393,7 +2408,11 @@ html.theme-anim .menu {
 
 /* ── Tree pane ───────────────────────────────────────────────── */
 
+/* The navigation column reads at the list size, once, here: a primitive it shares with
+   the main view, a notice or an age, takes the column's size from it, as it takes the
+   body size there (docs/design-system.md, "Type Scale"). */
 .tree-pane {
+  font-size: var(--nav-font-size);
   width: var(--tree-pane-width);
   min-width: 180px;
   max-width: none;
@@ -2540,7 +2559,7 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   line-height: 1.2;
 }
 .index-progress-spinner {
@@ -2663,7 +2682,7 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   line-height: 1.2;
 }
 .source-freshness-label {
@@ -2900,7 +2919,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
   font-style: italic;
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .tree-item.tree-page-more:hover {
   background: var(--hover-bg);
@@ -3011,7 +3030,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   white-space: nowrap;
 }
 .tree-item-age-inline {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   color: var(--muted);
   /* Medium weight (not the 400 default) so small age labels stay legible;
      warm-tier age classes below bump to --file-age-weight-recent. */
@@ -3025,7 +3044,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
 /* Positioning + size only — color / weight / tabular-nums come from
    the shared .size / .size-large rule (the sole source of truth). */
 .tree-item-size {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   flex-shrink: 0;
   margin-left: auto;
   text-align: right;
@@ -3111,13 +3130,14 @@ html[data-prose-font="sans"] .kpress-prose h2,
   --file-age-current: var(--file-age-old);
 }
 /* Every age anywhere — file rows, commit rows, commit detail — uses
-   the same tier hue, shared weight, and tabular numerals. Call sites
-   may adopt their container's type size and positioning, but never
-   override colour or weight, exactly as they do for `.size`. */
+   the same tier hue, shared weight, and tabular numerals, and no size of
+   its own: an age is secondary metadata, which reads at the size of the
+   text it sits in, so a 13px row's age is 13px and a page header's 14px
+   (docs/design-system.md, "Type Scale"). Call sites own its position,
+   never its colour, weight, or size, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
-  font-size: var(--ui-small-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 :is(.age-live, .age-sec, .age-min) {
@@ -4206,7 +4226,7 @@ a.tab-btn {
   line-height: 1.5;
   overflow: hidden;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   font-weight: var(--weight-normal);
 }
 /* The first line is as tall as the note whatever is on it, so a text that wraps
@@ -4238,7 +4258,7 @@ a.tab-btn {
 }
 .folder-header-count,
 .folder-header-age {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
@@ -4255,7 +4275,7 @@ a.tab-btn {
 /* Color / weight come from .size / .size-large — see the shared
    size-chip convention above. */
 .file-header-size {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   flex-shrink: 0;
 }
 /* The --nav-font-size path and the --ui-small-font-size size and folder
@@ -4506,7 +4526,7 @@ a.tab-btn {
    Headers"): its title, then its lines, each 6 px under the one before. Every line under
    the title is a `.page-header-line` at the body size, the Diff summary's row included (its
    header's own size is the diff plugin's, the same token), so the two pages read in one
-   type: an age in one keeps the line's size, not the age primitive's small one. A chip in a
+   type: an age in one keeps the line's size, as an age does everywhere. A chip in a
    line keeps its own size (Branch Chips, Label Colors), and a revision its one step down. */
 .page-header {
   display: flex;
@@ -4518,9 +4538,6 @@ a.tab-btn {
 }
 .page-header-line {
   min-height: 1lh;
-  font-size: var(--body-font-size);
-}
-.page-header-line :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   font-size: var(--body-font-size);
 }
 
@@ -4746,7 +4763,6 @@ a.tab-btn {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
   line-height: 1.45;
 }
 
@@ -4792,7 +4808,7 @@ a.tab-btn {
   white-space: pre-wrap;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--mono-block-font-size);
 }
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 
@@ -5408,7 +5424,7 @@ pre.code-block.metabrowser-source-lines > code {
 .help-shortcut-context {
   margin: 2px 0 6px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .help-command-list {
   display: flex;
@@ -5436,7 +5452,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .help-command-description {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 /* ── Quick Search palette ─────────────────────────────────────────
@@ -5557,6 +5573,13 @@ pre.code-block.metabrowser-source-lines > code {
 .search-palette-hint {
   padding: 5px 12px;
   color: var(--muted);
+}
+/* The status counts the results above it, so it reads at their size; the hint is the
+   keycaps' strip, at theirs. */
+.search-palette-status {
+  font-size: var(--nav-font-size);
+}
+.search-palette-hint {
   font-size: var(--ui-small-font-size);
 }
 .search-palette-status {
@@ -5762,7 +5785,7 @@ pre.code-block.metabrowser-source-lines > code {
   align-items: center;
   padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   font-style: italic;
 }
 .tree-lazy-error {
@@ -5826,7 +5849,7 @@ pre.code-block.metabrowser-source-lines > code {
 .tree-empty-note {
   padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 /* ── Changed-file rows ───────────────────────────────────────────
@@ -5895,7 +5918,7 @@ pre.code-block.metabrowser-source-lines > code {
   flex-shrink: 0;
   gap: 4px;
   margin-left: auto;
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 .changed-file-stats > .diff-stat-add {
@@ -6002,7 +6025,7 @@ pre.code-block.metabrowser-source-lines > code {
 /* A chrome tree, like the Navigator: sans labels. Counts keep column
    alignment through tabular numerals rather than a monospaced face. */
 .tally-tree {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   line-height: 1.8;
   padding: 8px 12px;
   font-family: var(--font-sans);
@@ -6040,7 +6063,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: none;
 }
 .tally-metadata {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   color: var(--muted-slate);
   margin-bottom: 8px;
   padding: 4px 0;
@@ -6347,7 +6370,7 @@ pre.code-block.metabrowser-source-lines > code {
   justify-content: center;
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 /* ── Git history skeletons ──────────────────────────────────── */
@@ -6491,7 +6514,7 @@ pre.code-block.metabrowser-source-lines > code {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 /* The subject and the author/age share a baseline, as a file row's name,
@@ -6506,11 +6529,19 @@ pre.code-block.metabrowser-source-lines > code {
 .git-graph-age {
   flex-shrink: 0;
 }
+/* In a column too narrow for both, the author gives way and the age stays whole: "never
+   the age" (docs/design-system.md, "History Rows"). The column's own clip cut the age's
+   end instead, 9.6px of it at the 180px pane in 12px type and 14.2px in 13px. */
+.git-graph-meta > .actor-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .git-graph-more {
   padding: 8px 12px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 .git-graph-more-failed {
@@ -6861,10 +6892,6 @@ pre.code-block.metabrowser-source-lines > code {
   column-gap: inherit;
 }
 
-.git-commit-summary .git-commit-age {
-  font-size: var(--body-font-size);
-}
-
 .git-commit-summary :is(.git-stat-add, .git-stat-del) {
   font-size: var(--body-font-size);
 }
@@ -6928,7 +6955,7 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 8px;
   padding: 10px 0;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 .git-commit-file {
@@ -6944,7 +6971,7 @@ pre.code-block.metabrowser-source-lines > code {
   color: inherit;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   text-align: left;
 }
 

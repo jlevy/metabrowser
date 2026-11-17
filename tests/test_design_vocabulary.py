@@ -685,8 +685,21 @@ def test_age_is_one_primitive_everywhere() -> None:
     tiers = _rule(
         styles, ":is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
     )
-    for declaration in ("color:", "font-weight:", "font-size:", "font-variant-numeric:"):
+    for declaration in ("color:", "font-weight:", "font-variant-numeric:"):
         assert declaration in tiers, f"the age primitive lost {declaration}"
+    # An age is secondary metadata, which reads at the size of the text it sits in
+    # ("Type Scale"; mb-ctlu): the primitive sets no size, and no rule sets one on an age.
+    assert "font-size" not in tiers, "an age takes the size of the text it sits in"
+    # The classes an age's own element carries: the primitive's tiers and each call site's.
+    age_selector = re.compile(
+        r"\.(age-(live|sec|min|hr|day|wk|old)|tree-item-age|git-graph-age|git-commit-age"
+        r"|git-history-summary-age|github-pulls?-age)(?![\w-])"
+    )
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            assert not (age_selector.search(selector) and "font-size" in declarations), (
+                f"{sheet.name}: {selector} sizes an age"
+            )
     # A call site that restates color or weight has forked the vocabulary.
     graph_age = _rule(styles, ".git-graph-age")
     assert "color:" not in graph_age and "font-weight:" not in graph_age, (
@@ -1139,7 +1152,6 @@ def test_git_commit_summary_is_one_component() -> None:
     summary_sha = _rule(styles, ".git-commit-sha")
     compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
     compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
-    summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
     summary_body = _rule(styles, ".git-commit-body")
     summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
@@ -1157,7 +1169,6 @@ def test_git_commit_summary_is_one_component() -> None:
         meta,
         compact_subject,
         compact_meta,
-        summary_age,
         summary_lines,
     ):
         assert "font-size: var(--body-font-size)" in rule
@@ -1211,18 +1222,17 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "gap": "6px",
     }
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
-    ages = (
-        ".page-header-line :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
-    )
-    assert shell[ages] == {"font-size": "var(--body-font-size)"}
+    # An age in a line takes the line's size because the age primitive sets none
+    # (test_age_is_one_primitive_everywhere), so no rule restates it here.
+    assert not any(":is(.age-live" in selector for selector in shell if ".page-header" in selector)
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     assert diff[".metabrowser-diff-host .diff-summary"]["font-size"] == "var(--body-font-size)"
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     assert github[".github-pull-summary-pending"]["font-size"] == "var(--body-font-size)"
-    # The rows of ages' quiet text is muted at its line's size, not the page's small quiet.
-    assert github[".github-pull-opened > .github-pull-quiet"]["font-size"] == (
-        "var(--body-font-size)"
-    )
+    # The rows of ages' quiet text is muted at its line's size, the body's, as quiet text is
+    # everywhere on the page (mb-ctlu), so the row restates no size.
+    assert github[".github-pull-quiet"]["font-size"] == "var(--body-font-size)"
+    assert "font-size" not in github[".github-pull-opened > .github-pull-quiet"]
     line = re.compile(r"\.(" + "|".join(_PAGE_HEADER_LINES) + r")(?![\w-])")
     for sheet in _stylesheets():
         for selector, declarations in _rules_of(sheet):
@@ -1471,8 +1481,32 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
     # One step below the structured view's mono, in em so it follows that view's size.
     ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
+    # A treemap cell's label and value are sized from the cell's area, set on each cell inline
+    # by treemap.js; the stylesheet's defaults are the small size.
+    ("folder/styles.css", ".tm-cell-label"): "a cell's size, from its area",
+    ("folder/styles.css", ".tm-cell-sub"): "a cell's size, from its area",
 }
-_TYPE_SCALE_VALUE = re.compile(r"var\(--[a-z0-9-]+\)")
+# The ramp's tokens, and the role tokens that name one of them ("Type Scale"). A font size is
+# one of these, so a size is a decision about a role, not a variable a stylesheet invents.
+_TYPE_SCALE_TOKENS = frozenset(
+    {
+        "--page-title-font-size",
+        "--document-body-font-size",
+        "--body-font-size",
+        "--tooltip-font-size",
+        "--tooltip-detail-font-size",
+        "--nav-font-size",
+        "--ui-small-font-size",
+        "--kbd-font-size",
+        "--label-font-size",
+        "--mono-block-font-size",
+        "--git-ref-font-size",
+        "--micro-font-size",
+    }
+)
+_TYPE_SCALE_VALUE = re.compile(
+    r"var\((" + "|".join(sorted(_TYPE_SCALE_TOKENS, key=len, reverse=True)) + r")\)"
+)
 
 
 def _sheet_name(sheet: Path) -> str:
@@ -1483,6 +1517,9 @@ def _sheet_name(sheet: Path) -> str:
 
 def test_font_sizes_come_from_the_type_scale() -> None:
     """No literal font size at a use site, as "Type Scale" says, or a reason named above.
+
+    And no size outside the ramp: a `var()` names one of its tokens, never a variable of its
+    own that a stylesheet sets to whatever it likes.
 
     A plugin's stylesheet is held to it too: it consumes the host's tokens, so a change to
     the ramp reaches it. `font` shorthands count, since they set a size just the same.
@@ -1501,6 +1538,91 @@ def test_font_sizes_come_from_the_type_scale() -> None:
             if re.search(r"\d(?:px|em|rem|pt|%)", shorthand):
                 offenders.append(f"{name}: {selector} sets font: {shorthand}")
     assert not offenders, "\n  ".join(["literal font sizes:", *offenders])
+
+
+# Who may set the small size, and why ("Type Scale"; mb-ctlu). The small size is the controls':
+# chips, badges, buttons, filters, and menus, and the keycaps' hint strips. Secondary metadata,
+# an age, a size, a count, a fetch or update time, a row's second line, a note, has no size of
+# its own: it reads at the size of the text it accompanies. It was the small size on a dozen
+# surfaces, a step under the 13 px rows and 14 px lines beside it, and the owner found an
+# update time at three sizes on one screen. A rule that reaches for the small size is a control
+# named here, or it is metadata at the wrong size.
+_SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
+    ("styles.css", ".app-header"): "the navigation header's controls; its path sets its own",
+    ("styles.css", ".btn"): "a button",
+    ("styles.css", ".parent-nav-arrow"): "a button's glyph",
+    ("styles.css", ".fold-expander"): "a control row (Fold Expanders)",
+    ("styles.css", ".menu-item"): "a menu",
+    ("styles.css", ".menu-version"): "a menu's line",
+    ("styles.css", ".menu-select"): "a menu's control",
+    ("styles.css", ".menu-row"): "a menu's line",
+    ("styles.css", ".menu-number"): "a menu's control",
+    ("styles.css", ".recent-empty"): "a menu's note",
+    ("styles.css", ".recent-truncated-note"): "a menu's note",
+    ("styles.css", ".nav-shortcut-hints"): "a hint strip, at its keycaps' size",
+    ("styles.css", ".search-palette-hint"): "a hint strip, at its keycaps' size",
+    ("styles.css", ".source-ref-selector"): "a chip and its menu",
+    ("styles.css", ".chip"): "a chip",
+    ("styles.css", ".chip-menu-count"): "a chip menu's count",
+    ("styles.css", ".filter-check"): "a filter",
+    ("styles.css", ".chip-clear"): "a chip's control",
+    ("styles.css", ".file-header-badge"): "a badge",
+    ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
+    ("agent_log/styles.css", ".log-event-kind"): "a badge",
+    (
+        "diff/styles.css",
+        ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
+    ): "a fold's control",
+    ("github/styles.css", ".github-pull-labels"): "a row of label chips",
+    ("github/styles.css", ".github-pull-label"): "a label chip",
+    ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
+    ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
+}
+# The role tokens that are the small size, each a role of its own.
+_SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-block-font-size"})
+
+
+def test_secondary_metadata_reads_at_its_texts_size() -> None:
+    """The small size is the controls', and metadata takes its text's size ("Type Scale").
+
+    The navigation column sets the list size once, so a primitive it shares with the main view
+    takes it there; the age primitive and the notice set none; a tooltip's detail lines read at
+    the tooltip's size. `tests/dom/type-scale-chrome.mjs` reads the computed sizes in Chrome.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "test_secondary_metadata_reads_at_its_texts_size" in doc
+    offenders: list[str] = []
+    for sheet in _stylesheets():
+        name = _sheet_name(sheet)
+        for selector, declarations in _rules_of(sheet):
+            if declarations.get("font-size") != "var(--ui-small-font-size)":
+                continue
+            if (name, selector) not in _SMALL_SIZE_ROLES:
+                offenders.append(f"{name}: {selector}")
+    assert not offenders, "\n  ".join(["the small size outside the controls:", *offenders])
+    shell = _rules_of(STATIC / "styles.css")
+    tokens = {
+        name
+        for selector, declarations in shell
+        if selector == ":root"
+        for name, value in declarations.items()
+        if value == "var(--ui-small-font-size)" and name.endswith("-font-size")
+    }
+    assert tokens == _SMALL_SIZE_TOKENS, tokens
+
+    def sizes(selector: str) -> list[str | None]:
+        return [rule.get("font-size") for named, rule in shell if named == selector]
+
+    assert "var(--nav-font-size)" in sizes(".tree-pane"), "the column sets its size once"
+    assert set(sizes(".notice")) == {None}, "a notice takes its region's size"
+    root = {
+        name: value
+        for selector, declarations in shell
+        if selector == ":root"
+        for name, value in declarations.items()
+    }
+    assert root["--tooltip-detail-font-size"] == "var(--tooltip-font-size)"
 
 
 def test_a_pill_is_the_pill_token_and_means_a_filter() -> None:
@@ -2530,7 +2652,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     meta = github[".github-pulls-meta"]
     assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
     assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
-    assert github[".github-pulls-by"]["font-size"] == "var(--ui-small-font-size)"
+    # The author is the number's line's secondary metadata, at its size (mb-ctlu).
+    assert github[".github-pulls-by"]["font-size"] == "var(--nav-font-size)"
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
@@ -2680,7 +2803,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # The author, action, and relative age share one prose size and baseline.
     assert github[".github-pull-card-head"]["font-size"] == "var(--body-font-size)"
     age = github[".github-pull-card-head .github-pull-age"]
-    assert (age["font-size"], age["line-height"]) == ("var(--body-font-size)", "inherit")
+    assert age == {"line-height": "inherit"}, "an age takes its line's size from the primitive"
     assert ".github-pull-card-head .github-pull-author" not in github
     identity = shell[".actor-identity"]
     assert (identity["align-items"], identity["vertical-align"]) == ("baseline", "baseline")
