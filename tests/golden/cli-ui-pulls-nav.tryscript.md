@@ -98,18 +98,24 @@ $ node tests/dom/pulls-nav-session.js
         "/pull/3900"
       ]
     },
-    "Space expands changed files in place": {
+    "Space on a pull request's row toggles nothing": {
+      "handled": true,
+      "did": [],
+      "focus on": "/pull/3900",
+      "address": "/view/"
+    },
+    "Space on its change line expands changed files in place": {
       "handled": true,
       "did": [
         "expanded changed files"
       ],
-      "focus on": "/pull/3900",
+      "focus on": "#3900's change line",
       "address": "/view/"
     },
     "holding Space leaves the tree open": {
       "handled": true,
       "did": [],
-      "focus on": "/pull/3900",
+      "focus on": "#3900's change line",
       "address": "/view/"
     },
     "Space again collapses changed files in place": {
@@ -117,7 +123,7 @@ $ node tests/dom/pulls-nav-session.js
       "did": [
         "collapsed changed files"
       ],
-      "focus on": "/pull/3900",
+      "focus on": "#3900's change line",
       "address": "/view/"
     },
     "Space on a stack's row closes the stack": {
@@ -704,32 +710,32 @@ $ node tests/dom/pulls-nav-session.js
       {
         "keys": "Up arrow or K",
         "action": "Previous pull request",
-        "description": "Open the previous pull request in the list, or go to a stack's row."
+        "description": "Open the previous pull request in the list, or go to a stack's row; from a change line, go back to its pull request."
       },
       {
         "keys": "Down arrow or J",
         "action": "Next pull request",
-        "description": "Open the next pull request in the list, or go to a stack's row."
+        "description": "Open the next pull request in the list, or go to a stack's row; from a change line, into its open changed files."
       },
       {
         "keys": "Enter",
         "action": "Open pull request",
-        "description": "Open the focused pull request, or open or close the focused stack."
+        "description": "Open the focused pull request; on its change line, show or hide its changed files; on a stack, open or close it."
       },
       {
         "keys": "Space",
         "action": "Toggle changed files",
-        "description": "Expand or collapse the focused pull request's changed files, or the focused stack."
+        "description": "Expand or collapse the changed files of the focused change line, or the focused stack."
       },
       {
         "keys": "Right arrow",
         "action": "Show changed files",
-        "description": "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests."
+        "description": "Go to the focused pull request's change line; there, show its changed files or go to the first; on a stack, its pull requests."
       },
       {
         "keys": "Left arrow",
         "action": "Hide changed files",
-        "description": "Hide the focused pull request's changed files, or go to its stack; on a stack, close it."
+        "description": "On a change line, hide its changed files or go back to its pull request; on a pull request, go to its stack; on a stack, close it."
       },
       {
         "keys": "Up arrow or K",

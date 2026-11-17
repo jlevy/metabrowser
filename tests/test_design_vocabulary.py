@@ -1962,7 +1962,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
-        '"github-pulls-row disclosure-toggle collapsed"',
+        '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
     ),
     "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
@@ -2016,7 +2016,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
-        ("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),
+        ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
         ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
     ),
     "github/pull-files-view.js": (
@@ -2641,6 +2641,8 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "builtin_plugins/github/pull-page.js",
         "builtin_plugins/github/pulls-panel.js",
         "builtin_plugins/github/stack-lines.js",
+        "builtin_plugins/github/row-lines.js",
+        "builtin_plugins/github/change-lines.js",
     ):
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         assert _PAINTED_CLASSES.findall(source) == [], path

@@ -1,0 +1,227 @@
+{
+  "summed": {
+    "status": 200,
+    "body": {
+      "source": "https://github.com/octo/demo",
+      "rows": [
+        {
+          "number": 106,
+          "state": "listed",
+          "reason": null,
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000001",
+          "head": null,
+          "files": 249,
+          "additions": 1093,
+          "deletions": 493,
+          "exact": true,
+          "statuses": [
+            {
+              "status": "added",
+              "count": 3
+            },
+            {
+              "status": "modified",
+              "count": 243
+            },
+            {
+              "status": "removed",
+              "count": 1
+            },
+            {
+              "status": "renamed",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "number": 105,
+          "state": "listed",
+          "reason": null,
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000002",
+          "head": null,
+          "files": 1,
+          "additions": 3,
+          "deletions": 1,
+          "exact": true,
+          "statuses": [
+            {
+              "status": "modified",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "number": 104,
+          "state": "absent",
+          "reason": "not_cached",
+          "listing": false,
+          "listed_from": null,
+          "generation": null,
+          "head": null,
+          "files": null,
+          "additions": null,
+          "deletions": null,
+          "exact": false,
+          "statuses": []
+        },
+        {
+          "number": 103,
+          "state": "absent",
+          "reason": "filling",
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000003",
+          "head": null,
+          "files": null,
+          "additions": null,
+          "deletions": null,
+          "exact": false,
+          "statuses": []
+        }
+      ]
+    }
+  },
+  "listing": {
+    "status": 200,
+    "body": {
+      "source": "https://github.com/octo/demo",
+      "rows": [
+        {
+          "number": 104,
+          "state": "absent",
+          "reason": "not_cached",
+          "listing": true,
+          "listed_from": null,
+          "generation": null,
+          "head": null,
+          "files": null,
+          "additions": null,
+          "deletions": null,
+          "exact": false,
+          "statuses": []
+        }
+      ]
+    }
+  },
+  "relisted": {
+    "status": 200,
+    "body": {
+      "source": "https://github.com/octo/demo",
+      "rows": [
+        {
+          "number": 104,
+          "state": "listed",
+          "reason": null,
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000004",
+          "head": null,
+          "files": 2,
+          "additions": 16,
+          "deletions": 2,
+          "exact": true,
+          "statuses": [
+            {
+              "status": "added",
+              "count": 1
+            },
+            {
+              "status": "modified",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "number": 103,
+          "state": "listed",
+          "reason": null,
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000005",
+          "head": null,
+          "files": 249,
+          "additions": 1093,
+          "deletions": 493,
+          "exact": true,
+          "statuses": [
+            {
+              "status": "added",
+              "count": 3
+            },
+            {
+              "status": "modified",
+              "count": 243
+            },
+            {
+              "status": "removed",
+              "count": 1
+            },
+            {
+              "status": "renamed",
+              "count": 2
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "deferred": {
+    "status": 200,
+    "body": {
+      "source": "https://github.com/octo/demo",
+      "rows": [
+        {
+          "number": 105,
+          "state": "listed",
+          "reason": null,
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000002",
+          "head": null,
+          "files": 1,
+          "additions": 3,
+          "deletions": 1,
+          "exact": true,
+          "statuses": [
+            {
+              "status": "modified",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "number": 106,
+          "state": "absent",
+          "reason": "deferred",
+          "listing": false,
+          "listed_from": null,
+          "generation": null,
+          "head": null,
+          "files": null,
+          "additions": null,
+          "deletions": null,
+          "exact": false,
+          "statuses": []
+        }
+      ]
+    }
+  },
+  "refused": {
+    "status": 400,
+    "body": {
+      "error": "a summary names its pull requests by \"numbers\" alone",
+      "code": "invalid_request"
+    }
+  },
+  "not_github": {
+    "status": 200,
+    "body": {
+      "source": null,
+      "rows": []
+    }
+  }
+}
