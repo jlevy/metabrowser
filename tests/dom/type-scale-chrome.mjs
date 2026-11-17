@@ -16,8 +16,11 @@
 // its text: on the base, a Pulls row's author and age, a tree row's size, a commit row's author
 // and age, the Commits tally's age, a file's and a folder's header metadata, a review
 // comment's file, a pull request's Checks, a tooltip's detail, and Help's descriptions each
-// read a step smaller than their text. In the narrowest pane, a commit row's author gives way
-// and its age stays whole ("History Rows": never the age), where the column's clip cut it.
+// read a step smaller than their text. A file's and a folder's header and a diff file bar are
+// the main view's reading text, the navigation column's foot is its list text, and Quick
+// Search's status reads at its results' size. A Pulls row's age column holds the longest
+// compact age whole. In the narrowest pane, a commit row's author gives way and its age stays
+// whole ("History Rows": never the age), where the column's clip cut it.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { launchChrome } from "./chrome-session.mjs";
@@ -143,6 +146,52 @@ try {
   await accompanies(pulls, "#tab-pulls .github-pulls-author", "#tab-pulls .github-pulls-number");
   await accompanies(pulls, "#tab-pulls .github-pulls-age", "#tab-pulls .github-pulls-title");
   await accompanies(pulls, ".github-pulls-connection-text", "#tab-pulls .github-pulls-title");
+  // The age's column is 5ch of the row's type, and the longest compact age is four
+  // characters, "12mo": written into a row's age, it is whole inside the column.
+  const longestAge = await evaluate(`(async () => {
+    const age = [...document.querySelectorAll("#tab-pulls .github-pulls-age")].find((e) => e.getClientRects().length);
+    const saved = age.textContent;
+    age.textContent = "12mo";
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const row = age.closest(".github-pulls-row").getBoundingClientRect();
+    const box = age.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(age);
+    const text = range.getBoundingClientRect();
+    const column = Number.parseFloat(getComputedStyle(age.closest(".github-pulls-row")).gridTemplateColumns.split(" ").pop());
+    const read = { text: Math.round(text.width * 100) / 100, box: Math.round(box.width * 100) / 100, column: Math.round(column * 100) / 100, cut: age.scrollWidth > age.clientWidth, inside: text.right <= row.right + 0.5 };
+    age.textContent = saved;
+    return read;
+  })()`);
+  check(
+    `${pulls}: the longest age, "12mo", is whole in its column`,
+    !longestAge.cut && longestAge.inside && longestAge.text <= longestAge.column,
+    JSON.stringify(longestAge),
+  );
+  process.stderr.write(`measured 12mo ${JSON.stringify(longestAge)}\n`);
+  // The navigation column's foot, in the markup the server and source-freshness.js write for
+  // a served mirror, which a checkout has none of: its update time reads at the column's list
+  // size.
+  const foot = await evaluate(`(() => {
+    const element = document.createElement("div");
+    element.className = "source-freshness";
+    document.getElementById("tree-pane").append(element);
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "source-freshness-label";
+    label.textContent = "Fetched just now";
+    element.replaceChildren(label);
+    const size = (node) => Number.parseFloat(getComputedStyle(node).fontSize);
+    const row = [...document.querySelectorAll("#tab-pulls .github-pulls-title")].find((e) => e.getClientRects().length);
+    const read = { foot: size(label), row: size(row) };
+    element.remove();
+    return read;
+  })()`);
+  check(
+    "the navigation column's foot: its update time is list text, 13 px, the rows' size",
+    foot.foot === ROLE["list text"] && foot.foot === foot.row,
+    JSON.stringify(foot),
+  );
 
   const header = "a pull request's header";
   await role(header, "page title", ".github-pull-header .github-pull-title-text");
@@ -222,7 +271,8 @@ try {
   );
   phase("files");
 
-  // A file's header and a folder's: a path strip, its metadata at the path's size.
+  // A file's header and a folder's: the main view's reading text, its path and its
+  // metadata at one size.
   await evaluate(
     "[...document.querySelectorAll('#tab-files .tree-file')].find((row) => /README/.test(row.textContent)).click()",
   );
@@ -230,8 +280,8 @@ try {
     "/README/.test(document.querySelector('.file-header .folder-crumb-current')?.textContent ?? '')",
   );
   const fileHeader = "a file's header";
-  await role(fileHeader, "list text", ".file-header .folder-crumb-current");
-  await role(fileHeader, "list text", ".file-header .file-header-size");
+  await role(fileHeader, "reading text", ".file-header .folder-crumb-current");
+  await role(fileHeader, "reading text", ".file-header .file-header-size");
   await accompanies(
     fileHeader,
     ".file-header .file-header-size",
@@ -240,8 +290,8 @@ try {
   await click("#header-home");
   await waitFor("document.querySelector('.file-header .folder-header-count') !== null");
   const folderHeader = "a folder's header";
-  await role(folderHeader, "list text", ".file-header .folder-header-count");
-  await role(folderHeader, "list text", ".file-header .file-header-size");
+  await role(folderHeader, "reading text", ".file-header .folder-header-count");
+  await role(folderHeader, "reading text", ".file-header .file-header-size");
   await accompanies(
     folderHeader,
     ".file-header .folder-header-count",
@@ -297,6 +347,23 @@ try {
   await role(commitPage, "reading text", "#preview-pane .git-commit-ages");
   await role(commitPage, "revision", "#preview-pane .git-commit-sha");
   await accompanies(commitPage, "#preview-pane .git-commit-age", "#preview-pane .git-commit-ages");
+  // Its diff's file bars: a main-view path strip, at the body size, with its stats.
+  await waitFor("document.querySelector('#preview-pane .diff-file-bar .diff-file-path') !== null");
+  await role(commitPage, "reading text", "#preview-pane .diff-file-bar .diff-file-path");
+  await accompanies(
+    commitPage,
+    "#preview-pane .diff-file-bar .diff-file-stats",
+    "#preview-pane .diff-file-bar .diff-file-path",
+  );
+  // Its Diff summary's files, opened: a tree's rows, list text, with their line counts.
+  await click("#preview-pane .git-commit-diff-summary .diff-summary-toggle");
+  await waitFor("document.querySelector('#preview-pane .changed-file-stats') !== null");
+  await role(commitPage, "list text", "#preview-pane .changed-file-name");
+  await accompanies(
+    commitPage,
+    "#preview-pane .changed-file-stats",
+    "#preview-pane .changed-file-name",
+  );
   phase("commit");
 
   // The settings menu: a control. It hangs over the navigation column, so it comes after
@@ -317,7 +384,24 @@ try {
   await role("Help", "list text", ".help-command-description");
   await role("Help", "label", ".modal-title");
   await accompanies("Help", ".help-command-description", ".help-command-label");
+  await chrome.send("Input.dispatchKeyEvent", { type: "keyDown", ...escapeKey });
+  await chrome.send("Input.dispatchKeyEvent", { type: "keyUp", ...escapeKey });
+  await frames();
   phase("help");
+
+  // Quick Search: its status counts the results above it, at their size.
+  const search = { key: "t", text: "t", code: "KeyT", windowsVirtualKeyCode: 84 };
+  await chrome.send("Input.dispatchKeyEvent", { type: "keyDown", ...search });
+  await chrome.send("Input.dispatchKeyEvent", { type: "keyUp", ...search });
+  await waitFor("document.querySelector('.search-palette-input') !== null");
+  await chrome.send("Input.insertText", { text: "READ" });
+  await waitFor(
+    "document.querySelector('.search-palette-label') !== null && /match/i.test(document.querySelector('.search-palette-status')?.textContent ?? '')",
+  );
+  await role("Quick Search", "list text", ".search-palette-status");
+  await role("Quick Search", "hint strip", ".search-palette-hint");
+  await accompanies("Quick Search", ".search-palette-status", ".search-palette-label");
+  phase("search");
 } finally {
   await chrome.close();
 }

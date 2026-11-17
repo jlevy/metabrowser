@@ -909,7 +909,6 @@
   margin: 0;
   padding: 6px var(--pane-header-padding-x);
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 .github-pulls-connection-spinner:not([hidden]) {
   display: inline-flex;
@@ -950,8 +949,9 @@
    before the number's line. */
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
-   wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
-   engine. */
+   wider than a digit; 5ch of the row's type holds it at the row's own size, which the age
+   takes: measured in Chrome 152 at 13 px, "12mo" is 31.1 px of the column's 32.3 px
+   (tests/dom/type-scale-chrome.mjs holds it whole). WebKit was not measured. */
 .github-pulls-row {
   display: grid;
   grid-template-columns: var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch;
@@ -1025,8 +1025,7 @@
    (`.github-pulls-id`). The line is laid out as wide as its box plus one separator,
    starting one separator to the left, so that the separator of a part that starts a line
    falls outside the box and is clipped; the number makes up that offset. Its box is one
-   line of the number's type tall, `1lh` at the number's size, and the author keeps the
-   smaller type it had. */
+   line of the number's type tall, `1lh` at the number's size, which the author shares. */
 .github-pulls-meta {
   grid-row: 1;
   grid-column: 3;
@@ -1037,7 +1036,7 @@
   font-size: var(--nav-font-size);
 }
 .github-pulls-line {
-  --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
+  --github-pulls-sep: calc(0.75 * var(--nav-font-size));
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -1125,7 +1124,6 @@
   padding: 0 6px;
   border-radius: var(--radius-tag);
   background: var(--bg);
-  font-size: var(--nav-font-size);
   line-height: var(--ui-row-height);
 }
 /* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
@@ -1157,7 +1155,6 @@
   padding: 2px 12px 2px
     calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent) + var(--tree-icon-slot) + 6px);
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 .github-pull-files-line:not([hidden]) {
   display: flex;
@@ -1181,7 +1178,6 @@
   align-items: center;
   gap: 8px;
   padding: 6px var(--pane-header-padding-x);
-  font-size: var(--nav-font-size);
 }
 /* Pages still being read or fetched below the last row: the nav's index-progress
    component, its spinner and text classes reused so the two cannot drift into two progress
@@ -1493,7 +1489,6 @@
   display: flex;
   flex: 1 1 0;
   align-items: baseline;
-  font-size: var(--nav-font-size);
   min-width: calc(var(--github-pulls-sep) + 1.75em);
   max-width: max-content;
   overflow: hidden;

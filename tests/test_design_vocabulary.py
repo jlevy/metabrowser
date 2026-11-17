@@ -465,11 +465,13 @@ def test_row_text_shares_one_baseline() -> None:
         "the header path no longer fills the header, so its text rides to the top"
     )
     # The diff bar's View file controls are centered boxes beside the toggle, so they
-    # land on the path's baseline only at the path's own size.
-    for selector in (".diff-file-path", ".diff-file-view"):
-        assert "font-size: var(--nav-font-size);" in _rule(
+    # land on the path's baseline only at the path's own size: the toggle's, which its
+    # path inherits, and the view's, both the main view's body size.
+    for selector in (".diff-file-toggle", ".diff-file-view"):
+        assert "font-size: var(--body-font-size);" in _rule(
             diff_css, f".metabrowser-diff-host {selector}"
         ), f"{selector} left the diff bar's one text size"
+    assert "font-size" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-path")
 
 
 def test_disclosure_motion_is_one_recipe_everywhere() -> None:
@@ -1175,7 +1177,6 @@ def test_git_commit_summary_is_one_component() -> None:
     ):
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
-        assert "font-size: var(--tooltip-detail-font-size)" not in rule
     # Its ref chips take their size from this text, by the chip ratio, and no rule here
     # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
@@ -1499,8 +1500,6 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h3"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
-    # One step below the structured view's mono, in em so it follows that view's size.
-    ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
     # A treemap cell's label and value are sized from the cell's area, set on each cell inline
     # by treemap.js; the stylesheet's defaults are the small size.
     ("folder/styles.css", ".tm-cell-label"): "a cell's size, from its area",
@@ -1514,7 +1513,6 @@ _TYPE_SCALE_TOKENS = frozenset(
         "--document-body-font-size",
         "--body-font-size",
         "--tooltip-font-size",
-        "--tooltip-detail-font-size",
         "--nav-font-size",
         "--ui-small-font-size",
         "--kbd-font-size",
@@ -1561,12 +1559,12 @@ def test_font_sizes_come_from_the_type_scale() -> None:
 
 
 # Who may set the small size, and why ("Type Scale"; mb-ctlu). The small size is the controls':
-# chips, badges, buttons, filters, and menus, and the keycaps' hint strips. Secondary metadata,
-# an age, a size, a count, a fetch or update time, a row's second line, a note, has no size of
-# its own: it reads at the size of the text it accompanies. It was the small size on a dozen
-# surfaces, a step under the 13 px rows and 14 px lines beside it, and the owner found an
-# update time at three sizes on one screen. A rule that reaches for the small size is a control
-# named here, or it is metadata at the wrong size.
+# chips, badges, buttons, filters, and menus. Secondary metadata, an age, a size, a count, a
+# fetch or update time, a row's second line, a note, has no size of its own: it reads at the
+# size of the text it accompanies. It was the small size on a dozen surfaces, a step under the
+# 13 px rows and 14 px lines beside it, and the owner found an update time at three sizes on
+# one screen. A rule that reaches for the small size is a control named here, or it is
+# metadata at the wrong size.
 _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".app-header"): "the navigation header's controls; its path sets its own",
     ("styles.css", ".btn"): "a button",
@@ -1577,10 +1575,6 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".menu-select"): "a menu's control",
     ("styles.css", ".menu-row"): "a menu's line",
     ("styles.css", ".menu-number"): "a menu's control",
-    ("styles.css", ".recent-empty"): "a menu's note",
-    ("styles.css", ".recent-truncated-note"): "a menu's note",
-    ("styles.css", ".nav-shortcut-hints"): "a hint strip, at its keycaps' size",
-    ("styles.css", ".search-palette-hint"): "a hint strip, at its keycaps' size",
     ("styles.css", ".source-ref-selector"): "a chip and its menu",
     ("styles.css", ".chip"): "a chip",
     ("styles.css", ".chip-menu-count"): "a chip menu's count",
@@ -1598,51 +1592,100 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
     ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
 }
+# Who may set the micro size, a step under the controls': a mark, never text a reader reads.
+_MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
+    ("styles.css", ".chip-badge"): "a chip's count badge, a filled mark inside the chip",
+    ("github/styles.css", ".github-pull-stack-dot"): "the dot between a stack's badges",
+}
 # The role tokens that are the small size, each a role of its own.
 _SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-block-font-size"})
+# Metadata whose container sets the size it reads at, so it sets none and inherits it. A size
+# restated here is a second place to change when the text beside it moves: the file header
+# took four edits to follow the body size where it now takes none.
+_INHERITED_METADATA: tuple[tuple[str, str], ...] = (
+    ("styles.css", ".notice"),
+    ("styles.css", ".tip-detail"),
+    ("styles.css", ".tree-item-size"),
+    ("styles.css", ".tree-item-age-inline"),
+    ("styles.css", ".tree-item.tree-page-more"),
+    ("styles.css", ".tree-lazy-placeholder"),
+    ("styles.css", ".tree-empty-note"),
+    ("styles.css", ".recent-empty"),
+    ("styles.css", ".source-freshness"),
+    ("styles.css", ".index-progress"),
+    ("styles.css", ".changed-file-stats"),
+    ("styles.css", ".git-graph-meta"),
+    ("styles.css", ".git-graph-more"),
+    ("styles.css", ".git-history-page-placeholder"),
+    ("styles.css", ".git-commit-files-summary"),
+    ("styles.css", ".git-stat-add"),
+    ("styles.css", ".git-stat-del"),
+    ("styles.css", ".git-stat-binary"),
+    ("styles.css", ".file-header-path"),
+    ("styles.css", ".file-header-mirror"),
+    ("styles.css", ".file-header-size"),
+    ("styles.css", ".folder-header-count"),
+    ("styles.css", ".folder-header-age"),
+    ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
+    ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
+    ("github/styles.css", ".github-pulls-by"),
+    ("github/styles.css", ".github-pulls-empty"),
+    ("github/styles.css", ".github-pulls-foot"),
+    ("github/styles.css", ".github-pull-files-line"),
+    ("github/styles.css", ".github-pull-files-offer-floating"),
+    ("structured/styles.css", ".tok-meta"),
+)
 
 
 def test_secondary_metadata_reads_at_its_texts_size() -> None:
     """The small size is the controls', and metadata takes its text's size ("Type Scale").
 
     The navigation column sets the list size once, so a primitive it shares with the main view
-    takes it there; the age primitive and the notice set none; a tooltip's detail lines read at
-    the tooltip's size. `tests/dom/type-scale-chrome.mjs` reads the computed sizes in Chrome.
+    takes it there; metadata whose container sets its size sets none; the hint strips take the
+    keycaps' token. `tests/dom/type-scale-chrome.mjs` reads the computed sizes in Chrome.
     """
 
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "test_secondary_metadata_reads_at_its_texts_size" in doc
     offenders: list[str] = []
+    rules: dict[tuple[str, str], list[dict[str, str]]] = {}
     for sheet in _stylesheets():
         name = _sheet_name(sheet)
         for selector, declarations in _rules_of(sheet):
-            if declarations.get("font-size") != "var(--ui-small-font-size)":
-                continue
-            if (name, selector) not in _SMALL_SIZE_ROLES:
-                offenders.append(f"{name}: {selector}")
-    assert not offenders, "\n  ".join(["the small size outside the controls:", *offenders])
+            rules.setdefault((name, selector), []).append(declarations)
+            size = declarations.get("font-size")
+            if size == "var(--ui-small-font-size)" and (name, selector) not in _SMALL_SIZE_ROLES:
+                offenders.append(f"{name}: {selector} sets the small size")
+            if size == "var(--micro-font-size)" and (name, selector) not in _MICRO_SIZE_ROLES:
+                offenders.append(f"{name}: {selector} sets the micro size")
+    assert not offenders, "\n  ".join(["sizes outside their roles:", *offenders])
+    for key in _INHERITED_METADATA:
+        assert key in rules, f"{key} is gone; update _INHERITED_METADATA"
+        assert all("font-size" not in rule for rule in rules[key]), f"{key} restates its size"
+    for key in (*_SMALL_SIZE_ROLES, *_MICRO_SIZE_ROLES):
+        assert key in rules, f"{key} is gone; update its role list"
     shell = _rules_of(STATIC / "styles.css")
-    tokens = {
-        name
-        for selector, declarations in shell
-        if selector == ":root"
-        for name, value in declarations.items()
-        if value == "var(--ui-small-font-size)" and name.endswith("-font-size")
-    }
-    assert tokens == _SMALL_SIZE_TOKENS, tokens
-
-    def sizes(selector: str) -> list[str | None]:
-        return [rule.get("font-size") for named, rule in shell if named == selector]
-
-    assert "var(--nav-font-size)" in sizes(".tree-pane"), "the column sets its size once"
-    assert set(sizes(".notice")) == {None}, "a notice takes its region's size"
     root = {
         name: value
         for selector, declarations in shell
         if selector == ":root"
         for name, value in declarations.items()
     }
-    assert root["--tooltip-detail-font-size"] == "var(--tooltip-font-size)"
+    tokens = {
+        name
+        for name, value in root.items()
+        if value == "var(--ui-small-font-size)" and name.endswith("-font-size")
+    }
+    assert tokens == _SMALL_SIZE_TOKENS, tokens
+    assert "--tooltip-detail-font-size" not in root, "a tooltip's detail inherits its size"
+
+    def sizes(selector: str) -> list[str | None]:
+        return [rule.get("font-size") for named, rule in shell if named == selector]
+
+    assert "var(--nav-font-size)" in sizes(".tree-pane"), "the column sets its size once"
+    # A hint strip labels keys, so it reads at the keycaps' token and moves with them.
+    for strip in (".nav-shortcut-hints", ".search-palette-hint"):
+        assert "var(--kbd-font-size)" in sizes(strip), strip
 
 
 def test_a_pill_is_the_pill_token_and_means_a_filter() -> None:
@@ -2695,8 +2738,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     meta = github[".github-pulls-meta"]
     assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
     assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
-    # The author is the number's line's secondary metadata, at its size (mb-ctlu).
-    assert github[".github-pulls-by"]["font-size"] == "var(--nav-font-size)"
+    # The author is the number's line's secondary metadata, at its size, which it inherits.
+    assert "font-size" not in github[".github-pulls-by"]
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")

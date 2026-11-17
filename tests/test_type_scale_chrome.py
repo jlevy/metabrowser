@@ -12,10 +12,12 @@ cascade's, which only a browser resolves.
 
 So this serves a checkout of the GitHub stand-in with a fake ``gh``, and
 ``tests/dom/type-scale-chrome.mjs`` reads one of each role on the Pulls, Files, and Commits
-panels, a file's and a folder's header, a commit's page, a pull request's Conversation and
-Checks, a tooltip, the settings menu, and Help, holds each to the table, and holds each
-piece of metadata to the size of the text it accompanies; and, in the narrowest pane, a
-commit row's age to staying whole while its author gives way.
+panels and the navigation column's foot, a file's and a folder's header, a commit's page,
+its diff's file bars and its Diff summary's files, a pull request's Conversation and Checks,
+a tooltip, the settings menu, Help, and Quick Search, holds each to the table, and holds each
+piece of metadata to the size of the text it accompanies; a Pulls row's age column to holding
+"12mo" whole; and, in the narrowest pane, a commit row's age to staying whole while its
+author gives way.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``). The test owns
 everything it starts: the server stops when its stdin closes, and the measuring Node process

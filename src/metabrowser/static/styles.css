@@ -296,21 +296,14 @@
                                    cards, notes, tables, inputs, empty and
                                    error states, dialogs, and tooltips
        --nav-font-size       13px  list text: the navigation column (set
-                                   once, on .tree-pane), a tree's rows
-                                   wherever one is drawn, Quick Search's
-                                   and Help's lists, and a path in a strip
-                                   of its own (the header path, the file
-                                   header, a diff file bar)
+                                   once, on .tree-pane), its header path
+                                   among it, a tree's rows wherever one is
+                                   drawn, and Quick Search's and Help's
+                                   lists
        --ui-small-font-size  12px  controls: chips, badges, buttons,
-                                   filters, menus, and keycaps with the
-                                   hint strips they label
-     Secondary metadata (ages, update and fetch times, counts, sizes, a
-     row's second line, notes, captions) has no size of its own: it reads
-     at the size of the text it accompanies, the body size in reading
-     text and the nav size in list text, and steps back by its ink, never
-     by a smaller size (docs/design-system.md, "Type Scale"; mb-ctlu).
-     test_secondary_metadata_reads_at_its_texts_size holds the small size
-     to the roles above.
+                                   filters, and menus
+       --kbd-font-size       =ui-small  keycaps, and the hint strips they
+                                   label
        --label-font-size     =ui-small  all-caps section labels (tabs,
                                    panel/table headers, stat labels, and
                                    the embedded-document CONTENTS title
@@ -319,9 +312,17 @@
                                    is the distinction
        --mono-block-font-size =ui-small  mono blocks in chrome contexts
                                    (source views, logs, raw JSON)
-       --micro-font-size     10px  deliberately-minimized marks (the
-                                   brand line)
+       --micro-font-size     10px  deliberately-minimized marks: a chip's
+                                   count badge, and the dot between a
+                                   stack's badges
        --page-title-font-size 24px the title of a page no file stands behind
+     Secondary metadata (ages, update and fetch times, counts, sizes, a
+     row's second line, notes, captions) has no size of its own: it reads
+     at the size of the text it accompanies, and steps back by its ink,
+     never by a smaller size. Where its container sets that size, it sets
+     none and inherits it (docs/design-system.md, "Type Scale").
+     test_secondary_metadata_reads_at_its_texts_size holds the small and
+     micro sizes to the roles above and the inherited metadata to none.
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
@@ -349,10 +350,9 @@
      size a side effect of a decision about chrome, so the next adjustment to
      small chrome text would have moved every tooltip with it. A tooltip is
      prose the reader has stopped to read. Its detail lines, a file's size
-     and age under its name, are secondary metadata, so they read at the
-     tooltip's size, muted, as metadata does everywhere. */
+     and age under its name, are secondary metadata, so they set no size and
+     read at the tooltip's, muted, as metadata does everywhere. */
   --tooltip-font-size: var(--body-font-size);
-  --tooltip-detail-font-size: var(--tooltip-font-size);
   --micro-font-size: 10px;
   --page-title-font-size: 24px;
   /* A ref chip is slightly smaller than the text around it: one ratio, not
@@ -2449,7 +2449,7 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--kbd-font-size);
   line-height: 1.2;
   /* The containing block of the revealed layer below. */
   position: relative;
@@ -2559,7 +2559,6 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--nav-font-size);
   line-height: 1.2;
 }
 .index-progress-spinner {
@@ -2682,7 +2681,6 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--nav-font-size);
   line-height: 1.2;
 }
 .source-freshness-label {
@@ -2919,7 +2917,6 @@ html[data-prose-font="sans"] .kpress-prose h2,
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
   font-style: italic;
-  font-size: var(--nav-font-size);
 }
 .tree-item.tree-page-more:hover {
   background: var(--hover-bg);
@@ -3030,10 +3027,9 @@ html[data-prose-font="sans"] .kpress-prose h2,
   white-space: nowrap;
 }
 .tree-item-age-inline {
-  font-size: var(--nav-font-size);
   color: var(--muted);
-  /* Medium weight (not the 400 default) so small age labels stay legible;
-     warm-tier age classes below bump to --file-age-weight-recent. */
+  /* The age primitive's medium weight (not the 400 default), at the row's
+     size; warm-tier age classes below bump to --file-age-weight-recent. */
   font-weight: var(--file-age-weight);
   flex-shrink: 0;
   white-space: nowrap;
@@ -3041,21 +3037,21 @@ html[data-prose-font="sans"] .kpress-prose h2,
   align-items: center;
   margin-left: 6px;
 }
-/* Positioning + size only — color / weight / tabular-nums come from
-   the shared .size / .size-large rule (the sole source of truth). */
+/* Positioning only — color / weight / tabular-nums come from the shared
+   .size / .size-large rule (the sole source of truth), and the size from
+   the row. */
 .tree-item-size {
-  font-size: var(--nav-font-size);
   flex-shrink: 0;
   margin-left: auto;
   text-align: right;
   white-space: nowrap;
 }
-/* Row text shares one baseline; boxes stay centered. The name is
-   --nav-font-size and the age and size are --ui-small-font-size, and
+/* Row text shares one baseline; boxes stay centered. The name, age, and
+   size are the row's one size, and a change letter is a step smaller;
    centering line boxes of two sizes leaves their baselines a fraction of
    a pixel apart, because ascent scales with size. The fraction rounds
-   differently at each zoom and pixel ratio, so the row looked unsettled.
-   See "Row Text Shares a Baseline" in docs/design-system.md.
+   differently at each zoom and pixel ratio, so the row would look
+   unsettled. See "Row Text Shares a Baseline" in docs/design-system.md.
 
    The icon, chevron, spinner, and loading skeletons have no text
    baseline, and baseline-aligning one would sit its bottom edge on the
@@ -3955,7 +3951,6 @@ a.tab-btn {
 .recent-empty {
   padding: 24px 12px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   text-align: center;
 }
 /* The lines under the tally — what the filter narrowed the tree to
@@ -4030,14 +4025,6 @@ a.tab-btn {
     opacity: min(1, calc(var(--dimmed-content-opacity) / var(--loading-dim-opacity)));
   }
 }
-.recent-truncated-note {
-  padding: 8px 12px;
-  margin: 4px 0;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  background: var(--sidebar-bg);
-  border-bottom: 1px solid var(--border);
-}
 
 /* ── File header ─────────────────────────────────────────────── */
 
@@ -4056,7 +4043,6 @@ a.tab-btn {
 }
 .file-header-path {
   font-family: var(--font-sans);
-  font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   color: var(--text);
   flex: 1 1 180px;
@@ -4090,7 +4076,10 @@ a.tab-btn {
 
    Measured on a 296px header, which is a 620px window at the default nav
    width, showing a served root 494px wide followed by three components.
-   Below a 375px header the root has nothing left to give.
+   At the header's size, the main view's 14px, the root has nothing left to
+   give below a 367px header (Chrome 152, root / src / metabrowser /
+   color_oklch.py), and at every header from 249px to 689px a filename cut
+   short ends in an ellipsis and the copy control stays inside the box.
    Without the rules below, the next 55px came out of the end of the run
    rather than the start: at 320px the filename was cut 19px short with no
    ellipsis, and the copy control sat 45px outside the clipped box, where it
@@ -4147,15 +4136,17 @@ a.tab-btn {
    fifth of a pixel turns "metabrowser" into "metabrow…".
 
    Measured on a 900px window showing ~/wrk/.../<root> / src / metabrowser /
-   color_oklch.py, as the largest width any crumb gave up:
+   color_oklch.py, as the largest width any crumb gave up, at the header's
+   14px in Chrome 152:
 
-     weight    1000   0.164px   ellipsis
-     weight    5000   0.031px   clean
-     weight   20000   0.008px   clean
+     weight    1000   0.219px   ellipsis
+     weight    5000   0.047px
+     weight   20000   0.016px   clean
      weight  100000   0.000px   clean
 
-   5000 is where it stops; 20000 is that with room, and still finite so the
-   ordering below stays real. Once the root reaches zero flex freezes it and
+   A crumb that gave up 0.031px read clean and one that gave up 0.164px
+   showed an ellipsis. 20000 is under the first with room, and still finite
+   so the ordering below stays real. Once the root reaches zero flex freezes it and
    redistributes the rest, so the 4-to-1 ordering between the directories and
    the filename applies from there down. */
 .file-header-root {
@@ -4192,7 +4183,7 @@ a.tab-btn {
    repository's name, and no directory holds its files: they are read from a
    bare Git repository in the cache. So that directory is not the start of the
    address, where it would read as a folder of these files. It stands apart at
-   the far end, muted and at the summary's size, and its tooltip says what it is.
+   the far end, muted and at the header's size, and its tooltip says what it is.
    `order` puts it there: it is written with the address, ahead of a file's copy
    control, and drawn after it.
 
@@ -4210,10 +4201,13 @@ a.tab-btn {
    than starting with one, because the start is what says where the mirror is
    and the end is a store's hexadecimal key.
 
-   Measured on 12 heading widths from 250px to 1350px in the in-app browser,
-   with the long name metabrowser-v012-landing-docs: the root measures exactly
-   what it does with the note removed at every width. The old shrink weights
-   took up to 0.039px from that name while the note was present. */
+   Measured on 12 heading widths from 250px to 1350px, with the long name
+   metabrowser-v012-landing-docs, in the in-app browser and again in Chrome
+   152 at the header's 14px: the root measures exactly what it does with the
+   note removed at every width, and the note, where it shows, sits on the
+   path's line. The old shrink weights took up to 0.039px from that name
+   while the note was present. At 14px, 14em is 196px against the 189.9px of
+   `mirror in ~/.metabrowser/cache/`. */
 .file-header-mirror {
   order: 1;
   flex: 1 1 0;
@@ -4226,7 +4220,6 @@ a.tab-btn {
   line-height: 1.5;
   overflow: hidden;
   color: var(--muted);
-  font-size: var(--nav-font-size);
   font-weight: var(--weight-normal);
 }
 /* The first line is as tall as the note whatever is on it, so a text that wraps
@@ -4258,7 +4251,6 @@ a.tab-btn {
 }
 .folder-header-count,
 .folder-header-age {
-  font-size: var(--nav-font-size);
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
@@ -4275,11 +4267,11 @@ a.tab-btn {
 /* Color / weight come from .size / .size-large — see the shared
    size-chip convention above. */
 .file-header-size {
-  font-size: var(--nav-font-size);
   flex-shrink: 0;
 }
-/* The --nav-font-size path and the --ui-small-font-size size and folder
-   summary share a baseline, as a tree row's text does (see .tree-item).
+/* The path, the size, and the folder summary are the header's one size, the
+   main view's, and share a baseline, as a tree row's text does (see
+   .tree-item).
    Buttons, badges, and skeletons are boxes and keep the header's
    centering.
 
@@ -5575,15 +5567,9 @@ pre.code-block.metabrowser-source-lines > code {
   padding: 5px 12px;
   color: var(--muted);
 }
-/* The status counts the results above it, so it reads at their size; the hint is the
-   keycaps' strip, at theirs. */
+/* The status counts the results above it, so it reads at their size. */
 .search-palette-status {
   font-size: var(--nav-font-size);
-}
-.search-palette-hint {
-  font-size: var(--ui-small-font-size);
-}
-.search-palette-status {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -5593,8 +5579,10 @@ pre.code-block.metabrowser-source-lines > code {
   flex: none;
 }
 /* Keys render through .kbd; the connecting words are ordinary chrome
-   text, so the row reads as a sentence rather than a legend. */
+   text at the keycaps' size, so the row reads as a sentence rather than
+   a legend. */
 .search-palette-hint {
+  font-size: var(--kbd-font-size);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -5621,15 +5609,13 @@ pre.code-block.metabrowser-source-lines > code {
   word-break: break-all;
   color: var(--viz-text);
 }
-/* One step below the tooltip's own size, so a tooltip has a hierarchy: the
-   name it is about, then the measurements under it. Relative rather than a
-   second absolute token — it is defined as "smaller than the tooltip", and
-   pinning it to a chrome token is what let base and detail drift to the same
-   size in the first place. */
+/* The measurements under the name a tooltip is about: secondary metadata, so
+   muted and regular at the tooltip's own size, which they inherit; the name's
+   medium weight and ink carry the hierarchy (docs/design-system.md, "One
+   Tooltip, and It Is Ours"). */
 .tip-detail {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
-  font-size: var(--tooltip-detail-font-size);
 }
 /* Recent-files rows while the first query is in flight: known row
    geometry, so it is drawn rather than announced. See design-system.md,
@@ -5778,15 +5764,12 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 /* Inline placeholder shown for a folder whose children are still
-   being lazy-loaded. Without this rule the text falls back to the
-   page default font (16px) and renders as a comically large block
-   inside the tree. */
+   being lazy-loaded, at the navigation column's size. */
 .tree-lazy-placeholder {
   display: flex;
   align-items: center;
   padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
-  font-size: var(--nav-font-size);
   font-style: italic;
 }
 .tree-lazy-error {
@@ -5850,7 +5833,6 @@ pre.code-block.metabrowser-source-lines > code {
 .tree-empty-note {
   padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 
 /* ── Changed-file rows ───────────────────────────────────────────
@@ -5919,7 +5901,6 @@ pre.code-block.metabrowser-source-lines > code {
   flex-shrink: 0;
   gap: 4px;
   margin-left: auto;
-  font-size: var(--nav-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 .changed-file-stats > .diff-stat-add {
@@ -6371,7 +6352,6 @@ pre.code-block.metabrowser-source-lines > code {
   justify-content: center;
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 
 /* ── Git history skeletons ──────────────────────────────────── */
@@ -6515,7 +6495,6 @@ pre.code-block.metabrowser-source-lines > code {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 
 /* The subject and the author/age share a baseline, as a file row's name,
@@ -6525,8 +6504,8 @@ pre.code-block.metabrowser-source-lines > code {
   align-self: baseline;
 }
 
-/* Positioning only — colour, weight, size, and numerals come from the
-   shared age primitive above. */
+/* Positioning only — colour, weight, and numerals come from the shared age
+   primitive above, and the size from the row. */
 .git-graph-age {
   flex-shrink: 0;
 }
@@ -6542,7 +6521,6 @@ pre.code-block.metabrowser-source-lines > code {
 .git-graph-more {
   padding: 8px 12px;
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 
 .git-graph-more-failed {
@@ -6978,7 +6956,6 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 8px;
   padding: 10px 0;
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 
 .git-commit-file {
@@ -6994,7 +6971,7 @@ pre.code-block.metabrowser-source-lines > code {
   color: inherit;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--nav-font-size);
+  font-size: var(--body-font-size);
   text-align: left;
 }
 
@@ -7044,7 +7021,6 @@ pre.code-block.metabrowser-source-lines > code {
 .git-stat-del,
 .git-stat-binary {
   flex-shrink: 0;
-  font-size: var(--micro-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 

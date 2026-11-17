@@ -118,7 +118,7 @@ def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     assert "line-height: 1.5;" in keycap
     assert "font-size: var(--kbd-font-size);" in keycap
     assert "--kbd-font-size: var(--ui-small-font-size);" in _css()
-    assert "font-size: var(--ui-small-font-size);" in _rule(_css(), ".nav-shortcut-hints")
+    assert "font-size: var(--kbd-font-size);" in _rule(_css(), ".nav-shortcut-hints")
 
 
 def _render_file() -> str:

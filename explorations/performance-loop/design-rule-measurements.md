@@ -45,7 +45,9 @@ changed between the two runs.
 | A Commits row’s author and age, and the Commits tally’s age inside its 13 px line | 12 / 18 | 13 / 19.5 |
 | The navigation column’s freshness line, “Fetched just now” | 12 / 14.4 | 13 / 15.6 |
 | A changed-files tree’s line counts, beside 13 px names | 12 / 18 | 13 / 19.5 |
-| A file’s and a folder’s header: size, count, age, and mirror note, beside the 13 px path | 12 / 18 | 13 / 19.5 |
+| A file’s and a folder’s header: its path | 13 / 19.5 | 14 / 21 |
+| A file’s and a folder’s header: size, count, age, and mirror note | 12 / 18 | 14 / 21 |
+| A diff file bar: its path, change letter, line counts, and View file | 13 / 19.5 | 14 / 21 |
 | A pull request’s Checks summary and each check | 12 / 18 | 14 / 21 |
 | A review comment’s file, in its 14 px card head | 13 / 19.5 | 14 / 21 |
 | A tooltip’s detail lines, under its 14 px text | 12 / 16.8 | 14 / 19.6 |
@@ -57,15 +59,40 @@ Chips, badges, buttons, menus, keycaps, labels, monospace, and titles read the s
 both runs: controls 12 px, ref chips 0.9 of their text, labels 12 px in caps, section
 headings 14 px in caps, code 12 / 18, a revision 13 px, titles 24 / 30.
 
-Row heights were the same before and after, at panes of 300 and 180 px: a tree row 24
-px, a Commits row 22 px, a Pulls row 43 px, and the column’s foot 30 px, 48 px at 180
-px, where it wrapped before too, at 45.8 px.
+No list’s row height moved, at panes of 300 and 180 px: a tree row 24 px, a Commits row
+22 px, and a Pulls row 43 px.
+The column’s foot is 30 px at 300 px; at 180 px, where it wraps, it grew 2.2 px, from
+45.8 to 48 px, and no list’s row constant depends on it.
 At the 180 px pane, the Commits row’s meta column clipped its age by 9.6 px at 12 px and
 by 14.2 px at 13 px; with the author ellipsizing first, the age is whole.
 The Pulls window’s estimate for an unmeasured row is 41.5 px against the 43 px it
 measures, before and after.
 `tests/test_type_scale_chrome.py`, run against the stylesheets as they were, failed 27
 of its checks, every role this changed.
+
+On 2026-11-17 a file’s or a folder’s header and a diff file bar took the main view’s 14
+px, by the owner’s rule that the navigation column is the one region set a step under
+the body size; the navigation column’s own header path stays 13 px.
+Measured again in headless Chrome 152 at a device pixel ratio of 1, against the same at
+13 px:
+
+- The header row stays 41 px.
+  On a 900 px window showing `root / src / metabrowser / color_oklch.py`, the largest
+  width a crumb gave up was 0.219 px at a root shrink weight of 1000, 0.047 px at 5000,
+  0.016 px at 20000, and none at 100000; at 13 px the same were 0.188, 0.031, 0.016, and
+  0 px. The root had nothing left to give below a 367 px header, against 351 px at 13 px,
+  and at every header from 249 to 689 px a filename cut short ended in an ellipsis with
+  the copy control inside the box.
+- With a mirror named `metabrowser-v012-landing-docs`, at 12 header widths from 240 to
+  1340 px the root measured what it did with the note removed, the note was whole or
+  absent, and where it showed its text box shared the path’s top.
+  14 em is 196 px against the 189.9 px of `mirror in ~/.metabrowser/cache/`.
+- A diff file bar is 24 px, and 29 px with the Markdown chooser, at both sizes, and an
+  empty bar, which the diff view measures to reserve one, is 24 px at both.
+  View file’s text bottom sits 0.5 px above the path’s at 14 px, where it sat 0.75 px
+  above at 13 px.
+- In a Pulls row, “12mo”, the longest compact age, is 31.1 px of its 32.3 px column at
+  13 px. WebKit was not measured.
 
 ## Row Baselines
 
@@ -78,8 +105,9 @@ For
   one baseline.
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
-  2026-11-16, at the path’s size ([Type by Role](#type-by-role)), its text box, the
-  path’s, and the size’s share one top at a device pixel ratio of 1.
+  2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px
+  ([Type by Role](#type-by-role)), its text box, the path’s, and the size’s share one
+  top at a device pixel ratio of 1.
 - Aligning the Git commit summary’s monospace revision on one baseline with the
   body-size sans beside it grows that line by 1.25px at a device pixel ratio of 2, so it
   stays centered.
