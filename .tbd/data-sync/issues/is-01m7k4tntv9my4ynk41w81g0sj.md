@@ -5,7 +5,7 @@ title: The Files nav panel's '+ N ignored' summary line is laid out from first p
 kind: bug
 status: open
 priority: 1
-version: 17
+version: 18
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -27,7 +27,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:39:50.746Z
-updated_at: 2026-11-17T02:34:05.884Z
+updated_at: 2026-11-17T03:05:26.323Z
 started_at: 2026-11-16T21:40:37.650Z
 closed_at: null
 close_reason: null
@@ -35,3 +35,7 @@ resolution: null
 duplicate_of: null
 ---
 Owner, 2026-11-16: 'also on the main files nav panel, the + xxxx ignored line appears later, so the view shifts. this should never happen. if something is slow it should be laid out in a stable way with a progress box to show it is filling in'. The line is the ignored half of the tree summary (navigation.js tree-summary-split, .tree-summary-ignored). Measure the shift, hold the line's box while its count is unknown with the shell's pending placeholder, and audit the Files nav panel for any other late line.
+
+## Notes
+
+2026-11-17 handoff: PR #490 (claude/ignored-line-stable) reviewed A+B, both dispositions posted at 0855877; main merged twice (head f2c81b5f4); CI running. Merge when CI green; then close mb-h3hc and mb-w3va (W3VA reopened earlier by mistake-close). mb-a5pa, mb-v2ls remain as follow-ups.

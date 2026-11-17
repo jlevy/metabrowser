@@ -5,7 +5,7 @@ title: "Release 0.13: prepare the PyPI package and macOS app release (owner aske
 kind: epic
 status: open
 priority: 1
-version: 13
+version: 14
 labels: []
 dependencies: []
 child_order_hints:
@@ -20,10 +20,12 @@ child_order_hints:
   - is-01m7kaq8nw86eh3g3rkfr327ht
   - is-01m7kf0t56psry2ybyejpna2b4
 created_at: 2026-11-16T06:28:43.940Z
-updated_at: 2026-11-17T00:37:57.540Z
+updated_at: 2026-11-17T03:05:29.540Z
 ---
 Owner: "and go through the thoroough process to prepare a release of macos and metabrowser app". Follow docs/publishing.md and apps/macos/README.md: land stacks #446 and #454, make verify, previous-release performance comparison, release-prep record, version, notes, owner approval of exact commit and notes, then publish.
 
 ## Notes
 
 Plan: attic/coord/release-plan-0.13.md in the coordinator worktree. Owner decisions 2026-11-16: package 0.13.0 and app 0.1.0 (raise the app's floor to 0.13.0 after the v0.13.0 tag); ship the app as an alpha despite the WebKit gate (mb-gvtw), listing the limitation; #453 is fixed and landed with the docs stack; the 0.12 follow-ups (mb-m20f, mb-etqi, mb-2g6f) do not gate 0.13 and are recorded as deferred. Blockers needing the owner: disk (5.9 GiB free; need about 25 GB), Low Power Mode on, Developer ID identity present but not valid (G2 intermediate missing), no notary profile.
+
+2026-11-17 handoff: Release status 2026-11-17: all UI PRs merging; owner-only before signing: install Developer ID G2 intermediate, create App Store Connect team API key, dedicated release keychain with -x import (offline .p12 kept), store metabrowser-notary profile, turn on immutable releases (plan-2026-11-16-macos-app-publishing O1-O9). Agent steps remain: make verify at candidate, perf comparison, release-prep PR (CHANGELOG 0.13.0, QA record), owner approval, publish v0.13.0, app floor 0.13.0 PR, WebKit rerun, signed DMG macos-v0.1.0.
