@@ -708,6 +708,16 @@ support. These are withdrawn or corrected above:
 - **Scope.** Speed-ups are stated for the regime and observation mode they were measured
   in, effects under 2× at four runs per side are marked provisional, and the in-process
   ratios are stated as having no A/A arm.
+- **Discovery ratios and the engine floor (second review).** The engine floor’s Python
+  arm polled `handle.read` every 2 ms and competed with its own walker, so the 3.5 to
+  5.4× range is an upper bound.
+  Unpolled server discovery on `project-10` was 5.51 s for Python against 2.57 s for fdu
+  (2.1×), and a client polling during discovery roughly doubled Python’s time (10.68 s)
+  and added about 15% to fdu’s (2.96 s); the “2.3 to 4” range above is the polled
+  figure. The server “settled” figure is dominated by the fallback rollup, not
+  observation, and the A/A bands vary widely by metric; the per-metric bands are in
+  `evidence/performance.json`. The research brief’s performance table carries the
+  corrected figures.
 
 ## macOS Validation
 

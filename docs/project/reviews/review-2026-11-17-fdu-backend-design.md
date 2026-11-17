@@ -15,8 +15,8 @@ Line references describe Metabrowser `79ee3697` and fdu `4450be7`.
 Each round used independent reviewers on a separate model from the authors, given the
 documents and code rather than the authors’ conclusions, with read-only access to both
 repositories.
-Every reviewer verified claims against code and evidence files and reported findings by
-severity.
+Every reviewer verified claims against code and evidence files and reported
+findings by severity.
 
 - **Round one, design:** the research brief and the plan’s rewritten Checkpoints 2C and
   2D, with 36 spot-checked claims (30 held, 4 did not, 2 were unsupported).
@@ -101,11 +101,11 @@ did not.
 
 ### Minor
 
-Corrected counts and wording (failure tallies, extension checks, the conformance
-failure list, the F13 ratio range, the open-time group’s size), lowering the priority
-path bound to fdu’s 64, excluding budget-stopped corpora from the semantic precheck,
-measuring page-size constants after row-cost work, and aligning the plan, bead table,
-and layer order.
+Corrected counts and wording (failure tallies, extension checks, the conformance failure
+list, the F13 ratio range, the open-time group’s size), lowering the priority path bound
+to fdu’s 64, excluding budget-stopped corpora from the semantic precheck, measuring
+page-size constants after row-cost work, and aligning the plan, bead table, and layer
+order.
 
 ### fdu Proposal Changes
 
@@ -132,11 +132,11 @@ and layer order.
 3. Host consistency: relay and refresh, a recovery supervisor, and moved-version mapping
    for every assembly consumer.
 4. Honest Python semantics, moved up because it needs no fdu input and defines the
-   baseline: provider-level oracles, then `--walk` through the runtime, then
-   unreadable directories, then watch scope alone.
+   baseline: provider-level oracles, then `--walk` through the runtime, then unreadable
+   directories, then watch scope alone.
 5. Contract types after fdu answers on aggregate shape and the registry profile.
-6. Bounds and paging, with change-batch facts and row cost first, and D13 only after
-   fdu agrees.
+6. Bounds and paging, with change-batch facts and row cost first, and D13 only after fdu
+   agrees.
 7. The provider package move, remaining host costs, and the Python re-baseline.
 
 <!-- This document follows common-doc-guidelines.md.
