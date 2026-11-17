@@ -210,7 +210,8 @@ async function main() {
       href: "/view/a.txt",
       mode: "link",
       label: "View on branch",
-      detail: "Open a.txt in this checkout, whose HEAD is this pull request's head",
+      detail:
+        "Open your working-tree copy of a.txt, in this checkout whose HEAD is this pull request's head",
     },
   );
 

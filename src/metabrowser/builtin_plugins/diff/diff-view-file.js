@@ -191,7 +191,7 @@ export function describeViewFile(side, href, page) {
       href,
       mode: "link",
       label,
-      detail: `Open ${side.path} in this checkout, whose HEAD is this pull request's head`,
+      detail: `Open your working-tree copy of ${side.path}, in this checkout whose HEAD is this pull request's head`,
     };
   }
   const mode = side.commit === page.pin && page.pinChanged !== true ? "link" : "switch";

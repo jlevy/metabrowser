@@ -86,7 +86,8 @@ request.
   The tooltip says the commit and whether the pin switches:
   - link: “Open README.md at 6ac4c8b5eb94, the commit this page shows”;
   - button: “Switch to 6ac4c8b5eb94, this pull request’s head, and open README.md”;
-  - checkout: “Open README.md in this checkout, whose HEAD is this pull request’s head”.
+  - checkout: “Open your working-tree copy of README.md, in this checkout whose HEAD is
+    this pull request’s head”.
     A control with no target is absent, never disabled: a text action has no disabled
     form. Busy and refusal stay as they are.
 - **Rendered Markdown links.** The rendered diff stays pin-independent (its cache key

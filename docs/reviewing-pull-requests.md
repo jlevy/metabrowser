@@ -147,9 +147,9 @@ Where it opens follows the table above:
   when another commit is served, as Browse code does.
   The pin is the server’s, so every tab moves with it, and a tab whose pin another tab
   switched turns its links into the switch back.
-- Beside a checkout, or a folder in one, it opens the file in your working tree, only
-  while the checkout’s `HEAD` is the pull request’s head and only for a file inside the
-  served folder.
+- Beside a checkout, or a folder in one, it opens your working-tree copy of the file,
+  only while the checkout’s `HEAD` is the pull request’s head and only for a file inside
+  the served folder. That copy includes any changes you have not committed.
 
 A deleted file, a symbolic link, and a submodule have no View on branch, and no file
 does while Changes shows an earlier head than the pull request’s, which no branch holds

@@ -335,16 +335,16 @@ $ node tests/dom/diff-view-file-session.js
       ],
       "bars": {
         "M README.md": [
-          "[View on branch] link /view/README.md · Open README.md in this checkout, whose HEAD is this pull request's head"
+          "[View on branch] link /view/README.md · Open your working-tree copy of README.md, in this checkout whose HEAD is this pull request's head"
         ],
         "A added.txt": [
-          "[View on branch] link /view/added.txt · Open added.txt in this checkout, whose HEAD is this pull request's head"
+          "[View on branch] link /view/added.txt · Open your working-tree copy of added.txt, in this checkout whose HEAD is this pull request's head"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View on branch] link /view/src/new_name.py · Open src/new_name.py in this checkout, whose HEAD is this pull request's head"
+          "[View on branch] link /view/src/new_name.py · Open your working-tree copy of src/new_name.py, in this checkout whose HEAD is this pull request's head"
         ],
         "M vendor/lib": []
       }
@@ -361,7 +361,7 @@ $ node tests/dom/diff-view-file-session.js
         "M latin1-�.txt": [],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View on branch] link /view/new_name.py · Open src/new_name.py in this checkout, whose HEAD is this pull request's head"
+          "[View on branch] link /view/new_name.py · Open your working-tree copy of src/new_name.py, in this checkout whose HEAD is this pull request's head"
         ],
         "M vendor/lib": []
       }
