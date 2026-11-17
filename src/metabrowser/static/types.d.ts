@@ -430,7 +430,37 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     fallbackFiles: number | null | undefined,
     fallbackSize: number | null | undefined,
     format: MetabrowserTreeSummaryFormat,
+    keepIgnoredLine?: boolean,
   ): string;
+  /** What the Files totals line is drawn from: the root's totals, and its ignored line. */
+  createRootTotals(options: { gitRevision: boolean; shell?: unknown }): Readonly<{
+    fromRootEntry(
+      entry:
+        | {
+            total_files?: unknown;
+            total_size?: unknown;
+            unignored_files?: unknown;
+            unignored_size?: unknown;
+          }
+        | null
+        | undefined,
+    ): boolean;
+    fromSummary(summary: unknown, status: unknown): void;
+    totals(): MetabrowserRootTotals | null;
+    keepsIgnoredLine(): boolean;
+  }>;
+  /** The served root's tracked and ignored totals from its own entry, or null. */
+  rootTotalsFromEntry(
+    entry:
+      | {
+          total_files?: unknown;
+          total_size?: unknown;
+          unignored_files?: unknown;
+          unignored_size?: unknown;
+        }
+      | null
+      | undefined,
+  ): MetabrowserRootTotals | null;
   treeSummaryCountHtml(
     files: number | null | undefined,
     format: Pick<MetabrowserTreeSummaryFormat, "formatCountParts">,
@@ -3655,6 +3685,13 @@ declare global {
    * and its text is the parts joined, a status count's as "2 A".
    */
   type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
+  /** The served root's tracked and ignored files and bytes, the server's `summary` shape. */
+  type MetabrowserRootTotals = {
+    files: number;
+    size: number;
+    ignored_files: number;
+    ignored_size: number;
+  };
 
   /**
    * What a brief change line is built from (formatters.js, `changeLine`): the statuses in
@@ -3805,7 +3842,12 @@ declare global {
      * enough to answer at render time.
      */
     /** The root rows, and a landing path whose folders are inlined expanded. */
-    METABROWSER_INITIAL_TREE?: { tree: TreeNode[]; path?: string };
+    METABROWSER_INITIAL_TREE?: {
+      tree: TreeNode[];
+      path?: string;
+      /** The served root's tracked and ignored totals, once the walk has finished it. */
+      summary?: { files: number; size: number; ignored_files: number; ignored_size: number };
+    };
     MetabrowserAssets?: {
       ensureAsset(name: string): Promise<void>;
       assetLoaded(name: string): boolean;

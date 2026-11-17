@@ -33,3 +33,7 @@ def test_rendered_markdown_toc_scrollspy_session() -> None:
     assert '"catalogSnapshotsAfterFirstFlush": 0' in result.stdout
     assert '"collapsedRows": 65' in result.stdout
     assert '"label": "Collapse TOC"' in result.stdout
+    # KPress's viewport.js, not a stub, registers the pane's listeners and observes it.
+    assert '"kpressViewport": true' in result.stdout
+    assert '"paneResizeObservers": 1' in result.stdout
+    assert '"viewportResizeObservers": 0' in result.stdout
