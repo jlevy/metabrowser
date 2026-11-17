@@ -732,50 +732,145 @@
   }
 
   /**
-   * The Files tab's totals: a navigation metadata line (`.nav-metadata` in styles.css),
-   * the component the Commits tally and the Pulls lines share.
+   * The root's totals from its own entry, in the server's `summary` shape, or null until
+   * the walk has finished the root (docs/design-system.md, "The Files totals").
    *
-   * Tracked and ignored files are counted separately — "12,582 files, 189.8 MB" hides
-   * that almost all of it is node_modules — and the ignored half is muted to match how
-   * those rows read in the tree. Without the server's split (a subtree request, or an
-   * index still being counted) the line gives the combined figure, in the same words,
-   * "4 files (38 B)", so it reads the same when the split arrives; it once set the
-   * figure in the tree rows' count and size chips, and changed colour on arrival.
+   * @param {{total_files?: unknown, total_size?: unknown, unignored_files?: unknown, unignored_size?: unknown} | null | undefined} entry
+   * @returns {MetabrowserRootTotals | null}
+   */
+  function rootTotalsFromEntry(entry) {
+    if (!entry) {
+      return null;
+    }
+    const { total_files: total, total_size: bytes, unignored_files: files } = entry;
+    const size = entry.unignored_size;
+    return [total, bytes, files, size].every((n) => Number.isInteger(n) && Number(n) >= 0)
+      ? rootTotalsShape({
+          files,
+          size,
+          ignored_files: Number(total) - Number(files),
+          ignored_size: Number(bytes) - Number(size),
+        })
+      : null;
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {MetabrowserRootTotals | null}
+   */
+  function rootTotalsShape(value) {
+    const totals = /** @type {Record<string, unknown>} */ (value ?? {});
+    const n = (/** @type {unknown} */ v) =>
+      Number.isFinite(v) && Number(v) >= 0 ? Number(v) : null;
+    const files = n(totals.files);
+    const size = n(totals.size);
+    return files === null || size === null
+      ? null
+      : {
+          files,
+          size,
+          ignored_files: n(totals.ignored_files) ?? 0,
+          ignored_size: n(totals.ignored_size) ?? 0,
+        };
+  }
+
+  /**
+   * What the Files totals line is drawn from, and whether it keeps its ignored line: the
+   * root entry's totals once it has them, else a settled tally, never a provisional one;
+   * a line once drawn stays (docs/design-system.md, "The Files totals").
    *
-   * The fallback's figures are `.tree-summary-count` and `.tree-summary-size`, which the
-   * shell patches as the walker's root aggregate changes (app.js,
-   * `updateRootAggregatePresentation`). The split line deliberately has neither: that
-   * aggregate cannot tell tracked from ignored, and the split refreshes by asking again.
+   * @param {{gitRevision: boolean, shell?: unknown}} options `shell`: the inlined totals
+   */
+  function createRootTotals({ gitRevision, shell }) {
+    /** @type {MetabrowserRootTotals | null} */
+    let fromEntry = gitRevision ? null : rootTotalsShape(shell);
+    /** @type {MetabrowserRootTotals | null} */
+    let fromTally = null;
+    const totals = () => fromEntry ?? fromTally;
+    let kept = false;
+    const keep = () => {
+      kept ||= !gitRevision && (totals()?.ignored_files ?? 1) > 0;
+    };
+    keep();
+    return Object.freeze({
+      /** @param {Parameters<typeof rootTotalsFromEntry>[0]} entry @returns whether it had totals */
+      fromRootEntry(entry) {
+        const next = gitRevision ? null : rootTotalsFromEntry(entry);
+        if (next) {
+          fromEntry = next;
+          keep();
+        }
+        return next !== null;
+      },
+      /** @param {unknown} summary @param {unknown} status its `tally_cache_status` */
+      fromSummary(summary, status) {
+        const next = status === "scanning" ? null : rootTotalsShape(summary);
+        if (next) {
+          fromTally = next;
+          keep();
+        }
+      },
+      totals,
+      keepsIgnoredLine: () => !gitRevision && (totals() === null || kept),
+    });
+  }
+
+  /**
+   * The Files tab's totals, a navigation metadata line (`.nav-metadata`): the tracked
+   * count, and the ignored count as a line of its own, muted as ignored rows are; each
+   * one line, cut short at its end, its phrase its tooltip. Without
+   * the split it gives the combined figure, "4 files (38 B)", whose two spans the shell
+   * patches live (app.js, `updateRootAggregatePresentation`); *keepIgnoredLine* holds the
+   * ignored line pending then, or says "No ignored files" in it (docs/design-system.md,
+   * "The Files totals").
    *
    * @param {{files?: unknown, size: number, ignored_files?: number, ignored_size?: number} | null | undefined} summary
    * @param {number | null | undefined} fallbackFiles
    * @param {number | null | undefined} fallbackSize
    * @param {{formatCountParts(n: number): MetabrowserCountParts, formatSize(bytes: number): string}} format
+   * @param {boolean} [keepIgnoredLine]
    * @returns {string}
    */
-  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format) {
+  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format, keepIgnoredLine = false) {
     if (!summary || typeof summary.files !== "number") {
+      const held = keepIgnoredLine
+        ? '<span class="tree-summary-ignored-pending mb-delayed-loading" role="status"' +
+          ' aria-label="Counting ignored files">' +
+          '<span class="tally-pending" aria-hidden="true"></span></span>'
+        : "";
       return (
         '<div class="tree-summary nav-metadata">' +
-        `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span>` +
-        `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span>` +
+        '<span class="tree-summary-line">' +
+        `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span> ` +
+        `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span></span>` +
+        held +
         "</div>"
       );
     }
+    const parts = format.formatCountParts(summary.files);
+    const words = parts
+      .map((part) => (typeof part === "string" ? part : "number" in part ? part.number : ""))
+      .join("");
     const tracked =
-      `<span class="tree-summary-tracked">${countSummaryHtml(format.formatCountParts(summary.files))}</span>` +
-      `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span>`;
+      `<span class="tree-summary-line" data-tip-text="${words} (${format.formatSize(summary.size)})">` +
+      `<span class="tree-summary-tracked">${countSummaryHtml(parts)}</span> ` +
+      `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span></span>`;
     let ignored = "";
-    if ((summary.ignored_files ?? 0) > 0) {
-      // The count and its word are one item of the line, so the line's gap does not
-      // part them.
-      const count = [{ number: (summary.ignored_files ?? 0).toLocaleString() }, " ignored"];
+    const ignoredFiles = summary.ignored_files ?? 0;
+    if (ignoredFiles > 0) {
+      // One item for the count and its word. The spaces between items are not drawn in a
+      // flex box, but make each line's text its tooltip's phrase (digits and words).
+      const number = ignoredFiles.toLocaleString();
+      const phrase = `+ ${number} ignored (${format.formatSize(summary.ignored_size ?? 0)})`;
       ignored =
-        '<span class="tree-summary-ignored">' +
-        '<span class="tree-summary-plus">+</span>' +
-        `<span>${countSummaryHtml(count)}</span>` +
+        `<span class="tree-summary-ignored" data-tip-text="${phrase}">` +
+        '<span class="tree-summary-plus">+</span> ' +
+        `<span>${countSummaryHtml([{ number }, " ignored"])}</span> ` +
         `<span class="tree-summary-bytes">${sizeHtml(summary.ignored_size ?? 0, format)}</span>` +
         "</span>";
+    } else if (keepIgnoredLine) {
+      ignored =
+        '<span class="tree-summary-ignored tree-summary-ignored-none">No ignored files</span>';
     }
     return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
   }
@@ -1394,6 +1489,7 @@
     createPageConnections,
     createPreviewPaneLifecycle,
     createRootSummaryRefresh,
+    createRootTotals,
     displayPath,
     href,
     navigation,
@@ -1405,6 +1501,7 @@
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,
+    rootTotalsFromEntry,
     settleFileSelectionFailure,
     settleNavigationDependency,
     treeSummaryCountHtml,

@@ -14,10 +14,10 @@ into the app's tooltip from a delegated listener, or ``mb.tooltip.show`` for
 rich content.
 
 **And one tooltip size.** The app's tooltip reads at ``--tooltip-font-size``,
-which is body size, and its subordinate lines at ``--tooltip-detail-font-size``.
-Neither may be spelled as some other token or as a literal: pointing a tooltip
-at ``--ui-small-font-size`` is what made its size a side effect of a decision
-about chips and counts. KPress's own tooltip inside an embedded document is not
+which is body size, and its subordinate lines set no size, so they read at the
+tooltip's. Neither may be spelled as some other token or as a literal: pointing a
+tooltip at ``--ui-small-font-size`` is what made its size a side effect of a
+decision about chips and counts. KPress's own tooltip inside an embedded document is not
 ours and is left alone.
 
 **And a tooltip adds information.** A tooltip says something the reader cannot
@@ -122,10 +122,11 @@ _REPEAT_H = re.compile(
 _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")
 
 
-# The rules that own a tooltip's type size, and the only values they may take.
-TOOLTIP_SIZE_RULES: dict[str, str] = {
+# The rules that own a tooltip's type size, and the only values they may take: None is
+# no size at all, so the rule reads at the tooltip's.
+TOOLTIP_SIZE_RULES: dict[str, str | None] = {
     ".custom-tooltip": "var(--tooltip-font-size)",
-    ".tip-detail": "var(--tooltip-detail-font-size)",
+    ".tip-detail": None,
 }
 
 _STYLESHEET = ROOT / "src" / "metabrowser" / "static" / "styles.css"
@@ -187,7 +188,7 @@ def _candidates() -> list[Path]:
 
 
 def _size_findings() -> list[Finding]:
-    """Each tooltip rule sets its size from the tooltip's own token."""
+    """Each tooltip rule sets its size from the tooltip's own token, or sets none."""
 
     findings: list[Finding] = []
     css = _STYLESHEET.read_text(encoding="utf-8")
@@ -201,7 +202,16 @@ def _size_findings() -> list[Finding]:
         start = css.index(marker)
         block = css[start : css.index("}", start)]
         match = re.search(r"font-size:\s*([^;]+);", block)
-        if match is None:
+        if expected is None:
+            if match is not None:
+                findings.append(
+                    Finding(
+                        _STYLESHEET,
+                        css.count("\n", 0, start + match.start()) + 1,
+                        f"{selector} sets font-size: {match.group(1).strip()}; it sets none",
+                    )
+                )
+        elif match is None:
             findings.append(
                 Finding(_STYLESHEET, css.count("\n", 0, start) + 1, f"{selector} sets no font-size")
             )

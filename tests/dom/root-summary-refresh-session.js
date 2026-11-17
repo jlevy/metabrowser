@@ -38,7 +38,7 @@ function appFunction(name) {
 
 /** The summary refresh, from its introducing comment to the tree cache that follows. */
 function refreshBlock() {
-  const start = appSource.indexOf("// The walker's root upsert carries gitignore-blind totals");
+  const start = appSource.indexOf("// The root's tallies, asked of the server again");
   const end = appSource.indexOf("// Last /api/tree payload plus the chrome rendered above it.");
   if (start < 0 || end < start) {
     throw new Error("app.js summary refresh block is not extractable");
@@ -59,7 +59,11 @@ function updateFilterTallies() {
 }
 function renderNavFilterBar() {}
 function patchOpenRecencyTallyCounts() {}
-${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml"].map(appFunction).join("\n")}
+function isGitRevisionSource() {
+  return false;
+}
+var _rootTotals = null;
+${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml", "rootTotals", "paintTreeSummary"].map(appFunction).join("\n")}
 var _lastTreeRender = { chromeHtml: treeSummaryHtml(null, null, null) };
 `;
 
@@ -79,7 +83,8 @@ function reads(html) {
  * One page: a clock, its timers, a server that answers each request after `serverMs`,
  * and a document with a summary row on a Files panel.
  *
- * @param {{serverMs: number, failures?: number}} server
+ * @param {{serverMs: number, failures?: number, provisional?: number}} server `provisional`:
+ *   how many answers come as the server's mid-walk tally, `scanning`
  */
 function createPage(server) {
   let now = 0;
@@ -91,12 +96,14 @@ function createPage(server) {
   let requests = 0;
   let asks = 0;
   let failuresLeft = server.failures ?? 0;
+  let provisionalLeft = server.provisional ?? 0;
   /** @type {string[]} */
   const did = [];
   const files = { style: { display: "" } };
   const row = {
     set outerHTML(html) {
-      did.push(`t=${now} painted "${reads(html)}"`);
+      const pending = (html.match(/tally-pending/g) ?? []).length;
+      did.push(`t=${now} painted "${reads(html)}"${pending ? ` (${pending} pending)` : ""}`);
     },
   };
   const document = {
@@ -133,6 +140,20 @@ function createPage(server) {
           failuresLeft -= 1;
           did.push(`t=${now} #${number} failed: 503`);
           resolve({ ok: false, status: 503, json: async () => ({}) });
+          return;
+        }
+        if (provisionalLeft > 0) {
+          // Mid-walk, the server's tally is provisional, and counts nothing ignored yet.
+          provisionalLeft -= 1;
+          did.push(`t=${now} #${number} answered provisionally: scanning`);
+          resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              tally_cache_status: "scanning",
+              summary: { files: 9000, size: 90000, ignored_files: 0, ignored_size: 0 },
+            }),
+          });
           return;
         }
         did.push(`t=${now} #${number} answered`);
@@ -270,6 +291,24 @@ async function main() {
           await page.advance(5000);
         }),
         await step("another write, long after", page, async () => {
+          await page.advance(15000);
+          await page.ask();
+          await page.advance(5000);
+        }),
+      ],
+    });
+  }
+
+  {
+    const page = createPage({ serverMs: 300, provisional: 1 });
+    transcript.push({
+      scenario: "the walk is still running when the first answer comes",
+      steps: [
+        await step("one write, answered provisionally", page, async () => {
+          await page.ask();
+          await page.advance(5000);
+        }),
+        await step("another write, once the walk has finished", page, async () => {
           await page.advance(15000);
           await page.ask();
           await page.advance(5000);
