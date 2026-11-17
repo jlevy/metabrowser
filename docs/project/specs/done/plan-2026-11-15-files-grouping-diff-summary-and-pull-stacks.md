@@ -5,8 +5,8 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Done, merged after 0.12.0, so it first ships in the next release.
-The stack’s last pull request, #479, merged on 2026-11-16, and the three of its own on
-`main` (#487, #484, and #491) on 2026-11-17.
+The stack’s last pull request, #479, merged on 2026-11-16 (UTC), and the three of its
+own on `main` (#487, #484, and #491) on 2026-11-17 (UTC).
 
 ## Overview
 
@@ -1112,16 +1112,19 @@ it, and ideally cached it up front”.
 
 Pull requests 1 to 28 shipped as drafts in one native stack and merged in order, and 29
 to 31 shipped on `main` on their own; [Stack Order](#stack-order) records the merge
-commits. A phase is ticked when its pull request merges, and its beads close then.
-This plan moved to `docs/project/specs/done/` once the last pull request in Stack Order
-had merged.
+commits.
+A phase is ticked when its pull request merges, and its beads close then, except
+`mb-s3g8`, which stays open for `mb-rlp4`. This plan moved to `docs/project/specs/done/`
+once the last pull request in Stack Order had merged.
 
 ## Open Questions
 
 - **Stack grouping default (answered, `mb-vmwh`):** grouping is always on when the
   repository has native stack metadata, with no option to turn it off.
-- **Shared membership:** should a pull request in two stacks appear under each, rather
-  than once under the first?
+- **Shared membership (left undecided):** should a pull request in two stacks appear
+  under each, rather than once under the first?
+  What shipped is once, under the first stack that lists it, with its place naming the
+  others ([Pull Stack Groups](#pull-stack-groups)).
 - **Open folders in the Diff summary (answered):** an open folder shows its line counts
   too, as a Files folder keeps its size whichever way it is turned.
 - **A Commits tab row’s weight (answered from the request, `mb-z57p`):** a Commits tab
@@ -1152,7 +1155,7 @@ had merged.
   the Diff summary’s letters and the brief change line, with `mb-bvl2`, review A’s round
   on pull request 28; `mb-3zc8`, with `mb-d0a3`, `mb-h0ml`, and `mb-1l4i`, a Pulls row’s
   change line; and `mb-26zj`, the shared header design, with `mb-kisi`, `mb-nunw`, and
-  `mb-s3g8`.
+  `mb-s3g8` (its glyph).
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).
