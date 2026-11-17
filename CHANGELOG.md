@@ -17,8 +17,9 @@ All notable changes to Metabrowser are documented here.
 - In the Pulls tab, a pull request’s row starts at the list’s left edge, and only the
   rows of a stack are indented, under their stack’s row: each one’s state icon under the
   stack’s icon and its title under the stack’s label.
-  The chevron on a row’s third line sits under the state icon, just before the change
-  counts it opens. See [The Pulls Tab](docs/design-system.md#the-pulls-tab).
+  The chevron on a row’s third line sits under the start of the title, just before the
+  change counts it opens, and the changed files it opens hang one level under it.
+  See [The Pulls Tab](docs/design-system.md#the-pulls-tab).
 
 - The modified status color, the “M” in “2 A, 45 M” wherever a change is summed, reads
   clearly yellow: dark gold in the light theme, where it read olive, and a brighter

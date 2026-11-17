@@ -1159,10 +1159,11 @@
 .github-pulls-row:not(.github-pulls-stack-row) {
   padding-bottom: 0;
 }
-/* The row's third line, its change line (mb-d0a3): the registry's chevron in the icon slot,
-   under the state icon, then, one column gap on, the pull request's brief change line in the
-   text column, under the title, to the row's end, "21 A, 7 D, 15 M · +1,234 −567"; so the
-   chevron leads the values it discloses, with the row's inset before it (mb-3vil). It is the row's
+/* The row's third line, its change line (mb-d0a3): the registry's chevron in the text column,
+   under the title's start, one level in from the state icon, then, one column gap on, the pull
+   request's brief change line, to the row's end, "21 A, 7 D, 15 M · +1,234 −567"; so the
+   chevron leads the values it discloses at the title's indent, the line's inset one icon slot
+   and gap past the row's (mb-3vil). It is the row's
    one child in the tree and a target of its own, the one that opens and closes the changed
    files under it, as a folder's row does, so it hovers and takes the focus ring on its own;
    the current row's mark carries onto it, so the pull request open reads as one block. Its
@@ -1174,7 +1175,7 @@
   grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
   align-items: center;
   height: var(--github-pulls-change-line);
-  padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px));
+  padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-icon-slot) + 6px);
   border-left: 2px solid transparent;
   column-gap: 6px;
   color: var(--text);
@@ -1279,11 +1280,14 @@
 }
 /* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
    `.changed-file-row`), the Diff summary's too. Here is only where a row sits: its depth's
-   indent, one level in from the pull request's row, and the room the sticky filters keep. */
+   indent, one level in from the change line's chevron, which is at the title's column, and
+   the room the sticky filters keep. */
 .github-pull-file-row,
 .github-pull-folder-row {
   --changed-file-indent: calc(
     var(--github-pulls-indent, 0px) +
+    var(--tree-icon-slot) +
+    6px +
     var(--github-pull-file-depth, 1) *
     var(--tree-indent)
   );
@@ -1304,7 +1308,13 @@
 .github-pull-files-line {
   margin: 0;
   padding: 2px 12px 2px
-    calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent) + var(--tree-icon-slot) + 6px);
+    calc(
+      10px +
+      var(--github-pulls-indent, 0px) +
+      2 *
+      (var(--tree-icon-slot) + 6px) +
+      var(--tree-indent)
+    );
   color: var(--muted);
 }
 .github-pull-files-line:not([hidden]) {
@@ -1320,7 +1330,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 2px 12px 4px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
+  margin: 2px 12px 4px
+    calc(10px + var(--github-pulls-indent, 0px) + var(--tree-icon-slot) + 6px + var(--tree-indent));
   padding: 4px 8px;
 }
 .github-pulls-foot {

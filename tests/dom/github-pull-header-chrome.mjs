@@ -2075,12 +2075,12 @@ async function main() {
           // before, three stacks took a third line at 300 px and one stack at 180 px. The
           // row's third line is its change line (mb-d0a3), under the title.
           check(
-            `${where}: the number's line stays one line, the link two, and the row three, its change line under the title and in the title's column`,
+            `${where}: the number's line stays one line, the link two, and the row three, its change line under the title, its chevron at the title's start`,
             row.oneLine &&
               row.grew === 0 &&
               row.itemGrew === 0 &&
               row.threeLines &&
-              Math.abs(row.lineFrom - row.textColumn) < 0.5,
+              Math.abs(row.lineFrom - 2 * row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           check(
@@ -2089,17 +2089,17 @@ async function main() {
             JSON.stringify(row),
           );
           // The icon leads the number's line, in its slot (mb-3cbf); on the title's line it sat
-          // a line below it. The chevron is on the change line, under the title, in the same
-          // slot, under the icon, and the line starts in the title's column (mb-d0a3); on the
-          // number's line it led the link. A row in no stack is flush on the inset (mb-3vil).
+          // a line below it. The chevron is on the change line (mb-d0a3), under the title's
+          // start, and the line one slot and gap past it; on the number's line it led the link.
+          // A row in no stack is flush on the inset (mb-3vil).
           check(
-            `${where}: the icon sits on the number's line, centered on it, on the row's inset, and the chevron on the change line under it`,
+            `${where}: the icon sits on the number's line, centered on it, on the row's inset, and the chevron on the change line under the title`,
             row.iconWithNumber &&
               Math.abs(row.iconOff) < 0.5 &&
               Math.abs(row.iconFrom) < 0.5 &&
               row.chevronOnThird &&
-              row.chevronFrom === 0 &&
-              Math.abs(row.lineFrom - row.textColumn) < 0.5,
+              Math.abs(row.chevronFrom - row.textColumn) < 0.5 &&
+              Math.abs(row.lineFrom - 2 * row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           check(

@@ -645,8 +645,8 @@ try {
           row.changeUnder &&
           row.threeLines &&
           row.toggleOnChange &&
-          row.toggleFromInset === 0 &&
-          row.lineFromTitle === 0 &&
+          Math.abs(row.toggleFromInset - row.textColumn) < 0.5 &&
+          Math.abs(row.lineFromTitle - row.textColumn) < 0.5 &&
           row.height === list.titleRoom.flatRow &&
           row.itemHeight === list.lines[106].itemHeight
         );
@@ -672,13 +672,12 @@ try {
       "a row's chevron and icon, and a stack row's, are each the tree's 14 px icon slot",
       slots.token === "14px" &&
         [slots.pull, slots.stack].every(
-          (row) =>
-            row !== null &&
-            row.toggle === 14 &&
-            row.toggleFromInset === 0 &&
-            row.chevron === 12 &&
-            row.glyph === 14,
+          (row) => row !== null && row.toggle === 14 && row.chevron === 12 && row.glyph === 14,
         ) &&
+        // A pull request's chevron is on its change line under its title's start (mb-3vil);
+        // a stack's leads its row.
+        near(slots.pull.toggleFromInset, 14 + slots.pull.gap) &&
+        slots.stack.toggleFromInset === 0 &&
         near(slots.pull.iconFromInset, 0) &&
         near(slots.pull.text, 14 + slots.pull.gap) &&
         near(slots.stack.iconFromInset, 14 + slots.stack.gap) &&
@@ -688,8 +687,8 @@ try {
     );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
-      near(list.stackToggle, list.flatToggle) && near(list.stackToggle, list.flatIcon),
-      `${list.stackToggle} ${list.flatToggle} ${list.flatIcon}`,
+      near(list.stackToggle, list.flatIcon) && near(list.flatToggle, list.flatTitle),
+      `${list.stackToggle} ${list.flatIcon} ${list.flatToggle} ${list.flatTitle}`,
     );
     check(
       "its label starts where its pull requests' titles do, and its Layers icon where their state icons do",
@@ -698,8 +697,9 @@ try {
     );
     check(
       "its pull requests start one tree level in, one icon slot and gap",
-      near(list.memberToggle - list.stackToggle, list.memberIndent),
-      `${list.memberToggle} ${list.stackToggle} ${list.memberIndent}`,
+      near(list.memberIcon - list.stackToggle, list.memberIndent) &&
+        near(list.memberToggle, list.memberTitle),
+      `${list.memberIcon} ${list.stackToggle} ${list.memberIndent} ${list.memberToggle} ${list.memberTitle}`,
     );
     check(
       "a stack's row is one row tall",
@@ -850,7 +850,9 @@ try {
         files.expanded === "true" &&
         files.lineLevel === "3" &&
         files.level === "4" &&
-        files.indent === Math.round(list.treeIndent) &&
+        // One tree level under the change line's chevron, which is the title's column, one
+        // icon slot and gap past the row's inset (mb-3vil).
+        files.indent === Math.round(list.treeIndent + list.memberIndent) &&
         near(files.fromChevron, list.treeIndent) &&
         files.belowChange >= -0.5 &&
         JSON.stringify(files.afterLeft) === JSON.stringify(["false", "line 7"]) &&
