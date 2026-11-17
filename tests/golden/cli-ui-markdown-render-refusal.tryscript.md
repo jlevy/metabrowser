@@ -133,7 +133,7 @@ $ node tests/dom/markdown-render-refusal-session.js
       {
         "path": "README.md",
         "view": "rendered",
-        "includeToc": "off"
+        "includeToc": null
       }
     ],
     "completeText": [],

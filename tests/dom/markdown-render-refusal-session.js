@@ -149,8 +149,7 @@ function createSdk(answer, files) {
         path: data.path,
         ext: data.ext,
         content: data.content,
-        continues:
-          data.content_truncated === true || typeof data.bytes_read === "number" ? true : false,
+        continues: !!(data.content_truncated === true || typeof data.bytes_read === "number"),
         parts: (options?.parts || []).map((part) => part.language),
       });
       container.classList.add("metabrowser-source-host");
@@ -310,7 +309,9 @@ async function documentTab(rendered, answer, envelope, complete) {
 
   assert(session.documentTab.fetched.length === 0, "the file's own window is not read again");
   assert(!session.documentTab.renderError, "a refused document shows no render error");
-  assert(session.readmePanel.renders[0].includeToc === "off", "the README asks for no TOC");
+  // The README keeps the table of contents its own page has (mb-kke3), so its render does
+  // not turn the TOC off.
+  assert(session.readmePanel.renders[0].includeToc !== "off", "the README keeps its TOC");
   assert(!session.readmePanel.renderError, "the README panel shows no render error");
   assert(session.renderFailure.renderError, "a failed render keeps its error");
   for (const result of [session.documentTab, session.partialWindow, session.readmePanel]) {
