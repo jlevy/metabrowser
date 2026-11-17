@@ -123,15 +123,11 @@ async function loadModule() {
     "utf8",
   );
   const traversalUrl = `data:text/javascript;base64,${Buffer.from(traversalSource).toString("base64")}`;
-  const tocFallbackStub =
-    "export function initTocWithIntersectionFallback(init){return init()||(()=>{})}";
-  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const transclusionSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
-    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace(
       '"./place-rendered.js"',
       JSON.stringify(

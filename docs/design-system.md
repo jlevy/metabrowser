@@ -658,9 +658,16 @@ both modes and a toggle never has to chase rendered elements.
 The default fragment manifest omits KPress’s standalone theme resolver; the host loads
 the entry points the manifest declares without maintaining a second exclusion list.
 KPress’s symmetric theme selectors keep its palette and `color-scheme` aligned, while
-the bridge maps the public `--kpress-doc-*` color tokens on both the fragment and
-body-portaled tooltips to Metabrowser’s semantic surface, text, border, muted, and link
-tokens.
+the bridge maps the public `--kpress-doc-*` color tokens to Metabrowser’s semantic
+surface, text, border, muted, and link tokens, and KPress’s corner tokens to the app’s
+square corners. It keys on every KPress fragment in the page, not on
+`.metabrowser-kpress-host`: a rendered Markdown diff mounts its `article.kpress` in the
+diff plugin’s host, so a bridge on the document host left it in KPress’s own palette.
+Tooltips, which KPress portals to the body, have always had a rule of their own,
+`:root .kpress-tooltip`.
+`test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment` holds the scope,
+and `tests/test_diff_markdown_fold_chrome.py` measures a rendered diff’s quote and code
+against a document’s in both themes.
 
 ### Embedded Document Navigation
 

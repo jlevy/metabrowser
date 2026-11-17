@@ -113,11 +113,6 @@ async function loadModule() {
     "utf8",
   );
   const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
-  const tocFallbackStub =
-    "export function initTocWithIntersectionFallback(init){" +
-    "globalThis.__transclusionTocFallbackCalls=(globalThis.__transclusionTocFallbackCalls||0)+1;" +
-    "return init()||(()=>{})}";
-  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const workerStub =
     `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(parserUrl)};` +
     "export function acquireMarkdownWorkerClient(){return {dispose(){}," +
@@ -128,7 +123,6 @@ async function loadModule() {
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
-    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace(
       '"./place-rendered.js"',
       JSON.stringify(
@@ -353,6 +347,7 @@ and second line ^block-id
   const container = new FakeContainer(source);
   let nestedDisposed = 0;
   let nestedSource = null;
+  let tocInits = 0;
   let tocDisposed = 0;
   const mb = {
     fetchKpressRender: async (_ctx, _view, options) => {
@@ -366,7 +361,10 @@ and second line ^block-id
       return { html: '<article class="kpress">Rendered</article>' };
     },
     fetchText: async () => note,
-    kpressInitToc: () => () => (tocDisposed += 1),
+    kpressInitToc: () => {
+      tocInits += 1;
+      return () => (tocDisposed += 1);
+    },
   };
   const handle = module.mountWikiTransclusion(
     container,
@@ -389,7 +387,7 @@ and second line ^block-id
     aside.getAttribute("data-metabrowser-transclusion-status") === "ready",
   );
   check("nested enhancement uses embedded source", nestedSource === "docs/note.md");
-  check("embedded TOC uses observer fallback", globalThis.__transclusionTocFallbackCalls === 1);
+  check("embedded TOC initialized by KPress", tocInits === 1);
   handle.dispose();
   check("nested enhancement disposed", nestedDisposed === 1);
   check("embedded table of contents disposed", tocDisposed === 1);

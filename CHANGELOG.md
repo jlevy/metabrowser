@@ -4,6 +4,32 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- KPress moves to 0.3.8. The table of contents now follows the section you are reading
+  in webviews without `IntersectionObserver` through KPress’s own fallback, which
+  replaces Metabrowser’s, and a reader-pane reload on a URL with a fragment returns to
+  the saved position in WebKit.
+  That fallback, and the table of contents Metabrowser draws for an untrusted document
+  (a served mirror or an `--untrusted` folder), step past a heading inside a closed
+  disclosure instead of marking its section as the one you are reading.
+  Keyboard input (`kbd`) and sample output (`samp`) are set in the app’s code face at
+  KPress’s code size, as other code is, instead of the browser’s default monospace at
+  the size of the text around them, and code in a link’s preview popover is set in the
+  app’s code face. In a document, inline code, code blocks, blockquotes, and the table of
+  contents look the same as before; the styles Metabrowser added for them are now
+  KPress’s defaults. The rendered view of a Markdown diff now draws as a document does,
+  in the app’s colors instead of KPress’s own: quoted text has the document’s rule
+  beside it and its muted color, where it had neither; inline code is square, with the
+  document’s padding, where its corners were rounded; inline and block code have the
+  document’s edge color; text, links, and table rules take the app’s colors; and in the
+  dark theme the rendered diff sits on the page’s background instead of a darker one.
+  For plugin authors: `--kpress-code-border` and `--kpress-code-radius` set the edge and
+  corners of inline and block code, and KPress’s inline code is square by default.
+  Metabrowser now maps KPress’s color and corner tokens on every `.kpress` element in
+  the page, not only under `.metabrowser-kpress-host`, so a plugin’s own KPress fragment
+  draws in the app’s palette.
+  A plugin that wants other values on its own fragment sets them on the `.kpress`
+  element, in its own stylesheet, with a selector of at least two classes.
+
 - Each pull request’s row in the Pulls tab has a third line, its brief change line, “21
   A, 7 D, 15 M · +1,234 −567”, in the coloring of the Diff summary’s, with no file
   total, so walking the list shows the size of each change.
