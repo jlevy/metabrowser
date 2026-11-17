@@ -450,7 +450,8 @@ class PrivateStorageError(Exception):
     refusal, and ``kind`` and ``purpose`` say whether a directory or a file was refused
     and whether the caller was reading or writing, which decides the remedy offered.
     ``replaced`` is true when an entry on the path was replaced while it was being
-    checked: the same call made again judges, in full, whatever replaced it.
+    checked: the same call made again judges, in full, whatever replaced it. The site that
+    raises says so, not the message: a write that runs out of temporary names shares it.
     """
 
     def __init__(
@@ -464,6 +465,7 @@ class PrivateStorageError(Exception):
         through_acl: bool = False,
         kind: EntryKind | None = None,
         purpose: EntryPurpose = "write",
+        replaced: bool = False,
     ) -> None:
         super().__init__(_describe(violation, location, mode, detail, through_acl, kind, purpose))
         self.violation: PrivateStorageViolation = violation
@@ -472,7 +474,7 @@ class PrivateStorageError(Exception):
         self.mode: int | None = mode
         self.kind: EntryKind | None = kind
         self.purpose: EntryPurpose = purpose
-        self.replaced: bool = detail is _CHANGED_DURING_CHECK
+        self.replaced: bool = replaced
 
 
 class StorageDirectoryError(ValueError):
@@ -780,6 +782,8 @@ def write_private_file_atomic(
             return
         finally:
             os.close(fd)
+    # Not replaced: no entry at the path was checked, and each temporary name was taken or
+    # its file swept before this writer held it, which opening the target again cannot help.
     raise PrivateStorageError(
         PrivateStorageViolation.UNVERIFIABLE,
         PrivateStorageLocation.ENTRY,
@@ -1683,9 +1687,9 @@ def _open_file_entry(
                 continue
             return _finish_created_file(parent_fd, name, fd, flags, path)
         return _open_existing_file(parent_fd, name, flags, before, path, shared=shared)
-    raise PrivateStorageError(
-        PrivateStorageViolation.UNVERIFIABLE, location, path, detail=_CHANGED_DURING_CHECK
-    )
+    # Replaced: the file appeared between inspection and creation in both passes, so a
+    # call made again judges whatever is there then.
+    raise _replaced_during_check(location, path)
 
 
 def _finish_created_file(parent_fd: int, name: str, fd: int, flags: int, path: Path) -> int:
@@ -1836,6 +1840,18 @@ def _require_directory(
         raise PrivateStorageError(PrivateStorageViolation.FOREIGN_OWNER, location, path)
 
 
+def _replaced_during_check(location: PrivateStorageLocation, path: Path) -> PrivateStorageError:
+    """The refusal of an entry that another was put in place of while this call checked it."""
+
+    return PrivateStorageError(
+        PrivateStorageViolation.UNVERIFIABLE,
+        location,
+        path,
+        detail=_CHANGED_DURING_CHECK,
+        replaced=True,
+    )
+
+
 def _require_regular_file(
     status: os.stat_result,
     location: PrivateStorageLocation,
@@ -1851,15 +1867,11 @@ def _require_regular_file(
         same_as.st_dev,
         same_as.st_ino,
     ):
-        raise PrivateStorageError(
-            PrivateStorageViolation.UNVERIFIABLE, location, path, detail=_CHANGED_DURING_CHECK
-        )
+        raise _replaced_during_check(location, path)
     if status.st_uid != os.geteuid():
         raise PrivateStorageError(PrivateStorageViolation.FOREIGN_OWNER, location, path)
     if status.st_nlink == 0:
-        raise PrivateStorageError(
-            PrivateStorageViolation.UNVERIFIABLE, location, path, detail=_CHANGED_DURING_CHECK
-        )
+        raise _replaced_during_check(location, path)
     if status.st_nlink != 1:
         raise PrivateStorageError(PrivateStorageViolation.HARD_LINK, location, path)
 
@@ -1961,9 +1973,7 @@ def _unopenable(
         return PrivateStorageError(PrivateStorageViolation.NOT_DIRECTORY, location, path)
     if status is not None and not flags & os.O_DIRECTORY and not stat.S_ISREG(status.st_mode):
         return PrivateStorageError(PrivateStorageViolation.NOT_REGULAR_FILE, location, path)
-    return PrivateStorageError(
-        PrivateStorageViolation.UNVERIFIABLE, location, path, detail=_CHANGED_DURING_CHECK
-    )
+    return _replaced_during_check(location, path)
 
 
 def _require_same_object(
@@ -1979,9 +1989,7 @@ def _require_same_object(
 
     opened = os.fstat(fd)
     if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
-        raise PrivateStorageError(
-            PrivateStorageViolation.UNVERIFIABLE, location, path, detail=_CHANGED_DURING_CHECK
-        )
+        raise _replaced_during_check(location, path)
     return opened
 
 

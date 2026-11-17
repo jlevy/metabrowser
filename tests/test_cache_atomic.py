@@ -16,6 +16,7 @@ import sys
 import textwrap
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -441,6 +442,25 @@ def test_an_entry_replaced_at_every_open_is_refused_after_the_bound(
     assert refused.value.replaced
     assert refused.value.violation is PrivateStorageViolation.UNVERIFIABLE
     assert len(published) == MAX_READ_OPENS
+
+
+def test_a_write_that_runs_out_of_temporary_names_is_not_a_replacement(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``replaced`` is the raising site's, not its message's, which this refusal shares.
+
+    Every temporary name the write draws is taken, so it checks no entry at the path and
+    nothing there was replaced: a read must not take this refusal as one to open again.
+    """
+
+    monkeypatch.setattr(home_module, "secrets", SimpleNamespace(token_hex=lambda _n: "0" * 16))
+    (home / f".layout.yml.{'0' * 16}.tmp").write_bytes(b"")
+    with pytest.raises(PrivateStorageError) as refused:
+        write_private_file_atomic(home, "layout.yml", b"new\n")
+
+    assert refused.value.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert not refused.value.replaced
+    assert not (home / "layout.yml").exists()
 
 
 def _fsync_targets(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
