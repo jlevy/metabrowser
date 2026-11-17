@@ -179,7 +179,8 @@ and CLI. This catches missing package data and source-checkout assumptions.
 ## Running Tests
 
 [Everyday Commands](development.md#everyday-commands) lists the commands.
-Node and Git are prerequisites.
+Node, Git, and jq are prerequisites; jq runs the CI workflow’s `plan` and `ci-ok`
+scripts, which their tests run too.
 The first test that needs one and finds it missing stops the run, with one message that
 names the tool and the way to opt out.
 It does so in CI and locally alike: a run that skipped those tests would pass without
@@ -192,7 +193,7 @@ that need it skip with that reason:
 METABROWSER_ALLOW_MISSING_TOOLS=node uv --config-file uv.toml run --frozen pytest -rs
 ```
 
-The variable takes `node`, `git`, or both separated by a comma.
+The variable takes `node`, `git`, or `jq`, or several of them separated by commas.
 `tests/required_tools.py` is the gate, and a test asks it rather than looking the tool
 up itself; a test in `tests/test_suite_gates.py` fails when one does.
 
@@ -204,7 +205,7 @@ Each has one command, one way its tests are selected, and a stated time when it 
 
 | Tier | Command | Selected by | When it runs |
 | --- | --- | --- | --- |
-| Default | `make test` | everything that does not skip | Every pull request in CI, on each supported Python version on Ubuntu; the pre-push hook |
+| Default | `make test` | everything that does not skip | Every pull request in CI, as the [CI Jobs](#ci-jobs) on Ubuntu; the pre-push hook |
 | Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release and the newest patched one |
 | macOS | `make test-macos` | the `macos_tier` marker | Never in CI. Part of `make test` on a Mac; run it there before a release |
 | Live GitHub | `make test-live-github` | the `live_github` marker | Never in CI. By hand, before a release and after a change to GitHub URL or pull request reading |
@@ -283,6 +284,41 @@ A test fails when:
 
 The markers are two because the properties are: a test that needs the machine to itself
 says nothing by that about the interpreters it has to pass on.
+
+### CI Jobs
+
+`.github/workflows/ci.yml` runs the default tier’s four targets as separate jobs side by
+side, so a run takes as long as its slowest job rather than their sum.
+[Plan for Fast CI](project/specs/active/plan-2026-11-16-fast-ci.md) is the design and
+says why each check runs where it does.
+
+| Job | Runs | On |
+| --- | --- | --- |
+| `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the Chrome tier’s interpreters and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
+| `unit` | `make test-parallel`, in parts by `SHARD` | each supported Python and the free-threaded build |
+| `goldens and serial` | `make test-goldens`, then `make test-serial` | the same interpreters |
+| `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
+| `admitted-git` | `make test-admitted-git` | the two admitted Git releases |
+| `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose merge with `main` changes the tree |
+| `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded | every run |
+
+`ci-ok` is the one check to require.
+While `main` is red it also writes a `main-red` verdict line, which
+[Git](../AGENTS.md#git) merges by.
+A newer push to a pull request cancels its running jobs, and a push to `main` is never
+cancelled. No leg cancels its siblings, so “Re-run failed jobs” reruns only the one that
+failed, and the legs that passed stay as evidence.
+
+**Time limits and shards.** Each job’s `timeout-minutes` is about 1.5 times its measured
+90th percentile, with the measurement in a comment beside it.
+A limit that trips means a tier grew by half: split its job further, or make its slowest
+tests cheaper.
+To add a shard, raise `N` in the job’s `SHARD=${{ matrix.shard }}/N`, list
+`1` through `N` in its `shard` matrix, and deal the matching `stack-integration` parts
+the same way. `devtools/check_ci.py`, part of `make lint-check`, fails a sharded job
+whose shards are not `1` through `N`, a tier no job runs, an interpreter list that
+differs from `pyproject.toml`’s classifiers and the free-threaded build, and a
+permission, trigger, or `run:` line that widens what a pull request can reach.
 
 ### Skips
 

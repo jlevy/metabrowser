@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from tests.admitted_git import required_admitted_git
-from tests.required_tools import ALLOW_MISSING_TOOLS_ENV, require_git, require_node
+from tests.required_tools import ALLOW_MISSING_TOOLS_ENV, require_git, require_jq, require_node
 from tests.suite_gates import (
     ADMITTED_GIT_SKIP,
     LIVE_DATA_SKIPS,
@@ -26,13 +26,17 @@ from tests.suite_gates import (
 
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
-TOOLS: list[tuple[Callable[[], str], str]] = [(require_node, "node"), (require_git, "git")]
+TOOLS: list[tuple[Callable[[], str], str]] = [
+    (require_node, "node"),
+    (require_git, "git"),
+    (require_jq, "jq"),
+]
 # The longest bound a test may put on a child process or a polling loop; pyproject.toml
 # says why it has to stay under the suite's own timeout.
 MAX_INNER_BOUND_S = 50
 
 
-# ── The Node and Git gate ──────────────────────────────────────────────────────
+# ── The Node, Git, and jq gate ─────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -73,7 +77,7 @@ def test_an_unknown_name_in_the_opt_out_is_called_out(
     with pytest.raises(pytest.exit.Exception) as stop:
         require_node()
     assert "names nodejs, which this gate does not know" in str(stop.value)
-    assert "the names it takes are git and node" in str(stop.value)
+    assert "the names it takes are git, jq, and node" in str(stop.value)
 
 
 @pytest.mark.parametrize(("require", "tool"), TOOLS)

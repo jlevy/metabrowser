@@ -138,8 +138,21 @@ def test_a_job_s_limit_is_found_by_its_display_name(workflow: Path) -> None:
 def test_every_job_of_this_repository_s_workflow_has_its_limit_found() -> None:
     known = ci_report.limits(WORKFLOW)
 
-    for name in ("lint", "distribution", "test (3.13)", "admitted-git (2.50.1)"):
-        assert ci_report.limit_of(name, known) is not None, name
+    names = (
+        "plan",
+        "lint",
+        "distribution",
+        "unit (3.13, 1/2)",
+        "goldens and serial (3.14t)",
+        "chrome (3.12, 4/4)",
+        "admitted-git (2.50.1)",
+        "stack-integration (-k test-goldens test-serial)",
+        "ci-ok",
+    )
+    for name in names:
+        limit = ci_report.limit_of(name, known)
+        assert limit is not None, name
+        assert limit != GITHUB_DEFAULT_TIMEOUT_MINUTES, name
 
 
 def test_the_report_gives_push_to_green_jobs_and_reruns(

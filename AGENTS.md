@@ -169,6 +169,22 @@ Before handoff: review the diff, run `make verify`, update and close the relevan
 issues, run `tbd sync`, commit, push, open or update the pull request, and watch CI to
 completion.
 
+Merge into `main` by `main`’s state.
+`ci-ok` cannot see a pull request whose run went green before `main` turned red, or a
+`main` run that has not completed, and a verdict line names the head that was red when
+its run was planned, so it is current only while that is the head of `main`’s newest
+run.
+
+- Merge only when the latest attempt of the newest `ci.yml` push run on `main` has
+  completed (`gh run list`).
+- If it is not green, merge only a pull request whose latest `ci-ok` passed with a
+  verdict line that says `tested=yes` and names the head SHA of that `main` run.
+- A rerun never changes the commit a run tested.
+  To get a qualifying run, update the branch from `main` or push to it.
+- Rerun a failure that a bead names as a known flake once; give any other failure a bead
+  and a fix or a revert.
+  Never arm auto-merge; merge directly.
+
 <!-- BEGIN TBD INTEGRATION format=f100 surface=agents-md -->
 ## tbd
 

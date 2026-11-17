@@ -206,6 +206,34 @@ release and the newest patched one.
 matrix to agree, and requires the matrix to include both floors from the version-gates
 fixture. Moving a floor therefore means pinning and reviewing the new release here.
 
+## CI Workflows
+
+`ci.yml` gives every job `contents: read`, and one job one permission more, reviewed on
+November 17, 2026:
+
+| Workflow | Job | Permission | What it reads |
+| --- | --- | --- | --- |
+| `ci.yml` | `plan` | `actions: read` | One page of `ci.yml`’s push runs on `main`, and the earlier attempt of a rerun, to learn whether `main` is red (`devtools/ci_plan.sh`) |
+
+- **Reach.** `actions: read` reads this repository’s workflow runs, jobs, logs, and
+  artifacts, and writes nothing.
+  The repository is public, so it reads nothing an anonymous reader cannot; it is
+  declared so that the token’s scope is stated, not inherited.
+  No job may write issues, pull requests, or contents.
+- **Triggers.** `ci.yml` runs on a push to `main` and on `pull_request`, never on
+  `pull_request_target`. A pull request’s run therefore gets a read-only token, and its
+  workflow and the `devtools/ci_plan.sh` and `devtools/ci_verdict.sh` it runs come from
+  the pull request’s own merge commit, so a change to the gate is reviewed as a change.
+- **Untrusted input.** A branch name or a pull request’s title or body reaches a step
+  only through `env:`, quoted in the shell; no `run:` line interpolates the event.
+- **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache
+  actions already reviewed, and the runner image’s own `gh` and `jq`. Every checkout
+  sets `persist-credentials: false`.
+
+`devtools/check_ci.py`, in `make lint-check`, fails a job given a permission this table
+does not name, a `pull_request_target` trigger, a checkout that keeps its credentials,
+and a `run:` line that interpolates the event or the head branch.
+
 ## Verification
 
 ### Development HTTP Client Review (September 8, 2026)
