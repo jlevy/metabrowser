@@ -4,13 +4,14 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Proposed.
-Bead `mb-h8zb` tracks this plan, and each implementation step below is a bead under it.
-Nothing here is implemented: no workflow, Makefile target, dependency, or repository
-setting has changed.
-The workflow changes of Phase 2 wait for the owner’s explicit approval
-([Open Questions](#open-questions), Q1). The first step of each phase replaces that
-phase’s estimates with measurements; an estimate is marked “est.”
+**Status:** Approved for Phases 1 and 2. The owner answered Q1, Q2, Q3, and Q5 on
+2026-11-16 ([Decisions and Open Questions](#decisions-and-open-questions)); Q4, Q6, Q7,
+and Q8 are open.
+Bead `mb-h8zb` tracks this plan, and each implementation step below is a
+bead under it. Nothing here is implemented: no workflow, Makefile target, dependency, or
+repository setting has changed.
+The first step of each phase replaces that phase’s estimates with measurements; an
+estimate is marked “est.”
 
 ## Overview
 
@@ -187,8 +188,8 @@ commit on `main` runs the tier on all four, which names the commit that broke it
 minutes of the merge.
 Running it once a push also cuts the chance of a flake failing a healthy run from four
 or five draws to one.
-Q3 asks the owner to confirm this; the alternative keeps all four on pull requests for
-12 more jobs and about 24 more runner minutes a push.
+The owner chose this on 2026-11-16 (Q3); the alternative keeps all four on pull requests
+for 12 more jobs and about 24 more runner minutes a push.
 
 **`devtools/check_ci.py`**, added to `make lint-check`, keeps the table true.
 It fails unless the workflow runs each of the three tier targets, the shard numbers of
@@ -215,7 +216,7 @@ Today the job gates its steps, not itself, so that it always reports what it dec
 Here the `plan` job is that report: it always runs, and it writes the event, the base,
 both trees, and its decision to the job summary.
 Gating seven jobs by their steps would start seven runners to say that nothing was
-needed. Q4 asks the owner to accept the change of convention.
+needed. Q4, which is open, asks the owner to accept the change of convention.
 
 Cancelling superseded runs helps stacks most, since a restack pushes every layer at
 once.
@@ -465,8 +466,9 @@ untouched.
 ## Implementation Plan
 
 The phases are in order of payoff.
-Phase 1 changes no workflow file and can start on the owner’s word on Q2. Phase 2 is one
-pull request to the workflow and needs Q1. Phase 3 is independent of both.
+Phase 1 changes no workflow file, and the owner’s answer to Q2 admits its dependency.
+Phase 2 changes the workflow, which the owner’s answer to Q1 approves through reviewed
+pull requests. Phase 3 is independent of both.
 
 ### Phase 1: The Suite on Four Processors
 
@@ -487,7 +489,7 @@ unchanged, since it calls `make test`.
 ### Phase 2: Split Jobs in the Workflow
 
 Expected: a pull request wall clock of 4 to 5 minutes (est.), or about 3 with the unit
-jobs split in two. Needs the owner’s approval to change workflow files.
+jobs split in two. The owner approved these workflow changes on 2026-11-16 (Q1).
 
 - [ ] `mb-oz36`: Split `ci.yml` into `unit`, `goldens`, and `serial` jobs, with the
   serial tier on one interpreter for a pull request and on all four for `main`, no
@@ -535,7 +537,7 @@ brief’s methodology and, once it exists, `make ci-report`.
 
 ## Rollout Plan
 
-1. Merge this plan, and the owner answers the open questions.
+1. Merge this plan. The owner has answered the questions that Phases 1 and 2 need.
 2. Phase 1 lands as a stack of pull requests.
    Each is safe alone: `make test` runs the same tests at every step, and the workflow
    does not change.
@@ -569,41 +571,49 @@ brief’s methodology and, once it exists, `make ci-report`.
   to 8.8 minutes at peak, so the queue time is measured again after Phase 2.
 - **The serial tier on three interpreters after the merge.** A regression there reaches
   `main` and is reported minutes later, on the commit that caused it.
-- **A red `main` needs a reader.** Today nothing tells anyone; Q6.
+- **A red `main` needs a reader.** Today nothing tells anyone; Q6 is open.
+  Once the owner’s ruleset requires `ci-ok` (Q5), a red pull request cannot merge, which
+  leaves the serial tier on three interpreters as what can turn `main` red.
 - **Growth continues.** The Chrome tier went from nothing to 6.3 minutes in five days.
   The shard count and the time limits are how the design absorbs that.
 - **A developer machine under xdist** runs one worker per processor, which is heavy
   where several agents share a machine; `PYTEST_WORKERS` lowers it.
 
-## Open Questions
+## Decisions and Open Questions
 
-For the owner:
+The owner answered four of the questions on 2026-11-16.
 
-1. **Workflow files.** May `.github/workflows/ci.yml` change as
-   [Proposed Workflow](#proposed-workflow) describes, and may a scheduled workflow be
-   added? Phase 1 changes neither.
-2. **A development dependency.** May `pytest-xdist` 3.8.0 and its requirement `execnet`
-   2.1.2 join the `dev` group, with a review in `SUPPLY-CHAIN-SECURITY.md`? Both are
-   MIT-licensed, published 2025-07-01 and 2025-11-12, and never ship in the wheel.
-   Without them the same wall clock needs about four runner jobs per interpreter in
-   place of one.
-3. **The serial tier’s interpreters.** One for a pull request and all four on every
-   commit on `main`, as proposed, or all four before the merge?
-4. **`stack-integration`’s record.** Is the `plan` job’s summary an acceptable record of
-   a skipped integration, in place of step gating?
-5. **A required check.** Should a ruleset require `ci-ok` on `main`? It is a repository
-   setting only the owner can change.
-   It would stop a red pull request from merging and would let auto-merge wait for CI,
+Decided:
+
+1. **Workflow files (Q1): approved.** Agents may restructure `.github/workflows/ci.yml`
+   as [Proposed Workflow](#proposed-workflow) describes and add the nightly soak
+   workflow, through reviewed pull requests.
+2. **A development dependency (Q2): yes.** `pytest-xdist` 3.8.0 and its requirement
+   `execnet` 2.1.2 join the `dev` group under the supply-chain rules, with a review in
+   `SUPPLY-CHAIN-SECURITY.md`. Both are MIT-licensed, published 2025-07-01 and
+   2025-11-12, and never ship in the wheel.
+3. **The serial tier’s interpreters (Q3): one on pull requests, four on `main`.** The
+   serial tier runs on Python 3.13 for a pull request and on all four interpreters for
+   every push to `main`.
+4. **A required check (Q5): yes.** Once Phase 2’s `ci-ok` job exists, the owner sets a
+   ruleset that requires it on `main`. It is a repository setting only the owner can
+   change. It stops a red pull request from merging and lets auto-merge wait for CI,
    which it cannot do while nothing is required.
-6. **A red `main`.** Who is told?
-   The merging agent watching the run, as today, or an issue the workflow opens, which
-   needs `issues: write` for one job?
-7. **Path classes.** Are the light runs of Phase 3 wanted, for 16 percent of pull
-   requests?
-8. **A merge queue** is not proposed.
-   Whether a repository owned by a user account can enable one was not established, and
-   with the matrix at about five minutes little is left for it to move.
-   Say if it is wanted anyway.
+
+Open, with the plan’s recommendation standing as a proposal:
+
+- **`stack-integration`’s record (Q4).** Is the `plan` job’s summary an acceptable
+  record of a skipped integration, in place of step gating?
+  Phase 2 builds it that way, and its pull request asks again.
+- **A red `main` (Q6).** Who is told?
+  The merging agent watching the run, as today, or an issue the workflow opens, which
+  needs `issues: write` for one job?
+  Phase 2 adds no such permission.
+- **Path classes (Q7).** Are the light runs of Phase 3 wanted, for 16 percent of pull
+  requests?
+- **A merge queue (Q8)** is not proposed.
+  Whether a repository owned by a user account can enable one was not established, and
+  with the matrix at about five minutes little is left for it to move.
 
 ## References
 

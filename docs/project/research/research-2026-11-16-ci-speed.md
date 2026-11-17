@@ -548,8 +548,8 @@ argument for each check’s coverage, and the order.
 
 ## Next Steps
 
-- [ ] The owner answers the plan’s open questions, and says whether workflow files may
-  change
+- [x] The owner answered the questions that Phases 1 and 2 of the plan need, on
+  2026-11-16
 - [ ] Measure the xdist speedup in CI as the first implementation step, since this brief
   could not
 
