@@ -1,10 +1,18 @@
-"""A bounded, disposable bank of PR manifests beside a repository store.
+"""A disposable bank of PR manifests beside a repository store, one per pull request.
 
 The record's immutable endpoints are prepared after fetch, before its record is
 published. A fresh server reads the manifest instead of running the costly raw
 listing. Resolution still verifies that this store can answer for both commits.
-Sixteen direct-mapped slots bound disk use without an index, enumeration or an
-LRU lock: a collision replaces a slot and can only cause a later cache miss.
+Each pull request keeps the manifest of the last comparison read for it, so the bank
+grows as its records do, with no index, enumeration or LRU lock: another comparison of
+the same pull request replaces it and can only cause a later cache miss.
+
+Measured 2026-11-17 on a reader's cache: 90 manifests in 9 stores, a median of 10.7 KB,
+90th percentile 44 KB, and largest 68 KB, about 500 bytes a changed file; beside them,
+one source's 64 records had a median of 33 KB. So a pull request's manifest adds about a
+third of what its record already keeps. Sixteen direct-mapped slots, before, held 11 of
+19 open pull requests' manifests on average, and each of the rest was listed again
+(about 77 ms) whenever it was opened (mb-g8oe).
 """
 
 from __future__ import annotations
@@ -52,9 +60,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# The same retained-comparison count as the in-memory manifest cache. Cache admission
-# uses the existing PR-record read bound; a larger result is still served in full.
-MANIFEST_SLOTS: Final = 16
+# Cache admission uses the existing PR-record read bound; a larger result is still served
+# in full.
 MAX_MANIFEST_RECORD_BYTES: Final = MAX_PULL_RECORD_BYTES
 _FLIGHTS: WeakKeyDictionary[
     asyncio.AbstractEventLoop, LoadingCache[tuple[str, ...], ResolvedManifest]
@@ -102,41 +109,43 @@ def _directory(published: PublishedSource) -> str:
     return f"{store_directory(published.store_key)}/github-pull-manifests"
 
 
-def _slot(key: tuple[str, ...]) -> int:
-    digest = hashlib.sha256("\0".join(_identity(key)).encode()).digest()
-    return int.from_bytes(digest[:8]) % MANIFEST_SLOTS
+def _epochs(published: PublishedSource) -> str:
+    """Beside the bank, not in it, so an epoch moves even when the bank cannot be written."""
+    return f"{store_directory(published.store_key)}/github-pull-manifest-epochs"
 
 
-def _epoch_path(published: PublishedSource, key: tuple[str, ...]) -> str:
-    return f"{store_directory(published.store_key)}/github-pull-manifest-{_slot(key):02d}.epoch"
+def _epoch_path(published: PublishedSource, number: int) -> str:
+    return f"{_epochs(published)}/pull-{number}.epoch"
 
 
-def _epoch(published: PublishedSource, key: tuple[str, ...]) -> str:
+def _epoch(published: PublishedSource, number: int) -> str:
     data = read_bytes_bounded(
-        published.home, _epoch_path(published, key), max_bytes=64, shared="refuse"
+        published.home, _epoch_path(published, number), max_bytes=64, shared="refuse"
     )
     if len(data) != 64 or any(byte not in b"0123456789abcdef" for byte in data):
         raise RecordError("the disposable manifest epoch is invalid", published.home)
     return data.decode("ascii")
 
 
-def _current_epoch(published: PublishedSource, key: tuple[str, ...]) -> str:
+def _current_epoch(published: PublishedSource, number: int) -> str:
     """Read or exclusively establish an epoch before any manifest computation."""
     try:
-        return _epoch(published, key)
+        return _epoch(published, number)
     except FileNotFoundError:
+        ensure_private_directory(published.home, _epochs(published))
         with contextlib.suppress(FileExistsError):
             write_private_file_atomic(
                 published.home,
-                _epoch_path(published, key),
+                _epoch_path(published, number),
                 secrets.token_hex(32).encode("ascii"),
                 replace=False,
             )
-        return _epoch(published, key)
+        return _epoch(published, number)
 
 
-def _path(published: PublishedSource, key: tuple[str, ...]) -> str:
-    return f"{_directory(published)}/{_slot(key):02d}.json"
+def _path(published: PublishedSource, number: int) -> str:
+    # Named so that no file of the sixteen slots v0.12 kept, `00.json` to `15.json`, is one.
+    return f"{_directory(published)}/pull-{number}.json"
 
 
 def _digest(document: ChangeSetDocument) -> str:
@@ -145,6 +154,7 @@ def _digest(document: ChangeSetDocument) -> str:
 
 def _read(
     published: PublishedSource,
+    number: int,
     key: tuple[str, ...],
     *,
     epoch: str | None = None,
@@ -153,10 +163,10 @@ def _read(
         if not private_directory_is_writable(published.home, _directory(published)):
             return None
         if epoch is None:
-            epoch = _epoch(published, key)
+            epoch = _epoch(published, number)
         data = read_bytes_bounded(
             published.home,
-            _path(published, key),
+            _path(published, number),
             max_bytes=MAX_MANIFEST_RECORD_BYTES,
             shared="refuse",
         )
@@ -178,7 +188,11 @@ def _read(
 
 
 def _write(
-    published: PublishedSource, key: tuple[str, ...], answer: ResolvedManifest, epoch: str
+    published: PublishedSource,
+    number: int,
+    key: tuple[str, ...],
+    answer: ResolvedManifest,
+    epoch: str,
 ) -> None:
     document = ChangeSetDocument(
         schema=FILE_DIFF_SCHEMA,
@@ -194,37 +208,34 @@ def _write(
     if len(data) > MAX_MANIFEST_RECORD_BYTES:
         return
     ensure_private_directory(published.home, _directory(published))
-    write_private_file_atomic(published.home, _path(published, key), data)
+    write_private_file_atomic(published.home, _path(published, number), data)
 
 
-def invalidate_pull_manifest(published: PublishedSource, pair: tuple[str, str]) -> None:
-    """Invalidate disposable metadata derived from a detected corrupt comparison.
+def invalidate_pull_manifest(published: PublishedSource, number: int) -> None:
+    """Invalidate the manifest pull request *number* keeps, after a detected corrupt
+    comparison.
 
     The private atomic writer publishes an invalid cache marker instead of deleting
     through an unchecked path. A later read recomputes it. Refusals are reported by the
     caller; a failed invalidation must not be presented as successful repair. An epoch
-    beside the bank invalidates this slot and its older in-flight computations,
-    even when the bank itself cannot be written. Epoch publication must succeed.
+    beside the bank invalidates this pull request's manifest and its older in-flight
+    computations, even when the bank itself cannot be written. Epoch publication must
+    succeed.
     """
-    location = GitLocation.revision(
-        RepositoryStoreTarget(published.git_dir, published.object_format), pair[1]
-    )
-    intent = {"left": pair[0], "right": pair[1], "base_policy": "merge_base"}
-    key = comparison_cache_key(location, intent, store_tag(published.git_dir))
-    assert key is not None
     # Invalidation must not depend on whether the current reader can adopt or even
-    # inspect the slot. Evicting a colliding disposable entry is harmless.
+    # inspect the manifest, whichever comparison it holds: it is disposable.
     slot_error: OSError | PrivateStorageError | None = None
     try:
-        write_private_file_atomic(published.home, _path(published, key), b"{}")
+        write_private_file_atomic(published.home, _path(published, number), b"{}")
     except (OSError, PrivateStorageError) as error:
         slot_error = error
     try:
-        # Advance even when the slot was cleared: a computation already in flight can
+        # Advance even when the manifest was cleared: a computation already in flight can
         # publish afterward. Its captured old epoch must remain a miss. This also
-        # invalidates an untouched slot when only the bank is read-only.
+        # invalidates an untouched manifest when only the bank is read-only.
+        ensure_private_directory(published.home, _epochs(published))
         write_private_file_atomic(
-            published.home, _epoch_path(published, key), secrets.token_hex(32).encode("ascii")
+            published.home, _epoch_path(published, number), secrets.token_hex(32).encode("ascii")
         )
     except (OSError, PrivateStorageError) as error:
         if slot_error is not None:
@@ -233,7 +244,11 @@ def invalidate_pull_manifest(published: PublishedSource, pair: tuple[str, str]) 
 
 
 async def load_pull_manifest(
-    published: PublishedSource, source: GitDiffSource, intent: dict[str, Any], key: tuple[str, ...]
+    published: PublishedSource,
+    number: int,
+    source: GitDiffSource,
+    intent: dict[str, Any],
+    key: tuple[str, ...],
 ) -> ResolvedManifest:
     """Reuse one matching manifest, or compute and heal it. Never fetch the network.
 
@@ -241,7 +256,7 @@ async def load_pull_manifest(
     ready result in the comparison's memory cache.
     """
     try:
-        epoch = await asyncio.to_thread(_current_epoch, published, key)
+        epoch = await asyncio.to_thread(_current_epoch, published, number)
     except (OSError, RecordError, PrivateStorageError):
         epoch = None
     loop = asyncio.get_running_loop()
@@ -250,12 +265,14 @@ async def load_pull_manifest(
         if flights is None:
             flights = _FLIGHTS[loop] = LoadingCache(max_values=0)
     return await flights.get(
-        (*key, epoch or ""), lambda: _load(published, source, intent, key, epoch)
+        (str(number), *key, epoch or ""),
+        lambda: _load(published, number, source, intent, key, epoch),
     )
 
 
 async def _load(
     published: PublishedSource,
+    number: int,
     source: GitDiffSource,
     intent: dict[str, Any],
     key: tuple[str, ...],
@@ -263,7 +280,11 @@ async def _load(
 ) -> ResolvedManifest:
     # Check the store before using a persisted result.
     resolved = await source.resolve(intent)
-    kept = None if epoch is None else await asyncio.to_thread(_read, published, key, epoch=epoch)
+    kept = (
+        None
+        if epoch is None
+        else await asyncio.to_thread(_read, published, number, key, epoch=epoch)
+    )
     if kept is not None and kept.resolved == resolved:
         return kept
     answer = ResolvedManifest(resolved, await source.manifest(resolved))
@@ -271,7 +292,7 @@ async def _load(
         if epoch is not None:
             # Capture before computing, never after: a concurrent invalidation must also
             # invalidate a manifest whose raw listing started before it.
-            await asyncio.to_thread(_write, published, key, answer, epoch)
+            await asyncio.to_thread(_write, published, number, key, answer, epoch)
     except (OSError, PrivateStorageError):
         # Persistence is disposable. A read-only cache still serves the computed answer.
         log.debug("could not retain a pull-request manifest")
@@ -279,7 +300,7 @@ async def _load(
 
 
 async def shared_pull_manifest(
-    published: PublishedSource, base: str, head: str, *, retain_memory: bool = True
+    published: PublishedSource, number: int, base: str, head: str, *, retain_memory: bool = True
 ) -> ResolvedManifest:
     location = GitLocation.revision(
         RepositoryStoreTarget(published.git_dir, published.object_format), head
@@ -289,7 +310,7 @@ async def shared_pull_manifest(
     assert key is not None
 
     async def load() -> ResolvedManifest:
-        return await load_pull_manifest(published, GitDiffSource(location), intent, key)
+        return await load_pull_manifest(published, number, GitDiffSource(location), intent, key)
 
     return await shared_comparison_manifest(key, load) if retain_memory else await load()
 
@@ -300,6 +321,8 @@ async def prepare_pull_manifest(published: PublishedSource, record: PullRecord) 
     if comparison is None:
         return
     try:
-        await shared_pull_manifest(published, comparison.base, comparison.head, retain_memory=False)
+        await shared_pull_manifest(
+            published, record.number, comparison.base, comparison.head, retain_memory=False
+        )
     except (DiffSourceError, GitError):
         log.debug("could not prepare pull-request %s's manifest", record.number)

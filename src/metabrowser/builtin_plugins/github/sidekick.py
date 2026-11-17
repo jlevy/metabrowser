@@ -348,7 +348,7 @@ async def pull_comparison_handler(request: Request) -> Response:
         request,
         GitLocation.revision(target, right),
         max_initial_files=INITIAL_PULL_FILES,
-        manifest_loader=partial(load_pull_manifest, published),
+        manifest_loader=partial(load_pull_manifest, published, number),
     )
 
     if response.status_code == 409 and any(
@@ -356,7 +356,7 @@ async def pull_comparison_handler(request: Request) -> Response:
         for failure in observed_object_failures.pending(target, (left, right))
     ):
         try:
-            await asyncio.to_thread(invalidate_pull_manifest, published, (left, right))
+            await asyncio.to_thread(invalidate_pull_manifest, published, number)
         except (OSError, PrivateStorageError):
             return JSONResponse(
                 {

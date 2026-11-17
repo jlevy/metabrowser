@@ -47,7 +47,7 @@ import pytest
 from metabrowser import http_caching
 from metabrowser.builtin_plugins.diff import sidekick as diff_sidekick
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
-from metabrowser.builtin_plugins.github import pull_list, pull_manifest, pulls
+from metabrowser.builtin_plugins.github import pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 from metabrowser.cache.urls import GitSource
@@ -686,6 +686,37 @@ def test_a_diff_summary_answers_from_disk_after_the_build_changed(
     _summary(built, ran.result)
 
 
+def test_every_pull_requests_diff_summary_answers_from_disk(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Each pull request keeps its own manifest, so preparing one replaces no other's.
+
+    The bank was sixteen direct-mapped slots, where a repository's next pull requests
+    replaced each other's manifests, and one replaced was listed by Git again.
+    """
+
+    origin = build_origin(tmp_path / "origin")
+    numbers = (7, 8, 10)
+    with pytest.MonkeyPatch.context() as online:
+        _online(online, tmp_path, origin, files_scenario(origin))
+        for number in numbers:
+            fetched = run_metab([f"{CANONICAL}/pull/{number}", "--no-serve"])
+            assert fetched.exit_code == 0, fetched.stderr
+        routes = {
+            number: run_metab([CANONICAL, "--api", f"{ROUTES}/pull?number={number}"]).payload()[
+                "comparison_route"
+            ]
+            for number in numbers
+        }
+    assert len(set(routes.values())) == len(numbers), routes
+    spawns = _offline(monkeypatch, tmp_path)
+    for number, route in routes.items():
+        ran = run_offline(spawns, ["--api", route])
+        assert (ran.result.exit_code, ran.network, ran.gh, ran.sockets) == (0, [], [], []), number
+        assert answer(ran.result)["manifest"]["files"], number
+        assert not any("--raw" in argv for argv in ran.git_args), f"{number} was listed again"
+
+
 # ── Gaps: what a surface draws that does not answer from disk ──────────────────────
 
 
@@ -698,31 +729,6 @@ def _avatar_gap(built: Built, patch: pytest.MonkeyPatch, _tmp: Path) -> None:
     assert KEPT_AVATAR in urls
     if not all(each.startswith("/") for each in urls):
         raise StillAGap("the image is GitHub's, held only by the browser's HTTP cache")
-
-
-def _evicted_manifest_gap(_built: Built, patch: pytest.MonkeyPatch, tmp: Path) -> None:
-    # One slot makes certain what MANIFEST_SLOTS make likely past a few pull requests.
-    patch.setattr(pull_manifest, "MANIFEST_SLOTS", 1)
-    origin = build_origin(tmp / "origin")
-
-    def fetch(number: int) -> dict[str, Any]:
-        with pytest.MonkeyPatch.context() as online:
-            _online(online, tmp, origin, files_scenario(origin))
-            fetched = run_metab([f"{CANONICAL}/pull/{number}", "--no-serve"])
-            assert fetched.exit_code == 0, fetched.stderr
-            return run_metab([CANONICAL, "--api", f"{ROUTES}/pull?number={number}"]).payload()
-
-    envelope = fetch(7)
-    with pytest.MonkeyPatch.context() as control:
-        ran = run_offline(_offline(control, tmp), ["--api", envelope["comparison_route"]])
-        assert not any("--raw" in argv for argv in ran.git_args), "7 missed before 10 came"
-    fetch(10)
-    spawns = _offline(patch, tmp)
-    ran = run_offline(spawns, ["--api", envelope["comparison_route"]])
-    assert (ran.result.exit_code, ran.network, ran.gh) == (0, [], [])
-    _summary(_built, ran.result)
-    if any("--raw" in argv for argv in ran.git_args):
-        raise StillAGap("pull request 10's manifest took 7's slot, so Git listed 7 again")
 
 
 @dataclass(frozen=True)
@@ -741,13 +747,6 @@ GAPS: Final[tuple[Gap, ...]] = (
         "avatars.githubusercontent.com and only the browser's HTTP cache keeps it "
         "(the pull request's chrome in docs/design-system.md).",
         _avatar_gap,
-    ),
-    Gap(
-        "Diff summary after another pull request took its manifest slot",
-        "The bank beside the store has MANIFEST_SLOTS direct-mapped slots "
-        "(pull_manifest.py), so a manifest another pull request's replaced is listed by "
-        "Git again on its next read: local, but it costs Git's raw listing.",
-        _evicted_manifest_gap,
     ),
 )
 

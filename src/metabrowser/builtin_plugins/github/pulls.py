@@ -1115,7 +1115,7 @@ async def _recover_comparison(
     failures = observed_object_failures.pending(target, pair)
     if any(failure.state == "object_corrupt" for failure in failures):
         try:
-            await asyncio.to_thread(invalidate_pull_manifest, published, pair)
+            await asyncio.to_thread(invalidate_pull_manifest, published, number)
         except (OSError, PrivateStorageError) as exc:
             raise PullDataError(
                 "cache_unwritable", "the comparison cache could not discard damaged metadata"
