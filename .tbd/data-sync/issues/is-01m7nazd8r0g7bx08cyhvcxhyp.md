@@ -5,11 +5,11 @@ title: Remove the npm audit exception for GHSA-fc5q-39xc-vjpf (picomatch ReDoS v
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-11-17T18:05:46.135Z
-updated_at: 2026-11-17T18:05:46.135Z
+updated_at: 2026-11-17T18:17:13.502Z
 ---
 The npm audit gate tolerates exactly one advisory, GHSA-fc5q-39xc-vjpf (high, picomatch ReDoS through single-branch repeated extglobs, affects picomatch <= 4.0.7, no patched release when the exception was taken on 2026-11-17). The owner approved the narrow exception on 2026-11-17; mb-3ncz is the CI failure it resolves.
 
@@ -20,3 +20,7 @@ Remove it when either holds:
 - tryscript (first-party) drops tinyglobby/picomatch or pins a fixed picomatch: take that release under the first-party review in SUPPLY-CHAIN-SECURITY.md, then delete the exception the same way.
 
 The exception lapses by itself, failing the audit, if the advisory's affected range, the installed picomatch version, or the package path npm reports changes; a lapse is a reason to re-review, not to widen the exception.
+
+## Notes
+
+The exception landed with jlevy/metabrowser#523 (branch claude/npm-audit-picomatch-exception, head 7915437bf). It resolves the CI failure mb-3ncz.
