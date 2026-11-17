@@ -33,10 +33,12 @@ ROOT_FIXTURE = APP / "scripts/fixtures/AppleIncRootCertificate.cer"
 SUPPLY_CHAIN = REPO_ROOT / "SUPPLY-CHAIN-SECURITY.md"
 RUNBOOK = APP / "README.md"
 
-# The script makes eight RSA keys, runs notarize.sh about ten times and the doctor about
-# forty, each a few dozen processes: 18 s on a loaded 4-CPU Linux container (2026-11-17),
-# so the test raises its budget past the suite's 60 s, and the inner bound sits below it
-# to stop a hang with the script's output.
+# The script makes eight RSA keys and runs notarize.sh about ten times, the doctor about
+# forty, and check-release.sh about a dozen, each a few dozen processes. With the release
+# checks' cases (140 to 150 of them) it took 9 to 14 s in Linux CI's test jobs, on 4-CPU
+# runners, and 16 to 33 s on loaded Macs (2026-11-17), so the test raises its budget past
+# the suite's 60 s, and the inner bound sits below it to stop a hang with the script's
+# output.
 LOGIC_TIMEOUT_S = 100
 LOGIC_BUDGET_S = 120
 
