@@ -292,11 +292,13 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_git_commit_summary_chrome.py`, `tests/test_github_pull_header_chrome.py`,
   `tests/test_github_pull_text_chrome.py`, `tests/test_github_pulls_stacks_chrome.py`,
   `tests/test_nav_metadata_chrome.py`, `tests/test_page_header_chrome.py`, and
-  `tests/test_staged_fonts_chrome.py`; `tests/test_github_pull_timeline_chrome.py`,
-  which reads a pull request’s Conversation timeline’s type, spacing, and line from the
-  boxes Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`,
-  which reads the face documents and chrome prose are drawn in under each reading font
-  and font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
+  `tests/test_staged_fonts_chrome.py`; `tests/test_files_totals_stable_chrome.py`, which
+  records every frame of the Files navigation from the document’s start to settled and
+  holds that nothing in it moves; `tests/test_github_pull_timeline_chrome.py`, which
+  reads a pull request’s Conversation timeline’s type, spacing, and line from the boxes
+  Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`, which
+  reads the face documents and chrome prose are drawn in under each reading font and
+  font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code

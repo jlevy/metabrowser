@@ -2225,13 +2225,25 @@ html.theme-anim .menu {
    listing. Holds the served-root file count + total size. Rendered by
    loadTree() in app.js as a navigation metadata line (`.nav-metadata`, under
    "Navigation metadata line" below), which owns its box, type, and spacing;
-   the spans inside it carry colour only.
+   the spans inside it carry colour and where the ignored count goes only.
 
-   The settled height is not a constant: `.tree-summary-split` reports tracked
-   and ignored files separately and wraps to a second line in a narrow pane.
-   The line reserves one line box, not two, which would leave dead space in
-   every other case, so the wrap is tracked as H54 instead -- shape the pending
-   row like the settled one. */
+   The ignored count is a line of its own (`flex-basis: 100%`), "+ 248,189
+   ignored (10.1 GB)" under the tracked one, and one line in every pane: in one
+   too narrow for it its size is cut short at its end rather than wrapped, as
+   "+ 7,906 ignored (133.4 …" at the 180 px minimum, where it took a second
+   line of its own. So the band is one line with nothing ignored and two with
+   something, whatever the figures' lengths. As half of one line it wrapped only
+   when the two halves outgrew the pane: in the default 300 px pane the tree
+   moved down 19.5 px when the split arrived (mb-h3hc, measured in headless
+   Chrome 152 on 2026-11-16; H54 before it). While the line cannot tell yet
+   whether anything is ignored, it holds that line with the shell's pending
+   placeholder, after the quiet period (`.tree-summary-ignored-pending`, app.js
+   `rootTotals`, navigation.js `createRootTotals`); the shell inlines the
+   root's totals, so that is only a shell drawn before the walk finished the root.
+   A page keeps a line it has drawn: with nothing ignored it says so,
+   `.tree-summary-ignored-none`, "No ignored files", in the same box. Cut short,
+   the line's whole phrase is its tooltip (`data-tip-text`). The tracked count is
+   one line by the same rule (`.tree-summary-line`). */
 /* The ignored half is muted to the same degree the gitignored rows
    below it are, so the header reads at a glance as "this much is
    yours, that much is build output". */
@@ -2241,8 +2253,36 @@ html.theme-anim .menu {
 }
 .tree-summary-ignored {
   display: inline-flex;
+  flex-basis: 100%;
+  min-width: 0;
   align-items: baseline;
   gap: var(--nav-metadata-gap);
+  white-space: nowrap;
+}
+/* The tracked count's line keeps the same rule: one line, its size cut short at its end. */
+.tree-summary-line {
+  display: inline-flex;
+  flex-basis: 100%;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--nav-metadata-gap);
+  white-space: nowrap;
+}
+.tree-summary-line > :last-child,
+.tree-summary-ignored > .tree-summary-bytes {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The held ignored line: one line box of the line's type, its strut holding the
+   pending block (`.tally-pending`) across the middle of the line, where the count
+   will be, from the line's start, about as wide as a count of tens of thousands
+   with its size ("+ 7,898 ignored (132.5 MB)" is 11.5 em in the default font set). */
+.tree-summary-ignored-pending {
+  flex-basis: 100%;
+}
+.tree-summary-ignored-pending > .tally-pending {
+  width: min(100%, 11em);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns

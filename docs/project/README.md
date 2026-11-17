@@ -237,6 +237,8 @@ The first two are current checklists; the dated runs after them are records.
   in a real browser can judge, run before each release on the public-safe manual corpus
 - [macOS app hand checks](qa/qa-macos-app-hand-checks.md): what AppKit, WebKit, and
   macOS decide, checked against a built app after a change to the behavior they cover
+- [Files totals layout, 2026-11-16](qa/qa-2026-11-16-files-totals-layout.md): the
+  measurements behind the Files totals’ layout rule, before and after, in Chrome
 - [WebKit measurement gate, 2026-11-11](qa/qa-2026-11-11-webkit-measurement-gate.md):
   the app’s WebKit run against Chrome’s large-content bounds, which failed, with every
   figure and the print and drop checks

@@ -4,6 +4,22 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Files panel’s totals no longer move the tree when the count of ignored files
+  arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
+  ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
+  first frame, so a folder with ignored files shows both lines from the start and one
+  with none shows one.
+  In a pane too narrow for them, the tracked and ignored counts’ sizes are cut short at
+  their end instead of wrapping, and each line’s whole figure is its tooltip.
+  While a folder is still being scanned, the ignored line is held with a pulsing
+  placeholder, after a short quiet period, and the count fills it in place; if the
+  folder turns out to have nothing ignored, the line says “No ignored files” instead of
+  going away. An early count taken while the scan is still running no longer decides the
+  line. The tracked count no longer reads as the combined figure for a moment before the
+  ignored count arrives, and no longer steps back to an older figure when a slower count
+  arrives after a newer one.
+  See [Navigation Metadata Line](docs/design-system.md#navigation-metadata-line).
+
 - KPress moves to 0.3.8. The table of contents now follows the section you are reading
   in webviews without `IntersectionObserver` through KPress’s own fallback, which
   replaces Metabrowser’s, and a reader-pane reload on a URL with a fragment returns to

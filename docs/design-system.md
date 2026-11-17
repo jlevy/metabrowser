@@ -3998,10 +3998,10 @@ without a browser.
 ### Navigation Metadata Line
 
 Under each main tab’s toolbar, a line or two says what the list below holds and how
-current it is: the Files totals, “12,797 files (413.8 MB) + 248,189 ignored (10.1 GB)”,
-and the filter’s remarks under them; the Commits tally, “10,044 commits begun 1y ago”;
-and the Pulls count, “381 PRs on owner/repo”, over its connection line, “Updated just
-now” or what keeps the list from refreshing.
+current it is: the Files totals, “12,797 files (413.8 MB)” over “+ 248,189 ignored (10.1
+GB)”, and the filter’s remarks under them; the Commits tally, “10,044 commits begun 1y
+ago”; and the Pulls count, “381 PRs on owner/repo”, over its connection line, “Updated
+just now” or what keeps the list from refreshing.
 All of them are one component, `.nav-metadata` in `static/styles.css`. They were three
 recipes, and the reader saw it: 13px text 6px under the Files filters, 13px text centred
 in the Commits slot, and 12px muted text with no space above it under the Pulls filters.
@@ -4029,22 +4029,57 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **Pending.** A figure still being counted is the pending tally inside the span its
   figure will fill, so it sits across the middle of the line, where the text will.
   On Commits the server ships it so, and the tally replaces it in place.
+- **The Files totals.** The tracked count is the first line and the gitignored count a
+  line of its own under it.
+  Each is one line in every pane: in a pane too narrow for it, its size is cut short at
+  its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never wrapped, and its
+  whole phrase is its tooltip, which the shell shows only while it is cut
+  ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
+  decided by whether it has the ignored line, never by the figures’ lengths.
+  The shell inlines the root’s totals with its first rows (the root’s own entry carries
+  them, so they cost nothing to read), and the band paints at its settled height in the
+  first frame: two lines for a folder with something ignored, one for a folder with
+  nothing ignored. A shell drawn before the walk finished the root cannot tell whether
+  anything is ignored, so its band holds the ignored line with the shell’s pending
+  placeholder (`.tally-pending`), shown only after the quiet period
+  (`.mb-delayed-loading`), with its figures pending, and the count fills the held line
+  in place. Once the root’s entry has totals, the line is drawn from them only, and every
+  root upsert brings them current.
+  The server’s tally, its pass over every file, fills the line only while the entry has
+  none, and never with a provisional answer: mid-walk it can say “nothing ignored yet”
+  of a folder whose ignored files the walk has not reached, and a tally answered after
+  an upsert is older than it.
+  A page keeps the ignored line once it has drawn it: when the totals say nothing is
+  ignored, the line says so, “No ignored files”, in the same box, rather than go away
+  and move the tree. A reload of that folder draws the one-line band.
+  A folder that gains its first ignored file while it is open gains the line, as the
+  pull request header gains its labels row with its first label ([Layout](#layout));
+  that is the folder changing, not a count arriving late.
+  The [Files totals layout record](project/qa/qa-2026-11-16-files-totals-layout.md)
+  holds the measurements.
 - **Height.** Each line reserves its own line box before anything arrives.
   While a line’s text fits the pane, a pending tally, a count still being taken, and a
   settled one are one height, and the Pulls lines are one height from loading through a
   failure. Text wraps only when it is longer than the pane, and then the band grows by
-  the lines it needs: the Files split totals in a narrow pane (tracked as H54), a Pulls
-  remedy, which keeps its whole command, as the pull request header’s does, and the
-  Commits tally in the toolbar slot, between its phrases, the slot growing with it
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)); at the default pane width the
-  remedies for an unreachable GitHub, a gh that is not signed in, and a missing gh each
-  take a second line.
+  the lines it needs: a Pulls remedy, which keeps its whole command, as the pull request
+  header’s does, and the Commits tally in the toolbar slot, between its phrases, the
+  slot growing with it ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)); at the
+  default pane width the remedies for an unreachable GitHub, a gh that is not signed in,
+  and a missing gh each take a second line.
 
 The built-in Pulls tab uses the class; its stylesheet lays out only the lines’ spans.
 No stylesheet but the component’s sets anything on a line element beyond how a long word
 in it breaks. `tests/test_nav_metadata_line.py` holds the markup and every shipped
 stylesheet to that, however a rule is scoped.
-`tests/dom/tree-summary-line-session.js` records what the Files line says in each state.
+`tests/dom/tree-summary-line-session.js` records what the Files line says in each state,
+the held ignored line and “No ignored files” among them, and runs the reducer the shell
+draws it from, `createRootTotals` in `static/navigation.js`, through what reaches a
+page: a provisional tally, a tally older than an upsert, a Git revision.
+`tests/test_files_totals_stable_chrome.py` records, in Chrome, every frame of the
+navigation from the document’s start to settled, for a folder with ignored files and one
+with none, with the tally answered at once and held, in both themes, in the default pane
+and the narrowest, with the shell’s inlined totals taken out, and with a provisional
+first tally; and reads each line’s tooltip, which shows only while the line is cut.
 `tests/test_nav_metadata_chrome.py` measures, in Chrome, at the default pane width and
 at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
@@ -4810,9 +4845,11 @@ own toolbar at one height while each is one line (the Files filters, the Commits
 the Pulls filters), the Commits tab from the server at a repository’s root, a scrollbar
 gutter on the tree and the preview pane, the shortcut strip’s row, a view tab bar in
 every file, the print button’s and a run badge’s widths, the Pulls tab’s status and
-connection lines and its age column, and the pull request header’s rows, but for a
-labels row a pull request with no labels does not have ([Layout](#layout)). In a pane
-too narrow for a toolbar’s controls the toolbar wraps instead of cutting them
+connection lines and its age column, the Files totals’ ignored line, which a folder with
+nothing ignored does not have ([Navigation Metadata Line](#navigation-metadata-line)),
+and the pull request header’s rows, but for a labels row a pull request with no labels
+does not have ([Layout](#layout)). In a pane too narrow for a toolbar’s controls the
+toolbar wraps instead of cutting them
 ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)), and the slot is as tall as the
 lines of the toolbar in front.
 There a tab switch can move the panel under the slot, and the Commits slot gains a line
