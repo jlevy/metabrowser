@@ -88,7 +88,8 @@ missing is narrower:
   the ZIP and manifest there once.
 - An Intel or universal build: the app is arm64 and `ARCHES="arm64 x86_64"` already
   builds a universal one if wanted.
-- A DMG window layout, which stays a gap in the app README for the reason it gives.
+- A DMG window layout: a fixed one needs a `.DS_Store` in the image, which Apple’s tools
+  cannot write, and scripting Finder to make one cannot be reproduced in CI.
 - Signing nested code for the app-managed runtime, which changes the entitlements
   question and belongs to that work (`mb-lrcd`).
 
@@ -880,8 +881,8 @@ owner’s Mac.
 
 - [Native macOS app plan](plan-2026-11-10-native-macos-app.md) and its bead `mb-e9fm`
 - [macOS packaging brief](../../research/research-2026-11-08-macos-app-packaging.md)
-- [apps/macos/README.md](../../../../apps/macos/README.md), Building a Release and What
-  a Downloader Experiences
+- [apps/macos/README.md](../../../../apps/macos/README.md), Building a Release, and the
+  [macOS app guide](../../../macos-app.md), for what a downloader meets
 - [Publishing](../../../publishing.md) and
   [Supply-Chain Security](../../../../SUPPLY-CHAIN-SECURITY.md)
 - Apple:
