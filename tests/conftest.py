@@ -76,8 +76,9 @@ def pytest_configure(config: pytest.Config) -> None:
     # The hooks that judge a skip against its tier, and a marker against its meaning; see
     # tests/suite_gates.py.
     config.pluginmanager.register(suite_gates)
-    # The chrome marker and --shard; see tests/suite_tiers.py.
+    # The chrome marker, --shard, and an empty tier; see tests/suite_tiers.py.
     config.pluginmanager.register(suite_tiers)
+    config.pluginmanager.register(suite_tiers.EmptyTiers(), "suite-empty-tiers")
     # --file-durations; see tests/suite_timing.py.
     config.pluginmanager.register(suite_timing.FileTimes(), "suite-file-times")
     # Reports a pytest-xdist worker can send; see tests/suite_workers.py.

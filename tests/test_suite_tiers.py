@@ -32,6 +32,7 @@ from tests.suite_tiers import (
     TIERS,
     Shard,
     dealt,
+    empty_by_selection,
     parse_shard,
 )
 from tests.suite_workers import encodable
@@ -312,3 +313,75 @@ def test_a_report_s_strings_are_made_encodable_and_nothing_else_changes() -> Non
         "nodeid": "tests/test_a.py::test_b",
         "keywords": {"b": 1},
     }
+
+
+# ── A tier that selects no test ────────────────────────────────────────────────
+
+
+def test_only_a_tier_or_shard_that_deselected_everything_is_excused() -> None:
+    assert empty_by_selection(SERIAL_TIER, False, 3)
+    assert empty_by_selection(f"  {SERIAL_TIER} ", False, 3)
+    assert empty_by_selection("", True, 1)
+    assert not empty_by_selection(SERIAL_TIER, False, 0)
+    assert not empty_by_selection("serail and not chrome", False, 3)
+    assert not empty_by_selection("", False, 3)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "status"),
+    [
+        # The serial tier, with -k leaving it nothing: a tier that holds no test.
+        (["-m", SERIAL_TIER, "-k", "probe_a_plain_test"], 0),
+        # A shard numbered past what -k left: a shard that holds none.
+        (["-k", "probe_a_plain_test", "--shard=3/3"], 0),
+        # A misspelt tier still fails.
+        (["-m", "serail and not chrome"], 5),
+        # So does a run that collected nothing at all.
+        (["-m", SERIAL_TIER, "-o", "python_functions=nothing_*"], 5),
+    ],
+    ids=["empty tier", "empty shard", "misspelt tier", "nothing collected"],
+)
+def test_an_empty_tier_passes_and_a_mistaken_selection_does_not(
+    tmp_path: Path, arguments: list[str], status: int
+) -> None:
+    completed = _session(tmp_path, "-q", *arguments)
+
+    assert completed.returncode == status, completed.stdout + completed.stderr
+    excused = "selects no test here, which a tier may" in completed.stdout
+    assert excused == (status == 0), completed.stdout
+
+
+# ── The ADMITTED_GIT_TESTS gate, in a session ──────────────────────────────────
+
+_MARK_EVERY_TEST_SERIAL = """
+import pytest
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(items):
+    for item in items:
+        item.add_marker(pytest.mark.serial(reason="a probe of the admitted-git gate"))
+"""
+
+
+def test_a_serial_test_in_an_admitted_git_module_fails_in_a_real_session(tmp_path: Path) -> None:
+    """The gate reads the real list, so a plugin marks a listed module's test ``serial``."""
+
+    (tmp_path / "mark_every_test_serial.py").write_text(_MARK_EVERY_TEST_SERIAL, encoding="utf-8")
+    module = "tests/test_admitted_git_gate.py"
+    assert module in (admitted_git_tests(ROOT) or ())
+    session = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:sugar"]
+    probe = ["-p", "mark_every_test_serial", f"--basetemp={tmp_path / 'nested'}", "-rf"]
+    completed = subprocess.run(
+        [*session, *probe, "-k", "the_required_admitted_release_passes", module],
+        cwd=ROOT,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path), str(ROOT)])},
+        capture_output=True,
+        text=True,
+        timeout=MAX_INNER_BOUND_S,
+        check=False,
+    )
+
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert f"{module} is in ADMITTED_GIT_TESTS" in completed.stdout
+    assert "a serial test there would not have the machine to itself" in completed.stdout

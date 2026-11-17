@@ -20,6 +20,16 @@ markers once, so every test is in exactly one tier whatever is marked.
 node-ID order is ``I`` modulo ``N``. The ``N`` parts are disjoint and together are the
 tier by construction, need no record of durations, and deal one module's tests across
 parts, so one slow module does not set a part's floor.
+
+A tier or a shard may hold no test, as the serial tier will once its last module no
+longer needs the machine, and a shard does when it is numbered past the tier's size.
+pytest exits 5 when nothing is left to run, which would fail ``make test`` with no test
+failing. ``EmptyTiers`` turns that into success only where the emptiness is a tier's:
+``-m`` is one of ``TIERS`` exactly, or ``--shard`` is given, and the selection itself
+deselected the tests this process collected. A misspelt ``-m`` expression, or a run that
+collected nothing at all, still exits 5. Under pytest-xdist the workers deselect and the
+controlling process counts nothing, so an empty parallel tier still fails, which it can
+only be by mistake.
 """
 
 from __future__ import annotations
@@ -117,3 +127,42 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     if dropped:
         config.hook.pytest_deselected(items=dropped)
     items[:] = [item for item, keep in zip(items, kept, strict=True) if keep]
+
+
+def empty_by_selection(markexpr: str, sharded: bool, deselected: int) -> bool:
+    """Whether a run that left no test to run is a tier or shard that holds none."""
+
+    return deselected > 0 and (" ".join(markexpr.split()) in TIERS or sharded)
+
+
+class EmptyTiers:
+    """Success, not exit 5, for a tier or a shard that selected no test."""
+
+    def __init__(self) -> None:
+        self.deselected = 0
+        self.excused = ""
+
+    def pytest_deselected(self, items: Sequence[pytest.Item]) -> None:
+        self.deselected += len(items)
+
+    @pytest.hookimpl(trylast=True)
+    def pytest_sessionfinish(self, session: pytest.Session, exitstatus: int) -> None:
+        if exitstatus != pytest.ExitCode.NO_TESTS_COLLECTED:
+            return
+        markexpr = str(session.config.getoption("markexpr") or "")
+        shard: Shard | None = session.config.getoption("shard")
+        if empty_by_selection(markexpr, shard is not None, self.deselected):
+            session.exitstatus = pytest.ExitCode.OK
+            chosen = " and ".join(
+                part
+                for part in (
+                    f"-m {markexpr!r}" if markexpr else "",
+                    f"--shard={shard}" if shard else "",
+                )
+                if part
+            )
+            self.excused = f"suite tiers: {chosen} selects no test here, which a tier may"
+
+    def pytest_terminal_summary(self, terminalreporter: pytest.TerminalReporter) -> None:
+        if self.excused:
+            terminalreporter.write_line(self.excused)

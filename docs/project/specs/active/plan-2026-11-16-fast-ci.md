@@ -660,7 +660,12 @@ pull requests. Phase 3 is independent of both.
 ### Phase 1: The Suite on Four Processors
 
 Expected: a `test` leg from 17 to 20 minutes to 10.5 to 13 (est.), with the workflow
-unchanged, since it calls `make test`.
+unchanged, since it calls `make test`. Measured: 14.3 to 15.7 minutes at the median, so
+the estimate was missed ([Phase 1 Measurements](#phase-1-measurements)). The Chrome
+tier, which this phase does not change, is the larger part of each leg, at 351 to 467 s;
+the top of that range came after `main` gained an 85-second Chrome test.
+The parallel tier’s factor, 2.0 to 2.2 against the 2.5 to 3.2 the estimate assumed,
+accounts for the rest.
 
 - [x] `mb-a1le`: Add the `serial` and `chrome` markers, the `--shard` option, and their
   gates. `make test` still runs everything in one process.

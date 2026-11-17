@@ -254,6 +254,8 @@ cover each combination of the two markers once, so they partition the suite what
 marked.
 `--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
 by node ID, so that one tier can be split across machines.
+A tier or a shard that selects no test passes, with a line that says so; a `-m` that is
+not one of `TIERS`, or a run that collected nothing, still fails when nothing is left.
 
 `make test` runs the default tier as four targets, in this order, and each also runs
 alone, as a CI job can call it:

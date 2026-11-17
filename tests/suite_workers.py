@@ -16,8 +16,9 @@ prints every stack and exits the process, and on a worker that output is the wor
 own, which nothing shows. A worker of CI run 44033895259 ended so, as "node down: Not
 properly terminated", with no trace of its test. So ``StackDumps`` has faulthandler
 write every thread's stack to the stderr the run started with, which reaches the log
-from a worker too, ``DUMP_LEAD_S`` before the test's own budget: its ``timeout`` marker,
-or the suite's ``timeout``. A test that keeps to its budget prints nothing.
+from a worker too, ``DUMP_LEAD_S`` before the test's own budget, read as pytest-timeout
+reads it: the test's ``timeout`` marker, then ``--timeout``, then ``PYTEST_TIMEOUT``, then
+the suite's ``timeout``. A test that keeps to its budget prints nothing.
 """
 
 from __future__ import annotations
@@ -33,6 +34,8 @@ import pytest
 # How long before a test's budget ends its stacks are written: time for faulthandler's
 # own thread to write every stack before the timeout's thread exits the process.
 DUMP_LEAD_S: Final = 5.0
+# pytest-timeout's own variable for the budget, between ``--timeout`` and the ini file.
+TIMEOUT_ENV: Final = "PYTEST_TIMEOUT"
 
 
 def encodable(value: object) -> object:
@@ -64,14 +67,22 @@ def pytest_report_to_serializable() -> Generator[
 
 
 def budget_of(item: pytest.Item) -> float:
-    """The seconds pytest-timeout gives *item*: its closest marker's, or the suite's."""
+    """The seconds pytest-timeout gives *item*, found in the order it looks: the closest
+    marker, then the command line, then ``PYTEST_TIMEOUT``, then the configuration."""
 
     marker = item.get_closest_marker("timeout")
     if marker is not None:
         given = marker.args[0] if marker.args else marker.kwargs.get("timeout")
         if given is not None:
             return float(given)
-    return float(item.config.getini("timeout") or 0)
+    for given in (
+        item.config.getoption("timeout", None),
+        os.environ.get(TIMEOUT_ENV) or None,
+        item.config.getini("timeout"),
+    ):
+        if given is not None and given != "":
+            return float(given)
+    return 0.0
 
 
 class StackDumps:
