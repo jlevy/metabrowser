@@ -15,19 +15,28 @@ class InventoryProvider(StrEnum):
     PYTHON = "python"
 
 
+def resolve_inventory_provider(provider: InventoryProvider | str) -> InventoryProvider:
+    """The shipped provider *provider* names, ignoring case and surrounding space.
+
+    An unknown name raises `ValueError` rather than falling back to another provider.
+    """
+
+    normalized = str(provider).strip().lower()
+    try:
+        return InventoryProvider(normalized)
+    except ValueError as error:
+        raise ValueError(f"unknown inventory provider: {provider!r}") from error
+
+
 def create_inventory_backend(
     provider: InventoryProvider | str = InventoryProvider.PYTHON,
 ) -> InventoryBackend:
     """Construct the selected backend or fail explicitly for an unknown name."""
 
-    normalized = str(provider).strip().lower()
-    try:
-        selected = InventoryProvider(normalized)
-    except ValueError as error:
-        raise ValueError(f"unknown inventory provider: {provider!r}") from error
+    selected = resolve_inventory_provider(provider)
     if selected is InventoryProvider.PYTHON:
         return PythonInventoryBackend()
     assert_never(selected)
 
 
-__all__ = ["InventoryProvider", "create_inventory_backend"]
+__all__ = ["InventoryProvider", "create_inventory_backend", "resolve_inventory_provider"]

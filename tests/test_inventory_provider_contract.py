@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import functools
 import inspect
 import itertools
 import os
@@ -91,11 +92,13 @@ from metabrowser.inventory_engine.contract import (
     native_inventory_name,
     require_canonical_inventory_path,
 )
-from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
+from metabrowser.inventory_engine.factory import InventoryProvider, create_inventory_backend
 from metabrowser.wire_models import validate_rollup_result
+from tests.inventory_harness import selected_inventory_provider
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
+GOLDEN_DIR = REPO_ROOT / "tests/golden"
 # Bound transient watcher churn so this conformance case cannot hang.
 _PROVIDER_PAGE_ATTEMPTS = 3
 
@@ -111,7 +114,15 @@ EXPECTED_QUERIES = {
     "diagnostics": DiagnosticsQuery,
 }
 
-PROVIDER_FACTORIES: tuple[Any, ...] = (pytest.param(PythonInventoryBackend, id="python"),)
+# The provider `METABROWSER_INVENTORY_PROVIDER` selects, built by the sealed factory, so
+# the registry below runs against any shipped provider by setting that variable.
+SELECTED_PROVIDER = selected_inventory_provider()
+PROVIDER_FACTORIES: tuple[Any, ...] = (
+    pytest.param(
+        functools.partial(create_inventory_backend, SELECTED_PROVIDER),
+        id=SELECTED_PROVIDER.value,
+    ),
+)
 
 PROVIDER_CONFORMANCE_TESTS = frozenset(
     {
@@ -124,6 +135,7 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
         "test_filtered_tree_and_recent_share_filter_semantics_before_caps",
         "test_grouped_tree_answers_each_group_as_its_filtered_tree",
+        "test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks",
         "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
         "test_catalog_pages_are_lossless_without_suffix_counts",
         "test_provider_applies_work_bounds_to_continuation_pages",
@@ -189,16 +201,72 @@ def test_architecture_document_lists_every_registered_query() -> None:
         assert f"| `{kind}` | `{query_type.__name__}` |" in document
 
 
+def _is_factory_parametrized(test: object) -> bool:
+    return any(
+        mark.name == "parametrize" and mark.args and mark.args[0] == "provider_factory"
+        for mark in getattr(test, "pytestmark", ())
+    )
+
+
+def _documented_conformance_cases(document: str) -> set[str]:
+    """The test names the architecture document's conformance table lists."""
+
+    _before, _heading, section = document.partition("\n## Provider Conformance Registry\n")
+    table, _next, _rest = section.partition("\n## ")
+    return {
+        line.removeprefix("| `").removesuffix("` |")
+        for line in table.splitlines()
+        if line.startswith("| `test_") and line.endswith("` |")
+    }
+
+
 def test_architecture_document_registers_every_provider_conformance_case() -> None:
+    """The registry, the factory-parametrized cases, and the document's table agree.
+
+    In both directions: a case parametrized over the provider factories but missing
+    from the registry would run against every provider without being part of the
+    adoption gate the document states, which is how one case once went unregistered.
+    """
+
     document = ARCHITECTURE_DOC.read_text(encoding="utf-8")
     for test_name in PROVIDER_CONFORMANCE_TESTS:
         assert test_name in globals(), f"missing provider conformance test: {test_name}"
-        marks = getattr(globals()[test_name], "pytestmark", ())
-        assert any(
-            mark.name == "parametrize" and mark.args and mark.args[0] == "provider_factory"
-            for mark in marks
-        ), f"provider conformance test is not factory-parametrized: {test_name}"
-        assert f"| `{test_name}` |" in document
+        assert _is_factory_parametrized(globals()[test_name]), (
+            f"provider conformance test is not factory-parametrized: {test_name}"
+        )
+    parametrized = {
+        name
+        for name, value in globals().items()
+        if name.startswith("test_") and _is_factory_parametrized(value)
+    }
+    assert parametrized - PROVIDER_CONFORMANCE_TESTS == set(), "unregistered conformance cases"
+    assert _documented_conformance_cases(document) == PROVIDER_CONFORMANCE_TESTS
+
+
+def _provider_pin_golden(provider: InventoryProvider) -> Path:
+    return GOLDEN_DIR / f"cli-api-provider-{provider.value}.tryscript.md"
+
+
+def test_each_shipped_provider_has_the_one_golden_that_pins_its_name() -> None:
+    """The goldens match the provider as `[PROVIDER]`, so they pass against any provider.
+
+    That leaves each name to one transcript per provider, which selects it and pins it.
+    A literal name anywhere else would fail every run against another provider for a
+    difference that is not a defect.
+    """
+
+    for provider in InventoryProvider:
+        text = _provider_pin_golden(provider).read_text(encoding="utf-8")
+        assert f'  METABROWSER_INVENTORY_PROVIDER: "{provider.value}"\n' in text
+        assert f'  "provider": "{provider.value}",\n' in text
+    pins = {_provider_pin_golden(provider) for provider in InventoryProvider}
+    for path in sorted(GOLDEN_DIR.glob("*.tryscript.md")):
+        if path in pins:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for provider in InventoryProvider:
+            for literal in (f'"provider": "{provider.value}"', f'"provider":"{provider.value}"'):
+                assert literal not in text, f"{path.name} pins {literal}; match [PROVIDER]"
 
 
 def test_lifecycle_transition_graph_is_explicit_and_terminal() -> None:
@@ -1248,7 +1316,7 @@ def test_provider_semantic_digest(
             ("tracked/README", "", 6),
             ("tracked/bundle.min.js", ".min.js", 4),
         ),
-        "diagnostics": ("python", "inventory-provider-v1"),
+        "diagnostics": (SELECTED_PROVIDER.value, "inventory-provider-v1"),
     }
     assert actual == expected, actual
 

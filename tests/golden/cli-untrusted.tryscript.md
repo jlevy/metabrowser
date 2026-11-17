@@ -10,6 +10,8 @@ env:
   METAB_UNTRUSTED: ""
   METAB_ACTIVE_CONTENT: ""
   METAB_ALLOW_EDITS: ""
+patterns:
+  PROVIDER: '[a-z][a-z0-9_-]*'
 before: >-
   mkdir -p trustroot &&
   printf '# Sample\n\nHello.\n' > trustroot/README.md &&
@@ -39,8 +41,8 @@ the transcript from recording whatever the surrounding shell happened to export.
 The default answers to both commands are in `cli-api-shell.tryscript.md` and
 `cli-show.tryscript.md`; read them beside these.
 
-The watcher values are host facts and startup transients, elided here for the reason
-`cli-api-shell.tryscript.md` states.
+The watcher values are host facts and startup transients, and the provider is matched as
+`[PROVIDER]`, both for the reasons `cli-api-shell.tryscript.md` states.
 
 ## Test: the capability block under `--untrusted`
 
@@ -62,7 +64,7 @@ status: 200
     "indexed_files": 2,
     "max_files": 500000,
     "truncated": false,
-    "provider": "python",
+    "provider": "[PROVIDER]",
     "contract": "inventory-provider-v1"
   },
   "events": {
@@ -137,7 +139,7 @@ status: 200
     "indexed_files": 2,
     "max_files": 500000,
     "truncated": false,
-    "provider": "python",
+    "provider": "[PROVIDER]",
     "contract": "inventory-provider-v1"
   },
   "events": {
@@ -189,7 +191,7 @@ status: 200
     "indexed_files": 1,
     "max_files": 500000,
     "truncated": false,
-    "provider": "python",
+    "provider": "[PROVIDER]",
     "contract": "inventory-provider-v1"
   },
   "events": {

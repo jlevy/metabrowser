@@ -27,6 +27,10 @@ restores them so `make golden-update` is a single reviewable step:
   available, and how far selection had got when the request landed
 * `[COUNT]` for the engine sequence in the pending-tally diagnostic, which counts
   internal change batches
+* `[PROVIDER]` for the inventory provider's name, in a transcript whose frontmatter
+  defines that pattern, so it passes against whichever provider
+  `METABROWSER_INVENTORY_PROVIDER` selects; a transcript that does not define it, such
+  as `cli-api-provider-python.tryscript.md`, pins the name
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -164,6 +168,12 @@ FIXUPS: list[tuple[str, str]] = [
     ),
 ]
 
+# The inventory provider's name, in JSON and in the compact JSON of a log line. Applied
+# only to a transcript whose frontmatter defines `PROVIDER` (`_PROVIDER_PATTERN`), so the
+# per-provider transcripts that pin a name keep it literal.
+_PROVIDER_PATTERN = re.compile(r"^  PROVIDER: ", re.MULTILINE)
+_PROVIDER_NAME = re.compile(r'("provider": ?")[a-z][a-z0-9_-]*(")')
+
 # Where a transcript shows a time taken from the wall clock, each with the lines that
 # place it. The time itself is the last group.
 WALL_CLOCK_SITES: list[str] = [
@@ -218,6 +228,8 @@ def fix_text(text: str, *, now: datetime | None = None) -> str:
     frontmatter, separator, body = text.partition("\n---\n")
     for pattern, replacement in FIXUPS:
         body = re.sub(pattern, replacement, body, flags=re.MULTILINE)
+    if _PROVIDER_PATTERN.search(frontmatter):
+        body = _PROVIDER_NAME.sub(r"\1[PROVIDER]\2", body)
     for site in WALL_CLOCK_SITES:
         body = re.sub(site, lambda found: _wall_clock(found, moment), body, flags=re.MULTILINE)
     body = re.sub(r"[ \t]+$", "", body, flags=re.MULTILINE)

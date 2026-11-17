@@ -39,7 +39,7 @@ from metabrowser.inventory_engine.runtime import (
     InventoryRuntime,
     inventory_provider_from_environment,
 )
-from tests.inventory_harness import inventory_harness
+from tests.inventory_harness import inventory_harness, selected_inventory_provider
 
 
 def test_perf_logging_writes_to_current_stderr(capsys) -> None:
@@ -272,7 +272,7 @@ def test_debug_inventory_reports_provider_contract_and_work(
             return json.loads(bytes(response.body))
 
     payload = asyncio.run(run_check())
-    assert payload["provider"] == "python"
+    assert payload["provider"] == selected_inventory_provider().value
     assert payload["contract"] == "inventory-provider-v1"
     assert payload["complete"] is True
     assert set(payload["work"]) == {
