@@ -31,15 +31,18 @@ GitHub counts each, #446's 28 layers say 754 files and #218's 46 say 1,925; accu
 file several layers touch counted once and its lines summed, they are 263 and 672, of which
 #218's 77 are files a later layer removed.
 
-**Settled or not.** A member's list can be missing, still filling, or read for an older head
-than the catalog's row or the record now names, as the files route's ``_head_moved`` asks;
-a refresh, which the head's move starts, replaces it later. The answer names such members
-in ``pending``, whatever its state, and the Pulls tab reads a stack that names any again,
-so a list cached or refreshed after a read reaches its heading (review B of #484, B1); an
-answer that names none holds until the stack's members or their heads change. Finding the
-moved members reads a record and a catalog row a member, each through its own parse cache:
-measured 2026-11-16 on #446's 28 members in this repository's cache at a load average of
-19 to 27, 22 to 36 ms, 303 ms the first time.
+**Settled or not.** A member's list can be missing, still filling, or one the files route
+would refresh, not ``current`` by its own rule (``list_settled``): a list from GitHub read
+for an older head than the record or the catalog's row now names, or a list from the local
+comparison of another comparison than the record names. A refresh replaces it later. The
+answer names such members in ``pending``, whatever its state, and the Pulls tab reads a
+stack that names any again, so a list cached or refreshed after a read reaches its heading
+(review B of #484, B1); a list from the local comparison waits on the record, as the row's
+tree does, so a push the catalog has seen and the record has not leaves it settled (review
+C, C1). An answer that names none holds until the stack's members or their heads change.
+Finding the unsettled members reads a refresh stamp, a record, and a catalog row a member:
+measured 2026-11-16 on #446's 19 cached lists in this repository's cache at a load average
+of 22 to 27, 17 ms, 274 ms the first time.
 
 The answer is ``current``, with the sums, or ``absent``, with a ``reason``: ``not_github``,
 no GitHub repository; ``not_stacked``, no stack of that number in the snapshot;
@@ -111,8 +114,8 @@ class StackChangeEnvelope(TypedDict):
     number: int
     # The members accumulated, bottom first, for an answer with sums.
     pulls: list[int]
-    # The members not settled: with no whole list, or with a list read for another head
-    # than the newest one known. A stack that names any is asked for again.
+    # The members not settled: with no whole list, or with a list the files route would
+    # refresh (`list_settled`). A stack that names any is asked for again.
     pending: list[int]
     revision: str | None
     files: int | None
@@ -191,10 +194,11 @@ def stack_lists(
 
 @dataclass(frozen=True, slots=True)
 class _Accumulated:
-    """What the members' lists accumulate to, and the head each list was read for."""
+    """What the members' lists accumulate to, and each list as read with its rows left
+    out, which says whether the files route takes it as current."""
 
     sums: ChangeSums
-    heads: tuple[str | None, ...]
+    lists: tuple[PullFileList, ...]
 
 
 def _read_and_accumulate(
@@ -212,7 +216,7 @@ def _read_and_accumulate(
     from metabrowser.builtin_plugins.github.pull_list import read_pull_files
 
     lacking: list[int] = []
-    heads: list[str | None] = []
+    headers: list[PullFileList] = []
 
     def lists() -> Iterator[PullFileList]:
         for member in members:
@@ -220,30 +224,29 @@ def _read_and_accumulate(
             if isinstance(listed, str) or not listed.complete:
                 lacking.append(member)
                 continue
-            heads.append(listed.head)
+            headers.append(listed.model_copy(update={"rows": (), "marks": ()}))
             yield listed
 
     sums = accumulate(lists())
     if lacking:
         return tuple(lacking)
-    return _Accumulated(sums, tuple(heads))
+    return _Accumulated(sums, tuple(headers))
 
 
-def _moved(
-    repository: ListedRepository, members: tuple[int, ...], heads: tuple[str | None, ...]
-) -> list[int]:
-    """The members whose list was read for another head than the newest one known, from
-    the catalog's row or the record, as the files route's ``_head_moved`` asks. Blocking
-    and bounded: a record and a catalog row a member, each through its own parse cache."""
+def _unsettled(repository: ListedRepository, lists: tuple[PullFileList, ...]) -> list[int]:
+    """The members whose list the files route would refresh: not ``current`` by its own rule
+    (``list_settled``), so a list from the local comparison waits on the record, as the row's
+    tree does, and one from GitHub on the newest known head (review C of #484, C1). Blocking
+    and bounded: a refresh stamp, a record, and a catalog row a member, each read within its
+    bound and the last two through their parse caches."""
 
-    from metabrowser.builtin_plugins.github.pull_files_route import known_head
+    from metabrowser.builtin_plugins.github.pull_files_route import list_settled
 
-    moved: list[int] = []
-    for member, head in zip(members, heads, strict=True):
-        newest, _base = known_head(repository.home, repository.slug, member)
-        if head is not None and newest is not None and newest != head:
-            moved.append(member)
-    return moved
+    return [
+        listed.number
+        for listed in lists
+        if not list_settled(repository.home, repository.slug, listed)
+    ]
 
 
 class _NotWhole(Exception):
@@ -281,7 +284,7 @@ async def stack_change(repository: ListedRepository | None, number: int) -> Stac
     sums = accumulated.sums
     if sums.short:
         return absent(number, "too_large")
-    pending = await asyncio.to_thread(_moved, repository, members, accumulated.heads)
+    pending = await asyncio.to_thread(_unsettled, repository, accumulated.lists)
     statuses = [StatusCount(status=status, count=count) for status, count in sums.statuses]
     content = [members, sums.files, sums.additions, sums.deletions, sums.exact, sums.statuses]
     revision = hashlib.sha256(json.dumps(content).encode()).hexdigest()[:32]

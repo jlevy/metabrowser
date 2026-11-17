@@ -624,6 +624,55 @@ async function headingStory() {
   }
 }
 
+/**
+ * When a stack whose answer keeps naming a member not yet settled is asked again: a minute
+ * on, then doubling, to the ceiling, then at the ceiling (review C of #484, C3). The minutes
+ * of each read over two and a half hours, a want each minute, as a panel paints.
+ */
+async function retrySchedule(lines, prefetch) {
+  const { createStackLines, createStackLineIndex, STACK_LINE_PENDING_MAX_MS } = lines;
+  const keep = prefetch.createComparisonKeep({ later: (callback) => callback() });
+  const start = 5_000_000;
+  let now = start;
+  const reads = [];
+  const lane = createStackLines({
+    keep,
+    index: createStackLineIndex(),
+    async read(number) {
+      reads.push((now - start) / 60_000);
+      return { status: 200, body: { ...changes.not_cached.body, number } };
+    },
+    schedule(callback) {
+      idle.push(callback);
+      return callback;
+    },
+    cancel(handle) {
+      idle = idle.filter((callback) => callback !== handle);
+    },
+    isVisible: () => true,
+    now: () => now,
+    changed() {},
+  });
+  /** @type {(() => void)[]} */
+  let idle = [];
+  const stack = { number: 290, pulls: [8, 9, 10], heads: [null, null, null] };
+  for (let minute = 0; minute <= 150; minute += 1) {
+    now = start + minute * 60_000;
+    lane.want([stack], SOURCE);
+    while (idle.length > 0) {
+      idle.shift()();
+      await settle();
+    }
+  }
+  lane.dispose();
+  assert.deepEqual(
+    reads,
+    [0, 1, 3, 7, 15, 31, 61, 91, 121, 151].filter((at) => at <= 150),
+  );
+  assert.equal(STACK_LINE_PENDING_MAX_MS, 30 * 60_000, "the ceiling is half an hour");
+  return reads;
+}
+
 (async () => {
   const lines = await import(pathToFileURL(path.join(GITHUB, "stack-lines.js")).href);
   const prefetch = await import(pathToFileURL(path.join(GITHUB, "comparison-prefetch.js")).href);
@@ -642,7 +691,10 @@ async function headingStory() {
     }
   }
   const heading = await headingStory();
-  process.stdout.write(`${JSON.stringify({ lane, heading, invariants: true }, null, 2)}\n`);
+  const retries = await retrySchedule(lines, prefetch);
+  process.stdout.write(
+    `${JSON.stringify({ lane, heading, retryMinutes: retries, invariants: true }, null, 2)}\n`,
+  );
 })().catch((error) => {
   process.stderr.write(`${error.stack || error}\n`);
   process.exit(1);

@@ -365,9 +365,9 @@ The envelope has `state` (`current` or `absent`), `reason` (`not_github`, `not_s
 list that stops short or lists past the bound), `number`, `pulls`, the members
 accumulated, `pending`, `revision`, a digest of the answer’s content, `files`,
 `additions`, `deletions`, `exact`, and `statuses`, each a pull request’s status word and
-its count. `pending` names the members not settled: with no whole list, or with a list
-read for another head than the newest one the record or the catalog’s row names, as the
-files route’s freshness asks.
+its count. `pending` names the members not settled: with no whole list, or with one the
+files route would refresh, not `current` by its own freshness rule (`list_settled`), so
+a list from the local comparison waits on the record, as the row’s tree does.
 It names nothing but `number`, and its tag is the envelope’s, for a client that holds
 one; the Pulls tab sends none, and reads a `304` as its last answer holding.
 

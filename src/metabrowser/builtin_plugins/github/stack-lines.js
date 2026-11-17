@@ -22,9 +22,9 @@
 //   - when the list's rows say a member moved or the members changed;
 //   - when a member's list of changed files changes, as the prefetch lane reports a list it
 //     refreshed or a row's own read of its list arrives (`listed`);
-//   - while its last answer named members not yet settled, a list missing, filling, or read
-//     for an older head (`pending`): silently, a minute on and doubling while it stays so,
-//     up to `STACK_LINE_PENDING_MAX_MS` (review B of #484, B1);
+//   - while its last answer named members not yet settled, a list missing, filling, or one
+//     the files route would refresh (`pending`): silently, a minute on and doubling while it
+//     stays so, up to `STACK_LINE_PENDING_MAX_MS` (review B of #484, B1);
 //   - and a minute after a read that failed.
 //   An answer that names no unsettled member holds until one of those happens.
 // - Within the lines' own hourly cap (`STACK_LINES_PER_HOUR`), apart from the comparison
@@ -66,14 +66,22 @@ export const STACK_LINE_RETRY_MS = 60_000;
 export const STACK_LINE_PENDING_MAX_MS = 30 * 60_000;
 // The reads the lines start in an hour, each counted as it starts; the comparison warmer
 // counts its own (`WARM_PER_HOUR`). A read runs no Git: it stats each member's list and,
-// when one changed since the server last accumulated them, folds them in one at a time, 6 to
-// 16 ms for #446's 16 cached lists and at most about 400 ms within `MAX_STACK_LIST_BYTES`;
-// it then reads each member's newest known head, 22 to 36 ms for #446's 28 (measured
-// 2026-11-16 at a load average of 14 to 38, pull_stack_change.py). The list draws every one
-// of this repository's 19 stacks, so a first visit reads 19, and an hour in which all 19
-// wait for members' lists reads each six times, 114. So the cap holds that hour, at about
-// 5 s of local work and at most about 52 s were every read to parse at the bound, and the
-// hour's reads of a Pulls tab left open with every stack settled are none.
+// when one changed since the server last accumulated them, folds them in one at a time, 6
+// to 16 ms for #446's 16 cached lists and at most about 400 ms within
+// `MAX_STACK_LIST_BYTES`; it then reads whether the files route takes each list as
+// current, 17 ms for #446's 19 cached lists (measured 2026-11-16 at a load average of 14 to
+// 38, pull_stack_change.py). The list draws every one of this repository's 19 stacks, so a
+// first visit reads 19, and an hour in which all 19 wait for members' lists reads each six
+// times, 114. So the cap holds an hour of those retries alone, at about 5 s of local work
+// and at most about 52 s were every read to parse at the bound, and the hour's reads of a
+// Pulls tab left open with every stack settled are none.
+// A read `listed` starts counts too: each list the prefetch refreshes makes every drawn
+// stack that holds it due at once, so an hour that lists every member of all 19 stacks can
+// spend the cap (review C of #484, C2). In review C's simulation, 19 stacks of 8 members,
+// each member listed once at a random moment of the first hour, spent all 120; a stack's
+// line came at most 11.6 minutes after its last list landed, and a stack first drawn at
+// minute 40 waited 21 minutes for its first read. It recovers by itself as the hour's
+// reads age out.
 export const STACK_LINES_PER_HOUR = 120;
 // The stacks whose last outcome the document remembers, oldest out first: more stacks than
 // any repository's list draws at once. This repository has 19. Measured 2026-11-16 in Node
@@ -419,8 +427,12 @@ export function createStackLines(deps) {
       const at = deps.now();
       const body = answer.body;
       if (answer.status === 304 && seen !== undefined) {
-        // Unchanged: the stack's last answer holds, as it is drawn now (A10).
-        settle(item, { ...seen, retryAt: null });
+        // Unchanged: the stack's last answer holds, as it is drawn now (A10), and a stack it
+        // named members not yet settled for is still asked again (review C of #484, C5).
+        settle(item, {
+          ...seen,
+          ...(seen.pending.length > 0 ? pendingRetry(item, seen, at) : { retryAt: null }),
+        });
         note(item.stack.number, "unchanged");
       } else if (
         answer.status !== 200 ||
