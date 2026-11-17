@@ -14,8 +14,10 @@ the requests it made, and a list that is ``current``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import threading
 from datetime import timedelta
 from itertools import count
 from pathlib import Path
@@ -24,8 +26,15 @@ from uuid import UUID
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_files_refresh, pull_list, pulls
+from metabrowser.builtin_plugins.github import (
+    gh,
+    pull_files_refresh,
+    pull_files_route,
+    pull_list,
+    pulls,
+)
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -347,3 +356,117 @@ def test_golden_pull_files_failures(
     )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     check_golden("cli-github-pull-files-failures.txt", rendered)
+
+
+def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``files`` in the answer that starts a job is read before that job can write.
+
+    Here the job's stamp lands as it starts, the earliest it can. Without a ``gh`` the job
+    writes its ``gh_missing`` within microseconds, and in CI run 44043888346 it did so
+    while the route read ``files`` for the transcript above (mb-kq72). Mutation check:
+    read ``files`` after the start, as the route did, and the job that is still
+    ``refreshing`` reports its own outcome as the last refresh.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({"number": TREE_PULL}).exit_code == 0
+    session.advance(1)
+    real_start = pull_files_route.start_files_refresh
+    written: list[pull_files_route.FilesRefreshStart] = []
+
+    def start_then_write(
+        view: pull_files_route.FilesView, ask: pull_files_route.FilesRefreshRequest, **kw: Any
+    ) -> pull_files_route.FilesRefreshStart:
+        started = real_start(view, ask, **kw)
+        repository = view.repository
+        assert repository is not None
+        ended = PullRefreshStamp(outcome="gh_missing", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}")
+        pull_list.write_files_refresh(repository.home, repository.slug, ask.number, ended)
+        written.append(started)
+        return started
+
+    monkeypatch.setattr(pull_files_route, "start_files_refresh", start_then_write)
+    monkeypatch.setattr(gh, "gh_executable", lambda: None)
+    missing = session.post({"number": TREE_PULL, "retry": True})
+
+    # The route reaches the start through the module, so the write ran, once.
+    assert written == ["started"]
+    answer = _first(missing)
+    assert (answer["refresh"], answer["files"]["refreshing"]) == ("started", True)
+    assert answer["files"]["last_refresh"]["outcome"] == "succeeded"
+    assert answer["files"]["last_refresh"]["at"] == f"{FETCHED_AT:%Y-%m-%dT%H:%M:%SZ}"
+    assert answer["files"]["state"] == "current"
+    assert _after(missing)["last_refresh"]["outcome"] == "gh_missing"
+
+
+def test_an_answer_that_starts_no_job_is_read_after_the_one_that_ended(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``files`` in an answer that says nothing is refreshing is read after nothing was.
+
+    A job another request started ends while this request reads ``files`` before its
+    start, and this request then starts none: ``not_due``, nothing refreshing. Read only
+    before the start, the answer showed the list as it was before that job ended,
+    ``current`` and ``succeeded``, which the tree holds as current for a freshness window
+    (review A1 on #513). Mutation check: drop the read after the start, and it does.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({"number": TREE_PULL}).exit_code == 0
+    session.advance(1)
+    real_view, real_read = pull_files_route.files_view, pull_files_route.read_files
+    ended = threading.Event()
+    releases: list[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = []
+    reads: list[pull_files_route.FilesFound | None] = []
+
+    def view_beside_a_job(app: Any, number: int) -> pull_files_route.FilesView:
+        view = real_view(app, number)
+        repository, coordinator = view.repository, view.coordinator
+        if releases or repository is None or coordinator is None:
+            return view
+        release = asyncio.Event()
+        changed = PullRefreshStamp(
+            outcome="account_changed", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+        )
+
+        async def another_requests_job() -> None:
+            await release.wait()
+            await asyncio.to_thread(
+                pull_list.write_files_refresh, repository.home, repository.slug, number, changed
+            )
+
+        key = pull_files_route.files_job_key(repository, number)
+        assert coordinator.start(key, another_requests_job, network=False) == "started"
+        job = coordinator.job(key)
+        assert job is not None
+        job.add_done_callback(lambda _job: ended.set())
+        releases.append((asyncio.get_running_loop(), release))
+        return real_view(app, number)
+
+    def read_as_that_job_ends(
+        view: pull_files_route.FilesView,
+    ) -> pull_files_route.FilesFound | None:
+        found = real_read(view)
+        if not reads:
+            loop, release = releases[0]
+            loop.call_soon_threadsafe(release.set)
+            assert ended.wait(timeout=30)
+        reads.append(found)
+        return found
+
+    monkeypatch.setattr(pull_files_route, "files_view", view_beside_a_job)
+    monkeypatch.setattr(pull_files_route, "read_files", read_as_that_job_ends)
+    answered = session.post({"number": TREE_PULL})
+
+    # The job ran beside the request, and the first read was made before it ended.
+    assert len(releases) == 1 and ended.is_set()
+    first = reads[0]
+    assert first is not None and first.stamp is not None and first.stamp.outcome == "succeeded"
+    answer = _first(answered)
+    assert (answer["refresh"], answer["files"]["refreshing"]) == ("not_due", False)
+    assert answer["files"]["last_refresh"]["outcome"] == "account_changed"
+    assert answer["files"]["state"] == "stale"
+    listed = session.get(f"?number={TREE_PULL}&limit=0").payload()
+    assert (listed["state"], listed["last_refresh"]["outcome"]) == ("stale", "account_changed")
