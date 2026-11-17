@@ -5,7 +5,7 @@ title: The Files nav panel's '+ N ignored' summary line is laid out from first p
 kind: bug
 status: open
 priority: 1
-version: 19
+version: 20
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -24,10 +24,11 @@ child_order_hints:
   - is-01m7kgg2g37gev8jgq5rsf7kk2
   - is-01m7kgg36dvwj9r6tnbcx0t4mp
   - is-01m7kgg3sjf9caypx07ep5y6qs
+  - is-01m7ks84dwc8ag94n6v3rs34tv
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:39:50.746Z
-updated_at: 2026-11-17T03:16:34.644Z
+updated_at: 2026-11-17T03:36:43.195Z
 started_at: 2026-11-16T21:40:37.650Z
 closed_at: null
 close_reason: null
