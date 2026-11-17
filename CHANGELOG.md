@@ -4,6 +4,16 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
+  rather than tens of seconds on a cold cache.
+  The prefetch now lists the changed files of the open pull requests in view from the
+  local store, comparing each head with the mirror’s base branch, before it reads any
+  record: the heads the store lacks come in one Git fetch, a served checkout attaches
+  its store for this if no page has yet, and the lists cost no GitHub API requests.
+  Before, each list waited its turn behind a record read of several seconds, and most
+  came from GitHub; on this repository’s own Pulls tab with a fresh cache, the last of
+  11 rows’ lines went from 40.6 s to 10.4 s after the tab opened.
+
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read
   of a record now opens the rewritten one and checks it again, so it reads the old

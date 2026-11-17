@@ -371,6 +371,9 @@ async function main() {
       );
       const first = page.frames[0] ?? null;
       const last = page.frames.at(-1) ?? null;
+      // The shifts after first paint. One in that frame is the move into it: in the
+      // narrowest pane, the filter bar's wrap as it is filled (above).
+      const counted = page.shifts.filter((s) => first && s.at > first.at + FRAME_MS);
       results.push({
         name,
         theme,
@@ -399,9 +402,8 @@ async function main() {
         tip: page.tip,
         trackedTip: page.trackedTip,
         moved: movement(page.frames),
-        // The shifts after first paint. One in that frame is the move into it: in the
-        // narrowest pane, the filter bar's wrap as it is filled (above).
-        shift: sumShifts(page.shifts.filter((s) => first && s.at > first.at + FRAME_MS)),
+        shift: sumShifts(counted),
+        counted,
         before: sumShifts(page.shifts.filter((s) => !first || s.at <= first.at + FRAME_MS)),
         shifts: page.shifts,
         trail: page.frames.map(

@@ -1003,6 +1003,15 @@ class MirrorSession:
         self._pull_jobs.add(key)
         return self._coordinator.start(key, partial(self._pull_job, number), network=False)
 
+    def background_store_turn(
+        self, preempt: Callable[[], object]
+    ) -> contextlib.AbstractAsyncContextManager[None]:
+        """The store's turn for background work outside a pull request's job, the
+        prefetch's fetch of many heads: it goes when no other job waits, and *preempt* is
+        called when one starts waiting (:class:`StoreTurn`)."""
+
+        return self._store_turn(lambda: False, background=lambda: True, preempt=preempt)
+
     def pull_refreshing(self, number: int) -> bool:
         """Whether the refresh of pull request *number* is running, with no read."""
 

@@ -29,6 +29,7 @@ from metabrowser.inventory_engine.runtime import default_inventory_config
 from metabrowser.settings import ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_envelope, validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
+from tests.loop_gate import held_until
 
 # Tests that compare validators across requests hold the inventory version still.
 # A live watcher can move it at any moment -- even a verified refresh of an
@@ -407,7 +408,7 @@ def test_disconnecting_client_does_not_cancel_shared_build(
         monkeypatch.setattr(provider, "build_rollup", gated_build)
         async with inventory_harness(tmp_path) as harness:
             leader = asyncio.create_task(_response(harness, {"path": ""}))
-            await asyncio.to_thread(started.wait, 5.0)
+            await held_until(started, 5.0)
             shared = next(iter(server._ROLLUP_IN_FLIGHT.values()))
             leader.cancel()
             release.set()
@@ -444,7 +445,7 @@ def test_rollup_payload_and_etag_share_one_version(
         monkeypatch.setattr(provider, "build_rollup", gated_build)
         async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
             first_task = asyncio.create_task(_response(harness, {"path": ""}))
-            await asyncio.to_thread(started.wait, 5.0)
+            await held_until(started, 5.0)
             (tmp_path / "b.txt").write_text("b")
             await harness.runtime.coordinator.refresh(
                 RefreshRequest(

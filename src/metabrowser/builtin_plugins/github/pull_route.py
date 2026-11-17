@@ -47,6 +47,7 @@ import os
 import stat
 import threading
 from collections.abc import Callable, Mapping
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -58,6 +59,7 @@ from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.checkout import (
     checkout_job_key,
     checkout_pulls,
+    checkout_store_turn,
     comparison_preparing,
     served_checkout,
     start_pull_refresh,
@@ -308,6 +310,9 @@ class PullHost:
     preparing: Callable[[int], bool] | None = None
     start_background: Callable[[int], PullRefreshStart] | None = None
     job_key: Callable[[int], str] | None = None
+    # The store's turn for the prefetch's own fetch, held as background work; its argument
+    # is called when a reader's job starts waiting for the turn.
+    store_turn: Callable[[Callable[[], object]], AbstractAsyncContextManager[None]] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -336,6 +341,7 @@ def pull_host(app: Any) -> PullHost | None:
             partial(comparison_preparing, coordinator, checkout),
             partial(start_pull_refresh, coordinator, checkout, background=True),
             partial(checkout_job_key, checkout),
+            partial(checkout_store_turn, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -347,6 +353,7 @@ def pull_host(app: Any) -> PullHost | None:
         coordinator=refresh_coordinator(app),
         start_background=partial(session.request_pull_refresh, background=True),
         job_key=served.key,
+        store_turn=session.background_store_turn,
     )
 
 
