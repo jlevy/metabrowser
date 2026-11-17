@@ -1,659 +1,182 @@
 # Architecture
 
-Metabrowser is a Python server, a browser shell, and a manifest-driven plugin system.
-The package deliberately keeps file navigation, safe filesystem access, live updates,
-and plugin lifecycle management in core while delegating file-kind rendering to plugins.
+**Status:** Describes the code on `main`. Each layer’s document carries its own status
+line; the aims below say which parts ship and which are planned, and link the plans.
 
-## Runtime Shape
+Metabrowser is a local, live browser for everything you and your coding agents work
+with: files, Markdown, logs, data, diffs, commits, and pull requests.
+It is a Python server, a browser shell, and a manifest-driven plugin system, shipped as
+one package, with an optional native Mac app around them.
+Core owns safe file access, the inventory, live updates, Git, and the plugin lifecycle;
+plugins own how each kind of file is drawn.
 
-The `metab` CLI starts a Starlette application with four main layers:
+## Aims
 
-1. **Safe filesystem access.** `paths_safe.py`, `gz_io.py`, and the file endpoints
-   resolve every requested path beneath the selected root.
-   Gzip and zlib files retain their logical extension and can be read transparently
-   within shared resource bounds.
-2. **Inventory and change events.** `inventory.py` builds a bounded in-memory index.
-   Watch backends and the active-file tracker publish normalized changes through the
-   event bus and server-sent events.
-3. **Plugin discovery and routing.** `plugin_loader/` validates manifests, compiles kind
-   classifiers, serves plugin assets, and mounts optional Python data hooks.
-4. **Browser shell.** `static/app.js` owns navigation, the tree, recent files, tabs,
-   caching, and view mounting.
-   `static/plugin-sdk.js` exposes the supported renderer API under `window.metabrowser`.
+Each aim ships in part today; the planned rest links its plan.
 
-The browser loads critical local assets first.
-Optional third-party assets enhance syntax highlighting, charts, or specialized
-renderers after the shell can already paint a useful first view.
+- **Agents show you content.** The `metabrowser` agent skill
+  (`skills/metabrowser/SKILL.md`) lets an agent serve a path or a pull-request URL and
+  hand you the page. `metab --api`, `--show`, and `--walk` give an agent the same data
+  the page draws, which the
+  [Parity Registry](project/architecture/arch-parity-registry.md) enforces, and the
+  `agent-log` plugin draws coding-agent logs as timelines.
+  Planned: `metab --present`, one command that shows content in the running app or
+  browser
+  ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
+  Phase 3).
+- **Local, in your browser or a Mac app.** `metab` serves on `127.0.0.1` by default to
+  any browser; `--remote` reaches another host over an SSH tunnel; cached repositories
+  read offline. The native macOS app is an alpha built from source
+  ([macOS app](project/architecture/arch-macos-app.md)). Planned: a signed, notarized
+  download.
+- **Live and large.** The served tree is watched and its changes stream to the page;
+  indexing runs in the background, so the first view does not wait for a full crawl; and
+  serving stops at `INVENTORY_MAX_FILES` (`settings.py`).
+  [Scale Benchmark](scale-benchmark.md) measures it.
+  Planned: a second inventory engine behind the provider contract
+  ([inventory provider plan](project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md),
+  Phase 2), and a million-file tree browsed rather than cut off
+  ([load-time plan](project/specs/active/plan-2026-08-21-load-time-performance.md)).
+- **Any file type, through plugins.** Kinds and views come from plugin manifests, and
+  every built-in view is a plugin under `builtin_plugins/`, gated by
+  `PLUGIN_SDK_VERSION` (`plugin_loader/manifest.py`). Planned: editing
+  ([trusted-local editing plan](project/specs/active/plan-2026-07-16-trusted-local-file-editing.md)).
+- **Git and GitHub review.** The Commits tab and `/commit/<rev>` pages, `metab --diff`
+  for any range, and the Pulls tab and pull-request pages with conversation, reviews,
+  inline comments, checks, and stacks; a cached pull request reads offline.
+  Planned: working-tree status and diffs
+  ([Git status plan](project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)).
 
-The server and the browser shell are one deployable unit, not two independently
-versioned peers. The index route is served uncached, `_static_asset_url` adds a
-file-derived `?v=` cache token to local asset URLs, and `client_settings_dict` inlines
-the browser’s configuration into that same response.
-A newly loaded document receives the shell, settings, and built-in plugins from the
-running server build.
-After replacing a local server build, reload existing tabs so they use that build too;
-an already-open document does not replace its loaded JavaScript automatically.
-This is why internal contracts change in one commit and why compatibility shims between
-the two halves are forbidden — see
-[Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
-
-## Request Flow
-
-Opening a file follows this sequence:
-
-1. The canonical `/view/<path>` URL or tree selection supplies a served-root-relative
-   path. A URL fragment identifies a location inside that document, never a file.
-2. `/api/file` safely resolves the path, determines its logical extension, and runs
-   plugin classifiers before built-in fallbacks.
-3. The response includes the chosen kind and the ordered view descriptors contributed by
-   manifests.
-4. The shell creates one container per view and resolves each `(kind, view)` pair in the
-   JavaScript registry.
-5. The default renderer mounts immediately.
-   Other renderers mount lazily the first time their tab is selected.
-6. A plugin may render from the file envelope, fetch a KPress view, or call one of its
-   declared data hooks.
-
-Replacing the preview pane disposes mounted plugin views.
-Switching tabs does not: their DOM and captured state remain available until a different
-file replaces the pane.
-
-The built-in Markdown plugin resolves standard relative and leading-slash destinations
-exactly from the source document.
-It gives internal anchors canonical `/view/` URLs and maps embedded local resources
-through the bounded `/raw` endpoint.
-Its source-aware Obsidian adapter preserves escaped and code contexts, maps wiki links
-to exact paths or completion-aware unique inventory results, and creates stable heading
-and named-block anchors before rendering.
-Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
-note, heading, and named-block transclusion returns through KPress with shared depth,
-document, source-byte, cycle, abort, and disposal limits and a per-embed elapsed-time
-limit. The SDK does not expose Markdown graph analysis.
-A future graph surface requires a bounded server data route backed by a KPress-owned
-link-intent manifest; parsing the Markdown again in the browser can diverge from the
-rendered document. The shell remains Markdown-dialect agnostic: the plugin intercepts
-only plain primary activation through the public navigation SDK, while modifier clicks,
-new tabs, downloads, external URLs, and ordinary not-found handling retain browser
-behavior. Fragment scrolling runs only after the matching asynchronous Markdown mount
-completes and ends with that mount’s disposer.
-
-## Git
-
-Read-only repository history lives in core, under `git/`, with its own endpoint
-collection at `/api/git/` and its own wire model in `git/wire.py`.
-
-Git is infrastructure here rather than a consumer domain: `ignore_filter.py` implements
-gitignore semantics, `tree.build_gitignore_check` performs repository-root discovery,
-and both the tree and recent wire models carry a `gitignored` flag.
-History reading extends a dependency core already has.
-
-Every git call goes through `git/process.py`, which spawns `git` with a fixed argument
-vector, a wall-clock timeout, and a cap on buffered stdout.
-Revisions are validated against a full-SHA pattern before they can reach an argument
-vector. Git’s stderr is logged and dropped: it contains absolute local paths.
-
-Swimlane layout is a browser concern.
-The server returns commits, parents, and references; `static/git-graph.js` assigns lanes
-and draws them, carrying lane state across pages.
-This is the same split `recent.py` makes, where clustering belongs to the renderer.
-
-## Folder Views and Overview Composition
-
-Folder views extend the same request and registry flow to directories.
-`/api/file` returns `kind: "folder"`, an ordered set of top-level folder view
-descriptors, folder aggregates, and bounded direct-child discovery facts such as
-`readme_path`. The served root and selected nested folders use the same envelope and
-rendering path.
-
-Folder information is divided by interaction level:
+## Layers
 
 ```text
-folder
-├── Overview                         default top-level view
-│   ├── Files                        always-present file-type summary panel
-│   ├── README                       conditional document panel
-│   └── License and other panels     future plugin contributions
-├── Treemap                          peer top-level view
-└── Files listing                    future peer top-level view
+metab CLI (cli/)                          native macOS shell (apps/macos/)
+  │ serves, or answers --api in process     │ runs one metab server per folder
+  ▼                                         ▼
+server and routes (server.py)  ◄──  kinds and plugin system (plugin_loader/)
+  ├─ source session (source.py): a folder, or a pinned Git revision
+  ├─ inventory provider (inventory_engine/): the contract above, an engine below
+  ├─ live delivery (events_route.py): the change feed as server-sent events
+  ├─ Git (git/) and diff (diff/)
+  └─ repository cache and mirrors (cache/), GitHub provider (builtin_plugins/github/)
+  │ HTTP and server-sent events
+  ▼
+browser shell and SDK (static/)  ──►  renderers (builtin_plugins/*/)
 ```
 
-Top-level views answer “which mode am I using?”
-and continue to use manifests plus the `(kind, view)` renderer registry.
-Overview panels answer “which useful facts apply to this folder?”
-and use a separate public panel registry.
-A future Files listing belongs beside Overview and Treemap; it does not become a large
-panel inside Overview.
-
-The built-in folder plugin owns the Overview composer, but not a hard-coded list of
-panels. It publishes the documented `mb.folderOverview` registry facade; built-in and
-installed plugins register stable panel IDs with a named placement band, accessible
-label, surface or document presentation, bounded resolver, keyed instance mount,
-disposer, and print eligibility.
-The composer validates descriptors, establishes deterministic order before asynchronous
-work finishes, and gives every contribution an independent loading, error, recovery,
-abort, and disposal boundary.
-A panel never reaches into sibling DOM or private shell state.
-The composer also renders every panel label as the same visible `h2` and aligns host
-content to the responsive Markdown document boundary.
-Each `h2` contains the shared trailing-chevron disclosure button.
-Each descriptor declares its initial disclosure state.
-File Overview and README begin expanded.
-Toggling a heading changes only body visibility, so live rollup watches, rendered
-Markdown state, TOC state, and keyed panel mounts remain intact.
-In Overview, the Markdown mount keeps its ordinary document semantics and card while
-suppressing the nested table of contents.
-The card retains its border and shadow at regular and wide document bands, then follows
-KPress’s standard borderless narrow layout.
-The File Overview summary remains a flat chrome section; its edges follow the README
-card when present and the README prose edge when the card collapses.
-
-Core supplies only generic contribution-registry, resource-context, request, formatter,
-and view-state primitives.
-The folder plugin supplies the folder-panel schema and registry facade.
-A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
-The visible **File Overview** heading belongs to `folder.file-overview`. It answers what
-a folder holds at two resolutions in one section: the inventory-backed Files and Ignored
-tallies, which need no rollup and so paint immediately, and beneath them the
-rollup-backed type summary built from the packaged recommended definitions in File
-Rollup Format v0.1: a legend of the largest file-type families, with the full type table
-behind Details. Each tally row is its own complete population: Files means unignored
-files, Ignored means excluded files, and Total is their sum.
-A nonzero row therefore has a full-width composition track and no percentage label.
-Total is what the type distribution counts against while Show ignored is on, so it is
-the track whose segment shares match the distribution’s percentages in that state; Files
-is that track when Show ignored is off.
-
-The section owns one control row above both bodies, carrying the shared Files / Bytes
-chooser and the Show ignored checkbox.
-They are the same kind of choice about the same numbers, and while they sat in separate
-sections each silently moved the other’s figures.
-One folder-rollup state stands behind them, so the row updates both bodies and Treemap.
-
-Show ignored changes the population the distribution counts and nothing else.
-The three tally rows are fixed populations, and `buildFolderTotalsComposition` does not
-accept the flag, so the checkbox cannot reach them.
-
-The two bodies stay separate modules because their data lifecycles differ.
-The type table owns the only Overview rollup watch and publishes each validated terminal
-envelope through a ref-counted, per-directory projection pool.
-The tallies subscribe to that projection and use the same palette pool, which adds
-composition detail without a sibling DOM dependency or another request.
-Rollups aggregate every known family and its complete canonical children before
-independently bounding only No extension basenames and Other types extensions.
-The comparison table follows registry order across Code, Documentation, Data, Archives,
-Media, and Other; Log files is a semantic family within Other.
-Every nonempty family can disclose exact extension rows, including a family with one
-contributing extension, without adding group subtotals.
-No extension discloses exact basenames and Other types discloses raw extensions; both
-cap at 20 children and conserve their omitted values in an exact Others row.
-Each type-table row renders the selected count or byte share as an inline bar beside its
-exact value and percentage.
-The tally summary has three fixed rows: Files, Ignored, and Total.
-Files and Ignored are disjoint populations; Total is their sum.
-Each composition track normalizes its own row to 100% and segments it by the same
-top-level semantic file-type families shown in the type table.
-Segment order follows registry group order, then descending selected-metric value within
-each group across the combined population.
-All three tracks share this fixed order; toggling Show ignored cannot reorder them.
-Hovering a segment uses the shared body-portaled navigation tooltip with the semantic
-family name in bold and its exact disjoint-population file count and byte size below.
-The whole Ignored row uses the shared dimmed-content opacity applied to ignored
-navigation and Treemap entries.
-README is another contribution whose resolver checks the folder envelope and whose
-renderer delegates to the instance-safe built-in Markdown mount.
-Using the same mount keeps Overview’s README structurally and behaviorally aligned with
-the ordinary rendered Markdown view instead of creating a second Markdown rendering
-path. Inside either Markdown mount, Frontmatter and Diagnostics remain native `details`
-disclosures, use the same trailing-chevron design, and begin closed.
-
-Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
-`treemap-layout.js` packs directory children, recurses only into sufficiently large
-folder cells, and conserves any culled or capped tail in a neutral remainder cell.
-The renderer flattens parent and descendant rectangles into positioned siblings;
-geometry expresses containment, while hover leaves their paint order unchanged.
-Its pure model persists only the Bytes/Files metric and the boolean ignored-file scope;
-the controller renders those through the shared segmented-control and labelled-checkbox
-primitives. The scope selects total or unignored rollup weights without another fetch.
-Layout geometry also derives bounded label and value sizes and reserves the resulting
-folder-header height before nesting children.
-
-Treemap and File types acquire leases from the same per-directory category-palette pool.
-File cells and folder `dominant_ext` values pass through the catalog’s
-`distributionKeyForExtension` helper, so known members share a stable `family:<id>` key;
-raw extensions remain exact and remainder cells use the neutral Other key.
-This shares semantic identity without coupling either renderer to sibling DOM. Visible
-byte and file values route through the public SDK formatters.
-File cells and exact extension rows also resolve their icon and subtype class through
-the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
-The shared `.file-identity-icon` primitive owns their geometry and subtype color.
-File cells use ordinary `mb.navigation.open({ path })` navigation; folder and parent
-navigation pass Treemap as the optional preferred destination view.
-The shell activates that view only when the destination declares it and otherwise uses
-the destination’s default.
-
-The folder-view shell refreshes a selected folder envelope for live aggregate header
-data. That one multiplexed refresh is exposed through a supported subscription so
-Overview can re-resolve panel availability when direct-child facts change without
-starting one folder request per panel.
-Aggregate panels retain their own bounded watchers when their data plane differs, and
-every subscription ends when the selected path is replaced.
-
-Tree disclosure and folder navigation share one row-activation path.
-The activation selects the folder and starts its ordinary `/api/file` request while
-synchronously toggling the row’s direct-child container.
-Repeated activation can therefore collapse the tree branch without changing the selected
-folder or replacing its Overview.
-
-Overview exists even when no optional panel applies.
-File types remains mounted for a complete empty folder and renders an explicit
-zero-total state without bars, a table, or a synthetic README region.
-Pending inventory remains a progress state, so an incomplete scan cannot be mistaken for
-an empty folder.
-
-## File Rollup Format
-
-`data/file-rollup-format/recommended-file-types.toml` is the reviewed declaration for
-classifier kinds, display families, display groups, analyzer content families, and
-metadata evidence. `file_type_registry.py` parses and validates it once into immutable
-Python values. The server injects the matching immutable JSON projection into browser
-settings; `static/file-type-taxonomy.js` supplies the same public classification helpers
-to navigation, Overview, Treemap, and plugins.
-The generated conformance corpus runs against both implementations, so a file cannot
-quietly change family between the server and browser.
-
-Inventory entries retain observations rather than registry-derived presentation:
-basename, a normalized logical extension of at most two components, apparent bytes, and
-ignore state. `inventory_rollup.py` classifies those facts against the active registry
-while building a response.
-It emits exact `all` and `unignored` populations for files and bytes, the definition
-registry identity, and the current file-rollup hierarchy.
-A breakdown is rejected when its registry identity differs from the loaded projection or
-when any root, family, fallback, or Others conservation invariant fails.
-
-This boundary deliberately avoids persistent classification caches in the inventory.
-A registry revision changes one immutable loader value and subsequent rollups rather
-than requiring every indexed entry to be rewritten.
-The rollup response carries exactly one representation of file types; a definition
-change updates the server, the browser, and the tests together rather than adding a
-parallel shape. The reusable semantics, recommended type definitions, schemas,
-conformance cases, and export boundary are documented in
-[File Rollup Format v0.1](project/architecture/file-rollup-format/file-rollup-format.md).
-
-## Plugin Boundary
-
-Core knows only generic capabilities and built-in file kinds.
-It does not contain consumer-specific schemas, endpoint routes, view identifiers, or
-renderers. Transparent compression is a core filesystem capability because it applies
-uniformly before classification and rendering.
-Specialized binary stores and their value schemas belong in separately installed
-plugins.
-
-The nav-panel tab list is a registry in `app.js` rather than fixed markup, which is what
-lets the Commits tab appear only inside a repository.
-No plugin-facing registration API is exposed for it yet: the registry is reachable
-through `window.MetabrowserShell`, an internal seam for core modules, and is not part of
-the `window.metabrowser` SDK contract.
-
-Plugins own:
-
-- classification rules for their domain formats;
-- view declarations and labels;
-- browser rendering and plugin-specific styles;
-- optional extra scripts and styles;
-- optional server-side extraction through declared data hooks.
-
-The stable browser-side boundary is the `window.metabrowser` API. Plugins should not
-reach into variables or functions defined privately by `app.js`. Cross-view navigation
-uses `navigation.open({ path, query?, fragment? }, { viewId? })`; the optional `viewId`
-preserves a working mode when the destination offers that view without changing resource
-identity or history semantics.
-`navigation.href()` supplies canonical `/view/` links, and `navigation.current()`
-exposes the selected target without leaking shell state.
-Plugin HTTP calls use `fetchPluginData`.
-
-## Browser URL Grammar
-
-> [Views, models, and routes](project/architecture/arch-views-models-routes.md) maps
-> every kind, view, model, and route in one table; this section is the grammar behind
-> the route column.
-
-A browser URL answers four separate questions, and each component answers exactly one:
-
-| Component | Question | Owned by |
-| --- | --- | --- |
-| Route | Which kind of thing is selected | Metabrowser |
-| Path | Which one, within that kind | That kind’s address space |
-| Query | How it is presented | The link author |
-| Fragment | Where inside the rendered document | The document |
-
-### Routes: one per address space
-
-Everything the shell can select is addressable, and the leading segment names the
-address space its path is written in.
-There is exactly one route per space, because a path only means something once you know
-which space it belongs to:
-
-| Route | Selects | Path is |
-| --- | --- | --- |
-| `/view/<path>` | Content in the served tree or a pinned Git revision | A served-root-relative path, or a `GitPath` wire when the session is a `GitRevisionSubject` |
-| `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
-| `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
-| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request’s Conversation, Changes, or Checks tab | A pull-request number, then an optional tab |
-| `/pull/<n>/files/<inner>` | One changed file of that page’s Changes tab | A pull-request number, then a path within its comparison |
-| `/pulls` | A repository’s list of pull requests, with none selected | Open by default; `?state=closed` or `?state=all` selects another filter |
-| `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
-| `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
-
-Revisions are not paths in the served tree, so they get their own route rather than a
-sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
-real file or need an escape that every path handler would then have to know about.
-
-The shape after the route is deliberately uniform —
-**`<container address>/<inner path>`** — because it is the
-[container contract](project/architecture/arch-nav-containers.md) written as a URL. A
-patch file and a commit are both containers whose children are file changes; only the
-container’s own address differs, so `/view/changes.patch/src/app.py` and
-`/commit/abc123/src/app.py` are the same grammar over two address spaces.
-A pull request’s Changes tab is a container in its own address space, so
-`/pull/7/files/src/app.py` is the same grammar again; an archive will be too.
-
-A repository branch is not another browser address space.
-Repository opening resolves a branch name to a full object ID and pins a
-`GitRevisionSubject` over a worktree-free store; `/view/<path>` then addresses content
-with a `GitPath` wire identity, not a checkout.
-Public-safe repository context retains both the requested ref and resolved object ID so
-the moving name is never presented as immutable identity.
-
-Route invariants:
-
-- A route without a path selects that space’s root: `/view/` is the served root,
-  `/commit/<rev>` is the whole change set.
-- A served-tree path has a canonical lossless URL spelling.
-  The route formatter uses ordinary UTF-8 percent encoding for Unicode, `%25` for a
-  literal percent, `%5C` for a POSIX filename’s backslash (a literal backslash is
-  refused), uppercase `%XX` for POSIX filename bytes that are not UTF-8, and the browser
-  codec’s WTF-8 spelling for a Windows unpaired UTF-16 code unit.
-  The server restores the platform path before its ordinary containment and symlink
-  checks, so total filename identity does not weaken the served-root boundary.
-- Every selection the shell can make has a URL, and reloading it restores that
-  selection. A panel that changes what the main pane shows changes the URL.
-- Query and fragment mean the same thing in every route: presentation and in-document
-  location. The `_mb_` reservation below applies unchanged.
-- Unknown routes are ordinary not-found responses, never a silent redirect to `/view/`.
-
-Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
-selection in the Git panel.
-`/pull/` is a pull request’s page: the shell mounts the view a plugin registers for the
-`pull-request` kind, the GitHub plugin’s, and a tab is part of the URL, so back,
-forward, and reload keep it.
-One changed file, `/pull/<n>/files/<path>`, opens Changes with the diff at that file;
-its path is the pull request’s text, so it reaches an address only through the route’s
-encoder and never reaches a filesystem call.
-A server serves one repository, and the number selects any of its pull requests.
-Checks reads the same cached PR record and keeps the code pin.
-A visible first visit without a PR record starts a separate request to fill the cache.
-`/compare/` is specified here and not yet built.
-
-The query slot is carried verbatim: it exists so a query an author wrote survives
-resolution unchanged.
-The shell reads one document key, GitHub’s `plain=1`, for what it means on github.com:
-open the file’s Source view, as a `#L` line anchor also does.
-A fragment spelled as a line anchor is always one, as on github.com: a document element
-whose id is exactly `L10`, such as a heading named `L10`, is not reached by `#L10`,
-which opens the Source view at line 10 instead.
-
-That makes the query the one component with two authorities in it, so it is the one
-component that needs a reserved namespace.
-**Metabrowser reserves query keys beginning with `_mb_`**; every other key belongs to
-the document and is passed through untouched.
-Reserved keys are `snake_case`, matching this server’s existing query parameters such as
-`include_ignored` and every key on the JSON wire.
-Plugins must not read or write `_mb_` keys except through the navigation SDK.
-
-```text
-/view/docs/guide.md?_mb_view=source&plain=1#setup
-                    └── reserved ──┘ └ doc ┘
-```
-
-The seam holds under one invariant, which any future parameter must preserve:
-
-> Removing every `_mb_` key from a URL yields exactly that content’s canonical URL.
-
-The prefix carries two signals because each one alone is ambiguous here.
-A leading `_` is the familiar mark for a reserved system field, but this codebase
-already spends a bare `_` on the opposite meaning: `/_debug/tasks` and Python privates
-mark surfaces that are deliberately not a contract, while view parameters are a
-documented surface people bookmark and share.
-Adding `mb` names the owner and removes that clash.
-Keeping `_` as the only separator also matches the `snake_case` keys, where a dotted
-prefix such as `mb.folder_overview` would mix two separators in one name and invite the
-occasional tooling that rewrites `.` in query keys.
-Parameters elsewhere need no sigil because they are namespaced by route: every key on
-`/api/*` is unambiguously the server’s, and only `/view/` shares its query with a
-document.
-
-Three rules keep the namespace honest as entries are added:
-
-- A key is reserved only when the **sender** should decide it for the recipient.
-  Viewer-owned settings such as theme and reading font stay in host-only cookies;
-  putting them in a link would override a choice the recipient made deliberately.
-- Reserved keys are sorted for one canonical spelling, but a key is never dropped for
-  matching a default. Defaults are viewer-dependent, so an omitted key means “viewer’s
-  choice” while a present one means “pinned”.
-- An unrecognized `_mb_` key is a visible diagnostic, never silent and never passed
-  through as document metadata.
-
-Planned entries are tracked with their features rather than reserved in advance;
-[the extensions plan](project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
-maps the first of them.
-
-## Markdown Link Resolution
-
-The Markdown plugin decides *what* an authored link points at; the shell decides *how*
-that target is spelled as a `/view/` URL. The resolvers are pure — no I/O, no preflight
-— so every decision is testable against a catalog snapshot, and route knowledge never
-leaks into the plugin nor dialect knowledge into the shell.
-
-One authored target passes through these layers in order:
-
-1. **Scheme dispatch** (`builtin_plugins/markdown/links.js`). `http`, `https`, `mailto`,
-   and `tel` stay external; unsafe schemes are disabled with a visible reason rather
-   than removed silently.
-2. **Exact standard resolution** (same module).
-   Relative, `./`, `../`, and leading-slash targets resolve GitHub-style from the source
-   document. A missing target keeps its exact URL and falls through to the ordinary
-   not-found state — nothing guesses by basename.
-   Embedded media routes through the bounded `/raw` endpoint.
-3. **Verified GitHub localization** (`github-localizer.js`). An absolute
-   `github.com/<owner>/<name>/blob|tree/<ref>/<path>` URL opens locally only when
-   repository identity proves it names the served working tree: origin remote, branch or
-   exact revision, and served subdirectory must all match.
-   Identity comes from `repository_context.py`, a bounded read of Git metadata at first
-   paint that never invokes Git and exposes no local paths.
-   Anything unproven stays an ordinary outbound link.
-4. **Published-route adapters** (`project-adapters.js`). When an MkDocs, Docusaurus, or
-   Jekyll config sits at the served root, a root-relative published-site route such as
-   `/guide/` falls back to the source document behind it — only after exact resolution
-   fails, so a real file at that path always wins.
-5. **Wiki resolution** (`wiki-resolver.js`), for `[[...]]` targets: exact path, then the
-   source directory, then a *unique* catalog match.
-   Ambiguous and missing notes render visibly and keyboard-reachable with their
-   candidate paths; a name that is unique in a half-built catalog stays `pending` until
-   completeness proves it, because resolving by catalog order would make link targets
-   depend on walk order.
-
-## Startup and First Paint
-
-The CLI binds before beginning expensive recursive work.
-Inventory walking, ignore-file parsing, and watcher setup run without blocking the event
-loop’s first response.
-
-When a `/view/` URL names an initial file, `/api/file` begins independently of tree
-indexing. `/view/` selects the served root, and the bare `/` URL is not a second landing
-view: it redirects there with a temporary 307 so the served root has exactly one URL.
-URL fragments identify document locations and never file paths.
-The root folder’s default Overview replaces the former server-picked initial README,
-which remains reachable as an ordinary file view.
-Inventory endpoints return current partial state plus progress metadata instead of
-waiting for a complete walk.
-
-The CLI prints, probes, and opens the canonical URL for the selected resource, using
-`selection_view_href` for repository selections.
-Tree and file selections use `/view/`; a pull-request selection can use `/pull/<n>` or
-its `/files` tab.
-The browser opens only after that URL returns an HTTP success response.
-A free TCP port alone is not considered ready, and neither is the origin’s redirect.
-
-## Live Update Model
-
-The inventory is the server-side source of truth.
-Producers attach generation-aware write tokens so an observation made before
-invalidation cannot overwrite newer state.
-The event stream carries snapshot, change, and resynchronization events.
-
-Inventory entries have three shapes: directories, regular files, and symbolic links.
-A symbolic link is always a typed leaf, even when its target is a directory: walkers do
-not follow it, directory child containers are never created for it, and file aggregates
-exclude it. A live upsert may replace any shape with another at the same path, so both
-the index and browser remove the old shape before installing the new one.
-
-Regular files receive one logical extension from `fs_paths.derive_ext` at their shared
-walker/watcher construction boundary.
-The value retains at most the final two eligible suffix components: `bundle.js.map` and
-`archive.tar.gz` keep `.js.map` and `.tar.gz`, while `bundle.umd.min.js.map` and
-`types.d.ts.map` become `.js.map` and `.ts.map`. A component must be lowercase,
-alphanumeric, nonempty, and bounded in length.
-A leading dot belongs to the basename: `.gitignore` is extensionless, while
-`.eslintrc.json` has `.json`. The fixed component cap prevents filenames from creating
-an unbounded vocabulary in navigation and rollup tallies while preserving common
-compound formats. Browser consumers use the indexed value instead of reparsing the full
-filename.
-
-The browser keeps a normalized file store.
-Tree panels and recent-file views subscribe to that store rather than maintaining
-independent copies.
-If a client falls behind the bounded event buffer, it reconnects with
-exponential backoff and requests a fresh snapshot.
-Backoff resets only after the replacement connection remains stable, which prevents an
-overloaded subscriber from creating a reconnect loop.
-
-## Where Filtering Happens
-
-Navigation membership is resolved over the retained inventory, never over rows mounted
-in the DOM. `/api/tree` accepts type, recency, size, and ignored-file constraints and
-returns only matching leaves plus their rolled-up folder ancestry.
-A collapsed or paged subtree is therefore unknown only to the renderer, not to the
-filter.
-
-Setting a recency window swaps the panel’s source to `/api/recent`, which applies the
-same non-recency constraints before its relevance ranking and response cap.
-It returns a flat newest-first leaf model; the browser clusters those complete leaves
-before rendering. Live event leaves are rechecked in the browser between authoritative
-fetches, but mounted descendants never decide folder membership or counts.
-The retained live overlay is capped at the route limit.
-Deep catalog changes, reconnects, and subtractive changes on a truncated page schedule
-one coalesced authoritative repair, while an event that overlaps an in-flight read
-invalidates that snapshot before it can replace newer state.
-
-The category, family, canonical-extension, and raw tallies behind the type menu come
-from one complete-index pass too.
-The file catalog for Quick Search excludes gitignored entries and a menu built from it
-would undercount everything the tree still shows.
-The chooser orders broad categories, present semantic families, and canonical/raw
-children as distinct tiers; all selections use the same longest-declared-suffix
-predicate as the rollup.
-
-### Response Caps Are a Ranking Problem
-
-Any server-side filter that caps its response has to decide what to drop.
-Newest-first alone is not enough: a dependency install touches thousands of files at
-once, so a 2 000-row cap on a day window can be entirely `node_modules` while none of
-the user’s own work appears.
-`collect_recent_entries` therefore drops gitignored files before tracked ones and
-re-sorts the selection, and reports `total_matching` and `truncated` so the client can
-say what it is not showing.
-Treat that as the rule for any future filtered endpoint: decide the priority order
-before the cap, and report the shortfall.
-
-### Moving More Filtering Upstream
-
-Client-side filtering is bounded by what is rendered, so a very large directory reaches
-a point where the honest answer needs the index.
-The tiers are not fixed, and the vocabulary was built so a dimension can move without
-changing what it means: `FilterState` holds the values, and the predicate helpers are
-shared, so a dimension evaluated server-side still has to agree with the same
-definition.
-
-Worth understanding before moving anything:
-
-- **What server-side filtering buys.** Completeness — an answer over the whole index
-  rather than the expanded subset — plus the ability to filter what was never loaded,
-  and aggregates that reflect the filter rather than the whole tree.
-- **What it costs.** A round trip per change, so a control that felt instant becomes
-  latency-bound; cache keys multiply by the filter combination; and every dimension
-  evaluated in two places is a chance for the two to disagree.
-- **Which dimensions are natural candidates.** Extension and size are cheap index
-  predicates and compose with the existing recency scan.
-  Activity is not: the tracker’s live set is small, client-held, and already complete.
-- **The rule of thumb.** Move a dimension upstream when its client-side answer is
-  *incomplete*, not when it is slow.
-  Incompleteness is a correctness problem and the user cannot see it; slowness they can.
-
-Two things should stay true whichever tier owns a dimension: with no filters set the
-rendered DOM is unchanged from an unfiltered render, and any filter that cannot see the
-whole tree says so rather than implying completeness.
-
-## Caching
-
-File responses use stable ETags derived from file metadata.
-Expensive projections use mtime-aware caches whose keys change when file size or
-modification time changes.
-Changing the served root clears root-scoped caches.
-
-Inventory-derived responses validate against the index revision instead of file
-metadata, because their bodies summarize many files rather than reproducing one.
-`/api/rollup` and `/api/catalog` both answer conditionally on that revision and retain
-their encoded body for a client that arrives without the tag.
-Structures proportional to the tree — the parent/child index, per-directory subtree
-aggregates — are maintained as entries arrive rather than rebuilt per request.
-[State and delivery](project/architecture/arch-state-and-delivery.md) is the detailed
-account of both halves — server state, client stores, what crosses the wire — including
-the invalidation rules and the invariants that enforce them.
-
-Plugins should keep domain caches on their own side of the boundary.
-Core provides no global plugin payload cache.
-
-## Package Layout
-
-```text
-src/metabrowser/
-├── builtin_plugins/   # Built-in manifests and renderers
-├── cli/               # serve, remote, walk, and plugins commands
-├── git/               # Read-only history: process, repo, log, detail, wire, routes
-├── logutil/           # Generic agent-log normalization
-├── plugin_loader/     # Discovery, manifests, classification, and routes
-├── static/            # Browser shell, SDK, charts, icons, and styles
-├── inventory.py       # In-memory filesystem index
-├── server.py          # Starlette application and HTTP endpoints
-└── watch_backends.py  # Filesystem change producers
-```
-
-Tests mirror these layers.
-Node `vm` shims validate browser-side plugin registration without adding a full DOM
-dependency, while Python integration tests exercise the real application lifespan and
-route stack.
-
-## Related Documentation
-
-- [Security policy and content trust model](../SECURITY.md)
-- [State and delivery](project/architecture/arch-state-and-delivery.md)
-- [Plugin authoring](plugins.md)
-- [Design system](design-system.md)
-- [Rendering large content](large-content-rendering.md)
-- [Folder Overview panels and file-type summary](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
-- [End-to-end testing](e2e-testing.md)
-- [Real-time debugging](realtime-debugging.md)
-- [Development](development.md)
+Module paths are under `src/metabrowser/` unless they start with `apps/`.
+
+| Layer | Modules | Job | Document |
+| --- | --- | --- | --- |
+| CLI | `cli/` | Parse the one flat command, start the server and open the page, run `--api`, `--show`, `--walk`, and `--diff` in process, and tunnel to a remote host | [CLI](project/architecture/arch-cli.md) |
+| Server and routes | `server.py`, `view_routes.py`, `paths_safe.py`, `gz_io.py`, `http_caching.py`, `asset_stamps.py`, `inert_html.py`, `kpress_adapter.py` | Resolve every path beneath the served root, answer envelopes, raw bytes, and assets, and apply the content-trust model | [Server and Content](project/architecture/arch-server-and-content.md), [the map](project/architecture/arch-views-models-routes.md) |
+| Inventory provider and engine | `inventory_engine/` (`contract.py`, `coordinator.py`, `factory.py`, engines under `providers/`), `inventory_rollup.py`, `file_type_registry.py`; the Python engine’s `walker.py` and `watch_backends.py`; `walk.py` for `--walk` | Hold a bounded index of the served tree and answer bounded, versioned queries over it | [Inventory Provider](project/architecture/arch-inventory-provider.md), [Python Engine](project/architecture/arch-inventory-engine-python.md) |
+| Live delivery | `events.py`, `events_route.py`, `sse.py`, `active_tracker.py`, `activity.py`; `static/catalog-feed.js` | Carry the provider’s change feed to the browser’s stores, and recover a client that falls behind | [Live Delivery](project/architecture/arch-live-delivery.md) |
+| Git | `git/` | Run every Git command on a served repository through one bounded process boundary (`git/process.py`), and serve history, graph checkpoints, commit detail, and Git trees | [Git](project/architecture/arch-git.md) |
+| Source sessions and pins | `source.py`, `source_routes.py`, `root_identity.py`; `static/source-pin-guard.js` | Hold the one subject a server serves, a folder or a pinned Git revision, with its capabilities, and switch the pin | [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md) |
+| Diff | `diff/`, `builtin_plugins/diff/` | Build change sets from patch files, commits, and pull requests in File Diff Format, and hydrate them file by file | [Diff Pipeline](project/architecture/arch-diff-pipeline.md) |
+| Repository cache and mirrors | `cache/`, `mirror_refresh.py` | Acquire repositories into the application cache as mirrors, keep their records, and refresh them in the background | [Repository Cache](project/architecture/arch-repository-cache.md), [Mirror Acquisition and Refresh](project/architecture/arch-mirror-acquisition-and-refresh.md) |
+| GitHub provider | `builtin_plugins/github/`, behind `cache/providers.py` | Reduce GitHub URLs to sources and pins, and serve pull-request records, the catalog, changed files, checks, and stacks through `gh` | [GitHub Pull Requests](project/architecture/arch-github-pull-requests.md) |
+| Kinds and plugin system | `plugin_loader/`, `plugin_api.py`, `file_kinds.py`, `builtin_plugins/*/manifest.toml` | Discover and validate manifests, classify files into kinds, mount data hooks and plugin assets, and gate the SDK version | [Plugin System](project/architecture/arch-plugin-system.md), [the map](project/architecture/arch-views-models-routes.md) |
+| Browser shell and SDK | `static/` (`app.js`, `navigation.js`, `main-tabs.js`, `plugin-sdk.js`, `asset-loader.js`) | Own navigation, the tree, tabs, client stores, view mounting and disposal, asset loading, and the `window.metabrowser` SDK | [Browser Shell](project/architecture/arch-browser-shell.md), [Plugins](plugins.md) |
+| Renderers | `builtin_plugins/*/` views; KPress for Markdown | Draw each kind within the bounds of the large-content rules | [the map](project/architecture/arch-views-models-routes.md), [Rendering Large Content](large-content-rendering.md), [Design System](design-system.md) |
+| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent folders, and restore | [macOS App](project/architecture/arch-macos-app.md) |
+
+## Rules That Cross Layers
+
+- **One artifact.** The server, the browser shell, and the built-in plugins ship
+  together. A page takes its settings, inlined, and its assets, at content-stamped
+  addresses, from the server that answered it, so `/api/*`, `window.metabrowser`, and
+  the plugin manifest are internal contracts that change everywhere in one commit
+  ([Compatibility and Legacy Code](development.md#compatibility-and-legacy-code)). A
+  page already open keeps the scripts it loaded until it is reloaded.
+- **The engine sits behind a provider contract.** Everything above
+  `inventory_engine/contract.py` relies only on what a provider guarantees, so the
+  engine can change without the layers above it.
+  One exception: `metab --walk` (`walk.py`) drives the Python walker directly, to show
+  what it yields, so it does not go through the provider.
+  `inventory_engine/factory.py` lists the engines a build ships, and
+  `METABROWSER_INVENTORY_PROVIDER` selects one.
+  Engine detail (the walker, its threads, the watcher backend, and unit costs) lives
+  only in the [Python Engine](project/architecture/arch-inventory-engine-python.md)
+  document.
+- **Core is consumer-agnostic.** Core knows generic capabilities and the built-in kinds;
+  domain schemas, routes, renderers, and styles belong in plugins, which use only the
+  `window.metabrowser` SDK.
+- **Every surface has a command line.** Each route the page reads is pinned by a golden
+  transcript through `metab` or exempt with a stated reason, and each user-visible
+  behavior has a parity row ([AGENTS.md](../AGENTS.md#cli-and-functional-ui-parity),
+  [Parity Registry](project/architecture/arch-parity-registry.md)).
+- **Work is bounded.** Reads and synchronous work on a request path are bounded, and a
+  bound is set at a measured size, with the measurement beside its constant
+  ([Rendering Large Content](large-content-rendering.md)).
+
+To add a file type, start with
+[Adding Something](project/architecture/arch-views-models-routes.md#adding-something) in
+the map and the [Plugin System](project/architecture/arch-plugin-system.md).
+
+## Reading Order
+
+1. This document, then
+   [Views, Models, and Routes](project/architecture/arch-views-models-routes.md), the
+   map of kinds, views, formats, and routes.
+2. [Server and Content](project/architecture/arch-server-and-content.md): how a request
+   is served and what content is trusted to do.
+3. [Inventory Provider](project/architecture/arch-inventory-provider.md) and
+   [Live Delivery](project/architecture/arch-live-delivery.md): what the server knows
+   about the tree and how changes reach the page.
+4. [Plugin System](project/architecture/arch-plugin-system.md) and
+   [Browser Shell](project/architecture/arch-browser-shell.md): how kinds are claimed
+   and views are mounted.
+5. For Git and review: [Git](project/architecture/arch-git.md),
+   [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md),
+   [Diff Pipeline](project/architecture/arch-diff-pipeline.md),
+   [Repository Cache](project/architecture/arch-repository-cache.md),
+   [Mirror Acquisition and Refresh](project/architecture/arch-mirror-acquisition-and-refresh.md),
+   and [GitHub Pull Requests](project/architecture/arch-github-pull-requests.md).
+6. The entry points: [CLI](project/architecture/arch-cli.md) and
+   [macOS App](project/architecture/arch-macos-app.md).
+7. The standards, before changing a bound or a hot path.
+
+## Architecture Documents
+
+In `docs/project/architecture/`:
+
+| Document | Subject |
+| --- | --- |
+| [arch-cli.md](project/architecture/arch-cli.md) | Modes, the serve lifecycle, in-process `--api` dispatch, remote tunnels, and process exit |
+| [arch-server-and-content.md](project/architecture/arch-server-and-content.md) | Request flow, safe paths, validators, and the content-trust model |
+| [arch-views-models-routes.md](project/architecture/arch-views-models-routes.md) | Kinds, views, formats, the URL grammar, and the route index |
+| [arch-parity-registry.md](project/architecture/arch-parity-registry.md) | The route and functional-aspect tables `devtools/check_parity.py` reads |
+| [arch-inventory-provider.md](project/architecture/arch-inventory-provider.md) | The engine-independent contract: queries, lifecycle, the cap, and change feeds |
+| [arch-inventory-engine-python.md](project/architecture/arch-inventory-engine-python.md) | The Python engine: walker, concurrency, watcher backend, and unit costs |
+| [arch-live-delivery.md](project/architecture/arch-live-delivery.md) | From the change feed to the browser’s stores: events, recovery, and invariants |
+| [arch-git.md](project/architecture/arch-git.md) | The process boundary, history sessions, graph checkpoints, and commit detail |
+| [arch-source-sessions-and-pins.md](project/architecture/arch-source-sessions-and-pins.md) | Subjects, capabilities, path projection, and the pin guard |
+| [arch-diff-pipeline.md](project/architecture/arch-diff-pipeline.md) | Diff sources, hydration, caches, and Markdown projection |
+| [arch-repository-cache.md](project/architecture/arch-repository-cache.md) | Cache layout, identity, record contracts, locks, and sweep |
+| [arch-mirror-acquisition-and-refresh.md](project/architecture/arch-mirror-acquisition-and-refresh.md) | Transports, credentials, the lending checkout, and refresh cadence |
+| [arch-github-pull-requests.md](project/architecture/arch-github-pull-requests.md) | Pull-request records, the catalog, files, checks, stacks, and routes |
+| [arch-plugin-system.md](project/architecture/arch-plugin-system.md) | Manifests, discovery, classification, the SDK gate, containers, and adding a file type |
+| [arch-browser-shell.md](project/architecture/arch-browser-shell.md) | Shell modules, stores, lifecycle, and asset loading tiers |
+| [arch-macos-app.md](project/architecture/arch-macos-app.md) | Server supervision, windows and tabs, restore, and WebKit differences |
+| [file-diff-format/](project/architecture/file-diff-format/file-diff-format.md) | File Diff Format v1, a tool-neutral change-set format |
+| [file-rollup-format/](project/architecture/file-rollup-format/file-rollup-format.md) | File Rollup Format, file classification and directory totals |
+
+The contributor standards, in `docs/`:
+
+| Document | Subject |
+| --- | --- |
+| [large-content-rendering.md](large-content-rendering.md) | What is expensive in a browser, and the rules for setting a limit |
+| [web-performance-framework.md](web-performance-framework.md) | How a performance change is measured in a real browser while the page stays correct |
+| [realtime-debugging.md](realtime-debugging.md) | Timing on both sides of the HTTP boundary, to place a slow preview |
+| [engine-performance-model.md](engine-performance-model.md) | What may run once per entry, for any engine behind the provider contract |
+
+[Project Design and Plans](project/README.md) indexes these with the plans, research,
+and reviews behind them.
+The [security policy](../SECURITY.md), [plugin guide](plugins.md),
+[design system](design-system.md), [end-to-end testing](e2e-testing.md), and
+[development guide](development.md) cover the rest of the contributor’s path.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

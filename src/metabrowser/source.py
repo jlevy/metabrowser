@@ -9,8 +9,8 @@ pin in-process, and serve mode hands the server an opener through
 :func:`serve_subject_opener` so the application lifespan opens the pin in its own
 event loop and closes it at shutdown. Within one repository,
 :func:`replace_owned_subject` switches the served pin to another commit: it attaches the
-new subject under a new generation and closes the one it replaced. Opening https/ssh
-stays later.
+new subject under a new generation and closes the one it replaced. Acquiring a
+``file://`` or ``https://`` source is ``cache.acquire``'s.
 """
 
 from __future__ import annotations

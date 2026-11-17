@@ -22,11 +22,11 @@ Read: the
 the
 [repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md),
 the
-[GitHub provider plan](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md),
+[GitHub provider plan](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md),
 the [HTML trust plan](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md),
-[Git and comparison sources](../architecture/arch-git-and-comparison-sources.md), the
-bead graph, the `f46bc26` diff, the pre-revision plan at `3d04a78`, and the shipped code
-in `src/metabrowser/git/`, `src/metabrowser/diff/`, and `src/metabrowser/static/`.
+[Git and comparison sources](../architecture/arch-git.md), the bead graph, the `f46bc26`
+diff, the pre-revision plan at `3d04a78`, and the shipped code in
+`src/metabrowser/git/`, `src/metabrowser/diff/`, and `src/metabrowser/static/`.
 Porcelain-v2 record shapes, the intent-to-add null-OID encoding, the full proposed
 status argument vector, and the index-rewrite behavior of plain `git status` were
 reproduced against git 2.50.1 rather than taken from the plans.
@@ -113,8 +113,8 @@ the project’s own research measured commit detail at ~0.5 s cold because
 `--numstat -M -C` needs file content, and observed blame failing outright with
 `could not fetch … from promisor remote` when the network was cut, concluding “a
 blobless clone is not self-sufficient until backfill completes”
-([research](../research/research-2026-08-11-repo-cache-and-git-url-open.md) lines
-259–283).
+([research](../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
+lines 259–283).
 
 The plan absorbed that observation only as “run backfill promptly” and “honest partial
 states”. It never states the consequences:
@@ -290,7 +290,7 @@ reclamation rule is how a cache silently becomes the largest directory in a home
 327–351). The provider store does not apply its own lesson: `objects/` accumulates one
 immutable snapshot per observed change of every fetched resource, `manifests/` one file
 per refresh, forever
-([provider plan](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
+([provider plan](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md)
 lines 266–307), and the only stated removal is entry-level explicit purge (lines
 425–428). Old manifests are never superseded-and-swept, and nothing defines which
 snapshots are still referenced.
@@ -305,11 +305,10 @@ than an accumulation.
 
 ### D10 — Low: counts in architecture-doc prose contradict the maintained tables beside them
 
-**New finding.**
-[Git and comparison sources](../architecture/arch-git-and-comparison-sources.md) says
-“Three things in a working repository have **no object id**” above a four-row table
-(line 53), and “Four read-only routes, registered as `GIT_ROUTES`” above a five-row
-table (line 199). The second is the document’s own cautionary tale in miniature: when
+**New finding.** [Git and comparison sources](../architecture/arch-git.md) says “Three
+things in a working repository have **no object id**” above a four-row table (line 53),
+and “Four read-only routes, registered as `GIT_ROUTES`” above a five-row table (line
+199). The second is the document’s own cautionary tale in miniature: when
 `/api/git/summary` landed, the named check forced the *table* to update and the sentence
 kept its stale numeral — exactly why the repository guidance says never to write a count
 into prose that nothing maintains.
@@ -496,12 +495,12 @@ Recorded so the next reviewer does not repeat the work:
 
 - [Git status and working-tree diffs](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [GitHub provider — content model, acquisition, and pull requests](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
+- [GitHub provider — content model, acquisition, and pull requests](../specs/done/plan-2026-08-27-github-provider-and-pull-requests.md)
 - [HTML rendering and an explicit content-trust model](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
-- [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md)
+- [Git and comparison sources](../architecture/arch-git.md)
 - [Delivery order for Git status, the repository cache, and providers](review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
 - [Repository-library phasing and GitHub content model](review-2026-08-26-repository-library-and-github-model.md)
-- [Repository-cache research](../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+- [Repository-cache research](../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

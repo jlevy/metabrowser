@@ -9,7 +9,7 @@
 This archived plan records the original implementation.
 Later Git history, comparison, and repository-source work is covered by the current
 [architecture](../../../architecture.md) and
-[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md).
+[Git and comparison sources](../../architecture/arch-git.md).
 The outstanding manual visual pass in the dated 2026-08-11 addendum remains a historical
 receipt gap; archiving this plan does not mark that pass complete.
 

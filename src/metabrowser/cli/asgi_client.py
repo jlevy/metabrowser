@@ -27,12 +27,17 @@ from metabrowser.errors import CLIError
 
 LOG = logging.getLogger(__name__)
 
+# How long `wait_for_index` waits for the scan to finish when no timeout is given,
+# polling `/api/index/progress` every `INDEX_READY_POLL_S`. `--index-timeout` in
+# `cli/main.py` repeats this default as a literal.
 INDEX_READY_TIMEOUT_S = 60.0
 INDEX_READY_POLL_S = 0.05
 # A server-sent-event route never completes its response, so an unbounded read
 # would hang rather than fail. This bounds every request instead of guessing
 # which routes stream.
 REQUEST_TIMEOUT_S = 30.0
+# Bounds application startup and shutdown, so an app that neither completes nor fails
+# its lifespan reports an error instead of hanging with no output.
 LIFESPAN_TIMEOUT_S = 30.0
 
 # A caller writes a route the way the browser would request it, which may carry

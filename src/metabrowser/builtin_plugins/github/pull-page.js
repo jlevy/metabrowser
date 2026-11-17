@@ -5955,8 +5955,8 @@ export function mountPullPage(container, ctx, mb) {
   let wantedFile = null;
 
   /**
-   * Go to a file of the mounted diff. docs/large-content-rendering.md ("Going to a file")
-   * says what it promises.
+   * Go to a file of the mounted diff. docs/project/architecture/arch-diff-pipeline.md,
+   * "Hydration", says what it promises.
    *
    * @param {string} path
    * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
@@ -6867,7 +6867,7 @@ export function mountPullPage(container, ctx, mb) {
     },
     /**
      * Go to a file of Files changed, for a list of the pull request's files beside the page.
-     * docs/large-content-rendering.md ("Going to a file") says what it promises.
+     * docs/project/architecture/arch-diff-pipeline.md, "Hydration", says what it promises.
      *
      * @param {string} path
      * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}

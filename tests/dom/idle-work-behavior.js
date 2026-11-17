@@ -165,7 +165,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
   // 1. Before the first view settles, untimed work waits, and timed work waits for its
   //    timeout and no longer. Untimed work has no ceiling, by decision: see "Idle Work"
-  //    in docs/development.md.
+  //    in docs/project/architecture/arch-browser-shell.md.
   mb.whenIdle(record("untimed"));
   mb.whenIdle(record("timed-2000"), { timeout: 2000 });
   await flush();

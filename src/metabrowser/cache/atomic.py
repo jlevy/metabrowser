@@ -10,7 +10,9 @@ Publication renames a staged directory or file to a path that must not exist. Th
 guarantee is the check under the owning lock: the caller holds the lock every writer of
 that path takes, the target is verified absent, and the rename uses the platform
 no-replace rename where there is one, so a violated lock discipline fails instead of
-silently replacing an entry.
+silently replacing an entry. Measured 2026-09-16
+(``explorations/repository-cache/README.md``): a plain ``os.rename`` replaced an empty
+directory.
 """
 
 from __future__ import annotations

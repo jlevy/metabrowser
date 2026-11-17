@@ -30,13 +30,13 @@
 // revisit's Diff summary arrived 22 to 50 ms after the click, and 175 to 238 ms at four
 // times slower CPU, 156 to 164 ms of it the wait for idle. The app's WebKit has no
 // `requestIdleCallback`, so there the wait is the 250 ms quiet after a press
-// (docs/development.md, "Idle Work"): with a real press and none, 253 to 256 ms. A kept
-// comparison is drawn in the paint that shows its record, with no request, no wait, and no
-// parse: 13 to 20 ms after the click, 57 to 73 ms at four times slower CPU, and 16 to 19 ms
-// with no `requestIdleCallback`, the record's own read and paint. Measured again after
-// review, at a load average of 19 to 47: 16 to 27 ms, 46 to 63 ms, and 16 to 23 ms, where
-// the old page at that load took 32 to 36 ms with a real press and 255 to 259 ms with no
-// `requestIdleCallback`.
+// (docs/project/architecture/arch-browser-shell.md, "Idle Work"): with a real press and
+// none, 253 to 256 ms. A kept comparison is drawn in the paint that shows its record, with
+// no request, no wait, and no parse: 13 to 20 ms after the click, 57 to 73 ms at four
+// times slower CPU, and 16 to 19 ms with no `requestIdleCallback`, the record's own read
+// and paint. Measured again after review, at a load average of 19 to 47: 16 to 27 ms, 46
+// to 63 ms, and 16 to 23 ms, where the old page at that load took 32 to 36 ms with a real
+// press and 255 to 259 ms with no `requestIdleCallback`.
 //
 // A page opened on Changes reads through the keep too (`take`), so the next visit to that
 // pull request is drawn from it like any other. The Pulls tab warms the keep for the pull
