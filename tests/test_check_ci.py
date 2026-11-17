@@ -373,14 +373,6 @@ DROPS = {
         ),
         "ci.yml job admitted-git has a step under if: steps.restore-git.outputs.cache-hit",
     ),
-    "the goldens skipped by the cache-miss condition": (
-        CI_TEXT.replace(
-            "      - name: Run the goldens\n",
-            "      - name: Run the goldens\n"
-            "        if: steps.restore-git.outputs.cache-hit != 'true'\n",
-        ),
-        "ci.yml job goldens has a step under if: steps.restore-git.outputs.cache-hit",
-    ),
     "the verdict's step skipped": (
         CI_TEXT.replace(
             "      - name: Decide the run's verdict\n",
@@ -423,8 +415,10 @@ DROPS = {
         ),
         "ci.yml ci-ok must run `bash devtools/ci_verdict.sh` and no other command",
     ),
-    "the verdict given no results": (
-        CI_TEXT.replace("RESULTS: ${{ toJSON(needs) }}", "RESULTS: '{}'"),
+    "the verdict given one job's result": (
+        CI_TEXT.replace(
+            "RESULTS: ${{ toJSON(needs) }}", """RESULTS: '{"plan": {"result": "success"}}'"""
+        ),
         "ci.yml ci-ok must run `bash devtools/ci_verdict.sh` and no other command, with "
         "RESULTS: ${{ toJSON(needs) }}",
     ),
@@ -441,6 +435,20 @@ def test_an_edit_that_drops_coverage_fails(tmp_path: Path, drop: str) -> None:
 
 def _errors_of(tmp_path: Path, text: str) -> str:
     return "\n".join(verify(_repository(tmp_path, text)))
+
+
+def test_the_cache_miss_condition_stays_in_admitted_git(tmp_path: Path) -> None:
+    """In another job it reads a step that is not there and is true, so nothing is dropped
+    today; it is refused so that a job that gains a restore-git step cannot skip on a hit.
+    """
+
+    errors = _errors(
+        tmp_path,
+        "      - name: Run the goldens\n",
+        "      - name: Run the goldens\n        if: steps.restore-git.outputs.cache-hit != 'true'\n",
+    )
+
+    assert "ci.yml job goldens has a step under if: steps.restore-git.outputs.cache-hit" in errors
 
 
 # ── Every workflow ─────────────────────────────────────────────────────────────────
