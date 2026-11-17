@@ -245,10 +245,5 @@ filterwarnings = []
 # measurement that forced it.
 timeout = 60
 timeout_method = "thread"
-# Every thread's stack, to the job's log, once one test phase has run this long. Under
-# pytest-xdist the timeout above ends a worker, not the run, and the stacks it prints go
-# to that worker's own output, which nothing shows: a worker of CI run 44033895259 ended
-# so, leaving no trace of its test. faulthandler writes to the stderr pytest started with.
-# Five seconds under the budget, so it fires first. The slowest phase in CI run
-# 44026747033 took 39.2 s, so a passing run prints nothing.
-faulthandler_timeout = 55
+# Under pytest-xdist this ends a worker, not the run, and its stack dump is lost with
+# the worker's output; tests/suite_workers.py dumps every stack to the log first.

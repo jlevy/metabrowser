@@ -10,14 +10,29 @@ sending the report raised ``DumpError`` and stopped the whole run with an intern
 Here every string of a report that is to be sent is made encodable, its lone surrogates
 written as backslash escapes, as Python's own ``sys.stderr`` writes them. Nothing else in
 a report changes, and a report that never leaves its process is not touched.
+
+A test that runs out of time ends its worker, not the run: pytest-timeout's thread method
+prints every stack and exits the process, and on a worker that output is the worker's
+own, which nothing shows. A worker of CI run 44033895259 ended so, as "node down: Not
+properly terminated", with no trace of its test. So ``StackDumps`` has faulthandler
+write every thread's stack to the stderr the run started with, which reaches the log
+from a worker too, ``DUMP_LEAD_S`` before the test's own budget: its ``timeout`` marker,
+or the suite's ``timeout``. A test that keeps to its budget prints nothing.
 """
 
 from __future__ import annotations
 
+import faulthandler
+import os
+import sys
 from collections.abc import Generator
-from typing import cast
+from typing import Final, cast
 
 import pytest
+
+# How long before a test's budget ends its stacks are written: time for faulthandler's
+# own thread to write every stack before the timeout's thread exits the process.
+DUMP_LEAD_S: Final = 5.0
 
 
 def encodable(value: object) -> object:
@@ -46,3 +61,43 @@ def pytest_report_to_serializable() -> Generator[
     if serialized is None:
         return None
     return cast("dict[str, object]", encodable(serialized))
+
+
+def budget_of(item: pytest.Item) -> float:
+    """The seconds pytest-timeout gives *item*: its closest marker's, or the suite's."""
+
+    marker = item.get_closest_marker("timeout")
+    if marker is not None:
+        given = marker.args[0] if marker.args else marker.kwargs.get("timeout")
+        if given is not None:
+            return float(given)
+    return float(item.config.getini("timeout") or 0)
+
+
+class StackDumps:
+    """Every thread's stack, to the run's own stderr, shortly before a test's budget ends."""
+
+    def __init__(self) -> None:
+        self.stderr: int | None = None
+
+    def pytest_configure(self, config: pytest.Config) -> None:
+        # Capture is suspended while plugins are configured, so this is the real stderr.
+        stream = sys.__stderr__
+        assert stream is not None, "the interpreter has no stderr"
+        self.stderr = os.dup(stream.fileno())
+
+    def pytest_unconfigure(self, config: pytest.Config) -> None:
+        if self.stderr is not None:
+            os.close(self.stderr)
+            self.stderr = None
+
+    @pytest.hookimpl(wrapper=True, trylast=True)
+    def pytest_runtest_protocol(self, item: pytest.Item) -> Generator[None, object, object]:
+        budget = budget_of(item)
+        if self.stderr is None or budget <= DUMP_LEAD_S:
+            return (yield)
+        faulthandler.dump_traceback_later(budget - DUMP_LEAD_S, file=self.stderr)
+        try:
+            return (yield)
+        finally:
+            faulthandler.cancel_dump_traceback_later()
