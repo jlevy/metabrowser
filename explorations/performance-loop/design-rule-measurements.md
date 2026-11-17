@@ -427,6 +427,13 @@ its line arrives; #106’s line, “2 A, 3 D, 30 M · +1,234 −3,423” in the 
 whole down to 299 px and its totals alone from 260 px, where it showed its statuses cut
 short before. A stack heading’s line shows whole down to 260 px, its totals alone at 220
 and 200 px, and goes at 180 px, where it went before too.
+Measured again after review, on hand-built headings in headless Chrome 152 with the
+production stylesheet: a heading whose totals are estimated, “21 A, 7 D, 15 M · +1,234
+−567 (estimated)”, drops its “(estimated)” whole first and keeps its statuses to 360 px,
+then shows its totals alone with nothing after them, and goes at 240 px, as an exact one
+does. Before the review’s fix the statuses went at the first pixel of squeeze and left a
+blank run of 83 to 115 px, and before this change the note was cut to “(estimat” at 420
+px and the line went at 320 px.
 `tests/dom/github-pulls-stacks-chrome.mjs` holds the order: the title’s line above the
 number’s, the state icon centred on the title’s line, the title from the text column to
 the row’s end, and the number’s line in the title’s column.
