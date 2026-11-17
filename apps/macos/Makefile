@@ -12,7 +12,7 @@
 #   make notarize [FILE=path] notarize and staple the release DMG, or FILE
 #   make signing-check        the signing doctor: can this Mac sign and notarize a release?
 #                             Read-only; ONLINE=1 also asks the notary service
-#   make check-release TAG=macos-vX.Y.Z BUILT=local|ci [LAUNCH=1]
+#   make check-release TAG=macos-vX.Y.Z BUILT=local|ci EXPECTED_TEAM_ID=TEAMID [LAUNCH=1]
 #                             check a draft or published release as a downloader gets it;
 #                             LAUNCH=1 also launches it, translocated, at the Mac
 #   make webkit-gate          the WebKit measurement gate against Chrome (webkit-gate/run.mjs);
@@ -93,7 +93,7 @@ clean:
 	@set -e; source scripts/common.sh; source scripts/check-release-lib.sh; \
 	leftover="$$(leftover_launch_checks "$(CURDIR)/build")"; \
 	if [[ -n "$$leftover" ]]; then \
-	  echo "error: $$leftover holds a launch check's backup, the only copy of the release identity's state; restore it first: scripts/launch-release.sh --restore $$leftover" >&2; \
+	  echo "error: $$leftover holds a launch check's backup, the only copy of the release identity's state; quit Metabrowser, then restore it: scripts/launch-release.sh --restore $$leftover" >&2; \
 	  exit 1; \
 	fi
 	rm -rf .build build

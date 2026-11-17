@@ -154,6 +154,27 @@ leftover_launch_checks() {
   return 0
 }
 
+# The copies of the app "$2" (Metabrowser) that a launch check opened, and so registered
+# with LaunchServices, in its folder "$1", one per line: Downloads and the two it is
+# moved to. The image's mount point holds the image's own copy, which is never opened.
+launch_copies() {
+  local copy
+  for copy in "$1"/*/"$2.app"; do
+    [[ -d "$copy" && "$copy" != "$1/mount/$2.app" ]] && echo "$copy"
+  done
+  return 0
+}
+
+# What an answer to one of the launch check's questions means: yes for y or yes, no for
+# n or no, in either case, and nothing for anything else, which is asked again.
+answer_meaning() {
+  case "$1" in
+    [yY] | [yY][eE][sS]) echo yes ;;
+    [nN] | [nN][oO]) echo no ;;
+  esac
+  return 0
+}
+
 # What a launch of the release identity "$2" reads and changes: its user defaults, the
 # saved session both variants share, and the recent documents macOS keeps for it.
 release_session_file() {

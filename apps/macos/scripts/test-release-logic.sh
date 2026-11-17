@@ -1185,7 +1185,46 @@ if ((status != 0)) && said "check out the release's commit"; then
 else
   fail "check-release.sh for another version: status $status: $(cat "$work/out")"
 fi
+
+# Steps 6 and 7 and the summary, from a copy of the scripts whose check-dmg.sh records
+# what it was given, with a swiftc that builds a quarantine helper answering as it does
+# for a gh download. check-dmg.sh takes the team, version, and commit as optional, so a
+# call that dropped them would still pass, and only this record shows it.
+app_copy() {
+  rm -rf "$1"
+  mkdir -p "$1"
+  cp -R scripts "$1/"
+  cp VERSION "$1/"
+}
+app_copy "$work/release-copy"
+cat >"$work/release-copy/scripts/check-dmg.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'NOTARIZE=%s EXPECTED_TEAM_ID=%s EXPECTED_VERSION=%s EXPECTED_COMMIT=%s image=%s\n' "${NOTARIZE:-}" \
+  "${EXPECTED_TEAM_ID:-}" "${EXPECTED_VERSION:-}" "${EXPECTED_COMMIT:-}" "$(basename "$1")" >"$check_dmg_record"
+EOF
+chmod +x "$work/release-copy/scripts/check-dmg.sh"
+swiftc() {
+  # swiftc -O scripts/quarantine.swift -o OUTPUT
+  printf '#!/usr/bin/env bash\necho simulated\n' >"${*: -1}"
+  chmod +x "${*: -1}"
+}
+check_dmg_record="$work/check-dmg-record"
+export -f swiftc
+export check_dmg_record
+rm -f "$check_dmg_record"
+# Values in its own environment that check-release.sh must override, as check-dmg.sh
+# would otherwise inherit them. EXPECTED_TEAM_ID is its input, passed on unchanged.
+run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team" LAUNCH=0 NOTARIZE=0 EXPECTED_VERSION=9.9.9 \
+  EXPECTED_COMMIT=89abcde "$work/release-copy/scripts/check-release.sh"
+want="NOTARIZE=1 EXPECTED_TEAM_ID=$team EXPECTED_VERSION=$version_now EXPECTED_COMMIT=0123456789abcdef0123456789abcdef01234567 image=$image_name"
+if ((status == 0)) && [[ "$(cat "$check_dmg_record" 2>/dev/null)" == "$want" ]] && said "quarantine: simulated" &&
+  said "check-dmg.sh with NOTARIZE=1: passed, team $team, the release variant $version_now from 0123456789abcdef0123456789abcdef01234567"; then
+  pass "check-release.sh runs check-dmg.sh with NOTARIZE=1 and the team, version, and commit it then reports"
+else
+  fail "check-release.sh's step 7: status $status; check-dmg.sh got: $(cat "$check_dmg_record" 2>/dev/null); output: $(cat "$work/out")"
+fi
 unset -f gh release_json swiftc
+unset check_dmg_record
 
 # ── The launch check's backup ────────────────────────────────
 # A defaults stand-in that keeps each domain as a file, and the release identity's
@@ -1302,11 +1341,24 @@ defaults() {
     *) return 99 ;;
   esac
 }
+# A pgrep stand-in, so that no case depends on what runs on this Mac: it lists
+# $stub_running, the pids of a running Metabrowser, if any.
+pgrep() {
+  [[ -z "${stub_running:-}" ]] || echo "$stub_running"
+}
 echo "the owner's settings" >"$defaults_store/$release_id"
 echo "the owner's session" >"$session_file"
 backup_release_state "$work/interrupted/backup" "$release_id"
+echo "the launch's session" >"$session_file"
 export defaults_store
-export -f defaults
+export -f defaults pgrep
+run env stub_running=4242 scripts/launch-release.sh --restore "$work/interrupted"
+if ((status != 0)) && said "a Metabrowser is running (4242 ); quit every copy first" &&
+  [[ -f "$work/interrupted/backup/complete" && "$(cat "$session_file")" == "the launch's session" ]]; then
+  pass "launch-release.sh --restore refuses while a Metabrowser runs, and keeps the backup"
+else
+  fail "launch-release.sh --restore with a Metabrowser running: status $status: $(cat "$work/out")"
+fi
 run scripts/launch-release.sh --restore "$work/interrupted"
 if ((status == 0)) && [[ ! -e "$work/interrupted" ]] &&
   [[ "$(cat "$defaults_store/$release_id")|$(cat "$session_file")" == "the owner's settings|the owner's session" ]]; then
@@ -1320,8 +1372,42 @@ if ((status != 0)) && said "could not restore"; then
 else
   fail "launch-release.sh --restore without a backup: status $status: $(cat "$work/out")"
 fi
-unset -f defaults
+unset -f defaults pgrep
 rm -f "$defaults_store/$release_id" "$session_file"
+
+# The next run refuses while an interrupted run's backup is left, before it needs a
+# terminal, so this runs where nothing is launched: in a copy, whose build/ is its own.
+app_copy "$work/launch-copy"
+mkdir -p "$work/launch-copy/build/launch-check-20261117T090000Z/backup"
+: >"$work/launch-copy/build/launch-check-20261117T090000Z/backup/complete"
+run "$work/launch-copy/scripts/launch-release.sh" "$work/some.dmg"
+# The folder is named as the script's cd spells it, which can differ from $work's.
+if ((status != 0)) && said "quit Metabrowser, then restore it: scripts/launch-release.sh --restore " &&
+  said "/launch-copy/build/launch-check-20261117T090000Z"; then
+  pass "launch-release.sh refuses to launch while an interrupted run's backup is left, and names the restore"
+else
+  fail "launch-release.sh with a backup left: status $status: $(cat "$work/out")"
+fi
+
+# What --restore unregisters, and what an answer to a question means.
+mkdir -p "$work/copies/Downloads/Metabrowser.app" "$work/copies/Moved in Finder/Metabrowser.app" \
+  "$work/copies/mount/Metabrowser.app" "$work/copies/backup"
+if [[ "$(launch_copies "$work/copies" Metabrowser)" == "$work/copies/Downloads/Metabrowser.app"$'\n'"$work/copies/Moved in Finder/Metabrowser.app" ]]; then
+  pass "a launch check's copies are the ones it opened, and not the image's own"
+else
+  fail "launch_copies found: $(launch_copies "$work/copies" Metabrowser | tr '\n' '|')"
+fi
+meanings=""
+for answer in y Y yes YES n N no No "" yep "y es" maybe; do
+  meanings="$meanings$(answer_meaning "$answer")|"
+done
+if [[ "$meanings" == "yes|yes|yes|yes|no|no|no|no|||||" ]]; then
+  pass "y and yes, in either case, are yes, n and no are no, and anything else is asked again"
+else
+  fail "answer_meaning read: $meanings"
+fi
+# The rest of launch-release.sh, its launches and its questions, needs a terminal and a
+# Mac's Gatekeeper, so no test here runs it; the runbook's LAUNCH=1 run at the Mac does.
 
 # ── The metab floor ──────────────────────────────────────────
 mkdir -p "$work/floor/Sources/ShellCore/Setup"
@@ -1345,6 +1431,20 @@ if ((status != 0)) && said "no longer declares MetabRequirement.isReleased"; the
   pass "a declaration of isReleased this does not read stops the release, rather than passing it"
 else
   fail "a changed isReleased declaration: status $status: $(cat "$work/out")"
+fi
+# release.sh's preflight, from a copy whose declaration is false, so the case holds once
+# the real one is true, and whose build-app.sh records that it ran.
+app_copy "$work/release-floor"
+mkdir -p "$work/release-floor/Sources/ShellCore/Setup"
+sed 's/public static let isReleased = true/public static let isReleased = false/' Sources/ShellCore/Setup/MetabVersion.swift \
+  >"$work/release-floor/Sources/ShellCore/Setup/MetabVersion.swift"
+printf '#!/usr/bin/env bash\n: >"$(dirname "$0")/../built"\n' >"$work/release-floor/scripts/build-app.sh"
+run env -u SIGN_IDENTITY VARIANT=release NOTARIZE=1 "$work/release-floor/scripts/release.sh"
+if ((status != 0)) && said "MetabRequirement.isReleased is false" && said "not an official build" &&
+  [[ ! -e "$work/release-floor/built" ]]; then
+  pass "release.sh's preflight lists an unreleased metab floor, and stops before it builds"
+else
+  fail "release.sh with the metab floor unreleased: status $status: $(cat "$work/out")"
 fi
 
 # ── parse_identities on an unusual listing ───────────────────

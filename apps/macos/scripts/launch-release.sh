@@ -12,19 +12,22 @@
 #
 # It exits nonzero on any miss: a first launch that is not translocated, a launch after
 # the Finder move that is, a copy out of the image that is not quarantined, and any
-# confirmation not answered y. The relaunch and the Terminal move are recorded, not
-# judged: their outcome is what the run measures.
+# confirmation answered no (answer_meaning in check-release-lib.sh). The relaunch and
+# the Terminal move are recorded, not judged: their outcome is what the run measures.
 #
 # It runs the unmodified release bundle, whose identity is an installed release's, so it
 # refuses while any Metabrowser runs, backs up that identity's defaults, the session both
 # variants share, and its recent documents into build/launch-check-TIME/backup, clears
 # them so the launch is a first launch, and restores them when it ends. A run that ends
 # before restoring (killed, or the Mac off) leaves the backup as the only copy: the next
-# run refuses until `--restore` puts it back, and `make clean` refuses to delete it. It
-# does not back up or clear the identity's WebKit data, caches, HTTP storage, or saved
-# window state, or the server logs, which a launch also writes. Each scratch copy is
-# unregistered from LaunchServices afterwards, as scripts/check-setup-flows.sh does. On a
-# VM or another account, which the runbook prefers, none of that state is the owner's.
+# run refuses until `--restore` puts it back, and `make clean` refuses to delete it.
+# `--restore` refuses while any Metabrowser runs too, since a running copy saves its
+# session over the restored one, and unregisters the run's copies before it deletes the
+# folder. It does not back up or clear the identity's WebKit data, caches, HTTP storage,
+# or saved window state, or the server logs, which a launch also writes. Each scratch
+# copy is unregistered from LaunchServices afterwards, as scripts/check-setup-flows.sh
+# does. On a VM or another account, which the runbook prefers, none of that state is the
+# owner's.
 #
 # Its last lines are the record of the run for the release record (README.md, Building a
 # Release).
@@ -36,11 +39,28 @@ source scripts/common.sh
 source scripts/check-release-lib.sh
 
 variant_settings release
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+running_pids() {
+  pgrep -f "/$product.app/Contents/MacOS/$product" || true
+}
+# Both variants write the one session.json, and the app saves it on every change and at
+# quit, so a running copy would overwrite what a launch clears or a restore puts back.
+refuse_running() {
+  [[ -z "$(running_pids)" ]] ||
+    die "a Metabrowser is running ($(running_pids | tr '\n' ' ')); quit every copy first, since $1"
+}
 
 if [[ "${1:-}" == --restore ]]; then
   folder="${2:?usage: scripts/launch-release.sh --restore build/launch-check-TIME}"
+  refuse_running "it would save its session over the one this restores"
+  [[ ! -d "$folder/mount/$product.app" ]] || detach_image "$folder/mount"
   restore_release_state "$folder/backup" "$bundle_id" ||
     die "could not restore $bundle_id's state from $folder/backup, which is kept"
+  while IFS= read -r copy; do
+    [[ -n "$copy" ]] || continue
+    "$lsregister" -u "$copy" 2>/dev/null || note "could not unregister $copy"
+  done <<<"$(launch_copies "$folder" "$product")"
   rm -rf "$folder"
   echo "Restored $bundle_id's defaults, session, and recent documents, and removed $folder"
   exit 0
@@ -49,17 +69,11 @@ fi
 dmg="${1:?usage: scripts/launch-release.sh DMG, or --restore FOLDER}"
 leftover="$(leftover_launch_checks "$PWD/build")"
 [[ -z "$leftover" ]] ||
-  die "an earlier launch check ended before restoring $bundle_id's state, and its backup is the only copy; restore it first: scripts/launch-release.sh --restore $(head -n 1 <<<"$leftover")"
+  die "an earlier launch check ended before restoring $bundle_id's state, and its backup is the only copy; quit Metabrowser, then restore it: scripts/launch-release.sh --restore $(head -n 1 <<<"$leftover")"
 [[ -f "$dmg" ]] || die "$dmg does not exist"
 [[ "${CI:-}" != true ]] || die "the launch check is interactive and never runs in CI"
 [[ -t 0 ]] || die "the launch check is interactive: run it in Terminal at the Mac"
-lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-
-running_pids() {
-  pgrep -f "/$product.app/Contents/MacOS/$product" || true
-}
-[[ -z "$(running_pids)" ]] ||
-  die "a Metabrowser is running ($(running_pids | tr '\n' ' ')); quit every copy first, since this launches the release identity"
+refuse_running "this launches the release identity"
 
 state="$PWD/build/launch-check-$(date -u +%Y%m%dT%H%M%SZ)"
 downloads="$state/Downloads"
@@ -89,7 +103,7 @@ cleanup() {
   elif restore_release_state "$state/backup" "$bundle_id"; then
     rm -rf "$state"
   else
-    check_fail "could not restore $bundle_id's defaults, session, and recent documents, which are cleared; the backup is in $state/backup: scripts/launch-release.sh --restore $state"
+    check_fail "could not restore $bundle_id's defaults, session, and recent documents, which are cleared; the backup is in $state/backup: quit Metabrowser, then run scripts/launch-release.sh --restore $state"
   fi
   exit "$(check_status "$status")"
 }
@@ -104,12 +118,22 @@ step() {
   read -r -p "   Press Return when done. " _
 }
 
-# Asks a yes-or-no question and records the answer; anything but y is a failed check.
+# Asks a yes-or-no question until the answer is one (answer_meaning) and records it; no,
+# or the end of input, is a failed check. A check that fails on a typo costs a person
+# several minutes and a fresh download to repeat.
 ask() {
-  local answer
-  read -r -p "   $1 [y/n] " answer
-  record+=("$1 ${answer:-no answer}")
-  [[ "$answer" == y ]] || check_fail "$1 The answer was '${answer:-none}'."
+  local answer meaning=""
+  while [[ -z "$meaning" ]]; do
+    if ! read -r -p "   $1 [y/n] " answer; then
+      record+=("$1 no answer")
+      check_fail "$1 There was no answer."
+      return 0
+    fi
+    meaning="$(answer_meaning "$answer")"
+    [[ -n "$meaning" ]] || echo "   Answer y or n."
+  done
+  record+=("$1 $meaning")
+  [[ "$meaning" == yes ]] || check_fail "$1 The answer was '$answer'."
 }
 
 # Launches the copy at "$1" as a double-click in Finder does, waits for the person at the

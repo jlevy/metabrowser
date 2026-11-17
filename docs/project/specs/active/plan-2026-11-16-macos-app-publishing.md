@@ -405,7 +405,8 @@ accepts a download before anything is published.
    CI, the owner confirms that the waiting run’s commit is `RELEASE_COMMIT` and approves
    the `macos-release` deployment in the web UI.
 4. **Build, sign, notarize, and draft**, as below.
-5. **Check the draft** with `make macos-check-release TAG=macos-vX.Y.Z BUILT=local` or
+5. **Check the draft** with
+   `make macos-check-release TAG=macos-vX.Y.Z BUILT=local EXPECTED_TEAM_ID=TEAMID` or
    `BUILT=ci`, then O8 on the draft’s download.
 6. **Approve the image’s SHA-256 and the notes, and publish** the draft with
    `gh release edit macos-vX.Y.Z --draft=false --latest=false`, so the Python package’s
@@ -454,8 +455,10 @@ instead of cancelling one that is signing.
 3. **`draft`** needs `sign`, holds no Apple secrets, attests the image, and creates the
    draft release with `--verify-tag --latest=false`. Permissions: `contents: write`,
    `id-token: write`, `attestations: write`.
-4. The owner runs or watches `make macos-check-release BUILT=ci` on the draft, which
-   also verifies the attestation, then does O8 and publishes as in step 6 above.
+4. The owner runs or watches
+   `make macos-check-release TAG=macos-vX.Y.Z BUILT=ci EXPECTED_TEAM_ID=TEAMID` on the
+   draft, which also verifies the attestation, then does O8 and publishes as in step 6
+   above.
 
 Once the release workflow exists, a release built locally is the exception: its tag
 starts a run that waits at the approval, which the owner rejects, so the job ends
@@ -671,7 +674,8 @@ owner’s Mac.
   Under `NOTARIZE=1`, a log it could not fetch or parse is fatal.
 
 - [ ] **`mb-xd4o` A release-download check.** `scripts/check-release.sh`, run by
-  `make macos-check-release TAG=… BUILT=local|ci`, for a draft or published release:
+  `make macos-check-release TAG=… BUILT=local|ci EXPECTED_TEAM_ID=…`, for a draft or
+  published release:
   - downloads the assets with `gh release download` into a scratch folder;
   - checks `shasum -a 256 -c` and the asset digest from `gh release view --json assets`;
   - with `BUILT=ci`, requires the build provenance attestation, verified with
@@ -780,7 +784,7 @@ owner’s Mac.
 | `mb-63cx` | `make format` and `make lint-check` (public hygiene included) pass; the owner follows the runbook for the first release |
 | `mb-3ey5` | The rehearsal in `macos-app.yml` passes, and a deliberate failure in import still leaves cleanup run |
 | `mb-yqrs` | Unit tests in `tests/` for each refused shape, and the real workflow passes |
-| `mb-mww5` | The first `macos-v*` tag after O4 produces a draft whose image passes `make macos-check-release BUILT=ci`; until then, `check_supply_chain.py` and a review of the workflow |
+| `mb-mww5` | The first `macos-v*` tag after O4 produces a draft whose image passes `make macos-check-release TAG=… BUILT=ci EXPECTED_TEAM_ID=…`; until then, `check_supply_chain.py` and a review of the workflow |
 | `mb-eoez` | The lint step passes on the rehearsal cask, and fails in a test run on a cask with a malformed `url` stanza, which `brew style` or the offline audit reports |
 | `mb-epgm` | The step passes in CI, and fails in a test run on a deliberately broken launch |
 

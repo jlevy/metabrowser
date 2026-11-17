@@ -32,7 +32,7 @@ make macos-dmg                       # build/Metabrowser-Dev-<VERSION>-arm64.dmg
 make macos-release                   # the official build; see Building a Release
 make macos-notarize FILE=path        # notarize and staple one .app or .dmg
 make macos-signing-check             # the signing doctor: can this Mac sign a release? Read-only
-make macos-check-release TAG=macos-vX.Y.Z BUILT=local  # check a release as downloaded
+make macos-check-release TAG=macos-vX.Y.Z BUILT=local EXPECTED_TEAM_ID=TEAMID  # check a release as downloaded
 make macos-build                     # debug build only
 make macos-clean                     # remove .build and build
 make macos-webkit-gate               # the WebKit measurement gate; needs Google Chrome
@@ -432,13 +432,14 @@ In this order. The owner’s approvals, O7, come at steps 1, 3, and 8, and O8 is
 
    Each output goes into the approval record.
    `EXPECTED_TEAM_ID` is required: without an attestation, the Team ID is what ties the
-   image to the owner. `LAUNCH=1` exits nonzero on a miss, and an answer other than `y`
-   is one. If a `LAUNCH=1` run is interrupted, the release identity’s defaults, session,
-   and recent documents stay cleared and its backup in
-   `apps/macos/build/launch-check-TIME` is their only copy: the next run, and
-   `make macos-clean`, refuse until
+   image to the owner. `LAUNCH=1` exits nonzero on a miss, and an answer of no is one; it
+   takes `y` or `yes` and `n` or `no`, and asks again on anything else.
+   If a `LAUNCH=1` run is interrupted, the release identity’s defaults, session, and
+   recent documents stay cleared and its backup in `apps/macos/build/launch-check-TIME`
+   is their only copy: the next run, and `make macos-clean`, refuse until
    `scripts/launch-release.sh --restore build/launch-check-TIME`, run in `apps/macos`,
-   puts them back.
+   puts them back. Quit Metabrowser first: the restore refuses while any copy runs, since
+   a running copy saves its session over the restored one.
 
 7. **O8, the owner’s download (Owner).** On a Mac or VM that has not run the app, the
    owner downloads the draft’s image in a browser, opens it, answers Gatekeeper’s
