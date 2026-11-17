@@ -297,24 +297,33 @@ from outside the repository:
   `tests/golden/*.tryscript.md` and tryscript’s built-in `node_modules` and `dist`
   ignores. No tryscript configuration file exists to add others, none of the patterns has
   an extglob, and no input from a user, a request, or a fetched repository reaches them.
-- Every package on the path is a dev-only install.
-  None is vendored into the browser assets, and nothing in the wheel or the browser
-  loads picomatch.
+- Nothing that ships uses the path.
+  The project depends directly on tryscript alone; picomatch, fdir, and tinyglobby reach
+  the lock only through it.
+  None of them is among the libraries `devtools/vendor_assets.py` copies into the
+  browser assets, and nothing in the wheel or the browser loads them.
+  Every npm package here is a dev dependency, the vendored ones included, so the lock’s
+  `dev` flag is not this evidence.
 
 `devtools/npm_audit.sh` applies the exception through
-`devtools/npm_audit_exceptions.py`. When an audit fails, the check reads its
-`npm audit --json` report and passes the gate only if everything at or above the audit
-level is this advisory on this path: the packages, dependency edges, and lockfile nodes
-above, every node a dev-only install, and the affected range and locked picomatch
-release the review covered, recorded in `PICOMATCH_REDOS`. Anything else still fails:
-another advisory at or above the level; this one through another package, edge, or node;
-a revised range; a picomatch the lock has moved; or a report the check cannot read.
+`devtools/npm_audit_exceptions.py`. When an audit fails, the check reads the JSON answer
+of that same `npm audit --json` request and passes the gate only if everything at or
+above the audit level is this advisory as reviewed, on this path as reviewed.
+`PICOMATCH_REDOS` records what the review covered: the advisory’s severity, CWE, CVSS
+vector, and affected range; the fix npm offered for picomatch, which was only the
+tryscript downgrade below; and for each package on the path its locked release, lockfile
+node, dependency edges, and whether the project depends on it directly.
+Anything else still fails: another advisory at or above the level; this one re-scored,
+re-scoped, or fixable; this one through another package, release, edge, or node, or with
+the project depending on picomatch, fdir, or tinyglobby directly; or a report the check
+cannot read or whose counts disagree with its entries.
 The exception can lapse, which fails the build and calls for a new review, but it cannot
 widen. When it applies, the audit prints a banner naming the advisory and the bead.
 `tests/test_npm_audit.py` holds each of these cases against the reviewed report.
 
 The exception, its check, its test, and its fixture are removed when either of these
-holds:
+holds. Either one also changes the fix npm offers for picomatch, which lapses the
+exception, so the gate asks for the removal:
 
 1. picomatch publishes a release that fixes the advisory, that release clears the 14-day
    cool-off, and the lock moves to it;
@@ -345,9 +354,13 @@ advisory endpoint. Only the first is a reason to stop.
 The wrapper retries, then reports an unreachable endpoint as **not performed** --
 loudly, and without failing the build, because a registry outage is not a finding and
 the lockfile is pinned, so the dependency set has not moved since the last run that did
-reach it.
-An advisory at or above the level still fails exactly as before, except the one
-reviewed advisory on its reviewed path, which
+reach it. One `npm audit --json` request per attempt decides, by its status and its
+answer; npm’s text report is fetched afterwards for the log only.
+An answer that is an audit report is a finding, even when an advisory’s text contains a
+word the outage check looks for; only an answer that is not a report can be an outage,
+and only when it says the endpoint failed.
+An advisory at or above the level still fails exactly as before, except the one reviewed
+advisory on its reviewed path, which
 [the picomatch exception](#picomatch-redos-audit-exception-november-17-2026) describes.
 A run that reports “not performed” has not cleared the dependencies; re-run the gate
 once the registry answers before relying on it.

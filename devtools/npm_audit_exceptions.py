@@ -1,17 +1,22 @@
 """The one npm advisory ``devtools/npm_audit.sh`` tolerates, and the check that applies it.
 
 ``npm audit`` exits 1 for any advisory at or above the audit level, so its status cannot
-tell a reviewed advisory from a new one. When the audit fails with a finding, the wrapper
-hands this module the ``npm audit --json`` report, and the gate passes only if every
-package reported at or above the level is explained by the exception below: the one
-advisory, on the one package, at the affected range and locked release it was reviewed
-at, through exactly the reviewed packages, dependency edges, and lockfile nodes, every one
-of them a dev-only install.
+tell a reviewed advisory from a new one. When the audit fails, the wrapper hands this
+module the JSON answer of that same request, and the gate passes only if every package
+reported at or above the level is explained by the exception below. Everything the review
+rested on is pinned: the advisory's identity, severity, weakness, CVSS vector, and affected
+range; that npm still knows no fix but the reviewed one; and the path, as packages,
+releases, lockfile nodes, dependency edges, and which package the project depends on
+directly.
 
-Anything else fails the gate: another advisory at or above the level, the same advisory
-reaching us through another package, edge, or node, a revised affected range, a moved
-picomatch, a node that is no longer dev-only, or a report this module cannot read. So the
+Anything else fails the gate: another advisory at or above the level; the same advisory
+re-scored, re-scoped, or fixable; the same advisory reaching us through another package,
+release, edge, or node, or with the project depending on a path package directly; or a
+report this module cannot read or whose counts disagree with its entries. So the
 exception can lapse, which fails the gate and asks for a new review, but it cannot widen.
+
+An answer that is not an audit report at all gets its own exit status, ``NOT_A_REPORT``,
+because only such an answer can be an outage; the wrapper decides whether it is one.
 
 Why the advisory is not exploitable here, the owner's approval, and when the exception is
 removed: "Picomatch ReDoS Audit Exception" in SUPPLY-CHAIN-SECURITY.md, and bead mb-p1o0.
@@ -32,18 +37,32 @@ SEVERITIES = ("info", "low", "moderate", "high", "critical")
 # The `npm audit --json` format this check reads; another version is unreadable here.
 AUDIT_REPORT_VERSION = 2
 ADVISORY_URL_PREFIX = "https://github.com/advisories/"
+# The lockfile root's dependency maps: what the project itself depends on.
+ROOT_DEPENDENCY_FIELDS = (
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+)
+# Exit status for an answer that is not an audit report (an endpoint or npm error).
+# Distinct from 1 (the exception does not cover the report) and from 2, which argparse
+# and uv use for their own errors; `devtools/npm_audit.sh` reads it.
+NOT_A_REPORT = 3
 
 
 @dataclass(frozen=True)
 class Hop:
     """One package npm may report as vulnerable through the advisory.
 
-    ``nodes`` are the lockfile nodes it may name, and ``via`` the packages it may be
-    vulnerable through. A report may name fewer of either, which only narrows the path; a
-    node or a package not listed here is another path.
+    ``version`` is the locked release it was reviewed at, ``nodes`` the lockfile nodes it
+    may name, ``direct`` whether the project depends on it itself, and ``via`` the
+    packages it may be vulnerable through. A report may name fewer nodes or edges, which
+    only narrows the path; a node or a package not listed here is another path.
     """
 
+    version: str
     nodes: tuple[str, ...]
+    direct: bool
     via: tuple[str, ...] = ()
 
 
@@ -53,10 +72,15 @@ class AuditException:
 
     ghsa: str
     package: str
-    # The affected range as npm reports it, and the locked release that range was
-    # reviewed against. A change to either lapses the exception rather than following it.
+    # The advisory as npm reported it when it was reviewed. A change to any of these is a
+    # reason to review it again, so it lapses the exception rather than following it.
+    severity: str
+    cwe: tuple[str, ...]
+    cvss_vector: str
     affected_range: str
-    installed_version: str
+    # What npm offered as a fix on the vulnerable package's entry. A published fix, or a
+    # tryscript release that drops the path, changes it, which ends the exception.
+    fix_available: Mapping[str, object]
     path: Mapping[str, Hop]
     bead: str
 
@@ -65,20 +89,26 @@ class AuditException:
         return ADVISORY_URL_PREFIX + self.ghsa
 
 
-# High: "picomatch vulnerable to ReDoS through single-branch repeated extglobs". It affects
+# "picomatch vulnerable to ReDoS through single-branch repeated extglobs". It affected
 # picomatch <= 4.0.7 and had no patched release when the owner approved this exception on
-# 2026-11-17. picomatch reaches the lock only through the dev dependency tryscript, whose
-# test discovery globs the repository's own committed patterns.
+# 2026-11-17, so npm's only offered fix was a breaking downgrade of tryscript. picomatch
+# reaches the lock only through the dev dependency tryscript, whose test discovery globs
+# the repository's own committed patterns.
 PICOMATCH_REDOS = AuditException(
     ghsa="GHSA-fc5q-39xc-vjpf",
     package="picomatch",
+    severity="high",
+    cwe=("CWE-1333",),
+    cvss_vector="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
     affected_range="<=4.0.7",
-    installed_version="4.0.7",
+    fix_available={"name": "tryscript", "version": "0.2.1", "isSemVerMajor": True},
     path={
-        "picomatch": Hop(nodes=("node_modules/picomatch",)),
-        "fdir": Hop(nodes=("node_modules/fdir",), via=("picomatch",)),
-        "tinyglobby": Hop(nodes=("node_modules/tinyglobby",), via=("fdir", "picomatch")),
-        "tryscript": Hop(nodes=("node_modules/tryscript",), via=("tinyglobby",)),
+        "picomatch": Hop("4.0.7", ("node_modules/picomatch",), direct=False),
+        "fdir": Hop("6.5.0", ("node_modules/fdir",), direct=False, via=("picomatch",)),
+        "tinyglobby": Hop(
+            "0.2.17", ("node_modules/tinyglobby",), direct=False, via=("fdir", "picomatch")
+        ),
+        "tryscript": Hop("0.3.1", ("node_modules/tryscript",), direct=True, via=("tinyglobby",)),
     },
     bead="mb-p1o0",
 )
@@ -86,10 +116,14 @@ PICOMATCH_REDOS = AuditException(
 
 @dataclass(frozen=True)
 class Verdict:
-    """What the report still has against the gate once the exception is applied."""
+    """What the report still has against the gate once the exception is applied.
+
+    ``report`` is false when the answer was not an audit report at all.
+    """
 
     problems: tuple[str, ...]
     tolerated: tuple[str, ...]
+    report: bool = True
 
     @property
     def passes(self) -> bool:
@@ -138,27 +172,32 @@ def _advisory_problems(
     """Why *advisory*, reported on package *name*, is not the reviewed exception."""
 
     url = advisory.get("url")
-    title = advisory.get("title")
-    label = f"{name}: {url} ({advisory.get('severity')}, {title!r})"
+    label = f"{name}: {url} ({advisory.get('severity')}, {advisory.get('title')!r})"
     if url != exception.url:
         return [f"{label} is not an excepted advisory"]
     problems: list[str] = []
-    if name != exception.package or advisory.get("name") != exception.package:
-        problems.append(f"{label} is reported on a package other than {exception.package}")
-    if advisory.get("range") != exception.affected_range:
-        problems.append(
-            f"{label} now affects {advisory.get('range')!r}, not the reviewed "
-            f"{exception.affected_range!r}"
-        )
+    if name != exception.package:
+        problems.append(f"{label} is reported on {name}, not {exception.package}")
+    if advisory.get("name") != exception.package:
+        problems.append(f"{label} names {advisory.get('name')!r}, not {exception.package}")
+    reviewed: tuple[tuple[str, object, object], ...] = (
+        ("severity", advisory.get("severity"), exception.severity),
+        ("range", advisory.get("range"), exception.affected_range),
+        ("cwe", advisory.get("cwe"), list(exception.cwe)),
+        (
+            "CVSS vector",
+            (_object(advisory.get("cvss")) or {}).get("vectorString"),
+            exception.cvss_vector,
+        ),
+    )
+    for field, actual, expected in reviewed:
+        if actual != expected:
+            problems.append(f"{label} now has {field} {actual!r}, not the reviewed {expected!r}")
     return problems
 
 
 def _node_problems(
-    name: str,
-    nodes: Sequence[str],
-    hop: Hop,
-    packages: Mapping[str, object],
-    exception: AuditException,
+    name: str, nodes: Sequence[str], hop: Hop, packages: Mapping[str, object]
 ) -> list[str]:
     """Why the lockfile nodes npm names for *name* are off the reviewed path."""
 
@@ -174,13 +213,49 @@ def _node_problems(
             problems.append(f"{name}: {node} is not in package-lock.json")
             continue
         if package.get("dev") is not True:
-            problems.append(f"{name}: {node} is not a dev-only install in package-lock.json")
-        if name == exception.package and package.get("version") != exception.installed_version:
+            problems.append(f"{name}: {node} is not a dev dependency in package-lock.json")
+        if package.get("version") != hop.version:
             problems.append(
                 f"{name}: {node} is {package.get('version')!r} in package-lock.json, not the "
-                f"reviewed {exception.installed_version!r}"
+                f"reviewed {hop.version!r}"
             )
     return problems
+
+
+def _root_problems(packages: Mapping[str, object], exception: AuditException) -> list[str]:
+    """Path packages the project depends on directly, though the review found none."""
+
+    root = _object(packages.get("")) or {}
+    named: set[str] = set()
+    for field in ROOT_DEPENDENCY_FIELDS:
+        named.update((_object(root.get(field)) or {}).keys())
+    return [
+        f"package-lock.json's root depends on {name} directly; the reviewed path reaches it "
+        "only through tryscript"
+        for name, hop in sorted(exception.path.items())
+        if not hop.direct and name in named
+    ]
+
+
+def _count_problems(
+    report: Mapping[str, object], vulnerabilities: Mapping[str, object]
+) -> list[str]:
+    """Whether the report's own counts agree with the entries this check read."""
+
+    counts = dict.fromkeys(SEVERITIES, 0)
+    for value in vulnerabilities.values():
+        severity = (_object(value) or {}).get("severity")
+        if isinstance(severity, str) and severity in counts:
+            counts[severity] += 1
+    expected: dict[str, int] = {**counts, "total": len(vulnerabilities)}
+    stated = _object((_object(report.get("metadata")) or {}).get("vulnerabilities"))
+    if stated is None:
+        return ["the report has no metadata.vulnerabilities counts"]
+    return [
+        f"the report's metadata counts {stated.get(key)!r} {key}, but it lists {count}"
+        for key, count in expected.items()
+        if stated.get(key) != count
+    ]
 
 
 def check(
@@ -210,22 +285,18 @@ def check(
     ):
         return Verdict(
             (
-                "the npm audit --json report is unreadable here (an endpoint error, or a "
-                f"report format other than version {AUDIT_REPORT_VERSION})",
+                "npm's answer is not an audit report this check reads (an endpoint or npm "
+                f"error, or a report format other than version {AUDIT_REPORT_VERSION})",
             ),
             (),
+            report=False,
         )
     lock_object = _object(lockfile)
     packages = _object(lock_object.get("packages")) if lock_object else None
     if packages is None:
         return Verdict(("package-lock.json has no packages map",), ())
 
-    def blocking(name: str) -> bool:
-        entry = _object(vulnerabilities.get(name))
-        rank = _rank(entry.get("severity")) if entry else None
-        return rank is None or rank >= threshold
-
-    problems: list[str] = []
+    problems = _count_problems(report_object, vulnerabilities) + _root_problems(packages, exception)
     tolerated: list[str] = []
     for name in sorted(vulnerabilities):
         entry = _object(vulnerabilities[name])
@@ -247,6 +318,17 @@ def check(
             )
             continue
         entry_problems: list[str] = []
+        if severity != exception.severity:
+            entry_problems.append(f"{name}: {severity}, not the reviewed {exception.severity}")
+        if entry.get("isDirect") is not hop.direct:
+            entry_problems.append(
+                f"{name}: isDirect is {entry.get('isDirect')!r}, not the reviewed {hop.direct!r}"
+            )
+        if name == exception.package and entry.get("fixAvailable") != exception.fix_available:
+            entry_problems.append(
+                f"{name}: npm now offers fixAvailable {entry.get('fixAvailable')!r}, not the "
+                f"reviewed {dict(exception.fix_available)!r}; a fix may have shipped"
+            )
         # Whether something on the reviewed path is what puts this package at the level.
         explained = False
         via = entry.get("via")
@@ -255,8 +337,15 @@ def check(
             via = []
         for item in cast(list[object], via):
             if isinstance(item, str):
+                cause = _object(vulnerabilities.get(item))
+                if cause is None:
+                    entry_problems.append(
+                        f"{name}: vulnerable through {item}, which the report does not list"
+                    )
+                    continue
+                cause_rank = _rank(cause.get("severity"))
                 # A dependency below the level does not raise this package to it.
-                if not blocking(item):
+                if cause_rank is not None and cause_rank < threshold:
                     continue
                 if item in hop.via:
                     explained = True
@@ -281,7 +370,7 @@ def check(
         if nodes is None:
             entry_problems.append(f"{name}: unreadable nodes {entry.get('nodes')!r}")
         else:
-            entry_problems.extend(_node_problems(name, nodes, hop, packages, exception))
+            entry_problems.extend(_node_problems(name, nodes, hop, packages))
         if entry_problems:
             problems.extend(entry_problems)
         else:
@@ -301,8 +390,8 @@ def _banner(exception: AuditException, verdict: Verdict, level: str) -> str:
             "",
             rule,
             f"#  npm audit EXCEPTION APPLIED: {exception.ghsa} tolerated until bead {exception.bead}.",
-            f"#  Reported on {', '.join(verdict.tolerated)}; {exception.package} "
-            f"{exception.installed_version}; all dev-only, on the reviewed path.",
+            f"#  Reported on {', '.join(verdict.tolerated)}, on the reviewed path at the "
+            "reviewed releases.",
             f"#  Nothing else is at or above {level}. The review is in SUPPLY-CHAIN-SECURITY.md.",
             rule,
             "",
@@ -334,6 +423,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if verdict.passes:
         print(_banner(exception, verdict, level), file=sys.stderr)
         return 0
+    if not verdict.report:
+        print(f"npm audit: {verdict.problems[0]}.", file=sys.stderr)
+        return NOT_A_REPORT
     print(
         f"npm audit: the {exception.ghsa} exception (bead {exception.bead}) does not cover "
         "this report, so it is not applied:",
