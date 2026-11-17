@@ -319,9 +319,9 @@ Markdown file as `markdown-diff-v1` after the same admission, computed in a proj
 worker process. `GET pull-markdown` (`pull_markdown.py`) renders one text of the record
 through KPress in sanitized mode, then reduces it to the inert allowlist of
 `inert_html.py`, both in the server’s Markdown child under its deadline, the same child
-as the projections; a text past the deadline answers `422` `render_deadline`, and the
-page keeps its plain text with a line saying why.
-Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+as the projections, which a page’s first `GET pull` starts; a text past the deadline
+answers `422` `render_deadline`, and the page keeps its plain text with a line saying
+why. Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 

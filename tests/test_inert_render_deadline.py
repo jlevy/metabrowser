@@ -196,6 +196,34 @@ def test_identical_requests_in_flight_share_one_render(
     assert len(kills) == 1, "three reloads of one document cost one render and one kill"
 
 
+def test_a_render_waits_for_a_child_still_starting_rather_than_replacing_it() -> None:
+    # A served pin starts the child as it attaches, so its first document can arrive
+    # while that child is spawned but not yet ready; the render waits for that child.
+    def spawned(worker: ProjectionWorker) -> asyncio.subprocess.Process | None:
+        return worker._process  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> tuple[int, int | None, dict[str, Any]]:
+        worker = ProjectionWorker()
+        try:
+            worker.start(renders=True)
+            # Polled, at most 30 s: the spawn sets the process before its ready frame.
+            for _ in range(6000):
+                if spawned(worker) is not None:
+                    break
+                await asyncio.sleep(0.005)
+            starting = spawned(worker)
+            assert starting is not None and not worker.ready, "spawned, not yet ready"
+            rendered = await worker.render_inert(_request("# Waited\n", "sha256:waited"))
+            serving = spawned(worker)
+            return starting.pid, None if serving is None else serving.pid, rendered
+        finally:
+            worker.stop()
+
+    starting, serving, rendered = asyncio.run(run())
+    assert serving == starting
+    assert '<h1 id="user-content-waited">Waited</h1>' in rendered["html"]
+
+
 def test_the_child_renders_what_the_in_process_inert_render_would() -> None:
     async def run() -> dict[str, Any]:
         worker = ProjectionWorker()

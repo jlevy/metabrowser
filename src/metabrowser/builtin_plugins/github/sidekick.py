@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from starlette.responses import JSONResponse, Response
 
+from metabrowser.diff.markdown_projection_worker import shared_worker
 from metabrowser.http_caching import matches_if_none_match
 from metabrowser.source import get_source_session
 from metabrowser.source_routes import PIN_HEADER, pin_changed_response
@@ -187,6 +188,15 @@ async def pull_handler(request: Request) -> Response:
         return view, stamp, envelope, freshness
 
     view, stamp, envelope, freshness = await snapshot()
+    if view.host is not None:
+        # The page asks for its texts' Markdown next, which renders in the Markdown child
+        # alone (pull_markdown.py), and a first paint over a core preview waits for the
+        # description's: start the child at the page's first read, which is often a core
+        # preview, so that wait is not spent on the child's start. A warm read is a page
+        # about to open. Measured in tests/test_type_scale_chrome.py's page, 2026-11-17: a
+        # cold child put the full record's paint 170 to 200 ms after its read, the hold's
+        # whole bound, where an in-thread render had met it.
+        shared_worker().start(renders=True)
     preview = envelope["core_preview"]
     # Prepared and adopted observations carry catalog admission. A captured live preview
     # may already have settled while the worker was building its first envelope.

@@ -19,8 +19,9 @@ All notable changes to Metabrowser are documented here.
   `"type": "kpress_render_refused"` and the code `render_deadline`, and
   `/api/plugin/github/pull-markdown` answers `422` with the same code.
   Fenced code in these documents renders as plain text, as the page already showed it.
-  `METABROWSER_INERT_RENDER_DEADLINE_MS` changes the deadline, and a served mirror
-  starts the child as it opens, so its first document does not wait for it.
+  `METABROWSER_INERT_RENDER_DEADLINE_MS` changes the deadline.
+  A served mirror starts the child as it opens, and a pull request’s page as it is first
+  read, so a first document or comment does not wait for it.
 
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read

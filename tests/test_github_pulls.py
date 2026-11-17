@@ -2643,6 +2643,21 @@ def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
     assert json.loads(REFUSED_TEXT_FIXTURE.read_text(encoding="utf-8")) == answer
 
 
+def test_a_pull_read_starts_the_markdown_child_its_texts_will_need(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """A page's first read starts the child, so its first text does not wait for a start."""
+    from metabrowser.diff.markdown_projection_worker import shared_worker
+
+    _stand, client = pinned_pull
+    # A worker no request has used yet: the one this read reaches, which the server's
+    # lifespan stops as it ends.
+    shared_worker.cache_clear()
+    _read(client, 7)
+    worker = shared_worker()
+    assert worker._process is not None or worker._starting is not None  # pyright: ignore[reportPrivateUsage]
+
+
 def test_an_uncacheable_read_keeps_its_parsed_record_revision(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

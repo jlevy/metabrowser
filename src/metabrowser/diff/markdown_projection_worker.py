@@ -31,7 +31,8 @@ refused when it is not. It renders fenced code plain (``plain_code`` in
 :mod:`metabrowser.kpress_adapter`), since the inert page drops every class the
 highlighting would add, and reduces the HTML to the inert allowlist
 (:mod:`metabrowser.inert_html`) in the child too. A served pin starts the child as it
-attaches (``cli/git_pin_cli.py``), so its first document does not wait for the start.
+attaches (``cli/git_pin_cli.py``), and a pull request's page at its first read of the pull
+route, so a first document or text does not wait for the start.
 
 The child costs memory while it runs: 56-66 MB resident once it is ready and 63-70 MB
 after all 434 of this repository's real Markdown pairs (macOS ``ps`` RSS, two runs each
@@ -649,7 +650,8 @@ class ProjectionWorker:
         process = self._process
         if self.ready and process is not None and process.returncode is None:
             return process
-        if process is not None:
+        if process is not None and process.returncode is not None:
+            # Gone while idle; one still starting is waited for, not replaced.
             self._kill(process)
         self.start(renders=True)
         try:
