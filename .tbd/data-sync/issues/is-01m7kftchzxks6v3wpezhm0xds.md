@@ -3,9 +3,9 @@ type: is
 id: is-01m7kftchzxks6v3wpezhm0xds
 title: "PR #484 C3: no test pins the pending retry's ceiling or its later doublings"
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m7jwtbafwhwvmsjwvzvz9xg9
 hold: null
 hold_until: null
 created_at: 2026-11-17T00:51:55.582Z
-updated_at: 2026-11-17T00:52:06.646Z
+updated_at: 2026-11-17T02:31:18.560Z
 started_at: 2026-11-17T00:52:06.645Z
+closed_at: 2026-11-17T02:31:18.557Z
+close_reason: "Fixed in #484; dispositions posted (issuecomment-6936173238, -6936173963)"
+resolution: null
+duplicate_of: null
 ---
 Low. stack-lines.js:375. Review C (round 1) of PR #484: https://github.com/jlevy/metabrowser/pull/484#pullrequestreview-5930686610

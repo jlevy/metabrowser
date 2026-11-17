@@ -3,9 +3,9 @@ type: is
 id: is-01m7jwtbafwhwvmsjwvzvz9xg9
 title: "The brief change line '10 A, 5 D, 4 M · +1,234 −567' is one component, reused in each Pulls stack heading beside 'Stack #N'"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 23
+version: 24
 spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
@@ -34,6 +34,10 @@ child_order_hints:
   - is-01m7kfte0m3g6k2npawtja05ha
   - is-01m7kftf3s1vj6a9ssenmpht89
 created_at: 2026-11-16T19:19:51.374Z
-updated_at: 2026-11-17T00:51:58.200Z
+updated_at: 2026-11-17T02:31:35.729Z
+closed_at: 2026-11-17T02:31:35.727Z
+close_reason: "Stack headings' change line merged in #484 (accumulation of member PRs)"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-16: "in addition the brief line summary \"10 A, 5 D, 4 M · +1,234 −567\" should be a component of its own and reused also in the stack headings in the Pulls nav column, next to \"Stack #xxx\"". Part 1 (the component) goes into #479's fix round with its one painter; part 2 (stack headings) is layer 29 on #479.
