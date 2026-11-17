@@ -401,6 +401,21 @@ def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) 
     return "current" if fresh else "stale"
 
 
+def list_settled(home: Path, slug: str, listed: PullFileList) -> bool:
+    """Whether *listed*, pull request *listed.number*'s cached list, is ``current`` by this
+    route's freshness rule, so that nothing would refresh it. Blocking and bounded: the
+    list's refresh stamp, and the record and the catalog row through their parse caches.
+
+    A list from the local comparison is current while the record names the same comparison,
+    whatever head the catalog has seen since, and a list from GitHub while it was read for
+    the newest known head; a stack's change line waits on the same rule
+    (:mod:`.pull_stack_change`).
+    """
+
+    stamp = read_files_refresh(home, slug, listed.number)
+    return _state(listed, stamp, _facts(home, slug, listed.number)) == "current"
+
+
 def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:
     if stamp is None:
         return None
@@ -665,6 +680,7 @@ __all__ = [
     "files_view",
     "files_window",
     "list_file_stamp",
+    "list_settled",
     "pull_files_envelope",
     "start_files_refresh",
     "status_route",

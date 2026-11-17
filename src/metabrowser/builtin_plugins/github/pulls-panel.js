@@ -89,7 +89,10 @@ export const PREFETCH_FILES = 16;
 // listed once while its head stays put, from the local comparison with no GitHub call or
 // from GitHub at most 3 core points (pull_prefetch.py), under `FILES_PER_HOUR`, 100 an hour,
 // and the governor's floor; this repository's 19 stacks lacked 158 lists, at most 474 points
-// once. Four keeps twelve places for the reader's own rows, more than a pane's rows in view.
+// once. While a stack waits for lists, what gives way is the lowest rows in view past the
+// twelfth: never a row rested on, the open row, or its neighbours, which come first. A
+// row is about 41.5 px, so a pane taller than about 500 px has rows in view past those
+// twelve, which are listed once the stacks' members are (review C of #484, C4).
 export const PREFETCH_STACK_FILES = 4;
 // The lane's files outcomes the panel remembers having passed on, to the stack lines and the
 // rows' change lines, oldest out first: four times the outcomes its report holds

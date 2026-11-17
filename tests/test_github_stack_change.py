@@ -18,16 +18,22 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser.builtin_plugins.github import pull_change_sums, pull_list, pull_stack_change
+from metabrowser.builtin_plugins.github import (
+    pull_change_sums,
+    pull_files_route,
+    pull_list,
+    pull_stack_change,
+)
 from metabrowser.builtin_plugins.github.pull_list import (
     PULL_FILES_SCHEMA,
     FilePageMark,
     ListedRepository,
     PullFileList,
     PullFileRow,
+    PullListRow,
     write_pull_files,
 )
-from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
+from metabrowser.builtin_plugins.github.pull_record import PullRecord, PullRefreshStamp
 from metabrowser.builtin_plugins.github.pull_stacks import (
     NativeStack,
     StackPage,
@@ -84,9 +90,14 @@ def _row(
 
 
 def _listed(
-    number: int, *rows: PullFileRow, truncated: bool = False, head: str | None = None
+    number: int,
+    *rows: PullFileRow,
+    truncated: bool = False,
+    head: str | None = None,
+    base: str | None = None,
 ) -> PullFileList:
-    """Pull request *number*'s list as its local comparison's refresh writes it, for *head*."""
+    """Pull request *number*'s list as its local comparison's refresh writes it, of the
+    comparison *base* to *head*."""
 
     return PullFileList(
         schema_version=PULL_FILES_SCHEMA,
@@ -97,7 +108,7 @@ def _listed(
         fetched_at=STAMP,
         reader=None,
         head=head or f"{number:040x}",
-        base="f" * 40,
+        base=base or "f" * 40,
         pages=0,
         last_page=None,
         complete=True,
@@ -137,24 +148,31 @@ def _cache(stand: _Stand, listed: PullFileList) -> None:
     write_pull_files(stand.published.home, stand.published.slug, listed)
 
 
+def _of_record(stand: _Stand, *rows: PullFileRow, head: str | None = None) -> PullFileList:
+    """Pull request 7's list from the local comparison its record names, or of *head*."""
+
+    record = stand.record(7)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    comparison = record.comparison
+    return _listed(7, *rows, head=head or comparison.head, base=comparison.base)
+
+
 @pytest.fixture
 def stacked(pinned_pull: tuple[_Stand, TestClient]) -> Iterator[tuple[_Stand, TestClient]]:
     """Pull requests 7 and 11's lists cached, and stacks #286 of the two, #300 of 7 alone,
     and #400 of 7 and 12, whose list nothing has fetched."""
 
     stand, client = pinned_pull
-    # 7's list is of the head its record names, so it is settled.
+    # The files route's clock: GitHub's lists, read now, are current.
+    stand.monkeypatch.setattr(pull_list, "utc_now", lambda: pull_list.parse_stamp(STAMP))
+    # 7's list is its record's own comparison's, so the files route takes it as current.
     _cache(
         stand,
-        _listed(
-            7,
-            _row("docs/new.md", "added", 1),
-            _row("src/app.txt", "modified", 1),
-            head=stand.origin["fork_head"],
-        ),
+        _of_record(stand, _row("docs/new.md", "added", 1), _row("src/app.txt", "modified", 1)),
     )
     _cache(
-        stand, _listed(11, _row("docs/new.md", "modified", 2), _row("src/app.txt", "modified", 1))
+        stand,
+        _from_github(11, _row("docs/new.md", "modified", 2), _row("src/app.txt", "modified", 1)),
     )
     _publish(stand, (286, (7, 11)), (300, (7,)), (400, (7, 12)))
     # What fetching pull request 7 asked of GitHub; from here on nothing may.
@@ -340,12 +358,48 @@ def test_a_member_whose_list_is_of_an_older_head_is_pending(
 
     stand, client = stacked
     older = stand.origin["fork_earlier"]
-    _cache(stand, _listed(7, _row("docs/new.md", "added", 1), head=older))
+    _cache(stand, _of_record(stand, _row("docs/new.md", "added", 1), head=older))
     body = client.get(ROUTE, params={"number": 286}).json()
     assert (body["state"], body["pending"]) == ("current", [7])
-    # The refresh lands, of the head the record names: settled.
-    _cache(stand, _listed(7, _row("docs/new.md", "added", 1), head=stand.origin["fork_head"]))
+    # The refresh lands, of the comparison the record names: settled.
+    _cache(stand, _of_record(stand, _row("docs/new.md", "added", 1)))
     body = client.get(ROUTE, params={"number": 286}).json()
+    assert (body["state"], body["pending"]) == ("current", [])
+    assert stand.calls() == [], "a stack change asked GitHub"
+
+
+def test_a_list_from_the_local_comparison_waits_on_the_record(
+    stacked: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A push the catalog has seen and the record has not leaves a list from the record's
+    own comparison current, as its row's tree takes it, and nothing would refresh it: so it
+    is not pending either, or no read could settle it (review C of #484, C1)."""
+
+    stand, client = stacked
+    later = PullListRow(
+        number=7,
+        title="count to two",
+        state="open",
+        draft=False,
+        merged_at=None,
+        author="forker",
+        created_at=STAMP,
+        updated_at="2026-09-17T13:00:00Z",
+        closed_at=None,
+        base_ref=DEFAULT_BRANCH,
+        head_ref="count-to-two",
+        head_repository="forker/demo",
+        labels=(),
+        head_oid="1" * 40,
+    )
+    monkeypatch.setattr(
+        pull_files_route,
+        "cached_list_row",
+        lambda _home, _slug, number: later if number == 7 else None,
+    )
+    files = client.get("/api/plugin/github/pull-files", params={"number": 7, "limit": 0}).json()
+    assert files["state"] == "current"
+    body = client.get(ROUTE, params={"number": 300}).json()
     assert (body["state"], body["pending"]) == ("current", [])
     assert stand.calls() == [], "a stack change asked GitHub"
 
@@ -398,19 +452,18 @@ def test_recording_stack_change_answers_real_routes(
     }
     assert recorded["current"]["body"]["state"] == "current"
     assert recorded["not_cached"]["body"]["reason"] == "not_cached"
-    # #290's missing list arrives: its line.
-    _cache(stand, _listed(12, _row("docs/more.md", "added", 1)))
+    # #290's missing list arrives, from GitHub: its line.
+    _cache(stand, _from_github(12, _row("docs/more.md", "added", 1)))
     recorded["arrived"] = _recorded(client.get(ROUTE, params={"number": 290}))
     assert recorded["arrived"]["body"]["pending"] == []
     # #286's bottom moved, and its list is still of the head before: answered, and pending.
-    fork_head = stand.origin["fork_head"]
-    settled = _listed(7, _row("docs/new.md", "added", 1), _row("src/app.txt", "modified", 1))
+    settled = _of_record(stand, _row("docs/new.md", "added", 1), _row("src/app.txt", "modified", 1))
     _cache(stand, settled.model_copy(update={"head": stand.origin["fork_earlier"]}))
     recorded["moving"] = _recorded(client.get(ROUTE, params={"number": 286}))
     assert recorded["moving"]["body"]["pending"] == [7]
     # A list that could not count a binary file: totals that are not exact.
     binary = _row("docs/logo.png", "added", None, None)
-    _cache(stand, settled.model_copy(update={"head": fork_head, "rows": (*settled.rows, binary)}))
+    _cache(stand, settled.model_copy(update={"rows": (*settled.rows, binary)}))
     recorded["inexact"] = _recorded(client.get(ROUTE, params={"number": 286}))
     assert recorded["inexact"]["body"]["exact"] is False
     server._set_root_dir(stand.tmp_path / "plain")  # pyright: ignore[reportPrivateUsage]

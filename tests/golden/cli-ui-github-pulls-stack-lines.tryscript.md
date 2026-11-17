@@ -50,6 +50,10 @@ file, the muted “(estimated)” follows the totals, and the name says it.
 The placeholder is one node across paints, the label stays the node it was, and the line
 drawn is the component’s nodes, part for part.
 
+`retryMinutes` is when a stack whose answer keeps naming a member not yet settled is
+asked again over two and a half hours, the list drawing it each minute: a minute on,
+then doubling, then every half hour, the ceiling.
+
 ```console
 $ node tests/dom/github-pulls-stack-lines-session.js
 {
@@ -836,6 +840,17 @@ $ node tests/dom/github-pulls-stack-lines-session.js
       "label": "1 added, 1 modified; 5 lines added, 0 deleted"
     }
   },
+  "retryMinutes": [
+    0,
+    1,
+    3,
+    7,
+    15,
+    31,
+    61,
+    91,
+    121
+  ],
   "invariants": true
 }
 ? 0

@@ -2441,7 +2441,7 @@ width.
   the members change, as the list’s rows report them, a member the list holds no row of
   taken as unchanged; when a member’s list arrives or is refreshed, as the prefetch or a
   row’s own read sees it; and, silently, while its answer names members not yet settled,
-  a list missing or read for an older head, a minute on and less often each time.
+  a list missing or one its row would refresh, a minute on and less often each time.
   The prefetch asks for those members’ lists after the reader’s own rows, in a few
   places kept for them, so a closed stack’s line fills in too.
   The answer is kept for the document under its stack and its revision, so a heading
