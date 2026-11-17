@@ -10,9 +10,13 @@ never waits on the network. It answers one of:
 - ``current``: a list of the pull request as it is now, by the freshness rule below;
 - ``stale``: an older list, still shown.
 
-**Freshness.** A local list belongs to both resolved comparison endpoints, ``base`` and
-``head``, and is current only while the record names that exact comparison. An older local
-list without a saved base, or a record with no comparison, is stale. GitHub-derived lists
+**Freshness.** A local list from a record's comparison belongs to both resolved comparison
+endpoints, ``base`` and ``head``, and is current only while the record names that exact
+comparison. An older local list without a saved base, or a record with no comparison, is
+stale. A local list the prefetch computed from an open pull request's head and base branch
+(:mod:`.pull_prefetch`) names that branch (``base_ref``) as GitHub's list does, and is
+current while the head and base branch are the newest known and the pull request is still
+open. GitHub-derived lists
 do not depend on locally resolved endpoints: discovering a comparison later leaves their
 freshness on the provider's head, ``updated_at``, and account rules. A GitHub list names
 the head commit and base branch it was read for (``head``, ``base_ref``), and is current
@@ -326,6 +330,8 @@ class _Facts:
     record: PullRecord | None
     head: str | None = None
     base_ref: str | None = None
+    # Whether the newer of the two says the pull request is open.
+    open: bool | None = None
 
     @property
     def known_head(self) -> KnownHead:
@@ -336,11 +342,18 @@ def _facts(home: Path, slug: str, number: int) -> _Facts:
     record, _dumped, _revision = cached_pull_record(home, slug, number)
     held = record if isinstance(record, PullRecord) else None
     row = cached_list_row(home, slug, number)
-    known: list[tuple[str, str | None, str | None]] = []
+    known: list[tuple[str, str | None, str | None, bool]] = []
     if held is not None:
-        known.append((held.pull.updated_at, held.pull.head.sha, held.pull.base.ref))
+        known.append(
+            (
+                held.pull.updated_at,
+                held.pull.head.sha,
+                held.pull.base.ref,
+                held.pull.state == "open",
+            )
+        )
     if row is not None:
-        known.append((row.updated_at, row.head_oid, row.base_ref))
+        known.append((row.updated_at, row.head_oid, row.base_ref, row.state == "open"))
     # On a tie the record, which always names its head, is the one taken, unless the row
     # names another: a push within the second the record was read leaves the times equal.
     newest = max(
@@ -350,7 +363,9 @@ def _facts(home: Path, slug: str, number: int) -> _Facts:
     )
     if newest is None:
         return _Facts(updated_at=None, record=held)
-    return _Facts(updated_at=newest[0], record=held, head=newest[1], base_ref=newest[2])
+    return _Facts(
+        updated_at=newest[0], record=held, head=newest[1], base_ref=newest[2], open=newest[3]
+    )
 
 
 def known_head(home: Path, slug: str, number: int) -> KnownHead:
@@ -382,9 +397,11 @@ def _head_moved(listed: PullFileList, facts: _Facts) -> bool | None:
 def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) -> FilesState:
     if listed.listed_from == "comparison":
         if listed.base_ref is not None:
-            # Listed from a head and base branch the list of pull requests named, not from a
-            # record's comparison: current while those are still the newest known.
-            return "current" if (listed.head, listed.base_ref) == facts.known_head else "stale"
+            # Listed from an open pull request's head and base branch as the list of pull
+            # requests named them, not from a record's comparison: current while those are
+            # still the newest known and it is still open, since a merge moves its base.
+            current = (listed.head, listed.base_ref) == facts.known_head and facts.open is True
+            return "current" if current else "stale"
         comparison = facts.record.comparison if facts.record is not None else None
         current = (
             comparison is not None
@@ -568,21 +585,28 @@ def list_source(home: Path, slug: str, number: int) -> Literal["record"] | tuple
     """Where the store would list *number*'s changed files from. Blocking and bounded: the
     record and the catalog row through their parse caches.
 
-    ``"record"`` when the record's comparison is of the newest known head; otherwise, for an
-    open pull request whose newest known source names its head and base branch, those two,
-    which the prefetch fetches together for many pull requests and lists each from the
-    mirror's base branch (:mod:`.pull_prefetch`); ``None`` when neither holds.
+    ``None`` when its cached list is whole and current, so there is nothing to list;
+    ``"record"`` when the record's comparison is of the newest known head; otherwise, for a
+    pull request whose newest known source says it is open and names its head and base
+    branch, those two, which the prefetch fetches together for many pull requests, with the
+    base branches, and lists each from the mirror's base branch (:mod:`.pull_prefetch`);
+    ``None`` when none of these holds.
     """
 
     facts = _facts(home, slug, number)
+    listed, _rows = _cached_files(home, slug, number)
+    if (
+        isinstance(listed, PullFileList)
+        and listed.complete
+        and _state(listed, read_files_refresh(home, slug, number), facts) == "current"
+    ):
+        # Nothing to list: the lane's item will find it not due.
+        return None
     head, base_ref = facts.known_head
     comparison = facts.record.comparison if facts.record is not None else None
     if comparison is not None and comparison.head == head:
         return "record"
-    row = cached_list_row(home, slug, number)
-    if head is None or base_ref is None or row is None or row.state != "open":
-        return None
-    if facts.record is not None and facts.record.pull.state != "open":
+    if head is None or base_ref is None or facts.open is not True:
         return None
     return head, base_ref
 

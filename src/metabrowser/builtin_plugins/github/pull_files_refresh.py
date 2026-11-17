@@ -2,8 +2,9 @@
 
 :func:`refresh_pull_files` is the whole job. It has two sources for one list:
 
-- **The local comparison**, when the caller names one: the store holds both of the record's
-  comparison commits, so the list is the comparison's manifest, ``git diff --raw`` and
+- **The local comparison**, when the caller names one: the store holds both of a
+  comparison's commits, the record's or one the prefetch computed from a head and base
+  branch (``LocalComparison``), so the list is the comparison's manifest, ``git diff --raw`` and
   ``--numstat`` through :class:`GitDiffSource`, with no patch and no network. A manifest
   cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's.
 - **GitHub's list**, which runs no Git: the active account, then one ``gh api
@@ -418,8 +419,8 @@ async def refresh_pull_files(
 ) -> PullFileList:
     """List pull request *number*'s changed files and cache them; see the module.
 
-    *local* names the store and commits of the record's comparison, when the store holds
-    both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
+    *local* names the store and commits of a comparison, the record's or the prefetch's,
+    when the store holds both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
     time. *known_head* reads, blocking, the head and base branch the pull request has as last
     known, which GitHub's list then names. Raises only :class:`PullDataError`; how it ended
     is kept beside the list either way.

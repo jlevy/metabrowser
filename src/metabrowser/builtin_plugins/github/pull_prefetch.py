@@ -21,8 +21,10 @@ First it makes the queued lists local where it can (:func:`_prepare_lists`): a l
 store can give, from a record's comparison of the newest known head or, for an open pull
 request, from the head and base branch the list of pull requests names, compared with the
 mirror's base branch, takes tens of milliseconds and no GitHub request, where a record takes
-seconds. The heads the store lacks arrive in one Git fetch for the whole ask, and a served
-checkout attaches its store for it if no reader has yet. Those lists go first; then the two
+seconds. The heads the store lacks and the base branches arrive in one Git fetch for the
+whole ask, at the store's turn as background work a reader's job preempts, and a served
+checkout attaches its store for it if no reader has yet. A list already current is left
+out, so an ask with nothing to list fetches nothing. Those lists go first; then the two
 kinds take turns, a record and then a files list from GitHub, each in its own order, so
 neither waits for the whole of the other: a cold server's missing records would otherwise
 hold every list back for as long as they take. Measured 2026-11-17 on this repository's own
@@ -197,13 +199,16 @@ class Lane:
         default_factory=lambda: deque[OutcomeWire](maxlen=MAX_RECENT)
     )
     viewed: OrderedDict[int, None] = field(default_factory=OrderedDict[int, None])
-    # The files the lane made local, by number: the comparison its head fetch prepared, or
-    # ``None`` once tried with none to give. Only the numbers last queued are kept.
+    # The lists this ask made local, by number: the comparison its head fetch prepared, or
+    # ``None`` once tried with none to give. Each ask starts again (:func:`request_prefetch`).
     prepared: dict[int, LocalComparison | None] = field(
         default_factory=dict[int, "LocalComparison | None"]
     )
     # Numbers whose list the store gives with no GitHub, which the lane lists first.
     local_ready: set[int] = field(default_factory=set[int])
+    # Until when a head fetch that failed is not tried again, so an ask that moves on does
+    # not repeat it at once; the lists go to GitHub meanwhile.
+    heads_held_until: datetime | None = None
 
     def note(self, item: Item, outcome: ItemOutcome) -> None:
         self.recent.append(
@@ -288,9 +293,10 @@ async def request_prefetch(
         lane.queue.clear()
         return "deferred", verdict.reason, 0
     lane.queue = deque(items)
-    # A list tried with nothing to give is tried again for a new ask, which may come once the
-    # store is attached or the list of pull requests names a head.
-    lane.prepared = {number: held for number, held in lane.prepared.items() if held is not None}
+    # Each ask prepares its lists again, as the heads and base branches are then: a list
+    # already current is left out, so this costs a fetch only when there is a list to make.
+    lane.prepared = {}
+    lane.local_ready = set()
     started = host.coordinator.start(
         _key(host.pulls), partial(_run_lane, app, host, lane), network=False
     )
@@ -365,16 +371,49 @@ def _listable_heads(
 
 
 async def _prepare_lists(host: PullHost, lane: Lane) -> None:
-    """Make the queued lists local, then queue those first.
+    """Make the queued lists local where the store can give them, then queue those first.
 
-    The heads the store lacks, of the open pull requests whose record has no comparison,
-    arrive in one fetch (:func:`~metabrowser.cache.pull_refs.fetch_pull_heads`), and each is
-    compared from the mirror's base branch, so its list is the store's manifest with no
-    GitHub request (:mod:`.pull_files_refresh`). A fetch that fails leaves the lists to GitHub,
-    as before; the lists the store gives, a record's comparison's included, go first, since
-    each takes tens of milliseconds where a record takes seconds.
+    A list is made only for a pull request whose cached list is not current
+    (:func:`~.pull_files_route.list_source`). For an open pull request whose record has no
+    comparison of its newest known head, the heads the store lacks and every base branch
+    named arrive in one fetch (:func:`~metabrowser.cache.pull_refs.fetch_pull_heads`), so
+    each is compared from its base branch as the origin has it now, as GitHub's list is, and
+    its list is the store's manifest with no GitHub request (:mod:`.pull_files_refresh`).
+    The fetch, and attaching a served checkout's store, run at the store's turn as
+    background work, which a reader's job preempts (:class:`~metabrowser.mirror_refresh.
+    StoreTurn`); preempted, or with a fetch that failed, the lists go to GitHub as before.
+    The lists the store gives go first, since each takes tens of milliseconds where a record
+    takes seconds.
     """
 
+    numbers = sorted(
+        {item.number for item in lane.queue if item.kind == "files"} - lane.prepared.keys()
+    )
+    for number in numbers:
+        lane.prepared[number] = None
+    if not numbers or host.store_turn is None:
+        return
+    work = asyncio.get_running_loop().create_task(_prepare_at_turn(host, lane, numbers))
+    try:
+        await asyncio.wait((work,))
+    except asyncio.CancelledError:
+        work.cancel()
+        await asyncio.wait((work,))
+        raise
+    if work.cancelled():
+        log.debug("a reader's job preempted the prefetch's local lists")
+        return
+    work.result()
+    # Stable: each kind keeps its own order, and the lists the store gives come first.
+    lane.queue = deque(
+        sorted(
+            lane.queue,
+            key=lambda item: not (item.kind == "files" and item.number in lane.local_ready),
+        )
+    )
+
+
+async def _prepare_at_turn(host: PullHost, lane: Lane, numbers: list[int]) -> None:
     from metabrowser.builtin_plugins.github.checkout import (
         CheckoutRepository,
         attach_store_for_lists,
@@ -386,68 +425,67 @@ async def _prepare_lists(host: PullHost, lane: Lane) -> None:
         fetch_pull_heads,
         has_commit,
     )
+    from metabrowser.git.process import GitError
 
-    queued = {item.number for item in lane.queue if item.kind == "files"}
-    lane.prepared = {number: held for number, held in lane.prepared.items() if number in queued}
-    lane.local_ready &= queued
-    numbers = [number for number in queued if number not in lane.prepared]
-    for number in numbers:
-        lane.prepared[number] = None
-    served = host.pulls
-    published = served.published
-    if isinstance(published, CheckoutRepository):
-        # A served checkout attaches its store when a reader first compares; the lists
-        # attach it sooner, since a store is what lists them without GitHub.
-        published = await attach_store_for_lists(published)
-    if published is None or isinstance(published, ListedRepository):
-        return
-    git_dir = published.git_dir
-    heads, recorded = await asyncio.to_thread(_listable_heads, served, sorted(numbers))
-    lane.local_ready |= recorded
-    missing = [
-        number for number, (head, _) in heads.items() if not await has_commit(published, head)
-    ]
-    if missing:
+    assert host.store_turn is not None
+    me = asyncio.current_task()
+    assert me is not None
+    async with host.store_turn(me.cancel):
+        served = host.pulls
+        published = served.published
+        if isinstance(published, CheckoutRepository):
+            # A served checkout attaches its store when a reader first compares; the lists
+            # attach it sooner, since a store is what lists them without GitHub.
+            published = await attach_store_for_lists(published)
+        if published is None or isinstance(published, ListedRepository):
+            return
+        git_dir = published.git_dir
+        heads, recorded = await asyncio.to_thread(_listable_heads, served, numbers)
+        lane.local_ready |= recorded
+        now = pulls.utc_now()
+        if not heads or (lane.heads_held_until is not None and now < lane.heads_held_until):
+            return
         started = time.monotonic()
         try:
+            missing = [
+                number
+                for number, (head, _) in heads.items()
+                if not await has_commit(published, head)
+            ]
             await fetch_pull_heads(
-                published,
-                sorted(missing),
-                base_branches=sorted({heads[number][1] for number in missing}),
+                published, missing, base_branches=sorted({base for _, base in heads.values()})
             )
-        except PullRefError as exc:
-            log.debug("the prefetch could not fetch %d heads: %s", len(missing), exc)
-        else:
-            log.debug(
-                "the prefetch fetched %d heads in %.0f ms",
-                len(missing),
-                (time.monotonic() - started) * 1000,
-            )
-    gate = asyncio.Semaphore(MERGE_BASES_AT_ONCE)
-
-    async def prepare(number: int, head: str, base_ref: str) -> None:
-        async with gate:
-            try:
-                if not await has_commit(published, head):
-                    return
-                endpoints = await branch_endpoints(published, head=head, base_branch=base_ref)
-            except PullRefError as exc:
-                log.debug("pull request %s is listed from GitHub: %s", number, exc)
-                return
-        if endpoints is not None:
-            lane.prepared[number] = LocalComparison(
-                git_dir, endpoints.base, head, base_ref=base_ref
-            )
-            lane.local_ready.add(number)
-
-    await asyncio.gather(*(prepare(number, *head) for number, head in heads.items()))
-    # Stable: each kind keeps its own order, and the lists the store gives come first.
-    lane.queue = deque(
-        sorted(
-            lane.queue,
-            key=lambda item: not (item.kind == "files" and item.number in lane.local_ready),
+        except (PullRefError, GitError) as exc:
+            # A list from a base branch the origin has since moved would be wrong, so none is
+            # made; GitHub's are read instead.
+            lane.heads_held_until = now + timedelta(seconds=FRESHNESS_WINDOW_S)
+            log.debug("the prefetch could not fetch %d heads: %r", len(heads), exc)
+            return
+        log.debug(
+            "the prefetch fetched %d heads and their base branches in %.0f ms",
+            len(missing),
+            (time.monotonic() - started) * 1000,
         )
-    )
+        gate = asyncio.Semaphore(MERGE_BASES_AT_ONCE)
+
+        async def prepare(number: int, head: str, base_ref: str) -> None:
+            async with gate:
+                try:
+                    if not await has_commit(published, head):
+                        return
+                    endpoints = await branch_endpoints(published, head=head, base_branch=base_ref)
+                except (PullRefError, GitError) as exc:
+                    log.debug("pull request %s is listed from GitHub: %r", number, exc)
+                    return
+            # A merge base that is the head lists nothing: a pull request merged into its
+            # base since the list of pull requests was read. GitHub's list says what it was.
+            if endpoints is not None and endpoints.base != head:
+                lane.prepared[number] = LocalComparison(
+                    git_dir, endpoints.base, head, base_ref=base_ref
+                )
+                lane.local_ready.add(number)
+
+        await asyncio.gather(*(prepare(number, *head) for number, head in heads.items()))
 
 
 def _refund(starts: deque[datetime], at: datetime) -> None:

@@ -471,17 +471,18 @@ async def fetch_pull_heads(
     One network command for a page of pull requests where :func:`fetch_pull_head` is one
     each, so the prefetch lane lists their changed files from the store
     (:mod:`metabrowser.builtin_plugins.github.pull_prefetch`) rather than from GitHub's API.
-    ``--atomic`` writes every ref or none: a number the origin has no head for fails the
-    whole fetch, as :class:`PullRefError`, and nothing moves.
+    The base branches are fetched even when every head is already in the store, so a
+    comparison starts from the base branch as the origin has it now. ``--atomic`` writes
+    every ref or none: a number the origin has no head for fails the whole fetch, as
+    :class:`PullRefError`, and nothing moves.
     """
 
     specs = [f"+{ref}:{ref}" for ref in map(pull_head_ref, dict.fromkeys(numbers))]
-    if not specs:
-        return
     for branch in dict.fromkeys(base_branches):
         if await base_branch_usable(published, branch):
             specs.append(f"+refs/heads/{branch}:{BRANCH_MIRROR_PREFIX}{branch}")
-    await _fetch(published, specs)
+    if specs:
+        await _fetch(published, specs)
 
 
 async def branch_endpoints(
