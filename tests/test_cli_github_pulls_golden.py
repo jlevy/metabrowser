@@ -31,9 +31,14 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list, pulls
+from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_route, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION, read_catalog
-from metabrowser.builtin_plugins.github.pull_record import MAX_REFRESH_MESSAGE_CHARS
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_REFRESH_MESSAGE_CHARS,
+    PullRefreshStamp,
+    write_refresh_stamp,
+)
+from metabrowser.cache.paths import source_pull_list_refresh
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -752,3 +757,46 @@ def test_a_long_invalid_version_keeps_the_clear_command_in_the_persisted_refusal
         assert "gives its row projection as text" in last["message"]
         assert "x" * 20 not in last["message"]
         assert len(last["message"]) <= MAX_REFRESH_MESSAGE_CHARS
+
+
+def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``pulls`` in the answer that starts a job is read before that job can write.
+
+    Here the job's stamp lands as it starts, the earliest it can. Without a ``gh`` the job
+    writes its ``gh_missing`` almost at once, as in ``test_golden_pull_list_failures``,
+    where a loop of that step under load showed it in 5 of 400 answers (mb-7pu0). Mutation
+    check: read ``pulls`` after the start, as the route did, and the job that is still
+    ``refreshing`` reports its own outcome as the last refresh.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({}).exit_code == 0
+    session.advance(1)
+    before = session.get("?limit=0").payload()["last_refresh"]
+    real_start = pull_list_route.start_refresh
+
+    def start_then_write(
+        view: pull_list_route.ListView, ask: pull_list_route.RefreshRequest, **kw: Any
+    ) -> pull_list_route.ListRefreshStart:
+        started = real_start(view, ask, **kw)
+        repository = view.repository
+        assert repository is not None
+        ended = PullRefreshStamp(outcome="gh_missing", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}")
+        # The stamp as the job's write leaves it on disk: its lock is a worker thread's.
+        relative = source_pull_list_refresh(repository.slug, "all")
+        write_refresh_stamp(repository.home, repository.slug, relative, ended)
+        return started
+
+    monkeypatch.setattr(pull_list_route, "start_refresh", start_then_write)
+    monkeypatch.setattr(gh, "gh_executable", lambda: None)
+    missing = session.post({"retry": True})
+
+    _, status, rest = missing.stdout.partition("status: 202\n")
+    assert status, missing.stdout
+    answer, _ = json.JSONDecoder().raw_decode(rest)
+    assert (answer["refresh"], answer["pulls"]["refreshing"]) == ("started", True)
+    assert before is not None and before["outcome"] != "gh_missing"
+    assert answer["pulls"]["last_refresh"] == before
+    assert _after(missing)["last_refresh"]["outcome"] == "gh_missing"

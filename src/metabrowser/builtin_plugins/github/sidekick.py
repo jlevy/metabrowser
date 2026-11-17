@@ -666,14 +666,17 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     The default state is open and target is 500. The background worker continues to
     all metadata after that prefix. A background or reconnect ask joins without
     reprioritizing. Reconnect can retry one recent network failure early.
-    Retry and reconnect honor rate-limit holds.
+    Retry and reconnect honor rate-limit holds. ``pulls`` is the envelope without its
+    rows, read before a job this request starts can change it, with ``refreshing`` as of
+    the start.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (
         ListRequestError,
         ListWindow,
+        list_envelope,
         list_view,
-        pull_list_envelope,
+        read_list,
         refresh_request,
         refresh_wanted,
         start_refresh,
@@ -695,10 +698,14 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view, ask)
+    # Read before the start, as the file list's refresh does: a job with no gh to run
+    # writes its stamp at once, and an answer read after the start would race that write.
+    window = ListWindow(ask.name, limit=0)
+    found = await asyncio.to_thread(read_list, view, window)
     started = start_refresh(view, ask, wanted=wanted)
-    # Read after the start, on the loop: the job is running, whatever it does next.
+    # Nothing is awaited from the start to here, so the job is running and has done nothing.
     after = list_view(request.app, ask.name)
-    envelope = await asyncio.to_thread(pull_list_envelope, after, ListWindow(ask.name, limit=0))
+    envelope = list_envelope(after, found, window)
     answer = {"refresh": started, "pulls": dict(envelope), "status_route": status_route(ask.name)}
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 

@@ -10,9 +10,10 @@ All notable changes to Metabrowser are documented here.
   record or the new. Before, a pull request’s changed files read at that moment could say
   that no refresh had ended and that the list was current, though the last refresh had
   ended `account_changed` and the list was stale, and the list itself could read as
-  unreadable. The answer to a request that starts the changed files’ refresh
-  (`/api/plugin/github/pull-files-refresh`) now shows the list as that refresh found it;
-  it could show the refresh’s own outcome when the refresh ended at once, as one with no
+  unreadable. The answer to a request that starts a refresh of the changed files
+  (`/api/plugin/github/pull-files-refresh`) or of the list of pull requests
+  (`/api/plugin/github/pulls-refresh`) now shows the list as that refresh found it; it
+  could show the refresh’s own outcome when the refresh ended at once, as one with no
   `gh` does.
 
 - The Files panel’s totals no longer move the tree when the count of ignored files
