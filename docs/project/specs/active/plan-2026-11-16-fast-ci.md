@@ -785,6 +785,11 @@ time.
   failed on the two tests above.
 - **A cancelled run still runs its `ci-ok`**, which is `always()`, and the newer run
   starts only after it: run 44038762653 waited 1.1 minutes so.
+- **The third run, 44041984874 at `e3851c64`, went green in 11.2 minutes** from its
+  push, with waits for a runner of up to 5.3. Its 30 jobs ran 0.1 to 4.7 minutes, the
+  longest `unit (3.14t, 2/2)`; its critical path was that part and `ci-ok`, 4.8 minutes
+  of running time. It ran the eight `stack-integration` jobs, since #499 had moved on
+  past the commit #504 was built on, and they ran 1.2 to 4.2 minutes each.
 
 ### Phase 3: Flakes, Slow Tests, and Path Classes
 
