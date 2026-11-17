@@ -381,6 +381,36 @@ reader’s own rows, in places kept for them (`PREFETCH_STACK_FILES`). The lines
 their reads against a cap of their own, `STACK_LINES_PER_HOUR`, apart from the
 comparison warmer’s.
 
+## Row Change Lines
+
+A pull request’s row in the Pulls tab has a third line, its brief change line, which
+`GET pull-files-summary?numbers=<n>,<n>,...` answers for every row the list draws in one
+request (`pull_files_summary.py`, read by `row-lines.js`). It is what the pull request’s
+own cached list of changed files, the one `GET pull-files` serves, sums to, through the
+same `pull_change_sums.py` a stack’s line accumulates its members with, so a stack of
+one pull request says what its row says: a copied file is `added`, a changed or
+unchanged one `modified`, and a file the local comparison has no count for, a binary
+file, counts as none and makes `exact` false.
+It never asks GitHub, runs no Git, and reads nothing but each list’s file.
+
+The envelope has `source`, null with no `rows` on a server with no GitHub repository,
+and `rows` in the request’s order, each with `number`, `state` (`listed` or `absent`),
+`reason`, `listing`, `listed_from`, `generation`, `head`, `files`, `additions`,
+`deletions`, `exact`, and `statuses`, each a status and its count, sorted by the status.
+The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable list;
+`filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
+capped or one an item was left out of; and `deferred`, a list past the request’s byte
+budget, which a later request reads.
+A `filling` or `too_large` answer still names its list’s `listed_from`, `generation`,
+and `head`, so a row whose tree reads that same list asks nothing more.
+`listing`, read from memory, says the list’s refresh runs in the refresh coordinator or
+the prefetch lane holds a files item for it.
+A request names `numbers` alone, 1 to `MAX_SUMMARY_NUMBERS` distinct pull-request
+numbers; anything else is refused 400 `invalid_request`. One request reads at most
+`MAX_SUMMARY_BYTES` of lists it has not summed, the first whatever its size, and a sum
+is kept by its file’s inode, modification time, and size, at most `MAX_KEPT_SUMMARIES`
+of them, the least recently used out first, so an unchanged list is read once.
+
 ## Label Sets
 
 A record carries each label’s color, but a record or a core cached before label colors
@@ -527,6 +557,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |
 | `pull-files-refresh` | `POST` | That list’s refresh |
+| `pull-files-summary` | `GET` | What each named pull request’s cached list of changed files sums to, for its row’s change line |
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
 | `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |

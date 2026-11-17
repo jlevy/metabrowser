@@ -382,10 +382,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "mounted: Stack #286 open, its pull requests a level in",
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "#8 · treeitem · level 2 · 1/3 · expanded true",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
@@ -393,7 +397,8 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
@@ -401,10 +406,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "#8 · treeitem · level 2 · 1/3 · expanded true",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
@@ -412,86 +421,142 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "#8 · treeitem · level 2 · 1/3 · expanded false · Tab stop",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop · focused",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ],
         "opened": [
           8
         ]
       },
       {
-        "step": "Right on that pull request opens its files",
+        "step": "Right on that pull request goes to its change line, and opens nothing",
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
           "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false · focused",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
-        "step": "Left first closes its files, keeping the pull request",
+        "step": "Right on the change line opens its files",
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
-          "#8 · treeitem · level 2 · 1/3 · expanded false · Tab stop",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded true · focused",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
+        ]
+      },
+      {
+        "step": "Left first closes its files, keeping the change line",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
+          "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false · focused",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
+        ]
+      },
+      {
+        "step": "Left again goes back to the pull request",
+        "handled": true,
+        "tree": [
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
+          "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop · focused",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
         "step": "Left again goes to the stack's row",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
+          "#8 · treeitem · level 2 · 1/3 · expanded true",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
         "step": "Left on the stack's row closes it",
         "handled": true,
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded false · Tab stop · focused",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
         "step": "a press on the stack's row opens it",
         "tree": [
-          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop · focused",
+          "#8 · treeitem · level 2 · 1/3 · expanded true",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       },
       {
-        "step": "Right, Right: #8 opens, and then its files",
+        "step": "Right, Right, Right: #8 opens, then its change line, then its files",
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true",
           "#8 · treeitem · level 2 · 1/3 · expanded true · Tab stop",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded true · focused",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ],
         "opened": [
           8
         ]
       },
       {
-        "step": "J past the stack, then Space on its row closes it",
+        "step": "K back to #8's row, J past the stack, then Space on its row closes it",
         "handled": true,
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false · Tab stop"
+          "#106 · treeitem · level 1 · 2/100 · expanded true · Tab stop · focused",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ],
         "opened": [
           106
@@ -501,10 +566,14 @@ $ node tests/dom/github-pulls-stack-groups-session.js
         "step": "Home: every stack open, no files open, the Tab stop on the first row",
         "tree": [
           "Stack #286 · treeitem · level 1 · 1/100 · expanded true · Tab stop",
-          "#8 · treeitem · level 2 · 1/3 · expanded false",
-          "#7 · treeitem · level 2 · 2/3 · expanded false",
-          "#6 · treeitem · level 2 · 3/3 · expanded false",
-          "#106 · treeitem · level 1 · 2/100 · expanded false"
+          "#8 · treeitem · level 2 · 1/3 · expanded true",
+          "  #8's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#7 · treeitem · level 2 · 2/3 · expanded true",
+          "  #7's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#6 · treeitem · level 2 · 3/3 · expanded true",
+          "  #6's change line · treeitem · level 3 · 1/1 · expanded false",
+          "#106 · treeitem · level 1 · 2/100 · expanded true · focused",
+          "  #106's change line · treeitem · level 2 · 1/1 · expanded false"
         ]
       }
     ]

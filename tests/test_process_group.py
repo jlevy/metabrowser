@@ -101,6 +101,7 @@ CHROME_TESTS = (
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
     "tests.test_github_pull_timeline_chrome",
+    "tests.test_github_pulls_row_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_page_header_chrome",
