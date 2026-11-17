@@ -1216,6 +1216,7 @@ All notable changes to Metabrowser are documented here.
   request’s own ref; beside a checkout it opens the working-tree file while the
   checkout’s `HEAD` is the head.
   A file with nowhere to open, such as a deleted one, has no control.
+  Changes no longer offers **View at base**, because the merge base is on no branch.
   A tab whose served commit another tab switched turns its links into the switch back.
   A page drawn before the pull request moved on switches nothing and says that the head
   has moved, for **View on branch** and **Browse code** alike, rather than opening the
