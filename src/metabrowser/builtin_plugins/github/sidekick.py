@@ -667,8 +667,9 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     all metadata after that prefix. A background or reconnect ask joins without
     reprioritizing. Reconnect can retry one recent network failure early.
     Retry and reconnect honor rate-limit holds. ``pulls`` is the envelope without its
-    rows, read before a job this request starts can change it, with ``refreshing`` as of
-    the start.
+    rows, with ``refreshing`` as of the start. When a job runs after the start, ``pulls``
+    was read before it, so a job this request started has not changed it; when none runs,
+    it is read after ``refreshing``, as ``GET`` reads it.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (
@@ -676,7 +677,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         ListWindow,
         list_envelope,
         list_view,
-        read_list,
+        read_catalog_window,
         refresh_request,
         refresh_wanted,
         start_refresh,
@@ -701,10 +702,15 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     # Read before the start, as the file list's refresh does: a job with no gh to run
     # writes its stamp at once, and an answer read after the start would race that write.
     window = ListWindow(ask.name, limit=0)
-    found = await asyncio.to_thread(read_list, view, window)
+    found = await asyncio.to_thread(read_catalog_window, view, window)
     started = start_refresh(view, ask, wanted=wanted)
-    # Nothing is awaited from the start to here, so the job is running and has done nothing.
+    # Nothing is awaited from the start to here, so a job this request started has done
+    # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = list_view(request.app, ask.name)
+    if not after.refreshing:
+        # No job runs, but one may have ended during that read: read again, after
+        # refreshing, so an answer that says nothing is refreshing shows how it ended.
+        found = await asyncio.to_thread(read_catalog_window, after, window)
     envelope = list_envelope(after, found, window)
     answer = {"refresh": started, "pulls": dict(envelope), "status_route": status_route(ask.name)}
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
@@ -1013,8 +1019,9 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     answered ``202``; that it is ``not_due``, answered ``200``: the list is whole and
     current, it was tried within the window, or GitHub's limit holds; or, past the bound on
     jobs, ``too_many``, answered ``429``, starting nothing. ``files`` is the envelope
-    without its rows, read before a job this request starts can change it, with
-    ``refreshing`` as of the start.
+    without its rows, with ``refreshing`` as of the start. When a job runs after the start,
+    ``files`` was read before it, so a job this request started has not changed it; when
+    none runs, it is read after ``refreshing``, as ``GET`` reads it.
     """
 
     from metabrowser.builtin_plugins.github.pull_files_route import (
@@ -1048,8 +1055,13 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     # to run writes its stamp, and an answer read after the start would race that write.
     found = await asyncio.to_thread(read_files, view)
     started = start_files_refresh(view, ask, wanted=wanted, local=local)
-    # Nothing is awaited from the start to here, so the job is running and has done nothing.
+    # Nothing is awaited from the start to here, so a job this request started has done
+    # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = files_view(request.app, ask.number)
+    if not after.refreshing:
+        # No job runs, but one may have ended during that read: read again, after
+        # refreshing, so an answer that says nothing is refreshing shows how it ended.
+        found = await asyncio.to_thread(read_files, after)
     envelope = files_envelope(after, found, FilesWindow(ask.number, limit=0))
     answer: dict[str, Any] = {
         "refresh": started,

@@ -17,12 +17,14 @@ show: a refresh that completes, the requests it made, and a list that is ``curre
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import io
 import json
 import os
 import sqlite3
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
@@ -776,6 +778,7 @@ def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
     session.advance(1)
     before = session.get("?limit=0").payload()["last_refresh"]
     real_start = pull_list_route.start_refresh
+    written: list[pull_list_route.ListRefreshStart] = []
 
     def start_then_write(
         view: pull_list_route.ListView, ask: pull_list_route.RefreshRequest, **kw: Any
@@ -787,12 +790,15 @@ def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
         # The stamp as the job's write leaves it on disk: its lock is a worker thread's.
         relative = source_pull_list_refresh(repository.slug, "all")
         write_refresh_stamp(repository.home, repository.slug, relative, ended)
+        written.append(started)
         return started
 
     monkeypatch.setattr(pull_list_route, "start_refresh", start_then_write)
     monkeypatch.setattr(gh, "gh_executable", lambda: None)
     missing = session.post({"retry": True})
 
+    # The route reaches the start through the module, so the write ran, once.
+    assert written == ["started"]
     _, status, rest = missing.stdout.partition("status: 202\n")
     assert status, missing.stdout
     answer, _ = json.JSONDecoder().raw_decode(rest)
@@ -800,3 +806,77 @@ def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
     assert before is not None and before["outcome"] != "gh_missing"
     assert answer["pulls"]["last_refresh"] == before
     assert _after(missing)["last_refresh"]["outcome"] == "gh_missing"
+
+
+def test_an_answer_that_starts_no_job_is_read_after_the_one_that_ended(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``pulls`` in an answer that says nothing is refreshing is read after nothing was.
+
+    A job another request started ends while this request reads ``pulls`` before its
+    start, and this request then starts none: ``not_due``, nothing refreshing. Read only
+    before the start, the answer showed the list as it was before that job ended,
+    ``current`` and ``succeeded``, which the panel holds as the list's state (review A1 on
+    #513). Mutation check: drop the read after the start, and it does.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({}).exit_code == 0
+    session.advance(1)
+    real_view, real_read = pull_list_route.list_view, pull_list_route.read_catalog_window
+    ended = threading.Event()
+    releases: list[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = []
+    reads: list[pull_list_route.ListFound | None] = []
+
+    def view_beside_a_job(app: Any, name: Any) -> pull_list_route.ListView:
+        view = real_view(app, name)
+        repository, coordinator = view.repository, view.coordinator
+        if releases or repository is None or coordinator is None:
+            return view
+        release = asyncio.Event()
+        changed = PullRefreshStamp(
+            outcome="account_changed", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+        )
+        relative = source_pull_list_refresh(repository.slug, "all")
+
+        async def another_requests_job() -> None:
+            await release.wait()
+            await asyncio.to_thread(
+                write_refresh_stamp, repository.home, repository.slug, relative, changed
+            )
+
+        key = pull_list_route.catalog_job_key(repository.source)
+        assert coordinator.start(key, another_requests_job, network=False) == "started"
+        job = coordinator.job(key)
+        assert job is not None
+        job.add_done_callback(lambda _job: ended.set())
+        releases.append((asyncio.get_running_loop(), release))
+        return real_view(app, name)
+
+    def read_as_that_job_ends(
+        view: pull_list_route.ListView, window: pull_list_route.ListWindow
+    ) -> pull_list_route.ListFound | None:
+        found = real_read(view, window)
+        if not reads:
+            loop, release = releases[0]
+            loop.call_soon_threadsafe(release.set)
+            assert ended.wait(timeout=30)
+        reads.append(found)
+        return found
+
+    monkeypatch.setattr(pull_list_route, "list_view", view_beside_a_job)
+    monkeypatch.setattr(pull_list_route, "read_catalog_window", read_as_that_job_ends)
+    answered = session.post({})
+
+    # The job ran beside the request, and the first read was made before it ended.
+    assert len(releases) == 1 and ended.is_set()
+    first = reads[0]
+    assert first is not None and first.stamp is not None and first.stamp.outcome == "succeeded"
+    _, status, rest = answered.stdout.partition("status: 200\n")
+    assert status, answered.stdout
+    answer, _ = json.JSONDecoder().raw_decode(rest)
+    assert (answer["refresh"], answer["pulls"]["refreshing"]) == ("not_due", False)
+    assert answer["pulls"]["last_refresh"]["outcome"] == "account_changed"
+    assert answer["pulls"]["state"] == "stale"
+    listed = session.get("?limit=0").payload()
+    assert (listed["state"], listed["last_refresh"]["outcome"]) == ("stale", "account_changed")

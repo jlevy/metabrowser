@@ -244,7 +244,7 @@ def _state(listed: CatalogState, stamp: PullRefreshStamp | None) -> ListState:
 
 @dataclass(frozen=True, slots=True)
 class ListFound:
-    """What one envelope is built from, as :func:`read_list` read it from the cache."""
+    """What one envelope is built from, as :func:`read_catalog_window` read it from the cache."""
 
     stamp: PullRefreshStamp | None
     listed: CatalogState | None
@@ -252,7 +252,7 @@ class ListFound:
     following: int | None
 
 
-def read_list(view: ListView, window: ListWindow) -> ListFound | None:
+def read_catalog_window(view: ListView, window: ListWindow) -> ListFound | None:
     """What *view*'s envelope for *window* is built from, or ``None`` with no repository.
 
     Blocking and bounded: the stamp and one indexed window of the catalog.
@@ -273,7 +273,7 @@ def read_list(view: ListView, window: ListWindow) -> ListFound | None:
 def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
     """The envelope for one window of the catalog. Blocking and bounded."""
 
-    return list_envelope(view, read_list(view, window), window)
+    return list_envelope(view, read_catalog_window(view, window), window)
 
 
 def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -> PullListEnvelope:
