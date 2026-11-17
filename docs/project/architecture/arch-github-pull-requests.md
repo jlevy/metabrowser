@@ -526,22 +526,23 @@ What a reader sees for each failure name, and what to do, is in
 
 ## Drawn From Disk
 
-Everything the pull request’s page and the Pulls tab draw from GitHub’s data is read
+Everything a mirror’s pull request page and Pulls tab draw from GitHub’s data is read
 from a file beside the source or the store, so a server started on an existing cache
 answers it before anything asks GitHub, and a page paints it before it starts a refresh.
 `tests/test_github_drawn_from_disk.py` holds the inventory.
 `ELEMENTS` names each drawn element, its route, and the Git commands the route runs in
 the local store, and runs each through `metab --api` over a cache home with `gh`
-failing, the remote unreachable, and every Git transport command refused.
+failing, the remote unreachable, every Git transport command refused, and every socket
+that would leave the machine refused.
 `JOBS` names every other route, each of which starts or reports work, so a new route is
 classified before it lands.
 
 Four routes compute from local data rather than read a stored answer: `pull-comparison`
 takes its manifest from the bank and runs Git only to check that the store answers for
 both commits and their merge base and to print the first files’ hunks; `pull-snapshot`
-reads the file from the head’s tree; `pull-rendered-diff` renders both sides in a
-projection worker; and `pull-markdown` renders the record’s text through KPress, which
-keeps the render for the process.
+reads the file from the head’s tree; `pull-rendered-diff` renders both sides off the
+event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
+the render for the process.
 
 What a surface draws that does not answer from disk is in `GAPS`, each a strict expected
 failure:

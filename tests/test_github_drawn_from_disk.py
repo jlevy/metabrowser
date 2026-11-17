@@ -7,10 +7,13 @@ replaying its scrubbed responses: pull request 7's record, with its head fetched
 comparison manifest prepared; the catalog; 7's and 106's changed-files lists; a native
 stack of 7 and 106; the label set; 7's Conversation timeline; and 8's lightweight core,
 with no record. Then every test takes the network away: a ``gh`` that fails every command
-is first on ``PATH``, the mirror's remote is an address nothing answers, and every process
-is recorded, a Git transport command (:data:`NETWORK_VERBS`) refused on the spot. Each
-test is a cold process over that warm disk: ``tests/conftest.py`` drops the process caches
-between tests, and :func:`offline` drops the comparison cache.
+is first on ``PATH``, the mirror's remote is an address nothing answers, every process is
+recorded, a Git transport command (:data:`NETWORK_VERBS`) refused on the spot, and every
+socket that would leave the machine is refused and recorded. Each test reads that warm
+disk with the process caches ``tests/conftest.py`` drops between tests dropped, and the
+comparison cache, which :func:`offline` drops; the plugin's own memos of parsed files
+stay, which a route that reads again only answers faster. The pages are a mirror's: a
+checkout's server reaches the same routes through ``checkout.py``.
 
 :data:`ELEMENTS` is the inventory: what a reader sees, the route that answers it through
 ``metab --api``, what the answer must hold, and the Git commands the route runs in the
@@ -30,6 +33,7 @@ import asyncio
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tomllib
@@ -41,6 +45,7 @@ from typing import Any, Final
 
 import pytest
 
+from metabrowser import http_caching
 from metabrowser.builtin_plugins.diff import sidekick as diff_sidekick
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.builtin_plugins.github import pull_list, pull_manifest, pulls
@@ -74,7 +79,11 @@ MANIFEST: Final = Path(__file__).resolve().parents[1] / (
     "src/metabrowser/builtin_plugins/github/manifest.toml"
 )
 # Git's commands that reach a remote. Anything else a route runs reads the local store.
-NETWORK_VERBS: Final = frozenset({"clone", "fetch", "fetch-pack", "ls-remote", "pull", "push"})
+NETWORK_VERBS: Final = frozenset(
+    {"clone", "fetch", "fetch-pack", "ls-remote", "pull", "push", "remote"}
+)
+# The hosts a socket may reach: this machine.
+LOOPBACK: Final = frozenset({None, "", "localhost", "127.0.0.1", "::1"})
 _REFUSED: Final = (
     "import sys; sys.stderr.write('fatal: the network is refused here\\n'); sys.exit(128)"
 )
@@ -113,6 +122,9 @@ class Spawns:
     """Every process a test's commands started, a Git transport command refused."""
 
     seen: list[tuple[str, ...]] = field(default_factory=list[tuple[str, ...]])
+    refused: int = 0
+    # The hosts a socket was refused for.
+    sockets: list[str] = field(default_factory=list[str])
 
     def take(self) -> list[tuple[str, ...]]:
         seen, self.seen = self.seen, []
@@ -133,10 +145,46 @@ def _refusing(spawns: Spawns) -> type[subprocess.Popen[Any]]:
             argv = (args,) if isinstance(args, str) else tuple(os.fspath(arg) for arg in args)
             spawns.seen.append(argv)
             if _is(argv, "git") and git_verb(argv) in NETWORK_VERBS:
+                spawns.refused += 1
                 args = [sys.executable, "-I", "-c", _REFUSED]
             super().__init__(args, *rest, **kwargs)
 
     return Refusing
+
+
+def _refuse_sockets(patch: pytest.MonkeyPatch, spawns: Spawns) -> None:
+    """Name resolution and connections in this process reach only this machine."""
+
+    real_getaddrinfo = socket.getaddrinfo
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def refused(host: object) -> OSError:
+        spawns.sockets.append(str(host))
+        return OSError(f"the network is refused here: {host}")
+
+    def getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
+        if host not in LOOPBACK:
+            raise refused(host)
+        return real_getaddrinfo(host, *args, **kwargs)
+
+    def leaves(sock: socket.socket, address: Any) -> bool:
+        family = sock.family
+        return family in (socket.AF_INET, socket.AF_INET6) and address[0] not in LOOPBACK
+
+    def connect(sock: socket.socket, address: Any) -> None:
+        if leaves(sock, address):
+            raise refused(address[0])
+        real_connect(sock, address)
+
+    def connect_ex(sock: socket.socket, address: Any) -> int:
+        if leaves(sock, address):
+            raise refused(address[0])
+        return real_connect_ex(sock, address)
+
+    patch.setattr(socket, "getaddrinfo", getaddrinfo)
+    patch.setattr(socket.socket, "connect", connect)
+    patch.setattr(socket.socket, "connect_ex", connect_ex)
 
 
 @dataclass(frozen=True)
@@ -258,6 +306,7 @@ def _offline(patch: pytest.MonkeyPatch, root: Path) -> Spawns:
     patch.setattr("metabrowser.cache.acquire.remote_url_for", nowhere)
     spawns = Spawns()
     patch.setattr(subprocess, "Popen", _refusing(spawns))
+    _refuse_sockets(patch, spawns)
     # A fresh process holds no comparison; a manifest it reads comes from the bank on disk.
     patch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
     return spawns
@@ -339,6 +388,7 @@ class Run:
     git_args: list[tuple[str, ...]]
     gh: list[tuple[str, ...]]
     network: list[tuple[str, ...]]
+    sockets: list[str]
 
 
 def run_offline(spawns: Spawns, args: Sequence[str]) -> Run:
@@ -353,6 +403,7 @@ def run_offline(spawns: Spawns, args: Sequence[str]) -> Run:
     opened = spawns.take()
     result = run_metab([CANONICAL, *args])
     seen = spawns.take()
+    sockets, spawns.sockets = spawns.sockets, []
     every = [*opened, *seen]
     gits = [argv for argv in seen if _is(argv, "git")]
     own = Counter(git_verb(argv) for argv in gits) - Counter(
@@ -364,6 +415,7 @@ def run_offline(spawns: Spawns, args: Sequence[str]) -> Run:
         gits,
         gh=[argv for argv in every if _is(argv, "gh")],
         network=[argv for argv in every if _is(argv, "git") and git_verb(argv) in NETWORK_VERBS],
+        sockets=sockets,
     )
 
 
@@ -460,6 +512,7 @@ def _core(built: Built, result: Invocation) -> None:
     preview = envelope["core_preview"]
     assert envelope["record"] is None and preview is not None
     assert (preview["number"], preview["pull"]["body"]) == (CORE_PULL, built.core_body)
+    assert preview["pull"]["title"] and preview["pull"]["author"]
 
 
 def _labels(_built: Built, result: Invocation) -> None:
@@ -493,11 +546,14 @@ def _changes(_built: Built, result: Invocation) -> None:
 
 
 def _snapshot(_built: Built, result: Invocation) -> None:
-    assert result.stdout.endswith("one\ntwo\n\n"), result.stdout[-200:]
+    # The page the View file link opens: the file at the head, as a document.
+    assert "<title>src/app.txt at " in result.stdout, result.stdout[:400]
+    assert "two" in result.stdout.partition("</title>")[2]
 
 
 def _rendered(_built: Built, result: Invocation) -> None:
-    assert answer(result)["status"] == "ready"
+    rendered = answer(result)
+    assert rendered["status"] == "ready" and rendered["blocks"]
 
 
 _APP: Final = GitPath.from_display("src/app.txt").to_wire()
@@ -524,7 +580,9 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
     Drawn("Checks", "PR page", "pull", _fixed("number=7"), _checks),
     Drawn("Reviews and comments", "PR page", "pull", _fixed("number=7"), _reviews),
     Drawn("Core before a record", "PR page", "pull", _fixed(f"number={CORE_PULL}"), _core),
-    Drawn("Label colors", "PR page", "labels", _fixed(""), _labels),
+    # The labels route is the CLI's read of the set. The page colors a chip from its record,
+    # and a label a record names without a color from the envelope's `repository_labels`.
+    Drawn("Label set", "CLI", "labels", _fixed(""), _labels),
     Drawn(
         "Description Markdown", "PR page", "pull-markdown", _fixed("number=7&part=body"), _markdown
     ),
@@ -549,7 +607,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         "Changed file at the head",
         "PR page",
         "pull-snapshot",
-        lambda built: f"{built.snapshot_route}&side=head&path={_APP}&mode=download",
+        lambda built: f"{built.snapshot_route}&side=head&path={_APP}",
         _snapshot,
         # The pair is admitted from the record; the file is read from the head's tree.
         frozenset({"rev-parse", "cat-file"}),
@@ -560,7 +618,7 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         "pull-rendered-diff",
         lambda built: f"{built.rendered_route}&file=f1",
         _rendered,
-        # The comparison's manifest from the bank, then both sides rendered in a worker.
+        # The comparison's manifest from the bank, then both sides rendered off the loop.
         _COMPARES,
     ),
 )
@@ -584,7 +642,7 @@ def test_a_drawn_element_answers_from_disk_with_the_network_refused(
 ) -> None:
     ran = run_offline(offline, drawn.args(built))
     assert ran.result.exit_code == 0, (ran.result.stdout[-2000:], ran.result.stderr[-2000:])
-    assert (ran.network, ran.gh) == ([], []), "the route reached for the network"
+    assert (ran.network, ran.gh, ran.sockets) == ([], [], []), "the route reached for the network"
     assert ran.git == drawn.computes, (drawn.element, sorted(ran.git))
     # A comparison's list of files is the manifest on disk, never Git's raw listing again.
     assert not any("--raw" in argv or "--numstat" in argv for argv in ran.git_args)
@@ -600,7 +658,7 @@ def test_every_route_is_drawn_from_disk_or_a_job() -> None:
     assert not drawn & JOBS.keys()
     assert routes == drawn | JOBS.keys(), (
         routes - drawn - JOBS.keys(),
-        drawn | JOBS.keys() - routes,
+        (drawn | JOBS.keys()) - routes,
     )
 
 
@@ -611,21 +669,30 @@ def _avatar_gap(built: Built, patch: pytest.MonkeyPatch, _tmp: Path) -> None:
     spawns = _offline(patch, built.root)
     ran = run_offline(spawns, ["--api", f"{ROUTES}/pull?number=7"])
     url = answer(ran.result)["record"]["pull"]["author_avatar_url"]
-    assert url == KEPT_AVATAR
-    if not url.startswith("/"):
+    rows = answer(run_offline(spawns, ["--api", f"{ROUTES}/pulls?state=open"]).result)["rows"]
+    urls = [url, *(row["author_avatar_url"] for row in rows if row["author_avatar_url"])]
+    assert KEPT_AVATAR in urls
+    if not all(each.startswith("/") for each in urls):
         raise StillAGap("the image is GitHub's, held only by the browser's HTTP cache")
 
 
 def _evicted_manifest_gap(_built: Built, patch: pytest.MonkeyPatch, tmp: Path) -> None:
-    # One slot makes certain what sixteen make likely past a handful of pull requests.
+    # One slot makes certain what MANIFEST_SLOTS make likely past a few pull requests.
     patch.setattr(pull_manifest, "MANIFEST_SLOTS", 1)
     origin = build_origin(tmp / "origin")
-    with pytest.MonkeyPatch.context() as online:
-        _online(online, tmp, origin, files_scenario(origin))
-        for number in (7, 10):
+
+    def fetch(number: int) -> dict[str, Any]:
+        with pytest.MonkeyPatch.context() as online:
+            _online(online, tmp, origin, files_scenario(origin))
             fetched = run_metab([f"{CANONICAL}/pull/{number}", "--no-serve"])
             assert fetched.exit_code == 0, fetched.stderr
-        envelope = run_metab([CANONICAL, "--api", f"{ROUTES}/pull?number=7"]).payload()
+            return run_metab([CANONICAL, "--api", f"{ROUTES}/pull?number={number}"]).payload()
+
+    envelope = fetch(7)
+    with pytest.MonkeyPatch.context() as control:
+        ran = run_offline(_offline(control, tmp), ["--api", envelope["comparison_route"]])
+        assert not any("--raw" in argv for argv in ran.git_args), "7 missed before 10 came"
+    fetch(10)
     spawns = _offline(patch, tmp)
     ran = run_offline(spawns, ["--api", envelope["comparison_route"]])
     assert (ran.result.exit_code, ran.network, ran.gh) == (0, [], [])
@@ -636,10 +703,21 @@ def _evicted_manifest_gap(_built: Built, patch: pytest.MonkeyPatch, tmp: Path) -
 
 def _rebuilt_manifest_gap(built: Built, patch: pytest.MonkeyPatch, tmp: Path) -> None:
     # A copy of the home, so the comparison's healing write leaves the module's bank as it is.
+    # A store's path is in a manifest's key, so the copy's first read lists it again and
+    # keeps it under the copy's store; the control read after it must not.
     shutil.copytree(built.root / "home", tmp / "home", symlinks=True)
-    # What any change to the source of an editable install does to the build's tag.
-    patch.setattr(pull_manifest, "BUILD_TAG", "0" * 12)
     spawns = _offline(patch, tmp)
+    run_offline(spawns, ["--api", built.comparison_route])
+    patch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
+    control = run_offline(spawns, ["--api", built.comparison_route])
+    assert not any("--raw" in argv for argv in control.git_args), "the copy did not heal"
+    # What any change to the source of an editable install does to the build's tag, in
+    # every module that holds it.
+    tag = http_caching.BUILD_TAG
+    for module in list(sys.modules.values()):
+        if getattr(module, "BUILD_TAG", None) == tag:
+            patch.setattr(module, "BUILD_TAG", "0" * 12)
+    patch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
     ran = run_offline(spawns, ["--api", built.comparison_route])
     assert (ran.result.exit_code, ran.network, ran.gh) == (0, [], [])
     _summary(built, ran.result)
@@ -711,3 +789,9 @@ def test_the_guard_sees_and_refuses_the_network(
     assert result.exit_code != 0, result.stdout
     assert any(_is(argv, "gh") for argv in seen), seen
     assert any(_is(argv, "git") and git_verb(argv) in NETWORK_VERBS for argv in seen), seen
+    assert spawns.refused > 0, "no Git transport command was refused"
+    with pytest.raises(OSError, match="refused here"):
+        socket.create_connection(("github.com", 443), timeout=1)
+    with socket.socket(socket.AF_INET) as sock, pytest.raises(OSError, match="refused here"):
+        sock.connect(("140.82.112.3", 443))
+    assert spawns.sockets[-2:] == ["github.com", "140.82.112.3"]
