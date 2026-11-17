@@ -11,10 +11,11 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import os
 import subprocess
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Coroutine, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -32,6 +33,7 @@ from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import Availability, ChangeKind, ChangeSetManifest
 from metabrowser.git import process as git_process
+from metabrowser.git.children import child_pids
 from metabrowser.git.process import (
     GitCommandError,
     GitLocation,
@@ -571,6 +573,100 @@ def test_a_listing_run_that_fails_leaves_the_comparison_to_todays_runs(
     (today, _), (one_run, _) = _both(root, {"revision": target})
     # The failure is injected without a process; a real one would bring the two level.
     assert one_run == today - 1, "the listing and patch runs of before, and one rev-parse"
+
+
+class _HeldGit:
+    """From here on, every Git the adapter starts waits, until it is killed, to open a global
+    configuration file that is a FIFO nobody writes to; *spawned* is set once one has started.
+    So a test can fail one of two calls while the other's Git is surely running."""
+
+    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fifo = tmp_path / "held-global-gitconfig"
+        os.mkfifo(fifo)
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(fifo))
+        self.started: list[asyncio.subprocess.Process] = []
+        self.spawned = asyncio.Event()
+        real = git_process.spawn_git_process
+
+        async def spawn(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
+            proc = await real(*args, **kwargs)
+            self.started.append(proc)
+            self.spawned.set()
+            return proc
+
+        monkeypatch.setattr(git_process, "spawn_git_process", spawn)
+
+    def assert_reaped(self) -> None:
+        assert self.started, "a Git was running when the other call failed"
+        children = set(child_pids() or ())
+        for proc in self.started:
+            assert proc.returncode is not None, "killed and reaped before the call returned"
+            assert proc.pid not in children
+
+
+type _Outcome = ChangeSetManifest | Exception | None
+
+
+def _left_running(
+    call: Callable[[], Coroutine[Any, Any, ChangeSetManifest | None]],
+) -> tuple[_Outcome, list[str]]:
+    """What *call* returned or raised, and every task still running once it had, as it
+    stood then: ``asyncio.run`` cancels them on its way out."""
+
+    async def run() -> tuple[_Outcome, list[str]]:
+        outcome: _Outcome
+        try:
+            outcome = await call()
+        except Exception as exc:
+            outcome = exc
+        return outcome, sorted(map(repr, asyncio.all_tasks() - {asyncio.current_task()}))
+
+    return asyncio.run(run())
+
+
+def test_a_listing_run_that_fails_stops_the_answer_asked_beside_it(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """mb-pc9v: `asyncio.gather` left the textconv answer, and its `git config`, running
+    after the listing run failed. It outlived the request, and on Python 3.12 the shutdown of
+    the `asyncio.run` that served it waited forever for a Git cancelled while it started. Now
+    the answer is stopped, its Git killed and reaped, before the listing gives up."""
+    root, _base, target = repo
+    source = GitDiffSource(root, patch_with_listing=True)
+    resolved = asyncio.run(source.resolve({"revision": target}))
+    held = _HeldGit(tmp_path, monkeypatch)
+
+    async def listing_fails(*_args: Any, **_kwargs: Any) -> bytes:
+        await held.spawned.wait()  # the answer's `git config` is running
+        raise GitCommandError(["diff"], 128, "fatal: listing")
+
+    monkeypatch.setattr(GitDiffSource, "_patch", listing_fails)
+    outcome, left = _left_running(lambda: source._list_with_patch(resolved))
+    assert outcome is None, "a failed listing run leaves the listing to its own run"
+    assert left == [], "nothing the listing run started outlives it"
+    held.assert_reaped()
+
+
+def test_an_answer_that_fails_stops_the_listing_run_beside_it(
+    repo: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other way round: an answer that fails stops the listing run's `git diff`, and its
+    failure reaches the caller as it was raised."""
+    root, _base, target = repo
+    source = GitDiffSource(root, patch_with_listing=True)
+    resolved = asyncio.run(source.resolve({"revision": target}))
+    held = _HeldGit(tmp_path, monkeypatch)
+    failure = RuntimeError("the answer failed")
+
+    async def answer_fails(_location: GitLocation) -> bool | None:
+        await held.spawned.wait()  # the listing run's `git diff` is running
+        raise failure
+
+    monkeypatch.setattr(adapter, "textconv_answer", answer_fails)
+    outcome, left = _left_running(lambda: source._list_with_patch(resolved))
+    assert outcome is failure, "the answer's failure, as it was raised"
+    assert left == [], "nothing the listing run started outlives it"
+    held.assert_reaped()
 
 
 def test_a_cold_configuration_is_asked_beside_the_one_run(
