@@ -5,11 +5,11 @@ title: Remove the npm audit exception for GHSA-fc5q-39xc-vjpf (picomatch ReDoS v
 kind: task
 status: open
 priority: 2
-version: 3
+version: 5
 labels: []
 dependencies: []
 created_at: 2026-11-17T18:05:46.135Z
-updated_at: 2026-11-17T18:53:50.196Z
+updated_at: 2026-11-17T21:04:03.565Z
 ---
 The npm audit gate tolerates exactly one advisory, GHSA-fc5q-39xc-vjpf (high, picomatch ReDoS through single-branch repeated extglobs, affects picomatch <= 4.0.7, no patched release when the exception was taken on 2026-11-17). The owner approved the narrow exception on 2026-11-17; mb-3ncz is the CI failure it resolves.
 
@@ -26,3 +26,6 @@ The exception lapses by itself, failing the audit, if the advisory's affected ra
 The exception landed with jlevy/metabrowser#523 (branch claude/npm-audit-picomatch-exception, head 7915437bf). It resolves the CI failure mb-3ncz.
 
 2026-11-17, after security review A of #523 (head b0ddbf1): the exception now also lapses when anything else the review rested on changes: the advisory's severity, CWE or CVSS vector; picomatch's fixAvailable (so a published fix lapses it, per removal condition 1); any hop's locked version (picomatch 4.0.7, fdir 6.5.0, tinyglobby 0.2.17, tryscript 0.3.1) or isDirect; or a root dependency on picomatch, fdir or tinyglobby. The full list is the PICOMATCH_REDOS constant in devtools/npm_audit_exceptions.py.
+
+2026-11-17, owner decision (in chat, on review B1 of #523): when picomatch publishes the fix and the exception lapses, waive the 14-day cool-off for that one picomatch release after a hand review of its diff, as first-party releases are reviewed; move the lock at once and delete the exception. Written into SUPPLY-CHAIN-SECURITY.md by mb-vo98.
+2026-11-17: tryscript 0.3.2, which drops tinyglobby/picomatch (dependency choice decided by Astra per the owner's criteria), is being released by an agent from a fresh clone in attic/tryscript. When it is on npm: bump tryscript to 0.3.2 as a first-party exception (SUPPLY-CHAIN-SECURITY.md, like 0.3.0/0.3.1) and remove this exception (devtools/npm_audit_exceptions.py, its tests and fixture, the SUPPLY-CHAIN-SECURITY.md section) in the same PR.
