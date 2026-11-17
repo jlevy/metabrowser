@@ -317,7 +317,7 @@ The steps run in this order, which the beads record as dependencies:
    A failure goes back to the brief’s fallback, Electron, before steps 6 and 7.
 
    The gate ran on 2026-11-11 and failed; the numbers and method are in
-   [rendering large content](../../../large-content-rendering.md#measured-in-webkit).
+   [the app’s architecture](../../architecture/arch-macos-app.md#measured-in-webkit).
    Its largest failure, the source view’s Load more at 4.5 to 5.8 times Chrome, has a
    measured cause and a core fix (`mb-551q`, merged in jlevy/metabrowser#367). After it,
    the gate’s Load more row still measured 2.25 to 2.46 times Chrome (the

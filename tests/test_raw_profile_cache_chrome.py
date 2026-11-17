@@ -6,7 +6,7 @@ kept while the trusted profile served an SVG, with its ``allow-scripts`` sandbox
 run the SVG's script when a link to it is followed after the folder is served
 ``--untrusted`` on the same port, and an untrusted document keeps an absolute link to this
 origin. Only a raster image, whose execution headers are the same under both profiles,
-is kept (``SECURITY.md``).
+is kept (``arch-server-and-content.md``, "Raw Responses").
 
 ``tests/dom/raw-profile-cache-chrome.mjs`` runs one headless Chrome across the two
 servers. Before the fix the followed SVG came from the cache with ``allow-scripts`` and

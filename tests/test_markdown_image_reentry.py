@@ -17,8 +17,8 @@ version, so a new address, and loads lazily there; an unversioned served address
 absolute address on the page's own origin are never held; on a pinned revision every
 served image is held. The record keeps ``MAX_HELD_IMAGES`` images, forgetting the least
 recently loaded past that. This checks attributes, their order, listeners, and the
-record, not loading or paint; docs/design-system.md, "A Repaint Keeps Its Images", has the
-measurements, and ``tests/golden/cli-ui-markdown-image-reentry.tryscript.md`` the
+record, not loading or paint; explorations/performance-loop/design-rule-measurements.md
+has the measurements, and ``tests/golden/cli-ui-markdown-image-reentry.tryscript.md`` the
 transcript.
 """
 

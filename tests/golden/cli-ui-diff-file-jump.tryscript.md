@@ -12,7 +12,7 @@ comparison’s files: it takes a path, because a list from GitHub knows a path a
 file id, and it answers at once with what it did.
 It puts the file at the top of the pane, asks for that file’s lines first, cancels
 whatever else was being asked for, and keeps the file there as anything else fills in.
-[Rendering Large Content](../../docs/large-content-rendering.md#going-to-a-file) holds
+[Diff Pipeline](../../docs/project/architecture/arch-diff-pipeline.md#hydration) holds
 the contract and `tests/dom/diff-file-jump-session.js` says how this session lays itself
 out.
 

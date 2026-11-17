@@ -162,8 +162,9 @@ class GitRepoInfo(TypedDict):
     """
 
     is_repo: bool
-    # Always "" for a positive response because the feature is enabled
-    # only when the served root is the repository root; None otherwise.
+    # Always "" for a positive response, because a folder is Git-capable
+    # only at its repository's root and a pinned revision has no root;
+    # None otherwise.
     root: str | None
     head: GitHead | None
     # Conditional: why is_repo is false, as a stable machine-readable

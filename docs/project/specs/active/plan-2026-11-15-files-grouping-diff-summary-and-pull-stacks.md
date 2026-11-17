@@ -1022,7 +1022,13 @@ it, and ideally cached it up front”.
   The lines are read again when a stack’s identity changes, not every five minutes
   against the warms’ hourly cap, which with ten or more stacks drawn they spent (A2); a
   failed read keeps the line it had (A3); a stack with no line never waits again (A4);
-  and a list that stops short is answered `too_large` and kept (A8). Pinned by the
+  and a list that stops short is answered `too_large` and kept (A8). Review B’s round:
+  the answer names the members not yet settled, a list missing or read for an older
+  head, and the lane reads such a stack again, silently, and when the prefetch or a row
+  reports a member’s list, so a list fetched after the first read reaches the heading
+  (B1); the prefetch asks for the lists a drawn stack lacks, in places kept for them
+  (B2); a member the list holds no row of is taken as unchanged (B3); inexact totals say
+  “(estimated)” (B4); and each list is folded in as it is read (B5). Pinned by the
   route’s server test and CLI golden, the stack lines session and golden, and in
   headless Chrome from 420 px to 180 px in both themes, where nothing moves when the
   line arrives, the row stays one line, and the line’s statuses give way first and the

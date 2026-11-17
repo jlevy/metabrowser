@@ -167,7 +167,7 @@ These residual costs stay visible in `mb-5no9`; they do not justify another stru
 layer before merging the shipped Python provider.
 Native adoption gates remain separate.
 Reproduce using the
-[CLI navigation comparison](../../engine-performance-model.md#comparing-file-navigation-without-a-browser),
+[CLI navigation comparison](../../development.md#comparing-file-navigation-without-a-browser),
 then validate interaction and rendering in a real browser.
 
 The full September 8 gate subsequently reported five new HTTPX2/HTTPCore2 advisories.

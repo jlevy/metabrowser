@@ -1113,10 +1113,12 @@ def test_git_commit_summary_is_one_component() -> None:
     assert (
         "html += compact\n"
         "      ? renderCommitChangeStats(stats)\n"
-        '      : `<div class="git-commit-diff-summary metabrowser-diff-host">'
+        '      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
         "${renderCommitTotals(stats)}</div>`;"
     ) in panel
-    assert panel.count('class="git-commit-diff-summary metabrowser-diff-host"') == 1
+    assert (
+        panel.count('class="git-commit-diff-summary metabrowser-diff-host page-header-line"') == 1
+    )
     assert 'preview.querySelector(".git-commit-diff-summary")' in panel
     commit_place = _rule(styles, ".git-commit-diff-summary")
     assert "flex-direction: column" in commit_place
@@ -1173,6 +1175,140 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "font-family: var(--font-mono)" in summary_sha
     assert "font-size: var(--nav-font-size)" in summary_sha
     assert "noninteractive copy glyph" in doc
+
+
+# The lines under a page header's title, by the class each page's line has: the commit page's
+# author, revision, and age, and the pull request's author, branches, ages, and status.
+_PAGE_HEADER_LINES = (
+    "page-header-line",
+    "git-commit-byline",
+    "git-commit-revision-line",
+    "git-commit-ages",
+    "github-pull-meta",
+    "github-pull-branches",
+    "github-pull-opened",
+    "github-pull-status",
+)
+
+
+def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
+    """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
+
+    Each is a `.page-header`, its title then its lines 6 px apart, and every line under the
+    title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
+    age in it and the Diff summary's row included, whose header the diff plugin sets at the
+    same token: the owner found the summary and the pull request's
+    rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
+    another size on a line or its text; a chip keeps its own (Branch Chips, Label Colors) and
+    a revision its one step down. `tests/dom/page-header-chrome.mjs` reads the computed sizes
+    on both pages in Chrome.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Page Headers" in doc
+    assert "test_page_headers_set_every_line_under_the_title_at_the_body_size" in doc
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".page-header"] == {
+        "display": "flex",
+        "flex-direction": "column",
+        "gap": "6px",
+    }
+    assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
+    ages = (
+        ".page-header-line :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
+    )
+    assert shell[ages] == {"font-size": "var(--body-font-size)"}
+    diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
+    assert diff[".metabrowser-diff-host .diff-summary"]["font-size"] == "var(--body-font-size)"
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    assert github[".github-pull-summary-pending"]["font-size"] == "var(--body-font-size)"
+    # The rows of ages' quiet text is muted at its line's size, not the page's small quiet.
+    assert github[".github-pull-opened > .github-pull-quiet"]["font-size"] == (
+        "var(--body-font-size)"
+    )
+    line = re.compile(r"\.(" + "|".join(_PAGE_HEADER_LINES) + r")(?![\w-])")
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            size = declarations.get("font-size")
+            if size is not None and line.search(selector):
+                assert size == "var(--body-font-size)", (sheet.name, selector, size)
+    # Both pages write the classes on every line under the title but the labels, a row of
+    # chips at a chip's size: the commit summary on its page, and the pull request's header,
+    # the Diff summary's row included on both (A1 of review A on #487). Which order they
+    # come in is held by tests/dom/git-panel-behavior.js for the commit page and by
+    # tests/dom/page-header-chrome.mjs for both.
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    assert '`<div class="git-commit-header${compact ? "" : " page-header"}">`' in panel
+    for written in (
+        "'<div class=\"git-commit-byline page-header-line\">'",
+        '`<div class="git-commit-revision-line page-header-line">${revisionGroup}</div>`',
+        '`<div class="git-commit-ages page-header-line">Committed ${age}</div>`',
+        '`<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
+    ):
+        assert written in panel, written
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    assert 'class: "github-pull-header page-header page-reading-column"' in page
+    for row in (
+        "github-pull-meta",
+        "github-pull-branches",
+        "github-pull-opened",
+        "github-pull-status",
+        "github-pull-summary metabrowser-diff-host",
+    ):
+        assert f'class: "{row} page-header-line"' in page, row
+    assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
+
+
+def test_a_person_is_one_identity_on_every_page() -> None:
+    """An author is the shell's identity wherever a page names one (mb-nunw, mb-s3g8).
+
+    `actorIdentity` and `actorIdentityHtml` in `plugin-sdk-views.js` draw it: an avatar's
+    box, then the bold name. The commit page draws its author through the markup form and the
+    GitHub plugin's `authorLabel` through the nodes form, so the box is one size on both
+    pages, and where there is no avatar it holds the shell's person glyph, Lucide's, drawn in
+    the view bundle. Core reaches no plugin for it.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Actor Identity" in doc
+    assert "test_a_person_is_one_identity_on_every_page" in doc
+    views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
+    assert "function actorIdentity(name, options = {})" in views
+    assert "function actorIdentityHtml(name, options = {})" in views
+    assert "    actorIdentity,\n    actorIdentityHtml,\n" in views
+    # The glyph is Lucide's, beside the one component that draws it, in the view bundle, not
+    # in the eager icon registry every folder's first paint fetches.
+    assert "const PERSON_GLYPH = // Lucide `circle-user-round`" in views
+    icons = (STATIC / "icons.js").read_text(encoding="utf-8")
+    assert "circle-user" not in icons and "person:" not in icons
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    assert 'window.metabrowser.actorIdentityHtml(author, { nameClass: "git-commit-author" })' in (
+        " ".join(panel.split())
+    )
+    assert "github-pull-" not in panel and "authorLabel" not in panel, "core names no plugin's"
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    assert "return mb.actorIdentity(name, {" in page
+    assert '"github-pull-avatar' not in page, "no avatar of the plugin's own"
+    types = (STATIC / "types.d.ts").read_text(encoding="utf-8")
+    assert (
+        "actorIdentity(name: string, options?: MetabrowserActorIdentityOptions): HTMLElement;"
+        in (types)
+    )
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".actor-avatar"]["width"] == "var(--actor-avatar-size)"
+    assert shell[".actor-avatar"]["border-radius"] == "var(--radius-circle)"
+    assert shell[".actor-avatar"]["color"] == "var(--muted)", "the glyph is muted"
+    # The glyph takes the avatar's box, the second exception One Glyph Size names, at its
+    # rule and in the section (A3 of review A on #487).
+    fills = shell[".actor-avatar > :is(img, svg)"]
+    assert (fills["width"], fills["height"]) == ("100%", "100%")
+    glyph_size = doc[doc.index("### One Glyph Size") : doc.index("### Every Icon-Only Control")]
+    assert "`.actor-avatar > :is(img, svg)`" in glyph_size
+    # Lucide's license travels with the glyph, and NOTICE.md lists it with its release and
+    # commit (A2 of review A on #487).
+    assert "circle-user-round.svg, the person in an actor identity's box" in views
+    notice = (REPO_ROOT / "NOTICE.md").read_text(encoding="utf-8")
+    assert "`circle-user-round.svg`" in notice
 
 
 def test_navigation_tooltips_are_pointer_only() -> None:
@@ -2436,15 +2572,17 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     assert ".github-pulls-merge" not in github, "a Pulls row names no branches"
     by = github[".github-pulls-by"]
     assert by["min-width"] == "calc(var(--github-pulls-sep) + 1.75em)", "never a lone separator"
-    avatar = " ".join(github[".github-pulls-by:has(.github-pull-avatar)"]["min-width"].split())
+    avatar = " ".join(github[".github-pulls-by:has(.actor-avatar)"]["min-width"].split())
     assert avatar == (
-        "calc( var(--github-pulls-sep) + var(--github-pull-avatar-size) +"
-        " var(--github-pull-identity-gap) + 1.75em )"
+        "calc( var(--github-pulls-sep) + var(--actor-avatar-size) +"
+        " var(--actor-identity-gap) + 1.75em )"
     ), "a name beside it"
-    # The floor counts the avatar and its gap, through the two tokens that size them (mb-xlla).
-    assert (github[".github-pull-avatar"]["width"], github[".github-pull-identity"]["gap"]) == (
-        "var(--github-pull-avatar-size)",
-        "var(--github-pull-identity-gap)",
+    # The floor counts the avatar's box and its gap, through the two tokens that size them in
+    # the shell's identity (mb-xlla, mb-nunw).
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert (shell[".actor-avatar"]["width"], shell[".actor-identity"]["gap"]) == (
+        "var(--actor-avatar-size)",
+        "var(--actor-identity-gap)",
     ), "the floor counts the avatar and its gap"
     author = github[".github-pulls-by .github-pulls-author"]
     assert (author["min-width"], author["text-overflow"]) == ("0", "ellipsis")
@@ -2523,12 +2661,13 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert 'h("span", {}, ["committed ", age(event.committed_at)])' in page
     # The events the line joins: the description, each comment and review, and each commit.
     assert page.count("github-pull-event") == 3, "the description, a card, and a commit"
-    # Their heads keep an avatar's slot for an author without one; the header and Pulls
-    # rows do not ask for it.
-    assert page.count("{ slot: true }") == 2, "the description's head and a card's"
-    slot = github[".github-pull-avatar-slot"]
-    avatar = github[".github-pull-avatar"]
-    assert (slot["width"], slot["height"]) == (avatar["width"], avatar["height"])
+    # Every author there is the shell's identity, whose avatar's box is there for an author
+    # without one, the person glyph in it (mb-nunw); only a Pulls row asks for none.
+    assert page.count("authorLabel(mb, ") == 4, "the header, the description, a card, a reply"
+    assert "{ slot: true }" not in page and "github-pull-avatar-slot" not in github
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    avatar = shell[".actor-avatar"]
+    assert (avatar["width"], avatar["height"]) == ("var(--actor-avatar-size)",) * 2
     node = github[".github-pull-commit::after"]
     assert (node["border-radius"], node["background"]) == ("var(--radius-circle)", "var(--muted)")
     # A button that moves the pin looks as a link does: no primitive's border or fill.
@@ -2573,9 +2712,9 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     age = github[".github-pull-card-head .github-pull-age"]
     assert (age["font-size"], age["line-height"]) == ("var(--body-font-size)", "inherit")
     assert ".github-pull-card-head .github-pull-author" not in github
-    identity = github[".github-pull-identity"]
+    identity = shell[".actor-identity"]
     assert (identity["align-items"], identity["vertical-align"]) == ("baseline", "baseline")
-    assert github[".github-pull-avatar"]["align-self"] == "center"
+    assert shell[".actor-avatar"]["align-self"] == "center"
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
@@ -2813,10 +2952,10 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
 
     The tree's icon slot is the glyph's width, `--tree-icon-slot: var(--icon-glyph)`, and the
     chevron centered in it is `--toggle-chevron-size`; a menu's, a palette's, and a file
-    identity's icon box is `--icon-box`, and the tree's slot is that box's height. The
-    Conversation timeline's avatar and the gap after it are `--github-pull-avatar-size` and
-    `--github-pull-identity-gap`, and the commit row's start, the line's x, the empty slot,
-    and the authors' floors are derived from them (mb-xlla).
+    identity's icon box is `--icon-box`, and the tree's slot is that box's height. A person's
+    avatar box and the gap after it are the shell's `--actor-avatar-size` and
+    `--actor-identity-gap` (mb-nunw), and the Conversation timeline's commit row's start, the
+    line's x, and the authors' floors are derived from them (mb-xlla).
     """
 
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
@@ -2835,34 +2974,32 @@ def test_tree_slots_and_avatar_geometry_derive_from_their_tokens() -> None:
     icon = shell[".tree-item-icon"]
     assert (icon["width"], icon["height"]) == ("var(--tree-icon-slot)", "var(--icon-box)")
     github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
-    parsed = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
-    rules = dict(parsed)
-    # The page and the Pulls tab both draw authors, so both roots declare the two tokens.
-    declared: dict[str, set[str]] = {}
-    for selector, body in parsed:
-        declared.setdefault(selector, set()).update(body)
-    for root in (".github-pull", ".github-pulls"):
-        assert {"--github-pull-avatar-size", "--github-pull-identity-gap"} <= declared[root], root
-    for selector in (".github-pull-avatar", ".github-pull-avatar-slot"):
-        assert (
-            rules[selector]["width"]
-            == rules[selector]["height"]
-            == ("var(--github-pull-avatar-size)")
-        ), selector
-    assert rules[".github-pull-identity"]["gap"] == "var(--github-pull-identity-gap)"
+    rules = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # A person's avatar box and the gap after it are the shell's, declared once on its root,
+    # and every page that draws a person reads them: a commit's author and a pull request's
+    # alike (mb-nunw). No plugin declares its own.
+    root = shell[":root"]
+    assert (root["--actor-avatar-size"], root["--actor-identity-gap"]) == ("18px", "4px")
+    assert "--github-pull-avatar-size" not in github and "--github-pull-identity-gap" not in github
+    assert (
+        shell[".actor-avatar"]["width"]
+        == shell[".actor-avatar"]["height"]
+        == ("var(--actor-avatar-size)")
+    )
+    assert shell[".actor-identity"]["gap"] == "var(--actor-identity-gap)"
     assert rules[".github-pull-event"]["--github-pull-rail"] == (
-        "calc(var(--github-pull-text-inset) + var(--github-pull-avatar-size) / 2)"
+        "calc(var(--github-pull-text-inset) + var(--actor-avatar-size) / 2)"
     )
     for selector in (
         ".github-pull-commit",
-        ".github-pull-meta-details > .github-pull-identity:has(.github-pull-avatar)",
-        ".github-pulls-by:has(.github-pull-avatar)",
+        ".github-pull-meta-details > .github-pull-identity",
+        ".github-pulls-by:has(.actor-avatar)",
     ):
         geometry = " ".join(
             rules[selector].get("padding", rules[selector].get("min-width", "")).split()
         )
-        assert "var(--github-pull-avatar-size)" in geometry, selector
-        assert "var(--github-pull-identity-gap)" in geometry, selector
+        assert "var(--actor-avatar-size)" in geometry, selector
+        assert "var(--actor-identity-gap)" in geometry, selector
     # No avatar size or gap is written as a pixel literal in a rule.
     assert "18px + 4px" not in github and "+ 9px" not in github
 

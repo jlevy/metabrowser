@@ -5,7 +5,8 @@ This module owns:
 * ``GET /api/events`` — global inventory SSE stream backed by the
   application-owned inventory coordinator. Emits an ``fs.snapshot`` on
   connect, then projects provider invalidations into ``fs.change`` ops.
-  Heartbeat every 15 s. Reconnects receive a new coherent snapshot boundary;
+  A heartbeat comment after ``SSE_HEARTBEAT_INTERVAL_S`` without an event.
+  Reconnects receive a new coherent snapshot boundary;
   pre-snapshot deltas are never replayed after it.
 * ``GET /api/catalog`` — one-shot Quick File universe. A filesystem
   subject reads the inventory; a Git pin lists recursive blob names.
@@ -25,15 +26,16 @@ This module owns:
   A Git pin reports a complete index and ``events.stream`` off rather than
   the lifespan folder's watcher.
 * :func:`build_lifespan` — Starlette lifespan context manager
-  that bumps the asyncio default executor to 64 workers and opens the
-  selected inventory provider without blocking HTTP bind.
+  that sizes the asyncio default executor to ``DEFAULT_EXECUTOR_WORKERS`` and opens
+  the selected inventory provider without blocking HTTP bind.
 
 Everything in this module is end-to-end testable via
 ``starlette.testclient.TestClient`` without opening a browser.
-The ``aiter_sse_events`` helper at the bottom is the test-side
+The ``parse_sse_frames`` helper at the bottom is the test-side
 parser for the SSE wire format.
 
-The endpoint, snapshot handoff, and encoder form the realtime event contract.
+The endpoint, snapshot handoff, and encoder form the realtime event contract, which
+``docs/project/architecture/arch-live-delivery.md`` describes.
 """
 
 from __future__ import annotations
@@ -1334,8 +1336,9 @@ async def api_catalog(request: Request) -> Response:
     when nothing changed, and encoding runs off the event loop
     instead of as one synchronous dump inside the stream handler.
     Live updates arrive as ``catalog.change`` events on the existing
-    stream; the pair converges without a shared transaction because
-    ops are idempotent by path.
+    stream. The server holds no shared transaction between the two: the
+    browser folds deltas that arrive before the bulk payload commits into
+    that payload's staged transaction (``static/catalog-feed.js``).
     A Git pin has no watcher: the payload is the recursive blob set
     and is already complete.
     """

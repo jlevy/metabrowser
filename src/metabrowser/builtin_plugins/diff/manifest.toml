@@ -8,7 +8,7 @@ sdk_version = "0.7"
 # into File Diff Format and the view renders that document — the same
 # model every other comparison surface will feed the same renderer.
 # The container table makes patch files folder-like in the nav tree
-# (arch-nav-containers.md): expand for the change entries, outer-click
+# (arch-plugin-system.md#navigation-containers): expand for the change entries, outer-click
 # for the whole change set, inner-click for one file's diff at the
 # virtual path <file>/<inner> — resolved by the same document hook.
 [[kind]]

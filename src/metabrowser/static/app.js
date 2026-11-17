@@ -982,6 +982,8 @@ var keyReveal = null;
 var detachPluginShortcuts = null;
 var applicationFocusRegion = null;
 var applicationFocusListener = null;
+// The most file rows one Quick Search query ranks and draws. The palette's row cap adds
+// the pull-request group's own limit (`PULL_RESULT_LIMIT` in search-controller.js).
 var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
@@ -2359,8 +2361,8 @@ function treeChildGroupStartHtml(groupId, depth, expanded) {
 }
 
 // Container kinds by extension, injected by the server from the loaded
-// plugin manifests (arch-nav-containers.md). A file whose extension is
-// listed plays the folder-like role in addition to its own.
+// plugin manifests (docs/project/architecture/arch-plugin-system.md). A file
+// whose extension is listed plays the folder-like role in addition to its own.
 var CONTAINER_EXTS = window.METABROWSER_CONTAINER_EXTS || {};
 
 function containerForNode(node) {
@@ -2669,7 +2671,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: fileLabelId,
       });
       // A file whose kind declares the container capability is
-      // folder-like too (arch-nav-containers.md): it keeps its file
+      // folder-like too (arch-plugin-system.md): it keeps its file
       // identity and views, and gains a chevron that discloses the
       // entries inside it, fetched on first expand.
       var container = containerForNode(node);
@@ -5565,7 +5567,7 @@ function renderRecentList(data) {
 // The drawer carries no section headings: its three menus' triggers
 // say what they are.
 //
-// See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
+// See docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md.
 
 var filterState = /** @type {any} */ (window).metabrowser?.filterState || null;
 var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
@@ -7775,9 +7777,8 @@ function appendLiveEvents(path, batch) {
       if (typeof batch.cursor === "number") {
         cached.bytes_read = batch.cursor;
       }
-      // Append to the currently-rendered log tab if it's visible. Charts
-      // re-fetch on poll because series rebinning depends on the complete
-      // event timeline.
+      // Append to the currently-rendered log tab if it's visible. Charts are
+      // not extended: they show the events there were when the file loaded.
       var logPane = queryHtml('[data-tab-content="log"]');
       if (logPane && logPane.style.display !== "none") {
         var tail = "";
@@ -8141,7 +8142,8 @@ function notifyFileStoreSubscribers(evt) {
 // applyCellPatch picks the matching DOM target.
 //
 // Directory aggregates, file updates, inserts, and removals all use this
-// path. See the realtime-debugging guide for the layer-by-layer contract.
+// path. See docs/project/architecture/arch-live-delivery.md#the-browsers-stores for the
+// contract, and the realtime-debugging guide for following an update layer by layer.
 function computeCellPatch(entry, options) {
   if (entry.type === "dir") {
     var dirMtimeSec = entry.newest_mtime_ns

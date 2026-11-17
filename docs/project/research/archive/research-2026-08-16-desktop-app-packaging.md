@@ -4,8 +4,10 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Complete; superseded for macOS by the
-[2026-11-08 addendum](#2026-11-08-addendum-macos-first-revision)
+**Status:** Archived.
+Superseded for macOS by the
+[2026-11-08 addendum](#2026-11-08-addendum-macos-first-revision) and the
+[native macOS app research](../research-2026-11-08-macos-app-packaging.md).
 
 ## Overview
 
@@ -318,7 +320,7 @@ verified guarantee, and is flagged for verification above.
 
 ## 2026-11-08 Addendum: macOS-First Revision
 
-[Native macOS App for Metabrowser](research-2026-11-08-macos-app-packaging.md)
+[Native macOS App for Metabrowser](../research-2026-11-08-macos-app-packaging.md)
 supersedes this brief for macOS and recommends a hand-written Swift shell over a `metab`
 host protocol, with Electron as the fallback if WebKit fails a measurement gate.
 Two findings above no longer hold:

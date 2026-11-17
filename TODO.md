@@ -3,76 +3,64 @@
 This is the top-level map of Metabrowser’s work: what is planned, what is in flight, and
 which document carries the detail.
 It sits above the specs rather than duplicating them.
-Plans live in [`docs/project/specs/`](docs/project/README.md) — `active/` while a plan
+Plans live in [`docs/project/specs/`](docs/project/README.md): `active/` while a plan
 still owes work, `done/` once it is delivered, with follow-ups tracked as beads.
 Checked items below are supported today; unchecked items are planned work.
+
+## Release State
+
+The latest release is 0.12.0, tagged on 2026-11-08 and published on 2026-11-09. It adds
+the repository mirror and GitHub browsing: open a Git or GitHub URL, read pull requests
+from the Pulls tab, and reopen what was fetched while offline.
+Work merged since then is listed under Unreleased in [CHANGELOG.md](CHANGELOG.md).
+The owner-deferred 0.12 checks are open beads under `mb-425f`, among them the landing
+differential (`mb-2g6f`) and the human sign-off matrix (`mb-etqi`).
 
 ## Where Work Stands
 
 | Area | Plan | Status |
 | --- | --- | --- |
-| Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline delivered; extensions partly delivered; remaining scope is listed below and in the plan |
-| File search | [Quick File finder and search providers](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | Client finder shipped; server providers planned |
-| HTML trust model | [Full-page HTML rendering and trust model](docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md) | Sandboxed `/raw`, same-origin `/api` proof, `--untrusted`, and rendered HTML are implemented; the plan records delivery |
-| File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Shared modal foundation delivered; action menus and file mutations planned |
-| File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Startup capability gate implemented; rename, move, and trash workflows planned |
-| Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Scan status, counts, and pending directory aggregates implemented; recent-directory items remain |
-| Git surfaces | [Git graph nav panel](docs/project/specs/done/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | 0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09, ships an owner-only cache of stores acquired from `file://` and `https://` origins or borrowing from an admitted checkout and served as immutable pins under the forced untrusted profile, with background refresh and pin switching, per the [thin-mirror plan](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md). SSH, a general repository catalog and chooser, and measured very-large-repository acquisition remain |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | The provider-neutral Hosted Review Format records and their contract gates were removed from stack [#218](https://github.com/jlevy/metabrowser/stack/218) and are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; the [thin-mirror plan](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md) stores pull-request data as plain validated JSON records in the GitHub plugin. GitHub URLs, pull-request records, the resumable PR catalog, Pulls navigation, checkout-backed comparisons, and optional native-stack membership are implemented. The [GitHub Pulls tab plan](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md) records that delivery; inline review anchors and broader hosted-review projections remain separate work. [Alpha testing](docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md#landing-status) records the 0.12.0 acceptance and its deferred checks |
-| Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
-| Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | On-demand assets, progressive inventory delivery, and startup-script budget implemented; broader performance goals remain |
+| Native macOS app | [Native macOS app](docs/project/specs/active/plan-2026-11-10-native-macos-app.md) | An alpha AppKit shell over `metab` builds from source in `apps/macos/`; a signed download and the agent front door are planned |
+| Apparent performance | [Instant transitions and stable layout](docs/project/specs/active/plan-2026-11-11-ui-apparent-performance.md) | Approved; each step is a measured performance-loop round |
+| Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md), [flat-tree delivery cost](docs/project/specs/active/plan-2026-09-15-flat-tree-delivery-cost.md) | On-demand assets, progressive inventory delivery, the startup-script budget, and per-page catalog hashing are implemented; broader goals remain |
+| Inventory engine | [Pluggable inventory engine](docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md), [provider refactor and fdu adoption](docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md) | The Python reference provider ships behind the provider contract; the fdu provider is planned |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | An owner-only cache of Git stores, served as immutable pins under the untrusted profile with background refresh, shipped in 0.12.0 per the [thin-mirror plan](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md); SSH, a repository catalog and chooser, and very large repositories remain |
+| GitHub pull requests | [Pulls tab](docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md), [review from a checkout](docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md) | The PR catalog, Pulls tab, PR pages, checkout-backed comparisons, and native-stack membership are implemented; store conversions, inline review anchors, and broader hosted-review projections remain |
+| Git surfaces | [General diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | The Commits tab, commit pages, and diff rendering are implemented; working-tree status and `/compare/` remain |
+| CLI parity and goldens | [Functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [API envelope contract](docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md) | The route, kind, model, persisted-state, and functional-aspect gates are enforced; migrating the remaining UI behavior and a schema for the envelopes remain |
+| File search | [Quick Search](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md) | The client file finder and PR completions are implemented; full-text search is planned |
+| Markdown navigation | [Navigation extensions](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md) | Baseline delivered; extensions partly delivered, with the remaining scope below |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; on-demand loading exists, but the Mermaid module entry still needs a dynamic import or a module entry in `asset-loader.js` |
-| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/done/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates have landed on `main` for the v0.10.0 release candidate. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
+| File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Shared modal foundation delivered; action menus and file mutations planned |
+| File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md), [editor plugin editing contract](docs/project/specs/active/plan-2026-07-17-editor-plugin-editing-contract.md) | Startup capability gate implemented; rename, move, trash, and editor plugins planned |
+| Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Scan status, counts, and pending directory aggregates implemented; recent-directory items remain |
+| Documentation | [Documentation from first principles](docs/project/specs/active/plan-2026-11-14-documentation-from-first-principles.md) | Implemented; one owner per fact, task guides, and architecture documents for every layer |
 
-Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
-the navigation baseline, folder Overview and file-type summaries, semantic file-type
-families, the shared taxonomy, filter controls, the bounded binary byte preview, the
-flat `metab` CLI, and the v0.1.0 package.
+Delivered plans keep their record in [done plans](docs/project/README.md#done-plans).
 
-## v0.12.0 Repository and GitHub Slice
+## Repository and GitHub Follow-Ups
 
-v0.12.0 lets a user paste a GitHub repository, file, commit, or pull-request URL and
-browse it from a local mirror: instant once seen, usable offline, and refreshed in the
-background.
-[Thin Mirror for Git and GitHub Browsing](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md)
-is the design, and its Delivery section maps each step to its pull request (epic
-`mb-hall`).
-
-0.12.0 was tagged `v0.12.0` at `87b8ec81` and published 2026-11-09. The 2026-09-24
-acceptance run on an installed wheel is recorded in
-[QA: v0.12 alpha acceptance](docs/project/qa/qa-2026-09-24-v012-alpha-acceptance.md).
-[Landing status](docs/project/specs/done/plan-2026-09-22-v012-alpha-testing.md#landing-status)
-records the release and the owner-deferred checks, which remain open beads under
-`mb-425f`.
-
-The owner expanded the scope after the original thin-mirror design.
-The [Pulls tab](docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md) and
-[checkout review](docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
-plans now cover implemented PR discovery, file navigation, local checkout borrowing,
-explicit comparison recovery, and optional native GitHub stack membership.
-This does not complete SSH acquisition (`mb-bi2c`), inline review anchors (`mb-rldc`),
-or the retired provider-binding/rebind design.
-
-The complete roadmap remains larger than this release slice.
-Full generic cache management (`mb-0ybg`), the repository chooser (`mb-vmzy`), GitHub
-issues and timelines (`mb-9rrc`), provider-neutral stack derivation and aggregate
-projections (`mb-glxc`), measured very-large-repository acquisition (`mb-dqvj`), and a
-GitLab provider (`mb-51uj`) remain tracked follow-ups.
+- [ ] Acquire SSH Git URLs into the shared mirror (`mb-bi2c`, deferred)
+- [ ] Generic cache management: catalog, refresh, size accounting, and purge (`mb-0ybg`)
+- [ ] An in-app repository chooser and session switching (`mb-vmzy`)
+- [ ] Measured acquisition and deepening for very large repositories (`mb-dqvj`)
+- [ ] Anchor pull-request review threads in the Changes diff (`mb-rldc`, deferred)
+- [ ] Open cached pull-request timeline commits locally (`mb-g47g`)
+- [ ] GitHub issues and timelines (`mb-9rrc`, deferred) and a GitLab provider
+  (`mb-51uj`, deferred)
 
 ## Markdown Navigation: What Is Not Done
 
 The
 [navigation baseline](docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md)
-is delivered: one canonical `/view/<path>` route per file and folder, exact GitHub-style
-relative resolution, deterministic Obsidian wiki lookup with visible ambiguous and
-missing states, bounded transclusion, verified same-repository GitHub URL localization,
+is delivered: one `/view/<path>` route per file and folder, GitHub-style relative
+resolution, deterministic Obsidian wiki lookup with visible ambiguous and missing
+states, bounded transclusion, verified same-repository GitHub URL localization,
 configured static-site route adapters, and a typed `window.metabrowser.navigation`
 boundary.
 
 Remaining work from the
-[extensions plan](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
-includes:
+[extensions plan](docs/project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md):
 
 - [x] Address a line range inside a source view: shipped as GitHub-style `#L` fragments
   (#235, #239), without the reserved `_mb_` keys.
@@ -82,21 +70,16 @@ includes:
 - [ ] Evaluate frontmatter alias target lookup.
   Still a question, not a commitment.
 - [ ] Add explicit mounted roots for multi-repository and cross-vault navigation.
-- [ ] Reintroduce graph analysis through a bounded server route backed by a KPress-owned
-  intent manifest, as described in
+- [ ] Add graph analysis through a bounded server route backed by a KPress-owned intent
+  manifest, as described in
   [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md).
-  The former browser graph API is retired; its replacement is not implemented.
 
 One navigation gap sits outside that plan:
 
 - [ ] Make navigation tree rows real links.
-  Rendered Markdown links are now genuine anchors, but tree rows remain `div` elements
-  with click handlers, so the primary navigation surface still lacks the native link
-  behavior — middle-click, copy address, and status-bar preview — that document links
-  gained.
-
-The HTML trust-model work delivered path-shaped `/raw/<path>` responses; that URL change
-is no longer outstanding.
+  Tree rows are `div` elements with click handlers, so the primary navigation surface
+  lacks the native link behavior of rendered Markdown links: middle-click, copy address,
+  and status-bar preview.
 
 ## Core Browser
 
@@ -111,13 +94,14 @@ is no longer outstanding.
   and pin the versioned payload contracts with a schema (`mb-xzb1`)
 - [x] Add
   [contextual keyboard help and accessible tree navigation](docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
-  through one shortcut registry
+  through one shortcut registry, with the
+  [Shift key reveal](docs/project/specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md)
 - [x] Add the client-only
-  [Quick File finder](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
+  [Quick Search file finder](docs/project/specs/active/plan-2026-07-17-scalable-file-search.md)
   over a complete live catalog of non-gitignored files
 - [ ] Add bounded server-side filename and full-text search providers, then evaluate
   optional persistent indexing only if measured catalog sizes require it
-- [x] Give every file and folder a canonical, reloadable
+- [x] Give every file and folder a reloadable
   [`/view/<path>` URL](docs/project/specs/done/plan-2026-08-13-markdown-link-navigation.md)
   with GitHub and Obsidian link resolution
 - [ ] Add multiplexed, fair live-tail streaming across multiple files
@@ -127,35 +111,29 @@ is no longer outstanding.
 
 ## Git Surfaces
 
-- [x] Design a Changes surface and comparison API from the
-  [web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md),
-  then stage its delivery behind a written plan
-- [x] Add a Git graph navigation panel over a read-only Git collection API
+- [x] Add the Commits tab and commit pages over a read-only Git collection API
+- [x] Implement the
+  [repository mirror and GitHub browsing](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md):
+  a versioned local cache that opens or reuses Git and GitHub URLs at a selected branch,
+  tag, or commit, with pull-request pages, catalog navigation, checkout-backed
+  comparisons, and native-stack metadata
 - [ ] Add read-only
   [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md),
   with conflicts, staged, unstaged, and untracked groups above history
 - [ ] Build the `/compare/<base>..<head>` route, which
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
-- [x] Implement the v0.12.0
-  [repository mirror and GitHub browsing](docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md):
-  a versioned local cache that opens or reuses Git and GitHub URLs at a selected branch,
-  tag, or commit, with pull-request pages, catalog navigation, checkout-backed
-  comparisons, and native-stack metadata.
-  SSH, full cache management, a repository chooser, issues, and broader stack
-  projections remain separate follow-ups
 
-Both entered core behind written plans, with the read-only boundary and bounded-cost
-model those plans required: the Git routes only read, every `git` subprocess is bounded
-by `GIT_SUBPROCESS_TIMEOUT_S` and `GIT_SUBPROCESS_MAX_BYTES`, and the history and commit
+The Git routes only read, every `git` subprocess is bounded by
+`GIT_SUBPROCESS_TIMEOUT_S` and `GIT_SUBPROCESS_MAX_BYTES`, and the history and commit
 routes carry their own named limits in `settings.py`.
 [File Diff Format v1](docs/project/architecture/file-diff-format/file-diff-format.md)
-adds a conformance corpus and an apply oracle that checks a produced document against
-git’s own trees.
+has a conformance corpus and an apply oracle that checks a produced document against
+Git’s own trees.
 
 ## Plugin Platform
 
 - [ ] Design and implement the
-  [editor plugin editing contract](docs/project/architecture/arch-editor-plugin-editing-contract.md)
+  [editor plugin editing contract](docs/project/specs/active/plan-2026-07-17-editor-plugin-editing-contract.md)
   without weakening the default read-only plugin contract
 - [ ] Document stable extension points for custom renderers, metadata, actions, and
   optional storage adapters as each capability graduates into the public API
@@ -173,24 +151,20 @@ plugin; it is bumped when that contract breaks, never shimmed.
 - [ ] Add
   [menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
   so an action surface exists before any mutating operation ships
-- [ ] Expose
-  [scan progress and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
+- [ ] Show
+  [recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
   without presenting incomplete trees as empty
 
-File mutation remains disabled by default.
+File mutation is disabled by default.
 These workflows do not change Metabrowser’s trusted-client, local-filesystem security
 model.
 
 ## Editor Integration
 
-- [ ] Build the
-  [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md)
-  around a native tree, one embedded content panel, a supervised authenticated server,
-  and uv-managed installation
-
-The editor integration reuses the public tree, event, view, and plugin contracts.
-Editor-specific readiness, authentication, and embed modes should remain host-neutral so
-other trusted desktop integrations can use them without entering Metabrowser core.
+- [ ] A VS Code extension host, with a native tree, one embedded content panel, and a
+  supervised server; an
+  [archived draft](docs/project/research/archive/research-2026-07-17-vscode-extension-host.md)
+  exists, and no plan
 
 ## Transparent Single-File Compression
 
@@ -219,20 +193,19 @@ rendering, export, and raw serving.
 
 Archives contain multiple logical files, so they need a navigable virtual tree and a
 stronger security boundary than transparent single-file compression.
-They are not part of the v0.1.0 core contract.
 
 ## Browser Defense in Depth
 
 - [x] Settle the
-  [HTML rendering and content-trust model](docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md),
-  building on the sandboxed `/raw` responses, same-origin proof on `/api`, and
-  `--untrusted` profile that landed through #209
-- [ ] Extend the strict Content Security Policy, now enforced under the untrusted
-  profile, to the default profile (`mb-gluj`); no inline shell or plugin handlers remain
+  [HTML rendering and content-trust model](docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md):
+  sandboxed `/raw` responses, same-origin proof on `/api`, and the `--untrusted` profile
+- [ ] Send a strict Content Security Policy when active content is on, as the shell
+  already does when `--no-active-content` or `--untrusted` turns it off (`mb-gluj`)
 
-The current renderer sanitizes untrusted document HTML, and event data is escaped before
-DOM insertion. A Content Security Policy remains useful defense in depth because the
-trusted local server can read files within its configured root.
+The renderer sanitizes untrusted document HTML, and event data is escaped before DOM
+insertion.
+A Content Security Policy is still useful defense in depth because the trusted
+local server can read files within its configured root.
 
 ## Engineering Ratchets
 
@@ -240,11 +213,10 @@ trusted local server can read files within its configured root.
 - [ ] Graduate the remaining legacy JavaScript into strict TypeScript
 - [ ] Remove the remaining exact-file Biome exceptions as those files are modernized
 
-The release baseline already enforces Ruff, BasedPyright, Biome, TypeScript, pytest,
-dependency audits, documentation formatting, source-distribution checks, wheel checks,
-and installed-wheel CLI and plugin-doctor smoke tests.
-These ratchets tighten known, measured legacy surfaces without weakening the enforced
-baseline.
+The release baseline enforces Ruff, BasedPyright, Biome, TypeScript, pytest, dependency
+audits, documentation formatting, source-distribution checks, wheel checks, and
+installed-wheel CLI and plugin-doctor smoke tests.
+These ratchets tighten known legacy surfaces without weakening the enforced baseline.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
