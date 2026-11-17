@@ -3,9 +3,9 @@ type: is
 id: is-01m7mdh2sdt4b490jctsys253a
 title: Test stubs outside test_github_pulls.py still hold a default-executor thread in asyncio.to_thread(event.wait) (mb-xorh's cause)
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7man9fyy31fp5mmq7xg7ake
 hold: null
 hold_until: null
 created_at: 2026-11-17T09:31:07.949Z
-updated_at: 2026-11-17T09:32:16.547Z
+updated_at: 2026-11-17T16:20:22.826Z
 started_at: 2026-11-17T09:32:16.547Z
+closed_at: 2026-11-17T16:20:22.825Z
+close_reason: "Fixed in jlevy/metabrowser#515 at aaf2556dd: held_until and HELD_POLL_S moved to tests/loop_gate.py (now also takes a threading.Semaphore); all 27 Event.wait sites in 14 modules, plus the two to_thread(release.acquire) semaphore gates in tests/test_github_pulls.py, await held_until with their bound; the unbounded _Beside.refresh hold in tests/test_source_freshness_session.py now waits 30 s. tests/test_suite_gates.py::test_no_test_holds_a_gate_in_a_worker_thread fails on a gate's wait or acquire handed to to_thread or run_in_executor and names tests.loop_gate.held_until; test_a_gate_handed_to_a_worker_thread_is_found checks the detector. On a one-thread server pool the old pulls panel and pull page sessions hang and the new ones pass."
+resolution: null
+duplicate_of: null
 ---
 mb-xorh's cause in the rest of the suite. A test stub that awaits asyncio.to_thread(<event>.wait[, T]) keeps one of the server's default-executor threads for the whole hold. CPython's ThreadPoolExecutor can count an idle thread that is not there (a job submitted while a worker has seen its queue empty but not yet counted itself idle starts a thread; the worker takes the job and the new thread counts itself idle too), so the next job can start no thread and wait behind the held ones. When the test opens the gate only after a request that needs that job answers, it deadlocks (unbounded) or fails at the bound. tests/test_github_pulls.py now uses held_until (polls the threading.Event on the loop, keeps no worker); PR for mb-xorh. Remaining sites, from grep 'to_thread([a-z_.]*\.wait' tests/ on main e442ed10d:
 - tests/test_source_freshness_session.py:193
