@@ -403,11 +403,13 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_git_commit_summary_chrome.py`, `tests/test_github_pull_header_chrome.py`,
   `tests/test_github_pull_text_chrome.py`, `tests/test_github_pulls_stacks_chrome.py`,
   `tests/test_nav_metadata_chrome.py`, `tests/test_page_header_chrome.py`, and
-  `tests/test_staged_fonts_chrome.py`; `tests/test_github_pull_timeline_chrome.py`,
-  which reads a pull request’s Conversation timeline’s type, spacing, and line from the
-  boxes Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`,
-  which reads the face documents and chrome prose are drawn in under each reading font
-  and font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
+  `tests/test_staged_fonts_chrome.py`; `tests/test_files_totals_stable_chrome.py`, which
+  records every frame of the Files navigation from the document’s start to settled and
+  holds that nothing in it moves; `tests/test_github_pull_timeline_chrome.py`, which
+  reads a pull request’s Conversation timeline’s type, spacing, and line from the boxes
+  Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`, which
+  reads the face documents and chrome prose are drawn in under each reading font and
+  font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
@@ -438,6 +440,16 @@ shorter to do any good: a child process’s `timeout`, or a polling deadline, is
 own `pytest.mark.timeout` with the measurement that forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
+
+### Held Steps
+
+A stub held until the test opens a `threading.Event` or `threading.Semaphore` waits on
+its event loop with `held_until` from `tests/loop_gate.py`, never in a worker thread.
+So does a test’s own coroutine that waits for a signal from work in the pool.
+A wait handed to `asyncio.to_thread` keeps a pool thread for the whole hold, and the
+server’s next step can queue behind it until the bound; `tests/loop_gate.py` says how.
+A test in `tests/test_suite_gates.py` fails on a gate’s `wait` or `acquire` passed to
+`asyncio.to_thread` or `run_in_executor`.
 
 ## Measuring the Suite
 

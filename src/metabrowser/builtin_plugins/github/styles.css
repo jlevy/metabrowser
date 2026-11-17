@@ -138,9 +138,12 @@
   overflow: hidden;
   white-space: nowrap;
 }
+/* Quiet text on the page — a row of ages, the Checks summary and a check's detail, a note that
+   some commits may be missing — is the main view's secondary text: muted, at the body size
+   (docs/design-system.md, "Type Scale"; mb-ctlu). */
 .github-pull-quiet {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 /* The pull request's Diff summary, the header's last row (mb-pb35): the diff plugin's header
    and tree (`.diff-summary`, builtin_plugins/diff/styles.css), above the tabs and on every one.
@@ -213,10 +216,9 @@
 }
 /* One line tall whatever it holds: the GitHub mark in its link made it 0.6 px taller. Its
    quiet text is the muted ink at its line's size, the body's, as every line under the title
-   is (`.page-header-line`); elsewhere on the page quiet text is the small size. */
+   is (`.page-header-line`) and as quiet text is everywhere on the page. */
 .github-pull-opened > .github-pull-quiet {
   flex: 0 1 auto;
-  font-size: var(--body-font-size);
   min-width: 0;
   height: 1lh;
   overflow: hidden;
@@ -518,7 +520,6 @@
 }
 .github-pull-card-head .github-pull-age,
 .github-pull-commit .github-pull-age {
-  font-size: var(--body-font-size);
   line-height: inherit;
 }
 .github-pull-card-head:last-child {
@@ -646,10 +647,11 @@
 }
 /* An atomic box in every form. Its button form, which moves the pin, is one whatever its
    display, so a path that wraps puts what follows it on the next line; the link and the
-   plain path do the same, and the card head reads alike in all three. */
+   plain path do the same, and the card head reads alike in all three. A path in the main
+   view reads at the body size, here the card head's, as a diff file bar's does
+   (docs/design-system.md, "Type Scale"). */
 .github-pull-file {
   display: inline-block;
-  font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   overflow-wrap: anywhere;
 }
@@ -773,7 +775,7 @@
   align-items: baseline;
   gap: 4px 8px;
   padding: 3px 0;
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 .github-pull-commit .github-pull-external-action,
 .github-pull-header .github-pull-external-action,
@@ -907,7 +909,6 @@
   margin: 0;
   padding: 6px var(--pane-header-padding-x);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 .github-pulls-connection-spinner:not([hidden]) {
   display: inline-flex;
@@ -949,8 +950,9 @@
    state icon's label, and then the title, before the number's line. */
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
-   wider than a digit; 5ch of the row's type holds it in the age's smaller type in any
-   engine. */
+   wider than a digit; 5ch of the row's type holds it at the row's own size, which the age
+   takes: measured in Chrome 152 at 13 px, "12mo" is 31.1 px of the column's 32.3 px
+   (tests/dom/type-scale-chrome.mjs holds it whole). WebKit was not measured. */
 .github-pulls-row {
   display: grid;
   grid-template-columns: var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch;
@@ -1024,8 +1026,7 @@
    (`.github-pulls-id`). The line is laid out as wide as its box plus one separator,
    starting one separator to the left, so that the separator of a part that starts a line
    falls outside the box and is clipped; the number makes up that offset. Its box is one
-   line of the number's type tall, `1lh` at the number's size, and the author keeps the
-   smaller type it had. */
+   line of the number's type tall, `1lh` at the number's size, which the author shares. */
 .github-pulls-meta {
   grid-row: 1;
   grid-column: 3;
@@ -1036,7 +1037,7 @@
   font-size: var(--nav-font-size);
 }
 .github-pulls-line {
-  --github-pulls-sep: calc(0.75 * var(--ui-small-font-size));
+  --github-pulls-sep: calc(0.75 * var(--nav-font-size));
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -1063,7 +1064,6 @@
 .github-pulls-number {
   flex: none;
   color: var(--text);
-  font-size: var(--nav-font-size);
 }
 /* A stack member's place in its stack, before its number on the number's line, in the
    number's type and ink, "1/6" before "#N" (`.github-pulls-id`). Its own stack's position is
@@ -1074,7 +1074,6 @@
   align-items: baseline;
   min-width: 0;
   color: var(--text);
-  font-size: var(--nav-font-size);
 }
 .github-pulls-place[hidden] {
   display: none;
@@ -1223,7 +1222,6 @@
   padding: 0 6px;
   border-radius: var(--radius-tag);
   background: var(--bg);
-  font-size: var(--ui-small-font-size);
   line-height: var(--ui-row-height);
 }
 /* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
@@ -1255,7 +1253,6 @@
   padding: 2px 12px 2px
     calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent) + var(--tree-icon-slot) + 6px);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 .github-pull-files-line:not([hidden]) {
   display: flex;
@@ -1279,7 +1276,6 @@
   align-items: center;
   gap: 8px;
   padding: 6px var(--pane-header-padding-x);
-  font-size: var(--ui-small-font-size);
 }
 /* Pages still being read or fetched below the last row: the nav's index-progress
    component, its spinner and text classes reused so the two cannot drift into two progress
@@ -1591,7 +1587,6 @@
   display: flex;
   flex: 1 1 0;
   align-items: baseline;
-  font-size: var(--ui-small-font-size);
   min-width: calc(var(--github-pulls-sep) + 1.75em);
   max-width: max-content;
   overflow: hidden;

@@ -4,6 +4,42 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A cached record read at the moment a refresh rewrites it is no longer taken as
+  missing. The storage checks refuse a file that is replaced while they check it; a read
+  of a record now opens the rewritten one and checks it again, so it reads the old
+  record or the new. Before, a pull request’s changed files read at that moment could say
+  that no refresh had ended and that the list was current, though the last refresh had
+  ended `account_changed` and the list was stale, and the list itself could read as
+  unreadable. The answer to a request that starts a refresh of the changed files
+  (`/api/plugin/github/pull-files-refresh`) or of the list of pull requests
+  (`/api/plugin/github/pulls-refresh`) now shows the list as that refresh found it; it
+  could show the refresh’s own outcome when the refresh ended at once, as one with no
+  `gh` does.
+
+- On Python 3.12, `metab --api` asking the diff plugin for a Git comparison could,
+  rarely, hang without answering when Git failed to list it.
+  The check for a textconv driver that runs beside the listing was left running, and
+  Python 3.12 could wait forever, on its way out, for that check’s Git.
+  Now whichever of the two fails first stops the other, and its Git, before the
+  comparison answers, so a failed check no longer leaves the listing’s `git diff`
+  running either.
+
+- The Files panel’s totals no longer move the tree when the count of ignored files
+  arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
+  ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
+  first frame, so a folder with ignored files shows both lines from the start and one
+  with none shows one.
+  In a pane too narrow for them, the tracked and ignored counts’ sizes are cut short at
+  their end instead of wrapping, and each line’s whole figure is its tooltip.
+  While a folder is still being scanned, the ignored line is held with a pulsing
+  placeholder, after a short quiet period, and the count fills it in place; if the
+  folder turns out to have nothing ignored, the line says “No ignored files” instead of
+  going away. An early count taken while the scan is still running no longer decides the
+  line. The tracked count no longer reads as the combined figure for a moment before the
+  ignored count arrives, and no longer steps back to an older figure when a slower count
+  arrives after a newer one.
+  See [Navigation Metadata Line](docs/design-system.md#navigation-metadata-line).
+
 - KPress moves to 0.3.8. The table of contents now follows the section you are reading
   in webviews without `IntersectionObserver` through KPress’s own fallback, which
   replaces Metabrowser’s, and a reader-pane reload on a URL with a fragment returns to
@@ -111,6 +147,32 @@ All notable changes to Metabrowser are documented here.
   navigation’s header, as before.
   See
   [A Surface Puts Away Only Its Own Tooltip](docs/design-system.md#a-surface-puts-away-only-its-own-tooltip).
+
+- Secondary metadata, such as ages, update and fetch times, counts, and sizes, is the
+  size of the text beside it, where it was a step smaller.
+  The navigation column reads at 13 px throughout, its metadata included: a file’s size
+  and age in Files, a commit’s author and age in Commits, a pull request’s author and
+  age in Pulls, and “Fetched just now” at the column’s foot, all 12 px in 0.12.0, so
+  “Updated just now” under the Pulls filters and the ages in the rows under it are one
+  size. The main view reads at the body size, 14 px, its metadata included.
+  A file’s or a folder’s header, its path, size, count, age, and mirror note, and a diff
+  file bar, its path, change letter, line counts, and note, are 14 px, where the path
+  was 13 px and the rest 12 px.
+  A commit’s files outside the served folder are 14 px, and their line counts, which
+  were 10 px, take the row’s size.
+  A pull request’s Checks summary and each check, its other quiet notes, a treemap’s
+  status line, and a byte view’s note were 12 px; a review comment’s file was 13 px.
+  A notice, such as a partly loaded file’s, is 14 px in the main view and 13 px in the
+  navigation column, where it was 12 px in both, and so is the Files tab’s “No files
+  match the filters.” A tooltip’s detail lines, a file’s size and age, are the tooltip’s
+  14 px, where they were 12 px; and Help’s descriptions, Quick Search’s status, and a
+  changed-files tree’s line counts are their lists’ 13 px, where they were 12 px.
+  In a Commits row too narrow for both, the author’s name ends in an ellipsis and the
+  age stays whole; at the narrowest navigation pane the age was cut off at its end.
+  Chips, badges, buttons, menus, keycaps, labels, and code keep their sizes.
+  For plugin authors, an age from `metabrowser.formatAge` and a `.notice` set no size of
+  their own, so they read at their container’s size, where both were 12 px.
+  See [Type Scale](docs/design-system.md#type-scale).
 
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
