@@ -1,6 +1,7 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { placeRendered } from "./place-rendered.js";
+import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
 
 let mountSequence = 0;
@@ -98,7 +99,11 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
+ *   `pagePath` is the path of the page that shows this document as its own, when that is
+ *   not the document's: the folder whose Overview shows its README. Its fragments are the
+ *   document's headings, so a table-of-contents entry or a link to one of them moves within
+ *   that page (link-enhancer.js).
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
@@ -183,6 +188,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         return;
       }
       const path = ctx.path;
+      const pagePath = options.pagePath ?? path;
       const { enhanced: links, inert: inertRender } = await placeRendered(
         container,
         rendered,
@@ -190,6 +196,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         path
           ? (root) =>
               enhanceRenderedLinks(root, path, mb, {
+                pagePath,
                 rawVersions: rendered.raw_versions,
                 signal: controller.signal,
                 workerClient,
@@ -221,14 +228,14 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         inertRender && inert
           ? inertRender.wireInertToc(inert, {
               open: (fragment) => {
-                if (path) {
-                  void mb.navigation.open({ path, fragment }).catch((error) => {
+                if (path && pagePath !== undefined) {
+                  void mb.navigation.open({ path: pagePath, fragment }).catch((error) => {
                     console.warn("Could not open the table of contents entry", error);
                   });
                 }
               },
             })
-          : mb.kpressInitToc(container);
+          : mb.kpressInitToc(container, kpressTocConfig(container));
     } catch (error) {
       if (disposed || mb.errors.isAbortError(error)) {
         return;
