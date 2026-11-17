@@ -387,16 +387,21 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
         header.find("diff-stat-add")[0]?.reads() === "+1,201",
       JSON.stringify(numbers),
     );
-    // Each status is its rows' letter in the shell's status primitive, which inks it by its
-    // status; the dots between the groups and the comma between the statuses are the
-    // shell's muted punctuation, the dots hidden from a screen reader (mb-vb51). The header
-    // is painted by the shell's painters, the SDK's `countPartsNodes` for its file count and
-    // `changeLineNodes` for the brief change line after it, the one component for
-    // "1 A, 1 M · +1,201 −1" (mb-9ekj), and each dot is one item of its line with the group
-    // before it, so a wrap breaks after a dot.
+    // Each status is a status count, its number and its rows' letter one span that is the
+    // shell's status primitive, which inks it by its status, and its bold status count,
+    // which draws number and letter alike bold (mb-8iwn); the dots between the groups and
+    // the comma between the statuses are the shell's muted punctuation, the dots hidden
+    // from a screen reader (mb-vb51). The header is painted by the shell's painters, the
+    // SDK's `countPartsNodes` for its file count and `changeLineNodes` for the brief change
+    // line after it, the one component for "1 A, 1 M · +1,201 −1" (mb-9ekj), and each dot
+    // is one item of its line with the group before it, so a wrap breaks after a dot.
     const letters = header
       .find("file-change-status")
-      .map((letter) => `${letter.reads()} ${letter.getAttribute("data-file-status")}`);
+      .map(
+        (count) =>
+          `${count.className}: ${count.reads()} ${count.getAttribute("data-file-status")}` +
+          ` (${count.find("summary-number").map((number) => number.reads())})`,
+      );
     /** A part of the header: its class, a mark with its aria-hidden, or a group's parts. */
     const item = (child) =>
       child.classList.contains("summary-punctuation")
@@ -414,8 +419,12 @@ async function diffSummaryChecks(mountDiffView, twoFiles) {
       ?.find("summary-punctuation")
       .map((mark) => `${mark.reads()} ${mark.getAttribute("aria-hidden")}`);
     check(
-      "the header's statuses are letters in their statuses' ink, its marks muted punctuation",
-      JSON.stringify(letters) === JSON.stringify(["A added", "M modified"]) &&
+      "the header's statuses are status counts in their statuses' ink, its marks muted punctuation",
+      JSON.stringify(letters) ===
+        JSON.stringify([
+          "summary-status-count file-change-status: 1 A added (1)",
+          "summary-status-count file-change-status: 1 M modified (1)",
+        ]) &&
         JSON.stringify(groups) ===
           JSON.stringify([
             { "diff-summary-group": ["diff-summary-files", "· true"] },

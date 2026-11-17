@@ -378,6 +378,8 @@ Outside the milestone, each for a stated reason:
   (`mb-nnhs`), merged in jlevy/metabrowser#341.
 - [ ] Developer ID signing, notarization, a DMG, and a Homebrew cask (`mb-e9fm`): the
   pipeline is merged, and the first signed release waits on the owner’s certificate.
+  The [publishing plan](plan-2026-11-16-macos-app-publishing.md) details what remains,
+  under `mb-hl2i`.
 - [x] Development builds with their own bundle id, scheme, and icon (`mb-9xl0`), merged
   in jlevy/metabrowser#362.
 - [x] A macOS CI job (`mb-x4fy`), approved for the v1 milestone and merged in
@@ -512,10 +514,11 @@ The two standard setup flows come first; see the
 
 ## Open Questions
 
-- Which Developer ID certificate and notarization credentials should releases use?
-  None is installed on the build Mac yet.
-- Should a signed release workflow be added under `.github/`? The build-and-test
-  workflow is approved; signing and notarizing in CI need the credentials above.
+- Which Developer ID certificate and notarization credentials should releases use, and
+  should a signed release workflow be added under `.github/`? Answered on 2026-11-16 in
+  the [publishing plan](plan-2026-11-16-macos-app-publishing.md#open-questions), Q1 and
+  Q2: an App Store Connect team API key stored as a keychain profile, 0.1.0 signed on
+  the owner’s Mac, and a tag-triggered release workflow for the next release.
 - Once the WebKit gate reruns (`mb-76nv`), do its remaining failures call for the
   brief’s Electron fallback, or do engine-specific fixes (`mb-dl7d`, `mb-pzy2`) suffice?
   The owner decides (`mb-gvtw`).
