@@ -514,7 +514,7 @@ def _stack(repos: Repositories) -> tuple[str, str]:
 def test_a_stack_whose_tested_commit_contains_main_reads_main_and_needs_nothing_more(
     tmp_path: Path, repos: Repositories
 ) -> None:
-    """A formal stack's merge ref holds main: the coordinator's decision on A3 of #504."""
+    """A formal stack's merge ref holds main: the owner's decision on A3 of #504."""
 
     upper, base = _stack(repos)
     checkout = repos.check_out_merge(upper, base)

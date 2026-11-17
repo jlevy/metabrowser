@@ -6,8 +6,9 @@
 
 **Status:** Approved for Phases 1 and 2. The owner answered Q1, Q2, Q3, and Q5 on
 2026-11-16, and answers relayed on 2026-11-17 decide Q6
-([Decisions and Open Questions](#decisions-and-open-questions)); the coordinator decided
-Q4 on 2026-11-17, and Q7, Q8, and Q9 are open.
+([Decisions and Open Questions](#decisions-and-open-questions)). On 2026-11-17 the owner
+also decided Q4, on review A8 of #504, and extended Q6 to stacked pull requests, on
+review A3; Q7, Q8, and Q9 are open.
 Bead `mb-h8zb` tracks this plan, and each implementation step below is a bead under it.
 Phase 1 is implemented by jlevy/metabrowser#499: the tier targets, the golden runner,
 the reports, and pytest-xdist.
@@ -309,8 +310,8 @@ Two mechanisms close that for every merge an agent makes (Q6):
   auto-merge rules.
 
 **A stacked pull request reads `main`’s state when the commit it tests contains `main`’s
-head**, the coordinator’s decision of 2026-11-17 on review A3 of #504. A formal GitHub
-stack’s merge ref merges the head into its base merged with `main`
+head**, the owner’s decision of 2026-11-17 on review A3 of #504. A formal GitHub stack’s
+merge ref merges the head into its base merged with `main`
 ([Phase 2 Measurements](#phase-2-measurements)), so each of its layers gets the wide
 matrix and a verdict line, and qualifies as a pull request to `main` does;
 `gh stack merge` lands every layer below its target, so each must.
@@ -355,8 +356,9 @@ Here the `plan` job is that report: it always runs, and it writes the event, the
 base, both trees, `main`’s state, and its decisions to the job summary.
 `ci-ok`, the required check, also says why it accepted a skipped `stack-integration`.
 Gating eight jobs by their steps would start eight runners to say that nothing was
-needed. Q4 is decided: the coordinator accepted the summary as the record on 2026-11-17
-(review A8 of #504).
+needed.
+Q4 is decided: the owner accepted the summary, with `ci-ok`’s line, as the record
+on 2026-11-17 (review A8 of #504).
 
 Cancelling superseded runs helps stacks most, since a restack pushes every layer at
 once.
@@ -966,7 +968,7 @@ result the state rule gives:
 ## Decisions and Open Questions
 
 The owner answered four of the questions on 2026-11-16, the answers relayed on
-2026-11-17 decide a fifth, and the coordinator decided a sixth on 2026-11-17.
+2026-11-17 decide a fifth, and the owner decided a sixth on 2026-11-17.
 
 Decided:
 
@@ -1001,12 +1003,13 @@ Decided:
    it tested that run’s head.
    Agents never arm auto-merge.
    The `plan` job gets `actions: read`; no job gets `issues: write`. On review A3 of
-   #504 the coordinator extended the reading of `main`’s state to any pull request whose
-   tested commit contains `main`’s head, a formal stack’s layers among them
-   ([A Red `main`](#a-red-main)).
-6. **`stack-integration`’s record (Q4), 2026-11-17: yes.** The coordinator accepted the
-   `plan` job’s summary as the record of a skipped integration, in place of step gating,
-   on review A8 of #504; `ci-ok` also prints why it accepted the skip.
+   #504 the owner extended, on 2026-11-17, the reading of `main`’s state to any pull
+   request whose tested commit contains `main`’s head, a formal stack’s layers among
+   them, with the stacked rule of the merge procedure in
+   [Agent Instructions](../../../../AGENTS.md#git) ([A Red `main`](#a-red-main)).
+6. **`stack-integration`’s record (Q4), 2026-11-17: yes.** The owner accepted the `plan`
+   job’s summary, with the line in which `ci-ok` says why it accepted the skip, as the
+   record of a skipped integration, in place of step gating, on review A8 of #504.
 
 Open, with the plan’s recommendation standing as a proposal:
 
