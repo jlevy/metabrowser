@@ -8,8 +8,8 @@
 #
 # The image's name, volume name, version, and architecture come from the app, and its
 # variant from the app's bundle identifier, since both variants are named Metabrowser.
-# SIGN_IDENTITY signs the image as scripts/build-app.sh signs the app; "-" or empty (the
-# default) signs it ad hoc. scripts/check-dmg.sh checks the result.
+# SIGN_IDENTITY and SIGN_KEYCHAIN sign the image as scripts/build-app.sh signs the app;
+# "-" or empty (the default) signs it ad hoc. scripts/check-dmg.sh checks the result.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
