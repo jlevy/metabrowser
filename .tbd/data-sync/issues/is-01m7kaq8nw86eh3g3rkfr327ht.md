@@ -5,11 +5,15 @@ title: "Chrome sessions can outlive their result: tests/dom/chrome-session.mjs c
 kind: bug
 status: open
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 created_at: 2026-11-16T23:22:50.427Z
-updated_at: 2026-11-16T23:22:50.427Z
+updated_at: 2026-11-17T07:27:18.714Z
 ---
 Seen by the mb-nvo0 fix (#488): in 3 of 30 prose-faces runs Chrome exited 1.2 to 7.5 s after '96 checks passed' and the test hit its 30 s budget. Shared helper used by 23 test files. Candidate fixes: SIGKILL after the bound, or chrome.stderr.destroy() plus chrome.unref(). Prove with a loaded-machine loop.
+
+## Notes
+
+2026-11-17 coordinator: not a 0.13 release gate (PR #497 lists it as a non-blocking follow-up); fix it in the fast-CI plan's Phase 3.
