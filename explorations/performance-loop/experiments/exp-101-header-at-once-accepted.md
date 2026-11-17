@@ -159,7 +159,10 @@ body still waits for its Markdown.
 ## Method
 
 [exp-101-protocol.txt](exp-101-protocol.txt) was registered and pushed before the first
-timed run, with the scripts and the analysis by sha256.
+timed run, with the scripts and the analysis by sha256. The candidate (`51e06a4f3`) and
+the registration commit (`b06a50d70`) were rebased when #525 changed under them; the
+commits as measured and registered are kept under the tag `exp-101-candidate`, and the
+rebased change, `9a261cb7a`, has the same `src/` and `tests/` trees.
 [pr-view-pairs.sh](../pr-view-pairs.sh) ran five rounds of `pr-fresh`, `pr-store`,
 `pr-warm`, and `pr-warm-reload`, each step for both builds back to back, the leading
 build alternating by round; [pr-view-stats.mjs](../pr-view-stats.mjs) paired the runs by
