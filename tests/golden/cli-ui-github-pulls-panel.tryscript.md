@@ -674,7 +674,8 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "author": "ghost",
     "avatar": null,
     "updatedAt": "2026-09-17T12:00:00Z",
-    "meta": "#7 · ghost"
+    "meta": "#7 · ghost",
+    "head": null
   },
   "reader": [
     {

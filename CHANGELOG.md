@@ -4,6 +4,28 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Each “Stack #N” heading in the Pulls tab shows what the whole stack changes, in the
+  brief change line the Diff summary uses: “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”.
+  A stack is the pull requests it is made of, merged or open, so the numbers are theirs
+  accumulated: each pull request’s own changed files, the list its row shows when
+  opened, every file counted once, and every pull request’s added and deleted lines
+  summed. A file one layer adds and another edits counts once, as added.
+  They are read from the local cache with no GitHub request, for the stacks in view,
+  when the browser is idle, and read again when one of a stack’s pull requests moves,
+  its members change, or one of its pull requests’ changed files arrives or is read
+  again, so a heading fills in as its pull requests’ files are fetched; a gray
+  placeholder holds the line’s place while it is first read, and a screen reader hears
+  that the change is pending.
+  The Pulls tab fetches the changed files of a drawn stack’s pull requests that it
+  lacks, after the rows you are looking at, so a closed stack’s heading fills in too.
+  Line totals that could not be counted exactly, as for a binary file, are followed by a
+  muted “(estimated)”, which a screen reader hears too.
+  In a narrow Pulls column the line’s file statuses are cut short first, and the whole
+  line goes where its totals do not fit, so the heading stays one line.
+  Screen readers hear the line in words after the stack’s name.
+  A new cache-only route, `/api/plugin/github/stack-change`, answers a stack’s combined
+  change. See [Stacks](docs/design-system.md#stack-groups-in-the-pulls-tab).
+
 - A commit’s page and a pull request’s page share one header design.
   Every line under the title is the regular body size, 14 px, the Diff summary’s header
   included, which was 13 px on both pages, and a pull request’s “Opened …” and “Fetched
