@@ -48,12 +48,14 @@ import {
   createStackIndex,
   groupByStack,
   stackCaption,
+  stackGroupHint,
   stackMembership,
   stackRowKey,
   watchStacks,
 } from "./pull-stacks.js";
 import { displayState, noteListed, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
+import { createStackLines, STACK_CHANGE_ROUTE, stackLineInput } from "./stack-lines.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
@@ -69,6 +71,20 @@ export const PREFETCH_TOP_ROWS = 5;
 // The changed-files lists a prefetch names, the server's MAX_PREFETCH_NUMBERS: the rows the
 // pointer or focus last rested on, the open row, its neighbours, then the rows in view.
 export const PREFETCH_FILES = 16;
+// Of those, the places kept for the members whose lists the drawn stacks' change lines wait
+// for (stack-lines.js, `unsettled`), after the reader's own rows: a stack's line is its
+// members' lists accumulated, and a collapsed stack's members are no rows in view. Each is
+// listed once while its head stays put, from the local comparison with no GitHub call or
+// from GitHub at most 3 core points (pull_prefetch.py), under `FILES_PER_HOUR`, 100 an hour,
+// and the governor's floor; this repository's 19 stacks lacked 158 lists, at most 474 points
+// once. While a stack waits for lists, what gives way is the lowest rows in view past the
+// twelfth: never a row rested on, the open row, or its neighbours, which come first. A
+// row is about 41.5 px, so a pane taller than about 500 px has rows in view past those
+// twelve, which are listed once the stacks' members are (review C of #484, C4).
+export const PREFETCH_STACK_FILES = 4;
+// The lane's refreshed lists the panel remembers having passed on, oldest out first: four
+// times the outcomes its report holds (pull_prefetch.py, `MAX_RECENT`).
+const LISTED_SEEN = 64;
 // Rows the pointer or focus rested on that a prefetch names first, newest first: the row a
 // click is about to open, and the one the pointer left for it.
 export const PREFETCH_RESTED = 2;
@@ -209,6 +225,7 @@ const CHECKOUT_NOT_LISTED =
  *   avatar: string | null,
  *   updatedAt: string | null,
  *   meta: string,
+ *   head: string | null,
  * }} PullRow
  */
 
@@ -286,6 +303,9 @@ export function describeRow(row) {
     avatar: avatarUrl(row.author_avatar_url),
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
     meta: `#${row.number} · ${author}`,
+    // The head commit the catalog reported, which a stack's change line is read again for
+    // when a member's moves (stack-lines.js); it is not shown.
+    head: typeof row.head_oid === "string" ? row.head_oid : null,
   };
 }
 
@@ -596,6 +616,8 @@ function pinChanged(response) {
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
  *   warmComparisons?(numbers: number[]): void,
+ *   stackFiles?(): number[],
+ *   filesListed?(number: number): void,
  * }} PullsDependencies
  */
 
@@ -785,6 +807,8 @@ export function createPullsController(deps, options = {}) {
   let prefetchTimer = null;
   /** @type {number[]} */
   let prefetchRows = [];
+  /** The lane's refreshed lists already passed on to the stack lines, by number and time. */
+  const listedSeen = new Set();
   // Rows likely to be expanded next, whose changed files a prefetch names beside the open
   // row's and its neighbours': the rows the pointer or focus last rested on, newest first, and
   // the rows in view, in the list's order. A files ask sends them once the rows in view stay
@@ -2223,14 +2247,19 @@ export function createPullsController(deps, options = {}) {
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
     const listed = (/** @type {number} */ number) => list.keys.has(number);
-    const files = [
+    const own = [
       ...new Set([
         ...restedRows.filter(listed),
         ...(current === null ? [] : [current]),
         ...near,
         ...viewRows.filter(listed),
       ]),
-    ].slice(0, PREFETCH_FILES);
+    ];
+    // After the reader's own rows, the members the drawn stacks' lines wait for, which keep
+    // a few places of their own (B2 of review B on #484).
+    const members = (deps.stackFiles?.() ?? []).filter((number) => !own.includes(number));
+    const reserved = Math.min(PREFETCH_STACK_FILES, members.length);
+    const files = [...own.slice(0, PREFETCH_FILES - reserved), ...members].slice(0, PREFETCH_FILES);
     const key = JSON.stringify([records, files, changed]);
     if (filesAsk && key === lastAsk) {
       return false;
@@ -2291,7 +2320,7 @@ export function createPullsController(deps, options = {}) {
       setPrefetchRows([]);
       return;
     }
-    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], recent?: {kind?: string, number?: number, outcome?: string, at?: string}[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
     let report = null;
     try {
       const response = await deps.request("GET", PREFETCH_ROUTE, {});
@@ -2304,6 +2333,23 @@ export function createPullsController(deps, options = {}) {
     }
     const running = report?.running ?? null;
     const files = report?.files;
+    // A list the lane refreshed reaches the stack headings that wait for it (B1 of review B
+    // on #484), as a running record's row breathes below.
+    for (const done of Array.isArray(report?.recent) ? report.recent : []) {
+      const seen = `${done?.number}@${done?.at}`;
+      if (
+        done?.kind === "files" &&
+        done.outcome === "refreshed" &&
+        typeof done.number === "number" &&
+        !listedSeen.has(seen)
+      ) {
+        listedSeen.add(seen);
+        if (listedSeen.size > LISTED_SEEN) {
+          listedSeen.delete(listedSeen.values().next().value);
+        }
+        deps.filesListed?.(done.number);
+      }
+    }
     if (
       report?.governor?.admits === false ||
       (typeof files?.hour_used === "number" &&
@@ -3391,19 +3437,31 @@ export function mountPullsPanel(container, ctx, mb) {
   /** @type {number | string} */
   let paintedVersion = -1;
   /**
-   * A stack's row as painted, by its row key (`stackRowKey`): its elements, and the key of
-   * what it shows.
+   * A stack's row as painted, by its row key (`stackRowKey`): its elements, its stack, and
+   * the key of what it shows. `change` holds its brief change line, or the pending
+   * placeholder while its stack's read is on its way (`pending`), which is kept across paints
+   * so its quiet period and its pulse run once.
    *
-   * @typedef {{item: HTMLElement, row: HTMLElement, label: HTMLElement, key: string}} PaintedStack
+   * @typedef {{
+   *   item: HTMLElement, row: HTMLElement, label: HTMLElement, change: HTMLElement,
+   *   pending: HTMLElement | null, stack: import("./pull-stacks.js").NativeStack, key: string,
+   * }} PaintedStack
    */
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
+  /** The stacks whose rows were in view at the last measure, whose members a prefetch names
+   * first. */
+  /** @type {Set<number>} */
+  let stacksInView = new Set();
   /** A drawn row's treeitem by its key: a pull request's number, or a stack's row key. */
   const rowElement = (/** @type {number} */ key) =>
     key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
   const rowWindow = createPullsWindow({ estimate: 41.5, overscan: PULL_ROWS_OVERSCAN });
   /** @type {Map<number, number>} */
   let rowIndices = new Map();
+  /** Each listed pull request's head commit, as the catalog's row reports it. */
+  /** @type {Map<number, string | null>} */
+  let rowHeads = new Map();
   /** @type {Map<string, HTMLElement>} */
   const gaps = new Map();
   /**
@@ -3466,7 +3524,44 @@ export function mountPullsPanel(container, ctx, mb) {
     });
     return changedFiles;
   };
-  void loadChangedFiles().catch(() => {});
+  /** The tree once it has loaded, whose status breakdown a stack's change line says. */
+  /** @type {MetabrowserChangedFilesTree | null} */
+  let changedFilesModel = null;
+  void loadChangedFiles().then(
+    (model) => {
+      changedFilesModel = model;
+    },
+    () => {},
+  );
+  /** Each row's list of changed files as its tree last read it whole, by its generation. */
+  /** @type {Map<number, string>} */
+  const listsRead = new Map();
+  /**
+   * A row's tree read its list of changed files: a list newly whole reaches the stack
+   * headings that wait for it (B1 of review B on #484).
+   *
+   * @param {number} number
+   * @param {string} route
+   * @param {PullsResponse} answer
+   */
+  function noteFilesRead(number, route, answer) {
+    const body = /** @type {{complete?: unknown, generation?: unknown} | null} */ (answer.body);
+    if (
+      !route.startsWith("/api/plugin/github/pull-files?") ||
+      answer.status !== 200 ||
+      body?.complete !== true ||
+      typeof body.generation !== "string" ||
+      listsRead.get(number) === body.generation
+    ) {
+      return;
+    }
+    listsRead.delete(number);
+    listsRead.set(number, body.generation);
+    if (listsRead.size > LISTED_SEEN) {
+      listsRead.delete(/** @type {number} */ (listsRead.keys().next().value));
+    }
+    stackLines?.listed(number);
+  }
   /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
   const trees = new Map();
   /** The tree a file row with focus is in, whose keys the host's file keys are. */
@@ -3547,8 +3642,14 @@ export function mountPullsPanel(container, ctx, mb) {
         scrollRoot: tab.scrollRoot,
         chevron,
         href: (path) => tab.fileHref(number, path),
-        request: (method, route, options) =>
-          request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
+        request: async (method, route, options) => {
+          const answer = await request(mb.perf, method, route, {
+            ...options,
+            signal: options.signal ?? signal,
+          });
+          noteFilesRead(number, route, answer);
+          return answer;
+        },
         formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
         page: () =>
           /** @type {import("./pull-files-tree.js").FilePage | null} */ (tab.pageFor(number)),
@@ -3882,15 +3983,46 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     paintedRows = places;
     rowIndices = new Map(paintedRows.map((entry, index) => [entry.key, index]));
+    rowHeads = new Map(model.rows.map((row) => [row.number, row.head]));
     rowWindow.setRows(paintedRows.map((entry) => entry.key));
   }
 
   /**
-   * A stack's row: the chevron, the Layers icon, and the stack's label in the label register
-   * the stack menu's heading has (`.group-heading`, docs/design-system.md, "Stacks"). It
-   * draws no tally: its pull requests are the rows under it ("Heading Tallies"), and its
-   * accessible name says how many. A row of the tree that opens and closes, as a folder is;
-   * it opens no page, so it is not a link.
+   * What a stack's heading shows of its change line now (stack-lines.js).
+   *
+   * @param {import("./pull-stacks.js").NativeStack} stack
+   * @returns {import("./stack-lines.js").StackLineState}
+   */
+  function stackLineState(stack) {
+    return (
+      stackLines?.line(stackMembers(stack), stackIdentity?.source ?? null) ?? { phase: "none" }
+    );
+  }
+
+  /**
+   * A stack as its change line is read for it: its members, and each one's head as the
+   * list's row of it reports it, or null where the list holds none (stack-lines.js).
+   *
+   * @param {import("./pull-stacks.js").NativeStack} stack
+   * @returns {import("./stack-lines.js").StackMembers}
+   */
+  function stackMembers(stack) {
+    const heads = stack.pulls.map((number) => rowHeads.get(number) ?? null);
+    return { number: stack.number, pulls: stack.pulls, heads };
+  }
+
+  /**
+   * A stack's row: the chevron, the Layers icon, and its heading, the stack's label in the
+   * label register the stack menu's heading has (`.group-heading`, docs/design-system.md,
+   * "Stacks"), then the stack's brief change line, after a muted dot: "Stack #286 · 10 A, 5
+   * D, 4 M · +1,234 −567", the shell's one component for it (`metabrowser.changeLine`),
+   * whose words the row's accessible name says. It draws no tally: its pull requests are the
+   * rows under it ("Heading Tallies"), and its accessible name says how many. While its
+   * stack's read is on its way the heading holds the shell's pending placeholder where the
+   * line will be, and its name says the change is pending; a stack whose change cannot be
+   * had shows neither, and does not wait again until its members or their heads change.
+   * A row of the tree that opens and closes, as a folder is; it opens no page, so it is not a
+   * link.
    *
    * @param {import("./pull-stacks.js").StackGroupRow} group
    * @returns {PaintedStack}
@@ -3899,6 +4031,8 @@ export function mountPullsPanel(container, ctx, mb) {
     let entry = paintedStacks.get(group.key);
     if (entry === undefined) {
       const label = h("span", { class: "group-heading github-pull-stack-label" });
+      const change = h("span", { class: "github-pulls-stack-change" });
+      const heading = h("span", { class: "github-pulls-stack-heading" }, [label, change]);
       const row = h(
         "div",
         {
@@ -3912,7 +4046,7 @@ export function mountPullsPanel(container, ctx, mb) {
           h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
             stackSvg === null ? null : document.importNode(stackSvg, true),
           ]),
-          label,
+          heading,
         ],
       );
       row.dataset.stack = String(group.stack.number);
@@ -3920,15 +4054,62 @@ export function mountPullsPanel(container, ctx, mb) {
         row,
       ]);
       item.dataset.number = String(group.key);
-      entry = { item, row, label, key: "" };
+      entry = { item, row, label, change, pending: null, stack: group.stack, key: "" };
       paintedStacks.set(group.key, entry);
       rowSizes?.observe(item);
     }
-    const key = JSON.stringify([group.label, group.hint, group.expanded]);
+    entry.stack = group.stack;
+    const line = stackLineState(group.stack);
+    const shownLine =
+      line.phase === "shown"
+        ? `${line.change.revision}:${changedFilesModel === null ? 0 : 1}`
+        : line.phase;
+    const key = JSON.stringify([group.label, group.hint, group.expanded, shownLine]);
     if (entry.key !== key) {
       entry.key = key;
       entry.label.textContent = group.label;
-      entry.row.setAttribute("aria-label", group.hint);
+      let name = group.hint;
+      if (line.phase === "shown") {
+        const said = mb.changeLine(
+          stackLineInput(line.change, changedFilesModel?.statusBreakdown ?? null),
+        );
+        // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567": the dot is a count summary's
+        // separator, which the name, saying the line in words, needs no word for.
+        // Totals a member's list could not count, a binary file it listed, are not exact:
+        // the Diff summary's muted "(estimated)" follows them, and the name says so (B4 of
+        // review B on #484).
+        const estimated = line.change.exact === false;
+        entry.change.replaceChildren(
+          ...mb.countPartsNodes([{ separator: "·" }]),
+          ...mb.changeLineNodes(said),
+          ...(estimated
+            ? [h("span", { class: "github-pulls-stack-change-note" }, ["(estimated)"])]
+            : []),
+        );
+        name = stackGroupHint(
+          group.stack,
+          group.shown,
+          group.elsewhere,
+          estimated ? `${said.label}, estimated` : said.label,
+        );
+      } else if (line.phase === "waiting") {
+        // The shell's pending placeholder (`.tally-pending`), after the quiet period
+        // (`.mb-delayed-loading`), where the line will be. It is hidden from the
+        // accessibility tree, and the name says the change is pending, in the filter chips'
+        // words (review of #484, A5): "Stack #286: change pending; 4 pull requests".
+        name = stackGroupHint(group.stack, group.shown, group.elsewhere, "change pending");
+        entry.pending ??= h(
+          "span",
+          { class: "mb-delayed-loading github-pulls-stack-change-pending", "aria-hidden": "true" },
+          [h("span", { class: "tally-pending" })],
+        );
+        if (entry.change.firstChild !== entry.pending || entry.change.childNodes.length !== 1) {
+          entry.change.replaceChildren(entry.pending);
+        }
+      } else {
+        entry.change.replaceChildren();
+      }
+      entry.row.setAttribute("aria-label", name);
       entry.row.setAttribute("aria-expanded", String(group.expanded));
       entry.row.classList.toggle("expanded", group.expanded);
       entry.row.classList.toggle("collapsed", !group.expanded);
@@ -4052,6 +4233,13 @@ export function mountPullsPanel(container, ctx, mb) {
           const row = entry.row.getBoundingClientRect();
           if (row.bottom > row.top && row.bottom > view.top && row.top < view.bottom) {
             numbers.push(number);
+          }
+        }
+        stacksInView = new Set();
+        for (const entry of paintedStacks.values()) {
+          const row = entry.row.getBoundingClientRect();
+          if (row.bottom > row.top && row.bottom > view.top && row.top < view.bottom) {
+            stacksInView.add(entry.stack.number);
           }
         }
         controller.prepareVisible(numbers);
@@ -4185,6 +4373,16 @@ export function mountPullsPanel(container, ctx, mb) {
         list.insertBefore(node, cursor);
       }
     }
+    // The stacks drawn, in the list's order, whose headings read their change lines; a hidden
+    // panel reads none.
+    stackLines?.want(
+      panelShown
+        ? [...paintedStacks.entries()]
+            .sort(([left], [right]) => (rowIndices.get(left) ?? 0) - (rowIndices.get(right) ?? 0))
+            .map(([, entry]) => stackMembers(entry.stack))
+        : [],
+      stackIdentity?.source ?? null,
+    );
     if (builtRefreshing) {
       alignRefreshing(list);
     }
@@ -4480,6 +4678,8 @@ export function mountPullsPanel(container, ctx, mb) {
   let movingFocus = false;
   /** @type {ReturnType<typeof createComparisonWarmer> | null} */
   let warmer = null;
+  /** @type {ReturnType<typeof createStackLines> | null} */
+  let stackLines = null;
 
   const controller = createPullsController(
     {
@@ -4573,6 +4773,10 @@ export function mountPullsPanel(container, ctx, mb) {
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
       warmComparisons: (numbers) => warmer?.want(numbers),
+      // The members whose lists the drawn stacks' lines wait for, those in view first, and
+      // each list the prefetch refreshed, for the stacks that hold it (stack-lines.js).
+      stackFiles: () => stackLines?.unsettled((number) => stacksInView.has(number)) ?? [],
+      filesListed: (number) => stackLines?.listed(number),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
@@ -4612,6 +4816,32 @@ export function mountPullsPanel(container, ctx, mb) {
           cancel: (cancel) => /** @type {() => void} */ (cancel)(),
           isVisible: () => document.visibilityState === "visible",
           now: () => Date.now(),
+        });
+  // Each stack heading's brief change line, the stack's combined change (stack-lines.js):
+  // read for the stacks the list draws, when the browser is idle, once for each stack's
+  // members and their heads, within the lines' own hourly cap, and drawn through the SDK's one
+  // component for it. An SDK without `whenIdle` or the component has no lines, and its
+  // headings no placeholders.
+  stackLines =
+    typeof mb.whenIdle !== "function" ||
+    typeof mb.changeLine !== "function" ||
+    typeof mb.changeLineNodes !== "function" ||
+    typeof mb.countPartsNodes !== "function"
+      ? null
+      : createStackLines({
+          async read(number, readSignal) {
+            const answer = await request(mb.perf, "GET", `${STACK_CHANGE_ROUTE}?number=${number}`, {
+              signal: readSignal,
+            });
+            // The line's letters are the changed-files tree's, so its first paint has them.
+            changedFilesModel = (await loadChangedFiles().catch(() => null)) ?? changedFilesModel;
+            return answer;
+          },
+          schedule: (callback) => mb.whenIdle(callback, { timeout: WARM_IDLE_TIMEOUT_MS }),
+          cancel: (cancel) => /** @type {() => void} */ (cancel)(),
+          isVisible: () => document.visibilityState === "visible" && panelShown,
+          now: () => Date.now(),
+          changed: () => queueWindow(),
         });
 
   const unbindFilters = controls.bind(filters, {
@@ -4956,6 +5186,7 @@ export function mountPullsPanel(container, ctx, mb) {
       stacks.dispose();
       controller.dispose();
       warmer?.dispose();
+      stackLines?.dispose();
       for (const tree of trees.values()) {
         tree.dispose();
       }

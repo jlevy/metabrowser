@@ -80,8 +80,10 @@ const LIST = `(() => {
         stack: Number(row.dataset.stack),
         label: row.querySelector(".github-pull-stack-label").textContent,
         shown: row.querySelector(".github-pull-stack-label").innerText,
-        // Everything the row says on screen: its label, and no tally (mb-yk0i).
+        // Everything the row says on screen: its label, and no tally (mb-yk0i), then its
+        // change line, if the server could sum one (mb-9ekj).
         text: row.textContent,
+        change: row.querySelector(".github-pulls-stack-change")?.textContent ?? "",
         name: row.getAttribute("aria-label"),
         expanded: row.getAttribute("aria-expanded"),
         tip: row.dataset.tipText,
@@ -195,7 +197,7 @@ const LIST = `(() => {
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
     // The label's room ends at the row's content end, where a row's age ends.
-    labelRoomRight: box(stackRow?.querySelector(".github-pull-stack-label"))?.right ?? null,
+    labelRoomRight: box(stackRow?.querySelector(".github-pulls-stack-heading"))?.right ?? null,
     flatAgeRight: box(flat?.querySelector(".github-pulls-age"))?.right ?? null,
     // The toolbar's one line: how far past the pane it reaches, and the room left between
     // the filters and Reload, which sits at the line's end.
@@ -553,10 +555,19 @@ try {
     );
     // Its pull requests are the rows under it, so it shows no tally; its accessible name
     // still says how many (docs/design-system.md, "Heading Tallies").
-    check("with no tally on screen", first?.text === "Stack #286", first?.text);
     check(
-      "and its size in its accessible name",
-      first?.name === "Stack #286, 4 pull requests",
+      "with no tally on screen",
+      first?.text === `Stack #286${first?.change ?? ""}`,
+      first?.text,
+    );
+    check(
+      "and its size in its accessible name, after its change line's words if it has one",
+      first?.change === ""
+        ? // No line, or its read on its way, which the name says is pending.
+          ["Stack #286, 4 pull requests", "Stack #286: change pending; 4 pull requests"].includes(
+            first?.name ?? "",
+          )
+        : /^Stack #286: .+; 4 pull requests$/.test(first?.name ?? ""),
       first?.name,
     );
     check(
@@ -660,7 +671,7 @@ try {
       `${list.stackRowHeight} ${list.rowHeightToken}`,
     );
     check(
-      "its label has the row to where a row's age ends",
+      "its heading has the row to where a row's age ends",
       near(list.labelRoomRight, list.flatAgeRight),
       `${list.labelRoomRight} ${list.flatAgeRight}`,
     );

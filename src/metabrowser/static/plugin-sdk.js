@@ -65,8 +65,9 @@
 //     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
 //                                          commit prefix in span.title-prefix, then the rest
 //     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
-//                                          marks muted, and its status letters in their
-//                                          statuses' ink: the shell's one painter of them
+//                                          marks muted, and its status counts, "21 A",
+//                                          bold in their statuses' ink: the shell's one
+//                                          painter of them
 //     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
 //                                          −567", from statuses and line totals
 //     changeLineNodes(line, options?)    — its nodes, the shell's one component for it

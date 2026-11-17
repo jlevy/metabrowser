@@ -268,6 +268,17 @@ export function createComparisonKeep(options = {}) {
       return wait(key, entry, signal);
     },
     /**
+     * Keep *payload* under *key*, as an answer that arrived is kept, for an answer whose key
+     * is known only from the answer itself: a stack's change names its two commits
+     * (stack-lines.js). Measured now, since such an answer is small.
+     *
+     * @param {string} key
+     * @param {unknown} payload
+     */
+    put(key, payload) {
+      keep(key, payload);
+    },
+    /**
      * Settles once no request is on its way, so a warm waits behind a page's own read rather
      * than sharing the server with it.
      *
@@ -536,13 +547,50 @@ export const WARM_COMPARISONS = 5;
 // and 345 ms at the most, 12 KB gzipped at the median and 112 KB at the most. So an hour's
 // cap is about 14 s of comparison time at the median and 41 s at the most, and at most 4 s
 // of record reads, and the answers stay in the keep and in the server's own
-// (`MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`).
+// (`MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES`). The cap is the warms' alone: the stack
+// headings' change lines count their reads against a cap of their own (stack-lines.js,
+// `STACK_LINES_PER_HOUR`), so they cannot spend the warms' share (review of #484, A2).
 export const WARM_PER_HOUR = 120;
 // The pull requests whose last outcome the lane remembers, oldest out first.
 const WARM_FOUND = 64;
 // The recent outcomes a snapshot reports.
 const WARM_RECENT = 8;
 const HOUR_MS = 3_600_000;
+
+/**
+ * An hourly count of the local reads a Pulls tab's lane starts on its own: the comparison
+ * warmer's (`WARM_PER_HOUR`), and apart from it the stack lines' (stack-lines.js,
+ * `STACK_LINES_PER_HOUR`). A read is counted as it starts.
+ *
+ * @param {() => number} now
+ * @param {number} [limit]
+ */
+export function createWarmBudget(now, limit = WARM_PER_HOUR) {
+  /** When each counted read started. @type {number[]} */
+  let sent = [];
+  /** @param {number} at */
+  const recent = (at) => {
+    sent = sent.filter((started) => at - started < HOUR_MS);
+    return sent.length;
+  };
+  return Object.freeze({
+    /** Count a read that starts now, or refuse it when the hour's cap is spent. */
+    take() {
+      const at = now();
+      if (recent(at) >= limit) {
+        return false;
+      }
+      sent.push(at);
+      return true;
+    },
+    /** Whether the hour's cap is spent, so a read asked for now would be refused. */
+    spent: () => recent(now()) >= limit,
+    /** The reads counted, as of the last one started or refused. */
+    count: () => sent.length,
+  });
+}
+
+/** @typedef {ReturnType<typeof createWarmBudget>} WarmBudget */
 
 /**
  * A pull request's record as a warm reads it: the comparison it names, or null, and how long
@@ -577,14 +625,13 @@ const HOUR_MS = 3_600_000;
  */
 export function createComparisonWarmer(deps) {
   const keep = deps.keep ?? documentComparisons;
+  const budget = createWarmBudget(deps.now);
   /** @type {number[]} */
   let queue = [];
   /** @type {unknown} */
   let handle = null;
   /** @type {{number: number, controller: AbortController} | null} */
   let running = null;
-  /** When each warm this lane started was started, for the hourly cap. @type {number[]} */
-  let sent = [];
   /**
    * Each pull request's last outcome: its comparison's key, if its record named one, when,
    * for how long it holds, and whether it left the answer in the keep.
@@ -668,14 +715,11 @@ export function createComparisonWarmer(deps) {
       return;
     }
     // Counted before the record is read, so a lane the cap holds reads nothing more.
-    const now = deps.now();
-    sent = sent.filter((at) => now - at < HOUR_MS);
-    if (sent.length >= WARM_PER_HOUR) {
+    if (!budget.take()) {
       note(number, "hourly cap");
       queue = [];
       return;
     }
-    sent.push(now);
     const controller = new AbortController();
     running = { number, controller };
     /** @type {string | null} */
@@ -757,7 +801,7 @@ export function createComparisonWarmer(deps) {
     snapshot: () => ({
       queue: [...queue],
       running: running?.number ?? null,
-      sentThisHour: sent.length,
+      sentThisHour: budget.count(),
       recent: [...recent],
     }),
   });

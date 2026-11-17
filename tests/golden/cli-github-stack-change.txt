@@ -1,0 +1,389 @@
+## No snapshot yet: no stack has a change, and nothing asks GitHub.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=70'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack-change?number=70
+status: 200
+{
+  "state": "absent",
+  "reason": "not_stacked",
+  "number": 70,
+  "pulls": [],
+  "pending": [],
+  "revision": null,
+  "files": null,
+  "additions": null,
+  "deletions": null,
+  "exact": false,
+  "statuses": []
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+## With the snapshot, a stack whose members' lists are not fetched has no change.
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 202
+{
+  "refresh": "started",
+  "stacks": {
+    "state": "absent",
+    "reason": "not_cached",
+    "source": "https://github.com/octo/demo",
+    "reader": null,
+    "fetched_at": null,
+    "fresh_for_s": 0,
+    "refreshing": true,
+    "last_refresh": null,
+    "complete": false,
+    "stacks": []
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+after: /api/plugin/github/stacks
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        8,
+        10
+      ],
+      "titles": [
+        null,
+        null
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "topic",
+      "open": true,
+      "pulls": [
+        9
+      ],
+      "titles": [
+        null
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+gh stack --version
+gh auth status
+gh api repos/octo/demo/stacks?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=70'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack-change?number=70
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "number": 70,
+  "pulls": [],
+  "pending": [
+    8,
+    10
+  ],
+  "revision": null,
+  "files": null,
+  "additions": null,
+  "deletions": null,
+  "exact": false,
+  "statuses": []
+}
+--- stderr ---
+--- gh ---
+## One member's list fetched, the stack's change is still not had.
+# metab https://github.com/octo/demo/pull/8 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 8ae27617c9c475851b67ee69433d008836d112ba (pull request 8 head)
+pull_request: 8 (merged; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/8
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
+gh api repos/octo/demo/issues/8/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/8/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/8/reviews?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data lists/files-8.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 8,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "base_ref": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=8&limit=0"
+}
+after: /api/plugin/github/pull-files?number=8&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 8,
+  "listed_from": "comparison",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": null,
+  "head": "8ae27617c9c475851b67ee69433d008836d112ba",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+  "base_ref": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 1,
+  "pages": 0,
+  "last_page": null,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=70'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack-change?number=70
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "number": 70,
+  "pulls": [],
+  "pending": [
+    10
+  ],
+  "revision": null,
+  "files": null,
+  "additions": null,
+  "deletions": null,
+  "exact": false,
+  "statuses": []
+}
+--- stderr ---
+--- gh ---
+## Both members' lists fetched, the stack's change is theirs accumulated: each file once, the lines summed.
+# metab https://github.com/octo/demo/pull/10 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
+pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data lists/files-10.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "base_ref": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=10&limit=0"
+}
+after: /api/plugin/github/pull-files?number=10&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "listed_from": "comparison",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000002",
+  "reader": null,
+  "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+  "base": "c691256511d05858850bc7684ae062fea0d41132",
+  "base_ref": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 1,
+  "pages": 0,
+  "last_page": null,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=70'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack-change?number=70
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "number": 70,
+  "pulls": [
+    8,
+    10
+  ],
+  "pending": [],
+  "revision": "2adbe0c20317b339acf77c298995273b",
+  "files": 2,
+  "additions": 3,
+  "deletions": 0,
+  "exact": true,
+  "statuses": [
+    {
+      "status": "added",
+      "count": 1
+    },
+    {
+      "status": "modified",
+      "count": 1
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## A stack of one pull request whose list is not fetched has none.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=90'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stack-change?number=90
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "number": 90,
+  "pulls": [],
+  "pending": [
+    9
+  ],
+  "revision": null,
+  "files": null,
+  "additions": null,
+  "deletions": null,
+  "exact": false,
+  "statuses": []
+}
+--- stderr ---
+--- gh ---
+## A request that names anything but the stack's number is refused.
+# metab https://github.com/octo/demo --api '/api/plugin/github/stack-change?number=70&left=main'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/stack-change?number=70&left=main
+status: 400
+{
+  "error": "a stack change names its stack by \"number\" alone",
+  "code": "invalid_request"
+}
+--- stderr ---
+Error: /api/plugin/github/stack-change?number=70&left=main returned HTTP 400
+--- gh ---

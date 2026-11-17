@@ -155,6 +155,7 @@
   // "12,797 files" is `[{number: "12,797"}, " files"]`, and its text is the parts joined.
   const SUMMARY_NUMBER_CLASS = "summary-number";
   const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";
+  const SUMMARY_STATUS_COUNT_CLASS = "summary-status-count";
   const FILE_CHANGE_STATUS_CLASS = "file-change-status";
   const VISUALLY_HIDDEN_CLASS = "visually-hidden";
 
@@ -177,11 +178,13 @@
       return [{ className: SUMMARY_NUMBER_CLASS, text: part.number }];
     }
     if ("status" in part) {
+      // A status count, "21 A": its number and its letter one span, bold, in the status's
+      // ink, which the status primitive sets by the status it carries.
       return [
         {
-          className: FILE_CHANGE_STATUS_CLASS,
-          text: part.letter,
+          className: `${SUMMARY_STATUS_COUNT_CLASS} ${FILE_CHANGE_STATUS_CLASS}`,
           attributes: [["data-file-status", part.status]],
+          children: [{ className: SUMMARY_NUMBER_CLASS, text: part.count }, ` ${part.letter}`],
         },
       ];
     }
@@ -271,8 +274,8 @@
           ? part
           : "number" in part
             ? part.number
-            : "letter" in part
-              ? part.letter
+            : "status" in part
+              ? `${part.count} ${part.letter}`
               : "separator" in part
                 ? part.separator
                 : part.punctuation,
@@ -304,9 +307,7 @@
     /** @type {MetabrowserCountParts} */
     const statusParts = change.statuses.flatMap((entry, at) => [
       ...(at === 0 ? [] : [{ punctuation: "," }, " "]),
-      { number: written(entry.count) },
-      " ",
-      { status: entry.status, letter: entry.letter },
+      { status: entry.status, letter: entry.letter, count: written(entry.count) },
     ]);
     const statuses = countText(statusParts);
     const added = written(change.additions);

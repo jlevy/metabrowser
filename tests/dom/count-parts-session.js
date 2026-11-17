@@ -5,7 +5,8 @@
 // Every count summary comes in one shape of parts (docs/design-system.md, "Count Summaries
 // Bold Their Numbers"): words as strings, a number as `{number}`, a list's comma as
 // `{punctuation}`, the dot between a line's groups as `{separator}`, with `spoken` where the
-// line has no name in words, and a file change status as `{status, letter}`. formatters.js
+// line has no name in words, and a status count, "21 A", as `{status, letter, count}`, its
+// number and letter one span that the shell draws bold in the status's ink. formatters.js
 // paints them, `countPartsNodes` as nodes and `countPartsHtml` as markup, and the plugin SDK's
 // `mb.countPartsNodes` hands its parts to the same function, so the Diff summary, a pull
 // request's Checks summary, a commit's hover card, and every shell count summary paint each
@@ -104,13 +105,17 @@ const readOf = (nodes) =>
     )
     .join("");
 
-/** What the parts read as: each number, letter, and mark as written, and no `spoken`. */
+/**
+ * What the parts read as: each number, status count, and mark as written, and no `spoken`.
+ */
 const textOf = (parts) =>
   parts
     .map((part) =>
       typeof part === "string"
         ? part
-        : (part.number ?? part.letter ?? part.separator ?? part.punctuation),
+        : part.letter !== undefined
+          ? `${part.count} ${part.letter}`
+          : (part.number ?? part.separator ?? part.punctuation),
     )
     .join("");
 
@@ -121,7 +126,7 @@ const KINDS = [
   ["a list's comma", [{ punctuation: "," }]],
   ["a separator", [{ separator: "·" }]],
   ["a separator that says a comma in its place", [{ separator: "·", spoken: ", " }]],
-  ["a status", [{ status: "added", letter: "A" }]],
+  ["a status count", [{ status: "added", letter: "A", count: "21" }]],
   ["words with markup in them", ['<b> & "quotes"']],
 ];
 

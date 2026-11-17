@@ -44,7 +44,11 @@ diff, and this holds:
 - in the Diff summary's header, the Files totals, and the Commits tally, every number is a
   bold number, ``.summary-number``, at 700, and every word, parenthesis, and separator is at
   400, the line's weight ("Count Summaries Bold Their Numbers"; mb-roa9); before, the
-  numbers were at 400, and only the change stats were bold.
+  numbers were at 400, and only the change stats were bold;
+- in a commit's Diff summary, in both themes, each status count, "1 A", is bold in its
+  status's ink, its number and its letter alike, at a text's 4.5:1 on the ground under it,
+  while the file count is bold in the line's ink and the dots and commas are muted
+  (mb-8iwn); before, a status count's number was in the line's ink and its letter at 400.
 Where text starts and what a hover paints are layout and paint, so this needs a browser; it
 skips without Chrome (``require_chrome`` in ``tests/required_tools.py``), and CI runs it.
 """
@@ -228,7 +232,8 @@ def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str
     """What breaks the count-summary rule in one line's runs of text, as Chrome computes them.
 
     Every number is a bold number, `.summary-number`, at `--weight-bold`, inline with its
-    words rather than an item of a flex line, which would part them by its gap; every other
+    words rather than an item of a flex line, which would part them by its gap; a status
+    count's letter is bold with its number (`.summary-status-count`; mb-8iwn); every other
     run, a word, a parenthesis, or a separator, is at the line's regular weight; a change
     stat or an age keeps the weight of its own primitive.
     """
@@ -244,6 +249,9 @@ def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str
                 broken.append(f"{where}: number {run['text']!r} at {run['weight']}")
             if re.search(r"flex|grid", run["within"]):
                 broken.append(f"{where}: number {run['text']!r} is an item of a {run['within']}")
+        elif run["status"]:
+            if run["weight"] != BOLD:
+                broken.append(f"{where}: status letter {run['text']!r} at {run['weight']}")
         elif re.search(r"\d", run["text"]):
             broken.append(f"{where}: {run['text']!r} holds a number outside a bold number")
         elif run["weight"] != REGULAR:
@@ -253,53 +261,79 @@ def _counts_read_bold(runs: list[dict[str, Any]] | None, where: str) -> list[str
     return broken
 
 
-# The token each status's letter takes (static/styles.css, `.file-change-status`).
+# The token each status count takes, number and letter (static/styles.css,
+# `.file-change-status`).
 STATUS_INK = {
     "added": "--git-status-added",
     "removed": "--git-status-deleted",
     "modified": "--git-status-modified",
     "renamed": "--git-status-renamed",
 }
+# A text's contrast: WCAG 2.2 SC 1.4.3, Level AA, for text under 18.66 px bold, as the
+# Diff summary's header is (docs/design-system.md, "Count Summaries Bold Their Numbers").
+TEXT_CONTRAST = 4.5
 
 
 def _header_inks(paint: dict[str, Any]) -> list[str]:
-    """What breaks the Diff summary header's inks in one theme, as Chrome computes them.
+    """What breaks the Diff summary header's paint in one theme, as Chrome computes it.
 
-    Each status is its letter in its status's ink, each dot between the groups and each
-    comma between the statuses the muted punctuation, the dots hidden from a screen reader,
-    and the file count, its words, and the statuses' counts the line's own ink; the
-    accessible name says it all in words (mb-vb51).
+    Each status is a status count, "1 A", one span that is the status primitive, its number
+    and its letter both bold and both in its status's ink, at a text's 4.5:1 on the ground
+    under it (mb-8iwn); each dot between the groups and each comma between the statuses is
+    the muted punctuation, the dots hidden from a screen reader; and the file count, bold,
+    and its words are the line's own ink; the accessible name says it all in words (mb-vb51).
     """
 
     where = f"commit's Diff summary, {paint['theme']}"
     tokens = paint["tokens"]
     broken = []
-    # Distinct inks, or a letter at the line's ink would pass as its status's.
+    # Distinct inks, or a count at the line's ink would pass as its status's.
     inks = [tokens[name] for name in ("--text", "--muted", *STATUS_INK.values())]
     if len(set(inks)) != len(inks):
         broken.append(f"{where}: the tokens are not distinct, {tokens}")
-    if [(text, status) for text, status, _ in paint["letters"]] != [
-        ("A", "added"),
-        ("D", "removed"),
-        ("M", "modified"),
+    counts = paint["counts"]
+    if [(count["text"], count["status"]) for count in counts] != [
+        ("1 A", "added"),
+        ("1 D", "removed"),
+        ("2 M", "modified"),
     ]:
-        broken.append(f"{where}: letters {paint['letters']}")
-    for text, status, color in paint["letters"]:
-        if color != tokens[STATUS_INK[status]]:
-            broken.append(f"{where}: {text} at {color}, not {STATUS_INK[status]}")
-    if [(text, hidden) for text, hidden, _ in paint["marks"]] != [
+        broken.append(f"{where}: status counts {counts}")
+    for count in counts:
+        token = STATUS_INK[count["status"]]
+        ink = tokens[token]
+        number, letter = count["number"], count["letter"]
+        if not count["statusPrimitive"]:
+            broken.append(f"{where}: {count['text']!r} is not the status primitive")
+        if number is None:
+            broken.append(f"{where}: {count['text']!r} has no bold number")
+        else:
+            if number[1] != ink:
+                broken.append(f"{where}: number of {count['text']!r} at {number[1]}, not {token}")
+            if number[2] != BOLD:
+                broken.append(f"{where}: number of {count['text']!r} at {number[2]}")
+        if letter[1] != ink:
+            broken.append(f"{where}: letter of {count['text']!r} at {letter[1]}, not {token}")
+        if letter[2] != BOLD:
+            broken.append(f"{where}: letter of {count['text']!r} at {letter[2]}")
+        if count["contrast"] < TEXT_CONTRAST:
+            broken.append(
+                f"{where}: {count['text']!r} at {count['contrast']}:1 on {count['ground']}"
+            )
+    if [(text, hidden) for text, hidden, _, _ in paint["marks"]] != [
         ("·", "true"),
         (",", None),
         (",", None),
         ("·", "true"),
     ]:
         broken.append(f"{where}: marks {paint['marks']}")
-    for text, _, color in paint["marks"]:
+    for text, _, color, _ in paint["marks"]:
         if color != tokens["--muted"]:
             broken.append(f"{where}: {text!r} at {color}, not --muted")
     if paint["words"] != tokens["--text"]:
         broken.append(f"{where}: the words at {paint['words']}, not --text")
-    for text, color in paint["numbers"]:
+    if [(text, weight) for text, _, weight in paint["numbers"]] != [("4", BOLD)]:
+        broken.append(f"{where}: the file count {paint['numbers']}")
+    for text, color, _ in paint["numbers"]:
         if color != tokens["--text"]:
             broken.append(f"{where}: number {text} at {color}, not --text")
     if (
@@ -448,13 +482,15 @@ def test_the_diff_summary_opens_in_the_pages_flow_on_the_trees_step(
     # 2 M.
     numbers = [run["text"] for run in commit_page["counts"]["summary"] if run["number"]]
     assert numbers == ["4", "1", "1", "2"], commit_page["counts"]["summary"]
-    # It reads "4 files changed · 1 A, 1 D, 2 M · +3 −1", each letter in its status's ink and
-    # its dots and commas muted, in both themes (mb-vb51). Before, it read "4 changed files (1
-    # added, 1 removed, 2 modified)", its statuses in words and all of them muted.
+    # It reads "4 files changed · 1 A, 1 D, 2 M · +3 −1", each status count bold in its
+    # status's ink, number and letter, and its dots and commas muted, in both themes (mb-vb51,
+    # mb-8iwn). Before, it read "4 changed files (1 added, 1 removed, 2 modified)", its
+    # statuses in words and all of them muted, and then each count in the line's ink and
+    # each letter at the line's weight.
     paints = commit_page["paint"]
     assert [paint["theme"] for paint in paints] == ["light", "dark"], paints
     assert all(paint["text"] == "4 files changed·1 A, 1 D, 2 M·+3−1" for paint in paints), paints
     inks = [problem for paint in paints for problem in _header_inks(paint)]
     assert inks == [], (inks, paints)
-    # The two themes ink the letters apart, so each was read in its own.
-    assert paints[0]["letters"] != paints[1]["letters"], paints
+    # The two themes ink the status counts apart, so each was read in its own.
+    assert paints[0]["counts"] != paints[1]["counts"], paints

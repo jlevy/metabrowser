@@ -1478,7 +1478,9 @@ type MetabrowserSdk = {
   /** A count summary as nodes for its element, painted as the shell paints every count
    *  summary: each number in `span.summary-number`, each mark in `span.summary-punctuation`,
    *  a separator hidden from assistive technology and its `spoken` in `span.visually-hidden`,
-   *  each status its letter in `span.file-change-status`, and the words as text. */
+   *  each status count, "21 A", its number and letter in one
+   *  `span.summary-status-count.file-change-status`, bold in its status's ink, and the words
+   *  as text. */
   countPartsNodes(parts: MetabrowserCountParts): Array<Node | string>;
   /** A brief change line, "10 A, 5 D, 4 M · +1,234 −567", from a change set's statuses and
    *  line totals, in the shell's number format: the one component for one
@@ -3664,8 +3666,9 @@ declare global {
    * as `{punctuation}`, and the " · " dot that sets a line's groups apart as `{separator}`,
    * both painted muted (`.summary-punctuation`), the separator hidden from assistive
    * technology, with `spoken`, what a screen reader is told in its place (`.visually-hidden`),
-   * on a line whose name does not say it in words; and a file change status as `{status,
-   * letter}`, its letter painted in the status's ink (`.file-change-status`). The shell's
+   * on a line whose name does not say it in words; and a status count, "21 A", as `{status,
+   * letter, count}`, its count as written and its letter painted as one unit, both bold and
+   * both in the status's ink (`.summary-status-count`, `.file-change-status`). The shell's
    * formatters.js paints them all, and a plugin through `metabrowser.countPartsNodes`.
    */
   type MetabrowserCountPart =
@@ -3673,13 +3676,13 @@ declare global {
     | { readonly number: string }
     | { readonly punctuation: string }
     | { readonly separator: string; readonly spoken?: string }
-    | { readonly status: string; readonly letter: string };
+    | { readonly status: string; readonly letter: string; readonly count: string };
 
   /**
    * A count summary in its parts, one shape for every count summary. "35 files changed" is
-   * `[{number: "35"}, " files changed"]`, "2 A, 3 D" is `[{number: "2"}, " ", {status:
-   * "added", letter: "A"}, {punctuation: ","}, " ", {number: "3"}, " ", {status: "removed",
-   * letter: "D"}]`, and its text is the parts joined.
+   * `[{number: "35"}, " files changed"]`, "2 A, 3 D" is `[{status: "added", letter: "A",
+   * count: "2"}, {punctuation: ","}, " ", {status: "removed", letter: "D", count: "3"}]`,
+   * and its text is the parts joined, a status count's as "2 A".
    */
   type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
   /** The served root's tracked and ignored files and bytes, the server's `summary` shape. */

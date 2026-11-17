@@ -24,10 +24,13 @@
 // and the first file card starts the cards' gap below it ("Diff Layout Control"; mb-a073),
 // and the computed weight of every run of text in the count summaries the page shows, the
 // Diff summary's header, the Files totals, and the Commits tally, so a number reads bold
-// and a word regular ("Count Summaries Bold Their Numbers"; mb-roa9).
+// and a word regular ("Count Summaries Bold Their Numbers"; mb-roa9), and in the commit's
+// header, in each theme, each status count's number and letter bold in its status's ink,
+// and its contrast on the ground under it (mb-8iwn).
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
+import { STATUS_COUNTS } from "./status-count-paint.mjs";
 
 const [metab, root, port, state, commit] = process.argv.slice(2);
 const base = `http://127.0.0.1:${port}`;
@@ -129,7 +132,8 @@ const AGE = ".age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old
 
 // In the page: the diff's toolbar against the first file card, and each count summary's runs
 // of text, each with its computed weight and whether it is a bold number (`.summary-number`),
-// a change stat, or an age, which carry weights of their own.
+// in a status count (`.summary-status-count`), whose letter is bold too, or a change stat or
+// an age, which carry weights of their own.
 const CHROME = `(() => {
   const round = (value) => Math.round(value * 100) / 100;
   const toolbar = document.querySelector(".metabrowser-diff-host .diff-toolbar");
@@ -152,6 +156,7 @@ const CHROME = `(() => {
         text: node.textContent,
         weight: getComputedStyle(parent).fontWeight,
         number,
+        status: parent.closest(".summary-status-count") !== null,
         // What holds a bold number: inline with its words, never a flex or grid line, where
         // it would be an item of its own.
         within: number ? getComputedStyle(parent.parentElement).display : null,
@@ -180,12 +185,18 @@ const CHROME = `(() => {
 
 // In the page, in *theme*: the ink of every part of the Diff summary's header, against the
 // tokens it is drawn from, each read from a probe that takes the token (mb-vb51). Each
-// status's letter takes its status's ink (`.file-change-status`, `--git-status-*`), each
-// dot and comma the muted punctuation (`.summary-punctuation`, `--muted`), and the file
-// count and its words the line's own ink (`--text`).
+// status count, number and letter, is bold in its status's ink (`.summary-status-count`,
+// `.file-change-status`, `--git-status-*`; mb-8iwn), read with its contrast on the ground
+// under it; each dot and comma the muted punctuation (`.summary-punctuation`, `--muted`);
+// and the file count and its words the line's own ink (`--text`).
 const PAINT = `async (theme) => {
   document.documentElement.dataset.theme = theme;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  // The page's surfaces cross-fade to the theme (--theme-transition): read them once every
+  // transition the change started is over, so a ground is the theme's and not one between.
+  await Promise.allSettled(
+    document.getAnimations().filter((animation) => animation instanceof CSSTransition).map((animation) => animation.finished),
+  );
   const header = document.querySelector(".diff-summary");
   const ink = (node) => getComputedStyle(node).color;
   const token = (name) => {
@@ -205,9 +216,9 @@ const PAINT = `async (theme) => {
     theme,
     tokens,
     words: files ? ink(files) : null,
-    numbers: [...header.querySelectorAll(".summary-number")].map((node) => [node.textContent, ink(node)]),
-    letters: [...header.querySelectorAll(".file-change-status")].map((node) => [node.textContent, node.dataset.fileStatus, ink(node)]),
-    marks: [...header.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node)]),
+    numbers: [...header.querySelectorAll(".diff-summary-files .summary-number")].map((node) => [node.textContent, ink(node), getComputedStyle(node).fontWeight]),
+    counts: (${STATUS_COUNTS})(header),
+    marks: [...header.querySelectorAll(".summary-punctuation")].map((node) => [node.textContent, node.getAttribute("aria-hidden"), ink(node), getComputedStyle(node).fontWeight]),
     text: header.textContent,
     label: header.getAttribute("aria-label"),
   };
@@ -355,7 +366,7 @@ try {
   );
   await browser.evaluate(frames);
   result.commit = await browser.evaluate(CHROME);
-  // The header's inks, in each theme: its letters, its marks, and its words.
+  // The header's inks, in each theme: its status counts, its marks, and its words.
   result.commit.paint = [];
   for (const theme of ["light", "dark"]) {
     result.commit.paint.push(await browser.evaluate(`(${PAINT})(${JSON.stringify(theme)})`));

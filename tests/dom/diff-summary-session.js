@@ -83,8 +83,9 @@ let rowOf = () => {
 let diffModel = null;
 
 /**
- * A count summary's parts as they are painted: a bold number between asterisks, a status's
- * letter with its status in braces, in the status's ink, and a muted mark in angle quotes.
+ * A count summary's parts as they are painted: a bold number between asterisks, a status
+ * count, number and letter, bold between asterisks with its status in braces, in the
+ * status's ink, and a muted mark in angle quotes.
  */
 function painted(parts) {
   return parts
@@ -94,7 +95,7 @@ function painted(parts) {
         : "number" in part
           ? `*${part.number}*`
           : "status" in part
-            ? `${part.letter}{${part.status}}`
+            ? `*${part.count} ${part.letter}*{${part.status}}`
             : `‹${part.punctuation ?? part.separator}›`,
     )
     .join("");
@@ -106,7 +107,9 @@ function written(parts) {
     .map((part) =>
       typeof part === "string"
         ? part
-        : (part.number ?? part.letter ?? part.punctuation ?? part.separator),
+        : "status" in part
+          ? `${part.count} ${part.letter}`
+          : (part.number ?? part.punctuation ?? part.separator),
     )
     .join("");
 }
@@ -131,7 +134,13 @@ function header(_model, manifest, whole = null) {
     label: said.label,
     estimated: said.estimated,
     numbers: [...said.filesParts, ...said.line.statusParts].flatMap((part) =>
-      typeof part === "object" && "number" in part ? [part.number] : [],
+      typeof part !== "object"
+        ? []
+        : "number" in part
+          ? [part.number]
+          : "count" in part
+            ? [part.count]
+            : [],
     ),
     parts: { files: painted(said.filesParts), statuses: painted(said.line.statusParts) },
     ...(listed === null ? {} : { listed }),

@@ -74,6 +74,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
+- [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
+  Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
+  the checks of a downloaded copy, with the owner-only steps
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md):
   retained surfaces, fixed boxes at first paint, and prediction behind admission
   control, each a measured performance-loop round
