@@ -5030,7 +5030,7 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
             yield
         finally:
             # The Markdown child belongs to this loop; a later one starts its own.
-            shared_worker().stop()
+            await shared_worker().aclose()
             await close_history_sessions()
 
 

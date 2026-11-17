@@ -224,6 +224,33 @@ def test_a_render_waits_for_a_child_still_starting_rather_than_replacing_it() ->
     assert '<h1 id="user-content-waited">Waited</h1>' in rendered["html"]
 
 
+def test_closing_waits_for_every_child_it_stopped_to_exit() -> None:
+    # A child reaped after its event loop closed makes asyncio log on standard error,
+    # which a one-shot command printed; closing waits for the exits on the loop instead.
+    def spawned(worker: ProjectionWorker) -> asyncio.subprocess.Process | None:
+        return worker._process  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> list[asyncio.subprocess.Process]:
+        worker = ProjectionWorker()
+        children: list[asyncio.subprocess.Process] = []
+        try:
+            for text in ("# One\n", "# Two\n"):
+                await worker.render_inert(_request(text, f"sha256:{text}"))
+                child = spawned(worker)
+                assert child is not None and child not in children
+                children.append(child)
+                if len(children) == 1:
+                    # Stopped as a deadline stops it; the next render starts another.
+                    worker._kill(child)  # pyright: ignore[reportPrivateUsage]
+        finally:
+            await worker.aclose()
+        return children
+
+    children = asyncio.run(run())
+    assert len(children) == 2
+    assert [child.returncode is not None for child in children] == [True, True]
+
+
 def test_the_child_renders_what_the_in_process_inert_render_would() -> None:
     async def run() -> dict[str, Any]:
         worker = ProjectionWorker()

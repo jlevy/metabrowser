@@ -122,6 +122,11 @@ _MAX_STARTS = 3
 # it again. A start took 0.23-0.24 s to ready (review E of #349), against 56-63 MB kept
 # resident for as long as the server runs.
 _IDLE_S = 600.0
+# How long a closing server waits for the children it stopped to exit, so none is reaped
+# after its event loop has closed: asyncio then logs, on standard error, that the loop
+# handling that pid is closed, which a one-shot `--api` command printed on Python 3.14
+# (CI, 2026-11-17). A killed child exits in milliseconds.
+_REAP_S = 2.0
 # Refusals kept, by document. Each one cost a deadline of the child's time, so a server
 # reaches this only after hours of refused renders; it bounds what a flood of distinct
 # documents can make the server keep, at about 100 bytes a key.
@@ -431,6 +436,8 @@ class ProjectionWorker:
         self._idle_timer: asyncio.TimerHandle | None = None
         self._verdicts: OrderedDict[tuple[str, ...], RefusalCode] = OrderedDict()
         self._flights: dict[tuple[object, ...], asyncio.Task[dict[str, Any]]] = {}
+        # Children this loop killed that may not have been reaped yet (:meth:`aclose`).
+        self._dying: set[asyncio.subprocess.Process] = set()
 
     @property
     def ready(self) -> bool:
@@ -454,8 +461,9 @@ class ProjectionWorker:
 
         loop = asyncio.get_running_loop()
         if self._loop is not None and self._loop is not loop:
-            # A child's pipes belong to the loop that started it.
+            # A child's pipes belong to the loop that started it, and so does its reaping.
             self.stop()
+            self._dying.clear()
         if (
             (not self._processes and not renders)
             or self._starting is not None
@@ -522,6 +530,8 @@ class ProjectionWorker:
         if process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
+            self._dying = {each for each in self._dying if each.returncode is None}
+            self._dying.add(process)
 
     def stop(self) -> None:
         """Stop the child; the next start begins a new one, with its starts counted anew.
@@ -541,6 +551,20 @@ class ProjectionWorker:
         self._loop = self._lock = None
         self._flights = {}
         self._starts = 0
+
+    async def aclose(self) -> None:
+        """Stop the child, and wait at most :data:`_REAP_S` for every child this loop
+        stopped to exit, so none is reaped after the loop closes. A server's lifespan ends
+        with this."""
+
+        here = self._loop is None or self._loop is _running_loop()
+        self.stop()
+        dying, self._dying = self._dying, set()
+        waits = [each.wait() for each in dying if each.returncode is None] if here else []
+        if waits:
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(_REAP_S):
+                    await asyncio.gather(*waits)
 
     async def prepare(
         self, *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
