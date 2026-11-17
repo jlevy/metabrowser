@@ -71,6 +71,10 @@ request.
   mirror’s durable name for a pull request’s head is `refs/pull/<n>/head`. Switching by
   commit keeps the label and the file at one commit, and naming the pull request’s ref
   keeps “Pull request #N” the subject when two pull requests share a head.
+  When that ref is no longer at the commit, because the pull request moved on after the
+  page was drawn, the pin route refuses with `409 ref_moved` and switches nothing, so
+  View on branch and Browse code on that page say the head moved rather than open the
+  earlier head as a bare commit.
 - **One switcher.** The diff’s `switchTo` (`diff-view-file.js`) and the page’s
   `serveHead` become one, with the diff’s refusal messages; `serveHead` sends no `view`
   and shows a raw `selection_pending` code today.
@@ -144,9 +148,13 @@ separate change.
 
 - `tests/dom/diff-view-file-session.js` and its golden gain the steps the design adds: a
   mirror pinned elsewhere, a checkout at the head, a checkout elsewhere, a head that
-  moved, and a pin another tab changed.
+  moved, a pull request whose ref moved after the page was drawn, and a pin another tab
+  changed.
 - `tests/test_github_pull_snapshot.py` shrinks to admission and images; the goldens that
   carry the route’s old name change with the rename.
+- `tests/test_github_pulls.py` and `tests/golden/cli-api-diff-view-file.tryscript.md`
+  pin `under`: a switch served under the ref it names, and `409 ref_moved` when that ref
+  is elsewhere.
 - `tests/test_git_revision_content_routes.py` pins that a pin’s render reaches no lexer
   under the untrusted profile.
 

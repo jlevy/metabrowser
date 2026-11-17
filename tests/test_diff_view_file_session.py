@@ -44,6 +44,7 @@ from tests.diff_view_file_fixture import (
     LATIN1_NAME,
     NEW_NAME,
     OLD_NAME,
+    PULL_REF,
     build_origin,
     commits,
     view,
@@ -63,7 +64,6 @@ from tests.test_source_freshness_session import _settle, _stand_in_times, _write
 
 SESSION = "diff-view-file-session.js"
 _STORE_STAND_IN = "0123456789abcdef"
-_PULL_REF = "refs/pull/7/head"
 # What the shell writes into a page on a pin: the commit and ref it was rendered for.
 _PAGE_PIN = re.compile(r"window\.METABROWSER_SOURCE_PIN=(\{.*?\});</script>")
 
@@ -128,7 +128,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
                 "--git-dir",
                 str(published.git_dir),
                 "update-ref",
-                _PULL_REF,
+                PULL_REF,
                 ids["second"],
             ],
             check=True,
@@ -183,17 +183,17 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             # View on branch from a page on the parent names the pull request's head ref, which
             # the server then serves rather than the branch it was on.
             recorded["switch_on_branch"] = _switch(
-                client, {"oid": ids["second"], "under": _PULL_REF, "view": readme}
+                client, {"oid": ids["second"], "under": PULL_REF, "view": readme}
             )
             # The pull request moved on after a page was drawn for that head: its ref is at
             # another commit, as after a push. The same View on branch switches nothing.
             subprocess.run(
-                ["git", "--git-dir", str(published.git_dir), "update-ref", _PULL_REF, ids["base"]],
+                ["git", "--git-dir", str(published.git_dir), "update-ref", PULL_REF, ids["base"]],
                 check=True,
                 capture_output=True,
             )
             recorded["switch_head_moved"] = _switch(
-                client, {"oid": ids["second"], "under": _PULL_REF, "view": readme}
+                client, {"oid": ids["second"], "under": PULL_REF, "view": readme}
             )
         # A page left open while its server was restarted on another repository: that
         # mirror has neither commit. A server fetches once for a commit its mirror
@@ -266,7 +266,7 @@ def test_recording_is_what_the_servers_answer(
     # Named under the pull request's head, the same commit is the pull request's.
     on_branch = recorded["switch_on_branch"]
     assert (on_branch["status"], on_branch["body"]["changed"]) == (200, True)
-    assert on_branch["body"]["status"]["ref"] == _PULL_REF
+    assert on_branch["body"]["status"]["ref"] == PULL_REF
     assert on_branch["body"]["view_href"] == recorded["views"]["readme"]
     moved = recorded["switch_head_moved"]
     assert (moved["status"], moved["body"]["code"]) == (409, "ref_moved")
