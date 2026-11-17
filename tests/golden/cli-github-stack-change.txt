@@ -9,6 +9,7 @@ status: 200
   "reason": "not_stacked",
   "number": 70,
   "pulls": [],
+  "pending": [],
   "revision": null,
   "files": null,
   "additions": null,
@@ -103,6 +104,10 @@ status: 200
   "reason": "not_cached",
   "number": 70,
   "pulls": [],
+  "pending": [
+    8,
+    10
+  ],
   "revision": null,
   "files": null,
   "additions": null,
@@ -212,6 +217,9 @@ status: 200
   "reason": "not_cached",
   "number": 70,
   "pulls": [],
+  "pending": [
+    10
+  ],
   "revision": null,
   "files": null,
   "additions": null,
@@ -324,6 +332,7 @@ status: 200
     8,
     10
   ],
+  "pending": [],
   "revision": "2adbe0c20317b339acf77c298995273b",
   "files": 2,
   "additions": 3,
@@ -353,6 +362,9 @@ status: 200
   "reason": "not_cached",
   "number": 90,
   "pulls": [],
+  "pending": [
+    9
+  ],
   "revision": null,
   "files": null,
   "additions": null,

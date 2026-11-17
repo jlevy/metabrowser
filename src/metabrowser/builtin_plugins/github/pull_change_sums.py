@@ -3,9 +3,8 @@
 A pull request's change set is its cached list of changed files (:mod:`.pull_list`,
 ``PullFileList``), the one its expanded row in the Pulls tab shows. :func:`accumulate` takes
 one list, or several bottom first, as a stack's members, and says what they change
-together: how many files, each counted once with one status, and their line totals. A
-stack's heading line (:mod:`.pull_stack_change`) and a pull request's row line read this
-one rule, so both say a change the same way.
+together: how many files, each counted once with one status, and their line totals, for a
+stack's heading line (:mod:`.pull_stack_change`).
 
 **One file, once.** A file is followed by its path, and across a rename: a list that
 renames ``a`` to ``b`` carries what earlier lists did to ``a`` over to ``b``. Its status is
@@ -27,7 +26,7 @@ left out (``truncated``), makes the whole short (``short``), since the rest are 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -71,8 +70,12 @@ def _composed(touched: _Touched) -> str:
     return "renamed" if touched.renamed else "modified"
 
 
-def accumulate(lists: Sequence[PullFileList]) -> ChangeSums:
-    """What *lists*, bottom first, accumulate to; see the module. Pure."""
+def accumulate(lists: Iterable[PullFileList]) -> ChangeSums:
+    """What *lists*, bottom first, accumulate to; see the module. Pure.
+
+    Each list is folded in as it comes, and *lists* is read no further once one stops
+    short, so a caller that reads them lazily holds one list at a time.
+    """
 
     files: dict[str, _Touched] = {}
     additions = deletions = 0

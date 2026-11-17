@@ -16,29 +16,37 @@
 // - Only for the stacks whose rows the list draws, its rows in view and the window's overscan,
 //   one at a time, each when the browser is idle, and only once no comparison is being read,
 //   so a page's own read goes first (`keep.quiet`), as the comparison warmer's are.
-// - Once for each stack's identity (`stackLineIdentity`): its members and each member's head
-//   as the catalog's rows report it. Any member's change moves the accumulation, and a
-//   member's change moves its head, so a stack is read again when the list's rows say a
-//   member moved or the members changed, and never on a timer (review of #484, A2). A read
-//   that failed is asked again a minute on; a stack with a member whose list is not cached
-//   is not, until its identity changes.
+// - Once as the list draws it: its members and each member's head as the catalog's rows report
+//   it, a member the list holds no row of taken as unchanged (`sameStack`), so switching
+//   filters reads nothing again. It is read again, never on a timer (review of #484, A2):
+//   - when the list's rows say a member moved or the members changed;
+//   - when a member's list of changed files changes, as the prefetch lane reports a list it
+//     refreshed or a row's own read of its list arrives (`listed`);
+//   - while its last answer named members not yet settled, a list missing, filling, or read
+//     for an older head (`pending`): silently, a minute on and doubling while it stays so,
+//     up to `STACK_LINE_PENDING_MAX_MS` (review B of #484, B1);
+//   - and a minute after a read that failed.
+//   An answer that names no unsettled member holds until one of those happens.
 // - Within the lines' own hourly cap (`STACK_LINES_PER_HOUR`), apart from the comparison
 //   warmer's (`WARM_PER_HOUR`), so the lines never take the warms' share. A read is the stack
-//   snapshot and each member's list of changed files from the cache; no GitHub call, no
-//   fetch, and no Git.
+//   snapshot and each member's list of changed files from the cache, and each member's newest
+//   known head; no GitHub call, no fetch, and no Git.
 // - An answer is a few hundred bytes of JSON. It is kept in the document's comparison keep
 //   under its stack and its revision (`stackChangeKey`), and which answer is each stack's is
 //   kept for the document too (`documentStackLines`), so a heading drawn again, scrolled
 //   back into view or in a Pulls tab mounted again, has its line in the paint that draws it,
-//   with no request. A line stays shown until a newer answer replaces it: while its stack is read
-//   again, and when that read fails.
+//   with no request. A line stays shown until a newer answer replaces it: while its stack is
+//   read again, and when that read fails.
+// - The members a stack's answer names as unsettled are the ones the Pulls tab's prefetch
+//   asks to list, after the reader's own rows (`unsettled`, pulls-panel.js), so a collapsed
+//   stack's line fills in too (review B of #484, B2).
 //
 // A heading waits for its line in the shell's pending placeholder only while the read of its
 // stack is on its way, after the quiet period, and its accessible name says the change is
-// pending meanwhile. A stack whose last answer for its identity was not a line, whose change
-// cannot be had, never waits again until its identity changes, so its heading does not
-// pulse and go blank (review of #484, A4). Nor does a heading whose read is queued behind
-// another, or whose read the cap holds.
+// pending meanwhile. A stack whose last answer as it is drawn had no line, was still
+// settling, or failed, never waits again until its members or their heads change, so its
+// heading does not pulse and go blank (review of #484, A4). Nor does a heading whose read is
+// queued behind another, or whose read the cap holds.
 
 import { createWarmBudget, documentComparisons } from "./comparison-prefetch.js";
 import { stackLabel } from "./pull-stacks.js";
@@ -49,16 +57,24 @@ export const STACK_CHANGE_ROUTE = "/api/plugin/github/stack-change";
 // for the whole server, is asked again after a minute, the pull routes' own freshness window
 // (`FRESHNESS_WINDOW_S`), so a failure that lasts costs one read a minute a stack at most.
 export const STACK_LINE_RETRY_MS = 60_000;
+// The longest a stack whose answer names unsettled members waits to be asked again: a minute
+// first, then two, four, and so on to this. A list a head's move starts refreshing lands in
+// seconds, one GitHub page or one store listing, so most stacks settle at the first retry;
+// one whose member is listed later, by the prefetch or a row, is read at once when it is
+// (`listed`), and the doubling keeps a stack whose member never is to six reads its first
+// hour and two an hour after.
+export const STACK_LINE_PENDING_MAX_MS = 30 * 60_000;
 // The reads the lines start in an hour, each counted as it starts; the comparison warmer
 // counts its own (`WARM_PER_HOUR`). A read runs no Git: it stats each member's list and,
-// when one changed since the server last accumulated them, parses them all, 6 to 16 ms for
-// #446's 16 cached lists and at most about 210 ms within `MAX_STACK_LIST_BYTES`, a repeat
-// 0.2 ms (measured 2026-11-16 at a load average of 26 to 38, pull_stack_change.py). The
-// list draws every one of this repository's 19 stacks, so a first visit reads 19, and the
-// rest of an hour's reads are stacks whose member moved, and failed reads asked again. So
-// the cap is at most about 13 s of local parsing an hour, and the hour's reads of a Pulls
-// tab left open with nothing changing are none.
-export const STACK_LINES_PER_HOUR = 60;
+// when one changed since the server last accumulated them, folds them in one at a time, 6 to
+// 16 ms for #446's 16 cached lists and at most about 400 ms within `MAX_STACK_LIST_BYTES`;
+// it then reads each member's newest known head, 22 to 36 ms for #446's 28 (measured
+// 2026-11-16 at a load average of 14 to 38, pull_stack_change.py). The list draws every one
+// of this repository's 19 stacks, so a first visit reads 19, and an hour in which all 19
+// wait for members' lists reads each six times, 114. So the cap holds that hour, at about
+// 5 s of local work and at most about 52 s were every read to parse at the bound, and the
+// hour's reads of a Pulls tab left open with every stack settled are none.
+export const STACK_LINES_PER_HOUR = 120;
 // The stacks whose last outcome the document remembers, oldest out first: more stacks than
 // any repository's list draws at once. This repository has 19. Measured 2026-11-16 in Node
 // 24, 256 of them, each a stack of 12 pull requests, held 216 KB of heap, 862 bytes each;
@@ -77,6 +93,7 @@ const SERVER_REFUSALS = new Set(["not_github"]);
  *   reason: string | null,
  *   number: number,
  *   pulls: number[],
+ *   pending: number[],
  *   revision: string | null,
  *   files: number | null,
  *   additions: number | null,
@@ -93,9 +110,19 @@ const SERVER_REFUSALS = new Set(["not_github"]);
  * What a stack's heading shows now: its line, its pending placeholder, or nothing.
  * @typedef {{phase: "shown", change: StackChange} | {phase: "waiting"} | {phase: "none"}} StackLineState
  *
- * A stack's last outcome: the identity it was read under, the key of its change in the keep,
- * or null, when it is asked again after a failure, or null, and why it has no change.
- * @typedef {{identity: string, key: string | null, retryAt: number | null, reason: string | null}} StackLineOutcome
+ * A stack's last outcome: its members and their heads as they were known when it was read,
+ * the key of its change in the keep, or null, when it is asked again, or null, how many
+ * times in a row its answer named members not yet settled, those members, and why it has no
+ * change.
+ * @typedef {{
+ *   members: string,
+ *   heads: (string | null)[],
+ *   key: string | null,
+ *   retryAt: number | null,
+ *   tries: number,
+ *   pending: number[],
+ *   reason: string | null,
+ * }} StackLineOutcome
  */
 
 /** The keep's key for a stack's change: its stack and the answer's revision, which names its
@@ -109,15 +136,22 @@ export const stackChangeKey = (number, revision) => `stack-change:${number}:${re
  */
 const stackKey = (source, number) => `${source ?? ""}#${number}`;
 
-/** What a stack's answer depends on that the list knows: its repository, its number, its
- * members, and each member's head, so a stack whose members change or any of whose members
- * moves is asked for again.
- * @param {string | null} source @param {StackMembers} stack
+/**
+ * Whether *stack*, as the list draws it now, is the stack *seen* was read for: the same
+ * members, and no member whose head both were known with has moved. A member the list holds
+ * no row of, as a filter or a window that does not hold it leaves it, is taken as unchanged,
+ * so switching filters reads nothing again (review B of #484, B3).
+ *
+ * @param {StackLineOutcome} seen @param {StackMembers} stack
  */
-export const stackLineIdentity = (source, stack) =>
-  `${stackKey(source, stack.number)}:${stack.pulls
-    .map((number, at) => `${number}@${stack.heads[at] ?? "-"}`)
-    .join(",")}`;
+export function sameStack(seen, stack) {
+  return (
+    seen.members === stack.pulls.join(",") &&
+    stack.heads.every(
+      (head, at) => head === null || seen.heads[at] == null || seen.heads[at] === head,
+    )
+  );
+}
 
 /** @param {unknown} value @returns {value is StackChange} */
 export function isStackChange(value) {
@@ -142,6 +176,8 @@ export function isStackChange(value) {
     count(body.additions) &&
     count(body.deletions) &&
     Array.isArray(body.pulls) &&
+    Array.isArray(body.pending) &&
+    body.pending.every((member) => Number.isInteger(member)) &&
     (body.state === "absent" || typeof body.revision === "string")
   );
 }
@@ -212,9 +248,12 @@ export function createStackLines(deps) {
   const keep = deps.keep ?? documentComparisons;
   const index = deps.index ?? documentStackLines;
   const budget = deps.budget ?? createWarmBudget(deps.now, STACK_LINES_PER_HOUR);
-  /** @typedef {{stack: string, identity: string, number: number}} StackRead */
+  /** @typedef {{key: string, stack: StackMembers}} StackRead */
   /** @type {StackRead[]} */
   let queue = [];
+  /** The stacks the list last drew, in its order, and its repository. */
+  /** @type {{stacks: StackMembers[], source: string | null}} */
+  let drawn = { stacks: [], source: null };
   /** @type {unknown} */
   let handle = null;
   /**
@@ -250,14 +289,19 @@ export function createStackLines(deps) {
     return isStackChange(held) ? held : undefined;
   }
 
-  /** Whether a stack is to be read: never read under this identity, a failed read's minute
-   * passed, or its line let go by the keep. An answer for its identity holds otherwise.
-   * @param {string} stack @param {string} identity
+  /**
+   * Whether a stack is to be read: never read as it is drawn now, a retry's time come, or its
+   * line let go by the keep. An answer that settled it holds otherwise. A head the list knows
+   * now and did not when it was read is kept with the outcome, so a later move is seen.
+   * @param {string} key @param {StackMembers} stack
    */
-  function due(stack, identity) {
-    const seen = index.get(stack);
-    if (seen === undefined || seen.identity !== identity) {
+  function due(key, stack) {
+    const seen = index.get(key);
+    if (seen === undefined || !sameStack(seen, stack)) {
       return true;
+    }
+    for (const [at, head] of stack.heads.entries()) {
+      seen.heads[at] ??= head;
     }
     if (seen.retryAt !== null) {
       return deps.now() >= seen.retryAt;
@@ -286,17 +330,50 @@ export function createStackLines(deps) {
     });
   }
 
+  /**
+   * A stack's outcome as read for *item*, its heads as the list knew them, and a head it does
+   * not know now as it was last known, so a filter that holds no row of a member forgets
+   * nothing of it.
+   * @param {StackRead} item
+   * @param {Pick<StackLineOutcome, "key" | "retryAt" | "tries" | "pending" | "reason">} outcome
+   */
+  function settle(item, outcome) {
+    const members = item.stack.pulls.join(",");
+    const prior = index.get(item.key);
+    const known = prior?.members === members ? prior.heads : [];
+    index.set(item.key, {
+      members,
+      heads: item.stack.heads.map((head, at) => head ?? known[at] ?? null),
+      ...outcome,
+    });
+  }
+
   /** A read that failed: asked again a minute on, the line it had kept meanwhile (A3).
    * @param {StackRead} item @param {StackLineOutcome | undefined} seen @param {string} outcome
    */
   function failed(item, seen, outcome) {
-    index.set(item.stack, {
-      identity: item.identity,
+    settle(item, {
       key: seen?.key ?? null,
       retryAt: deps.now() + STACK_LINE_RETRY_MS,
+      tries: 0,
+      pending: seen?.pending ?? [],
       reason: null,
     });
-    note(item.number, outcome);
+    note(item.stack.number, outcome);
+  }
+
+  /**
+   * When a stack whose answer named unsettled members is asked again: a minute on, doubling
+   * each time it is still unsettled as it is drawn, up to `STACK_LINE_PENDING_MAX_MS`.
+   * @param {StackRead} item @param {StackLineOutcome | undefined} seen @param {number} at
+   */
+  function pendingRetry(item, seen, at) {
+    const tries =
+      seen !== undefined && sameStack(seen, item.stack) && seen.pending.length > 0
+        ? seen.tries + 1
+        : 0;
+    const wait = Math.min(STACK_LINE_RETRY_MS * 2 ** tries, STACK_LINE_PENDING_MAX_MS);
+    return { tries, retryAt: at + wait };
   }
 
   /** @param {StackRead} item */
@@ -304,20 +381,24 @@ export function createStackLines(deps) {
     if (disposed || !deps.isVisible()) {
       return;
     }
-    if (!due(item.stack, item.identity) || !canRead()) {
+    if (!due(item.key, item.stack) || !canRead()) {
       next();
       return;
     }
     if (!budget.take()) {
-      note(item.number, "hourly cap");
+      note(item.stack.number, "hourly cap");
       queue = [];
       return;
     }
-    const seen = index.get(item.stack);
+    const seen = index.get(item.key);
     const controller = new AbortController();
-    // A heading waits for a stack's first read under its identity, and for a line the keep
-    // let go, never again for an answer with no line or a read that failed (A4).
-    const waits = seen?.identity !== item.identity || (seen.key !== null && seen.retryAt === null);
+    // A heading waits for its stack's first read as it is drawn, and for a line the keep let
+    // go, never again for an answer with no line, one still settling, or a read that failed
+    // (A4).
+    const waits =
+      seen === undefined ||
+      !sameStack(seen, item.stack) ||
+      (seen.key !== null && seen.retryAt === null);
     const read = { ...item, controller, sent: false, waits };
     running = read;
     try {
@@ -329,49 +410,67 @@ export function createStackLines(deps) {
       read.sent = true;
       if (waits && kept(seen) === undefined) {
         // Its heading waits for the read on its way now.
-        deps.changed(item.number);
+        deps.changed(item.stack.number);
       }
-      const answer = await deps.read(item.number, controller.signal);
+      const answer = await deps.read(item.stack.number, controller.signal);
       if (controller.signal.aborted) {
         return;
       }
       const at = deps.now();
       const body = answer.body;
       if (answer.status === 304 && seen !== undefined) {
-        // Unchanged: the stack's last answer holds for its identity now (A10).
-        index.set(item.stack, { ...seen, identity: item.identity, retryAt: null });
-        note(item.number, "unchanged");
-      } else if (answer.status !== 200 || !isStackChange(body) || body.number !== item.number) {
+        // Unchanged: the stack's last answer holds, as it is drawn now (A10).
+        settle(item, { ...seen, retryAt: null });
+        note(item.stack.number, "unchanged");
+      } else if (
+        answer.status !== 200 ||
+        !isStackChange(body) ||
+        body.number !== item.stack.number
+      ) {
         failed(item, seen, `failed ${answer.status}`);
-      } else if (body.state === "current" && body.revision !== null) {
-        const key = stackChangeKey(body.number, body.revision);
-        keep.put(key, body);
-        index.set(item.stack, { identity: item.identity, key, retryAt: null, reason: null });
-        note(item.number, keep.has(key) ? "shown" : "not kept");
       } else {
-        const server = body.reason !== null && SERVER_REFUSALS.has(body.reason);
-        index.set(item.stack, {
-          identity: item.identity,
-          key: null,
-          retryAt: server ? at + STACK_LINE_RETRY_MS : null,
-          reason: body.reason,
-        });
-        if (server) {
-          refusedAll = {
-            reason: /** @type {string} */ (body.reason),
-            until: at + STACK_LINE_RETRY_MS,
-          };
-          queue = [];
+        // Members not yet settled: asked again, silently, until none is (B1).
+        const unsettled = body.pending.length > 0 ? pendingRetry(item, seen, at) : null;
+        if (body.state === "current" && body.revision !== null) {
+          const key = stackChangeKey(body.number, body.revision);
+          keep.put(key, body);
+          settle(item, {
+            key,
+            retryAt: unsettled?.retryAt ?? null,
+            tries: unsettled?.tries ?? 0,
+            pending: body.pending,
+            reason: null,
+          });
+          note(
+            item.stack.number,
+            `${keep.has(key) ? "shown" : "not kept"}${unsettled ? ", pending" : ""}`,
+          );
+        } else {
+          const server = body.reason !== null && SERVER_REFUSALS.has(body.reason);
+          settle(item, {
+            key: null,
+            retryAt: server ? at + STACK_LINE_RETRY_MS : (unsettled?.retryAt ?? null),
+            tries: unsettled?.tries ?? 0,
+            pending: body.pending,
+            reason: body.reason,
+          });
+          if (server) {
+            refusedAll = {
+              reason: /** @type {string} */ (body.reason),
+              until: at + STACK_LINE_RETRY_MS,
+            };
+            queue = [];
+          }
+          note(item.stack.number, `${body.reason ?? "absent"}${unsettled ? ", pending" : ""}`);
         }
-        note(item.number, body.reason ?? "absent");
       }
-      deps.changed(item.number);
+      deps.changed(item.stack.number);
     } catch {
       if (controller.signal.aborted) {
-        note(item.number, "cancelled");
+        note(item.stack.number, "cancelled");
       } else {
         failed(item, seen, "failed");
-        deps.changed(item.number);
+        deps.changed(item.stack.number);
       }
     } finally {
       if (running === read) {
@@ -381,12 +480,40 @@ export function createStackLines(deps) {
     }
   }
 
+  /**
+   * The stacks the list draws, in its order, of which those due are queued.
+   * @param {StackMembers[]} stacks
+   * @param {string | null} source
+   */
+  function want(stacks, source) {
+    if (disposed) {
+      return;
+    }
+    drawn = { stacks, source };
+    const seen = new Set();
+    queue = [];
+    // A refusal of the whole server, or the hour's cap spent: nothing would be sent.
+    for (const stack of canRead() ? stacks : []) {
+      const key = stackKey(source, stack.number);
+      if (seen.has(key) || running?.key === key || !due(key, stack)) {
+        continue;
+      }
+      seen.add(key);
+      queue.push({ key, stack });
+    }
+    if (queue.length === 0 && handle !== null) {
+      deps.cancel(handle);
+      handle = null;
+    }
+    next();
+  }
+
   return Object.freeze({
     /**
-     * What *stack*'s heading shows now: its kept line, whatever identity it was read under,
-     * until a newer answer replaces it; the placeholder while its stack's read is on its way,
-     * unless its last outcome under this identity was an answer with no line or a failure;
-     * or nothing.
+     * What *stack*'s heading shows now: its kept line, whatever it was read as, until a newer
+     * answer replaces it; the placeholder while its stack's read is on its way, unless its
+     * last outcome as it is drawn was an answer with no line, one still settling, or a
+     * failure; or nothing.
      *
      * @param {StackMembers} stack
      * @param {string | null} source
@@ -398,7 +525,7 @@ export function createStackLines(deps) {
       if (change !== undefined) {
         return { phase: "shown", change };
       }
-      if (running !== null && running.stack === key && running.sent && running.waits) {
+      if (running !== null && running.key === key && running.sent && running.waits) {
         return { phase: "waiting" };
       }
       return { phase: "none" };
@@ -408,31 +535,42 @@ export function createStackLines(deps) {
      * the queue; the read on its way goes on, since the server sums what it was asked for
      * whether or not the asker stays. An empty ask, as a panel hidden or offline asks, empties
      * it.
-     *
-     * @param {StackMembers[]} stacks
-     * @param {string | null} source
      */
-    want(stacks, source) {
+    want,
+    /**
+     * Pull request *number*'s list of changed files changed, as the prefetch lane or a row's
+     * own read saw it: each drawn stack that holds it is due now, silently (B1).
+     *
+     * @param {number} number
+     */
+    listed(number) {
       if (disposed) {
         return;
       }
-      const seen = new Set();
-      queue = [];
-      // A refusal of the whole server, or the hour's cap spent: nothing would be sent.
-      for (const stack of canRead() ? stacks : []) {
-        const key = stackKey(source, stack.number);
-        const identity = stackLineIdentity(source, stack);
-        if (seen.has(key) || running?.identity === identity || !due(key, identity)) {
-          continue;
+      for (const stack of drawn.stacks) {
+        const seen = index.get(stackKey(drawn.source, stack.number));
+        if (seen !== undefined && stack.pulls.includes(number)) {
+          seen.retryAt = deps.now();
         }
-        seen.add(key);
-        queue.push({ stack: key, identity, number: stack.number });
       }
-      if (queue.length === 0 && handle !== null) {
-        deps.cancel(handle);
-        handle = null;
-      }
-      next();
+      want(drawn.stacks, drawn.source);
+    },
+    /**
+     * The members, in the drawn stacks' order, that the stacks' last answers named as not
+     * settled, for the prefetch to list (B2).
+     *
+     * @param {(number: number) => boolean} [first] The stacks to take first: those in view.
+     * @returns {number[]}
+     */
+    unsettled(first = () => false) {
+      const order = [...drawn.stacks].sort(
+        (left, right) => Number(first(right.number)) - Number(first(left.number)),
+      );
+      const members = order.flatMap((stack) => {
+        const seen = index.get(stackKey(drawn.source, stack.number));
+        return seen !== undefined && sameStack(seen, stack) ? seen.pending : [];
+      });
+      return [...new Set(members)];
     },
     dispose() {
       disposed = true;
@@ -445,8 +583,8 @@ export function createStackLines(deps) {
       running = null;
     },
     snapshot: () => ({
-      queue: queue.map((item) => item.number),
-      running: running?.number ?? null,
+      queue: queue.map((item) => item.stack.number),
+      running: running?.stack.number ?? null,
       sentThisHour: budget.count(),
       refusedAll: refusedAll?.reason ?? null,
       recent: [...recent],

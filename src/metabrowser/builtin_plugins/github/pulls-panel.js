@@ -71,6 +71,17 @@ export const PREFETCH_TOP_ROWS = 5;
 // The changed-files lists a prefetch names, the server's MAX_PREFETCH_NUMBERS: the rows the
 // pointer or focus last rested on, the open row, its neighbours, then the rows in view.
 export const PREFETCH_FILES = 16;
+// Of those, the places kept for the members whose lists the drawn stacks' change lines wait
+// for (stack-lines.js, `unsettled`), after the reader's own rows: a stack's line is its
+// members' lists accumulated, and a collapsed stack's members are no rows in view. Each is
+// listed once while its head stays put, from the local comparison with no GitHub call or
+// from GitHub at most 3 core points (pull_prefetch.py), under `FILES_PER_HOUR`, 100 an hour,
+// and the governor's floor; this repository's 19 stacks lacked 158 lists, at most 474 points
+// once. Four keeps twelve places for the reader's own rows, more than a pane's rows in view.
+export const PREFETCH_STACK_FILES = 4;
+// The lane's refreshed lists the panel remembers having passed on, oldest out first: four
+// times the outcomes its report holds (pull_prefetch.py, `MAX_RECENT`).
+const LISTED_SEEN = 64;
 // Rows the pointer or focus rested on that a prefetch names first, newest first: the row a
 // click is about to open, and the one the pointer left for it.
 export const PREFETCH_RESTED = 2;
@@ -602,6 +613,8 @@ function pinChanged(response) {
  *   filterChanged(state: string): void,
  *   recheckTail?(): void,
  *   warmComparisons?(numbers: number[]): void,
+ *   stackFiles?(): number[],
+ *   filesListed?(number: number): void,
  * }} PullsDependencies
  */
 
@@ -791,6 +804,8 @@ export function createPullsController(deps, options = {}) {
   let prefetchTimer = null;
   /** @type {number[]} */
   let prefetchRows = [];
+  /** The lane's refreshed lists already passed on to the stack lines, by number and time. */
+  const listedSeen = new Set();
   // Rows likely to be expanded next, whose changed files a prefetch names beside the open
   // row's and its neighbours': the rows the pointer or focus last rested on, newest first, and
   // the rows in view, in the list's order. A files ask sends them once the rows in view stay
@@ -2229,14 +2244,19 @@ export function createPullsController(deps, options = {}) {
     // The open row's record is the page's own refresh; its files are the tree under its row.
     const records = [...new Set([...near, ...top])].filter((number) => number !== current);
     const listed = (/** @type {number} */ number) => list.keys.has(number);
-    const files = [
+    const own = [
       ...new Set([
         ...restedRows.filter(listed),
         ...(current === null ? [] : [current]),
         ...near,
         ...viewRows.filter(listed),
       ]),
-    ].slice(0, PREFETCH_FILES);
+    ];
+    // After the reader's own rows, the members the drawn stacks' lines wait for, which keep
+    // a few places of their own (B2 of review B on #484).
+    const members = (deps.stackFiles?.() ?? []).filter((number) => !own.includes(number));
+    const reserved = Math.min(PREFETCH_STACK_FILES, members.length);
+    const files = [...own.slice(0, PREFETCH_FILES - reserved), ...members].slice(0, PREFETCH_FILES);
     const key = JSON.stringify([records, files, changed]);
     if (filesAsk && key === lastAsk) {
       return false;
@@ -2297,7 +2317,7 @@ export function createPullsController(deps, options = {}) {
       setPrefetchRows([]);
       return;
     }
-    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[], recent?: {kind?: string, number?: number, outcome?: string, at?: string}[], governor?: {admits?: unknown}, files?: {per_hour?: unknown, hour_used?: unknown}} | null} */
     let report = null;
     try {
       const response = await deps.request("GET", PREFETCH_ROUTE, {});
@@ -2310,6 +2330,23 @@ export function createPullsController(deps, options = {}) {
     }
     const running = report?.running ?? null;
     const files = report?.files;
+    // A list the lane refreshed reaches the stack headings that wait for it (B1 of review B
+    // on #484), as a running record's row breathes below.
+    for (const done of Array.isArray(report?.recent) ? report.recent : []) {
+      const seen = `${done?.number}@${done?.at}`;
+      if (
+        done?.kind === "files" &&
+        done.outcome === "refreshed" &&
+        typeof done.number === "number" &&
+        !listedSeen.has(seen)
+      ) {
+        listedSeen.add(seen);
+        if (listedSeen.size > LISTED_SEEN) {
+          listedSeen.delete(listedSeen.values().next().value);
+        }
+        deps.filesListed?.(done.number);
+      }
+    }
     if (
       report?.governor?.admits === false ||
       (typeof files?.hour_used === "number" &&
@@ -3409,6 +3446,10 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   /** @type {Map<number, PaintedStack>} */
   const paintedStacks = new Map();
+  /** The stacks whose rows were in view at the last measure, whose members a prefetch names
+   * first. */
+  /** @type {Set<number>} */
+  let stacksInView = new Set();
   /** A drawn row's treeitem by its key: a pull request's number, or a stack's row key. */
   const rowElement = (/** @type {number} */ key) =>
     key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
@@ -3489,6 +3530,35 @@ export function mountPullsPanel(container, ctx, mb) {
     },
     () => {},
   );
+  /** Each row's list of changed files as its tree last read it whole, by its generation. */
+  /** @type {Map<number, string>} */
+  const listsRead = new Map();
+  /**
+   * A row's tree read its list of changed files: a list newly whole reaches the stack
+   * headings that wait for it (B1 of review B on #484).
+   *
+   * @param {number} number
+   * @param {string} route
+   * @param {PullsResponse} answer
+   */
+  function noteFilesRead(number, route, answer) {
+    const body = /** @type {{complete?: unknown, generation?: unknown} | null} */ (answer.body);
+    if (
+      !route.startsWith("/api/plugin/github/pull-files?") ||
+      answer.status !== 200 ||
+      body?.complete !== true ||
+      typeof body.generation !== "string" ||
+      listsRead.get(number) === body.generation
+    ) {
+      return;
+    }
+    listsRead.delete(number);
+    listsRead.set(number, body.generation);
+    if (listsRead.size > LISTED_SEEN) {
+      listsRead.delete(/** @type {number} */ (listsRead.keys().next().value));
+    }
+    stackLines?.listed(number);
+  }
   /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
   const trees = new Map();
   /** The tree a file row with focus is in, whose keys the host's file keys are. */
@@ -3569,8 +3639,14 @@ export function mountPullsPanel(container, ctx, mb) {
         scrollRoot: tab.scrollRoot,
         chevron,
         href: (path) => tab.fileHref(number, path),
-        request: (method, route, options) =>
-          request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
+        request: async (method, route, options) => {
+          const answer = await request(mb.perf, method, route, {
+            ...options,
+            signal: options.signal ?? signal,
+          });
+          noteFilesRead(number, route, answer);
+          return answer;
+        },
         formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
         page: () =>
           /** @type {import("./pull-files-tree.js").FilePage | null} */ (tab.pageFor(number)),
@@ -3992,11 +4068,23 @@ export function mountPullsPanel(container, ctx, mb) {
         );
         // "Stack #286 · 10 A, 5 D, 4 M · +1,234 −567": the dot is a count summary's
         // separator, which the name, saying the line in words, needs no word for.
+        // Totals a member's list could not count, a binary file it listed, are not exact:
+        // the Diff summary's muted "(estimated)" follows them, and the name says so (B4 of
+        // review B on #484).
+        const estimated = line.change.exact === false;
         entry.change.replaceChildren(
           ...mb.countPartsNodes([{ separator: "·" }]),
           ...mb.changeLineNodes(said),
+          ...(estimated
+            ? [h("span", { class: "github-pulls-stack-change-note" }, ["(estimated)"])]
+            : []),
         );
-        name = stackGroupHint(group.stack, group.shown, group.elsewhere, said.label);
+        name = stackGroupHint(
+          group.stack,
+          group.shown,
+          group.elsewhere,
+          estimated ? `${said.label}, estimated` : said.label,
+        );
       } else if (line.phase === "waiting") {
         // The shell's pending placeholder (`.tally-pending`), after the quiet period
         // (`.mb-delayed-loading`), where the line will be. It is hidden from the
@@ -4138,6 +4226,13 @@ export function mountPullsPanel(container, ctx, mb) {
           const row = entry.row.getBoundingClientRect();
           if (row.bottom > row.top && row.bottom > view.top && row.top < view.bottom) {
             numbers.push(number);
+          }
+        }
+        stacksInView = new Set();
+        for (const entry of paintedStacks.values()) {
+          const row = entry.row.getBoundingClientRect();
+          if (row.bottom > row.top && row.bottom > view.top && row.top < view.bottom) {
+            stacksInView.add(entry.stack.number);
           }
         }
         controller.prepareVisible(numbers);
@@ -4671,6 +4766,10 @@ export function mountPullsPanel(container, ctx, mb) {
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
       warmComparisons: (numbers) => warmer?.want(numbers),
+      // The members whose lists the drawn stacks' lines wait for, those in view first, and
+      // each list the prefetch refreshed, for the stacks that hold it (stack-lines.js).
+      stackFiles: () => stackLines?.unsettled((number) => stacksInView.has(number)) ?? [],
+      filesListed: (number) => stackLines?.listed(number),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );

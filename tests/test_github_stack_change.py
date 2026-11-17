@@ -83,8 +83,10 @@ def _row(
     )
 
 
-def _listed(number: int, *rows: PullFileRow, truncated: bool = False) -> PullFileList:
-    """Pull request *number*'s list as its local comparison's refresh writes it."""
+def _listed(
+    number: int, *rows: PullFileRow, truncated: bool = False, head: str | None = None
+) -> PullFileList:
+    """Pull request *number*'s list as its local comparison's refresh writes it, for *head*."""
 
     return PullFileList(
         schema_version=PULL_FILES_SCHEMA,
@@ -94,7 +96,7 @@ def _listed(number: int, *rows: PullFileRow, truncated: bool = False) -> PullFil
         generation=f"{number:032x}",
         fetched_at=STAMP,
         reader=None,
-        head=f"{number:040x}",
+        head=head or f"{number:040x}",
         base="f" * 40,
         pages=0,
         last_page=None,
@@ -141,7 +143,16 @@ def stacked(pinned_pull: tuple[_Stand, TestClient]) -> Iterator[tuple[_Stand, Te
     and #400 of 7 and 12, whose list nothing has fetched."""
 
     stand, client = pinned_pull
-    _cache(stand, _listed(7, _row("docs/new.md", "added", 1), _row("src/app.txt", "modified", 1)))
+    # 7's list is of the head its record names, so it is settled.
+    _cache(
+        stand,
+        _listed(
+            7,
+            _row("docs/new.md", "added", 1),
+            _row("src/app.txt", "modified", 1),
+            head=stand.origin["fork_head"],
+        ),
+    )
     _cache(
         stand, _listed(11, _row("docs/new.md", "modified", 2), _row("src/app.txt", "modified", 1))
     )
@@ -181,6 +192,7 @@ def test_a_stacks_change_is_its_members_changes_accumulated(
         "reason": None,
         "number": 286,
         "pulls": [7, 11],
+        "pending": [],
         "files": 2,
         "additions": 5,
         "deletions": 0,
@@ -291,14 +303,20 @@ def test_a_stack_whose_change_cannot_be_had_says_why(
         body = client.get(ROUTE, params={"number": number}).json()
         assert body["state"] == "absent" and body["statuses"] == [] and body["files"] is None
         assert body["pulls"] == [] and body["revision"] is None
+        assert body["reason"] == "not_cached" or body["pending"] == []
         return body["reason"]
 
+    def lacking(number: int) -> Any:
+        return client.get(ROUTE, params={"number": number}).json()["pending"]
+
     assert reason(999) == "not_stacked"
-    # Pull request 12 has no list.
+    # Pull request 12 has no list, and the answer names it.
     assert reason(400) == "not_cached"
+    assert lacking(400) == [12]
     # Its list is filling: GitHub's next page is not read yet.
     _cache(stand, _from_github(12, _row("docs/more.md", "added", 1), complete=False))
     assert reason(400) == "not_cached"
+    assert lacking(400) == [12]
     # Whole, it is accumulated.
     _cache(stand, _from_github(12, _row("docs/more.md", "added", 1)))
     assert client.get(ROUTE, params={"number": 400}).json()["files"] == 3
@@ -310,6 +328,25 @@ def test_a_stack_whose_change_cannot_be_had_says_why(
     # And so are members' lists that together pass the bound, before any is read.
     monkeypatch.setattr(pull_stack_change, "MAX_STACK_LIST_BYTES", 100)
     assert reason(286) == "too_large"
+    assert stand.calls() == [], "a stack change asked GitHub"
+
+
+def test_a_member_whose_list_is_of_an_older_head_is_pending(
+    stacked: tuple[_Stand, TestClient],
+) -> None:
+    """A list read for another head than the record now names is not settled: the line is
+    answered, and the member is named, so the Pulls tab asks again once its refresh lands
+    (review B of #484, B1)."""
+
+    stand, client = stacked
+    older = stand.origin["fork_earlier"]
+    _cache(stand, _listed(7, _row("docs/new.md", "added", 1), head=older))
+    body = client.get(ROUTE, params={"number": 286}).json()
+    assert (body["state"], body["pending"]) == ("current", [7])
+    # The refresh lands, of the head the record names: settled.
+    _cache(stand, _listed(7, _row("docs/new.md", "added", 1), head=stand.origin["fork_head"]))
+    body = client.get(ROUTE, params={"number": 286}).json()
+    assert (body["state"], body["pending"]) == ("current", [])
     assert stand.calls() == [], "a stack change asked GitHub"
 
 
@@ -343,7 +380,9 @@ def test_recording_stack_change_answers_real_routes(
     The stacks are numbered as the recorded stack snapshot's shared answer numbers them
     (``github-stacks-responses.json``), #286 and #290, so the session's headings and its
     answers name the same stacks: #286's change is the two layers above, and #290 has a
-    member with no list. A server with no GitHub repository refuses every stack.
+    member with no list, until it arrives. #286 is also recorded with its bottom's list of
+    the head before (``moving``) and with a binary file its list could not count
+    (``inexact``). A server with no GitHub repository refuses every stack.
     """
 
     from metabrowser import server
@@ -359,6 +398,21 @@ def test_recording_stack_change_answers_real_routes(
     }
     assert recorded["current"]["body"]["state"] == "current"
     assert recorded["not_cached"]["body"]["reason"] == "not_cached"
+    # #290's missing list arrives: its line.
+    _cache(stand, _listed(12, _row("docs/more.md", "added", 1)))
+    recorded["arrived"] = _recorded(client.get(ROUTE, params={"number": 290}))
+    assert recorded["arrived"]["body"]["pending"] == []
+    # #286's bottom moved, and its list is still of the head before: answered, and pending.
+    fork_head = stand.origin["fork_head"]
+    settled = _listed(7, _row("docs/new.md", "added", 1), _row("src/app.txt", "modified", 1))
+    _cache(stand, settled.model_copy(update={"head": stand.origin["fork_earlier"]}))
+    recorded["moving"] = _recorded(client.get(ROUTE, params={"number": 286}))
+    assert recorded["moving"]["body"]["pending"] == [7]
+    # A list that could not count a binary file: totals that are not exact.
+    binary = _row("docs/logo.png", "added", None, None)
+    _cache(stand, settled.model_copy(update={"head": fork_head, "rows": (*settled.rows, binary)}))
+    recorded["inexact"] = _recorded(client.get(ROUTE, params={"number": 286}))
+    assert recorded["inexact"]["body"]["exact"] is False
     server._set_root_dir(stand.tmp_path / "plain")  # pyright: ignore[reportPrivateUsage]
     (stand.tmp_path / "plain").mkdir()
     serve_mirror(None)

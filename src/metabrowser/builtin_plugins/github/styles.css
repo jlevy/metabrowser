@@ -1432,6 +1432,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* "(estimated)" after totals that are not exact, muted as the Diff summary's is, a qualifier
+   of the totals. It gives way first, before the statuses, and never takes the totals' room:
+   its floor is nothing. */
+.github-pulls-stack-change-note {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  white-space: nowrap;
+}
 /* While the line is read, the heading holds the shell's pending placeholder where it will
    be: the navigation tally's gray block and slow pulse (`.tally-pending`), shown after the
    quiet period (`.mb-delayed-loading`). It gives way as a line does: as wide as a typical

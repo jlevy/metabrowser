@@ -53,7 +53,12 @@ function listOf(number) {
   };
 }
 
-function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {}) {
+function rig({
+  coldCores = false,
+  belowFloor = false,
+  holdPrefetch = false,
+  stackFiles = undefined,
+} = {}) {
   let now = 0;
   let serial = 0;
   /** @type {Map<number, {fn: () => void, at: number}>} */
@@ -72,7 +77,7 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
     jobs: new Map(),
     /** Every list GitHub was asked for: when, which, and for whom. */
     gh: [],
-    lane: { queue: [], running: null },
+    lane: { queue: [], running: null, recent: [] },
     coresCached: new Set(coldCores ? [] : rows.map((row) => row.number)),
     coreJobs: new Map(),
     /** Every request, with when it was made. */
@@ -110,6 +115,11 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
       lane.running = number;
       startList(number, "prefetch", () => {
         lane.running = null;
+        // The report's last outcomes, as pull_prefetch.py keeps them (`MAX_RECENT`).
+        lane.recent = [
+          ...lane.recent,
+          { kind: "files", number, outcome: "refreshed", at: `t${now}` },
+        ].slice(-16);
         runLane();
       });
     }
@@ -156,6 +166,7 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
         body: {
           running: lane.running === null ? null : { kind: "files", number: lane.running },
           queued: lane.queue.map((number) => ({ kind: "files", number })),
+          recent: lane.recent,
           governor: { admits: !server.belowFloor },
           files: { per_hour: 100, hour_used: 0 },
         },
@@ -229,6 +240,8 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
   }
 
   const opened = [];
+  /** The numbers whose refreshed lists the panel passed on to its stack lines. */
+  const listedForStacks = [];
   /** Each ask of the page's comparison warmer, the numbers it named. */
   const warmAsks = [];
   return {
@@ -255,7 +268,15 @@ function rig({ coldCores = false, belowFloor = false, holdPrefetch = false } = {
       warmComparisons(numbers) {
         warmAsks.push(numbers);
       },
+      ...(stackFiles === undefined
+        ? {}
+        : {
+            stackFiles: () => stackFiles,
+            filesListed: (number) => listedForStacks.push(number),
+          }),
     },
+    /** The lists the panel passed on to its stack lines as the lane refreshed them. */
+    listedForStacks,
     /** The reader's tree of *number*'s files, with when its rows were first drawn. */
     tree(module, number) {
       const tree = { drawnAt: null, model: null };
@@ -384,6 +405,45 @@ const stories = {
       "the rested row is read as soon as the list being read ends",
     );
     assert.equal(seen.server.lane.running, null, "the lane ends with the rows asked for");
+    controller.dispose();
+  },
+
+  // ── A drawn stack's members are listed too ───────────────────
+  // The stack headings' lines wait for members whose lists are not cached, which no row in
+  // view shows: a collapsed stack's. A files ask names them after the reader's own rows, in
+  // the places kept for them, and each list the lane refreshes is passed on, so the stacks
+  // that hold it are read again (B1 and B2 of review B on #484).
+  async stacks({ panel, inView }, facts) {
+    const members = [9001, 9002, 9003, 9004, 9005, 9006];
+    const seen = rig({ stackFiles: members });
+    const controller = panel.createPullsController(seen.deps, { filter: "open" });
+    await controller.start({ shown: true });
+    await seen.advance(0);
+    const mark = seen.mark();
+    controller.prepareVisible(inView);
+    await seen.advance(panel.FILES_DWELL_MS);
+    const ask = seen.asks(mark)[0];
+    assert(ask !== undefined, "the rows in view and the stacks' members are asked for");
+    facts.stackAsk = ask.files;
+    assert.equal(ask.files.length, panel.PREFETCH_FILES);
+    assert(
+      ask.files
+        .slice(0, panel.PREFETCH_FILES - panel.PREFETCH_STACK_FILES)
+        .every((number) => inView.includes(number)),
+      "the reader's own rows come first",
+    );
+    assert.deepEqual(
+      ask.files.slice(-panel.PREFETCH_STACK_FILES),
+      members.slice(0, panel.PREFETCH_STACK_FILES),
+      "then the members, in the places kept for them",
+    );
+    await seen.advance(20 * LIST_MS);
+    facts.listedForStacks = [...seen.listedForStacks];
+    assert.deepEqual(
+      [...seen.listedForStacks].sort((left, right) => left - right),
+      [...ask.files].sort((left, right) => left - right),
+      "every list the lane refreshed is passed on once",
+    );
     controller.dispose();
   },
 
