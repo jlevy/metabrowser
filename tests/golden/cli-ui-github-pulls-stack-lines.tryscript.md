@@ -661,16 +661,15 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                         "class": "change-line-statuses",
                         "children": [
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "1"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "A"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "1"
+                                ]
+                              },
+                              " A"
                             ]
                           },
                           {
@@ -681,16 +680,15 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                           },
                           " ",
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "1"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "M"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "1"
+                                ]
+                              },
+                              " M"
                             ]
                           }
                         ]
@@ -757,16 +755,15 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                         "class": "change-line-statuses",
                         "children": [
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "2"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "A"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "2"
+                                ]
+                              },
+                              " A"
                             ]
                           },
                           {
@@ -777,16 +774,15 @@ $ node tests/dom/github-pulls-stack-lines-session.js
                           },
                           " ",
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "1"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "M"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "1"
+                                ]
+                              },
+                              " M"
                             ]
                           }
                         ]
