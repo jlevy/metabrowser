@@ -23,7 +23,7 @@ longer set as a KPress document.
 The Document tab of a file the page shows draws the window the page already holds, with
 no second read; a window that is not the whole file is said in the notice, which points
 to the Source tab, and no Load more is offered beside it.
-The README panel, whose README is not the page’s file, asks for no table of contents,
+The README panel, whose README is not the page’s file, keeps its table of contents,
 reads the README’s own window from `/api/file`, and links to the file.
 A render that failed for another reason keeps the render-error box.
 
