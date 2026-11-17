@@ -2169,11 +2169,14 @@ Usernames use the same small metadata size and bold normal text ink; the reposit
 summary above the list is the [navigation metadata line](#navigation-metadata-line).
 A row names no branches: the pull request’s page names them, head → base, as
 [Merge Direction](#merge-direction) sets them, and the row’s room goes to its title.
-A row’s first line is the state icon, in the second of the tree’s two icon slots, the
-first being the chevron’s on the third line, then its number’s line: a stack member’s
-place in its stack, as [Stacks](#stacks) sets it, the number, and the author, “1/4 ·
-#113 · jlevy”, with the age at the row’s end.
-A row not in a stack starts at its number.
+A row’s first line is the state icon, in the tree’s icon slot on the list’s row inset,
+then its number’s line: a stack member’s place in its stack, as [Stacks](#stacks) sets
+it, the number, and the author, “1/4 · #113 · jlevy”, with the age at the row’s end.
+A row in no stack is flush on the list’s inset; only a stack’s members are indented,
+under their stack’s row, so the indent itself says which rows are a stack’s. A row not
+in a stack starts at its number.
+The third line’s chevron is in the same slot, under the state icon, so it leads the
+values it discloses with the row’s inset before it and one column gap after.
 The number’s line is one line, so the row’s link is always two, and its parts give way
 in order: the author’s name ends in an ellipsis, down to its avatar and a little of the
 name; past that the author, with its separator, leaves the line whole; and a place too
@@ -2346,14 +2349,14 @@ holds the one helper and the one rule in source.
 | --- | --- | --- |
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current, which its change line takes too | [One Row Contract](#one-chevron-one-row-contract) |
-| State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, the second of the row’s two, on the first line before the number’s line | [One Glyph Size](#one-glyph-size) |
-| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the first icon slot, then the [brief change line](#brief-change-line) from the text column to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; its own hover and focus ring | The row’s one child and the one target that toggles its changed files ([The Pulls Tab](#the-pulls-tab)) |
+| State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, on the first line before the number’s line | [One Glyph Size](#one-glyph-size) |
+| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the icon slot, under the state icon, then the [brief change line](#brief-change-line) from the text column to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; its own hover and focus ring | The row’s one child and the one target that toggles its changed files ([The Pulls Tab](#the-pulls-tab)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the second line, alone, from the text column under the age to the row’s end, cut there with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.formatAge`, at the first line’s end, on the number’s baseline; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
 | Username | `--nav-font-size`; `.actor-name`. The repository summary above the list is the [navigation metadata line](#navigation-metadata-line), at `--nav-font-size` too | Secondary metadata reads at the size of its line, the number’s ([Type Scale](#type-scale)); usernames remain bold in normal text ink, and on a short line a row’s username ellipsizes, then leaves the number’s line whole |
 | Stack place | `.github-pulls-place`, before the number on the number’s line and at its size, “1/6 · #455”, with what it shows set in [Stacks](#stacks); on a line too short for it, cut short with an ellipsis, the number whole | A passive part of the row’s link, from the shared optional snapshot; the stack’s row above it has the icon |
-| Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one `--tree-indent` in | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
+| Stack group | A row of the tree: the chevron, the Layers icon, “Stack #N” in the label register (`.group-heading.github-pull-stack-label`), with no count of its pull requests ([Heading Tallies](#heading-tallies)); its pull requests one icon slot and gap in, each state icon under the Layers icon and each title under the label | [Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab) |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, the tab’s toolbar in the navigation’s toolbar slot; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | The first line of the [navigation metadata line](#navigation-metadata-line): the numeric total bold ([Count Summaries Bold Their Numbers](#count-summaries-bold-their-numbers)), the words in the line’s regular weight, and the bold `.repository-name` in “N PRs on owner/repo,” or just the repository name while the count is unknown, cut short rather than wrapped | Counts describe the repository, set as the Files and Commits totals are. Nothing says how many rows are held: the list continues as the reader scrolls. |
 | Reload | Flush right beside Open, Closed, All, in the same toolbar row | The update age stays below the repository summary. |

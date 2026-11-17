@@ -411,8 +411,8 @@ function threeLines(r) {
       middle(r.icon) >= r.meta.top - TOLERANCE_PX && middle(r.icon) <= r.meta.bottom + TOLERANCE_PX,
     titleUnder:
       r.meta.bottom <= r.title.top + TOLERANCE_PX && r.age.bottom <= r.title.top + TOLERANCE_PX,
-    // The state icon is in the second icon slot; the link holds no chevron.
-    iconInSecond: near(r.icon.left, r.inset + r.slot + r.gap),
+    // The state icon is in the one icon slot, on the row's inset; the link holds no chevron.
+    iconOnInset: near(r.icon.left, r.inset),
     noLinkChevron: r.rowToggles === 0,
     // The change line is under the link, and the item is the two.
     changeUnder:

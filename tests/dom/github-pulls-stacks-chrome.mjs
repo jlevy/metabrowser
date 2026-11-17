@@ -171,10 +171,10 @@ const LIST = `(() => {
         // The number's line starts in the title's column; the age ends at the row's end.
         metaFromTitle: round(meta.left - title.left),
         ageToEnd: round(end - age.right),
-        // The title runs from the text column, after the two glyph slots, to the row's end.
+        // The title runs from the text column, after the state icon's slot, to the row's end.
         titleToEnd: round(end - title.right),
         titleFromInset: round(title.left - inset),
-        textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
+        textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
         // The state icon is on the number's line, inside its box, above the title; the link
         // holds no chevron.
         withNumber: icon.top >= meta.top - 0.5 && icon.bottom <= meta.bottom + 0.5 && icon.bottom <= title.top + 0.5,
@@ -206,7 +206,15 @@ const LIST = `(() => {
     memberToggle: left(member?.closest("li").querySelector(".github-pulls-change .github-pulls-toggle")),
     flatToggle: left(flat?.closest("li").querySelector(".github-pulls-change .github-pulls-toggle")),
     stackLabel: left(stackRow?.querySelector(".github-pull-stack-label")),
+    stackIcon: left(stackRow?.querySelector(".github-pull-stack-icon")),
     flatTitle: left(flat?.querySelector(".github-pulls-title")),
+    flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
+    memberTitle: left(member?.querySelector(".github-pulls-title")),
+    memberIcon: left(member?.querySelector(".github-pull-state-icon")),
+    // A member's indent: one icon slot and the rows' column gap (mb-3vil).
+    memberIndent:
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")) +
+      parseFloat(getComputedStyle(stackRow ?? document.body).columnGap),
     stackRowHeight: box(stackRow)?.height ?? null,
     rowHeightToken: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-row-height")),
     treeIndent: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
@@ -650,13 +658,15 @@ try {
     );
     check(
       "a member's title has a first-level row's room, less its one indent",
-      Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.treeIndent)) < 0.5 &&
-        Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.treeIndent)) < 0.5,
+      Math.abs(list.titleRoom.member - (list.titleRoom.flat - list.memberIndent)) < 0.5 &&
+        Math.abs(list.titleRoom.memberSingle - (list.titleRoom.flat - list.memberIndent)) < 0.5,
       JSON.stringify(list.titleRoom),
     );
     // The leading slots are the tree's one icon slot, 14 px, the Files tree's too: at 16 px
     // a title and a stack's label started 44 px from the row's content edge, and at 14,
-    // 40 (mb-hmv7).
+    // 40 (mb-hmv7). A pull request's row has one slot, the state icon's, on its inset, with
+    // its change line's chevron under it; a stack's row has two, the chevron's and the Layers
+    // icon's (mb-3vil): a pull request's title once started a second, empty slot in.
     const slots = list.slots;
     check(
       "a row's chevron and icon, and a stack row's, are each the tree's 14 px icon slot",
@@ -667,27 +677,29 @@ try {
             row.toggle === 14 &&
             row.toggleFromInset === 0 &&
             row.chevron === 12 &&
-            row.glyph === 14 &&
-            near(row.iconFromInset, 14 + row.gap) &&
-            near(row.text, 2 * 14 + 2 * row.gap),
+            row.glyph === 14,
         ) &&
+        near(slots.pull.iconFromInset, 0) &&
+        near(slots.pull.text, 14 + slots.pull.gap) &&
+        near(slots.stack.iconFromInset, 14 + slots.stack.gap) &&
+        near(slots.stack.text, 2 * 14 + 2 * slots.stack.gap) &&
         slots.pull.icon === 14,
       JSON.stringify(slots),
     );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
-      near(list.stackToggle, list.flatToggle),
-      `${list.stackToggle} ${list.flatToggle}`,
+      near(list.stackToggle, list.flatToggle) && near(list.stackToggle, list.flatIcon),
+      `${list.stackToggle} ${list.flatToggle} ${list.flatIcon}`,
     );
     check(
-      "its label starts where a pull request's title does",
-      near(list.stackLabel, list.flatTitle),
-      `${list.stackLabel} ${list.flatTitle}`,
+      "its label starts where its pull requests' titles do, and its Layers icon where their state icons do",
+      near(list.stackLabel, list.memberTitle) && near(list.stackIcon, list.memberIcon),
+      `${list.stackLabel} ${list.memberTitle} ${list.stackIcon} ${list.memberIcon}`,
     );
     check(
-      "its pull requests start one tree level in",
-      near(list.memberToggle - list.stackToggle, list.treeIndent),
-      `${list.memberToggle} ${list.stackToggle} ${list.treeIndent}`,
+      "its pull requests start one tree level in, one icon slot and gap",
+      near(list.memberToggle - list.stackToggle, list.memberIndent),
+      `${list.memberToggle} ${list.stackToggle} ${list.memberIndent}`,
     );
     check(
       "a stack's row is one row tall",

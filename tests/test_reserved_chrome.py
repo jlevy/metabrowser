@@ -418,9 +418,16 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     assert columns is not None
     # The number's line and the age share the first line, and the title runs under the age to
     # the row's end on the second (mb-lkkt).
-    # The chevron and the icon are each the tree's one icon slot (mb-hmv7).
+    # The state icon is the tree's one icon slot (mb-hmv7), on the row's inset, with no empty
+    # slot before it (mb-3vil); a stack's row has two, its chevron's and its Layers icon's.
+    assert " ".join(columns.group(1).split()) == "var(--tree-icon-slot) minmax(0, 1fr) 5ch"
+    stack_columns = re.search(
+        r"grid-template-columns:\s*([^;]*);",
+        _rule(css, ".github-pulls-row.github-pulls-stack-row"),
+    )
+    assert stack_columns is not None
     assert (
-        " ".join(columns.group(1).split())
+        " ".join(stack_columns.group(1).split())
         == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch"
     )
     assert "column-gap: 6px;" in _rule(css, ".github-pulls-row")
@@ -456,7 +463,7 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
         css, ".github-pulls-place > .github-pull-stack-position"
     )
     assert ".github-pulls-row > .github-pulls-stack" not in css
-    assert "grid-column: 4;" in _rule(css, ".github-pulls-row > .github-pulls-age")
+    assert "grid-column: 3;" in _rule(css, ".github-pulls-row > .github-pulls-age")
 
 
 def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() -> None:
@@ -476,21 +483,21 @@ def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() ->
     assert "[icon, title, updated, meta]," in panel, "the title leads the name"
     css = _github_css()
     meta = _rule(css, ".github-pulls-meta")
-    for declaration in ("grid-row: 1;", "grid-column: 3;", "height: 1lh;", "overflow: clip;"):
+    for declaration in ("grid-row: 1;", "grid-column: 2;", "height: 1lh;", "overflow: clip;"):
         assert declaration in meta, declaration
     age = _rule(css, ".github-pulls-row > .github-pulls-age")
-    assert "grid-row: 1;" in age and "grid-column: 4;" in age and "justify-self: end;" in age
+    assert "grid-row: 1;" in age and "grid-column: 3;" in age and "justify-self: end;" in age
     title = _rule(css, ".github-pulls-row > .github-pulls-title")
-    assert "grid-row: 2;" in title and "grid-column: 3 / -1;" in title
-    # The icon leads the first line in the second slot, and only the title is on the second.
-    # A stack's row keeps its chevron in the first slot of its one line.
-    for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 2)):
+    assert "grid-row: 2;" in title and "grid-column: 2 / -1;" in title
+    # The icon leads the first line in the one slot, on the row's inset (mb-3vil), and only the
+    # title is on the second. A stack's row keeps its chevron in the first slot of its one line.
+    for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 1)):
         rule = _rule(css, f".github-pulls-row > .{part}")
         assert "grid-row: 1;" in rule and f"grid-column: {column};" in rule, part
-    # A pull request's chevron is on its change line, in the first slot, and the line in the
-    # text column.
+    # A pull request's chevron is on its change line, in the slot under the state icon, and the
+    # line in the text column.
     assert "grid-column: 1;" in _rule(css, ".github-pulls-change > .github-pulls-toggle")
-    assert "grid-column: 3;" in _rule(css, ".github-pulls-change-line")
+    assert "grid-column: 2;" in _rule(css, ".github-pulls-change-line")
     second = re.findall(r"(?m)^(\.github-pulls-row[^{\n]*)\{[^}]*grid-row: 2;", css)
     assert [selector.strip() for selector in second] == [".github-pulls-row > .github-pulls-title"]
     # The number's line and the age share a baseline.
