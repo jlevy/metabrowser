@@ -624,20 +624,24 @@ The same rules in both scenarios, and one boundary the review sharpened.
 - **Pull-request text is inert under both profiles.** Unchanged from the Pulls tab plan:
   the server allowlist and the page’s inert rebuild, with no branch on the profile, and
   the hostile corpus run under both.
-- **A pull request’s code always uses an immutable revision and the untrusted profile.**
-  On a folder server, Changes renders the diff over the overlay.
-  Each changed file’s **View on branch** opens it at the pull request’s head in the main
-  UI: on a mirror at the served pin when that is the head, else after switching the pin
-  to the head under `refs/pull/<n>/head`, and beside a checkout in its working tree only
-  while its `HEAD` is the head ([View on branch](plan-2026-11-17-view-on-branch.md),
+- **On a mirror, a pull request’s code always uses an immutable revision and the
+  untrusted profile.** Each changed file’s **View on branch** opens it at the pull
+  request’s head in the main UI ([View on branch](plan-2026-11-17-view-on-branch.md),
   which deleted the inert revision page
   [#347](https://github.com/jlevy/metabrowser/pull/347) added).
-  A pinned page renders a Markdown file only within the render bound, since the pin runs
-  under the untrusted profile.
-  An overlay is a `RepositoryStoreTarget` like a full store, read under
+  On a mirror it opens the file at the served pin when that is the head, else after
+  switching the pin to the head under `refs/pull/<n>/head`. A pin runs under the
+  untrusted profile, so its page renders a Markdown file inert, with fenced code as
+  plain text, but nothing bounds how long that render takes until `mb-273l`. On a folder
+  server, Changes renders the diff over the overlay.
+  Beside a checkout whose `HEAD` is the head, View on branch opens the reader’s own
+  working tree under the folder’s profile, as Browse the checkout already did: neither
+  an immutable revision nor the untrusted profile, and the reader’s files, not the
+  store’s. An overlay is a `RepositoryStoreTarget` like a full store, read under
   `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this
-  restriction over every entry point to PR content on a trusted folder server, the trust
-  row of [Parity and Tests](#parity-and-tests).
+  restriction over every entry point to PR content that a trusted folder server reads
+  from a store or an overlay, the trust row of [Parity and Tests](#parity-and-tests); it
+  does not hold the working tree that View on branch opens beside a checkout.
   Today `tests/test_checkout_overlay.py` checks only that borrowing cannot change the
   untrusted profile.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file

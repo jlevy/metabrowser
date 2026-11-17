@@ -360,6 +360,10 @@ never offered there.
 Its Markdown renders with fenced code as plain text (`plain_code` in
 `git/content_routes.py`): the inert render drops the classes highlighting writes anyway,
 and a lexer can cost far more than its input’s size (`kpress_adapter._PLAIN_CODE`).
+Plain fences do not bound the render itself: it runs in a worker thread with no deadline
+or limit on concurrent renders, so whoever wrote a pinned Markdown file, such as a pull
+request’s author, decides how long the server spends rendering it, until the deadline in
+the projection worker that bead `mb-273l` adds.
 
 ### Borrowed Objects
 
