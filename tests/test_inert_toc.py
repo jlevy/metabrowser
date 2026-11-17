@@ -137,6 +137,9 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         "text": "Install",
     }
     assert transcript["scrolled"]["active"] == "#user-content-constructor"
+    # A heading with no layout box is stepped past, as KPress's toc.js does.
+    assert transcript["hiddenHeading"]["active"] == "#user-content-usage-1"
+    assert transcript["shownAgain"] == "#user-content-constructor"
     # The app's tooltip ignores everything inside a rendered document's host, so a data-tip-text
     # here would show nothing.
     assert transcript["toggleNamed"] == {
