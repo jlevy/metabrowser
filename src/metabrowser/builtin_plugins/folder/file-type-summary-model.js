@@ -313,6 +313,26 @@ function dualScore(files, bytes, totalFiles, totalBytes) {
   return [Math.max(fileShare, byteShare), byteShare, fileShare];
 }
 
+// The File Types table's row grammar (docs/design-system.md, "Aggregate Distributions"):
+// - Groups are non-subtotaling, in the registry's order, and an empty one is left out.
+// - A family parent is an aggregate identity, so it is text-only. Every nonempty family
+//   starts collapsed behind the shared trailing chevron, a singleton such as Rust too, and
+//   reveals its exact-extension rows, which keep their file icons and share the parent's
+//   `family:<id>` palette key, without changing denominators or colors.
+// - Unknown and deliberately ambiguous extensions stay raw rows rather than take a
+//   confident name. **No extension** (exact basenames) and **Other types** (raw logical
+//   extensions) are disclosable special parents under Other. The producer caps each of
+//   those lists (`ROLLUP_FILE_TYPE_FILENAME_LIMIT`, `ROLLUP_FILE_TYPE_REMAINING_LIMIT` in
+//   settings.py) and adds a neutral **Others** row that conserves what it omitted.
+// - Every direct child list then shows its first VISIBLE_ROWS_PER_SUBSECTION rows and one
+//   neutral **N more** row that reveals the rest in place, recursively, even one row past
+//   the bound. Expansion refetches nothing and survives live updates while its row exists.
+// - Rows sort by the active measure, descending, then the other measure, then the row's
+//   stable identity; group order stays the registry's.
+// - An exact extension row leads with the file-identity icon of a synthetic filename, and
+//   a basename row with its own; special parents, Others, families, Files, and Ignored
+//   are iconless. Exact values use `.count`/`.count-large` and `.size`/`.size-large`, so
+//   the stronger weight starts at the navigation panel's thresholds.
 const VISIBLE_ROWS_PER_SUBSECTION = 10;
 
 /**

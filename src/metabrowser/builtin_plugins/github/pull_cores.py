@@ -1,4 +1,18 @@
-"""Catalog-admitted core batches, backed by durable lightweight private entries."""
+"""Catalog-admitted core batches, backed by durable lightweight private entries.
+
+``POST pull-cores-prepare`` takes a window identity and a batch of at most
+``MAX_CATALOG_MEMBERS`` numbers, admitted against the exact catalog generation, and answers
+one of the ``Preparation`` outcomes. A ready answer lists ``ready_numbers`` and
+``skipped_numbers``, a partial one adds ``retry_numbers`` and ``retry_at``, and the lists
+account for every member requested. A source runs one core job at a time: a ``visible``
+batch preempts a ``background`` one that reads none of the members it still needs,
+revoking its window, cancelling its job, and waiting for it to unwind. A failed batch holds
+later ones with the same outcome until another attempt is eligible, and
+``cores.refresh.json`` keeps provider holds across restarts. A refresh asked to wait for a
+core (``"wait_core": true``) waits at most ``CORE_WAIT_TIMEOUT_S``, and ``GET pull`` asked
+to wait for that preview's completion (``wait_full_after``) at most ``FULL_WAIT_TIMEOUT_S``,
+both in :mod:`.served_pull`, holding no network slot and starting nothing.
+"""
 
 from __future__ import annotations
 

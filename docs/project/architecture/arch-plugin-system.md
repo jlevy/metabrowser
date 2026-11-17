@@ -1,0 +1,300 @@
+# Plugin System
+
+**Status:** Built: manifest discovery from three sources, declarative kind
+classification, the SDK version gate, Python data hooks, JSONL adapters, and two
+container kinds, directories and patch files.
+Planned: editing through plugins
+([trusted-local editing plan](../specs/active/plan-2026-07-16-trusted-local-file-editing.md)).
+Proposed, with no plan yet: archive containers and re-rooting the tree at a container.
+
+Metabrowser shows any file type through plugins.
+Every built-in view is a plugin in `src/metabrowser/builtin_plugins/`, loaded through
+the same manifest, browser SDK, and data-hook contract an installed plugin uses, so core
+holds no renderer for any format.
+[Plugin Authoring](../../plugins.md) is the author’s reference for that contract.
+This document is how the host implements it, and the path for adding a file type.
+
+## Modules
+
+| Module | Owns |
+| --- | --- |
+| `plugin_loader/manifest.py` | The manifest schema, its consistency checks, `PLUGIN_SDK_VERSION`, and the view merge |
+| `plugin_loader/discovery.py` | The three discovery sources and plugin-name collisions |
+| `plugin_loader/classify.py` | Compiling `[[kind]]` rules into one classifier, and the bounded content predicates |
+| `plugin_loader/static_assets.py` | The `/plugin-static/` and `/api/plugin/` routes and data-hook dispatch |
+| `file_kinds.py` | `FileContext`, the built-in view registry, and the fallback detector chain |
+| `file_extensions.py` | The syntax registry and the text, image, and live-tracked extension sets |
+| `plugin_api.py` | The Python sidekick API that `metabrowser` re-exports |
+| `cli/plugins.py` | `metab --plugins`, `--plugin`, and `--doctor` |
+| `static/plugin-sdk.js`, `static/plugin-sdk-views.js` | The `window.metabrowser` browser SDK |
+
+The browser half, including how the shell loads a plugin’s assets and mounts its views,
+is in [Browser Shell](arch-browser-shell.md).
+
+## Discovery
+
+The server discovers plugins once, when `server.py` is imported, so a changed manifest
+needs a restart. Every CLI mode resolves operator directories through
+`cli/plugin_paths.py`: the diagnostic modes pass them to `discover_plugins`, and a mode
+that imports the server publishes them in `METABROWSER_PLUGINS_DIRS` first, so every
+mode sees one plugin set.
+[Plugin Authoring](../../plugins.md#trust-model-and-discovery) owns the source order and
+the trust boundary it enforces.
+
+- **Collisions:** plugins are kept by name, and a later source replaces an earlier one,
+  with a log line, in the earlier one’s place.
+  That order is the discovery index that breaks kind priority ties.
+- **Failures:** a directory with `manifest.toml` but no `index.js`, or a manifest that
+  fails validation, becomes an error string, and that plugin is skipped.
+  The server still starts; the CLI modes print the errors and exit nonzero.
+- **Operator directories are JavaScript-only:** `build_plugin_routes` mounts no data
+  hook for a plugin discovered from `--plugins-dir`, and logs that it ignored them.
+  Python runs only from a built-in or an installed distribution, which already belongs
+  to the environment.
+
+## Manifests
+
+`load_manifest` parses `manifest.toml` with `tomllib` into Pydantic models that forbid
+unknown keys, then `PluginManifest.validate_consistency` collects every problem at once:
+the SDK gate below, an empty or contradictory match predicate, a duplicate view id or
+second default view in a kind, a data-hook route that repeats or contains `/`, a
+malformed `module:callable`, a container naming a route the plugin does not declare, and
+an extra asset that is not a plain filename.
+`keymap.view_key_error` refuses a view key that is not one letter, or that the shell
+reserves in every kind.
+
+A kind’s tabs are `merge_views` of the built-in `VIEW_REGISTRY` in `file_kinds.py` and
+every plugin’s `[[view]]` entries in discovery order.
+A view whose id matches an earlier one replaces it in place.
+`keymap.check_view_keys` then drops a contested or reserved key from the later view, and
+`metab --doctor` reports the plugins on both sides, since it merges through the same
+function the server serves.
+
+## The SDK Version Gate
+
+`PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the browser contract this host
+provides. A manifest’s `sdk_version` must equal it; an omitted value resolves to
+`_IMPLICIT_PLUGIN_SDK_VERSION`, the original SDK, never to the host’s current one.
+A mismatch is a validation problem, so the plugin is refused at load with a message
+naming the required version, and `metab --doctor` reports it first.
+There is no negotiation and no shim.
+An additive SDK method does not change the version; a break bumps it and every built-in
+manifest in one commit.
+[Compatibility and Legacy Code](../../development.md#compatibility-and-legacy-code)
+gives the reasons.
+
+## Classification
+
+`api_file` in `server.py` decides a file’s kind in this order:
+
+1. A directory is `folder`.
+2. A path that does not exist is offered to the containers below.
+3. A `.jsonl` file is parsed, and its sniffed adapter joins the classifier’s input.
+4. An extension in `BROWSER_IMAGE_EXTS` is `image`.
+5. A file read as text, because its extension is in `BROWSER_TEXT_EXTS` or because
+   `content_sniff` finds text, runs the plugin classifier, then the fallback chain
+   `FILE_KIND_DETECTORS` in `file_kinds.py`, then defaults to `text`.
+6. Anything else is `binary`.
+
+`[[kind]]` rules therefore see text and JSONL files only.
+A plugin cannot claim a binary format by kind; it can add a view to the `binary` kind.
+
+`build_classifier` sorts every loaded rule by descending `priority`, then discovery
+index, and returns the first match.
+Fields within one rule combine with AND, and rules sharing an id are alternatives.
+The content predicates read lazily through `FileContext` and are bounded:
+`_JSON_CLASSIFICATION_MAX_BYTES` admits only a complete JSON document,
+`_YAML_PREFIX_BYTES` parses a prefix, and `_FRONTMATTER_MAX_BYTES` in `file_kinds.py`
+bounds a compressed Markdown file’s frontmatter read.
+Compressed files classify by their logical name, so `notes.md.gz` is Markdown.
+
+A Git blob has no filesystem path, so `classify_identity` applies the same rules without
+`path_glob`, and content predicates match only when the caller parsed the blob’s bytes
+(`git/content_routes.py`). A `folder_marker` rule also hands its basename to
+`tree.set_folder_markers`, which badges the parent directory’s row.
+
+A route-backed kind has no `[[kind]]` rule.
+The GitHub plugin declares views for `pull-request` and `pull-request-list`, and the
+shell selects those kinds for `/pull/<n>` and `/pulls`. The built-in kinds and their
+views are mapped in
+[Views, Models, and Routes](arch-views-models-routes.md#kinds-and-their-views), which
+`tests/test_views_models_routes.py` checks against the manifests.
+
+## Data Hooks and Plugin Files
+
+`build_plugin_routes` mounts one route per `[[data_hook]]` at
+`/api/plugin/<plugin>/<route>`, with the methods the manifest lists.
+The sidekick callable is imported once at startup; a hook whose import fails is skipped
+with a warning, and the rest of the plugin still loads.
+The dispatcher awaits an `async def` handler and runs a synchronous one in Starlette’s
+threadpool. An exception, or a response of status 500 or above, is logged and answered
+with a `plugin_error` JSON body instead of a server error, so one broken hook degrades
+its own view and nothing else.
+
+`/plugin-static/<plugin>/<file>` serves the plugin’s directory through a traversal
+guard. The shell addresses those files under a stamp of the whole directory, which
+`asset_stamps.py` defines, so a browser keeps them until the directory changes.
+
+## Navigation Containers
+
+### Item-Like and Folder-Like
+
+Every entry in the navigation tree plays one or both of two roles:
+
+- **Item-like:** selecting it opens a document with view tabs.
+  A file is item-like, and so is one file’s change inside a patch.
+- **Folder-like:** it expands in place to child entries, and selecting the entry itself
+  opens an overview of the whole.
+  A directory is folder-like, and so is a patch file.
+
+The roles are capabilities, not types.
+A patch file is both: a real file with bytes and views, and a set of file changes worth
+navigating one at a time.
+Nothing in the tree contract asks whether an entry is a directory, only whether it
+expands and what selecting it opens.
+
+Directories are the precedent.
+Clicking a folder row opens its Overview, the triangle discloses children, keyboard
+expansion and lazy child loading work, and selection follows focus.
+A container keeps every one of those behaviors, so a design question about containers is
+usually answered by what a directory already does.
+
+### Containers
+
+| Container | Children | Selecting the container | Selecting a child | Status |
+| --- | --- | --- | --- | --- |
+| Directory | Files and folders | Folder Overview | The file’s views | Built |
+| Patch or diff file | One entry per changed path | The whole change set | That path’s diff | Built |
+| Commit, `/commit/<rev>` | The commit’s changed files | The commit’s diff | That file’s diff | The child route parses; the panel restores the commit, not the file |
+| Archive, such as `.zip` | The archive’s members | A listing or summary | The member’s own views | Proposed; no plan yet |
+
+The GitHub plugin’s Pulls list and pull-request pages are plugin views over its own
+routes, not containers under this contract.
+
+### The Mechanism
+
+A kind declares the folder-like role in its manifest, as the built-in `diff` plugin
+does:
+
+```toml
+[[kind]]
+id = "diff"
+match = { exts = [".patch", ".diff"] }
+container = { children = "children" }
+```
+
+`container.children` names one of the plugin’s own data-hook routes.
+For `?path=<container file>` it returns `{children: [{name, path, badge?, muted?}]}`,
+where each `path` is the virtual child path.
+Three behaviors follow, and no other machinery:
+
+- **The tree** gives such a file a chevron and an empty child group, fetches the
+  children on first expansion, and renders them as ordinary item-like rows.
+  The server injects `METABROWSER_CONTAINER_EXTS` from kinds matched by `ext` or `exts`;
+  a kind matched by content still resolves as a container but shows no chevron.
+  The ARIA synchronizer and the arrow-key handlers ask whether a row owns a child group,
+  never whether it is a folder.
+- **The server** resolves `<container file>/<inner>` in `_resolve_container_child` by
+  walking the path’s ancestors through the safe-path gate.
+  The nearest existing file whose kind is a container claims everything beneath it, up
+  to `MAX_CONTAINER_INNER_DEPTH` in `source.py`; a directory ancestor means the leaf is
+  missing, so ordinary 404s are unchanged.
+  On a Git revision pin there is no ancestor walk: the contiguous `g1-` segments are the
+  container’s `GitPath`, and the rest is the inner path.
+- **The views** of that kind receive an envelope carrying `container` and
+  `container_inner`. The diff plugin’s document hook answers a virtual path with the
+  change set narrowed to that file, so the renderer knows nothing about containment.
+  A sidekick resolves the same address with `resolve_content_container`.
+
+The children hook groups by path: a patch spells a type change as a delete and an add at
+one path, and two rows with one virtual path would open the same thing.
+
+### What Stays Uniform
+
+- **Addresses:** a child extends its container’s address.
+  `/view/changes.patch` is the overview and `/view/changes.patch/src/app.py` is one
+  file’s diff, the same shape as `/commit/<rev>/src/app.py`; see
+  [Browser URL Grammar](arch-views-models-routes.md#browser-url-grammar).
+- **Tree mechanics:** roving focus, `aria-expanded`, lazy pagination, filtering, and
+  selection-follows-focus apply to every container.
+  Filters filter inner entries like any rows.
+- **Expansion state** lives in the DOM, as a folder’s does: a full repaint renders
+  containers collapsed, with one bounded refetch on re-expansion, while a filter change
+  leaves expanded children in place.
+- **Overviews are views,** so they follow the renderer rules: disposal, lazy mounting,
+  and measured size bounds.
+- **Live updates follow the source:** a directory’s children track the filesystem, and
+  an immutable comparison never repaints under the reader.
+
+Re-rooting the tree at a container, the same move as serving a subdirectory, is
+proposed: any folder-like entry is a possible root.
+
+### Registration Surfaces Not Built
+
+No plugin can register a router, an address space, a URL reducer, a provider adapter, a
+route-backed resource kind, or a navigation panel.
+The
+[thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md#retired-from-earlier-plans)
+set those SDKs aside for v0.12 in favor of the existing reducer hook and plugin routes.
+The Commits and Pulls tabs register through `window.MetabrowserShell`, an internal seam
+for core modules that is not part of the SDK.
+
+## Adding a File Type
+
+The steps below take a format from unknown to fully supported.
+Each is optional except the kind and one view.
+
+1. **Claim the kind.** Add a `[[kind]]` rule to a plugin manifest.
+   An extension or basename is cheapest; a content predicate is for a format that shares
+   an extension, at a priority above the built-in rule it narrows.
+   The format must reach step 5 of [Classification](#classification), so a binary format
+   needs a view on `binary` instead.
+   Check the result with `metab . --plugins-dir <dir> --show <file>`, which prints the
+   kind and its views.
+2. **Draw it.** Add a `[[view]]` and its `mb.registerView` call.
+   The renderer owns its container, returns a disposer, and loads anything large on
+   demand, as [Plugin Authoring](../../plugins.md#registration-and-lifecycle) requires.
+   A kind with two or more views gives each a key.
+3. **Serve structured data,** when the browser should not parse the bytes itself.
+   An installed plugin adds a `[[data_hook]]` whose sidekick reads through the content
+   reader (`resolve_content`, `read_content_window`), which answers on a folder and on a
+   Git pin alike and bounds every read.
+4. **Parse a JSONL stream,** when the format is one.
+   `register_log_adapter` adds a detector and parser for the JSONL view, and a rule with
+   `match = { ext = ".jsonl", adapter = "<name>" }` claims those files, as the
+   `agent-log` built-in does for its three adapters.
+5. **Make it a container,** when its parts are worth navigating, with
+   `container = { children = "<route>" }`.
+6. **Give it a type family,** so the Files filter, Overview’s type breakdown, the
+   Treemap, and file colors and icons group it.
+   The File Rollup Format’s definitions live in
+   `src/metabrowser/data/file-rollup-format/recommended-file-types.toml`: a family with
+   its group and `hue`, and a rollup kind listing its extensions, filenames, and
+   shebangs. A rollup kind is not a plugin kind.
+   Increment `registry_revision`, regenerate the checked copies with
+   `devtools/file_type_contract.py --write`, and run that script without a mode;
+   `devtools/check_file_type_colors.py` checks the hue.
+   The [format](file-rollup-format/file-rollup-format.md) defines the rules and when a
+   change needs more than a revision.
+7. **Route its source text.** `file_extensions.py` decides how source text opens.
+   An extension with a grammar in the vendored Highlight.js registry joins
+   `SYNTAX_LANGUAGE_BY_EXTENSION` (or `SYNTAX_LANGUAGE_BY_BASENAME` for a name such as
+   `Makefile`), which also makes it text at any size; a grammar the vendored build lacks
+   is vendored first, as `highlight-toml.min.js` is.
+   Text with no grammar joins `BROWSER_TEXT_EXTS`, and an image format the browser draws
+   joins `BROWSER_IMAGE_EXTS`. `settings.py` sends the registry to the browser, so every
+   Source view routes alike.
+   `tests/test_file_extensions.py` and `test_plugin_sdk_syntax_token_contracts` check
+   the registry against routing and the vendored grammars.
+8. **Prove it.** A built-in kind adds a `--show` case to the CLI golden and its
+   functional rows, as
+   [CLI and Functional UI Parity](../../../AGENTS.md#cli-and-functional-ui-parity)
+   requires; `tests/test_plugin_e2e_render.py` fails when a manifest view has no
+   `registerView`.
+
+A format whose reader needs a native library belongs in an installed plugin, so its
+dependency never becomes Metabrowser’s.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

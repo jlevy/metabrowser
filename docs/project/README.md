@@ -1,177 +1,244 @@
 # Project Design and Plans
 
-Project documents separate durable system design from implementation planning.
-Architecture documents describe component boundaries and decisions that should remain
-useful after implementation.
-Active feature plans define scoped work, rollout, testing, and acceptance criteria.
+This folder holds Metabrowser’s architecture documents and its project records: plans,
+research, reviews, and QA runs.
+Architecture documents describe the system as built, with each one’s status line saying
+what is built and what is planned.
+Plans scope work: they live in `specs/active/` while they owe work and move to
+`specs/done/` when it is delivered, with any follow-ups tracked as beads.
+Research, reviews, and QA runs are dated records of evidence; they keep their history.
+The [roadmap](../../TODO.md) is the short status index across all plans.
 
 ## Architecture
 
-Start with [Views, models, and routes](architecture/arch-views-models-routes.md): it
-maps what the browser shows, what it shows it from, and how each thing is addressed, and
-links to the document that covers each in depth.
+Start with [the architecture overview](../architecture.md): the product’s aims, the
+layers with their module paths, and a reading order.
+It links each document below and the contributor standards in `docs/`.
 
-- [Views, models, and routes](architecture/arch-views-models-routes.md) — the map
-- [Nav containers: item-like and folder-like roles](architecture/arch-nav-containers.md)
-- [State and delivery](architecture/arch-state-and-delivery.md) — what the inventory
-  holds, how derived state is invalidated, and what the browser does with it
-- [Inventory provider contract](architecture/arch-inventory-provider.md) — the sealed
-  query, lifecycle, consistency, and measurement boundary for inventory engines
-- [Python inventory cost](architecture/arch-python-inventory-cost.md) — what the
-  reference engine’s walk spends per entry, and what is still on that path
-- [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
-  Git and provider boundaries, and the rule for adding a comparison source
-- [Repository sources and provider mirrors](architecture/arch-repository-sources-and-provider-mirrors.md)
-  — session subjects, worktree-free Git object stores, provider mirrors, and their
-  concurrency and lifetime boundaries
-- [External resources, artifact contracts, and views](architecture/arch-external-resources-and-views.md)
-  — retired design: the entity/artifact/resource vocabulary, trusted
-  contract/profile/kind registries, transparent formats, and mapping workflow for
-  external APIs
-- [Hosted review model and provider boundary](architecture/arch-hosted-review-model.md)
-  — retired design: provider-neutral change requests, GitHub adapter, plugin views,
-  activity projection, and cache lifetimes
-- [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
-- [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
-- [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
-- [Editor plugin editing contract](architecture/arch-editor-plugin-editing-contract.md)
-- [VS Code extension host](architecture/arch-vscode-extension-host.md)
+- [CLI](architecture/arch-cli.md): modes, the serve lifecycle, in-process `--api`
+  dispatch, remote tunnels, and process exit
+- [Server and content](architecture/arch-server-and-content.md): request flow, safe
+  paths, validators, and the content-trust model
+- [Views, models, and routes](architecture/arch-views-models-routes.md): kinds, views,
+  formats, and the route index
+- [Parity registry](architecture/arch-parity-registry.md): the route and functional
+  tables that `devtools/check_parity.py` reads
+- [Inventory provider contract](architecture/arch-inventory-provider.md): the
+  engine-independent queries, lifecycle, file cap, and change feeds
+- [Python inventory engine](architecture/arch-inventory-engine-python.md): the walker,
+  its concurrency, the watcher backend, and unit costs
+- [Live delivery](architecture/arch-live-delivery.md): from the provider’s change feed
+  to the browser’s stores, with events, recovery, and invariants
+- [Git](architecture/arch-git.md): the process boundary, history sessions, graph
+  checkpoints, and commit detail
+- [Source sessions and pins](architecture/arch-source-sessions-and-pins.md): subjects,
+  capabilities, path projection, and the pin guard
+- [Diff pipeline](architecture/arch-diff-pipeline.md): comparison sources, hydration,
+  caches, and Markdown projection
+- [Repository cache](architecture/arch-repository-cache.md): layout, identity, record
+  contracts, locks, and the sweep
+- [Mirror acquisition and refresh](architecture/arch-mirror-acquisition-and-refresh.md):
+  transports, credentials, the lending checkout, and refresh cadence
+- [GitHub pull requests](architecture/arch-github-pull-requests.md): records, the
+  catalog, files, checks, stacks, and routes
+- [Plugin system](architecture/arch-plugin-system.md): manifests, discovery,
+  classification, the SDK gate, containers, and how to add a file type
+- [Browser shell](architecture/arch-browser-shell.md): shell modules, stores, lifecycle,
+  and asset loading tiers
+- [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
+  restore, and WebKit differences
 
-## Release Acceptance
+### Formats
 
-- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md) — how
-  0.12.0 was qualified and published; its deferred checks are open beads under `mb-425f`
+- [File Diff Format v1](architecture/file-diff-format/file-diff-format.md): the JSON
+  change-set document, its schema, and its apply oracle
+- [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md):
+  file-type classification and directory totals by type, with the
+  [recommended type definitions](architecture/file-rollup-format/recommended-file-types.toml);
+  [File Rollup Format in this repository](architecture/file-rollup-format/README.md)
+  says how to change the definitions and export a packet
 
-## Active Feature Plans
+## Active Plans
 
-- [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md)
-  — the owner’s requests of 2026-11-15, from Files Group by, a Diff summary, Pulls stack
+- [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
+  a draft for one modeled object per file, folder, commit, and pull request, drawn in
+  several view shapes; its key decisions are open
+- [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
+  one owner per fact, task guides, architecture documents for every layer, a baseline
+  scale benchmark, and checks that keep the set linked
+- [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md):
+  the owner’s requests of 2026-11-15, from Files Group by, a Diff summary, Pulls stack
   groups, and the conversation timeline to the pull request header, the keys, tooltips,
-  titles, label colors, and a design-system consistency pass, as one native stack of
-  pull requests tracked under epic `mb-eevh`
-- [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md) — folder identity
-  and window titles, the icon and release pipeline adapted from a sister app, warm
-  folder switching, host mode and the agent front door, and the app-managed runtime,
-  tracked under epic `mb-1apq`
-- [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md)
-  — retained surfaces, fixed boxes at first paint, prediction behind admission control,
-  and a shorter landing chain, each a measured performance-loop round, tracked under
-  epic `mb-mpo0`
-- [GitHub Pulls tab for mirrors and local checkouts](specs/active/plan-2026-10-01-github-pulls-tab.md)
-  — implemented catalog, list, changed-file navigation, and numbered PR pages for
-  managed repositories and existing checkouts; the revision sections describe the
-  resumable catalog and optional native-stack enrichment
-- [Pull-request review from a mirror or an existing checkout](specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
-  — implemented object borrowing, bounded explicit repair, and folder-server
-  comparisons; conversion and broader deepening remain separate work
-- [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
-- [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
-- [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)
-- [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
-- [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
-- [General diff rendering](specs/active/plan-2026-08-17-general-diff-rendering.md)
-- [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
-- [Flat-tree delivery cost](specs/active/plan-2026-09-15-flat-tree-delivery-cost.md)
-- [Hosted review model and GitHub provider](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
-- [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
-- [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
-- [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
-- [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
-- [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
-- [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md)
-
-## Research
-
-Research records are evidence and design input, not contracts.
-A record stays in this list while it still informs open work.
-Once its questions are answered and its measurements are superseded, it moves to
-[`research/archive/`](research/archive/) and is listed under Archived Research below.
-
-- [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
-- [Browser contributor toolchain and distribution](research/research-2026-07-18-browser-contributor-toolchain.md)
-- [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
-- [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md)
-- [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
-- [fdu and Metabrowser inventory-engine alignment](research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
-- [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
-- [File patch formats](research/research-2026-08-19-file-patch-formats.md)
-- [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
-- [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)
-- [Native macOS app: shells, uv runtimes, and CLI layering](research/research-2026-11-08-macos-app-packaging.md)
-- [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md)
-- [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md)
-- [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md)
-
-### Archived Research
-
-- [Historical diff view spike results](research/archive/research-2026-07-18-diff-view-spike-results.md)
-  — July 2026 prototype timings, kept for provenance; the production renderer and its
-  performance gates carry the current numbers
-
-## Reviews
-
-- [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md) —
-  every bead closed, updated, or held in the audit after 0.12.0, with its evidence
-- [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md)
-  — the intended changes to what v0.11.0 already did, for sign-off: each with its
-  changelog entry, its pull request, and how it was checked against the v0.11.0 wheel;
-  and the unintended differences the landing gate found
-- [Per-layer review ledger for the v0.12 stack](reviews/review-2026-10-01-v012-stack-review-ledger.md)
-  — what review each pull request of the stack had, its findings and their disposition,
-  CI on each head, and the limits of that evidence
-- [Test-suite baseline for the v0.12 test review](reviews/review-2026-10-01-test-suite-baseline.md)
-  — the size and CI run time of the suite at `main`, at the v0.12 stack before the
-  review, and after its first three pull requests, with the command behind each figure
-- [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
-  — reviews the architecture and plans against the stated priority order, and finds the
-  gates that order does not yet show
-- [Independent design review of the status, cache, and provider plans](reviews/review-2026-08-27-independent-design-review.md)
-  — second opinion on the same material, correcting the delivery-order review’s R1
-  severity and its framing of web-URL reduction
-- [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md)
-  — design review that separates generic Git caching from GitHub integration and defines
-  the strict provider-model and snapshot boundaries
-- [Load-time performance and the distance still to cover](reviews/review-2026-08-22-load-time-performance.md)
-  — review of the six-round load-time work, its eight findings and their fixes, plus
-  principles and candidate hypotheses for the rounds after it
-
-## QA Runs
-
-- [v0.12 alpha acceptance on the integrated stack](qa/qa-2026-09-24-v012-alpha-acceptance.md)
-  — installed-wheel run of the manual matrix and the round-2 features, with build
-  identity, per-row results, and the beads filed for its findings
+  titles, label colors, and a design-system consistency pass, as one stack of pull
+  requests
+- [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
+  the icon and release pipeline, warm folder switching, host mode and the agent front
+  door, and the app-managed runtime
+- [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
+  Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
+  the checks of a downloaded copy, with the owner-only steps
+- [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md):
+  retained surfaces, fixed boxes at first paint, and prediction behind admission
+  control, each a measured performance-loop round
+- [Pull-request review from a mirror or an existing checkout](specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md):
+  object borrowing and explicit repair are shipped; store conversions and deepening
+  remain
+- [Paying down the flat-tree delivery cost](specs/active/plan-2026-09-15-flat-tree-delivery-cost.md):
+  per-page catalog hashing is shipped; larger batches and attached-walk costs remain
+- [Functional UI and CLI parity](specs/active/plan-2026-09-10-functional-ui-cli-parity.md):
+  the parity boundary and checked registry are shipped; migrating the existing UI
+  remains
+- [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md):
+  a draft for describing what each internal `/api` route answers, checked against its
+  responses
+- [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md):
+  a draft for read-only status groups and working-tree comparisons
+- [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md):
+  the Python reference provider is shipped; the fdu provider is planned
+- [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md):
+  the semantic contract, test oracles, and adoption gates that every inventory engine
+  meets
+- [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md):
+  a draft for rendering `mermaid` fences as diagrams
+- [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md):
+  on-demand assets and progressive inventory are shipped; broader load-time goals remain
+- [General diff rendering](specs/active/plan-2026-08-17-general-diff-rendering.md): the
+  comparison model, Git pipeline, and renderer are shipped; presets, context expansion,
+  and multi-file review remain
+- [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md):
+  static-site adapters, GitHub URL localization, and transclusion are shipped; line
+  targets and mounted roots remain
+- [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md):
+  the cache and URL open shipped in 0.12.0; the catalog, chooser, and very large
+  repositories remain
+- [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md):
+  the shared modal foundation is shipped; action menus and file mutations remain
+- [Quick Search](specs/active/plan-2026-07-17-scalable-file-search.md): the file finder
+  and pull-request completions are shipped; full-text search remains
+- [Editor plugin editing contract](specs/active/plan-2026-07-17-editor-plugin-editing-contract.md):
+  a draft for plugins that edit files without weakening the read-only view contract
+- [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md):
+  the capability gate is shipped; rename, move, and trash workflows remain
+- [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md):
+  scan status and pending aggregates are shipped; recent directories remain
 
 ## Done Plans
 
-- [Git graph nav panel](specs/done/plan-2026-08-06-git-graph-view.md)
-- [Full-page HTML rendering and an explicit trust model](specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
-- [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
-- [One file-type source of truth](specs/done/plan-2026-08-21-file-type-source-of-truth.md)
-- [Diff syntax highlighting and layouts](specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)
-- [Git revision navigation performance](specs/done/plan-2026-08-25-git-revision-navigation-performance.md)
+- [Event-based pull-request freshness and budgeted prefetch](specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md):
+  merged after 0.12.0
+- [Shift key reveal and a systematic keymap](specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md)
+- [Watching GitHub pull requests](specs/done/plan-2026-11-06-pr-watch-and-reconnect.md)
+- [GitHub Pulls tab for mirrors and local checkouts](specs/done/plan-2026-10-01-github-pulls-tab.md)
+- [v0.12 thin mirror for Git and GitHub browsing](specs/done/plan-2026-09-23-v012-thin-mirror.md)
+- [v0.12 alpha testing and stack acceptance](specs/done/plan-2026-09-22-v012-alpha-testing.md)
+- [CLI-first delivery: v0.10 parity and the v0.12 slice](specs/done/plan-2026-08-28-cli-first-delivery-map.md)
+- [Hosted review model and GitHub provider](specs/done/plan-2026-08-27-github-provider-and-pull-requests.md):
+  superseded by the thin-mirror and Pulls tab plans
 - [Unbounded logical Git history with bounded rendering](specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md)
-- [Bounded binary byte preview](specs/done/plan-2026-08-11-binary-byte-preview.md)
-- [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
-- [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)
+- [Git revision navigation performance](specs/done/plan-2026-08-25-git-revision-navigation-performance.md)
+- [Diff syntax highlighting and layouts](specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)
+- [One file-type source of truth](specs/done/plan-2026-08-21-file-type-source-of-truth.md)
+- [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
+- [Shared file type taxonomy and bounded breakdowns](specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
+- [Semantic file type families](specs/done/plan-2026-08-13-semantic-file-type-families.md)
+- [GitHub and Obsidian Markdown navigation](specs/done/plan-2026-08-13-markdown-link-navigation.md)
 - [Folder Overview panels and file-type summary](specs/done/plan-2026-08-12-directory-file-type-summary.md)
 - [Contextual keyboard help and tree navigation](specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md)
-- [Semantic file type families](specs/done/plan-2026-08-13-semantic-file-type-families.md)
-- [Shared file type taxonomy and bounded breakdowns](specs/done/plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md)
-- [GitHub and Obsidian Markdown navigation](specs/done/plan-2026-08-13-markdown-link-navigation.md)
+- [Bounded binary byte preview](specs/done/plan-2026-08-11-binary-byte-preview.md)
 - [Filter controls and fine-grained navigation filtering](specs/done/plan-2026-08-09-nav-filter-controls.md)
-- [v0.12 thin mirror for Git and GitHub browsing](specs/done/plan-2026-09-23-v012-thin-mirror.md)
-  — the mirror design and its delivery record, shipped in 0.12.0; the checkout plan
-  extends it with borrowed stores and explicit recovery
-- [v0.12 alpha testing and stack acceptance](specs/done/plan-2026-09-22-v012-alpha-testing.md)
-  — the 0.12.0 acceptance record; its deferred checks are open beads under `mb-425f`
-- [Watching GitHub pull requests](specs/done/plan-2026-11-06-pr-watch-and-reconnect.md)
-- [Event-based pull-request freshness and budgeted prefetch](specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md)
-- [CLI-first delivery: parity, Git status, and the repository cache](specs/done/plan-2026-08-28-cli-first-delivery-map.md)
+- [Full-page HTML rendering and an explicit trust model](specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
+- [Git graph nav panel and Git API](specs/done/plan-2026-08-06-git-graph-view.md)
+- [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)
+- [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 
-The [roadmap](../../TODO.md) is the concise status index.
-Draft architecture and plan documents record intent rather than compatibility
-guarantees.
+## Research
+
+A research record stays here while it informs open work, and moves to
+[`research/archive/`](research/archive/) once its questions are answered.
+
+- [What eager startup JavaScript costs](research/research-2026-11-12-eager-startup-script-cost.md):
+  measured cost of the scripts a folder page loads before `DOMContentLoaded`
+- [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md):
+  the CLI-first and app-first install paths
+- [Apparent UI performance for the native app](research/research-2026-11-11-ui-apparent-performance.md):
+  what makes the app feel instant, and the evidence behind the stable-layout plan
+- [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md):
+  one server per folder, warm switching, and handing pages to agents
+- [Native macOS app: shells, uv runtimes, and CLI layering](research/research-2026-11-08-macos-app-packaging.md):
+  the AppKit shell over `metab` and how it finds a runtime
+- [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md):
+  input to the Git status plan
+- [fdu and Metabrowser inventory-engine alignment](research/research-2026-08-23-fdu-metabrowser-inventory-engine.md):
+  the provider contract the fdu engine will implement
+- [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md):
+  input to the Mermaid plan
+- [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md):
+  link dialects and resolution rules, input to the navigation extensions plan
+- [Fuzzy file ranking](research/research-2026-07-31-fuzzy-file-ranking.md): the Quick
+  Search matcher’s ranking contract and measurements
+- [Browser contributor toolchain and distribution](research/research-2026-07-18-browser-contributor-toolchain.md):
+  when to evaluate TypeScript, Vite, and Vitest for the raw-source browser build
+
+### Archived Research
+
+- [File patch formats](research/archive/research-2026-08-19-file-patch-formats.md): the
+  compatibility survey behind File Diff Format v1
+- [Desktop app packaging](research/archive/research-2026-08-16-desktop-app-packaging.md):
+  the three-platform survey, superseded for macOS by the native app research
+- [Repository cache and open from a Git URL](research/archive/research-2026-08-11-repo-cache-and-git-url-open.md):
+  input to the repository library and thin-mirror plans
+- [A high-performance file roll-up engine](research/archive/research-2026-08-06-file-rollup-engine.md):
+  a pointer to the full research, which lives in the fdu repository
+- [Diff view spike results](research/archive/research-2026-07-18-diff-view-spike-results.md):
+  July 2026 prototype timings, kept for provenance
+- [Web diff viewer architecture and intermediate representations](research/archive/research-2026-07-17-web-diff-viewer-architecture.md):
+  the layered model that became File Diff Format v1
+- [VS Code extension host](research/archive/research-2026-07-17-vscode-extension-host.md):
+  a draft design that no plan adopted
+
+## Reviews
+
+- [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md):
+  every bead closed, updated, or held in the audit after 0.12.0, with its evidence
+- [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md):
+  each intended change to v0.11.0 behavior with its changelog entry, pull request, and
+  check, and the unintended differences the landing gate found
+- [Per-layer review ledger for the v0.12 stack](reviews/review-2026-10-01-v012-stack-review-ledger.md):
+  the review each pull request had, its findings and their disposition, and CI on each
+  head
+- [Test-suite baseline for the v0.12 test review](reviews/review-2026-10-01-test-suite-baseline.md):
+  suite size and CI time at three points, with the command behind each figure
+- [Inventory stack merge readiness](reviews/review-2026-09-07-inventory-stack-merge-readiness.md):
+  the final review of the inventory-engine stack, with serving measurements in
+  [`reviews/evidence/`](reviews/evidence/)
+- [The pluggable inventory engine](reviews/review-2026-08-31-pluggable-inventory-engine.md):
+  defects found while merging the engine stack and a measured regression against `main`
+- [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md):
+  the plans checked against the stated priority order
+- [Independent design review of the status, cache, and provider plans](reviews/review-2026-08-27-independent-design-review.md):
+  a second opinion on the same material
+- [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md):
+  separating generic Git caching from GitHub integration
+- [Load-time performance and the distance still to cover](reviews/review-2026-08-22-load-time-performance.md):
+  the six-round load-time work, its findings, and candidate hypotheses
+
+## QA Runs
+
+The first two are current checklists; the dated runs after them are records.
+
+- [Manual browser checks](qa/qa-2026-11-14-manual-browser-checks.md): what only a person
+  in a real browser can judge, run before each release on the public-safe manual corpus
+- [macOS app hand checks](qa/qa-macos-app-hand-checks.md): what AppKit, WebKit, and
+  macOS decide, checked against a built app after a change to the behavior they cover
+- [WebKit measurement gate, 2026-11-11](qa/qa-2026-11-11-webkit-measurement-gate.md):
+  the app’s WebKit run against Chrome’s large-content bounds, which failed, with every
+  figure and the print and drop checks
+- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md): the
+  integrated candidate, installation evidence, and release gates before the 0.12.0 tag
+- [v0.12 alpha acceptance on the integrated stack](qa/qa-2026-09-24-v012-alpha-acceptance.md):
+  an installed-wheel run of the manual matrix, with per-row results
+- [v0.12 repository library and HTML trust](qa/qa-2026-09-19-v012-repository-library.md):
+  the step-by-step acceptance procedure those runs followed
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

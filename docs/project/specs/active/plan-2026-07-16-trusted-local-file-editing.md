@@ -96,8 +96,8 @@ No request accepts a client-supplied absolute path.
 
 Ship rename, move, and trash behind explicit startup authorization.
 Keep text editing and plugin-defined mutation disabled until the maintained
-[editor plugin editing contract](../../architecture/arch-editor-plugin-editing-contract.md)
-has a tested host implementation.
+[editor plugin editing contract](plan-2026-07-17-editor-plugin-editing-contract.md) has
+a tested host implementation.
 
 ## Open Questions
 
@@ -118,7 +118,7 @@ has a tested host implementation.
 ## References
 
 - [Core architecture](../../../architecture.md)
-- [Editor plugin editing contract](../../architecture/arch-editor-plugin-editing-contract.md)
+- [Editor plugin editing contract](plan-2026-07-17-editor-plugin-editing-contract.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

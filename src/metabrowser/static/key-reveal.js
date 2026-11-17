@@ -14,7 +14,8 @@
   // the Shift-to-next-key gap of typed `?`, capitals, and Shift+Arrow in Chrome and
   // Safari, so those chords never flash badges. What remains to measure, by a person
   // at a keyboard: that gap for each chord in both browsers, then the smallest value
-  // above all of them (docs/qa-v012-repository-library.md, the reveal check).
+  // above all of them (docs/project/qa/qa-2026-09-19-v012-repository-library.md, the
+  // reveal check).
   const REVEAL_HOLD_MS = 200;
   // How far the pointer may travel while Shift is armed before it cancels, so a hand
   // carrying the pointer to a Shift+click never reveals. PROVISIONAL, not yet measured:

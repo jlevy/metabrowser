@@ -18,14 +18,14 @@ proofs from inferences.
 [Open Decisions for the User](#open-decisions-for-the-user) records the original
 decisions.
 
-This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) and the
-[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
+This plan extends the [Pulls tab plan](../done/plan-2026-10-01-github-pulls-tab.md) and
+the [thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 It revised the original
-[alternates decision](plan-2026-10-01-github-pulls-tab.md#local-checkouts), a Files
-changed case, and the store invariant; [The Rule This Changes](#the-rule-this-changes)
-records that design change.
+[alternates decision](../done/plan-2026-10-01-github-pulls-tab.md#local-checkouts), a
+Files changed case, and the store invariant;
+[The Rule This Changes](#the-rule-this-changes) records that design change.
 Current runtime contracts are in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md)
 and [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
 ## Goal
@@ -242,7 +242,7 @@ without it is a full store, which is what absence means.
   `Mirror of <origin> at <commit>, stored in <location>, borrowing objects from <checkout>`.
 - `/api/source/status` carries `borrows`, null for a full store, beside `location`,
   under the same exception that admitted `location`
-  ([What a mirror’s page is called](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)),
+  ([What a mirror’s page is called](../../architecture/arch-mirror-acquisition-and-refresh.md#what-a-mirrors-page-is-called)),
   and `shallow`, true when the store has a boundary.
   The path is the user’s own checkout, so the leak argument there applies unchanged;
   `tests/test_serve_pin.py` extends its path-leak check to it.
@@ -413,7 +413,7 @@ side-effect free, and validated preparation requests submit work to the loader.
 | Store and Git objects | Admitted repository and store identity, object format, and full object ID. Use the checkout as a lender, with validation and explicit repair when its identity or availability changes. |
 | Snapshot and comparison | Store binding, resolved immutable revisions, comparison policy, and exact path bytes where applicable. Bind the displayed comparison until the reader selects a newer one. |
 | Rendered projection | Snapshot or comparison identity, file side and path, renderer version, options, and trust profile. A bounded, recomputable projection can expire independently of Git objects. |
-| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
+| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](../done/plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
 
 Reuse the refresh coordinator for in-process ownership and the existing source, store,
 and fetch locks for durable writes.
@@ -561,14 +561,14 @@ That relaxation is item 1 of the decisions, which the owner accepted.
 Three written rules say an overlay is not allowed or read the checkout instead:
 
 - The Pulls tab plan,
-  [Local Checkouts](plan-2026-10-01-github-pulls-tab.md#local-checkouts): “The
+  [Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md#local-checkouts): “The
   alternates option … is left out at first: a `gc`, a repack, or a move of the user’s
   repository can remove objects the borrowing store depends on, which breaks the rule
   that no object Metabrowser showed is ever lost.”
 - The same section’s Files changed case: “The commits are in the checkout.
   The page checks for the base and head commits with a read-only Git command and shows
   the diff through the existing comparison route”, which reads the checkout directly.
-- [Shared Repository Store](../../architecture/arch-repository-sources-and-provider-mirrors.md#shared-repository-store):
+- [Shared Repository Store](../../architecture/arch-repository-cache.md#repository-stores):
   “repository content is self-contained: every object is present, and nothing depends on
   alternates into a user-owned checkout or on the origin after acquisition”.
 
@@ -829,27 +829,31 @@ For a documentation agent, after step 1 and again after step 2:
   commands above, `--checkout`, what `borrowing objects from` means, the shallow note
   with `base_uncertain`, the printed suggestion, and `borrows` and `shallow` in the
   status envelope’s field list.
-- `docs/project/architecture/arch-repository-sources-and-provider-mirrors.md`: the
-  self-contained invariant under “Shared Repository Store” rewritten for two modes; the
-  `lender` field in the cache record contracts table; the overlay’s acquisition, the
-  sweep, and the healing order in the acquisition and refresh state machines; `borrows`
-  and `shallow` under “What a mirror’s page is called”; the merge-base certainty rule
-  under “Pull-request records”; a note under “Read path and performance” that the diff
-  commands pass no `--no-textconv` to the patch a page shows, which runs and which flags
-  pass, and what that means for a served checkout.
-- `docs/project/architecture/arch-views-models-routes.md`: parity rows for the new
-  fields, states, and routes, with their goldens.
-- `SECURITY.md`, Content Trust Model: a named checkout as a read-only object source
-  whose configuration is never consulted and whose bytes are trusted as a served
-  folder’s are, with blob verification once it exists.
-- `docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md`: already points here
+- `docs/project/architecture/arch-repository-cache.md`,
+  `arch-mirror-acquisition-and-refresh.md`, and `arch-github-pull-requests.md`, which
+  replaced the retired `arch-repository-sources-and-provider-mirrors.md` this list first
+  named (the sections below are that document’s): the self-contained invariant under
+  “Shared Repository Store” rewritten for two modes; the `lender` field in the cache
+  record contracts table; the overlay’s acquisition, the sweep, and the healing order in
+  the acquisition and refresh state machines; `borrows` and `shallow` under “What a
+  mirror’s page is called”; the merge-base certainty rule under “Pull-request records”;
+  a note under “Read path and performance” that the diff commands pass no
+  `--no-textconv` to the patch a page shows, which runs and which flags pass, and what
+  that means for a served checkout.
+- `docs/project/architecture/arch-parity-registry.md`: parity rows for the new fields,
+  states, and routes, with their goldens.
+- `docs/project/architecture/arch-server-and-content.md`, Content Trust Model (moved
+  there from `SECURITY.md`): a named checkout as a read-only object source whose
+  configuration is never consulted and whose bytes are trusted as a served folder’s are,
+  with blob verification once it exists.
+- `docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md`: already points here
   from “The alternates option”, the Files changed case, and decision 4; its step 5 text
   is rewritten when step 4 above starts.
 - `docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md`: a one-line note under
   Principles that “No Git object is deleted in v1” applies to Metabrowser’s own store
   and that this plan says what an overlay borrows.
-- `docs/qa-v012-repository-library.md`: a part for the checkout scenario, including a
-  linked worktree, a shallow clone, and a pruned pull request.
+- `docs/project/qa/qa-2026-09-19-v012-repository-library.md`: a part for the checkout
+  scenario, including a linked worktree, a shallow clone, and a pruned pull request.
 - `CHANGELOG.md` for each step.
 - `docs/project/README.md`: this plan in the active list, done with this document.
 
@@ -950,9 +954,9 @@ weighed.
 
 ## References
 
-- [GitHub Pulls Tab for Mirrors and Local Checkouts](plan-2026-10-01-github-pulls-tab.md)
+- [GitHub Pulls Tab for Mirrors and Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md)
 - [v0.12 Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md)
-- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+- [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md)
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - Git: `gitrepository-layout` (`objects/info/alternates`, `shallow`), `git-fetch`
   (`--negotiation-tip`, `--deepen`, `--unshallow`), `git-repack` (`-l`), `git-config`

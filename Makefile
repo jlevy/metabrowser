@@ -126,6 +126,23 @@ test:
 test-report:
 	$(UV_RUN) python -m devtools.suite_report $(REFS) $(if $(LOG),--log $(LOG))
 
+# The baseline scale benchmark that docs/scale-benchmark.md records: one run of
+# devtools/bench_serving.py per size on its synthetic corpus under .bench/, then one
+# Markdown table. Both sizes stay under the serving cap (INVENTORY_MAX_FILES in
+# settings.py). The cold scan is skipped because no figure in the table comes from it.
+# Another registered inventory provider runs as `make benchmark BENCHMARK_PROVIDER=name`.
+BENCHMARK_SIZES := 100000 300000
+BENCHMARK_PROVIDER ?= python
+.PHONY: benchmark
+benchmark: | install
+	@for files in $(BENCHMARK_SIZES); do \
+		$(UV_RUN) python -m devtools.bench_serving --files $$files \
+			--provider $(BENCHMARK_PROVIDER) --skip-cold-scan --label benchmark-$$files \
+			--json .bench/benchmark-$(BENCHMARK_PROVIDER)-$$files.json || exit 1; \
+	done
+	@$(UV_RUN) python -m devtools.bench_serving --markdown \
+		$(foreach files,$(BENCHMARK_SIZES),.bench/benchmark-$(BENCHMARK_PROVIDER)-$(files).json)
+
 # Acquisition and store-read tests on a real Git the acquisition floor admits,
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git
 # job builds each admitted release and sets METABROWSER_REQUIRE_ADMITTED_GIT, which

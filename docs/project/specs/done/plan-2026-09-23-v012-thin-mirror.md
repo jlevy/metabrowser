@@ -1,6 +1,6 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Implemented on `main` and released in 0.12.0, tagged at `87b8ec81`
+**Status:** Done; released in 0.12.0, tagged at `87b8ec81`
 ([#344](https://github.com/jlevy/metabrowser/pull/344)) and published on 2026-11-09
 (`mb-4bd2`). The
 [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
@@ -14,10 +14,10 @@ stack landed.
 This plan supersedes the remaining v0.12 phases in
 [Open Repositories from Git URLs](../active/plan-2026-08-11-open-repo-from-git-url.md)
 (2A onward) and
-[GitHub Provider and Pull Requests](../active/plan-2026-08-27-github-provider-and-pull-requests.md)
+[GitHub Provider and Pull Requests](plan-2026-08-27-github-provider-and-pull-requests.md)
 wherever they disagree.
 Those documents stay as background.
-The later [Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) and
+The later [Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
 [checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans
 extend this initial design with a resumable PR catalog, checkout borrowing, explicit
 repair, and optional native-stack metadata.
@@ -159,11 +159,10 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   A failed refresh leaves the page as it was and reports the failure in its status.
 - **Large repositories.** A full clone is slower than a blobless one.
   The earlier measurement (mypy: 5.8–5.9 s to serve the default tree blobless, 8.8–17.8
-  s full;
-  [architecture](../../architecture/arch-repository-sources-and-provider-mirrors.md)) is
-  the baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is
-  checked first, and a clone that cannot finish inside the acquisition deadline is
-  refused with a typed state rather than killed partway.
+  s full; [architecture](../../../../explorations/repository-cache/README.md)) is the
+  baseline. When `gh` is available, the repository size from `repos/<o>/<r>` is checked
+  first, and a clone that cannot finish inside the acquisition deadline is refused with
+  a typed state rather than killed partway.
   The first clone says on stderr where it goes, then reports Git’s own progress, read as
   numbers and never passed through as text, with the elapsed time (`mb-4cg7`).
 
@@ -188,7 +187,7 @@ It claims only `github.com` and `raw.githubusercontent.com`.
   A control beside the short commit copies the full one.
   `/api/source/status` reports the same as `name`, `origin`, and `location`, and
   `location` is the one field of any route’s answer that names a path in the cache;
-  [the architecture document](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)
+  [the architecture document](../../architecture/arch-mirror-acquisition-and-refresh.md#what-a-mirrors-page-is-called)
   holds the rule and its bounds.
 
 ### Background refresh
@@ -278,9 +277,9 @@ the run against it.
 
 The Later column is what this plan left out.
 The pull-request list shipped in 0.12.0 through the
-[Pulls tab plan](../active/plan-2026-10-01-github-pulls-tab.md); the rest is work for a
-later release, with its own plan only where a row links one, and `mb-1wk1` lists the
-rows no other bead tracks.
+[Pulls tab plan](plan-2026-10-01-github-pulls-tab.md); the rest is work for a later
+release, with its own plan only where a row links one, and `mb-1wk1` lists the rows no
+other bead tracks.
 
 | GitHub web | Alpha | Later |
 | --- | --- | --- |
@@ -293,7 +292,7 @@ rows no other bead tracks.
 | Pull request: checks and statuses summary | Yes | Logs |
 | Pull request: Files changed | Yes (merge-base diff) |  |
 | Diff: View file at either side of a changed file | Yes (a side not at the served commit switches the pin) | An address for a file at another commit; a pull request’s two sides have one since [#347](https://github.com/jlevy/metabrowser/pull/347), after 0.12.0 |
-| Pull request list for a repository |  | Shipped in 0.12.0: [GitHub Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) |
+| Pull request list for a repository |  | Shipped in 0.12.0: [GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md) |
 | Issues, Actions, releases, blame |  | Yes |
 | SSH remotes, GitHub Enterprise hosts |  | Yes |
 
@@ -382,7 +381,7 @@ how each pull request above was reviewed, except #260, which changes documents o
 has no row.
 
 The pull-request list and pull requests on a local checkout followed in 0.12.0, through
-the [GitHub Pulls tab](../active/plan-2026-10-01-github-pulls-tab.md) and
+the [GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
 [checkout review](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md) plans.
 Still later: inline review anchoring, SSH, Enterprise hosts, issues, and rebind.
 

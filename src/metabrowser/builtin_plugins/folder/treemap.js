@@ -270,7 +270,7 @@ export function registerTreemap(mb, palette, rollupControls) {
           if (parentControl) {
             parentControl.removeEventListener("click", openParent);
           }
-          mb.tooltip.hide();
+          mb.tooltip.hide(container);
         },
       });
     }
@@ -635,7 +635,8 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      mb.tooltip.hide();
+      // The map's tooltip, and no other surface's (mb-alff).
+      mb.tooltip.hide(container);
     };
     return Object.freeze({ dispose });
   }

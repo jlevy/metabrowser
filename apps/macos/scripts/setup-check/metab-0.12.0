@@ -1,12 +1,13 @@
 #!/bin/sh
 # A stand-in for metab 0.12.0, the latest release on PyPI, which
 # scripts/check-setup-flows.sh old-metab installs as ~/.local/bin/metab. It answers the
-# app's check (README.md, The Version It Requires) as 0.12.0 does. 0.12.0 predates
-# --exit-on-eof, so `metab --exit-on-eof --version` is click's usage error for an unknown
-# option, exit status 2, before the eager --version runs; `metab --version` alone prints
-# the version. The error's lines are those measured on a 0.12.1.dev38, which has 0.12.0's
-# command line; the app reads only the status and the flag's name. Anything else fails,
-# so no server starts from it. SetupCheckStandInTests runs it through the app's check.
+# app's check (docs/project/architecture/arch-macos-app.md, "The Version Floor") as
+# 0.12.0 does. 0.12.0 predates --exit-on-eof, so `metab --exit-on-eof --version` is
+# click's usage error for an unknown option, exit status 2, before the eager --version
+# runs; `metab --version` alone prints the version. The error's lines are those measured
+# on a 0.12.1.dev38, which has 0.12.0's command line; the app reads only the status and
+# the flag's name. Anything else fails, so no server starts from it.
+# SetupCheckStandInTests runs it through the app's check.
 for argument in "$@"; do
   if [ "$argument" = --exit-on-eof ]; then
     printf '%s\n' "Usage: metab [OPTIONS] [ROOT]" "Try 'metab --help' for help." \

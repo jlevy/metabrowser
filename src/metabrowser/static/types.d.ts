@@ -1421,6 +1421,17 @@ type MetabrowserSdk = {
     options?: { kind?: string; copy?: "inline" | "sibling" | false },
   ): HTMLElement;
   mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
+  /** A person, as every page draws one: an avatar's box, `--actor-avatar-size` square from
+   *  first paint, then the bold name in `.actor-name`. The box holds the avatar where
+   *  `avatar` is an https address the caller vouches for, and the shell's person glyph
+   *  where it is not or the image fails; `placeholder: false` draws no box without one
+   *  (docs/design-system.md, "Actor Identity"). */
+  actorIdentity(name: string, options?: MetabrowserActorIdentityOptions): HTMLElement;
+  /** The same identity as markup, its box holding the person glyph. */
+  actorIdentityHtml(
+    name: string,
+    options?: Pick<MetabrowserActorIdentityOptions, "className" | "nameClass">,
+  ): string;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,
@@ -1454,9 +1465,11 @@ type MetabrowserSdk = {
     set(name: string, value: unknown): boolean;
   };
   tooltip: {
-    /** Take away the tooltip shown, one of the view's own; a tooltip anchored in the
-     *  nav's header, the shell's chrome, which no view draws, stays. */
-    hide(): void;
+    /** Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     *  whose anchor has left the document, and never one shown with no anchor. With
+     *  none, any tooltip but one anchored in the nav's header. See
+     *  docs/design-system.md, "A Surface Puts Away Only Its Own Tooltip". */
+    hide(within?: Element | null): void;
     /** Show `html` anchored to the element it describes. No move(): a tooltip
      *  holds still once shown; see docs/design-system.md. */
     show(html: string, anchor: Element | null): void;
@@ -3671,6 +3684,23 @@ declare global {
     spoken?: string;
   };
 
+  /** How a person's identity is drawn where it stands (plugin-sdk-views.js, `actorIdentity`). */
+  type MetabrowserActorIdentityOptions = {
+    /** The avatar's https address, which the caller vouches for; none draws the glyph. It is
+     *  requested in anonymous CORS mode with no referrer, so its host must send
+     *  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
+     *  `avatars.githubusercontent.com`; any other image shows the glyph. */
+    avatar?: string | null;
+    /** When the avatar loads: lazy, unless the placement is built again on a repaint. */
+    loading?: "lazy" | "eager";
+    /** Classes the placement adds to the identity's `span.actor-identity`. */
+    className?: string;
+    /** Classes the placement adds to the name's `strong.actor-name`. */
+    nameClass?: string;
+    /** False draws no box for a person with no avatar, as a dense list row does. */
+    placeholder?: boolean;
+  };
+
   type MetabrowserChangedFilesSummary = {
     /** "35 files changed", in its parts. */
     filesParts: MetabrowserCountParts;
@@ -3902,12 +3932,12 @@ declare global {
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
-      hide(): void;
+      hide(within?: Element | null): void;
       show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
     METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
-    /** Container kinds by extension; see arch-nav-containers.md. */
+    /** Container kinds by extension; see arch-plugin-system.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
       /** This build's tag, which a request names to be told its answer cannot change. */

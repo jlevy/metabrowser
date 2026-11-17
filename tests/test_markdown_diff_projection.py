@@ -647,7 +647,11 @@ def test_sources_holding_the_block_separator_are_refused() -> None:
 
 @pytest.mark.parametrize(
     "path",
-    ["README.md", "docs/reviewing-pull-requests.md", "docs/large-content-rendering.md"],
+    [
+        "docs/browsing-files.md",
+        "docs/reviewing-pull-requests.md",
+        "docs/large-content-rendering.md",
+    ],
 )
 def test_projected_blocks_join_to_kpress_parse_markdown(
     path: str, monkeypatch: pytest.MonkeyPatch

@@ -155,9 +155,13 @@ class FakeElement {
       this.appendChild(loading);
     }
     // The place the commit's Diff summary is drawn in, at the summary's top (mb-pb35).
-    if (this._html.includes('<div class="git-commit-diff-summary metabrowser-diff-host">')) {
+    if (
+      this._html.includes(
+        '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
+      )
+    ) {
       const summaryHost = new FakeElement("div", this.ownerDocument);
-      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host";
+      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host page-header-line";
       this.appendChild(summaryHost);
     }
     if (this._html.includes("git-commit-diff")) {
@@ -171,7 +175,7 @@ class FakeElement {
       const identity = new FakeElement("span", this.ownerDocument);
       identity.className = "git-commit-identity";
       const refs = this._html.match(
-        /<span class="git-commit-refs">([\s\S]*?)<\/span><\/span><span class="actor-name git-commit-author">/,
+        /<span class="git-commit-refs">([\s\S]*?)<\/span><\/span><\/div><div class="git-commit-ages /,
       );
       if (refs) {
         const group = new FakeElement("span", this.ownerDocument);
@@ -543,6 +547,13 @@ const comparisonFetches = [];
 const shownTooltips = [];
 const measuredLabels = [];
 let tooltipHideCount = 0;
+// What each hide was given. The panel puts away only its own tooltip, so a rebuild or a
+// claimed preview never takes a Files row's from under the pointer (mb-alff).
+const tooltipHidesWithin = [];
+/** Whether every hide since `since` was given the panel itself, the `#tab-git` stand-in. */
+const hidWithinPanel = (since) =>
+  tooltipHidesWithin.length > since &&
+  tooltipHidesWithin.slice(since).every((within) => within === document.getElementById("tab-git"));
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -550,8 +561,9 @@ sandbox.metabrowser = {
   delegateOwnerAttribute: () => ' data-mb-owner="page-owner"',
   tooltip: {
     show: (html, anchor) => shownTooltips.push({ html, anchor }),
-    hide: () => {
+    hide: (within) => {
       tooltipHideCount += 1;
+      tooltipHidesWithin.push(within);
     },
   },
   ensureAsset: async () => {},
@@ -1084,7 +1096,8 @@ async function run() {
   assertContains(
     "detail: summary holds the Diff summary's place, with the commit's totals",
     previewHtml,
-    '<div class="git-commit-diff-summary metabrowser-diff-host"><div class="diff-summary">' +
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">' +
+      '<div class="diff-summary">' +
       '<span class="diff-summary-group"><span class="diff-summary-files">' +
       '<span class="summary-number">2</span> files changed</span> ' +
       '<span class="summary-punctuation" aria-hidden="true">·</span>' +
@@ -1109,10 +1122,49 @@ async function run() {
   assertTrue(
     "detail: component owns subject, metadata, refs, and description",
     summaryStart >= 0 &&
-      previewHtml.indexOf("git-commit-subject", summaryStart) < summaryEnd &&
-      previewHtml.indexOf("git-commit-meta", summaryStart) < summaryEnd &&
-      previewHtml.indexOf("git-commit-refs", summaryStart) < summaryEnd &&
-      previewHtml.indexOf("git-commit-body", summaryStart) < summaryEnd,
+      [
+        "git-commit-subject",
+        "git-commit-byline",
+        "git-commit-refs",
+        "git-commit-ages",
+        "git-commit-body",
+      ].every((part) => {
+        const at = previewHtml.indexOf(part, summaryStart);
+        return at >= 0 && at < summaryEnd;
+      }),
+  );
+  // The page's header is a pull request's, in its order (docs/design-system.md, "Page
+  // Headers"): the subject, then one line each for the author, drawn by the shell's identity
+  // with the person glyph in its avatar's box, the revision and its refs, where a pull request
+  // has its branches, and the age, where it has its row of ages; then the Diff summary. The
+  // hover card keeps its one line of metadata.
+  assertContains(
+    "detail: the summary's header is a page header",
+    previewHtml,
+    '<div class="git-commit-header page-header">',
+  );
+  const lines = [
+    '<h1 class="git-commit-subject page-heading">',
+    '<div class="git-commit-byline page-header-line"><span class="actor-identity">' +
+      '<span class="actor-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"',
+    '<div class="git-commit-revision-line page-header-line"><span class="git-commit-identity">' +
+      '<span class="git-commit-revision"><span class="git-commit-sha">',
+    '<div class="git-commit-ages page-header-line">Committed <span class="git-commit-age ',
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
+  ].map((line) => previewHtml.indexOf(line, summaryStart));
+  assertTrue(
+    "detail: the header's lines are the author, the revision, the age, then the Diff summary",
+    lines.every((at, index) => at >= 0 && (index === 0 || at > lines[index - 1])),
+  );
+  assertContains(
+    "detail: the author's name follows the person glyph in its box, bold",
+    previewHtml,
+    '<circle cx="12" cy="12" r="10"/></svg></span><strong class="actor-name git-commit-author">',
+  );
+  assertNotContains(
+    "detail: the page's header has no hover card's line of metadata",
+    previewHtml.slice(summaryStart, summaryEnd),
+    "git-commit-meta",
   );
   // The commit's files are presented by the diff view mounted below, so
   // the panel keeps only what that view cannot show: a host for it, the
@@ -1208,7 +1260,7 @@ async function run() {
   assertContains(
     "detail: an uncounted commit's place is empty",
     previewHtml,
-    '<div class="git-commit-diff-summary metabrowser-diff-host"></div>',
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line"></div>',
   );
   assertEqual(
     "detail: an uncounted commit's diff is given no totals",
@@ -1758,6 +1810,10 @@ async function run() {
       "tooltip lifecycle: pointer leave dismisses despite keyboard focus",
       tooltipHideCount > hidesBeforePointerLeave,
     );
+    assertTrue(
+      "tooltip lifecycle: pointer leave hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforePointerLeave),
+    );
 
     let resolveDelayedTooltip;
     responses.set(
@@ -1778,6 +1834,10 @@ async function run() {
       "tooltip lifecycle: keyboard selection dismisses immediately",
       tooltipHideCount > hidesBeforeKeyboardSelection,
     );
+    assertTrue(
+      "tooltip lifecycle: keyboard selection hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforeKeyboardSelection),
+    );
     resolveDelayedTooltip({
       is_repo: true,
       commit: commit(SHA_F, [], "tooltip-only commit"),
@@ -1794,6 +1854,10 @@ async function run() {
     );
     rows[2]._hovered = false;
     assertTrue("tooltip lifecycle: dismissal remains observable", tooltipHideCount > hidesBefore);
+    assertTrue(
+      "tooltip lifecycle: every dismissal hides only the panel's own tooltip",
+      hidWithinPanel(hidesBefore),
+    );
   }
 
   // ── Selection and stale-response handling ──────────────────
@@ -1948,6 +2012,7 @@ async function run() {
     rows[0].dispatch("keydown", j);
     rows[0]._hovered = false;
     assertTrue("keyboard: j dismisses the hover tooltip", tooltipHideCount > hidesBeforeJ);
+    assertTrue("keyboard: j hides only the panel's own tooltip", hidWithinPanel(hidesBeforeJ));
     assertTrue("keyboard: repeated j is handled", j.defaultPrevented);
     assertTrue("keyboard: j focuses the next commit", document.activeElement === rows[1]);
     assertEqual("keyboard: j opens the next commit", internals.stateForTests().selectedId, SHA_B);

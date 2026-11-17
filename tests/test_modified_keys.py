@@ -117,6 +117,11 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
                 "guard only keeps Command-Escape from closing the menu"
             ),
         ),
+        Listener(
+            "the reader's key ending a tooltip's focus repair, which only notes it",
+            None,
+            via=("endTooltipFocusRepair",),
+        ),
     ),
     "static/git-panel.js": (
         Listener(
@@ -379,15 +384,20 @@ def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
 
 
 def test_the_keyboard_shortcuts_reference_documents_command_r() -> None:
-    """The design system's one keyboard reference says Command-R reloads, and why it can."""
+    """The user reference says Command-R reloads, and the design system says why it can."""
     text = (_REPO / "docs" / "design-system.md").read_text(encoding="utf-8")
     start = text.index("\n## Keyboard Shortcuts\n")
     section = text[start : text.index("\n## ", start + 1)]
     browser_keys = section[section.index("\n### Browser and App Keys\n") :]
-    assert "| Command-R (Control-R or F5 elsewhere) | Reload |" in browser_keys
+    assert "Command-R always reloads, whatever has focus" in browser_keys
     assert "`tests/test_modified_keys.py`" in browser_keys
-    readme = (_REPO / "apps" / "macos" / "README.md").read_text(encoding="utf-8")
-    assert "- **Reload:** Command-R, View > Reload Page, reloads in every state" in readme
+    guide = (_REPO / "docs" / "keyboard-shortcuts.md").read_text(encoding="utf-8")
+    guide_keys = guide[guide.index("\n## Browser and App Keys\n") :]
+    assert "Command-R (Control-R or F5 elsewhere) always reloads" in guide_keys
+    app = (_REPO / "docs" / "project" / "architecture" / "arch-macos-app.md").read_text(
+        encoding="utf-8"
+    )
+    assert "- **Reload.** Command-R reloads in every state a folder window can be in" in app
 
 
 def test_a_handler_that_cancels_a_chord_is_named() -> None:

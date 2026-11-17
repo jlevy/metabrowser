@@ -1,6 +1,7 @@
 # Plan: GitHub Pulls Tab for Mirrors and Local Checkouts
 
-**Status:** The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
+**Status:** Done.
+The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
 checkout-backed comparisons are implemented on `main` and shipped in 0.12.0 (tagged
 `v0.12.0` at `87b8ec81` and published 2026-11-09); later revisions below are on `main`.
 [Delivery](#delivery) records the owning layers.
@@ -138,7 +139,7 @@ between refresh requests.
 The query route itself only reads.
 PR detail is opened through the normal Conversation address after the reader selects a
 result. See the
-[Quick Search plan](plan-2026-07-17-scalable-file-search.md#pull-request-completions)
+[Quick Search plan](../active/plan-2026-07-17-scalable-file-search.md#pull-request-completions)
 for result presentation and selection.
 
 The cache-only route golden covers exact number and title matches, empty and incomplete
@@ -177,7 +178,7 @@ at the title’s navigation size, bold usernames in normal text ink at the repos
 summary’s small metadata size, and compact branch refs.
 The **View on GitHub** action uses a leading GitHub brand mark.
 The
-[focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
+[focused QA session](../../qa/qa-2026-09-19-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
 records the final artifact and cache conditions without a new testing framework.
 
 ## Extend Pulls on Scroll
@@ -441,7 +442,7 @@ Three facts shape the design:
   plugin may not reach `window.MetabrowserShell` (AGENTS.md, Browser and Plugin
   Boundary).
 - The thin-mirror plan retired the public `registerNavPanel` declaration for the alpha;
-  [Views, Models, and Routes](../../architecture/arch-views-models-routes.md#planned-plugin-registration-surfaces)
+  [Views, Models, and Routes](../../architecture/arch-plugin-system.md#registration-surfaces-not-built)
   keeps its row as background.
 
 ### One Pull Request per Server
@@ -812,7 +813,7 @@ the switch makes that pull request the attended one.
 The lookup is one `for-each-ref --points-at` over `refs/pull/`, whose cost step 2
 measures on a mirror with many fetched heads.
 For the planned PR review path,
-[revision-scoped file links](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
+[revision-scoped file links](../active/plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
 will read the displayed snapshot without switching that pin.
 
 **Back and Forward.**
@@ -985,9 +986,10 @@ No spinner appears before the shared loading-state delay.
 ### Changed Files in a Row
 
 A row is a container in the sense of
-[Nav Containers](../../architecture/arch-nav-containers.md): item-like, because
-selecting it opens the pull request, and folder-like, because it expands to its changed
-files. That document’s Collection panels section promised this.
+[Nav Containers](../../architecture/arch-plugin-system.md#navigation-containers):
+item-like, because selecting it opens the pull request, and folder-like, because it
+expands to its changed files.
+That document’s Collection panels section promised this.
 It predates the thin mirror; the landing docs reconciliation (#298, `3f5bd2d3`)
 corrected its `ChangeRequestIndex` wording.
 
@@ -1104,7 +1106,7 @@ Before each prefix publication and the final list, the worker checks that the ac
 account still matches the list’s reader.
 An observed account change stops publication and marks previously checked prefixes
 stale; the
-[changed-file contract](../../architecture/arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request)
+[changed-file contract](../../architecture/arch-github-pull-requests.md#changed-files)
 describes the ownership and cache behavior.
 While it fills, the panel says how much it has: N files with the page count from the
 `Link` header, since that gives pages and not files.
@@ -1146,7 +1148,7 @@ Pointer or focus prefetch reads the cached list only.
 
 **Opening a file.** A file row is a link to `/pull/<n>/files/<path>`, extending the
 container’s address the way `/commit/<rev>/<path>` does
-([Browser URL Grammar](../../../architecture.md#browser-url-grammar)).
+([Browser URL Grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar)).
 
 - The page opens on Files changed, narrowed to that file as a patch’s child is, with
   Back and Forward through the page host.
@@ -1212,7 +1214,7 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
   root.
 
 **Files changed.** Decided by
-[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+[Pull-Request Review from a Mirror or an Existing Checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
 (2026-11-02), and built in step 6: Files changed on a folder server reads an overlay
 store that borrows the served checkout’s objects, never the checkout directly.
 
@@ -1224,7 +1226,7 @@ store that borrows the served checkout’s objects, never the checkout directly.
   folder server. When the commits are already in the checkout the fetch brings nothing;
   when they are missing it brings kilobytes.
 - The checkout the reader is serving is the one named, as the Served row of that plan’s
-  [Finding the Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#finding-the-checkout)
+  [Finding the Checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md#finding-the-checkout)
   says, and the store remembers it from then on.
 - Nothing is written to the checkout, and no Git process runs with the checkout as its
   repository: the overlay’s fetch runs in the cache’s store.
@@ -1236,7 +1238,7 @@ store that borrows the served checkout’s objects, never the checkout directly.
 **The alternates option** is that overlay store, decided on 2026-11-02. The rule that no
 object Metabrowser showed is ever lost is relaxed for an overlay, with typed states and
 a healing fetch, in that plan’s
-[Failure and Recovery](plan-2026-11-02-pr-review-mirror-and-checkout.md#failure-and-recovery).
+[Failure and Recovery](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md#failure-and-recovery).
 
 **Network only when the user opens the tab.** Opening a folder makes no request today,
 and that stays true.
@@ -1392,7 +1394,7 @@ The following step breakdown records the original dependent delivery order.
 The catalog and checkout revisions above supersede its old page caps, filter default and
 implicit acquisition trigger.
 The stack originally depended on the large-pull-request work and the first step of
-[PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md).
+[PR Review on a Mirror and a Checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md).
 Step 4’s jump to a file calls the large-pull-request work’s `scrollToFile`. Steps 5 and
 6 follow the owner’s decision on the overlay store in that plan, which revises this
 plan’s alternates rejection and in-page fetch, and step 6 builds on its overlay
@@ -1552,7 +1554,7 @@ They are kept because each is cheap to change later.
    - *Alternative:* the in-page fetch into Metabrowser’s mirror, as a sixth step.
    - *Affects:* whether a folder’s server ever clones, and one more step.
    - *Decided 2026-11-02:* the in-page fetch no longer means a clone.
-     [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+     [Pull-Request Review from a Mirror or an Existing Checkout](../active/plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
      makes it an overlay store that borrows the served checkout’s objects, measured at
      seconds and kilobytes, created when the reader opens Files changed; the owner
      decided that plan’s open decisions as recommended.

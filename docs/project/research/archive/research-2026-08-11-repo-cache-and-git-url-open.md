@@ -4,7 +4,11 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Complete
+**Status:** Archived.
+Complete; the
+[repository library plan](../../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+and the [thin-mirror plan](../../specs/done/plan-2026-09-23-v012-thin-mirror.md) carry
+its conclusions.
 
 ## Overview
 
@@ -50,7 +54,7 @@ current routes must be measured before its thresholds or timing claims become
 implementation constants.
 
 The active
-[repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+[repository-library plan](../../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 also broadens the original cache proposal.
 It defines a versioned `~/.metabrowser/` application home beginning at format `f01`,
 collision-safe source identities, a pinned read-only `gitroot`, offline-first cache
@@ -87,9 +91,9 @@ including the slug and eviction discussions — describes the superseded design.
 
 ## 2026-09-16 Addendum: Phase 0 Measurements
 
-[Repository cache measurements](../../../explorations/repository-cache/README.md)
+[Repository cache measurements](../../../../explorations/repository-cache/README.md)
 remeasured acquisition and every v0.10 route on Git 2.50.1, and the
-[plan’s Phase 0 decisions](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions)
+[plan’s Phase 0 decisions](../../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions)
 supersede this brief’s acquisition recommendation in three places.
 `git backfill` is not used: it fetches only blobs reachable from `HEAD`, while one
 explicit object-ID fetch covers every ref.

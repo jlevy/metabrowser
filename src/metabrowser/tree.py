@@ -9,8 +9,8 @@ which roughly halves the syscall count on big trees.
 
 The module also owns the per-root ``.gitignore`` checker cache. Building
 the checker walks every ``.gitignore`` in the enclosing git repo
-(~hundreds of milliseconds on a large repo), so we cache it with a 30 s
-TTL — a ``.gitignore`` edit becomes visible without a server restart but
+(~hundreds of milliseconds on a large repo), so we cache it with a TTL
+(``_IGNORE_CACHE``) — a ``.gitignore`` edit becomes visible without a server restart but
 the steady-state cost of repeated tree fetches stays at zero.
 """
 

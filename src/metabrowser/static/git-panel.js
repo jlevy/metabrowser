@@ -436,6 +436,12 @@
    * out-of-root files, and bounds remain siblings because they describe the
    * rendered change rather than the commit's identity and message.
    *
+   * The page's summary is a page header, as a pull request's is, in the same order and
+   * type (docs/design-system.md, "Page Headers"): the subject, then one line each for the
+   * author, the revision and its refs, where a pull request has its branches, and the age,
+   * where a pull request has its row of ages, then the Diff summary; every line under the
+   * subject is at the body size. The hover card keeps its one line of metadata.
+   *
    * @param {MetabrowserGitCommitDetail} detail
    * @param {{compact?: boolean}} [options]
    * @returns {string}
@@ -450,35 +456,50 @@
     const subjectTag = compact ? "div" : "h1";
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
-    html += '<div class="git-commit-header">';
+    html += `<div class="git-commit-header${compact ? "" : " page-header"}">`;
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
-    html += '<div class="git-commit-meta">';
-    html += '<span class="git-commit-identity">';
-    html += '<span class="git-commit-revision">';
-    html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    // The revision and its refs, `.git-commit-identity`: the commit's own identity, not its
+    // author's, which is the shell's `.actor-identity` below.
+    let revisionGroup = '<span class="git-commit-identity">';
+    revisionGroup += '<span class="git-commit-revision">';
+    revisionGroup += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
     if (compact) {
-      html +=
+      revisionGroup +=
         '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +
         `${copyIcon()}</span>`;
     } else {
-      html +=
+      revisionGroup +=
         '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
         ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
         (sdk()?.delegateOwnerAttribute() ?? "") +
         ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
         ` aria-label="Copy revision">${copyIcon()}</button>`;
     }
-    html += "</span>";
+    revisionGroup += "</span>";
     if (commit.refs?.length) {
-      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
+      revisionGroup += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
     }
-    html += "</span>";
-    html += `<span class="actor-name git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
-    html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
-    html += "</div>";
+    revisionGroup += "</span>";
+    const author = commit.author?.name || "";
+    const age =
+      `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}"` +
+      (compact ? "" : ` data-tip-text="${escapeHtml(exactTime(commit.committed_at))}"`) +
+      `>${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
+    if (compact) {
+      html += `<div class="git-commit-meta">${revisionGroup}`;
+      html += `<span class="actor-name git-commit-author">${escapeHtml(author)}</span>${age}</div>`;
+    } else {
+      // The author as a pull request's header draws its author: the shell's identity, an
+      // avatar's box, then the bold name. A commit's author has no avatar here, so the box
+      // holds the person glyph, and the line is laid out as it would be with one.
+      html +=
+        '<div class="git-commit-byline page-header-line">' +
+        `${window.metabrowser.actorIdentityHtml(author, { nameClass: "git-commit-author" })}</div>`;
+      html += `<div class="git-commit-revision-line page-header-line">${revisionGroup}</div>`;
+      html += `<div class="git-commit-ages page-header-line">Committed ${age}</div>`;
+    }
     // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
     // diff below draws it here, its header the commit's file and line totals and its tree
     // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
@@ -486,7 +507,7 @@
     // summary's words and paint.
     html += compact
       ? renderCommitChangeStats(stats)
-      : `<div class="git-commit-diff-summary metabrowser-diff-host">${renderCommitTotals(stats)}</div>`;
+      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
@@ -524,6 +545,16 @@
    */
   function ageClass(epochSeconds) {
     return window.MetabrowserFormatters?.ageClass(epochSeconds) ?? "";
+  }
+
+  /**
+   * The exact time an age stands for, its tooltip, as a pull request's ages give theirs.
+   *
+   * @param {number} epochSeconds
+   * @returns {string}
+   */
+  function exactTime(epochSeconds) {
+    return sdk()?.formatTimestamp?.(epochSeconds) ?? "";
   }
 
   /**
@@ -2272,7 +2303,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
-    sdk()?.tooltip?.hide();
+    // The history's tooltip, and no other surface's: a rebuild of the panel must not take
+    // a Files row's from under the pointer (mb-alff).
+    sdk()?.tooltip?.hide(panelElement());
     hoverRevision = null;
   }
 
@@ -2707,7 +2740,7 @@
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes
     // the comparison layer instead of growing a diff surface of its own
-    // (arch-nav-containers.md, the general diff rendering plan).
+    // (arch-plugin-system.md, the general diff rendering plan).
     html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
     html += "</div>";
 

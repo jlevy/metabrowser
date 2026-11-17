@@ -84,6 +84,9 @@
 //     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
 //     mergeRefs(source, target, opts?)    — a merge as source → target, left to right
 //     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
+//     actorIdentity(name, opts?)          — a person: an avatar's box, then the bold name,
+//                                          the person glyph in the box without an avatar
+//     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
 //     class="disclosure-toggle"           — on any control that shows or hides
@@ -103,7 +106,8 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies, ageBucket/ageLabelHtml,
+// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies,
+// actorIdentity/actorIdentityHtml, ageBucket/ageLabelHtml,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
@@ -961,9 +965,15 @@
         global.MetabrowserTooltip.show(html, anchor);
       }
     },
-    hide() {
+    /**
+     * Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     * whose anchor has left the document, and never one shown with no anchor. With none,
+     * any tooltip but one anchored in the nav's header. See docs/design-system.md, "A
+     * Surface Puts Away Only Its Own Tooltip".
+     */
+    hide(within) {
       if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.hide();
+        global.MetabrowserTooltip.hide(within);
       }
     },
   };
@@ -1260,7 +1270,7 @@
     }
   }
 
-  // "Idle Work" in docs/development.md.
+  // "Idle Work" in docs/project/architecture/arch-browser-shell.md.
   const IDLE_INPUT_QUIET_MS = 250;
   let _lastInput = -Infinity;
   const _viewSettled = new Promise((resolve) =>
