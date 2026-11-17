@@ -69,6 +69,7 @@ from tests.github_pull_fixture import (
     scenario,
     tree_files,
 )
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
@@ -721,7 +722,7 @@ def test_listing_says_a_refresh_runs_or_the_prefetch_lane_holds_one(
     gate = threading.Event()
 
     async def waiting(*_args: Any, **_kwargs: Any) -> None:
-        await asyncio.to_thread(gate.wait, 30)
+        await held_until(gate, 30)
 
     monkeypatch.setattr(pull_files_refresh, "refresh_pull_files", waiting)
     try:
