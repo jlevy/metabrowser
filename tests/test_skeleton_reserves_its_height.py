@@ -7,12 +7,15 @@ numbers from a later request. Measured at 1280x900 on the 246,282-file corpus:
 24 px and 43 px of downward movement, on every load and every reload.
 
 Each reservation holds one line box. That settles the filter bar outright and
-takes the tally row from 43 px to 23, the remainder being a split row wrapping
-to a second line in a narrow pane -- H54, which wants the pending row shaped
-like the settled one rather than a taller floor. These tests assert the
-reservations exist, stay derived, and hold in the joined state too; the pixels
-of that history are in explorations/performance-loop/experiments/exp-009, and
-the heights the line keeps now are measured by tests/test_nav_metadata_chrome.py.
+took the tally row from 43 px to 23, the remainder being a split row wrapping
+to a second line in a narrow pane (H54). The ignored count is now a line of its
+own, which the shell draws from the root's totals it inlines and holds pending
+while they are unknown, so the tally row's height is decided at first paint
+(mb-h3hc). These tests assert the reservations exist, stay derived, and hold in
+the joined state too; the pixels of that history are in
+explorations/performance-loop/experiments/exp-009, the heights the line keeps
+are measured by tests/test_nav_metadata_chrome.py, and that nothing moves from
+first paint to settled by tests/test_files_totals_stable_chrome.py.
 
 The tally row is a navigation metadata line (`.nav-metadata`), the component
 the Commits tally and the Pulls lines share, so its reservation is that
@@ -128,10 +131,12 @@ def test_the_chip_box_has_one_source() -> None:
 
 def test_the_inline_render_emits_the_tally_row_rather_than_omitting_it() -> None:
     """Reserving the height in CSS only helps if the element is there to hold
-    it. The inline path used to pass an empty chrome string."""
+    it. The inline path used to pass an empty chrome string. It draws the line
+    from the root's totals the shell inlined, pending without them (mb-h3hc)."""
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     block = _function_source(app, "function renderInitialTreeRows()")
-    assert "treeSummaryHtml(null, null, null)" in block
+    assert "treeSummaryHtml(rootTotals().totals(), null, null)" in block
+    assert "shell: window.METABROWSER_INITIAL_TREE?.summary ?? null," in app
 
 
 def test_the_inline_span_is_recorded_around_the_paint_not_around_the_decision() -> None:
