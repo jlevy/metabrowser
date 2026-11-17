@@ -5,8 +5,8 @@ stand-ins for Apple's tools: the arguments codesign and notarytool get, the nota
 reader, `notarize.sh` end to end, and the signing doctor's checks on generated
 certificates. It needs bash, jq, openssl, and shasum, and nothing from Xcode, so `make
 test` runs it here, and Linux CI with it; `make macos-test` runs it on a Mac too, with
-macOS's bash and LibreSSL. Without one of those tools it skips locally, and fails in CI,
-where a skip would drop the only Linux coverage of these scripts.
+macOS's bash and LibreSSL. Without one of those tools the script stops and names it, and
+the test fails: a skip would drop the only Linux coverage of these scripts.
 
 The pins below hold the copies `SUPPLY-CHAIN-SECURITY.md` makes of the scripts'
 values: the SHA-256 of the committed G2 intermediate, which
@@ -17,9 +17,7 @@ logic tests check before they verify the intermediate's chain against it.
 from __future__ import annotations
 
 import hashlib
-import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -32,9 +30,12 @@ SIGNING_LIB = APP / "scripts/signing-lib.sh"
 ROOT_FIXTURE = APP / "scripts/fixtures/AppleIncRootCertificate.cer"
 SUPPLY_CHAIN = REPO_ROOT / "SUPPLY-CHAIN-SECURITY.md"
 
-# The script makes a handful of RSA keys and runs notarize.sh about ten times; it takes
-# seconds, so this bounds a hang, not the work.
-LOGIC_TIMEOUT_S = 300
+# The script makes eight RSA keys, runs notarize.sh about ten times and the doctor about
+# forty, each a few dozen processes: 18 s on a loaded 4-CPU Linux container (2026-11-17),
+# so the test raises its budget past the suite's 60 s, and the inner bound sits below it
+# to stop a hang with the script's output.
+LOGIC_TIMEOUT_S = 100
+LOGIC_BUDGET_S = 120
 
 
 def _shell_value(script: Path, name: str) -> str:
@@ -43,13 +44,8 @@ def _shell_value(script: Path, name: str) -> str:
     return match.group(1)
 
 
+@pytest.mark.timeout(LOGIC_BUDGET_S)
 def test_release_logic_runs_without_apples_tools() -> None:
-    missing = [tool for tool in ("bash", "jq", "openssl", "shasum") if shutil.which(tool) is None]
-    if missing:
-        message = f"the release-logic checks need {', '.join(missing)} on PATH"
-        if os.environ.get("CI"):
-            pytest.fail(message)
-        pytest.skip(message)
     result = subprocess.run(
         ["bash", str(LOGIC_TESTS)],
         capture_output=True,
