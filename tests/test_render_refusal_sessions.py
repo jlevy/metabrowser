@@ -26,7 +26,7 @@ def _session(name: str) -> dict[str, Any]:
         [require_node(), str(DOM / name), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=30,
         check=False,
     )
     assert result.returncode == 0, f"{name} failed:\n{result.stdout}\n{result.stderr}"

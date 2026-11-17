@@ -7,9 +7,9 @@ env:
 # Golden Test: A Pull Request Text the Server Would Not Render
 
 The Markdown route renders each pull request text in the server’s Markdown child under a
-deadline (`src/metabrowser/builtin_plugins/github/pull_markdown.py`), and refuses a text
-that runs past it with `422` and the code `render_deadline`, as
-`tests/test_github_pulls.py` pins in `tests/fixtures/github-pull-text-refusal.json`.
+deadline (`pull_markdown.py` in the GitHub plugin), and refuses a text that runs past it
+with `422` and the code `render_deadline`, as `tests/test_github_pulls.py` pins in
+`tests/fixtures/github-pull-text-refusal.json`.
 
 This browserless session runs the production `createPullController` of
 `builtin_plugins/github/pull-page.js` on the pull route’s recorded answer for pull
