@@ -17,13 +17,13 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Generator, Iterator
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from unittest.mock import patch
 
 import pytest
@@ -119,6 +119,35 @@ pytestmark = [
 ]
 
 SOURCE = GitSource(transport="https", form="url", normalized=CANONICAL)
+
+# How often a step held by :func:`held_until` looks at its gate: what a release adds to
+# the step's latency, against the 0.3 to 0.4 s a selected-core scenario took on 3.14t
+# (2026-11-17).
+HELD_POLL_S: Final = 0.005
+
+
+async def held_until(gate: threading.Event, timeout_s: float | None = None) -> bool:
+    """Hold a stubbed step on its event loop until another thread sets *gate*.
+
+    Answers as ``gate.wait(timeout_s)`` does, but keeps no worker thread, as the ``gh``
+    read a stub stands in for keeps none: it awaits gh's pipes on the loop. A stub that
+    awaits ``asyncio.to_thread(gate.wait)`` keeps one of the server's default-executor
+    threads for the whole hold, and the server's own next step can then find no thread.
+    CPython's ``ThreadPoolExecutor`` can count an idle thread that is not there: a job
+    submitted while a worker has found its queue empty, but not yet counted itself idle,
+    starts a thread; the worker takes the job, and the new thread counts itself idle too.
+    The next job to spend that count starts no thread, so with every live thread held it
+    waits behind them, for a gate the test opens only once the request that submitted it
+    has answered (mb-xorh: a selected core's ``POST pull-refresh`` on 3.14t, CI run
+    44046980214).
+    """
+
+    deadline = None if timeout_s is None else time.monotonic() + timeout_s
+    while not gate.is_set():
+        if deadline is not None and time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(HELD_POLL_S)
+    return True
 
 
 @dataclass
@@ -587,6 +616,30 @@ def test_route_states_follow_age_and_refresh(stand: _Stand) -> None:
 def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
     """Pull request 7 cached, its head pinned, and served beside the mirror as the CLI does."""
 
+    with _serving_pinned(stand) as client:
+        yield stand, client
+
+
+@pytest.fixture
+def pinned_pull_on_one_worker(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[_Stand, TestClient]]:
+    """``pinned_pull`` on a server whose default executor runs one thread.
+
+    On it, a step that keeps a worker thread while it waits for work that needs one waits
+    forever, which on the production pool only CPython's miscount makes possible (see
+    :func:`held_until`).
+    """
+
+    from metabrowser import events_route
+
+    monkeypatch.setattr(events_route, "DEFAULT_EXECUTOR_WORKERS", 1)
+    with _serving_pinned(stand) as client:
+        yield stand, client
+
+
+@contextlib.contextmanager
+def _serving_pinned(stand: _Stand) -> Generator[TestClient]:
     stand.refresh(7)
     selected = replace(SOURCE, selection=RepositorySelection(kind="pull_request", pull_request=7))
     published = replace(stand.published, source=selected)
@@ -611,7 +664,7 @@ def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
     git_repo.clear_repo_cache()
     try:
         with TestClient(app) as client:
-            yield stand, client
+            yield client
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
@@ -708,7 +761,7 @@ def test_labels_pending_holds_while_the_label_job_runs_and_the_set_lacks_a_shown
     real = pull_labels.gh_api
 
     async def held(path: str, *, etag: str | None = None) -> GhResponse:
-        await asyncio.to_thread(release.wait, 30)
+        await held_until(release, 30)
         return await real(path, etag=etag)
 
     monkeypatch.setattr(pull_labels, "gh_api", held)
@@ -1316,8 +1369,8 @@ def test_the_refresh_route_starts_or_joins_one_job(
 
     async def held() -> None:
         runs.append(7)
-        # The test thread sets it; a worker thread waits so the job stays running.
-        await asyncio.to_thread(release.wait, 30)
+        # The job stays running until the test thread sets it.
+        await held_until(release, 30)
 
     monkeypatch.setattr(served, "refresh", held)
     first = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
@@ -1668,7 +1721,7 @@ def test_past_the_bound_on_jobs_a_request_is_refused_and_starts_nothing(
 
     async def waiting(served: ServedPull) -> None:
         ran.append(served.number)
-        await asyncio.to_thread(gate.wait, 30)
+        await held_until(gate, 30)
 
     monkeypatch.setattr(ServedPull, "refresh", waiting)
 
@@ -1773,7 +1826,7 @@ def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
 
     async def waiting(served: ServedPull) -> None:
         ran.append(served.number)
-        await asyncio.to_thread(gate.wait, 30)
+        await held_until(gate, 30)
 
     monkeypatch.setattr(ServedPull, "refresh", waiting)
 
@@ -2255,7 +2308,7 @@ def test_pull_record_publications_serialize_both_writer_orderings(
         )  # pyright: ignore[reportPrivateUsage]
         second = None
         try:
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             with (
                 pytest.raises(LockBusyError),
                 source_alias_lock(stand.published.home, stand.published.slug, blocking=False),
@@ -2265,7 +2318,7 @@ def test_pull_record_publications_serialize_both_writer_orderings(
             second = asyncio.create_task(
                 pulls._write(stand.published if metadata_first else listed, second_record)
             )  # pyright: ignore[reportPrivateUsage]
-            assert await asyncio.to_thread(second_validated.wait, 5)
+            assert await held_until(second_validated, 5)
             assert not second.done(), "the other canonical writer bypassed the source lock"
             release.set()
             await asyncio.wait_for(first, 5)
@@ -2317,7 +2370,7 @@ def test_cancelled_pull_publication_does_not_write_after_its_lock_is_released(
 
         async def cancel() -> None:
             job = asyncio.create_task(pulls._write(published, changed))  # pyright: ignore[reportPrivateUsage]
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             assert not job.done()
             job.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -2632,13 +2685,76 @@ def test_h82_selected_publication_during_snapshot(
     _exercise_selected_core_wait(pinned_pull, monkeypatch, settle_in_get="captured_snapshot")
 
 
+# How long the one-thread scenario below may take before it counts as stuck: its five held
+# reads and its requests took 0.3 to 0.4 s on 3.14t (2026-11-17). Stuck, it would wait
+# forever, so the bound only has to sit well past a loaded run and inside the test's budget.
+ONE_WORKER_SCENARIO_S: Final = 20.0
+
+
+@pytest.mark.parametrize(
+    ("revoke_in_thread", "settle_in_get"),
+    [(False, None), (True, None), (False, "same_pin"), (False, "switch_pin")],
+    ids=["core", "revoked", "same_pin", "switch_pin"],
+)
+def test_a_selected_core_wait_and_its_settlement_run_on_one_worker_thread(
+    pinned_pull_on_one_worker: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    revoke_in_thread: bool,
+    settle_in_get: Literal["same_pin", "switch_pin"] | None,
+) -> None:
+    """The selected-core scenarios answer while their five reads are held, on one thread.
+
+    The hold is a read in flight, as GitHub's slow answer is, and nothing in the refresh,
+    its ``wait_core`` request, or the reads that settle it may keep a worker thread while
+    it waits for work that needs one. The production pool starts a thread for each job it
+    has none idle for, so only CPython's miscount (:func:`held_until`) brings it to the
+    state a one-thread pool is always in: every live thread busy, the next job queued.
+    A hold kept in a worker thread then queues the request's own next step behind it, as
+    ``asyncio.to_thread(release.wait)`` did in CI run 44046980214. The snapshot scenario
+    keeps one worker in its captured read on purpose, so it is not run here.
+    """
+
+    release = threading.Event()
+    failures: list[BaseException] = []
+
+    def exercise() -> None:
+        try:
+            _exercise_selected_core_wait(
+                pinned_pull_on_one_worker,
+                monkeypatch,
+                revoke_in_thread=revoke_in_thread,
+                settle_in_get=settle_in_get,
+                release=release,
+            )
+        except BaseException as exc:
+            failures.append(exc)
+
+    thread = threading.Thread(target=exercise, name="one-worker-scenario", daemon=True)
+    thread.start()
+    thread.join(ONE_WORKER_SCENARIO_S)
+    stuck = thread.is_alive()
+    # Open the holds either way, so a stuck scenario unwinds before the server stops.
+    release.set()
+    thread.join(ONE_WORKER_SCENARIO_S)
+    assert not stuck, "a request waited on the one worker thread its own held reads kept"
+    if failures:
+        raise failures[0]
+
+
 def _exercise_selected_core_wait(
     pinned_pull: tuple[_Stand, TestClient],
     monkeypatch: pytest.MonkeyPatch,
     *,
     revoke_in_thread: bool = False,
     settle_in_get: Literal["same_pin", "switch_pin", "captured_snapshot"] | None = None,
+    release: threading.Event | None = None,
 ) -> None:
+    """Hold pull request 8's five reads while its core is staged, then settle it.
+
+    *release* opens the holds; a caller that bounds the scenario passes its own, to open
+    them when the bound passes.
+    """
+
     stand, client = pinned_pull
     answers = scenario(stand.origin)
     answers["api"]["repos/octo/demo/pulls/8"]["body"]["body"] = "Early **core** description"
@@ -2646,19 +2762,19 @@ def _exercise_selected_core_wait(
         answers["api"]["repos/octo/demo/pulls/8"]["body"]
     )
     stand.answer(answers)
-    release = threading.Event()
+    release = threading.Event() if release is None else release
     started: set[str] = set()
     read_list, get = pulls._read_list, pulls._get  # pyright: ignore[reportPrivateUsage]
 
     async def held_list(path: str, **kwargs: Any) -> Any:
         started.add(path)
-        await asyncio.to_thread(release.wait)
+        await held_until(release)
         return await read_list(path, **kwargs)
 
     async def held_get(path: str, **kwargs: Any) -> Any:
         if "/status?" in path:
             started.add(path)
-            await asyncio.to_thread(release.wait)
+            await held_until(release)
         return await get(path, **kwargs)
 
     monkeypatch.setattr(pulls, "_read_list", held_list)
@@ -3008,7 +3124,7 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
             assert held.core_preview["reader"] == f"gh:{READER}"
             gate.release.set()
         try:
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             assert held.core_preview is None
         finally:
             release_stamp.set()
@@ -3522,7 +3638,7 @@ def test_visible_core_running_window_survives_second_tab(
 
     async def hold_batch() -> None:
         entered.set()
-        assert await asyncio.to_thread(release.wait, 5)
+        assert await held_until(release, 5)
 
     first, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, hold_batch=hold_batch)
     second = {**first, "window": {**first["window"], "id": "second-tab"}}
@@ -3566,7 +3682,7 @@ def test_visible_core_preempts_a_running_background_batch(
             return
         entered.set()
         try:
-            assert await asyncio.to_thread(release.wait, 5)
+            assert await held_until(release, 5)
         except asyncio.CancelledError:
             cancelled.set()
             raise
@@ -3647,7 +3763,7 @@ def test_visible_core_preempts_only_a_background_batch_reading_other_rows(
     async def hold_batch() -> None:
         entered.set()
         try:
-            assert await asyncio.to_thread(release.wait, 5)
+            assert await held_until(release, 5)
         except asyncio.CancelledError:
             cancelled.set()
             raise
@@ -3684,7 +3800,7 @@ def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
 
     async def fail_batch() -> None:
         entered.set()
-        assert await asyncio.to_thread(fail.wait, 5)
+        assert await held_until(fail, 5)
         raise GhError("GitHub did not answer", state="network_error")
 
     background, _rest, calls = _visible_core_fixture(
@@ -3760,7 +3876,7 @@ def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
         if numbers == (9,):
             entered.set()
             try:
-                assert await asyncio.to_thread(release.wait, 5)
+                assert await held_until(release, 5)
             except asyncio.CancelledError:
                 cancelled.set()
                 raise
@@ -3971,7 +4087,7 @@ def test_visible_core_release_during_last_worker_prevents_adoption(
 
     async def fresh(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         fresh_entered.set()
-        assert await asyncio.to_thread(fresh_release.wait, 5)
+        assert await held_until(fresh_release, 5)
         return graph_core_data(rest[8])
 
     monkeypatch.setattr(pull_cores.CoreWindow, "catalog_matches", held_check)
@@ -4145,7 +4261,7 @@ def test_visible_core_revokes_staged_reader_while_failure_stamp_is_held(
             return READER
         assert accounts == 2
         final_entered.set()
-        assert await asyncio.to_thread(final_release.wait, 5)
+        assert await held_until(final_release, 5)
         return "changed"
 
     async def graph(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -4199,7 +4315,7 @@ def test_visible_core_batch_keeps_unchanged_member_after_sibling_update(
 
     async def hold_batch() -> None:
         entered.set()
-        assert await asyncio.to_thread(release.wait, 5)
+        assert await held_until(release, 5)
 
     ask, rest, calls = _visible_core_fixture(
         pinned_pull, monkeypatch, sibling=True, hold_batch=hold_batch
@@ -4255,7 +4371,7 @@ def test_visible_core_adopted_display_keeps_stale_cache_until_selected_refresh(
 
     async def fresh(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         fresh_entered.set()
-        assert await asyncio.to_thread(fresh_release.wait, 5)
+        assert await held_until(fresh_release, 5)
         return graph_core_data(new_body)
 
     monkeypatch.setattr(pulls, "gh_graphql", fresh)
@@ -4327,7 +4443,7 @@ def test_visible_core_competitor_waits_for_selected_acquisition_to_settle(
         accounts += 1
         if accounts == 2:
             final_entered.set()
-            assert await asyncio.to_thread(final_release.wait, 5)
+            assert await held_until(final_release, 5)
         return READER
 
     async def graph(_query: str, variables: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -4394,7 +4510,7 @@ def test_visible_core_running_batch_drains_before_selected_refresh(
             await asyncio.Future()
         except asyncio.CancelledError:
             cleanup_entered.set()
-            assert await asyncio.to_thread(cleanup_release.wait, 5)
+            assert await held_until(cleanup_release, 5)
             raise
 
     ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, hold_batch=hold_batch)
@@ -4405,7 +4521,7 @@ def test_visible_core_running_batch_drains_before_selected_refresh(
     async def fresh(_query: str, variables: Any, **_kwargs: Any) -> dict[str, Any]:
         assert variables["number"] == number
         fresh_entered.set()
-        assert await asyncio.to_thread(fresh_release.wait, 5)
+        assert await held_until(fresh_release, 5)
         return graph_core_data(fresh_rest)
 
     monkeypatch.setattr(pulls, "gh_graphql", fresh)
@@ -5100,7 +5216,7 @@ def test_core_batch_whose_client_left_starts_no_provider_read(
             if not delivered:
                 delivered = True
                 return {"type": "http.request", "body": json.dumps(ask).encode()}
-            await asyncio.to_thread(entered.wait, 5)
+            await held_until(entered, 5)
             left.set()
             return {"type": "http.disconnect"}
 
@@ -5418,7 +5534,7 @@ def test_same_window_admitted_during_preflight_is_joined_without_revocation(
 
     async def graph(_query: str, _variables: Any, **_kwargs: Any) -> Any:
         provider.set()
-        assert await asyncio.to_thread(release_provider.wait, 5)
+        assert await held_until(release_provider, 5)
         data = graph_core_data(rest[9])
         data["repository"]["p0"] = data["repository"].pop("pull")
         return data
