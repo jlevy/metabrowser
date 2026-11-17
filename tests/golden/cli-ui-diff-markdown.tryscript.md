@@ -40,19 +40,24 @@ head, which is where that address opens the file; the server’s answer is the s
 every page, and a page that learns another pin is served makes every such link plain
 text. Every other local address is dropped before the shared sanitizer.
 
-This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`
-and `static/inert-html.js` whole, and plays the server’s side from
-`tests/fixtures/diff-markdown-responses.json`: what the production projection answers
-for these documents, bound to a pull request’s head, with Python’s HTML parse of every
-block, from which the session builds the template a page parses a block into.
-`tests/test_diff_markdown_session.py` fails when the recording drifts.
+This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`,
+`builtin_plugins/diff/index.js`, and `static/inert-html.js` whole, and plays the
+server’s side from `tests/fixtures/diff-markdown-responses.json`: what the production
+projection answers for these documents, bound to a pull request’s head, with Python’s
+HTML parse of every block, from which the session builds the template a page parses a
+block into. `tests/test_diff_markdown_session.py` fails when the recording drifts.
 The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`. The shared
-chip family and the stylesheet loader are stand-ins, the page is an element tree that
-records what the production code builds, and time is a clock the session advances by
-hand.
+chip family, the stylesheet loader, and the diff’s layout are stand-ins, the page is an
+element tree that records what the production code builds, and time is a clock the
+session advances by hand.
+The plugin mounts the pull request’s comparison on each page the shell renders and hands
+the diff its rule for which addresses open there, which this session draws with.
 
-`links` says which addresses in a rendered block open something, on a page that shows
-the head. Each step lists the requests the page made and each file whose state it
+`links.pages` says whether a link to a file of the head opens on each page: pinned at
+the comparison’s head, pinned at its merge base, beside a checkout at the head, which
+has no pin, and pinned at the head once another tab changed the pin.
+`links.opens` says which addresses in a rendered block open something on the page pinned
+at the head. Each step lists the requests the page made and each file whose state it
 changed: its chooser (`*` chosen, `none` when the file can show only Source), what its
 body shows (`nothing` while it waits within the loading delay), `progress` while its
 mark counts down, and its rendered rows.
@@ -62,6 +67,12 @@ $ node tests/dom/diff-markdown-session.js
 {
   "links": {
     "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
+    "pages": {
+      "pinned at the comparison's head": true,
+      "pinned at the merge base": false,
+      "beside a checkout at the head, which has no pin": false,
+      "pinned at the comparison's head, after another tab changed the pin": false
+    },
     "opens": {
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": true,
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": true,

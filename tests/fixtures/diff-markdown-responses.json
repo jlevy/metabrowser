@@ -1,5 +1,6 @@
 {
   "image_route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
   "manifest": [
     {
       "id": "f1",

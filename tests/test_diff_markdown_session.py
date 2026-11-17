@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from metabrowser.builtin_plugins.github.pull_route import image_route
+from metabrowser.builtin_plugins.github.pull_route import image_route, rendered_route
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot
 from metabrowser.diff.markdown_projection import project_markdown_diff
 from metabrowser.git.tree_source import GitPath
@@ -80,6 +80,11 @@ def _recording() -> dict[str, Any]:
         "image_route": image_route(
             _SNAPSHOT.number, _SNAPSHOT.base, _SNAPSHOT.head, store=_SNAPSHOT.store
         ),
+        # The route the page asks a file's projection on, which the session mounts the
+        # plugin with, so the plugin hands the diff its rule for which addresses open.
+        "rendered_route": rendered_route(
+            _SNAPSHOT.number, _SNAPSHOT.base, _SNAPSHOT.head, store=_SNAPSHOT.store
+        ),
         "manifest": [
             _file("f1", "docs/guide.md"),
             _file("f5", "src/app.py"),
@@ -102,6 +107,15 @@ def test_recording_matches_the_production_projection() -> None:
 def test_session_replays_the_recording() -> None:
     transcript = run_session("diff-markdown-session.js")
     assert transcript["links"]["route"] == read_recording(_RECORDING)["image_route"]
+    # The plugin's rule (`headLinksOpen` in builtin_plugins/diff/index.js): a link to a file
+    # of the head opens only on a page that shows the head, until it hears another pin is
+    # served (A2 of review A on #511).
+    assert transcript["links"]["pages"] == {
+        "pinned at the comparison's head": True,
+        "pinned at the merge base": False,
+        "beside a checkout at the head, which has no pin": False,
+        "pinned at the comparison's head, after another tab changed the pin": False,
+    }
     steps = {step["step"]: step for step in transcript["steps"]}
     first = steps["an answer within the loading delay paints Rendered first"]["files"]
     assert first["f1 docs/guide.md"]["shows"] == "rendered"
