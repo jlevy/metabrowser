@@ -5,8 +5,8 @@ title: "PR Conversation: commit rows match comments in size and spacing, joined 
 kind: bug
 status: closed
 priority: 2
-version: 6
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:38:30.336Z
-updated_at: 2026-11-16T16:30:50.704Z
+updated_at: 2026-11-17T05:58:24.759Z
 started_at: 2026-11-15T07:10:30.142Z
 closed_at: 2026-11-16T16:30:50.695Z
 close_reason: "Merged into main at afda3599f (stack #446 lower layers)."

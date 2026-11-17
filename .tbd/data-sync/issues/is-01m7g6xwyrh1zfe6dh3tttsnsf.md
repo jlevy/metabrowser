@@ -5,8 +5,8 @@ title: "Files Group by: rows read By age and By file type"
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:18:50.200Z
-updated_at: 2026-11-16T18:47:24.105Z
+updated_at: 2026-11-17T05:58:54.224Z
 started_at: 2026-11-15T18:20:07.640Z
 closed_at: 2026-11-16T18:47:24.104Z
 close_reason: "Merged into main with #459."

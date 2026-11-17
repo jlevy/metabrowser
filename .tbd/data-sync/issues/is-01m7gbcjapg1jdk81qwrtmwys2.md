@@ -5,8 +5,8 @@ title: "Navigation reveals the item: switch the nav tab, expand folders or stack
 kind: feature
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:36:45.141Z
-updated_at: 2026-11-16T20:03:30.945Z
+updated_at: 2026-11-17T05:59:09.487Z
 started_at: 2026-11-15T19:37:35.445Z
 closed_at: 2026-11-16T20:03:30.944Z
 close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."

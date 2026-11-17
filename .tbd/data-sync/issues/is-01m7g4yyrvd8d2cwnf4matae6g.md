@@ -5,8 +5,8 @@ title: "PR Conversation: the gap above a comment's first commit is at least the 
 kind: bug
 status: in_progress
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T17:44:27.674Z
-updated_at: 2026-11-15T17:52:22.360Z
+updated_at: 2026-11-17T05:58:30.135Z
 started_at: 2026-11-15T17:45:04.884Z
 ---
 The user's request (2026-11-15), verbatim:

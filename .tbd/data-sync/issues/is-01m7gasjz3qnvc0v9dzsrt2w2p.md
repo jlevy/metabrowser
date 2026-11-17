@@ -5,8 +5,8 @@ title: Tooltips only when they add information; none on Pulls nav rows
 kind: task
 status: closed
 priority: 2
-version: 6
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:26:23.202Z
-updated_at: 2026-11-15T19:58:41.797Z
+updated_at: 2026-11-17T05:59:01.954Z
 started_at: 2026-11-15T19:27:09.431Z
 closed_at: 2026-11-15T19:39:25.433Z
 close_reason: null

@@ -5,8 +5,8 @@ title: "Consistency fixes: docs and CHANGELOG (mb-r5jr review B1-B8, A8, C1, C3,
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7g5yrx2z5bck8g4p1y4g6rx
 hold: null
 hold_until: null
 created_at: 2026-11-15T22:45:14.578Z
-updated_at: 2026-11-16T20:03:32.863Z
+updated_at: 2026-11-17T05:59:15.475Z
 started_at: 2026-11-15T22:46:12.401Z
 closed_at: 2026-11-16T20:03:32.862Z
 close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."

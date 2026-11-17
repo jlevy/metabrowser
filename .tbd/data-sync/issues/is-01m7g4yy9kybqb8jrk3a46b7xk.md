@@ -5,8 +5,8 @@ title: "Files tab: Show ignored sits beside Group by on the filter row"
 kind: task
 status: in_progress
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T17:44:27.186Z
-updated_at: 2026-11-15T17:45:10.439Z
+updated_at: 2026-11-17T05:58:28.420Z
 started_at: 2026-11-15T17:45:10.438Z
 ---
 The user's request (2026-11-15), verbatim:

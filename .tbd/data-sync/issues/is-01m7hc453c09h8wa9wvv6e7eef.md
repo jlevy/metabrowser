@@ -5,13 +5,13 @@ title: "Files group headings: the tally sits beside the heading after a small bu
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-16T05:08:52.447Z
-updated_at: 2026-11-16T05:46:56.230Z
+updated_at: 2026-11-17T05:59:23.355Z
 closed_at: 2026-11-16T05:46:56.228Z
 close_reason: "Delivered in #473 (08a1ccf9d): heading tally beside the name after ' · '; folder totals unchanged."
 resolution: null
