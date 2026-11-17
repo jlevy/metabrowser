@@ -803,16 +803,18 @@ page’s first GitHub routes without a browser.
 
 ```shell
 explorations/performance-loop/pr-view-wheel.sh <commit> attic/pr-view/wheels attic/pr-view/build-venv/bin/python
-ROOT=attic/pr-view/root ENV=attic/pr-view/env CHECKOUT=<github checkout> \
-  OUT=attic/pr-view/pairs.jsonl UV_CONFIG=uv.toml \
+ROOT=$PWD/attic/pr-view/root ENV=$PWD/attic/pr-view/env CHECKOUT=<github checkout> \
+  OUT=$PWD/attic/pr-view/pairs.jsonl UV_CONFIG=$PWD/uv.toml \
   explorations/performance-loop/pr-view-pairs.sh 3 pr control <wheel-a> candidate <wheel-b>
 node explorations/performance-loop/pr-view-stats.mjs attic/pr-view/pairs.jsonl --control control --candidate candidate
 ```
 
-The header comments of `pr-view-wheel.sh` and `pr-view-pairs.sh` say how to make the
-build and runtime environments from the committed locks.
+The header comments of `pr-view-wheel.sh` and `pr-view-pairs.sh` give the commands that
+make the build and runtime environments from the committed locks.
 A round runs against live GitHub, so the driver stops when the core budget or the disk
-runs low. exp-099 is the round that found #369’s first-paint hold with it.
+runs low. The scripts are macOS-only as written (`df -g`, `sysctl vm.loadavg`, and the
+Chrome that `pr-cdp.mjs` finds, which `CHROME_BIN` overrides).
+exp-099 is the round that found #369’s first-paint hold with it.
 
 ### File View Navigation Scenario
 

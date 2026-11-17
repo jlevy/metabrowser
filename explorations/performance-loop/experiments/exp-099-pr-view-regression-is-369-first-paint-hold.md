@@ -175,24 +175,26 @@ experiment:
       pr-view-first-routes.mjs) under explorations/performance-loop/.
   verdict:
     decision: accepted
-    primary_metric: >-
-      time to the record's title (`.github-pull-title-with-state` on screen) on a pull
-      request page opened from a cache that holds the record (pr-warm), pair ratio
-      candidate/control at the 1.3x rough cut
+    primary_metric: "time to the record's title on a pull request page opened from a cache that holds the record (pr-warm), pair ratio candidate/control at the 1.3x rough cut"
     reason: >-
       On a cached pull request page the title appears 683 ms after navigation on v0.12.0
       and 961 ms on main, pair ratios 1.33, 1.58, and 1.38, all three beyond the rough cut.
-      v0.12.0 against main of 2026-11-12 shows no difference on any milestone, and across
-      #369 (84b2ffdce against 597a7c70e) a warm reload's title goes from 112 to 204 ms with
-      all three pairs beyond, so the step is #369's conversation first-paint hold. The
-      cold-record path and the Pulls rows did not regress.
+      v0.12.0 against main of 2026-11-12 shows no milestone difference. Across #369
+      (84b2ffdce against 597a7c70e) the deciding pr-warm title is later in every pair but
+      under the rough cut (1.14, 1.27, 1.18), so the bisect places the step at #369 by a
+      context metric, a warm reload's title (112 to 204 ms, all three pairs beyond), and by
+      the mechanism: #369's conversation first-paint hold. The cold-record path and the
+      Pulls rows' milestones did not regress; the GET pull route's server time did, and is
+      open.
     commit: c6aa02085
 ---
 **Status:** Accepted.
 A pull request page opened from a cache that already holds the record paints its title
-about 280 ms later on main than on v0.12.0. The step is #369 (`597a7c70e`), whose
-conversation first-paint hold keeps the header out of sight until every text on the
-first screen has its rendered Markdown.
+about 280 ms later on main than on v0.12.0. The bisect places the step at #369
+(`597a7c70e`), whose conversation first-paint hold keeps the header out of sight until
+every text on the first screen has its rendered Markdown: across #369 a warm reload’s
+title passes the rough cut in every pair, and the deciding pr-warm title is later in
+every pair but under it.
 
 ## Why This Round
 
@@ -252,11 +254,13 @@ Each cell is median [range] in ms from navigation start, n=3 per side.
 **Bisect across #369** (`84b2ffdce` against `597a7c70e`, loads 8.6 to 11.8): a warm
 reload’s title goes from 112 [110–114] to 204 [186–231] ms (1.82 / 2.03 / 1.69), and its
 final description from 139 to 204 ms (1.59 / 1.66 / 1.30). The pr-warm title is later in
-every pair, 739 to 926 ms (1.14 / 1.27 / 1.18), under the rough cut.
+every pair, 739 to 926 ms (1.14 / 1.27 / 1.18), under the rough cut, so on the deciding
+metric the bisect does not resolve; the reload and the mechanism below place the step.
 pr-fresh and pr-store do not move, and route times do not change across #369.
 
-**v0.12.0 against main of 2026-11-12** (`27ea216c7`, loads 7.9 to 10.3): no milestone
-differs; the pr-warm title is 637 [580–750] against 647 [617–696] ms.
+**v0.12.0 against main of 2026-11-12** (`27ea216c7`, loads 7.9 to 10.3): no page
+milestone differs; the pr-warm title is 637 [580–750] against 647 [617–696] ms.
+The `GET pull` route’s server time does differ already; see Route Times.
 
 **#369’s merge against main** (loads 6.9 to 10.8): the pr-warm title is unresolved, 839
 to 917 ms (1.14 / 1.07 / 1.07). A warm reload’s title is much earlier on main, 231 to
@@ -273,26 +277,55 @@ comments, and one review), requested `MARKDOWN_CONCURRENCY` (two) at a time.
 From the record’s arrival to the title, v0.12.0 takes 24, 29, and 30 ms; it shows the
 title at once and the description as plain text.
 main takes 212, 228, and 258 ms: the last Markdown answer ends 150 to 170 ms after the
-record, and the title follows 55 to 60 ms after that.
-On a freshly started server each first Markdown render takes 50 to 80 ms against 3 to 11
-ms once warm, so the hold costs a fresh server most.
-exp-080 accepted the hold for in-app clicks at 0 to 2 frames, and its Limits section
-warned that a first screen with several texts waits a round trip per two texts.
+record, and the title follows 58, 59, and 87 ms after that.
+On a freshly started server each first Markdown render takes 50 to 80 ms of server time,
+against 1 to 5 ms (2 to 12 ms in the browser) on the warm reload, so the hold costs a
+fresh server most. exp-080 accepted the hold for in-app clicks at 0 to 2 frames, and its
+Limits section warned that a first screen with several texts waits a round trip per two
+texts.
 
 ### Without a Browser
 
 [pr-view-first-routes.mjs](../pr-view-first-routes.mjs) asks a fresh server on a warm
 cache for what the page asks first (`exp-099-first-routes.jsonl`, four rounds per
 build). The first `GET pull` takes 350 to 467 ms on v0.12.0, 368 to 391 before #369, and
-359 to 372 on main; repeated calls take 6 to 21 ms.
-The lazy import of the GitHub route modules is 117 to 236, 121 to 148, and 126 to 151
-ms. The route itself did not regress.
+359 to 372 on main; repeated calls take 4 to 21 ms.
+The lazy import of the GitHub route modules, timed by a helper whose output stayed in
+the measuring worktree’s `attic/` and is not in the samples, is 117 to 236, 121 to 148,
+and 126 to 151 ms.
+So in isolation the first `GET pull` costs the same in every build; in
+the browser it does not (Route Times).
+
+### Route Times
+
+The protocol lists the first `GET pull`’s client and server time and `stacks`’s server
+time among its metrics, and by its rule several moved (median [range] in ms, pair
+ratios):
+
+| Series | Step | Metric | control | candidate | Pair ratios |
+| --- | --- | --- | --- | --- | --- |
+| v0.12.0 → main | pr-store | `pull` srv | 230 [213–239] | 330 [316–348] | 1.32 / 1.44 / 1.63 |
+| v0.12.0 → main | pr-warm | `pull` srv | 243 [241–261] | 337 [330–343] | 1.42 / 1.36 / 1.29 |
+| v0.12.0 → main | pr-fresh | `pull` srv | 50 [48–51] | 63 [58–69] | 1.39 / 1.33 / 1.14 |
+| v0.12.0 → main | pr-warm-reload | `pull` client | 11 [10–12] | 29 [27–29] | 2.64 / 2.42 / 2.70 |
+| v0.12.0 → main | pr-warm-reload | `pull` srv | 10 [8–10] | 26 [24–26] | 2.67 / 2.58 / 2.87 |
+| v0.12.0 → main | pr-warm-reload | `stacks` srv | 16 [15–20] | 30 [28–31] | 2.07 / 1.51 / 1.73 |
+| v0.12.0 → main | pulls-cold | `pulls` srv | 43 [41–43] | 57 [57–58] | 1.33 / 1.37 / 1.34 |
+| v0.12.0 → Nov 12 | pr-store | `pull` srv | 224 [214–248] | 319 [305–366] | 1.48 / 1.42 / 1.42 |
+
+The pr-store and pr-warm growth was there by 2026-11-12, before #369. On the first
+requests the route answers while the page’s other first requests run, and in isolation
+it costs the same in every build, so the growth may be contention with more work at page
+start, or more work in the route since v0.12.0; this round does not say which.
+None of it decides the title’s wait, which starts once the record has arrived.
+It is open, for a round of its own.
 
 ### What Did Not Move
 
 - The cold-record path, with no cache (pr-fresh) and with a store attached (pr-store).
 - The Pulls rows’ first row, cold and warm.
-- On a long-running server, main’s final description arrives earlier than v0.12.0’s.
+- On a long-running server, main’s final description is no later than v0.12.0’s: 126
+  against 148 ms, pair ratios 0.85 / 0.81 / 1.28, none past either cut.
 
 The Diff summary (#478) and the Pulls change line (#491) arrived after v0.12.0, so they
 have no baseline to regress from.
@@ -304,13 +337,23 @@ change, #522) on Pulls only: the last cold change line goes from 27197 to 8112 m
 
 ## Deviation
 
-The protocol was written after a single-run screen and the first series had run, not
-before them as the loop requires.
-The first series ran without bytecode compilation and was discarded, because every wheel
-swap made the first requests recompile the package, which costs a larger build more.
-The protocol was then written, and the five judged and bisect series ran under it.
-It lists two bisect builds that were never measured (`509e0ed2f` and `1dcbe93f1`, before
-and at #478), because the step was found at #369.
+The round broke three of the loop’s registration rules:
+
+- **The protocol was not committed before the measurements.** It was written after a
+  single-run screen and a first series had run, and every judged and bisect series ran
+  (18:06 to 18:30 UTC) before its first commit, with this record (18:42 UTC). That the
+  series ran under it rests on the measuring agent’s report, not on history.
+  The first series ran without bytecode compilation and was discarded, because every
+  wheel swap made the first requests recompile the package, which costs a larger build
+  more.
+- **The analysis was not registered.** The protocol names no analysis script by sha256,
+  so the record has no `method.analysis`, and the committed
+  [pr-view-stats.mjs](../pr-view-stats.mjs) is not byte for byte the script that ran.
+- **Builds it lists were not measured:** `c098e6a82` (main of 2026-11-14) and the #478
+  bisect pair `509e0ed2f` and `1dcbe93f1`, because the step was found at #369.
+
+So the round is exploratory evidence for the step, not a pre-registered test; exp-100,
+which tests a fix with this benchmark, registered its protocol and analysis first.
 
 The committed scripts differ from the ones that ran only in comments, formatting, and
 one wrapped line; the first series alone used an earlier recorder with a gh-only shim
@@ -322,9 +365,13 @@ passed through environment variables.
   1.3x; smaller ones are unresolved.
 - **One pull request for the warm and store cases** (#487, four texts on its first
   screen). A first screen with only the description waits less.
-- **The extra ~90 ms of main’s first `GET pull` in the browser** (425 to 513 ms) is not
-  a result: one of three pairs passes 1.3x, and in isolation the route costs the same in
-  every build.
+- **The pr-warm first `GET pull`’s client time** (425 to 513 ms) passes 1.3x in one pair
+  of three, so it is not a result on its own; its server time is (Route Times).
+- **`complete` is not the same milestone in both builds:** main’s includes the Diff
+  summary, which v0.12.0 does not have.
+- **The Pulls store-first comparison** (`227b5bab5`) is a sibling of main at #513, not a
+  descendant: the two share 4eb299fd1, so it also lacks #513, which is on the Pulls
+  path.
 - **Clicking a Pulls row to open a PR** was not measured here; exp-080’s transition
   scenario covers that path.
 - **The live repository moves.** The open pull requests changed between series, so Pulls

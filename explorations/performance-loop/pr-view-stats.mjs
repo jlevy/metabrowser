@@ -6,8 +6,9 @@
 //   node explorations/performance-loop/pr-view-stats.mjs FILE.jsonl [FILE...] \
 //     [--control LABEL --candidate LABEL] [--tolerance 1.3] [--json]
 //
-// A pair is two runs of one step next to each other in the file, one of each build, as
-// pr-view-pairs.sh writes them. A run that timed out or failed keeps its row and reports
+// A pair is one run of each build of one step in one round, from the `round` that
+// pr-view-pairs.sh gives each run; runs with no round (exp-099's) pair when they are next
+// to each other in the file, one of each build. A run that timed out or failed keeps its row and reports
 // the milestones it reached; a milestone it never reached is null and is left out of the
 // median, and the count beside each median says how many runs it holds.
 import fs from "node:fs";
@@ -108,9 +109,15 @@ const summary = {};
 for (const [key, rs] of groups) {
   const [step, label] = key.split("\u0000");
   const ms = rs.map(metrics);
+  const versions = [...new Set(rs.map((r) => r.version))];
+  if (versions.length > 1) {
+    console.error(
+      `warning: ${step} ${label} pools ${versions.length} builds: ${versions.join(", ")}`,
+    );
+  }
   const row = {
     n: rs.length,
-    version: rs[0].version,
+    version: versions.join(", "),
     timed_out: rs.filter((r) => r.timed_out).length,
     errors: rs.filter((r) => r.error).length,
   };
@@ -142,10 +149,22 @@ if (opt.control && opt.candidate) {
   }
   for (const [step, rs] of bySteps) {
     const list = [];
-    for (let i = 0; i + 1 < rs.length; i++) {
-      if (rs[i].label !== rs[i + 1].label) {
-        const ctl = rs[i].label === opt.control ? rs[i] : rs[i + 1];
-        const cand = ctl === rs[i] ? rs[i + 1] : rs[i];
+    const rounds = new Map();
+    for (const r of rs.filter((x) => x.round)) {
+      const both = rounds.get(r.round) ?? {};
+      both[r.label] = r;
+      rounds.set(r.round, both);
+    }
+    for (const both of rounds.values()) {
+      if (both[opt.control] && both[opt.candidate]) {
+        list.push([metrics(both[opt.control]), metrics(both[opt.candidate])]);
+      }
+    }
+    const loose = rs.filter((x) => !x.round);
+    for (let i = 0; i + 1 < loose.length; i++) {
+      if (loose[i].label !== loose[i + 1].label) {
+        const ctl = loose[i].label === opt.control ? loose[i] : loose[i + 1];
+        const cand = ctl === loose[i] ? loose[i + 1] : loose[i];
         list.push([metrics(ctl), metrics(cand)]);
         i++;
       }

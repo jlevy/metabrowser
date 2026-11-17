@@ -52,6 +52,7 @@
 // per run goes to --out.
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -70,6 +71,7 @@ const { values: args } = parseArgs({
     port: { type: "string" },
     label: { type: "string", default: "" },
     "build-ref": { type: "string", default: "" },
+    round: { type: "string", default: "" },
     out: { type: "string" },
     "expect-summary": { type: "boolean", default: false },
     "prepare-store": { type: "string" },
@@ -89,8 +91,22 @@ if (scenario !== "pr" && scenario !== "pulls") {
 }
 const ROOT = path.resolve(String(args.root));
 const CACHE = path.resolve(String(args.cache));
+// The server starts in ROOT, so a relative --metab or --checkout would resolve there.
+const METAB = path.resolve(String(args.metab));
+const CHECKOUT = path.resolve(String(args.checkout));
 const runId = `${Date.now().toString(36)}-${process.pid}`;
-const port = Number(args.port ?? 9500 + Math.floor(Math.random() * 400));
+/** A port nothing listens on now, from the kernel, so a run never reaches another server. */
+async function freePort() {
+  return await new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port: free } = /** @type {import("node:net").AddressInfo} */ (probe.address());
+      probe.close(() => resolve(free));
+    });
+  });
+}
+const port = Number(args.port ?? (await freePort()));
 const seconds = Number(args.seconds);
 const prNumber = Number(args.pr);
 const origin = `http://127.0.0.1:${port}`;
@@ -100,7 +116,8 @@ const result = {
   recorder: "pr-view/v1",
   label: args.label,
   build_ref: args["build-ref"],
-  version: execFileSync(String(args.metab), ["--version"]).toString().trim(),
+  round: args.round,
+  version: execFileSync(METAB, ["--version"]).toString().trim(),
   scenario,
   step: args.step,
   pr: scenario === "pr" ? prNumber : null,
@@ -155,27 +172,31 @@ async function startServer() {
   fs.mkdirSync(cfg, { recursive: true, mode: 0o700 });
   const logFd = fs.openSync(serverLog, "w", 0o600);
   const t0 = Date.now();
-  server = spawn(
-    String(args.metab),
-    [String(args.checkout), "--no-open", "--port", String(port), "--cache-dir", CACHE],
-    {
-      cwd: ROOT,
-      detached: true,
-      stdio: ["ignore", logFd, logFd],
-      env: {
-        ...process.env,
-        PATH: `${shimDir}:${process.env.PATH}`,
-        METABROWSER_CACHE_DIR: CACHE,
-        METABROWSER_CONFIG_DIR: cfg,
-        METABROWSER_REQUEST_LOG: "verbose",
-      },
+  server = spawn(METAB, [CHECKOUT, "--no-open", "--port", String(port), "--cache-dir", CACHE], {
+    cwd: ROOT,
+    detached: true,
+    stdio: ["ignore", logFd, logFd],
+    env: {
+      ...process.env,
+      PATH: `${shimDir}:${process.env.PATH}`,
+      METABROWSER_CACHE_DIR: CACHE,
+      METABROWSER_CONFIG_DIR: cfg,
+      METABROWSER_REQUEST_LOG: "verbose",
     },
-  );
+  });
   fs.closeSync(logFd);
+  let spawnError = null;
+  server.on("error", (error) => {
+    spawnError = error;
+  });
   for (let i = 0; i < 600; i++) {
+    if (spawnError !== null) {
+      throw new Error(`could not start ${METAB}: ${spawnError}`);
+    }
     try {
       const r = await fetch(`${origin}/api/tree?depth=1`);
-      if (r.ok) {
+      // Only our own child's answer counts: one that has exited cannot be what answered.
+      if (r.ok && server.exitCode === null && server.signalCode === null) {
         result.server_ready_ms = Date.now() - t0;
         result.server_started_epoch_ms = t0;
         return;
@@ -190,10 +211,20 @@ async function startServer() {
     `server did not become ready: ${fs.readFileSync(serverLog, "utf8").slice(-2000)}`,
   );
 }
-function stopServer() {
-  if (server) {
+/** Stop the server's process group, and kill it if it has not exited within 5 s. */
+async function stopServer() {
+  if (!server || server.exitCode !== null || server.signalCode !== null) {
+    return;
+  }
+  const exited = new Promise((resolve) => server.once("exit", resolve));
+  try {
+    process.kill(-server.pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  if ((await Promise.race([exited.then(() => true), sleep(5000).then(() => false)])) === false) {
     try {
-      process.kill(-server.pid, "SIGTERM");
+      process.kill(-server.pid, "SIGKILL");
     } catch {}
   }
 }
@@ -576,7 +607,9 @@ try {
     const again = {
       ...Object.fromEntries(
         Object.entries(result).filter(([k]) =>
-          ["recorder", "label", "build_ref", "version", "scenario", "pr", "host"].includes(k),
+          ["recorder", "label", "build_ref", "round", "version", "scenario", "pr", "host"].includes(
+            k,
+          ),
         ),
       ),
       step: `${args.step || scenario}-reload`,
@@ -605,8 +638,7 @@ try {
   try {
     chrome?.kill("SIGKILL");
   } catch {}
-  stopServer();
-  await sleep(300);
+  await stopServer();
   fs.rmSync(profile, { recursive: true, force: true });
   fs.rmSync(shimDir, { recursive: true, force: true });
   for (const log of Object.values(shimLogs)) {

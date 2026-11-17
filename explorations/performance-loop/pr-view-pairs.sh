@@ -5,9 +5,15 @@
 #   pr-view-pairs.sh <rounds> <pr|pulls|both> <label-a> <wheel-a> <label-b> <wheel-b>
 #
 # Environment: ROOT (measurement directory: caches, logs, profiles), ENV (the one virtual
-# environment, made from the checkout's `uv export --no-dev` constraints and one wheel),
-# CHECKOUT (the GitHub checkout served), OUT (the JSON lines file), UV_CONFIG (the
-# checkout's uv.toml), and optionally PR_FRESH (default 470), PR_STORE (default 487),
+# environment), CHECKOUT (the GitHub checkout served), OUT (the JSON lines file), UV_CONFIG
+# (the checkout's uv.toml); relative paths are taken from the current directory. Make ENV
+# once from the checkout's locked runtime dependencies, without the project:
+#   uv --config-file uv.toml export --frozen --no-dev --no-emit-project --no-hashes \
+#     --output-file <dir>/runtime-constraints.txt
+#   uv --config-file uv.toml venv <dir>/env
+#   uv --config-file uv.toml pip install --python <dir>/env/bin/python --compile-bytecode \
+#     -r <dir>/runtime-constraints.txt
+# Optionally PR_FRESH (default 470), PR_STORE (default 487),
 # PR_PREP (default 514), MIN_CORE (default 1500), MIN_DISK_GB (default 2).
 #
 # A round is five steps, each run for both builds back to back, in the round's order (odd
@@ -31,6 +37,9 @@ rounds=$1 which=$2
 labels=("$3" "$5")
 wheels=("$4" "$6")
 : "${ROOT:?}" "${ENV:?}" "${CHECKOUT:?}" "${OUT:?}" "${UV_CONFIG:?}"
+absolute() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
+ROOT=$(mkdir -p "$ROOT" && absolute "$ROOT") ENV=$(absolute "$ENV")
+CHECKOUT=$(absolute "$CHECKOUT") OUT=$(absolute "$OUT") UV_CONFIG=$(absolute "$UV_CONFIG")
 HERE=$(cd "$(dirname "$0")" && pwd)
 PR_FRESH=${PR_FRESH:-470}
 PR_STORE=${PR_STORE:-487}
@@ -51,8 +60,8 @@ use_wheel() { # <wheel>: install it and the KPress it pins, then check the envir
   [ "$got" = "$want" ] || { echo "expected '$want', got '$got'" >&2; return 1; }
 }
 
-step() { # <build index> <step name>
-  local i=$1 name=$2 extra=()
+step() { # <build index> <step name> <round>
+  local i=$1 name=$2 round=$3 extra=()
   use_wheel "${wheels[$i]}" || exit 1
   case $name in
     pr-fresh) extra=(--scenario pr --pr "$PR_FRESH" --fresh-cache --prepare-store "$PR_PREP"
@@ -67,7 +76,7 @@ step() { # <build index> <step name>
       --seconds 30) ;;
   esac
   node "$HERE/pr-view.mjs" --metab "$ENV/bin/metab" --checkout "$CHECKOUT" --root "$ROOT" \
-    --label "${labels[$i]}" --step "$name" --out "$OUT" "${extra[@]}"
+    --label "${labels[$i]}" --step "$name" --round "$round" --out "$OUT" "${extra[@]}"
 }
 
 case $which in
@@ -83,6 +92,6 @@ for r in $(seq "$rounds"); do
   [ "$free" -ge "$MIN_DISK_GB" ] || { echo "stop: disk ${free}G < ${MIN_DISK_GB}G"; exit 2; }
   if [ $((r % 2)) = 1 ]; then order=(0 1); else order=(1 0); fi
   for s in "${steps[@]}"; do
-    for i in "${order[@]}"; do step "$i" "$s"; done
+    for i in "${order[@]}"; do step "$i" "$s" "$r"; done
   done
 done

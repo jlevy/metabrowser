@@ -10,7 +10,9 @@
 # --no-build-isolation is. An archive has no .git, so the version uv-dynamic-versioning
 # would read from Git is computed the same way from `git describe` and passed in
 # UV_DYNAMIC_VERSIONING_BYPASS: a tag itself is its version, and a commit N past tag
-# vX.Y.Z is X.Y.(Z+1).devN+<sha8>, the pep440 `bump` style pyproject.toml sets.
+# vX.Y.Z is X.Y.(Z+1).devN+<abbreviated commit>, the pep440 `bump` style pyproject.toml
+# sets, with the commit abbreviated as Git's %h abbreviates it, as dunamai reads it. A
+# pre-release tag is refused rather than guessed at.
 # The source copy is deleted after the build. It prints the commit and version, then the
 # wheel's path as the last line.
 #
@@ -30,11 +32,12 @@ tag=${describe%-*-g*}
 distance=${describe%-g*}
 distance=${distance##*-}
 base=${tag#v}
+[[ $base =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $tag is not vX.Y.Z" >&2; exit 1; }
 if [ "$distance" = 0 ]; then
   version=$base
 else
   IFS=. read -r major minor patch <<<"$base"
-  version="$major.$minor.$((patch + 1)).dev$distance+${commit:0:8}"
+  version="$major.$minor.$((patch + 1)).dev$distance+$(git rev-parse --short "$commit")"
 fi
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -48,8 +51,7 @@ import hatchling.build
 print(hatchling.build.build_wheel(sys.argv[1]))
 ' "$out") >/dev/null
 rm -rf "$src"
-wheel="$out/metabrowser-${version//+/_}-py3-none-any.whl"
-[ -f "$wheel" ] || wheel="$out/metabrowser-$version-py3-none-any.whl"
+wheel="$out/metabrowser-$version-py3-none-any.whl"
 [ -f "$wheel" ] || { echo "no wheel for $version in $out" >&2; exit 1; }
 echo "$commit $version"
 echo "$wheel"

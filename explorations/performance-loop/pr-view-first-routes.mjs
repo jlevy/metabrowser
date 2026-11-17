@@ -8,8 +8,9 @@
 // GET stacks, and GET pulls?state=open&limit=100; then each once more, serially. It records
 // each answer's client time and Server-Timing. Nothing here asks GitHub: these GETs answer
 // from the cache alone.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -26,13 +27,34 @@ const { values: a } = parseArgs({
     out: { type: "string" },
   },
 });
-const port = 9500 + Math.floor(Math.random() * 400);
+for (const name of ["metab", "checkout", "cache", "root"]) {
+  if (!a[name]) {
+    throw new Error(`--${name} is required`);
+  }
+}
+const metab = path.resolve(String(a.metab));
+// A port nothing listens on now, from the kernel, so the run never reaches another server.
+const port = await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.once("error", reject);
+  probe.listen(0, "127.0.0.1", () => {
+    const { port: free } = /** @type {import("node:net").AddressInfo} */ (probe.address());
+    probe.close(() => resolve(free));
+  });
+});
 const origin = `http://127.0.0.1:${port}`;
 const cfg = path.join(String(a.root), "cfg");
 fs.mkdirSync(cfg, { recursive: true, mode: 0o700 });
 const server = spawn(
-  String(a.metab),
-  [String(a.checkout), "--no-open", "--port", String(port), "--cache-dir", String(a.cache)],
+  metab,
+  [
+    path.resolve(String(a.checkout)),
+    "--no-open",
+    "--port",
+    String(port),
+    "--cache-dir",
+    String(a.cache),
+  ],
   {
     detached: true,
     stdio: "ignore",
@@ -61,15 +83,23 @@ async function get(p) {
     timing: timing(r.headers.get("server-timing")),
   };
 }
-const out = { label: a.label, load: os.loadavg()[0], started: new Date().toISOString() };
+const out = {
+  label: a.label,
+  version: execFileSync(metab, ["--version"]).toString().trim(),
+  load: os.loadavg()[0],
+  started: new Date().toISOString(),
+};
 try {
   const t0 = Date.now();
   for (let i = 0; i < 600; i++) {
     try {
-      if ((await fetch(`${origin}/api/tree?depth=1`)).ok) {
+      if ((await fetch(`${origin}/api/tree?depth=1`)).ok && server.exitCode === null) {
         break;
       }
     } catch {}
+    if (server.exitCode !== null) {
+      throw new Error(`the server exited with status ${server.exitCode}`);
+    }
     await sleep(100);
   }
   out.ready_ms = Date.now() - t0;
