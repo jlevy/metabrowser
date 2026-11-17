@@ -499,7 +499,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help=f"fail when a job's 90th percentile passes {CHECK_FRACTION:.0%} of its limit",
+        # argparse formats help with %, so the percent sign is doubled.
+        help=f"fail when a job's 90th percentile passes {CHECK_FRACTION:.0%}% of its limit",
     )
     args = parser.parse_args(arguments)
     try:

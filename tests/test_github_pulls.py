@@ -1869,11 +1869,15 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
 ) -> None:
     """A gh that is still answering when the server stops is killed, and then forgotten."""
 
+    pid_file = tmp_path / "gh-pid"
     started = tmp_path / "gh-started"
     gh = tmp_path / "bin" / "gh"
     gh.parent.mkdir()
+    # Only shell builtins before the exec, so the group never holds a second process. An
+    # external `mv` here was still running when the stop came, and killed as an orphan it
+    # stayed in the group until init reaped it, so the group outlived the stop on CI.
     gh.write_text(
-        f'#!/bin/sh\necho $$ > "{started}.new"\nmv "{started}.new" "{started}"\nexec sleep 50\n',
+        f'#!/bin/sh\necho $$ > "{pid_file}"\n: > "{started}"\nexec sleep 50\n',
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -1885,7 +1889,7 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
         while not started.exists():
             assert time.monotonic() < deadline, "gh did not start"
             await asyncio.sleep(0.01)
-        pid = int(started.read_text(encoding="utf-8"))
+        pid = int(pid_file.read_text(encoding="utf-8"))
         try:
             # The leader of a group of its own, so the kill cannot reach this process.
             assert os.getpgid(pid) == pid != os.getpgid(0)
