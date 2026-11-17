@@ -10,6 +10,8 @@
 #                             Developer ID signed, notarized, and stapled
 #   make release NOTARIZE=0   rehearse the release with an ad hoc signature
 #   make notarize [FILE=path] notarize and staple the release DMG, or FILE
+#   make signing-check        the signing doctor: can this Mac sign and notarize a release?
+#                             Read-only; ONLINE=1 also asks the notary service
 #   make webkit-gate          the WebKit measurement gate against Chrome (webkit-gate/run.mjs);
 #                             PAIRS=n and CASES=a,b pass through
 #   make clean                remove .build and build
@@ -19,8 +21,8 @@
 # (build/release/Metabrowser.app, the published icon). VARIANT=release or VARIANT=dev on
 # the command line overrides that; a VARIANT in the environment is ignored, so a leftover
 # export cannot turn a
-# development build into a release build. SIGN_IDENTITY, the notary credentials,
-# NOTARIZE, and ARCHES reach the scripts, which document them.
+# development build into a release build. SIGN_IDENTITY, SIGN_KEYCHAIN, the notary
+# credentials, NOTARIZE, ONLINE, and ARCHES reach the scripts, which document them.
 
 SHELL := /bin/bash
 SWIFT ?= swift
@@ -32,7 +34,7 @@ endif
 dev_variant = $(or $(VARIANT),dev)
 release_variant = $(or $(VARIANT),release)
 
-.PHONY: build test app run dmg release notarize clean webkit-gate
+.PHONY: build test app run dmg release notarize signing-check clean webkit-gate
 
 build:
 	$(SWIFT) build
@@ -70,6 +72,9 @@ release:
 notarize:
 	set -e; source scripts/common.sh; variant_settings $(release_variant); \
 	scripts/notarize.sh $(if $(FILE),"$(FILE)","$$dmg")
+
+signing-check:
+	scripts/check-signing.sh
 
 webkit-gate:
 	node webkit-gate/run.mjs $(if $(PAIRS),--pairs $(PAIRS)) $(if $(CASES),--cases $(CASES))

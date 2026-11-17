@@ -10,9 +10,10 @@
 #
 # VARIANT defaults to release here, and the release variant defaults to NOTARIZE=1: an
 # official build, which must be signed with a Developer ID, notarized, built from a
-# commit, and carry the published icon, and which checks all of that before it builds.
-# NOTARIZE=0 rehearses the same steps and says which it skipped; the dev variant
-# defaults to NOTARIZE=auto. SIGN_IDENTITY, the notary credentials, and ARCHES are
+# commit, and carry the published icon, and which checks all of that, with the signing
+# doctor (scripts/check-signing.sh --for-release), before it builds. NOTARIZE=0
+# rehearses the same steps and says which it skipped; the dev variant defaults to
+# NOTARIZE=auto. SIGN_IDENTITY, SIGN_KEYCHAIN, the notary credentials, and ARCHES are
 # documented in build-app.sh and notarize.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -37,13 +38,15 @@ else
   tree_problem=""
 fi
 
-# An official build checks what it needs before it spends a build on it.
+# An official build checks what it needs before it spends a build on it. The signing
+# doctor checks the release keychain, the identity in it, the intermediate, and the
+# notary credentials, and that the keychain is unlocked: the owner's go-ahead.
 if [[ "$NOTARIZE" == 1 ]]; then
   problems=()
   if [[ "${SIGN_IDENTITY:--}" == "-" ]]; then
     problems+=("SIGN_IDENTITY is not set; an official build is signed with a Developer ID Application identity")
-  elif ! security find-identity -v -p codesigning | grep -qF -- "$SIGN_IDENTITY"; then
-    problems+=("no valid signing identity matches SIGN_IDENTITY in the keychain search list")
+  elif ! scripts/check-signing.sh --for-release; then
+    problems+=("the signing doctor found the problems above")
   fi
   if [[ -z "${APPLE_KEYCHAIN_PROFILE:-}" && -z "${APPLE_API_KEY:-}" ]]; then
     problems+=("no notary credentials: set APPLE_KEYCHAIN_PROFILE, or APPLE_API_KEY and APPLE_API_KEY_ID")

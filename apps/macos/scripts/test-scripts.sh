@@ -2,7 +2,9 @@
 # Tests the release scripts' shared checks in scripts/common.sh against real codesign
 # results and generated casks, and the icon renderer's reject check (scripts/build-icon.sh
 # --check) on a copy of its fixtures, without building the app. `make test` runs it after
-# the Swift tests.
+# the Swift tests. It also runs scripts/test-release-logic.sh, which Linux CI runs too,
+# here with macOS's bash, BSD tools, and LibreSSL; and on a CI runner only, the keychain
+# reader and the signing doctor against a throwaway keychain.
 #
 #   scripts/test-scripts.sh
 set -euo pipefail
@@ -325,6 +327,79 @@ if ! stops refuse_ambient old-metab "$globbed" && grep -qF "$work/ambient/g[l]ob
   pass "a metab in a directory with glob characters in its name stops every case"
 else
   fail "a metab in a directory with glob characters in its name: $(cat "$work/out")"
+fi
+
+# ── The release scripts' decisions ─────────────────────────────
+# The same checks Linux CI runs, on this Mac's tools.
+if scripts/test-release-logic.sh; then
+  pass "the release-logic checks pass with macOS's tools"
+else
+  fail "the release-logic checks failed with macOS's tools (above)"
+fi
+
+# ── The keychain reader and the signing doctor, on a real keychain ──
+# Only on a CI runner, which is discarded after the job: this creates a keychain, which
+# security adds to the search list, and deletes it. A keychain prompt would hang rather
+# than fail, so each run is stopped after 120 s, and a stop is a failure.
+bounded() {
+  local pid tenths=0
+  "$@" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if ((tenths >= 1200)); then
+      kill -KILL "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      echo "stopped after 120 s: $*" >&2
+      return 124
+    fi
+    sleep 0.1
+    tenths=$((tenths + 1))
+  done
+  wait "$pid"
+}
+if [[ "${CI:-}" == true && -n "${RUNNER_TEMP:-}" ]]; then
+  keychain="$RUNNER_TEMP/signing-doctor-test.keychain-db"
+  # A throwaway password for a throwaway keychain, deleted below; it guards nothing.
+  password="$(openssl rand -hex 16)"
+  quietly swiftc -suppress-warnings -O scripts/keychain-status.swift -o "$work/keychain-status"
+  quietly security create-keychain -p "$password" "$keychain"
+  quietly security set-keychain-settings -l -u -t 600 "$keychain"
+  quietly security lock-keychain "$keychain"
+  if locked="$(bounded "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" &&
+    grep -qx exists=1 <<<"$locked" && grep -qx unlocked=0 <<<"$locked"; then
+    pass "the keychain reader sees a locked keychain as locked, without a prompt: $(grep -E '^(settings|profile|lock_)' <<<"$locked" | tr '\n' ' ')"
+  else
+    fail "the keychain reader on a locked keychain: $locked"
+  fi
+  set +e
+  SIGN_KEYCHAIN="$keychain" bounded scripts/check-signing.sh >"$work/doctor-locked" 2>&1
+  doctor_status=$?
+  set -e
+  if ((doctor_status == 1)) && grep -q "holds no Developer ID Application identity" "$work/doctor-locked"; then
+    pass "the signing doctor reads a locked keychain without a prompt, and finds no identity in it"
+  else
+    fail "the signing doctor on a locked keychain exited $doctor_status: $(cat "$work/doctor-locked")"
+  fi
+  quietly security unlock-keychain -p "$password" "$keychain"
+  unlocked="$(bounded "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" || true
+  if [[ "$(grep -E '^(exists|unlocked|lock_on_sleep|use_lock_interval|lock_interval|profile)=' <<<"$unlocked" | tr '\n' ' ')" == "exists=1 unlocked=1 lock_on_sleep=1 use_lock_interval=1 lock_interval=600 profile=absent " ]]; then
+    pass "the keychain reader reads an unlocked keychain's lock settings and finds no profile"
+  else
+    fail "the keychain reader on an unlocked keychain: $unlocked"
+  fi
+  set +e
+  SIGN_KEYCHAIN="$keychain" bounded scripts/check-signing.sh >"$work/doctor-unlocked" 2>&1
+  doctor_status=$?
+  set -e
+  if ((doctor_status == 1)) && grep -q "it locks on sleep and after 600 s idle" "$work/doctor-unlocked" &&
+    grep -q "holds no notary profile metabrowser-notary" "$work/doctor-unlocked"; then
+    pass "the signing doctor reads an unlocked keychain's settings and finds no profile in it"
+  else
+    fail "the signing doctor on an unlocked keychain exited $doctor_status: $(cat "$work/doctor-unlocked")"
+  fi
+  quietly security delete-keychain "$keychain"
+else
+  echo "note: the keychain reader's live checks run only on a CI runner (CI=true, RUNNER_TEMP set)"
 fi
 
 if ((failures)); then

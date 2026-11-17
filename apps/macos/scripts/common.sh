@@ -147,15 +147,27 @@ source_commit() {
   fi
 }
 
+# The release keychain: the one keychain that holds the Developer ID identity and the
+# notary profile, and that stays locked except during a release the owner started. It
+# is SIGN_KEYCHAIN, by default the file that the first owner step creates (README.md,
+# Building a Release). Developer ID signing and a keychain profile use only this
+# keychain, so nothing signs with a copy of the identity left in another one.
+release_keychain() {
+  echo "${SIGN_KEYCHAIN:-$HOME/Library/Keychains/metabrowser-release.keychain-db}"
+}
+
 # Signs a bundle or disk image: ad hoc ("-") without a timestamp, or with the given
-# identity, the hardened runtime, and a secure timestamp. Extra arguments go to codesign.
+# identity, found only in the release keychain, and a secure timestamp. `codesign
+# --keychain` looks for the identity in that keychain alone and still builds the
+# certificate chain from the user's search list (man codesign). Extra arguments go to
+# codesign.
 sign() {
   local identity="$1" target="$2"
   shift 2
   if [[ "$identity" == "-" ]]; then
     codesign --force --sign - --timestamp=none "$@" "$target"
   else
-    codesign --force --sign "$identity" --timestamp "$@" "$target"
+    codesign --force --sign "$identity" --keychain "$(release_keychain)" --timestamp "$@" "$target"
   fi
 }
 
@@ -228,6 +240,22 @@ is_developer_id_signed() {
 # `shasum -a 256 -c NAME.sha256` works wherever both are downloaded.
 write_checksum() {
   (cd "$(dirname "$1")" && shasum -a 256 "$(basename "$1")" >"$(basename "$1").sha256")
+}
+
+# A new folder for output that a rerun recreates, named for "$1". Both BSD and GNU
+# mktemp take this form, so the scripts' tests run on Linux too.
+scratch_dir() {
+  mktemp -d "${TMPDIR:-/tmp}/$1.XXXXXX"
+}
+
+# The Unix time of a date as openssl prints one ("Sep 17 00:00:00 2031 GMT"), with BSD
+# date on macOS and GNU date elsewhere.
+epoch_of_date() {
+  if [[ "$(uname -s)" == Darwin ]]; then
+    date -u -j -f '%b %d %T %Y %Z' "$1" +%s
+  else
+    date -u -d "$1" +%s
+  fi
 }
 
 # Detaches a mounted image, retrying while Spotlight or Finder still holds it.
