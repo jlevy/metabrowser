@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- On Python 3.12, `metab --api` asking the diff plugin for a Git comparison could,
+  rarely, hang without answering when Git failed to list it.
+  The check for a textconv driver that runs beside the listing was left running, and
+  Python 3.12 could wait forever, on its way out, for that check’s Git.
+  Now whichever of the two fails first stops the other, and its Git, before the
+  comparison answers, so a failed check no longer leaves the listing’s `git diff`
+  running either.
+
 - A folder Overview’s README keeps the table of contents it has opened as a file: the
   rail beside the README in a wide pane, and in a narrower one the toggle that fades in
   as you scroll to the README’s beginning and out above it, where it had none.
