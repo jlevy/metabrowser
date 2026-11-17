@@ -4108,32 +4108,40 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **The Files totals.** The tracked count is the first line and the gitignored count a
   line of its own under it, one line in every pane: in a pane too narrow for it, its
   size is cut short at its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never
-  wrapped. So the band is one line for a folder with nothing ignored and two for one with
-  something, whatever the figures’ lengths.
+  wrapped, and the whole phrase is its tooltip, which the shell shows only while it is
+  cut ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
+  decided by whether it has that line, never by the figures’ lengths.
   The shell inlines the root’s totals with its first rows (the root’s own entry carries
   them, so they cost nothing to read), and the band paints at its settled height in the
-  first frame. A shell drawn before the walk finished the root cannot tell whether
+  first frame: two lines for a folder with something ignored, one for a folder with
+  nothing ignored. A shell drawn before the walk finished the root cannot tell whether
   anything is ignored, so its band holds the ignored line with the shell’s pending
   placeholder (`.tally-pending`), shown only after the quiet period
-  (`.mb-delayed-loading`), with its figures pending; the count fills the held line in
-  place when the root’s entry or the server’s tally brings it.
+  (`.mb-delayed-loading`), with its figures pending, and the count fills the held line
+  in place. Once the root’s entry has totals, the line is drawn from them only, and every
+  root upsert brings them current.
+  The server’s tally, its pass over every file, fills the line only while the entry has
+  none, and never with a provisional answer: mid-walk it can say “nothing ignored yet”
+  of a folder whose ignored files the walk has not reached, and a tally answered after
+  an upsert is older than it.
+  A page keeps the ignored line once it has drawn it: when the totals say nothing is
+  ignored, the line says so, “No ignored files”, in the same box, rather than go away
+  and move the tree. A reload of that folder draws the one-line band.
+  A folder that gains its first ignored file while it is open gains the line, as the
+  pull request header gains its labels row with its first label ([Layout](#layout));
+  that is the folder changing, not a count arriving late.
   The tracked count can still wrap between its two figures in a pane too narrow for
   both, as a six-digit count with its size does at the narrowest pane, and such a shell
   then gains that line when the count lands.
-  A folder with nothing ignored then loses the held line and the tree rises by it, once,
-  as the pull request header’s labels row is held while unknown and taken away for a
-  record with none ([Layout](#layout)): an empty line kept for every such folder would
-  be dead space for the life of the page, and only a shell drawn mid-walk pays the move.
   As half of one line, the ignored count wrapped only when the two halves outgrew the
   pane, and it arrived with the server’s pass over every file, half a second to seconds
   after the tree: measured in Chrome 152 on this repository in the default 300 px pane
   on 2026-11-16, the band grew from 37 to 56.5 px and the tree moved down 19.5 px when
-  it arrived, and on a folder of the same figures’ lengths 39 px in the narrowest pane
-  (mb-h3hc; H54 before it).
-  Now nothing in the navigation moves from first paint to settled, with the tally
+  it arrived, and on a folder of the same figures’ lengths 39 px in the narrowest pane.
+  Now nothing in the navigation moves from first paint to settled: with the tally
   answered at once or held 2 s, in both themes, at 300 and 180 px, and with the root’s
-  totals unknown at first paint for a folder with ignored files; a folder with none then
-  rises 19.5 px once, as above.
+  totals unknown at first paint, a first tally provisional with nothing ignored yet
+  among them, for a folder with ignored files and for one with none.
 - **Height.** Each line reserves its own line box before anything arrives.
   While a line’s text fits the pane, a pending tally, a count still being taken, and a
   settled one are one height, and the Pulls lines are one height from loading through a
@@ -4149,13 +4157,16 @@ No stylesheet but the component’s sets anything on a line element beyond how a
 in it breaks. `tests/test_nav_metadata_line.py` holds the markup and every shipped
 stylesheet to that, however a rule is scoped.
 `tests/dom/tree-summary-line-session.js` records what the Files line says in each state,
-the held ignored line among them, and what it becomes as the root’s totals arrive.
+the held ignored line and “No ignored files” among them, and runs the reducer the shell
+draws it from, `createRootTotals` in `static/navigation.js`, through what reaches a
+page: a provisional tally, a tally older than an upsert, a Git revision.
 `tests/test_files_totals_stable_chrome.py` records, in Chrome, every frame of the
 navigation from the document’s start to settled, for a folder with ignored files and one
 with none, with the tally answered at once and held, in both themes, in the default pane
-and the narrowest, and with the shell’s inlined totals taken out.
-`tests/test_nav_metadata_chrome.py` measures, in Chrome, at the default pane width and
-at one wide enough for every text: the Files totals settled, pending, counting,
+and the narrowest, with the shell’s inlined totals taken out, and with a provisional
+first tally; and reads the ignored line’s tooltip, which shows only while the line is
+cut. `tests/test_nav_metadata_chrome.py` measures, in Chrome, at the default pane width
+and at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
 loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
