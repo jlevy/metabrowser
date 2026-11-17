@@ -8,7 +8,6 @@ while nothing leaves the machine. The GitHub provider sees no ``gh``.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import re
 import subprocess
@@ -33,6 +32,7 @@ from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_origin import FIRST_COMMIT, SECOND_COMMIT, github_origin
 from tests.golden_harness import settle
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -212,7 +212,7 @@ def test_a_selection_the_mirror_lacks_is_fetched_once_then_served(
     real_refresh = StoreMirror.refresh
 
     async def gated_refresh(mirror: StoreMirror) -> RefreshResult:
-        await asyncio.to_thread(fetch_may_run.wait, 30)
+        await held_until(fetch_may_run, 30)
         return await real_refresh(mirror)
 
     monkeypatch.setattr(StoreMirror, "refresh", gated_refresh)
@@ -265,7 +265,7 @@ def _gate(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
     real_refresh = StoreMirror.refresh
 
     async def gated_refresh(mirror: StoreMirror) -> RefreshResult:
-        await asyncio.to_thread(may_run.wait, 30)
+        await held_until(may_run, 30)
         return await real_refresh(mirror)
 
     monkeypatch.setattr(StoreMirror, "refresh", gated_refresh)

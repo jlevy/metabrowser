@@ -1,10 +1,12 @@
 # Feature: Files Grouping, a Diff Summary, Pull Stack Groups, and the Conversation Timeline
 
-**Date:** 2026-11-15 (last updated 2026-11-16)
+**Date:** 2026-11-15 (last updated 2026-11-17)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** In Review
+**Status:** Done, merged after 0.12.0, so it first ships in the next release.
+The stack’s last pull request, #479, merged on 2026-11-16 (UTC), and the three of its
+own on `main` (#487, #484, and #491) on 2026-11-17 (UTC).
 
 ## Overview
 
@@ -97,10 +99,12 @@ all merged:
     commit’s hover card says its changes in the same words (`mb-khm6`); and the brief
     change line is one component (`mb-9ekj`, its first half).
 
-Two more pieces of this work land as pull requests of their own on `main`, outside the
-stack, each adding its row to [Stack Order](#stack-order) and its phase: the brief
-change line in each Pulls stack heading, the second half of `mb-9ekj`, and one header
-design for a commit’s page and a pull request’s page (`mb-26zj`).
+Three more pieces of this work landed as pull requests of their own on `main`, outside
+the stack, each with its row in [Stack Order](#stack-order) and its phase: the brief
+change line in each Pulls stack heading, the second half of `mb-9ekj` (#484); a Pulls
+row’s third line, its pull request’s brief change line, which carries the row’s chevron
+for its changed files (`mb-3zc8`, #491); and one header design for a commit’s page and a
+pull request’s page (`mb-26zj`, #487).
 
 Each change has a bead under epic `mb-eevh` that quotes the owner’s words verbatim.
 This plan records the decisions that cross beads, the stack order, and what each pull
@@ -166,10 +170,14 @@ request must prove.
 
 ## Non-Goals
 
-- **Follow-ups found in review,** which have their own beads: `mb-cz9v` (the wiki
-  parser’s heading regexes), `mb-o11s` (KPress’s `:root` aliases replacing the shell’s
-  font tokens), and `mb-yp9p` (commits that answer after a pull request’s Conversation
-  has painted go after everything, Review comments included, rather than in time order).
+- **Follow-ups found in review and along the way,** which have their own beads:
+  `mb-cz9v` (the wiki parser’s heading regexes); `mb-o11s` (KPress’s `:root` aliases
+  replacing the shell’s font tokens), fixed in #475; `mb-yp9p` (commits that answer
+  after a pull request’s Conversation has painted go after everything, Review comments
+  included, rather than in time order); `mb-xb2y` (Control-N and Control-P do nothing on
+  a pull request page reached by Back or Forward); `mb-i3df` (an active filter trigger’s
+  contrast in the light theme, below WCAG AA); and `mb-rlp4` (a commit author’s GitHub
+  avatar).
 - **Visual restyling** beyond what each bead names.
 - **New stack data:** the stack groups use the native stack envelope the Pulls tab
   already reads (`builtin_plugins/github/pull-stacks.js`).
@@ -214,7 +222,7 @@ request must prove.
 
 Pull requests 1 to 28 are one native stack, linked with `gh stack link`, each based on
 the one below it. The rows after them are the pull requests of their own on `main` that
-finish the work, each of which adds its row here and its phase below:
+finished the work, each with its phase below:
 
 | # | Branch | Beads | Why it sits here |
 | --- | --- | --- | --- |
@@ -248,14 +256,18 @@ finish the work, each of which adds its row here and its phase below:
 | 28 | `claude/diff-summary-letters` | `mb-vb51`, `mb-khm6`, `mb-9ekj` (its first half) | On pull request 27 (#478), and merged on `main` once #478 had; rewords the Diff summary’s header that pull request 4 adds and pull request 24 bolds, as status letters in the colors the change letters of pull request 4’s tree take, says a commit’s hover card in the same words, makes the brief change line after the file count one component, and resizes the pending placeholder pull request 25 holds in its row |
 | 29 | `claude/stack-change-lines` | `mb-9ekj` (its second half) | On `main`, after pull request 28 merged (#484); draws the brief change line that pull request 28 makes one component on each Pulls stack heading pull request 5 adds, read from a new route that accumulates the stack’s members’ own changed files from the cache, within a read cap of its own apart from the one pull request 27 sets |
 | 30 | `claude/pulls-row-change-line` | `mb-3zc8`: `mb-d0a3`, `mb-h0ml`, `mb-1l4i` | On pull request 29 (#484), as #491; gives each Pulls row a third line, its pull request’s brief change line, summed by the one function pull request 29 accumulates a stack with, and moves the row’s chevron for its changed files onto it |
+| 31 | `claude/commit-pull-header-parity` | `mb-26zj`: `mb-kisi`, `mb-nunw`, `mb-s3g8` (its glyph) | On `main` as #487, merged before pull request 29; brings the commit page’s header to the structure, line size, and author identity of the pull request page’s header, whose lines pull requests 6 and 25 lay out and whose last, the Diff summary’s, pull request 20 adds |
 
 - **History:** each branch merges its parent’s tip into itself, and the bottom branch
   merges `main`. Local branches that were never pushed may be rebased once to put them
   on their parent; after the first push, no rebase and no force-push.
   A fix on a lower layer reaches the layers above by merging each owning branch’s tip
   into the layer above it, bottom up, never by `gh stack rebase`.
-- **Opening the stack:** the stack opens as drafts after #437 and #438 merge.
-- **Merging:** pull requests merge in order, each at the owner’s word.
+- **Opening the stack:** the stack opened as drafts after #437 and #438 merged.
+- **Merging:** the stack merged in order, bottom up, in five merges to `main`: pull
+  requests 1 to 9 at `afda3599f`, 10 at `53d5a1ad2`, 11 to 13 at `509e0ed2f`, 14 to 27
+  at `1dcbe93f1`, and 28 at `7da81ab57`. Pull requests 31, 29, and 30 then merged on
+  `main` on their own, at `6579c0d41`, `f13d7cd25`, and `ae554dda8`.
 
 ### Menus
 
@@ -998,7 +1010,7 @@ it, and ideally cached it up front”.
 
 ### Phase 29: Stack Change Lines (pull request 29)
 
-- [ ] `mb-9ekj`: each “Stack #N” heading in the Pulls tab shows its stack’s brief change
+- [x] `mb-9ekj`: each “Stack #N” heading in the Pulls tab shows its stack’s brief change
   line, “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”, drawn through the SDK’s one
   component. The numbers are the stack’s combined change, the accumulation of its
   members’ own changed files, merged or open: each member’s cached list, the one its
@@ -1037,7 +1049,7 @@ it, and ideally cached it up front”.
 
 ### Phase 30: Pulls Row Change Lines (pull request 30)
 
-- [ ] `mb-d0a3`: each pull request’s row in the Pulls tab has a third line, its brief
+- [x] `mb-d0a3`: each pull request’s row in the Pulls tab has a third line, its brief
   change line, “21 A, 7 D, 15 M · +1,234 −567”, with no file total, drawn through the
   SDK’s one component.
   It sums the pull request’s cached list of changed files, the one its expanded row
@@ -1051,14 +1063,31 @@ it, and ideally cached it up front”.
   listed the row’s files, or when the row’s tree reads another refresh’s list; the row
   holds the pending placeholder meanwhile, from its first paint, so nothing moves when
   the line arrives.
-- [ ] `mb-h0ml`: the row’s chevron for its changed files moves to that line, the row’s
+- [x] `mb-h0ml`: the row’s chevron for its changed files moves to that line, the row’s
   one child item, which alone toggles the files; they start collapsed, a press on the
   row opens the pull request and expands nothing, and no row expands on its own.
-- [ ] `mb-1l4i`: Up and Down walk the pull requests and expand nothing; Right goes to
+- [x] `mb-1l4i`: Up and Down walk the pull requests and expand nothing; Right goes to
   the change line, where Enter and Space toggle the files, Right opens or enters them,
   Left closes them and then goes back to the row, and Up goes back too.
   Pinned by the route’s server test and CLI golden, the row lines session and golden,
   the Pulls sessions, and in headless Chrome from 420 px to 180 px in both themes.
+
+### Phase 31: One Page Header (pull request 31)
+
+- [x] `mb-26zj`: the commit page’s and the pull request page’s headers share one design
+  and differ only where a commit is not a pull request, as the design system’s “Page
+  Headers” and “Actor Identity” state.
+  Every line under each title is at the body size, the Diff summary’s included
+  (`mb-kisi`). Both headers are a shell `.page-header` whose lines hold the shared parts
+  in one order, title, author, age, and Diff summary, and a person is one shell
+  component, `metabrowser.actorIdentity` and `metabrowser.actorIdentityHtml`, an
+  avatar’s box and then the bold name (`mb-nunw`). Where there is no avatar, the box
+  holds a neutral person glyph from first paint, so an avatar that arrives later moves
+  nothing (the first part of `mb-s3g8`). Pinned in headless Chrome by
+  `tests/test_page_header_chrome.py`, which fails on the old headers, and by the actor
+  identity session and its golden.
+  A commit author’s GitHub avatar is not in this plan: it continues as `mb-rlp4`, under
+  `mb-s3g8`.
 
 ## Testing Strategy
 
@@ -1081,19 +1110,21 @@ it, and ideally cached it up front”.
 
 ## Rollout Plan
 
-The pull requests ship as drafts in one native stack and merge in order at the owner’s
-word.
-A phase is ticked when its pull request merges, and each bead closes then, with the
-merge commit in its close reason.
-This plan moves to `docs/project/specs/done/` when the last pull request in Stack Order
-merges.
+Pull requests 1 to 28 shipped as drafts in one native stack and merged in order, and 29
+to 31 shipped on `main` on their own; [Stack Order](#stack-order) records the merge
+commits.
+A phase is ticked when its pull request merges, and its beads close then, except
+`mb-s3g8`, which stays open for `mb-rlp4`. This plan moved to `docs/project/specs/done/`
+once the last pull request in Stack Order had merged.
 
 ## Open Questions
 
 - **Stack grouping default (answered, `mb-vmwh`):** grouping is always on when the
   repository has native stack metadata, with no option to turn it off.
-- **Shared membership:** should a pull request in two stacks appear under each, rather
-  than once under the first?
+- **Shared membership (left undecided):** should a pull request in two stacks appear
+  under each, rather than once under the first?
+  What shipped is once, under the first stack that lists it, with its place naming the
+  others ([Pull Stack Groups](#pull-stack-groups)).
 - **Open folders in the Diff summary (answered):** an open folder shows its line counts
   too, as a Files folder keeps its size whichever way it is turned.
 - **A Commits tab row’s weight (answered from the request, `mb-z57p`):** a Commits tab
@@ -1122,11 +1153,13 @@ merges.
   and `mb-onr2`, the header’s lines and the Diff summary’s wait; `mb-5lzl`, Home;
   `mb-neg9`, the comparison kept and read ahead; `mb-vb51`, `mb-khm6`, and `mb-9ekj`,
   the Diff summary’s letters and the brief change line, with `mb-bvl2`, review A’s round
-  on pull request 28; and `mb-26zj`, the shared header design, its pull request pending.
+  on pull request 28; `mb-3zc8`, with `mb-d0a3`, `mb-h0ml`, and `mb-1l4i`, a Pulls row’s
+  change line; and `mb-26zj`, the shared header design, with `mb-kisi`, `mb-nunw`, and
+  `mb-s3g8` (its glyph).
 - **Earlier pull requests from the same round:**
   - Merged: #433 (`mb-i1wy`), #436 (`mb-jeb5`), #439 (`mb-yfxc`), #435 (`mb-42wk`), #437
     (`mb-a9be`), #438 (`mb-k838`).
-  - Deferred: `mb-cz9v`, `mb-o11s`, `mb-yp9p`.
+  - Deferred: the open follow-ups under [Non-Goals](#non-goals).
 - **Project docs:**
   - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
   - [Design system](../../../design-system.md)

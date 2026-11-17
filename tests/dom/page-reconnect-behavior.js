@@ -202,6 +202,15 @@ function recoverySession(filtered = false) {
     renderServedRootHeading() {},
     rootTallyFromTopLevel: () => ({ files: 1, size: 10, newestMtime: 1 }),
     treeSummaryHtml: () => "",
+    // The Files totals' reducer, the real one from navigation.js (createRootTotals).
+    rootTotals() {
+      context._rootTotals ??= context.MetabrowserNavigationRoute.createRootTotals({
+        gitRevision: false,
+        shell: null,
+      });
+      return context._rootTotals;
+    },
+    _rootTotals: null,
     updateFilterTallies: () => false,
     _rootTreeRequestsInFlight: 0,
     _inlineTreeBaseline: null,

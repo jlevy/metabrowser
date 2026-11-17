@@ -48,6 +48,7 @@ from tests.github_pull_fixture import (
     page,
 )
 from tests.golden_harness import Invocation, origin_identity, run_metab
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_plugin_public_api import (
     _CHILD_TIMEOUT_S,  # pyright: ignore[reportPrivateUsage]
@@ -1028,7 +1029,7 @@ def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
         group = checkout_module.checkout_pulls(repository)
         reading = asyncio.create_task(group.companion(7))
         try:
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             assert (
                 checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
                 == "started"
