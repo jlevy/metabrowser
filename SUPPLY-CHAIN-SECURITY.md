@@ -56,6 +56,7 @@ introduces.
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
 | `tryscript==0.3.1` | `0.3.0` | Security patch only; upgrades zod from 3.25.76 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 |
+| `tryscript==0.4.0` | `0.3.1` | Replaces tinyglobby with tryscript’s own matcher, removing tinyglobby, fdir, and picomatch and with them GHSA-fc5q-39xc-vjpf; rejects extended globs, alternation groups, and brace ranges in test patterns, none of which this repository uses |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 
 Tryscript 0.3.0 is a first-party exception to the release-age delay.
@@ -77,8 +78,7 @@ No browser asset or Python runtime dependency changes.
 Install scripts remain disabled; the full golden suite exercises the installed runner,
 and the dependency audit took no exception for the advisory the removed chain carried.
 picomatch 4.0.7, one of the branches this selection added, later drew
-GHSA-fc5q-39xc-vjpf, the one advisory the audit now tolerates, on this path only; see
-[the picomatch exception](#picomatch-redos-audit-exception-november-17-2026).
+GHSA-fc5q-39xc-vjpf; tryscript 0.4.0, below, removed that branch.
 
 Tryscript 0.3.1 is the same first-party exception, taken on 2026-10-26 because 0.3.0
 reaches the vulnerable zod 3.25.76 and `npm audit` fails on GHSA-mrhx-c7xc-m3w5 (high,
@@ -116,6 +116,51 @@ entry paths in union validation warnings, and development-only Vitest, Vite, and
 source-map-js advisories that this repository does not install.
 Golden parsing is unaffected — the full 278-check golden suite passes unchanged at
 0.3.1, which is the behavior the 0.3.0 selection had to realign.
+
+Tryscript 0.4.0 is the same first-party exception, taken on 2026-11-17 because 0.3.1
+reaches picomatch 4.0.7, through tinyglobby 0.2.17 and fdir 6.5.0, and from that day
+`npm audit` failed on
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (high, a
+regular-expression denial of service through single-branch repeated extglobs), which no
+picomatch release fixes.
+That was the advisory’s only path into the lock, and
+[#523](https://github.com/jlevy/metabrowser/pull/523) tolerated it on that path alone
+until a release removed it.
+The [upstream release](https://github.com/jlevy/tryscript/releases/tag/v0.4.0) replaces
+tinyglobby with tryscript’s own matcher, which builds no regular expression from a
+pattern, so 0.4.0 depends on none of the three.
+This selection removes that exception with its check, test, and fixture, so the audit
+again fails on any advisory at or above its level.
+
+It was selected with `--min-release-age=0`, as 0.3.1 was, and npm applies that to the
+whole command; but the command moved no other package and added none, so no third-party
+release entered the lock without the age gate.
+`.npmrc` is unchanged.
+The published artifact SHA-512 matches the committed lockfile:
+`65hMMeYB0gDCHtbCFSOY1vIwVjlYrAHqYor4IoeaBwDqn8L7KE/RBD644qv+88WgFUtwmlg9paTit8yjf8Zk7A==`.
+Its npm provenance attestation names the `v0.4.0` tag of jlevy/tryscript, commit
+`4f33b3ccbc7aa7c470a6b1b25649eee5457957d7`, built by that repository’s release workflow.
+
+One package version changes, three packages are removed, and none is added: tryscript
+0.3.1 to 0.4.0, and tinyglobby 0.2.17, fdir 6.5.0, and picomatch 4.0.7 removed.
+That is the whole lockfile delta, six hunks, and it is reproducible from the base with
+one command:
+`npm install --package-lock-only --save-exact tryscript@0.4.0 --min-release-age=0`.
+tryscript’s own dependencies lose tinyglobby and are otherwise unchanged.
+`npm ls picomatch` is empty.
+No browser asset or Python runtime dependency changes.
+
+0.4.0 is a minor release because it stops the run with an error on a test pattern that
+uses an extended glob such as `+(a)`, an alternation group such as `(a|b)`, or a brace
+range such as `{1..3}`, and because it reads parentheses in a pattern literally.
+None of that reaches Metabrowser: its one test pattern is the Makefile’s
+`tests/golden/*.tryscript.md`, which `make test` and `make golden-update` pass, and no
+tryscript configuration file exists to add another.
+The release’s discovery fixes concern negations, dot directories, and symbolic links,
+and that pattern has no negation and names one directory, which holds no dot entry and
+no link. The full golden suite passes unchanged at 0.4.0, and
+`tests/test_tryscript_blocks.py` still finds the installed parser in agreement with
+`devtools/tryscript_blocks.py`.
 
 `get-tbd` carries no version review because it is not pinned to one, and the reason is
 narrower than “we publish it.”
@@ -312,66 +357,6 @@ Its one dependency, `undici-types` 7.24.6 from
 March 25, 2026), is the only other new lock record.
 Neither is loaded at run time; only TypeScript reads them.
 
-### Picomatch ReDoS Audit Exception (November 17, 2026)
-
-The npm audit tolerates exactly one advisory:
-[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (high,
-CVE-2026-112366), a regular-expression denial of service in picomatch through 4.0.7. An
-attacker who can supply a single-branch repeated extglob pattern, such as `+(*)`, can
-make matching backtrack exponentially against a short crafted string.
-No picomatch release fixes it, and from November 17, 2026 it failed the audit of every
-pull request.
-The project owner approved this narrow exception on November 17, 2026. Bead
-mb-p1o0 tracks its removal.
-
-The advisory reaches the lock on one path: the first-party dev dependency tryscript
-0.3.1, through tinyglobby 0.2.17 and fdir 6.5.0, to picomatch 4.0.7. `npm audit` reports
-that one advisory as four high findings, one for each package on the path.
-It is not exploitable here, because the attack needs the pattern, and none of ours comes
-from outside the repository:
-
-- tryscript uses picomatch only to discover test files.
-  Its patterns are the repository’s own committed ones: the Makefile’s
-  `tests/golden/*.tryscript.md` and tryscript’s built-in `node_modules` and `dist`
-  ignores. No tryscript configuration file exists to add others, none of the patterns has
-  an extglob, and no input from a user, a request, or a fetched repository reaches them.
-- Nothing that ships uses the path.
-  The project depends directly on tryscript alone; picomatch, fdir, and tinyglobby reach
-  the lock only through it.
-  None of them is among the libraries `devtools/vendor_assets.py` copies into the
-  browser assets, and nothing in the wheel or the browser loads them.
-  Every npm package here is a dev dependency, the vendored ones included, so the lock’s
-  `dev` flag is not this evidence.
-
-`devtools/npm_audit.sh` applies the exception through
-`devtools/npm_audit_exceptions.py`. When an audit fails, the check reads the JSON answer
-of that same `npm audit --json` request and passes the gate only if everything at or
-above the audit level is this advisory as reviewed, on this path as reviewed.
-`PICOMATCH_REDOS` records what the review covered: the advisory’s severity, CWE, CVSS
-vector, and affected range; the fix npm offered for picomatch, which was only the
-tryscript downgrade below; and for each package on the path its locked release, lockfile
-node, dependency edges, and whether the project depends on it directly.
-Anything else still fails: another advisory at or above the level; this one re-scored,
-re-scoped, or fixable; this one through another package, release, edge, or node, or with
-the project depending on picomatch, fdir, or tinyglobby directly; or a report the check
-cannot read or whose counts disagree with its entries.
-The exception can lapse, which fails the build and calls for a new review, but it cannot
-widen. When it applies, the audit prints a banner naming the advisory and the bead.
-`tests/test_npm_audit.py` holds each of these cases against the reviewed report.
-
-The exception, its check, its test, and its fixture are removed when either of these
-holds. Either one also changes the fix npm offers for picomatch, which lapses the
-exception, so the gate asks for the removal:
-
-1. picomatch publishes a release that fixes the advisory, that release clears the 14-day
-   cool-off, and the lock moves to it;
-2. a first-party tryscript release drops tinyglobby or picomatch, or requires a fixed
-   picomatch, and is taken under the review in
-   [Audited First-Party Exceptions](#audited-first-party-exceptions).
-
-npm’s own suggested fix, `npm audit fix --force`, downgrades tryscript to 0.2.1. That is
-a breaking change back to the discovery 0.3.0 replaced, so it is not taken.
-
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:
@@ -392,14 +377,7 @@ advisory endpoint. Only the first is a reason to stop.
 The wrapper retries, then reports an unreachable endpoint as **not performed** --
 loudly, and without failing the build, because a registry outage is not a finding and
 the lockfile is pinned, so the dependency set has not moved since the last run that did
-reach it. One `npm audit --json` request per attempt decides, by its status and its
-answer; npm’s text report is fetched afterwards for the log only.
-An answer that is an audit report is a finding, even when an advisory’s text contains a
-word the outage check looks for; only an answer that is not a report can be an outage,
-and only when it says the endpoint failed.
-An advisory at or above the level still fails exactly as before, except the one reviewed
-advisory on its reviewed path, which
-[the picomatch exception](#picomatch-redos-audit-exception-november-17-2026) describes.
+reach it. An advisory at or above the level still fails exactly as before.
 A run that reports “not performed” has not cleared the dependencies; re-run the gate
 once the registry answers before relying on it.
 
