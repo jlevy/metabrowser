@@ -82,6 +82,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.pluginmanager.register(suite_timing.FileTimes(), "suite-file-times")
     # Reports a pytest-xdist worker can send; see tests/suite_workers.py.
     config.pluginmanager.register(suite_workers)
+    config.pluginmanager.register(suite_workers.StackDumps(), "suite-stack-dumps")
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
