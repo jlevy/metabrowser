@@ -419,6 +419,28 @@ make test-report LOG=run.log
 `uv --config-file uv.toml run --frozen python -m devtools.check_goldens --report` gives
 the size distribution of the goldens and recordings against their review budget.
 
+### Measuring CI
+
+`make ci-report` takes the same kind of numbers for CI itself, from the run data `gh`
+reads: each job’s median and 90th percentile, the push to green of each kind of run, and
+the runs that needed another attempt.
+`devtools/ci_report.py` says how each is taken.
+
+```shell
+# The newest runs of ci.yml.
+make ci-report
+
+# More runs, on main only, with each job's steps, keeping the data it read.
+make ci-report CI_REPORT_FLAGS="--runs 300 --branch main --steps --save attic/ci-runs"
+
+# The kept data again, without the network.
+make ci-report CI_REPORT_FLAGS="--from attic/ci-runs"
+```
+
+With `--check` it fails when a job’s 90th percentile passes `CHECK_FRACTION` of the
+`timeout-minutes` the workflow gives that job, before the limit itself trips.
+Quote the runs a number came from, as for a suite run.
+
 ## Adding Coverage
 
 Choose the narrowest layer that proves the behavior:

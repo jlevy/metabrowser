@@ -137,6 +137,16 @@ test:
 test-report:
 	$(UV_RUN) python -m devtools.suite_report $(REFS) $(if $(LOG),--log $(LOG))
 
+# Each CI job's median and 90th percentile, push to green by kind of run, and reruns, over
+# the newest runs of ci.yml as gh reads them; CI_REPORT_FLAGS passes devtools/ci_report.py
+# its options:
+#   make ci-report
+#   make ci-report CI_REPORT_FLAGS="--runs 300 --branch main --steps --save attic/ci-runs"
+# docs/e2e-testing.md ("Measuring CI") says how each number is taken.
+.PHONY: ci-report
+ci-report:
+	$(UV_RUN) python -m devtools.ci_report $(CI_REPORT_FLAGS)
+
 # The baseline scale benchmark that docs/scale-benchmark.md records: one run of
 # devtools/bench_serving.py per size on its synthetic corpus under .bench/, then one
 # Markdown table. Both sizes stay under the serving cap (INVENTORY_MAX_FILES in
