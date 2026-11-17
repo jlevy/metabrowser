@@ -619,7 +619,7 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
     assert result == {
         "case": "viewport-height-increase",
         "before": 43,
-        "after": 113,
+        "after": 90,
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
@@ -629,9 +629,13 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         # receipt, a new window, or going offline ends it; `beat` is alignRefreshing's one
         # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
         "titleBreathing": {
-            "admitted": {"asked": [407, 406, 405], "breathing": [407, 406, 405], "busyRows": 0},
+            "admitted": {
+                "asked": [438, 437, 436, 435],
+                "breathing": [438, 437, 436, 435],
+                "busyRows": 0,
+            },
             "settled": [],
-            "moved": {"asked": [311, 310, 309, 308], "breathing": [311, 310, 309, 308]},
+            "moved": {"asked": [372, 371, 370], "breathing": [372, 371, 370]},
             "offline": [],
             "beat": [100, 100, 50, 100],
         },

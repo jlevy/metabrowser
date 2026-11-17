@@ -15,6 +15,31 @@ All notable changes to Metabrowser are documented here.
   For plugin authors: `--kpress-code-border` and `--kpress-code-radius` set the edge and
   corners of inline and block code, and KPress’s inline code is square by default.
 
+- Each pull request’s row in the Pulls tab has a third line, its brief change line, “21
+  A, 7 D, 15 M · +1,234 −567”, in the coloring of the Diff summary’s, with no file
+  total, so walking the list shows the size of each change.
+  It sums the pull request’s cached list of changed files, the list its tree shows, as a
+  stack’s heading sums its pull requests’, so a stack of one shows the same line.
+  It never asks GitHub: the lists are the ones the tab already reads for the rows in
+  view and for trees you open, read for every row drawn in one request when the browser
+  is idle, and read again only when a row’s head moves or its list is listed again.
+  A gray placeholder holds the line’s place while it is read, so nothing moves when it
+  arrives, and a row whose files have not been listed shows the chevron alone.
+  The line carries the chevron for the pull request’s changed files, which start
+  collapsed: a click on the row’s title or number opens the pull request and expands
+  nothing, and only a click on the chevron or the change line opens or closes them.
+  No row expands on its own, so Up, Down, `J`, and `K` walk the pull requests with every
+  tree as it was. On the keyboard the change line is the row’s child: Right goes to it,
+  where Enter or Space opens or closes the files, Right opens them or goes to the first,
+  Left closes them and then goes back to the row, and Up goes back too; Space on the row
+  itself no longer toggles the files.
+  Screen readers hear the change line as “Changed files: 21 added, 7 deleted, 15
+  modified; 1,234 lines added, 567 deleted”.
+  A row is 61 px tall, where it was 43 px.
+  A new cache-only route, `/api/plugin/github/pull-files-summary`, answers what each
+  named pull request’s changed files sum to.
+  See [The Pulls Tab](docs/design-system.md#the-pulls-tab).
+
 - Each “Stack #N” heading in the Pulls tab shows what the whole stack changes, in the
   brief change line the Diff summary uses: “Stack #286 · 10 A, 5 D, 4 M · +1,234 −567”.
   A stack is the pull requests it is made of, merged or open, so the numbers are theirs
@@ -211,14 +236,14 @@ All notable changes to Metabrowser are documented here.
   `metabrowser.loadChangedFilesTree()`, which the Diff summary and the Pulls tab share.
   See [Diff Summary](docs/design-system.md#diff-summary).
 
-- A Pulls row now reads its chevron, state icon, and number’s line first, a stack
-  member’s place, the number, and the author, as “1/4 · #113 · jlevy”, with the age at
-  the row’s end, and then the title alone on a line of its own, running to the pane’s
-  edge and cut there with an ellipsis.
+- A Pulls row now reads its state icon and number’s line first, a stack member’s place,
+  the number, and the author, as “1/4 · #113 · jlevy”, with the age at the row’s end,
+  then the title alone on a line of its own, running to the pane’s edge and cut there
+  with an ellipsis, and then its change line, with the chevron (above).
   The title is 208 px wide for a stack member at the default pane.
-  The number’s line stays one line, so a row is always two lines: a long name ends in an
-  ellipsis and then leaves the line, and a place in two stacks is cut short after that,
-  the number always whole.
+  The number’s line stays one line, so a row’s link is always two lines: a long name
+  ends in an ellipsis and then leaves the line, and a place in two stacks is cut short
+  after that, the number always whole.
 
 - The Files tree under Modified within, File type, or Minimum file size answers faster
   on a large folder: by a quarter to a half on a folder of 100,000 files.

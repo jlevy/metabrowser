@@ -904,11 +904,10 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row.disclosure-toggle.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
+      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-106\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.disclosure-toggle.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
     "its parts": [
-      "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",
       "span .github-pulls-age.age-hour",
@@ -916,11 +915,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
     ],
     "its text leads with its title": true,
     "a PR preview leaves its files expanded": false,
-    "Right opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
+    "Right to its change line, and Right again, opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
     "they hang under it as a group it owns": [
-      "a .github-pulls-row.disclosure-toggle.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+      "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
+      "div .github-pulls-change-group role=\"group\" id=\"github-pull-change-105\"",
       "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
+    "its change line, the row's child, owns them": "div .github-pulls-change.disclosure-toggle.expanded role=\"treeitem\" aria-level=\"2\" aria-posinset=\"1\" aria-setsize=\"1\" aria-expanded=\"true\" tabindex=\"-1\" aria-label=\"Changed files\" aria-owns=\"github-pull-files-105\"",
     "a title written as markup is one text node": [
       {
         "node": "#text",
@@ -1178,7 +1179,7 @@ row is marked busy, and `beat` is the one start time the breaths are aligned to.
 
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
-{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[407,406,405],"breathing":[407,406,405],"busyRows":0},"settled":[],"moved":{"asked":[311,310,309,308],"breathing":[311,310,309,308]},"offline":[],"beat":[100,100,50,100]}}
+{"case":"viewport-height-increase","before":43,"after":90,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[438,437,436,435],"breathing":[438,437,436,435],"busyRows":0},"settled":[],"moved":{"asked":[372,371,370],"breathing":[372,371,370]},"offline":[],"beat":[100,100,50,100]}}
 ? 0
 ```
 
