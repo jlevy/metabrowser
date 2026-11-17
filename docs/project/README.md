@@ -156,6 +156,9 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [fdu as the inventory backend, revisited on fdu 0.6](research/research-2026-11-17-fdu-backend-revisited.md):
+  the Linux spike, decisions, fdu changes, and Metabrowser refactors for a swappable
+  Python and Rust inventory backend
 - [What eager startup JavaScript costs](research/research-2026-11-12-eager-startup-script-cost.md):
   measured cost of the scripts a folder page loads before `DOMContentLoaded`
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md):

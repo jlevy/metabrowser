@@ -1,13 +1,14 @@
 # Feature: Inventory Provider Refactor and fdu Adoption
 
-**Date:** 2026-08-23 (last updated 2026-11-14)
+**Date:** 2026-08-23 (last updated 2026-11-17)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
 **Status:** Phase 1 and Checkpoint 2B shipped in v0.10.0 through #74, #99, and #101;
 Checkpoint 2A was measured.
-Checkpoints 2C and 2D (`mb-hej8`) have not started: Python is the only provider the
-factory builds.
+Checkpoints 2C and 2D (`mb-hej8`) were revised on 2026-11-17 against fdu 0.6.0 by the
+[revisited fdu backend research](../../research/research-2026-11-17-fdu-backend-revisited.md)
+and have not started: Python is the only provider the factory builds.
 
 ## Overview
 
@@ -421,44 +422,81 @@ directory-first canonical UTF-8 name order and catalogs use canonical UTF-8 path
 The provider admits one active change iterator, retains bounded replay, and leaves
 fan-out to the coordinator’s host stream.
 
-#### Checkpoint 2C: Add Native Projections and the Thin Adapter
+The 2B checklist above records two items differently from what shipped.
+Portable-path completeness was replaced by a total canonical escape, so no path is ever
+incomplete.
+The host coalescing boundary is opportunistic: the coordinator merges what is already
+queued, and no rule bounds how a recursive change is split.
+Checkpoint 2C’s first slice states that rule.
 
-- [ ] Add only the maintained native structures justified by Checkpoint 2A: path order,
-  timestamp and catalog order, registry dimensions, fixed partitions, and navigation
-  presets. Each structure must name the measured pass or sort it removes.
-- [ ] Add bounded version-pinned tree, flat, filtered-tree, rollup, navigation, recent,
-  catalog, and diagnostics projections with opaque handle-local continuations.
-- [ ] Implement `FduInventoryBackend` as total value translation and one application-
-  owned async change bridge.
-  It retains the native handle but no entry mirror, aggregate store, filesystem walker,
-  fingerprint recipe, or MetaBrowser policy.
-- [ ] Give each handle one dedicated bounded poll worker.
-  Iterator cancellation joins only the bridge and preserves the handle; handle close
-  joins the bridge and native opened root.
-  A second active iterator fails explicitly.
-- [ ] Add explicit `python` and `fdu` factory choices plus an optional exact fdu
-  package. Missing or incompatible native artifacts are typed startup failures.
-  Python remains the default, and an explicit fdu request never falls back silently.
-- [ ] Delete the disposable materializing adapter and its temporary instrumentation.
-  Retain the reproducible harness, normalized evidence, and report.
+The [revisited research](../../research/research-2026-11-17-fdu-backend-revisited.md)
+re-derived the remaining work against fdu 0.6.0 and a new Linux spike in
+[`explorations/fdu-provider-spike/`](../../../../explorations/fdu-provider-spike/README.md).
+Its decisions (D1 to D12), fdu changes (F1 to F22), and Metabrowser refactors (R1 to
+R26) are referenced by number below; the research holds their reasons and evidence.
+
+#### Checkpoint 2C: Neutral Contract, Selectable Providers, Native Projections
+
+Slice 1, provider-neutral contract (Python only, no fdu dependency):
+
+- [ ] Record decisions D1 to D11 in the inventory-provider architecture document.
+- [ ] Rewrite conformance as semantics and bounds, register every parametrized case, and
+  state and pin the implicit rules (R1, R2).
+- [ ] Move rollup and navigation wire shaping and registry identity to the host behind
+  contract-owned aggregate types (R3), and type the watch vocabulary (R4).
+- [ ] Apply shared bounds, batched lookups, and page assembly (R5).
+- [ ] Apply the unreadable-directory, live-ignore, and watch-scope decisions in the Python
+  provider and host status (R6, R7), and lift the Git ignore oracle and File Rollup
+  packet to provider cases (R8).
+- [ ] Pass an engine-facing classification document to providers (R9).
+
+Slice 2, selection and measurement (still Python-only in CI):
+
+- [ ] Add the `fdu` factory entry, `metab --inventory-provider`, provider-selectable
+  harnesses, provider-owned discovery seams, and provider-neutral goldens (R10 to R13).
+- [ ] Package `metabrowser[fdu]` with an exact pin and its supply-chain review, and let
+  the macOS app select a provider (R14, R15).
+- [ ] Replace the log-line completion signal, register fdu in the serving benchmark with
+  wheel attestation and a semantic-equality precheck, and keep the engine-only harness
+  (R16 to R18).
+
+Slice 3, an explicit experimental fdu provider (after fdu F1 to F8 and F19 release):
+
+- [ ] Implement `providers/fdu_inventory.py` as described in the research’s production
+  adapter section, with fallbacks for any projection fdu does not yet answer.
+  Each fallback is named in diagnostics, bounded by `max_work`, and has an open bead
+  naming the fdu change that removes it (D12).
+- [ ] Run the conformance registry, File Rollup packet, and route and SSE suites against
+  both providers in a Linux CI job with the extra installed.
+- [ ] Delete `explorations/fdu-inventory-adapter/`’s materializing adapter once the
+  production adapter covers its measurements; keep its README and evidence as the 2A
+  record.
+
+Slice 4, native projections:
+
+- [ ] As fdu releases F9 to F13, replace each fallback with the native projection, pinned
+  by the same conformance cases.
+- [ ] Land the host-cost refactors (R19 to R22) that the paired measurements show mask
+  engine differences.
 
 #### Checkpoint 2D: Prove the Composed Product
 
 - [ ] Run the same provider conformance registry, File Rollup packet, route tests, and
-  deterministic observation sessions against Python and fdu.
+  deterministic observation sessions against Python and fdu on Linux and macOS.
 - [ ] Record a normalized golden session covering progressive open, bounded reads and
   paging, live mutation, refresh, replay loss, iterator cancellation, root replacement,
   and joined close. Normalize only generated identities, time, and platform metadata;
   preserve complete stable request, result, state, impact, work, route, and SSE
   payloads.
-- [ ] Build the exact fdu revision as a wheel in a clean MetaBrowser environment on
+- [ ] Build the exact fdu revision as a wheel in a clean Metabrowser environment on
   every supported Python and platform job.
   A source-tree import must not make integration pass.
-- [ ] Run interleaved Python/fdu comparisons on immutable real corpora with A/A
-  calibration, semantic equality, work counters, memory, binding copies, and
-  filesystem-floor ratios.
+- [ ] Run the paired campaign in the research’s measuring section (U3, `mb-wb7e`) on
+  Linux and on the M1 Pro that holds the Python baseline, including the macOS
+  validation list.
 - [ ] Resolve every correctness, resource, interaction, recovery, packaging, and
   supported-platform regression.
+  The adoption gate requires zero fallbacks.
   Any default change is a separate reversible decision after these gates; this
   implementation phase does not add an `auto` fallback.
 
@@ -570,6 +608,7 @@ Two Phase 2 optimizations remain measurement-gated:
 
 - [Pluggable inventory engine](plan-2026-08-23-pluggable-inventory-engine.md)
 - [fdu and Metabrowser inventory-engine alignment](../../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
+- [fdu as the inventory backend, revisited on fdu 0.6](../../research/research-2026-11-17-fdu-backend-revisited.md)
 - [State and delivery](../../architecture/arch-live-delivery.md)
 - [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md)
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md)
