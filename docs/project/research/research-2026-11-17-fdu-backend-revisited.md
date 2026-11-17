@@ -110,7 +110,7 @@ handle.
 | `DirectoryQuery` | `Tree{depth, include_ignored, page}` | Native order and pruning; pages capped at 4,096 rows; soft work budget |
 | `CatalogQuery` | `Flat` with `EntrySelection` | Native predicates and order; full scan per page, no prefix seek |
 | `RecentQuery` | none (`Report` sorts everything and returns native paths) | Missing |
-| `NavigationQuery` | none (maintained tallies exist but are keyed by raw extension and unread) | Missing |
+| `NavigationQuery` | none (maintained tallies exist, keyed by file-type ID, and unread) | Missing |
 | `RollupQuery` | `RollUp` scalars only | Missing |
 | `FilteredTreeQuery` | none | Missing |
 | `GroupedTreeQuery` | none | Missing |
@@ -132,22 +132,26 @@ work is to expose bounded projections over structures that already exist.
   A presentation-only change in Metabrowser should not require an fdu release.
 - **Path identity.** Metabrowser’s canonical name escapes a POSIX backslash as `%5C`
   (`contract.py`, `canonical_inventory_name`); fdu’s portable path escapes only `%` and
-  undecodable bytes (`crates/fdu-core/src/opened/read.rs`, `push_text`). A name
-  containing
-  `\` therefore has different identity and different row order in the two providers. `contract.py`
-  says the escaping mirrors fdu; it no longer does.
+  undecodable bytes (`crates/fdu-core/src/opened/read.rs`, `push_text`).
+  A name containing a backslash therefore has different identity and different row
+  order in the two providers.
+  The contract’s docstring says the escaping mirrors fdu; it no longer does.
 
 ### The Contract Still Encodes the Python Implementation
 
 Checkpoint 2B corrected the vocabulary, but the conformance registry
 (`tests/test_inventory_provider_contract.py`, 21 registered cases) still pins Python
-choices that are not product semantics:
+choices that are not product semantics.
+The first four rows below are the spike’s fdu failures that are not fdu gaps; the rest
+pass with fdu today but encode Python all the same:
 
 | Assertion | What it pins | Product requirement |
 | --- | --- | --- |
 | Semantic digest expects provider `python` | Provider identity | The digest of filesystem facts |
+| Budget stop expects the two files a sorted walker admits | Python’s admission order within a directory | A decision on truncated membership (D17) |
+| Replay at `change_queue_size=1` expects a gap reset | A capacity counted in Python’s batches | Exact replay inside capacity, reset outside it (D8) |
+| Typed-limit and continuation-work cases expect a hard directory limit | Python’s hard per-page budget | A bound with a progress guarantee (D6) |
 | Budget stop expects watch state `off`, reason `resource_budget` | Python’s free-form watch strings | A typed watch state |
-| Replay with `change_queue_size=1` expects one non-reset batch | Python’s one-commit-per-refresh granularity | Exact replay or an explicit reset |
 | Work-limit cases pin exact `rows_visited` | Python’s index-size charge for scanning queries | A bound on visited work |
 | Checkpoint expects phase `watching` | Python’s watcher being available | Any settled phase |
 
@@ -234,9 +238,14 @@ Python baseline on an M1 Pro (100,000 files: 5.5 s attached, 174 MiB;
 `docs/scale-benchmark.md`), those unpaired figures suggest fdu’s opened discovery may be
 only about twice as fast on macOS, at similar memory per entry.
 That is a hypothesis for the macOS run, not a result.
-On Linux the [spike](#linux-spike-on-fdu-060) measured the current opened route at 3.5
-to 5.4 times faster than the Python store to settle, so the route’s overheads cost less
-there than fdu’s older experiments suggested.
+On Linux the [spike](#linux-spike-on-fdu-060) measured the opened route settling 3.5 to
+5.4 times faster than the Python store with observation off, and reaching `watching`
+about 1.7 times sooner with observation on.
+Those overheads are still large against fdu’s own floor: 0.72 s for about 101,000
+entries opened, against fdu’s published 0.95 s for a million entries one-shot, and
+engine memory equal to Python’s (159 MB against 161 MB on `project-10`).
+The spike did not run fdu’s one-shot index on its own corpora, so that ratio is
+orientation only.
 
 ### Host Costs Bound the End-to-End Gain
 
@@ -424,37 +433,45 @@ Three results explain the table:
    the Python provider is wrong or silent (unreadable directories, watch scope, live
    ignore edits), the decision changes Python in the same change that states it.
 6. **Bounds are shared constants, not negotiated capabilities.** Page rows, projections
-   per read, lookup batch size, and prioritize paths are fixed in the contract at values
-   both providers meet, and the host assembles larger responses from bounded pages.
+   per read, lookup batch size, work per page, and prioritize paths are fixed in the
+   contract at values both providers meet, each set from a measurement recorded beside
+   its constant, and the adapter asserts fdu’s exported bounds against them at open.
+   The host assembles larger responses from bounded pages.
 
 ### Decisions Needed Before Parity Runs
 
 | # | Question | Recommendation | Changes |
 | --- | --- | --- | --- |
 | D1 | How are unreadable or vanished directories reported? | Honest partial coverage with `inaccessible` and a bounded `permission` or `disappeared` issue. The host gets one status helper that distinguishes “complete with issues” from “still discovering”; lookups under a known hole answer `absent` for the hole’s subtree only after subtree completeness exists (F6) | Python walker, host status helpers, fdu F6 |
-| D2 | Which `.gitignore` files apply when serving a repository subdirectory? | Keep Python’s rule (from the enclosing repository root down), which matches Git, and add it to fdu as an explicit control base (F21). Decide `.git/info/exclude` separately; neither reads it today | fdu F21, provider-level Git oracle |
+| D2 | Which `.gitignore` files apply when serving a repository subdirectory? | Keep Python’s rule (from the enclosing repository root down), which matches Git for in-tree `.gitignore` files, and add it to fdu as an explicit control base (F21). Decide `.git/info/exclude`, global excludes, and `core.ignorecase` together in one tracked decision; neither provider reads the first two today | fdu F21, provider-level Git oracle |
 | D3 | Are `.gitignore` edits observed live? | Yes, in both providers; an edit reclassifies its subtree as one verified change | Python watcher and refresh |
 | D4 | What does the watcher observe? | Exactly the admitted scope. Remove `DefaultFilter`’s blind spots, turn overflow into scoped reconciliation, and retry or degrade explicitly | Python watcher (`mb-pn95`, `mb-dwo6`) |
 | D5 | What state follows an observer failure? | `ready` plus `stale` plus `observation_gap`: the data is complete as of its version, only freshness is lost. Inotify watch-limit failure at open degrades the same way instead of failing open | fdu F3 |
 | D6 | Is the per-page work budget hard or soft? | A bound with a progress guarantee: a page may visit `max_work` plus the one position it must name to make progress; a query that cannot produce its first row returns the typed limit. Conformance asserts the bound, not an exact count | Contract text, conformance, fdu `fdu-pokc` |
 | D7 | Do filtered and grouped trees page? | Yes; Metabrowser needs paging for large filtered trees. fdu’s plan bullet that removes paging is stale | fdu plan |
 | D8 | What is replay capacity measured in, and how fine is a batch? | Capacity is a provider budget; a cursor inside it replays exactly, outside it resets. A batch is one coherent provider version. Recursive removal must not expose a half-removed subtree at any version, but the number of envelopes is not pinned | Contract text, conformance, `tests/test_e2e_filesystem_to_sse.py` |
-| D9 | How does the engine receive the registry? | Metabrowser derives an engine-facing classification document from its registry and passes that; providers derive semantic identity from it; the host stamps the browser’s registry fingerprint. fdu still reads schema 5 for direct users (F1) | Registry export, both providers, rollup and navigation routes |
+| D9 | How does the engine receive the registry? | Metabrowser exports a File Rollup document at a declared classification schema with presentation fields removed, and passes that; the File Rollup Format, not either engine, defines which fields are presentation. Providers derive semantic identity from what they parse; the host stamps the browser’s registry fingerprint | File Rollup Format, registry export, both providers, rollup and navigation routes |
 | D10 | Which canonical path grammar wins? | Metabrowser’s total grammar, including `%5C`; it is the more portable one | fdu F2 |
-| D11 | What are the shared bounds? | 4,096 rows per page for every paged query, including catalog; a batched lookup of up to 1,024 paths; at most 16 projections per read. The host assembles complete catalog and tree responses from pages | Contract constants, page assembly, catalog and pending-tally routes, fdu F5 |
-| D12 | May an experimental fdu provider ship before every projection is native? | Yes, as an explicit, non-default selection whose fallbacks are named in diagnostics, bounded by `max_work`, and deleted as native projections land. The adoption gate requires zero fallbacks | Factory, adapter, diagnostics |
+| D11 | What are the shared bounds? | Every paired bound named once in the contract: rows per page (4,096 today in fdu), lookups per batch (1,024), projections per read (16), work per page (fdu refuses more than 1,000,000), dirty paths per batch (fdu 256, contract 1,024), issues and issue bytes (fdu 64 and 512, contract 1,024 and 4,096), and retained continuations (fdu 128). Each value is set from a measurement of both providers, including GIL hold (D15), not adopted from fdu. Broad queries that would exceed the work bound are answered from maintained structures or resume through continuations; routes do not scale the limit past what a provider accepts | Contract constants, page assembly, catalog and pending-tally routes, fdu F5 and F24 |
+| D12 | How may fdu be exercised before every projection is native? | The `src/` adapter is thin from its first commit: it answers natively or raises a typed provider failure naming the unsupported query kind. Fallbacks over the Python oracle live outside `src/`, in a maintained measurement harness injected at the composition root as the spike does. CI reports, per query kind, whether fdu answered natively. The adoption gate requires every kind native | Adapter, harness, CI report |
+| D13 | How long does a continuation or pin survive version movement? | Continuations name a position in the query’s total order (canonical path order for catalogs, level order for trees), not a version. A complete assembly either finishes at one version or re-reads, through batched lookups, every path dirtied since its first page, and repeats until a pass sees no new dirty paths or the attempt bound is reached; an all-dirty or reset batch restarts it. While coverage is partial the assembly is labeled provisional. Both providers implement the same rule, and a conformance case pages while commits land. Retained versions in fdu (F22) remain the alternative if re-reads dominate under churn | Contract paging rule, page assembly, both providers |
+| D14 | What happens when the native engine panics or poisons its root? | The adapter translates `pyo3_runtime.PanicException`, a `BaseException`, and poisoned-root errors into a typed provider failure; the coordinator closes the handle, reopens the root, and publishes a host reset. Today the relay catches only `Exception` and would die silently | Adapter, coordinator relay (`mb-6o0l`), an injected-failure case |
+| D15 | What concurrency and latency budget applies at the seam? | A maximum GIL hold per native call and an event-loop lag budget, both measured and stated as contract bounds; page sizes follow from them. `open`, `close`, and root replacement have latency bounds under the coordinator lock, and an iterator cancellation does not wait out a poll interval | Contract bounds, fdu F7, F14, F15, F25 |
+| D16 | What memory may a provider use? | A settled-memory budget in bytes per retained entry, with the fdu process no larger than Python’s on the same corpus, measured as steady state after settle rather than the high-water mark | Measurement harness, fdu F17 |
+| D17 | Which files does a budget stop admit? | Unspecified: truncated membership depends on directory read order, which differs across filesystems. Conformance and goldens assert the stop, coverage, issue, and counts, never which files were admitted | Conformance, goldens |
+| D18 | What does a lookup or refresh with different letter case answer on a case-insensitive filesystem? | The served name’s canonical path is the identity; a different-case request is resolved to it by the provider or answered `absent`, the same in both providers, and ignore matching follows the D2 decision on `core.ignorecase` | Contract text, both providers, macOS cases |
+| D19 | How do fdu and Metabrowser evolve once released separately? | Metabrowser pins fdu exactly; every pin change lands in one commit with the adapter and the conformance results. The adapter uses only the public `fdu.opened` surface and fdu’s exported bounds | Packaging, adapter |
 
-D12 is the one deliberate departure from the August plan, which called the materializing
-adapter unacceptable.
-It remains unacceptable as the adopted provider: the spike measured fallbacks at 8 to
-over 100 times the Python provider’s latency, unable to answer during discovery, and
-responsible for doubling settled memory.
-As an explicit experimental selection it still earns its place, because it lets the
-discovery, live-change, and macOS measurements start before every fdu projection exists,
-and its fallbacks reuse the Python projection code, so their answers are equal by
-construction until the native replacements prove themselves against the same conformance
-cases. Anyone selecting it should expect worse first folder counts than Python until F10
-and F12 land.
+D12 and D13 are the deliberate departures from the August plan.
+D12 keeps August’s rule that the production adapter never materializes the index: the
+spike measured fallbacks at 8 to over 100 times the Python provider’s latency, unable to
+answer during discovery, and doubling peak memory.
+It moves the fallbacks, which still earn their place for discovery, live-change, and
+macOS measurements, into a harness outside the shipped package, where conformance cannot
+mistake Python code answering through fdu for fdu’s answer.
+D13 replaces the rule that an assembly may never mix pages from two versions with a rule
+that yields an answer equivalent to one version, because fdu retains only its current
+version and commits once per directory during discovery.
 
 ### Required fdu Changes
 
@@ -466,13 +483,16 @@ Names stay generic; no Metabrowser vocabulary enters fdu.
 
 | # | Change | Size | Evidence |
 | --- | --- | --- | --- |
-| F1 | Read File Rollup registry schema 5; accept presentation fields such as `chroma_ratio` outside the fingerprint; expose detection source and confidence on `NameClassification` | S | Open fails on Metabrowser’s registry; the spike needed a schema-4 shim. The corpus asserts source and confidence, which fdu lacks |
-| F2 | Escape a POSIX backslash as `%5C` in portable paths; update ordering keys and goldens | S | The spike confirmed order differs for such names |
+| F2 | Escape a POSIX backslash as `%5C` in portable paths; update ordering keys, goldens, and the Python parity corpus. This is a breaking change to fdu’s public portable-path grammar and order for every fdu user; check stored identity before proposing it | M | The spike confirmed order differs for such names |
 | F3 | Observation degrades instead of failing: a watcher setup error at open (including inotify `ENOSPC`) and an observer failure after discovery both yield `ready`, `stale`, and an issue; no transient `ready` before the pre-watch reconcile | S | D5; the adapter had to remap a transient `ready` to `reconciling` |
 | F4 | Prioritize accepts 1,024 paths and an optional depth, and is inert once stopped | S | The adapter chunks at 64 and swallows the stopped error |
 | F5 | Batched lookups: one projection carries up to 1,024 paths | S | A 17-path SSE reread exceeded the 16-projection bound until the adapter chunked it |
 | F6 | Directory facts: non-directory leaf count (for `empty`) and subtree completeness on directory rows | S | The adapter probes for symlinks to derive `empty` and withholds aggregates until coverage is complete |
 | F19 | Vendor and run the File Rollup conformance packet | S | `fdu-ekga`; the spike’s run is the template |
+| F24 | Export the opened-root bounds (page rows, projections, work, dirty paths, issues, continuations, priority paths) from `fdu.opened` | S | The spike hardcodes them; D11 and Principle 6 assert them at open |
+
+With D9’s classification export (R9), Metabrowser no longer needs fdu to read its
+schema-5 registry, so the registry handshake is not in this group; it moves to F1 below.
 
 **What the user sees first** (removes the fallbacks that delay first folder counts):
 
@@ -481,7 +501,11 @@ Names stay generic; no Metabrowser vocabulary enters fdu.
 | F10 | Classification tallies keyed by exact name or logical extension (not raw extension), with a bounded `Tally` projection for logical extension, canonical extension, kind, family, group, and name | M | Navigation and rollup breakdowns; navigation fallback 4,381 ms against Python’s 444 ms on `project-10` |
 | F12 | Ranked children: bounded directory nodes by bytes or files with remainder aggregates | M | Rollup fallback 2,748 ms against 21 ms; first folder count 4.58 s against 0.92 s |
 | F14 | A cheap row path: an identity row shape built directly as tuples or columns, without intermediate dictionaries and dataclasses | M | 10 to 14 µs per row in the binding makes native directory and catalog reads 2 to 7 times slower than the Python store (`fdu-1yxw`) |
-| F15 | Prompt open: register non-recursive inotify watches from discovery for admitted directories only, drop `IN_OPEN`, and scope the final reconciliation pass | M | `open()` blocked 1.45 s on `project-10`; the pre-watch pass added up to 1.5 s (`fdu-eru0`) |
+| F15 | Prompt open: register non-recursive inotify watches from discovery for admitted directories only, drop `IN_OPEN`, and scope the final reconciliation pass | M | The largest cost in the configuration that ships: `open()` blocked 1.45 s on `project-10`, and the coordinator awaits `open` under its lock during root replacement; the pre-watch pass added up to 1.5 s (`fdu-eru0`) |
+
+F17 (below) prices the serving indexes before F9 through F12 build projections on them.
+fdu already tracks native recent, navigation, and selected-tree readers under its bead
+`fdu-a0cf`; F9 through F13 extend that planned work rather than duplicating it.
 
 **Complete the algebra:**
 
@@ -493,23 +517,25 @@ Names stay generic; no Metabrowser vocabulary enters fdu.
 | F11 | Exact recency-window counts plus oldest and newest times | M | `NavigationQuery.recency_windows` |
 | F13 | Selected tree: a level-order page with selected totals, for one selection or up to eight groups, paged | L | Filtered and grouped tree fallbacks, about 20 to 30 times Python in process |
 
-**Cost, observation, and test support:**
+**Format, cost, observation, and test support:**
 
 | # | Change | Size | Evidence |
 | --- | --- | --- | --- |
+| F1 | Read File Rollup registry schema 5 for direct fdu users, with the File Rollup Format defining a presentation namespace that engines skip, so a display-only field never needs an fdu release; expose detection source and confidence on `NameClassification` | S | The spike needed a schema-4 shim; the corpus asserts source and confidence, which fdu lacks |
+| F25 | A wakeable change poll: cancelling an iterator or closing a root returns without waiting out the poll interval, with a measured idle wakeup rate | S | Iterator cancellation joined in about 200 ms, the poll interval; the observation loop wakes every 100 ms |
 | F16 | Opened discovery throughput: batched commits and more than one producer; `getattrlistbulk` on macOS | M–L | One commit per directory moves the version constantly during discovery; exp-126 on macOS |
 | F17 | Price the serving indexes’ memory and commit cost | S | Maintained on every commit and unread (`fdu-hb2t`) |
 | F18 | Public deterministic test seams in `fdu-py`: a scripted observation source and a discovery gate | M | Six route tests hold discovery by patching the Python walker |
 | F20 | Polling observation backend, or a recorded decision that fdu rejects `poll` | M | The one `watch_mode="poll"` route test |
 | F21 | Ignore-rule control base above the opened root | M | D2 |
-| F22 | Retained versions for continuations | L | Only for complete multi-page assemblies while versions move; decide after F16 and native projections |
+| F22 | Retained versions for continuations | L | The alternative to D13’s re-read rule; adoption-critical only if D13’s re-reads dominate under churn or during discovery |
 | F23 | A deterministic SBOM in the wheel, so a rebuild is byte-identical | S | Two builds differed only in maturin’s embedded CycloneDX serial and timestamp |
 
-The first group lets an experimental provider open without shims.
+The first group lets the thin adapter open and answer its native kinds without shims.
 The second removes the fallbacks that make it lose first folder counts, and with the
 first group it is the minimum for an adoption measurement.
 The third finishes the query algebra, and the fourth is ordered by the paired
-measurements.
+measurements, except F17, which precedes F9 through F12.
 
 ### Required Metabrowser Refactors
 
@@ -524,15 +550,17 @@ Grouped by purpose; the first group lands with only the Python provider.
   (D8).
 - **R2:** State the implicit rules (ancestor dirtiness, recursive removal, directory
   mtime, undiscovered folders, the budget edge, root counting) in the contract and pin
-  each with a case.
+  each with a case, including the host coalescing rule for a recursive change, which the
+  coordinator applies opportunistically today with no stated bound.
 - **R3:** Replace `RollupResult` and `NavigationTallies` in the contract with
   contract-owned aggregate types; move wire shaping and the registry fingerprint to the
   host; add `metabrowser.wire_models` to the neutrality denylist (`mb-gwlw`, `mb-nqgs`).
 - **R4:** Replace the free-form watch strings in `ProviderDiagnostics` with a typed
   vocabulary, updating `/api/capabilities` and its goldens in the same change.
-- **R5:** Apply D6 and D11: shared bounds, a batched lookup query, page assembly for
-  catalog and trees, and route work limits scaled to the index instead of the fixed
-  1,000,000 default that makes broad queries fail on very large trees.
+- **R5:** Apply D6, D11, and D13: shared bounds, a batched lookup query, page assembly
+  for catalog and trees under the version-movement rule, and broad queries that resume
+  or read maintained structures instead of failing at the 1,000,000 work default on very
+  large trees.
 - **R6:** Apply D1 in the Python walker and merge the three host status helpers.
 - **R7:** Apply D3 and D4 in the Python watcher; delete the unused
   `INVENTORY_REFRESH_TTL_S`.
@@ -546,6 +574,8 @@ Grouped by purpose; the first group lands with only the Python provider.
   The rollup validator test fails with fdu because its refresh is three commits.
 
 **Make providers selectable and testable.**
+R12 and R13 land before any fdu code; R10, R11, R14, and R29 land with the thin adapter
+in one change; R15 waits for the composed-product checkpoint.
 
 - **R10:** Add `fdu` to the sealed factory with a lazy import and a typed startup
   failure when the package is missing or the wrong version; no silent fallback.
@@ -555,16 +585,26 @@ Grouped by purpose; the first group lands with only the Python provider.
   provider from the environment, and replace monkeypatches of Python internals
   (`walk_tree`, `MAX_ASSEMBLED_ROWS`, `build_rollup`) with provider-owned seams: a
   discovery gate and neutral work counters.
-- **R13:** Make goldens provider-neutral by eliding provider identity, and replace the
+- **R13:** Run the golden suite per provider with one named placeholder for provider
+  identity, plus one golden per provider that pins its name, and replace the
   Python-shaped `walker_task` field.
-- **R14:** Package fdu as a `metabrowser[fdu]` extra with an exact pin, an
+- **R14:** Package fdu as a `metabrowser[fdu]` extra with an exact pin and an environment
+  marker that excludes interpreters without an fdu wheel (free-threaded 3.14t), an
   `exclude-newer-package` entry, a first-party row in `SUPPLY-CHAIN-SECURITY.md` with
   every wheel digest, and installed-wheel smoke tests with and without the extra.
-  On interpreters without an fdu wheel (free-threaded 3.14t), selecting fdu is a typed
-  startup failure and CI skips the fdu job.
-- **R15:** Let the macOS app select a provider: pass `METABROWSER_INVENTORY_PROVIDER`
-  through `ChildEnvironment.swift`, or use the new flag and raise
-  `MetabRequirement.minimumRelease`; install with the extra.
+  Where fdu publishes no wheel (free-threaded CPython, musl, Windows arm64), selecting
+  fdu is a typed startup failure.
+- **R15:** Give the macOS app a provider preference mapped to `--inventory-provider`
+  (an environment passthrough does nothing for a Finder launch), raise
+  `MetabRequirement.minimumRelease` to the release with the flag, and install with the
+  extra. Until then, macOS validation runs `metab` from a terminal.
+- **R29:** Keep the fallback composite as a maintained measurement harness outside
+  `src/` (D12), injected at the composition root, and have CI report per query kind
+  whether fdu answered natively.
+
+Every R item that changes observable behavior or a wire field (R4, R6, R7, R11, R13 at
+least) updates its parity registry row, the views-models-routes map, and
+`CHANGELOG.md` in the same commit, and `devtools/check_parity.py` must pass.
 
 **Measure honestly.**
 
@@ -576,6 +616,9 @@ Grouped by purpose; the first group lands with only the Python provider.
   across providers on the corpus before timing.
 - **R18:** Keep an engine-only layer (open to settled, read latencies, no server) as a
   maintained harness, from the spike’s runner.
+- **R30:** Re-measure the Python baseline after the neutral-contract slice, because
+  watching the whole admitted scope (D4) and honest coverage (D1) change Python’s own
+  cost; the “before” arm is the corrected Python provider.
 
 **Remove host costs that would mask the engine.**
 
@@ -598,8 +641,8 @@ Grouped by purpose; the first group lands with only the Python provider.
   exemption.
 - **R25:** Move the Python walker, watcher, and ignore builder under the Python provider
   package with a reverse ownership test (`mb-ed9h`).
-- **R26:** Give the change relay a recovery policy so a provider failure does not end
-  live updates until restart (`mb-6o0l`).
+- **R26:** Give the change relay a recovery policy so a provider failure, including a
+  native panic (D14), does not end live updates until restart (`mb-6o0l`).
 
 ### The Production Adapter
 
@@ -615,11 +658,18 @@ and implements `InventoryHandle` by translation:
   `changes(after, timeout)` to the async iterator, enforcing the single active iterator
   and translating impact into `ChangeBatch`;
 - refresh and prioritize: pass paths through and translate receipts;
-- close: stop the bridge, then close the native root, joining both.
+- close: stop the bridge, then close the native root, joining both;
+- failure: translate a native panic or poisoned root into a typed provider failure
+  (D14), and a query kind fdu cannot yet answer into a typed failure naming the kind
+  (D12);
+- bounds: assert fdu’s exported bounds (F24) against the contract’s at open (D11).
 
-All blocking native calls run off the event loop, and the binding releases the GIL
-during native work. The adapter’s only state is the native handle, the bridge, and
-per-read scratch.
+All blocking native calls run off the event loop.
+The binding releases the GIL during native work but holds it while it converts rows,
+about 40 to 57 ms for a 4,096-row page at today’s cost, so page size and F14 decide
+event-loop responsiveness (D15).
+The adapter’s only state is the native handle, the bridge, and per-read scratch; it
+uses only the public `fdu.opened` surface (D19).
 
 ## Measuring Before and After
 
@@ -644,42 +694,74 @@ server layers for the provider comparison.
 
 1. Build once. Record the Metabrowser and fdu wheel identities and digests.
 2. Run the semantic-equality precheck (R17) on each corpus; a mismatch stops the run.
-3. Calibrate with an A/A pair per provider to measure harness noise.
-4. Run at least five interleaved, order-randomized Python and fdu pairs per corpus, and
-   report paired medians with their range and the ratio.
-5. Record CPU (user and system), peak and settled RSS, event-loop lag during discovery,
-   and the work counters alongside wall time.
-6. Measure fdu’s one-shot index and a plain metadata traversal on the same tree as
-   floors, so each result also reads as a distance from the filesystem.
+3. Run at least ten interleaved pairs per corpus with arm positions balanced, so neither
+   provider always runs first, and report the paired median ratio with a bootstrap
+   interval, as fdu’s `perf-compare` does.
+   Use A/A pairs to measure order effects as well as noise: the spike’s A/A bands came
+   from two or three trials, and several did not straddle 1.
+4. Record CPU from `rusage` or `/proc` (not one-second `ps` samples), peak RSS and
+   steady-state RSS after settle as separate values, event-loop lag p99, GIL hold per
+   read and per change poll, host relay resets and SSE resyncs during discovery, idle CPU
+   and wakeups after settle, thread and watch counts, and the work counters.
+5. Detect discovery completion with the provider-neutral signal (R16), so both
+   providers’ discovery times have one definition.
+6. Read every route at a fresh version and in randomized order, so a fallback image or
+   memo built for one route does not make the next one look free.
+7. Measure fdu’s one-shot index and a plain metadata traversal on the same tree as
+   floors, so each result also reads as a distance from the filesystem; the spike did
+   not run this step.
+8. Run as a non-root user, and include cold-cache runs, where discovery’s single
+   producer thread matters most.
 
 The corpora are the generated 100,000- and 300,000-file trees that `make benchmark`
-builds, a real checkout with its dependency trees installed, one larger real tree, and a
-churn scenario (a sustained create, modify, and remove stream plus one large burst).
+builds, a real checkout with its dependency trees installed, one larger real tree, a
+single very large directory, a deep tree, and a churn scenario (a sustained create,
+modify, and remove stream plus one large burst).
+Relay overflow deserves its own reading: the host relay queue holds 4,096 batches, a
+tree like `project-10` has 31,901 directories, and fdu commits once per directory during
+discovery, so an attached discovery may reset the host stream.
+Measure the Python “before” arm again after the neutral-contract slice (R30).
 The performance loop’s method, accept rule, and durable-storage rules apply
 (`explorations/performance-loop/README.md`); wall-clock thresholds never gate shared CI.
 
 ## macOS Validation
 
 The Linux spike cannot answer these; each needs a run on an Apple silicon Mac against
-the same fdu revision.
+the same fdu revision, as a non-root user, with `metab` started from a terminal through
+the spike’s launcher until R15 lands.
 The [spike’s README](../../../explorations/fdu-provider-spike/README.md) has the exact
-commands.
+commands and the result slots.
 
 - **Build and install:** build the wheel at the same fdu revision for arm64, or install
   the published wheel with the matching digest, and confirm Metabrowser imports it.
 - **Conformance and routes:** the same provider cases and route and SSE tests as Linux.
+- **Unreadable and protected directories:** permission-denied directories and
+  privacy-protected folders under a home directory.
+  The spike adapter withholds directory aggregates until coverage is complete, and under
+  D1 one unreadable directory keeps coverage partial, so on such a tree totals never
+  appear until fdu ships subtree completeness (F6).
+  Treat F6 as a prerequisite for a meaningful macOS run of home-directory trees.
 - **FSEvents behavior:** live create, modify, rename, and remove delivery; appends from
-  a process that keeps the file open (`fdu-vhrb`); a rename burst; a
-  must-scan-subdirectories event becoming scoped reconciliation.
+  a process that keeps the file open (`fdu-vhrb`); a rename burst and a large burst; a
+  must-scan-subdirectories event becoming scoped reconciliation; a rename out of the
+  root; and FSEvents latency against fdu’s 50 ms settle window.
+- **Observer failure:** the `ready`, `stale`, and `observation_gap` mapping (D5), which
+  the Linux host could not induce.
+- **Roots and volumes:** a symlinked root, firmlinks and the data volume under the
+  one-filesystem option, and cloud placeholder files.
 - **Time to `watching`:** FSEvents needs no per-directory registration walk, so the
-  remaining cost is the final reconciliation pass.
+  remaining cost is the final reconciliation pass; Linux’s watch-limit failure (D5) does
+  not apply.
 - **Discovery cost on APFS:** opened discovery wall time and memory against the one-shot
   index (the exp-126 comparison) and against the Python provider.
+  There is no `getdents64` path on macOS, so the Linux discovery ratio may not transfer.
 - **Case and normalization:** APFS is case-insensitive by default and Git sets
   `core.ignorecase` there; compare both providers’ ignored sets and path identity for
-  names differing only in case and for decomposed Unicode names.
+  names differing only in case and for decomposed Unicode names (D18).
+- **Budget admission:** which files a budget stop admits may differ from Linux (D17).
+- **`poll` refusal:** `watch_mode="poll"` fails as a typed error, as on Linux.
 - **Paired benchmark:** the 100,000- and 300,000-file `make benchmark` rows on the M1
-  Pro that recorded the Python baseline.
+  Pro that recorded the Python baseline, under the procedure above.
 - **The app:** once R15 lands, open a folder in the macOS app with each provider and
   check progressive open, live changes, and memory.
 
@@ -687,23 +769,25 @@ commands.
 
 ### Adopt: Neutral Contract, Then Native Projections Behind a Thin Adapter
 
-**Description:** Make the contract provider-neutral with only Python behind it, register
-fdu as an explicit experimental provider once fdu’s open-time changes release, and
-replace its fallbacks with native projections until none remain.
+**Description:** Make the contract provider-neutral with only Python behind it; land a
+thin fdu adapter that answers natively or fails typed once fdu’s open-time group
+releases; measure through a fallback harness outside `src/` meanwhile; and add native
+projections until every kind is native.
 
 **Advantages:**
 
 - keeps the August boundary, which both codebases now fit;
 - fixes Python bugs the neutral contract exposes, independent of fdu;
-- starts the paired measurements and macOS validation early through the experimental
-  selection;
-- every step is testable with the same conformance registry.
+- starts the paired measurements and macOS validation early through the harness, without
+  shipping index-sized work in the package;
+- every step is testable with the same conformance registry, and CI shows which kinds are
+  native.
 
 **Costs:**
 
-- a sizable fdu work list (F1 to F23) and a Metabrowser refactor list (R1 to R28);
-- an experimental provider that is slower than Python for first folder counts until F10,
-  F12, and F14 land.
+- a sizable fdu work list (F1 to F25) and a Metabrowser refactor list (R1 to R30);
+- measurements through the harness are slower than Python for first folder counts until
+  F10, F12, and F14 land.
 
 ### Eliminated: Ship the Fallback Adapter as the Backend
 
@@ -717,6 +801,8 @@ Retaining old versions in fdu would let fallback images assemble during discover
 it leaves every fallback paying an index-sized binding crossing per version, which the
 spike measured at 2.1 s of binding plus 0.74 s of conversion on `project-10` before any
 projection work. Bounded native projections need neither.
+Retained versions remain a candidate for one narrower job, complete multi-page
+assemblies under version movement (F22, the alternative to D13).
 
 ### Eliminated: Host Projection Kernels Over Flat Pages
 
@@ -740,33 +826,40 @@ Revisit only if F14 and R20 together leave the catalog bound by conversion.
 ## Recommendations
 
 1. Keep the provider boundary and the fdu direction: on Linux the engine settles 3.5 to
-   5.4 times faster and delivers live changes 20 to 25 ms sooner.
+   5.4 times faster with observation off and reaches `watching` about 1.7 times sooner
+   with observation on, and the server finishes cold discovery 2.3 to 4 times sooner.
+   Those are Linux results from a small number of trials; macOS may differ.
 2. Land the provider-neutral contract (R1 to R9, R27) first, with only Python, because
    it fixes real Python defects and is the prerequisite for every parity claim.
-3. Ask fdu for the open-time group (F1 to F6, F19) next; it is all small work and lets
-   the provider open without shims.
-4. Register fdu as an explicit experimental provider (D12, R10 to R18) so the U3 reading
-   and macOS validation can start, and label its fallbacks in diagnostics.
+   Decide D13 to D19 in the same pass; D13 in particular changes the paging rule both
+   providers implement.
+3. Ask fdu for the open-time group (F2 to F6, F19, F24) next; it is small work and lets
+   the thin adapter open and answer its native kinds without shims.
+4. Land the thin adapter with its factory entry, flag, and extra in one change (D12, R10,
+   R11, R14, R29), and keep the fallback harness outside `src/` for the U3 reading and
+   macOS validation.
 5. Prioritize fdu’s rollup, navigation, row-cost, and prompt-open work (F10, F12, F14,
-   F15) over the rest of the algebra, because those decide first folder counts.
+   F15) over the rest of the algebra, because those decide first folder counts and
+   responsiveness.
 6. Measure before and after with one build and an interleaved provider axis at the
-   engine, unattached server, and browser layers, and land host-cost refactors (R19 to
-   R22, R28) before reading the attached layer as a provider result.
-7. Decide adoption only with zero fallbacks, passing conformance on Linux and macOS, and
-   paired results on both platforms; any default change stays a separate, reversible
+   engine, unattached server, and browser layers, following the procedure above, and
+   land host-cost refactors (R19 to R22, R28) before reading the attached layer as a
+   provider result.
+7. Decide adoption only with every kind native, conformance passing on Linux and macOS,
+   and paired results on both platforms; any default change stays a separate, reversible
    decision.
 
 ## Next Steps
 
 - [ ] Validate this spike on macOS using its README (tracked as a bead; the pull request
   carrying this research leaves the checklist open).
-- [ ] Record decisions D1 to D12 in the inventory-provider architecture document.
-- [ ] Open the Metabrowser beads for R1 to R28 under `mb-hej8`, linking the existing
-  beads each one absorbs.
-- [ ] Propose the fdu changes to the fdu project, starting with F1 to F6 and F19, and
-  correct the stale bullets in fdu’s opened-root plan (removing ignored-last ranking and
-  filtered-tree paging, and the “map recent and navigation onto `Report`” strategy).
-- [ ] Implement the experimental provider after the open-time group releases.
+- [ ] Record decisions D1 to D19 in the inventory-provider architecture document.
+- [ ] Track R1 to R30 as Metabrowser beads under `mb-hej8`, linking the existing beads
+  each one absorbs.
+- [ ] Propose the fdu changes to the fdu project, starting with F2 to F6, F19, and F24,
+  and correct the stale bullets in fdu’s opened-root plan (removing ignored-last ranking
+  and filtered-tree paging, and the “map recent and navigation onto `Report`” strategy).
+- [ ] Implement the thin adapter after the open-time group releases.
 
 ## Methodology
 

@@ -432,53 +432,61 @@ Checkpoint 2C’s first slice states that rule.
 The [revisited research](../../research/research-2026-11-17-fdu-backend-revisited.md)
 re-derived the remaining work against fdu 0.6.0 and a new Linux spike in
 [`explorations/fdu-provider-spike/`](../../../../explorations/fdu-provider-spike/README.md).
-Its decisions (D1 to D12), fdu changes (F1 to F23), and Metabrowser refactors (R1 to
-R28) are referenced by number below; the research holds their reasons and evidence.
+Its decisions (D1 to D19), fdu changes (F1 to F25), and Metabrowser refactors (R1 to
+R30) are referenced by number below; the research holds their reasons and evidence.
 
-#### Checkpoint 2C: Neutral Contract, Selectable Providers, Native Projections
+#### Checkpoint 2C: Neutral Contract, Thin Adapter, Native Projections
 
 Slice 1, provider-neutral contract (Python only, no fdu dependency):
 
-- [ ] Record decisions D1 to D12 in the inventory-provider architecture document.
-- [ ] Rewrite conformance as semantics and bounds, register every parametrized case, and
-  state and pin the implicit rules (R1, R2), and make `refresh()` read-your-writes at
-  the host (R27).
+- [ ] Record decisions D1 to D19 in the inventory-provider architecture document, with
+  D13 (paging under version movement) and D14 (native failure isolation) pinned by new
+  conformance cases.
+- [ ] Rewrite conformance as semantics and bounds, register every parametrized case,
+  state and pin the implicit rules and the host coalescing rule (R1, R2), and make
+  `refresh()` read-your-writes at the host (R27).
 - [ ] Move rollup and navigation wire shaping and registry identity to the host behind
   contract-owned aggregate types (R3), and type the watch vocabulary (R4).
-- [ ] Apply shared bounds, batched lookups, and page assembly (R5).
+- [ ] Apply shared bounds, batched lookups, and page assembly under D13 (R5).
 - [ ] Apply the unreadable-directory, live-ignore, and watch-scope decisions in the
   Python provider and host status (R6, R7), and lift the Git ignore oracle and File
   Rollup packet to provider cases (R8).
 - [ ] Pass an engine-facing classification document to providers (R9).
+- [ ] Update parity rows, the views-models-routes map, and `CHANGELOG.md` with each slice
+  item that changes observable behavior or a wire field.
 
-Slice 2, selection and measurement (still Python-only in CI):
+Slice 2, provider-neutral tests and measurement (still Python only):
 
-- [ ] Add the `fdu` factory entry, `metab --inventory-provider`, provider-selectable
-  harnesses, provider-owned discovery seams, and provider-neutral goldens (R10 to R13).
-- [ ] Package `metabrowser[fdu]` with an exact pin and its supply-chain review, and let
-  the macOS app select a provider (R14, R15).
-- [ ] Replace the log-line completion signal, register fdu in the serving benchmark with
-  wheel attestation and a semantic-equality precheck, and keep the engine-only harness
-  (R16 to R18).
+- [ ] Make harnesses and the conformance registry provider-selectable with
+  provider-owned discovery seams, and run goldens per provider with a named placeholder
+  (R12, R13).
+- [ ] Replace the log-line completion signal, add a semantic-equality precheck, and keep
+  the engine-only harness (R16, R18).
+- [ ] Re-measure the corrected Python provider as the “before” arm (R30).
 
-Slice 3, an explicit experimental fdu provider (after fdu’s open-time group, F1 to F6
-and F19, releases):
+Slice 3, the thin fdu adapter (after fdu’s open-time group, F2 to F6, F19, and F24,
+releases):
 
-- [ ] Implement `providers/fdu_inventory.py` as described in the research’s production
-  adapter section, with fallbacks for any projection fdu does not yet answer.
-  Each fallback is named in diagnostics, bounded by `max_work`, and has an open bead
-  naming the fdu change that removes it (D12).
+- [ ] In one change, implement `providers/fdu_inventory.py` as described in the
+  research’s production adapter section, answering natively or failing typed per
+  unsupported kind, with the `fdu` factory entry, `metab --inventory-provider`, and the
+  `metabrowser[fdu]` extra and its supply-chain review (D12, R10, R11, R14).
+- [ ] Register fdu in the serving benchmark with wheel attestation (R17), and keep the
+  fallback composite as a maintained harness outside `src/` (R29).
 - [ ] Run the conformance registry, File Rollup packet, and route and SSE suites against
-  both providers in a Linux CI job with the extra installed.
+  both providers in a Linux CI job with the extra installed, reporting per query kind
+  whether fdu answered natively.
 - [ ] Delete the spike adapters in `explorations/fdu-inventory-adapter/` and
   `explorations/fdu-provider-spike/` once the production adapter and maintained
   harnesses cover their measurements; keep their READMEs and evidence as the Checkpoint
   2A and 2026-11-17 records.
 
-Slice 4, native projections:
+Slice 4, native projections and cost:
 
-- [ ] As fdu releases F7 to F13, replace each fallback with the native projection,
-  pinned by the same conformance cases.
+- [ ] As fdu releases F7 to F13, make each kind native in the adapter, pinned by the same
+  conformance cases.
+- [ ] Adopt F14 (row cost), F15 (prompt open), F16 (discovery commits), and F25 (wakeable
+  poll) as they release, and decide whether D13’s re-reads need F22.
 - [ ] Land the host-cost refactors (R19 to R22, R28) that the paired measurements show
   mask engine differences.
 
@@ -488,18 +496,21 @@ Slice 4, native projections:
   deterministic observation sessions against Python and fdu on Linux and macOS.
 - [ ] Record a normalized golden session covering progressive open, bounded reads and
   paging, live mutation, refresh, replay loss, iterator cancellation, root replacement,
-  and joined close. Normalize only generated identities, time, and platform metadata;
-  preserve complete stable request, result, state, impact, work, route, and SSE
-  payloads.
+  joined close, and an injected native failure.
+  Normalize only generated identities, time, platform metadata, and the provider-name
+  placeholder; preserve complete stable request, result, state, impact, work, route, and
+  SSE payloads.
 - [ ] Build the exact fdu revision as a wheel in a clean Metabrowser environment on
   every supported Python and platform job.
   A source-tree import must not make integration pass.
+- [ ] Give the macOS app a provider preference (R15).
 - [ ] Run the paired campaign in the research’s measuring section (U3, `mb-wb7e`) on
   Linux and on the M1 Pro that holds the Python baseline, including the macOS validation
   list.
 - [ ] Resolve every correctness, resource, interaction, recovery, packaging, and
-  supported-platform regression.
-  The adoption gate requires zero fallbacks.
+  supported-platform regression, including the concurrency and memory budgets (D15,
+  D16).
+  The adoption gate requires every query kind native, with F14 and F15 adopted.
   Any default change is a separate reversible decision after these gates; this
   implementation phase does not add an `auto` fallback.
 
