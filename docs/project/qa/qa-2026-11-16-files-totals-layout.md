@@ -25,6 +25,11 @@ A shell drawn before the walk finished the root was simulated by removing the in
 totals from the served page; a mid-walk tally by rewriting the first one as
 `tally_cache_status: "scanning"` with nothing ignored, and holding the event stream that
 brings the root’s entry 1.5 s after it.
+From 2026-11-17 the first case also holds the event stream until first paint, because
+its snapshot carries the same totals in the root’s entry.
+Without that hold the snapshot filled the line 17 to 100 ms after first paint for the
+folder with nothing ignored, and in one CI run it arrived before first paint, so no
+frame recorded the held line, although nothing moved.
 
 ## Results
 

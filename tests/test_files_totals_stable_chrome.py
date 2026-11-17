@@ -24,12 +24,13 @@ and the narrowest. This judges it:
   it (mb-h3hc's audit; the server rendering the bar, H52, would end it);
 - the line is its settled self from first paint: the ignored count's line for the folder
   with ignored files, and no ignored line for the folder with none;
-- a shell drawn before the walk finished the root, its inlined totals taken out, holds
-  the ignored line from first paint and no load moves: the count fills it in place, in
-  the narrowest pane too, where it is cut short on its one line rather than wrapped; a
-  first tally answered as the server does mid-walk, provisional and counting nothing
-  ignored yet, does not release it; and for a folder with nothing ignored it keeps its
-  box as "No ignored files";
+- a shell drawn before the walk finished the root, its inlined totals taken out and the
+  event stream, whose snapshot carries them in the root's entry, held until first paint,
+  holds the ignored line from first paint and no load moves: the count fills it in
+  place, in the narrowest pane too, where it is cut short on its one line rather than
+  wrapped; a first tally answered as the server does mid-walk, provisional and counting
+  nothing ignored yet, does not release it; and for a folder with nothing ignored it
+  keeps its box as "No ignored files";
 - the tracked and ignored lines' tooltips, each its line's whole phrase, show only while
   the line is cut short, and in the narrowest pane the ignored line is.
 
@@ -59,9 +60,10 @@ from tests.required_tools import require_chrome, require_node
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
 # Three server starts, one Chrome, and thirty loads, eighteen of them holding the tally
-# 2 s and two the event stream 1.5 s: the session took 71 s, and the test 98 s, on a
-# 10-core Mac at a load average near 30. A cold Chrome start in CI has taken 28.2 s, and
-# each server's start is bounded at 30 s inside the session.
+# 2 s and two the event stream 1.5 s (eight more hold it only until first paint, inside
+# their tally's 2 s): the session took 71 s, and the test 98 s, on a 10-core Mac at a
+# load average near 30. A cold Chrome start in CI has taken 28.2 s, and each server's
+# start is bounded at 30 s inside the session.
 SESSION_TIMEOUT_S = 240
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
