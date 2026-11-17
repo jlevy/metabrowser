@@ -14,12 +14,15 @@ import stat
 import subprocess
 import sys
 import textwrap
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from metabrowser import home as home_module
 from metabrowser.cache.atomic import (
+    MAX_READ_OPENS,
     MAX_RECORD_BYTES,
     RecordError,
     publish_entry,
@@ -37,6 +40,8 @@ from metabrowser.cache.records import (
     RepositorySourceState,
 )
 from metabrowser.home import (
+    PrivateStorageError,
+    PrivateStorageViolation,
     ensure_home,
     ensure_private_directory,
     rename_without_replacing,
@@ -341,6 +346,101 @@ def test_malformed_records_are_refused(home: Path, payload: bytes) -> None:
 
     with pytest.raises(RecordError):
         read_record(home, "layout.yml", CACHE_LAYOUT_CONTRACT_ID)
+
+
+# ── Reads that meet a republication ────────────────────────────────
+
+
+def _republished_during(
+    monkeypatch: pytest.MonkeyPatch,
+    step: str,
+    publish: Callable[[], None],
+    *,
+    times: int = 1,
+) -> list[int]:
+    """Run *publish* right after a read inspects ``layout.yml`` (*step* ``"stat"``) or
+    opens it (``"open"``), the first *times* times; the list it returns counts them.
+
+    The inspection is the no-follow ``stat`` through the parent's descriptor and the open
+    is the ``open`` through it, which only the read makes: a writer opens its temporary.
+    """
+
+    real = os.stat if step == "stat" else os.open
+    published: list[int] = []
+
+    def racing(path: Any, *args: Any, **kwargs: Any) -> Any:
+        result = real(path, *args, **kwargs)
+        ours = path == "layout.yml" and kwargs.get("dir_fd") is not None
+        inspected = step == "open" or kwargs.get("follow_symlinks") is False
+        if ours and inspected and len(published) < times:
+            published.append(1)
+            publish()
+        return result
+
+    monkeypatch.setattr(os, step, racing)
+    return published
+
+
+@pytest.mark.parametrize("step", ["stat", "open"], ids=["after-inspection", "after-open"])
+def test_a_read_that_meets_a_republication_reads_the_new_record(
+    home: Path, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    """Records are republished by atomic rename, so a read sees the old one or the new.
+
+    The new one is renamed into place between the read's inspection of the entry and its
+    open, or between the open and the check of the descriptor, which then names a file
+    no longer linked. The pull-files route read no refresh stamp in that window (mb-kq72).
+    Mutation check: open once, as ``read_bytes_bounded`` did, and the read is refused.
+    """
+
+    write_private_file_atomic(home, "layout.yml", b"old\n")
+    _republished_during(
+        monkeypatch, step, lambda: write_private_file_atomic(home, "layout.yml", b"new\n")
+    )
+
+    assert read_bytes_bounded(home, "layout.yml") == b"new\n"
+
+
+def test_a_replacement_that_is_not_private_is_refused_when_read_again(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second open judges the replacement in full: a hard link is still refused."""
+
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside data that must survive\n")
+    outside.chmod(0o600)
+    write_private_file_atomic(home, "layout.yml", b"ours\n")
+
+    def link_outside() -> None:
+        (home / "layout.yml").unlink()
+        os.link(outside, home / "layout.yml")
+
+    _republished_during(monkeypatch, "stat", link_outside)
+    with pytest.raises(PrivateStorageError) as refused:
+        read_bytes_bounded(home, "layout.yml")
+
+    assert refused.value.violation is PrivateStorageViolation.HARD_LINK
+    assert outside.read_bytes() == b"outside data that must survive\n"
+
+
+def test_an_entry_replaced_at_every_open_is_refused_after_the_bound(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer that never stops cannot keep a read opening without end."""
+
+    write_private_file_atomic(home, "layout.yml", b"0\n")
+    published = _republished_during(
+        monkeypatch,
+        "stat",
+        lambda: write_private_file_atomic(home, "layout.yml", b"again\n"),
+        times=MAX_READ_OPENS + 1,
+    )
+    with pytest.raises(PrivateStorageError) as refused:
+        read_bytes_bounded(home, "layout.yml")
+
+    assert refused.value.replaced
+    assert refused.value.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert len(published) == MAX_READ_OPENS
 
 
 def _fsync_targets(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:

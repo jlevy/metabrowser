@@ -24,8 +24,15 @@ from uuid import UUID
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_files_refresh, pull_list, pulls
+from metabrowser.builtin_plugins.github import (
+    gh,
+    pull_files_refresh,
+    pull_files_route,
+    pull_list,
+    pulls,
+)
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -347,3 +354,42 @@ def test_golden_pull_files_failures(
     )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     check_golden("cli-github-pull-files-failures.txt", rendered)
+
+
+def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``files`` in the answer that starts a job is read before that job can write.
+
+    Here the job's stamp lands as it starts, the earliest it can. Without a ``gh`` the job
+    writes its ``gh_missing`` within microseconds, and in CI run 44043888346 it did so
+    while the route read ``files`` for the transcript above (mb-kq72). Mutation check:
+    read ``files`` after the start, as the route did, and the job that is still
+    ``refreshing`` reports its own outcome as the last refresh.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({"number": TREE_PULL}).exit_code == 0
+    session.advance(1)
+    real_start = pull_files_route.start_files_refresh
+
+    def start_then_write(
+        view: pull_files_route.FilesView, ask: pull_files_route.FilesRefreshRequest, **kw: Any
+    ) -> pull_files_route.FilesRefreshStart:
+        started = real_start(view, ask, **kw)
+        repository = view.repository
+        assert repository is not None
+        ended = PullRefreshStamp(outcome="gh_missing", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}")
+        pull_list.write_files_refresh(repository.home, repository.slug, ask.number, ended)
+        return started
+
+    monkeypatch.setattr(pull_files_route, "start_files_refresh", start_then_write)
+    monkeypatch.setattr(gh, "gh_executable", lambda: None)
+    missing = session.post({"number": TREE_PULL, "retry": True})
+
+    answer = _first(missing)
+    assert (answer["refresh"], answer["files"]["refreshing"]) == ("started", True)
+    assert answer["files"]["last_refresh"]["outcome"] == "succeeded"
+    assert answer["files"]["last_refresh"]["at"] == f"{FETCHED_AT:%Y-%m-%dT%H:%M:%SZ}"
+    assert answer["files"]["state"] == "current"
+    assert _after(missing)["last_refresh"]["outcome"] == "gh_missing"

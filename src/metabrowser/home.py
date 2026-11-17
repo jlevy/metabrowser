@@ -449,6 +449,8 @@ class PrivateStorageError(Exception):
     repeating this path. ``mode`` is set when a permission mode caused a permissive
     refusal, and ``kind`` and ``purpose`` say whether a directory or a file was refused
     and whether the caller was reading or writing, which decides the remedy offered.
+    ``replaced`` is true when an entry on the path was replaced while it was being
+    checked: the same call made again judges, in full, whatever replaced it.
     """
 
     def __init__(
@@ -470,6 +472,7 @@ class PrivateStorageError(Exception):
         self.mode: int | None = mode
         self.kind: EntryKind | None = kind
         self.purpose: EntryPurpose = purpose
+        self.replaced: bool = detail is _CHANGED_DURING_CHECK
 
 
 class StorageDirectoryError(ValueError):
