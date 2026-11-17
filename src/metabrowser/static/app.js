@@ -1083,6 +1083,9 @@ function withTreeIdScope(scope, build) {
 // paint from a snapshot the server took at page-render time would be a
 // regression, not a shortcut.
 let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
+// The Files totals line's source (`rootTotals`).
+/** @type {ReturnType<Window["MetabrowserNavigationRoute"]["createRootTotals"]> | null} */
+let _rootTotals = null;
 // The exact rows that reached the DOM from the shell. The first /api/tree
 // response reconciles against this snapshot instead of replacing the root,
 // which preserves the first paint while still converging to the newer index.
@@ -1126,7 +1129,7 @@ function renderInitialTreeRows() {
   // before it there were no rows in place to push.
   _lastTreeRender = {
     tree: rows,
-    chromeHtml: treeSummaryHtml(null, null, null),
+    chromeHtml: treeSummaryHtml(rootTotals().totals(), null, null),
     tallyCacheStatus: "scanning",
   };
   // Measured here rather than around the call, so the span exists only when
@@ -1237,12 +1240,18 @@ async function loadTree(options = {}) {
       // Summary row sits at the top of the scrollable tree listing, not
       // in the sticky header — visible on first paint, scrolls away with
       // the rest of the tree. Keeps the upper nav header clean.
-      // The index-wide tracked/ignored split is partial while scanning just
-      // like the visible-tree fallback. Gate the summary object itself; passing
-      // it through would make treeSummaryHtml prefer concrete partial values
-      // over the pending fallback we selected above.
-      var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;
-      var summaryHtml = treeSummaryHtml(stableSummary, summaryFiles, summarySize);
+      // The root's totals, never partial (docs/design-system.md, "The Files totals").
+      if (data.summary) {
+        rootTotals().fromSummary(data.summary, data.tally_cache_status);
+      }
+      var stableSummary = rootTotals().totals();
+      // Held, the figures stay pending: the combined figure counts the ignored files.
+      var holding = !stableSummary && rootTotals().keepsIgnoredLine();
+      var summaryHtml = treeSummaryHtml(
+        stableSummary,
+        holding ? null : summaryFiles,
+        holding ? null : summarySize,
+      );
       // Cached so the recency source, which paints over the whole panel,
       // can keep the same tally row above its own filtered count.
       _lastTreeSummaryHtml = summaryHtml;
@@ -1899,12 +1908,39 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
     fallbackFiles,
     fallbackSize,
     treeSummaryFormat(),
+    rootTotals().keepsIgnoredLine(),
   );
 }
 
-// The walker's root upsert carries gitignore-blind totals, so it
-// cannot refresh the split. Refetch the summary instead — depth=0 so
-// the response is the tally and nothing else.
+// What the Files totals line is drawn from (navigation.js, `createRootTotals`).
+function rootTotals() {
+  _rootTotals ??= window.MetabrowserNavigationRoute.createRootTotals({
+    gitRevision: isGitRevisionSource(),
+    shell: window.METABROWSER_INITIAL_TREE?.summary ?? null,
+  });
+  return _rootTotals;
+}
+
+// Draw the totals line in place, and keep both caches of it in step: chromeHtml feeds a
+// source swap back to the tree, and _lastTreeSummaryHtml is what the recency source
+// prepends.
+/** @param {string} html */
+function paintTreeSummary(html) {
+  var row = document.querySelector(".tree-summary");
+  if (row && row.outerHTML !== html) {
+    row.outerHTML = html;
+  }
+  _lastTreeSummaryHtml = html;
+  if (_lastTreeRender) {
+    _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
+      /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
+      html,
+    );
+  }
+}
+
+// The root's tallies, asked of the server again, for the filter menus' counts and the
+// totals line while the root's entry has none; depth=0 so the response is the tally.
 //
 // One request at a time, however many callers ask (createRootSummaryRefresh in
 // navigation.js). A live tree upserts its root on every write, and each answer is a
@@ -2015,8 +2051,8 @@ async function fetchRootSummary() {
   if (!data?.summary || !_lastTreeRender) {
     return true;
   }
-  var row = document.querySelector(".tree-summary");
-  if (!row) {
+  rootTotals().fromSummary(data.summary, data.tally_cache_status);
+  if (!document.querySelector(".tree-summary")) {
     return true;
   }
   // Only rebuild the bar when no dropdown is open. Replacing
@@ -2030,17 +2066,7 @@ async function fetchRootSummary() {
       patchOpenRecencyTallyCounts();
     }
   }
-  var html = treeSummaryHtml(data.summary, null, null);
-  row.outerHTML = html;
-  // Keep both caches in step: chromeHtml feeds a source swap back
-  // to the tree, and _lastTreeSummaryHtml is what the recency
-  // source prepends. Updating only the first left the tally
-  // showing first-paint figures under a recency filter.
-  _lastTreeSummaryHtml = html;
-  _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-    /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
-    html,
-  );
+  paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
   return true;
 }
 
@@ -8625,22 +8651,26 @@ function updateRootAggregatePresentation(entry) {
   var totalFiles = entry.total_files == null ? null : entry.total_files;
   var totalSize = entry.total_size == null ? null : entry.total_size;
   var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
-  // When the split row is on screen these selectors find nothing by
-  // design (see treeSummaryHtml): the blind aggregate cannot express
-  // tracked-versus-ignored, so the split refreshes itself instead.
-  var countEl = queryHtml(".tree-summary-count");
-  var sizeEl = queryHtml(".tree-summary-size");
-  if (countEl) {
-    countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
-      totalFiles,
-      treeSummaryFormat(),
-    );
-  }
-  if (sizeEl) {
-    sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
-      totalSize,
-      treeSummaryFormat(),
-    );
+  if (rootTotals().fromRootEntry(entry)) {
+    if (_lastTreeRender) {
+      paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
+    }
+  } else if (!rootTotals().totals()) {
+    // Until the root has totals, the fallback's two figures follow its aggregate.
+    var countEl = queryHtml(".tree-summary-count");
+    var sizeEl = queryHtml(".tree-summary-size");
+    if (countEl) {
+      countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
+        totalFiles,
+        treeSummaryFormat(),
+      );
+    }
+    if (sizeEl) {
+      sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
+        totalSize,
+        treeSummaryFormat(),
+      );
+    }
   }
   scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");
