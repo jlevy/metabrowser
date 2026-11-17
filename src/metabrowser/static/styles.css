@@ -1258,10 +1258,14 @@
 
   /* File change letters. Renamed is a blue of its own rather than a ref
      color: the letter sits beside added's green, and the ref colors below
-     answer a different question. */
+     answer a different question.
+     Modified is a yellow that reads as yellow, dark only as far as text
+     needs (mb-easi): at 50% and 0.1 chroma it read olive, so it is as
+     light as 4.5:1 allows, at about the most chroma sRGB holds there,
+     4.76:1 on --hover-bg, its lowest ground; hue 84 in both themes. */
   --git-status-added: oklch(48% 0.09 149.18);
   --git-status-deleted: oklch(50% 0.12 27.2);
-  --git-status-modified: oklch(50% 0.1 85);
+  --git-status-modified: oklch(52.5% 0.107 84);
   --git-status-renamed: oklch(50% 0.1 259.52);
 
   /* Ref chips. Each is text on the chip ground below, so all three sit
@@ -1417,7 +1421,9 @@
      7.06:1. */
   --git-status-added: oklch(78% 0.09 149.18);
   --git-status-deleted: oklch(78% 0.12 27.2);
-  --git-status-modified: oklch(78% 0.1 85);
+  /* A clear yellow, not khaki (mb-easi): 0.1 chroma here read as tan;
+     0.16 is near what sRGB holds at this lightness, 6.32:1 on --hover-bg. */
+  --git-status-modified: oklch(79% 0.16 84);
   --git-status-renamed: oklch(74% 0.1 259.52);
   --git-ref-remote: oklch(0.74 0.1 259.52);
   --git-ref-local: oklch(0.74 0.1 205);
