@@ -319,11 +319,14 @@ the keycaps, the labels, and the monospace blocks, and the micro size to its mar
 rule that sets one named with its role, so a new rule that gives metadata a smaller size
 fails until it is classified.
 It holds the navigation column’s one size on `.tree-pane`, the hint strips to the
-keycaps’ token, and the metadata whose container sets its size, the age primitive, the
-notice, and a tooltip’s detail lines among it, to setting none.
-`tests/test_type_scale_chrome.py` reads the computed size of one of each role on the
-Files, Pulls, and Commits panels and the navigation column’s foot, a file’s and a
-folder’s header, a commit’s page and its Diff summary’s files, a pull request’s
+keycaps’ token, and the metadata named in its `_INHERITED_METADATA`, whose containers
+set its size, the notice and a tooltip’s detail lines among it, to setting none; a rule
+left off that list is not checked.
+`test_age_is_one_primitive_everywhere` holds the age primitive and every age call site
+to setting none.
+`tests/test_type_scale_chrome.py` reads the computed size of one of each
+role on the Files, Pulls, and Commits panels and the navigation column’s foot, a file’s
+and a folder’s header, a commit’s page and its Diff summary’s files, a pull request’s
 Conversation and Checks, a tooltip, a menu, Help, and Quick Search in headless Chrome,
 and holds each to this table and to the text it accompanies.
 
@@ -883,7 +886,8 @@ and a pull request’s state badge is another; `tests/dom/github-pull-header-chr
 checks both in Chrome.
 
 The diff file bar’s View file controls are boxes beside the toggle, not text inside it,
-so they are set at the path’s own size: text of one size centers onto one baseline.
+so they are set at the path’s own size and line height: text of one size and one line
+height centers onto one baseline.
 
 Two rows are deliberately not in the table.
 A mirror’s location note at the far end of the file header is whole or absent, by
@@ -1125,7 +1129,7 @@ A row is the graph, then the commit, then who and when:
 | Graph gutter | Shrink-wraps **this row’s** lanes, so the subject starts where that row’s graph ends. A shared column would spend the widest row’s width on every row. |
 | Ref chips | Fixed, slightly smaller than the subject by the [chip ratio](#one-ratio); shrink last (see below) |
 | Subject | Bold, with a conventional-commit prefix regular ([Titles](#titles)); takes the remaining space and absorbs the row’s shrinkage, ellipsizing |
-| Author | Right-aligned in a column of at most 40% of the row, sliding outward as the panel widens; it ellipsizes in that column first |
+| Author | Right-aligned in a column bounded by `.git-graph-meta`’s `max-width`, sliding outward as the panel widens; it ellipsizes in that column first |
 | Age | Fixed, at the column’s end; never cut |
 
 When a row cannot fit everything, the order it gives way in is **subject, then chips,

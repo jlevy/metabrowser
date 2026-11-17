@@ -294,10 +294,14 @@
    it switches the served pin first). It stays visible, since it is how a
    reader leaves the diff for the file, and takes the link color on hover
    and focus like every other text action.
-   Set at the path's own size, the toggle's: the control is a centered box
-   beside the toggle, and only text of the path's size centers onto the
-   path's baseline ("Row Text Shares a Baseline" in the design system;
-   Design Rule Measurements, "Row Baselines"). */
+   Set at the path's own size and line height, the toggle's: the control is
+   a centered box beside the toggle, and only text of the path's size and
+   line height centers onto the path's baseline. The toggle and the button
+   form take a button's `normal` line height; the link form inherited the
+   bar's 1.5 and sat 0.5px above the path's baseline at 14px, at device
+   pixel ratios of 1 and 2, where the button form sat on it ("Row Text
+   Shares a Baseline" in the design system; Design Rule Measurements, "Row
+   Baselines"). */
 .metabrowser-diff-host .diff-file-view {
   flex: none;
   padding: 0 4px;
@@ -306,6 +310,7 @@
   color: var(--muted);
   font-family: var(--font-sans);
   font-size: var(--body-font-size);
+  line-height: normal;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;

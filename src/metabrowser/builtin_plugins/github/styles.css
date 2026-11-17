@@ -647,9 +647,9 @@
 }
 /* An atomic box in every form. Its button form, which moves the pin, is one whatever its
    display, so a path that wraps puts what follows it on the next line; the link and the
-   plain path do the same, and the card head reads alike in all three. A path in a line of
-   other text takes the line's size, the card head's, not the navigation size of a path in a
-   strip of its own (docs/design-system.md, "Type Scale"). */
+   plain path do the same, and the card head reads alike in all three. A path in the main
+   view reads at the body size, here the card head's, as a diff file bar's does
+   (docs/design-system.md, "Type Scale"). */
 .github-pull-file {
   display: inline-block;
   font-weight: var(--weight-bold);
@@ -1064,7 +1064,6 @@
 .github-pulls-number {
   flex: none;
   color: var(--text);
-  font-size: var(--nav-font-size);
 }
 /* A stack member's place in its stack, before its number on the number's line, in the
    number's type and ink, "1/6" before "#N" (`.github-pulls-id`). Its own stack's position is
@@ -1075,7 +1074,6 @@
   align-items: baseline;
   min-width: 0;
   color: var(--text);
-  font-size: var(--nav-font-size);
 }
 .github-pulls-place[hidden] {
   display: none;

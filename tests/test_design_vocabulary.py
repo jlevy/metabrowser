@@ -472,6 +472,11 @@ def test_row_text_shares_one_baseline() -> None:
             diff_css, f".metabrowser-diff-host {selector}"
         ), f"{selector} left the diff bar's one text size"
     assert "font-size" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-path")
+    # And at the toggle's line height, a button's `normal`: at the bar's 1.5, which a link
+    # inherits, the link form sat 0.5 px above the path's baseline in Chrome and the button
+    # form on it (Design Rule Measurements, "Row Baselines").
+    assert "line-height: normal;" in _rule(diff_css, ".metabrowser-diff-host .diff-file-view")
+    assert "line-height" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-toggle")
 
 
 def test_disclosure_motion_is_one_recipe_everywhere() -> None:
@@ -1157,7 +1162,6 @@ def test_git_commit_summary_is_one_component() -> None:
     compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
     compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
     summary_body = _rule(styles, ".git-commit-body")
-    summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
     assert "display: flex" in change_line
@@ -1173,7 +1177,6 @@ def test_git_commit_summary_is_one_component() -> None:
         meta,
         compact_subject,
         compact_meta,
-        summary_lines,
     ):
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
@@ -1599,9 +1602,11 @@ _MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
 }
 # The role tokens that are the small size, each a role of its own.
 _SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-block-font-size"})
-# Metadata whose container sets the size it reads at, so it sets none and inherits it. A size
+# Metadata whose container sets the size it reads at, so it sets none and inherits it, and the
+# parts of a line whose box sets the line's size (a Pulls row's number and place). A size
 # restated here is a second place to change when the text beside it moves: the file header
-# took four edits to follow the body size where it now takes none.
+# took four edits to follow the body size where it now takes none. A rule left off this list
+# is not checked.
 _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".notice"),
     ("styles.css", ".tip-detail"),
@@ -1617,6 +1622,7 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".git-graph-meta"),
     ("styles.css", ".git-graph-more"),
     ("styles.css", ".git-history-page-placeholder"),
+    ("styles.css", ".git-panel-empty"),
     ("styles.css", ".git-commit-files-summary"),
     ("styles.css", ".git-stat-add"),
     ("styles.css", ".git-stat-del"),
@@ -1629,6 +1635,8 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
     ("github/styles.css", ".github-pulls-by"),
+    ("github/styles.css", ".github-pulls-number"),
+    ("github/styles.css", ".github-pulls-place"),
     ("github/styles.css", ".github-pulls-empty"),
     ("github/styles.css", ".github-pulls-foot"),
     ("github/styles.css", ".github-pull-files-line"),
@@ -1686,6 +1694,10 @@ def test_secondary_metadata_reads_at_its_texts_size() -> None:
     # A hint strip labels keys, so it reads at the keycaps' token and moves with them.
     for strip in (".nav-shortcut-hints", ".search-palette-hint"):
         assert "var(--kbd-font-size)" in sizes(strip), strip
+    # A commit's files outside the served folder are path rows in the main view, so they
+    # read at the body size, as a file's header and a diff file bar do; their summary line
+    # and line counts inherit it (_INHERITED_METADATA). No Chrome fixture draws them.
+    assert set(sizes(".git-commit-file")) - {None} == {"var(--body-font-size)"}
 
 
 def test_a_pill_is_the_pill_token_and_means_a_filter() -> None:

@@ -79,18 +79,28 @@ Measured again in headless Chrome 152 at a device pixel ratio of 1, against the 
 - The header row stays 41 px.
   On a 900 px window showing `root / src / metabrowser / color_oklch.py`, the largest
   width a crumb gave up was 0.219 px at a root shrink weight of 1000, 0.047 px at 5000,
-  0.016 px at 20000, and none at 100000; at 13 px the same were 0.188, 0.031, 0.016, and
-  0 px. The root had nothing left to give below a 367 px header, against 351 px at 13 px,
-  and at every header from 249 to 689 px a filename cut short ended in an ellipsis with
-  the copy control inside the box.
+  0.016 px at 20000, and none at 100000; at 13 px in the same run they were 0.188,
+  0.031, 0.016, and 0 px.
+  This run recorded the widths, not whether a crumb showed an ellipsis; the stylesheet’s
+  comment keeps the first 13 px run’s widths, 0.164, 0.031, 0.008, and 0 px, with what
+  each showed. The root had nothing left to give below a 367 px header, against 351 px at
+  13 px, and at every header from 249 to 689 px a filename cut short ended in an
+  ellipsis with the copy control inside the box.
 - With a mirror named `metabrowser-v012-landing-docs`, at 12 header widths from 240 to
   1340 px the root measured what it did with the note removed, the note was whole or
   absent, and where it showed its text box shared the path’s top.
   14 em is 196 px against the 189.9 px of `mirror in ~/.metabrowser/cache/`.
 - A diff file bar is 24 px, and 29 px with the Markdown chooser, at both sizes, and an
   empty bar, which the diff view measures to reserve one, is 24 px at both.
-  View file’s text bottom sits 0.5 px above the path’s at 14 px, where it sat 0.75 px
-  above at 13 px.
+- View file’s two forms were measured in headless Chrome 153 on a commit’s page, with
+  the two controls the diff view writes placed in each bar where it places them, since a
+  served checkout draws none, and each baseline read as the top of a zero-size inline
+  block on it. At device pixel ratios of 1 and 2, the button form sat on the path’s
+  baseline at 14 and at 13 px, and the link form sat above it, by 0.5 px at 14 px and
+  0.75 px at 13 px. The link took the bar’s 1.5 line height, 21 px, where the toggle and
+  the button take a button’s `normal`, 20 px.
+  With the link at `normal` too, both forms sit on the path’s baseline at both sizes and
+  both ratios, and the bar stays 24 px.
 - In a Pulls row, “12mo”, the longest compact age, is 31.1 px of its 32.3 px column at
   13 px. WebKit was not measured.
 
@@ -101,8 +111,11 @@ For
 
 - The diff file bar’s View file controls, set at `--ui-small-font-size` beside the path,
   sat off the path’s baseline, a link by 0.75px and a button by 0.5px, measured in
-  Chromium at a device pixel ratio of 2. Set at the path’s own size, they center onto
-  one baseline.
+  Chromium at a device pixel ratio of 2. Set at the path’s own size and line height,
+  they center onto one baseline.
+  At the path’s size alone the link form still sat 0.5 px above it at 14 px and 0.75 px
+  at 13 px, at ratios of 1 and 2, until it took the toggle’s `normal` line height
+  ([Type by Role](#type-by-role)).
 - A mirror’s location note at the far end of the file header, centered rather than
   baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
   2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px
