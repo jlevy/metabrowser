@@ -732,7 +732,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         "pastTheBound": "plain, then Markdown",
         # The comments and reviews the first screen shows wait with the description, so none is
         # plain at the paint that makes the page ready (review A6).
-        "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
+        "comments": {"texts": 5, "asked": 5, "atOnce": 5, "plainAtReady": 0},
         # Each hold's span says how it ended (review B1).
         "holdSpans": ["hidden met 1", "hidden bound 1"],
         # A direct landing's loading blocks give way to the held conversation (review B5).

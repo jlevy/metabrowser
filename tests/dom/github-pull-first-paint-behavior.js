@@ -597,6 +597,10 @@ async function run() {
   const atHold = discussed.texts().length;
   assert.ok(atHold > 1, "the recorded conversation has texts beside its description");
   assert.equal(discussed.holding(), true);
+  // The paint waits for every text on its first screen, so all are asked for at once, not
+  // `MARKDOWN_CONCURRENCY` at a time, a round trip for each.
+  const atOnce = session.held.length;
+  assert.ok(atOnce > page.MARKDOWN_CONCURRENCY, "the held first screen is asked for at once");
   const plainShown = () =>
     discussed.texts().filter((node) => node.querySelector(":scope > .github-pull-plain") !== null)
       .length;
@@ -619,7 +623,12 @@ async function run() {
     "the description, every comment, and every review is chrome prose",
   );
   assert.equal(discussed.holding(), false);
-  facts.comments = { texts: atHold, asked: session.markdown.length - askedBefore, plainAtReady };
+  facts.comments = {
+    texts: atHold,
+    asked: session.markdown.length - askedBefore,
+    atOnce,
+    plainAtReady,
+  };
   discussed.handle.dispose();
 
   // Each hold says how long it held and why it ended (review B1): met when its texts came,

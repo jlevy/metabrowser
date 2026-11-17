@@ -2653,50 +2653,59 @@ export function createPullController(deps, options) {
 
   function pump() {
     while (!disposed && inFlight < MARKDOWN_CONCURRENCY && queue.length > 0) {
-      const part = /** @type {string} */ (queue.shift());
-      const { text, revision } = asked.get(part) ?? { text: null, revision: null };
-      const source = envelope?.source ?? null;
-      inFlight += 1;
-      void deps
-        .request(
-          "GET",
-          `${MARKDOWN_ROUTE}?number=${options.number}&part=${encodeURIComponent(part)}`,
-          {},
-        )
-        .then((response) => {
-          const body = /** @type {Record<string, any> | null} */ (response.body);
-          if (
-            disposed ||
-            response.status !== 200 ||
-            body === null ||
-            typeof body.html !== "string" ||
-            body.record_revision !== revision ||
-            revision !== markdownFor
-          ) {
-            // A render of a record the page no longer shows, or none at all: the
-            // plain text stays, and a newer record is asked for again.
-            if (!disposed && text !== null) {
-              deps.textUnavailable?.(part, text);
-            }
-            return;
-          }
-          if (text === null) {
-            return;
-          }
-          markdown.set(part, { rendered: body, text });
-          rememberRendered(source, options.number, part, text, body);
-          deps.renderMarkdown(part, body, text);
-        })
-        .catch(() => {
+      startMarkdown(/** @type {string} */ (queue.shift()));
+    }
+  }
+
+  /**
+   * Send one asked part's render request now, whatever is in flight. `pump` sends the queue's
+   * within `MARKDOWN_CONCURRENCY`; a held first screen's texts are sent at once.
+   *
+   * @param {string} part
+   */
+  function startMarkdown(part) {
+    const { text, revision } = asked.get(part) ?? { text: null, revision: null };
+    const source = envelope?.source ?? null;
+    inFlight += 1;
+    void deps
+      .request(
+        "GET",
+        `${MARKDOWN_ROUTE}?number=${options.number}&part=${encodeURIComponent(part)}`,
+        {},
+      )
+      .then((response) => {
+        const body = /** @type {Record<string, any> | null} */ (response.body);
+        if (
+          disposed ||
+          response.status !== 200 ||
+          body === null ||
+          typeof body.html !== "string" ||
+          body.record_revision !== revision ||
+          revision !== markdownFor
+        ) {
+          // A render of a record the page no longer shows, or none at all: the
+          // plain text stays, and a newer record is asked for again.
           if (!disposed && text !== null) {
             deps.textUnavailable?.(part, text);
           }
-        })
-        .finally(() => {
-          inFlight -= 1;
-          pump();
-        });
-    }
+          return;
+        }
+        if (text === null) {
+          return;
+        }
+        markdown.set(part, { rendered: body, text });
+        rememberRendered(source, options.number, part, text, body);
+        deps.renderMarkdown(part, body, text);
+      })
+      .catch(() => {
+        if (!disposed && text !== null) {
+          deps.textUnavailable?.(part, text);
+        }
+      })
+      .finally(() => {
+        inFlight -= 1;
+        pump();
+      });
   }
 
   /**
@@ -2706,8 +2715,12 @@ export function createPullController(deps, options) {
    *
    * @param {string} part
    * @param {string} [shownText] The text the page shows for it; the record's when absent.
+   * @param {{now?: boolean}} [how] `now` sends the request at once, past
+   *   `MARKDOWN_CONCURRENCY`, and takes the part out of the queue if it waits there: a held
+   *   first paint waits for every text on its first screen, so queueing them costs a round
+   *   trip per `MARKDOWN_CONCURRENCY` texts.
    */
-  function requestMarkdown(part, shownText) {
+  function requestMarkdown(part, shownText, how = {}) {
     if (disposed) {
       return;
     }
@@ -2724,10 +2737,22 @@ export function createPullController(deps, options) {
       deps.renderMarkdown(part, kept, text);
       return;
     }
-    if (markdownFor === null || asked.has(part)) {
+    if (markdownFor === null) {
+      return;
+    }
+    if (asked.has(part)) {
+      const waiting = how.now === true ? queue.indexOf(part) : -1;
+      if (waiting !== -1) {
+        queue.splice(waiting, 1);
+        startMarkdown(part);
+      }
       return;
     }
     asked.set(part, { text, revision: markdownFor });
+    if (how.now === true) {
+      startMarkdown(part);
+      return;
+    }
     queue.push(part);
     pump();
   }
@@ -6225,7 +6250,7 @@ export function mountPullPage(container, ctx, mb) {
       }
       if (firstPaint.text !== pull.text) {
         firstPaint.plain = false;
-        controller.requestMarkdown("body", pull.text);
+        controller.requestMarkdown("body", pull.text, { now: true });
       }
       firstPaint.text = pull.text;
       return "delayed";
@@ -6249,7 +6274,7 @@ export function mountPullPage(container, ctx, mb) {
       timer: window.setTimeout(() => releaseFirstPaint("bound"), DESCRIPTION_HOLD_MS),
     };
     if (delayed) {
-      controller.requestMarkdown("body", pull.text);
+      controller.requestMarkdown("body", pull.text, { now: true });
     }
     return firstPaint.mode;
   }
@@ -6353,8 +6378,15 @@ export function mountPullPage(container, ctx, mb) {
       for (const [part] of waiting) {
         held.parts.add(part);
       }
-      // The screen's texts first, then those just past it, as the Markdown queue allows.
-      for (const [part, element] of [...waiting, ...ahead]) {
+      // The screen's texts all at once, since the paint waits for every one, then those just
+      // past it as the Markdown queue allows.
+      for (const [part, element] of waiting) {
+        const value = textOf.get(element);
+        if (value !== undefined) {
+          controller.requestMarkdown(part, value, { now: true });
+        }
+      }
+      for (const [part, element] of ahead) {
         const value = textOf.get(element);
         if (value !== undefined) {
           controller.requestMarkdown(part, value);
