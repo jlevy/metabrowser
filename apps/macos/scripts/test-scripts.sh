@@ -345,7 +345,9 @@ fi
 ci_bound=120
 # Whether the user search list holds the keychain "$1", as security prints the list.
 listed() {
-  security list-keychains -d user | parse_keychain_list | grep -qxF -- "$1"
+  local list
+  list="$(security list-keychains -d user | parse_keychain_list)"
+  [[ $'\n'"$list"$'\n' == *$'\n'"$1"$'\n'* ]]
 }
 # Runs the signing doctor on the keychain into "$1", and sets doctor_status.
 doctor_on() {

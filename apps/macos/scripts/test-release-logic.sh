@@ -95,6 +95,27 @@ if grep -qx -- "$work/other.keychain-db" "$work/codesign-args"; then
 else
   fail "SIGN_KEYCHAIN did not reach codesign: $(tr '\n' ' ' <"$work/codesign-args")"
 fi
+# is_developer_id_signed reads all of codesign's output: the Authority line comes before
+# many others, which a `| grep -q` pipeline would cut off, failing it under pipefail.
+codesign() {
+  local line
+  echo "Executable=/tmp/Metabrowser.app/Contents/MacOS/Metabrowser" >&2
+  echo "Authority=Developer ID Application: Example Developer (A1B2C3D4E5)" >&2
+  for line in $(seq 2000); do echo "Sealed Resources line $line" >&2; done
+}
+if is_developer_id_signed "$work/Some.app"; then
+  pass "a Developer ID signature is found whatever codesign prints after it"
+else
+  fail "a Developer ID signature followed by more output was not found"
+fi
+codesign() {
+  echo "Signature=adhoc" >&2
+}
+if is_developer_id_signed "$work/Some.app"; then
+  fail "an ad hoc signature was taken for a Developer ID one"
+else
+  pass "an ad hoc signature is not a Developer ID one"
+fi
 unset -f codesign
 
 # ── notary_credentials ───────────────────────────────────────

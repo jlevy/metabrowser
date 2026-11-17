@@ -231,9 +231,13 @@ write_cask() {
 }
 
 # Whether the target carries a Developer ID Application signature, the only kind the
-# notary service accepts.
+# notary service accepts. The output is read whole: piped into `grep -q`, which stops at
+# the Authority line, codesign's later lines would meet a closed pipe, and under
+# pipefail that SIGPIPE would read as "not signed".
 is_developer_id_signed() {
-  codesign -dvv "$1" 2>&1 | grep -q '^Authority=Developer ID Application:'
+  local details
+  details="$(codesign -dvv "$1" 2>&1)" || return 1
+  [[ $'\n'"$details" == *$'\n'"Authority=Developer ID Application:"* ]]
 }
 
 # Writes NAME.sha256 beside the file, naming the file without its directory, so
