@@ -3608,7 +3608,8 @@ and its file count and byte size, and a tooltip-bearing mark brightens by
 A family’s legend entry, its dot and its words, is a second handle on that family’s
 segment in the tally row the legend’s shares are of, Total while Show ignored is on and
 Files while it is off: pointing at the entry lifts and grows that segment and shows its
-tooltip, anchored on the segment, exactly as pointing at the segment does.
+tooltip, as pointing at the segment does, anchored on the entry the pointer is on, as
+any tooltip sits by what the reader points at.
 The two share one hover, which the bars draw (`distribution-hover.js`), so neither keeps
 a copy of the other’s behavior; the entry itself does not change.
 Other answers no hover: it is the families too small to name and the files no family

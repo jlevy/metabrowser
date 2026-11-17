@@ -3,8 +3,8 @@
 // A segment of a tally bar and the legend entry that names its family are two
 // handles on one mark, so they share one hover rather than each keeping its
 // own: pointing at either one lifts and grows the segment and shows the
-// segment's tooltip, anchored on the segment (docs/design-system.md,
-// "Aggregate Distributions"). The bars draw the hover; the segments and the
+// segment's tooltip, anchored on whichever of the two the pointer is on
+// (docs/design-system.md, "Aggregate Distributions"). The bars draw the hover; the segments and the
 // legend entries only say where the pointer is. A legend entry names one
 // tally row's segment, the row its shares are of, so the hover is a row and a
 // family, not a family alone: the same family has a segment in each row.
@@ -15,7 +15,12 @@
 // segment the hover was drawn on is gone, and its tooltip with it.
 
 /** @typedef {"all" | "files" | "ignored"} DistributionPopulation */
-/** @typedef {Readonly<{population: DistributionPopulation, key: string}>} DistributionHoverTarget */
+/**
+ * A mark and the handle the pointer is on: the segment itself, or a legend entry naming
+ * it. The tooltip is anchored on *anchor*, so it sits by what the reader points at.
+ *
+ * @typedef {Readonly<{population: DistributionPopulation, key: string, anchor?: Element}>} DistributionHoverTarget
+ */
 /** @typedef {(current: DistributionHoverTarget | null, previous: DistributionHoverTarget | null) => void} DistributionHoverListener */
 /** @typedef {{current: () => DistributionHoverTarget | null, enter: (target: DistributionHoverTarget) => void, leave: (target: DistributionHoverTarget) => void, clear: () => void, subscribe: (listener: DistributionHoverListener) => () => void, dispose: () => void}} DistributionHover */
 
@@ -24,7 +29,11 @@
  * @param {DistributionHoverTarget | null} right
  */
 function sameTarget(left, right) {
-  return left?.population === right?.population && left?.key === right?.key;
+  return (
+    left?.population === right?.population &&
+    left?.key === right?.key &&
+    left?.anchor === right?.anchor
+  );
 }
 
 /** @returns {DistributionHover} */
@@ -42,7 +51,9 @@ export function createDistributionHover() {
       return;
     }
     const previous = current;
-    current = next ? Object.freeze({ population: next.population, key: next.key }) : null;
+    current = next
+      ? Object.freeze({ population: next.population, key: next.key, anchor: next.anchor })
+      : null;
     for (const listener of [...listeners]) {
       listener(current, previous);
     }

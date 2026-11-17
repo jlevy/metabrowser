@@ -67,8 +67,8 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def _python_hover(reading: dict[str, Any], label: str) -> None:
-    """The Total row's Python segment alone lifted and grown, with its tooltip on it."""
+def _python_hover(reading: dict[str, Any], label: str, anchor: str) -> None:
+    """The Total row's Python segment alone lifted and grown, with its tooltip on *anchor*."""
 
     assert reading["marked"] == ["Total family:python"], (label, reading)
     (style,) = reading["markedStyle"]
@@ -80,11 +80,12 @@ def _python_hover(reading: dict[str, Any], label: str) -> None:
     assert reading["othersAtRest"], (label, reading)
     assert reading["legendMarked"] == 0, (label, reading)
     assert reading["tooltip"] == "Python 4 files · 12 B", (label, reading)
-    on_segment = reading["tooltipOnSegment"]
-    # Centred on the segment, not on the entry, unless the viewport's margin clamps it,
-    # and clear of the segment above or below.
-    assert on_segment is not None and on_segment["clear"], (label, reading)
-    assert abs(on_segment["centerOffset"]) <= 1, (label, reading)
+    placed = reading["tooltipOnAnchor"]
+    # Centred on what the pointer is on, the legend entry or the segment, unless the
+    # viewport's margin clamps it, and clear of it above or below.
+    assert placed is not None and placed["anchor"] == anchor, (label, reading)
+    assert placed["clear"], (label, reading)
+    assert abs(placed["centerOffset"]) <= 1, (label, reading)
 
 
 def _nothing(reading: dict[str, Any], label: str) -> None:
@@ -119,12 +120,13 @@ def test_a_legend_entry_hovers_its_segment_in_chrome(tmp_path: Path, chrome_prof
         measured["legend"]
     )
     _nothing(measured["atRest"], "at rest")
-    _python_hover(measured["entryName"], "the entry's name")
-    _python_hover(measured["entryDot"], "the entry's dot")
+    _python_hover(measured["entryName"], "the entry's name", "legend")
+    _python_hover(measured["entryDot"], "the entry's dot", "legend")
     assert measured["entryDot"]["tooltipLeft"] == measured["entryName"]["tooltipLeft"], measured
     _nothing(measured["left"], "off the legend")
-    _python_hover(measured["segment"], "the segment")
-    for key in ("marked", "tooltip", "tooltipLeft"):
+    _python_hover(measured["segment"], "the segment", "segment")
+    # The same mark and words; only where the tooltip sits follows the pointer.
+    for key in ("marked", "tooltip"):
         assert measured["segment"][key] == measured["entryName"][key], (key, measured)
     _nothing(measured["segmentLeft"], "off the segment")
     _nothing(measured["other"], "Other")

@@ -406,7 +406,8 @@ const rollupError = (status) =>
       },
       /**
        * What the hover draws: the segments marked as hovered, by row and family, the
-       * tooltip's words, and the segment it is anchored on. Nothing else marks itself, so a
+       * tooltip's words, and what it is anchored on: the segment, or the legend entry the
+       * pointer is on. Nothing else marks itself, so a
        * legend entry is never in it.
        */
       hover() {
@@ -430,9 +431,11 @@ const rollupError = (status) =>
           anchoredOn:
             tooltip.anchor === null
               ? null
-              : tooltip.anchor.dataset.segmentKey === undefined
-                ? "not a segment"
-                : `${rowOf(tooltip.anchor)} ${tooltip.anchor.dataset.segmentKey}`,
+              : tooltip.anchor.dataset.legendKey !== undefined
+                ? `legend ${tooltip.anchor.dataset.legendKey}`
+                : tooltip.anchor.dataset.segmentKey === undefined
+                  ? "not a segment"
+                  : `${rowOf(tooltip.anchor)} ${tooltip.anchor.dataset.segmentKey}`,
         };
       },
       tooltipShows: () => tooltip.shows,
@@ -797,7 +800,8 @@ const rollupError = (status) =>
   // A legend entry is a second handle on its family's segment in the tally row the
   // legend's shares are of: Total while Show ignored is on, Files while it is off.
   // Pointing at the entry draws what pointing at the segment draws, through the one
-  // hover the section holds: that segment marked and its tooltip, anchored on it. The
+  // hover the section holds: that segment marked and its tooltip, anchored on the entry
+  // the pointer is on, as a segment's is anchored on the segment. The
   // entry itself is not marked, Other names no one segment and draws nothing, moving
   // within an entry changes nothing, and a repaint or the section's disposal puts the
   // hover away (docs/design-system.md, "Aggregate Distributions").
@@ -826,7 +830,7 @@ const rollupError = (status) =>
     json().listeners.mousemove();
     const moved = view.hover();
     assert(
-      same(entry.marked, ["Total family:json"]) && entry.anchoredOn === "Total family:json",
+      same(entry.marked, ["Total family:json"]) && entry.anchoredOn === "legend family:json",
       `the JSON entry under Show ignored: ${JSON.stringify(entry)}`,
     );
     assert(
@@ -841,7 +845,12 @@ const rollupError = (status) =>
     segment.listeners.mouseenter();
     const onSegment = view.hover();
     segment.listeners.mouseleave();
-    assert(same(onSegment, entry), "the entry and its segment drew different hovers");
+    // One mark and one tooltip; only where it sits follows the pointer.
+    const drawn = (hover) => ({ marked: hover.marked, tooltip: hover.tooltip });
+    assert(
+      same(drawn(onSegment), drawn(entry)) && onSegment.anchoredOn === "Total family:json",
+      `the entry and its segment drew different hovers: ${JSON.stringify(onSegment)}`,
+    );
     assert(same(view.hover(), nothing), "leaving the segment left a hover");
 
     view.legendEntry("Other").listeners.mouseenter?.();
@@ -858,7 +867,11 @@ const rollupError = (status) =>
       `the Markdown entry without ignored files: ${JSON.stringify(filesOnly)}`,
     );
     view.segment("Files", "family:markdown").listeners.mouseenter();
-    assert(same(view.hover(), filesOnly), "the Files row's segment drew another hover");
+    assert(
+      same(drawn(view.hover()), drawn(filesOnly)) &&
+        filesOnly.anchoredOn === "legend family:markdown",
+      "the Files row's segment drew another hover",
+    );
     view.segment("Files", "family:markdown").listeners.mouseleave();
 
     markdown().listeners.mouseenter();

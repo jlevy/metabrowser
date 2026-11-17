@@ -13,7 +13,8 @@
 // when the hover is put away run browserlessly in tests/dom/file-overview-session.js.
 // What only a browser can say is that Chrome's pointer reaches them: that moving it onto
 // an entry's name and its dot lifts and grows the segment, in the computed style, and
-// shows the segment's tooltip, placed on the segment rather than the entry; that moving
+// shows the segment's tooltip, placed on the entry the pointer is on, as pointing at the
+// segment places it on the segment; that moving
 // it off puts both away; and that pointing at the segment itself draws the same.
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -127,13 +128,16 @@ const READ = `(async () => {
       }),
     legendMarked: [...document.querySelectorAll(".file-type-summary-legend [data-hovered]")].length,
     tooltip: shown() ? tip.innerText.replace(/\\s+/g, " ").trim() : null,
-    // Where the tooltip sits: its centre against the marked segment's, and whether it is
-    // above or below the segment rather than over it.
-    tooltipOnSegment:
+    // Where the tooltip sits: its centre against the centre of what the pointer is on,
+    // the legend entry under it or else the marked segment, and whether it is above or
+    // below that rather than over it.
+    tooltipOnAnchor:
       tipBox && marked.length === 1
         ? (() => {
-            const box = marked[0].getBoundingClientRect();
+            const entry = document.querySelector(".file-type-summary-legend-item:hover");
+            const box = (entry ?? marked[0]).getBoundingClientRect();
             return {
+              anchor: entry ? "legend" : "segment",
               centerOffset: round(tipBox.left + tipBox.width / 2 - (box.left + box.width / 2)),
               clear: tipBox.top >= box.bottom || tipBox.bottom <= box.top,
             };

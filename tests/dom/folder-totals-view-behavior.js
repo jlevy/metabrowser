@@ -232,13 +232,13 @@ global.document = { createElement: (tag) => new Element(tag) };
   );
   // The hover is drawn on the segment by an attribute, not by :hover, so a legend entry
   // naming the segment can draw it too; it marks that segment alone, and leaving takes it
-  // off along with the tooltip, which only these bars' own hide puts away.
+  // off along with the tooltip, put away where it was anchored, on the segment.
   check(
     "a hovered segment is marked, alone, until the pointer leaves it",
     markedWhileHovered.length === 1 &&
       markedWhileHovered[0] === segment &&
       hoveredSegments().length === 0 &&
-      tooltipCalls[1]?.within === container.children[0],
+      tooltipCalls[1]?.within === segment,
     JSON.stringify({ marked: markedWhileHovered.length, after: hoveredSegments().length }),
   );
   // A tooltip names the segment it is on, so it is anchored to the segment and

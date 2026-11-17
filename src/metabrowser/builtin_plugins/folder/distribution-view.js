@@ -313,7 +313,11 @@ function updateLegend(handle, entries) {
       item.append(swatch, label, percent);
       if (entry.kind === "family") {
         /** @type {DistributionHoverTarget} */
-        const target = Object.freeze({ population: handle.legendPopulation, key: entry.key });
+        const target = Object.freeze({
+          population: handle.legendPopulation,
+          key: entry.key,
+          anchor: item,
+        });
         const enter = () => {
           handle.legendHover = target;
           handle.hover.enter(target);

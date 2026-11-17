@@ -269,14 +269,14 @@ $ node tests/dom/file-overview-session.js
         "Total family:json"
       ],
       "tooltip": "JSON 240 files · 100 B",
-      "anchoredOn": "Total family:json"
+      "anchoredOn": "legend family:json"
     },
     "moved within the entry": {
       "marked": [
         "Total family:json"
       ],
       "tooltip": "JSON 240 files · 100 B",
-      "anchoredOn": "Total family:json"
+      "anchoredOn": "legend family:json"
     },
     "left the entry": {
       "marked": [],
@@ -300,7 +300,7 @@ $ node tests/dom/file-overview-session.js
         "Files family:markdown"
       ],
       "tooltip": "Markdown 150 files · 300 B",
-      "anchoredOn": "Files family:markdown"
+      "anchoredOn": "legend family:markdown"
     },
     "the rollup refreshed under the pointer": {
       "marked": [],
@@ -312,7 +312,7 @@ $ node tests/dom/file-overview-session.js
         "Files family:markdown"
       ],
       "tooltip": "Markdown 150 files · 300 B",
-      "anchoredOn": "Files family:markdown"
+      "anchoredOn": "legend family:markdown"
     },
     "the section disposed under the pointer": {
       "marked": [],

@@ -462,7 +462,7 @@ export function mountFolderTotalsView(
         // The segment says where the pointer is, as a legend entry naming it does, and
         // the hover draws itself (showHover): one path for both.
         /** @type {DistributionHoverTarget} */
-        const target = Object.freeze({ population, key: segment.key });
+        const target = Object.freeze({ population, key: segment.key, anchor: fill });
         fill.addEventListener("mouseenter", () => hover.enter(target));
         fill.addEventListener("mouseleave", () => hover.leave(target));
         return fill;
@@ -472,26 +472,27 @@ export function mountFolderTotalsView(
 
   /**
    * Draw the hover: lift and grow the segment it names and show that segment's tooltip,
-   * anchored on the segment, whether the pointer is on the segment or on a legend entry
-   * naming it. A hover whose row has no such segment on screen, as while the bars are
+   * anchored on what the pointer is on, the segment or a legend entry naming it. A hover whose row has no such segment on screen, as while the bars are
    * still one neutral fill, draws nothing.
    *
    * @param {DistributionHoverTarget | null} target
+   * @param {DistributionHoverTarget | null} [previous]
    */
-  function showHover(target) {
+  function showHover(target, previous = null) {
     if (hoveredFill) {
       delete hoveredFill.dataset.hovered;
       hoveredFill = null;
     }
     const segment = target ? segmentsDrawn.get(target.population)?.get(target.key) : undefined;
     if (!segment) {
-      // Only a tooltip anchored in these bars, which is the one the hover showed.
-      mb.tooltip.hide(root);
+      // Only the tooltip the hover showed: anchored on the handle the pointer was on, a
+      // legend entry outside these bars or a segment in them.
+      mb.tooltip.hide(previous?.anchor ?? root);
       return;
     }
     hoveredFill = segment.fill;
     hoveredFill.dataset.hovered = "";
-    mb.tooltip.show(segment.tooltip, segment.fill);
+    mb.tooltip.show(segment.tooltip, target?.anchor ?? segment.fill);
   }
   const unsubscribeHover = hover.subscribe(showHover);
 
