@@ -1,0 +1,19 @@
+---
+type: is
+id: is-01m7ktd4tz7kaxcq73vns0c15j
+title: "PR #494 review A3: scrollspy session asserts its own viewport stub, not KPress's viewport.js"
+kind: bug
+status: in_progress
+priority: 2
+version: 2
+delegate: claude-code@vm
+labels: []
+dependencies: []
+parent_id: is-01m7ksbsx0kcg5rk05fy23nxc5
+hold: null
+hold_until: null
+created_at: 2026-11-17T03:56:56.030Z
+updated_at: 2026-11-17T03:57:11.320Z
+started_at: 2026-11-17T03:57:11.320Z
+---
+Review A finding A3, Low. tests/dom/markdown-toc-scrollspy-session.js:409 reads passiveScrollListener from the session's own viewportContext.onScroll stub; viewportBounds and addViewportResizeListener are stubs too (lines 37-44), so the disposal counts cover the stub's resize listener, not KPress's ResizeObserver path. Load the installed viewport.js with the shim pane marked [data-kpress-viewport], or relabel the assertion.
