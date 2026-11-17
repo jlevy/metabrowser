@@ -411,51 +411,6 @@
     calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
   );
 }
-/* The author's row ends in its note (mb-ne91): a muted dot, then how fresh what is shown
-   is, one time, "Fetched just now via GitHub CLI", in muted ink, small beside the sentence
-   in text ink, then Refresh. The note's slot is a grid of one cell that holds the note and
-   a hidden copy of it at its widest age (`widestNote` in pull-page.js), so the slot is as
-   wide as the widest and the age ticking moves nothing after it. On a narrow row the note
-   is cut short first, with an ellipsis, before the sentence; Refresh never is. */
-/* Its floor is its dot and Refresh, its min-content: the text in its slot gives way to
-   nothing, and then the sentence before it does. With no floor, at 420 px with a long login,
-   Refresh ran 53 px past the header. */
-.github-pull-note {
-  display: flex;
-  flex: 0 100 auto;
-  align-items: center;
-  gap: 0.3em;
-  color: var(--muted);
-}
-.github-pull-note[hidden] {
-  display: none;
-}
-.github-pull-note-sep {
-  flex: none;
-}
-.github-pull-freshness-slot {
-  display: inline-grid;
-  flex: 0 1 auto;
-  grid-template-columns: minmax(0, max-content);
-  min-width: 0;
-  overflow: hidden;
-}
-.github-pull-freshness-slot > .github-pull-freshness {
-  grid-area: 1 / 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.github-pull-freshness-sizer {
-  grid-area: 1 / 1;
-  font-variant-numeric: var(--tabular-numerals);
-  height: 0;
-  overflow: hidden;
-  visibility: hidden;
-}
-.github-pull-note > .github-pull-refresh {
-  margin-inline-start: 0.4em;
-}
 /* One of the header's metadata lines, under the row of ages and as tall as it, there only
    while it has something to say beyond the note: a failure and its remedy, a message about
    the record shown, an offer; with no author's row, a pull request that cannot be shown, it
@@ -533,6 +488,51 @@
 .github-pull-refresh[hidden] {
   display: inline-block;
   visibility: hidden;
+}
+/* The author's row ends in its note (mb-ne91): a muted dot, then how fresh what is shown
+   is, one time, "Fetched just now via GitHub CLI", in muted ink, small beside the sentence
+   in text ink, then Refresh. The note's slot is a grid of one cell that holds the note and
+   a hidden copy of it at its widest age (`widestNote` in pull-page.js), so the slot is as
+   wide as the widest and the age ticking moves nothing after it. On a narrow row the note
+   is cut short first, with an ellipsis, before the sentence; Refresh never is. */
+/* Its floor is its dot and Refresh, its min-content: the text in its slot gives way to
+   nothing, and then the sentence before it does. With no floor, at 420 px with a long login,
+   Refresh ran 53 px past the header. */
+.github-pull-note {
+  display: flex;
+  flex: 0 100 auto;
+  align-items: center;
+  gap: 0.3em;
+  color: var(--muted);
+}
+.github-pull-note[hidden] {
+  display: none;
+}
+.github-pull-note-sep {
+  flex: none;
+}
+.github-pull-freshness-slot {
+  display: inline-grid;
+  flex: 0 1 auto;
+  grid-template-columns: minmax(0, max-content);
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pull-freshness-slot > .github-pull-freshness {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-freshness-sizer {
+  grid-area: 1 / 1;
+  font-variant-numeric: var(--tabular-numerals);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.github-pull-note > .github-pull-refresh {
+  margin-inline-start: 0.4em;
 }
 /* Changes while its first screen's Markdown waits (CHANGES_FIRST_SCREEN_MS), and the
    conversation while its first screen's texts do (DESCRIPTION_HOLD_MS): laid out, so each
