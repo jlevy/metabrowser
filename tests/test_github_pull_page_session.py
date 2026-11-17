@@ -619,6 +619,22 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Changes, its diff still reading: the pending placeholder",
             "the record then names no comparison: nothing",
         ],
+        # The cached changed-files list's brief line holds the Diff summary's row while its
+        # comparison is on its way or read, for the head the page knows or any before it
+        # knows one, from the Pulls rows' memory or one read at mount; the summary replaces
+        # it, a failed read keeps it, and another head's is never shown (mb-z8ea).
+        "summaryBrief": [
+            'a direct link\'s page before its first answer, its head unknown: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its core preview, of the list\'s head: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its record lands, the comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "the comparison read: the summary; 1 reads",
+            "a record whose head the list was not listed for: the pending placeholder; 1 reads",
+            "its comparison read: the summary; 1 reads",
+            'a record of the list\'s head, its comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'the comparison\'s read fails: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "no list cached: the pending placeholder; 1 reads",
+            'opened from a Pulls row that drew its line: the brief line "1 file changed \u00b7 1 M \u00b7 +12 \u22124"; 0 reads',
+        ],
         # A page mounted with no record in hand holds its cold header and tab column for the
         # quiet period, kept unseen while a record that landed in it waits for the
         # conversation's held first paint, and the first header with a record lifts it.

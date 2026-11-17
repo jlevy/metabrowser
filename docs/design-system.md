@@ -1503,16 +1503,24 @@ whose comparison the page asked the server to prepare.
 One placeholder carries the wait from the first paint through the core and its record to
 the read, with one quiet period and one pulse, so the row is never empty while the
 comparison is on its way.
-The wait is the read in flight: on Changes the mounted diff’s, so a newer comparison the
-record names waits until the reader takes it.
-A pull request that is not GitHub’s, a server with no store to compare in, a core whose
-read prepares no comparison, and a read that failed with nothing running have nothing on
-their way, and only Changes asks for their comparison; before the server’s first answer
-the page cannot tell, so on such a server the placeholder ends with that answer.
-A read that draws no summary, because it failed or its comparison is not a valid
-document, leaves the place empty until a read of the same comparison starts again: at
-the page’s next paint, such as a switch of tab or a poll that repaints it, or a Retry,
-so a placeholder never outlives its wait and every wait has one.
+Where the pull request’s changed-files list is cached, the list a Pulls row’s change
+line sums, the place holds that list’s line instead of the placeholder: “36 files
+changed · 2 A, 3 D, 31 M · +2,076 −224”, the summary’s header’s words with its chevron’s
+slot empty, in the same place, so the summary that replaces it moves no word.
+It is drawn only for the head the page knows, the comparison’s or the record’s, or any
+before the page knows one, and stays when the wait ends with no summary; another head’s
+list is never drawn, and the placeholder waits instead.
+A page opened from a Pulls row draws it from the row’s line with no request
+(`builtin_plugins/github/pull-summary-brief.js`). The wait is the read in flight: on
+Changes the mounted diff’s, so a newer comparison the record names waits until the
+reader takes it. A pull request that is not GitHub’s, a server with no store to compare
+in, a core whose read prepares no comparison, and a read that failed with nothing
+running have nothing on their way, and only Changes asks for their comparison; before
+the server’s first answer the page cannot tell, so on such a server the placeholder ends
+with that answer. A read that draws no summary, because it failed or its comparison is
+not a valid document, leaves the place empty until a read of the same comparison starts
+again: at the page’s next paint, such as a switch of tab or a poll that repaints it, or
+a Retry, so a placeholder never outlives its wait and every wait has one.
 A summary already drawn stays while a newer comparison is read
 ([Refreshing Content](#refreshing-content)), and the newer one’s summary replaces it in
 one step. A pull request’s header shows it on every tab.

@@ -202,6 +202,19 @@
 .github-pull-summary-pending > .tally-pending {
   width: min(100%, 14.5em);
 }
+/* The cached changed-files list's brief line, drawn in the row while the comparison is read
+   (mb-z8ea; pull-summary-brief.js): the Diff summary header's line, its chevron's slot empty,
+   pulled left as the header's toggle is, so its words are where the header's will be and
+   the summary replaces it moving nothing. tests/dom/github-pull-header-chrome.mjs
+   (`summary-wait`, "brief") holds the words' place and the row's height. */
+.github-pull-header .github-pull-summary > .github-pull-summary-brief {
+  min-height: var(--ui-row-height);
+  margin-left: calc(-1 * var(--diff-summary-toggle-pull));
+  /* As the header's toggle's box: its right padding, where a line cut short ends, and a
+     button's line, the browser's `normal` (diff/styles.css, `.diff-summary-toggle`). */
+  padding-right: 6px;
+  line-height: normal;
+}
 /* The pull request's state leads the row of its ages (mb-4ydo): the badge, as wide as the
    widest state's (`.github-pull-state-slot`), then when it was opened, updated, merged, or
    closed. One line in every state: the badge's box and the ages' line are both 18 px in

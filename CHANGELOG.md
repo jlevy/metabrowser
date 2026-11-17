@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s page shows its changes’ counts at once, “36 files changed · 2 A, 3 D,
+  31 M · +2,076 −224”, from the changed-files list the Pulls tab keeps, while it reads
+  the full Diff summary, which then replaces the line in place.
+  Opened from a Pulls row, the page asks nothing for it; opened at its address, one
+  quick read of the cache.
+  A list of an older head, after new commits were pushed, is not shown.
+
 - A pull request’s page opened at its address, or from a Pulls row whose record is not
   cached yet, shows the Diff summary’s gentle loading box from its first paint, after
   the usual short quiet period, instead of an empty row until GitHub’s first answer

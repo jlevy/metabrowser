@@ -660,6 +660,29 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   }));
   const lines = change?.lines ?? [1234, 3423];
   const comparison = { manifest: { totals: { files: kinds.length, additions: lines[0], deletions: lines[1], exact: true }, files } };
+  // For "brief", the cached changed-files list of the same change set, which the page draws
+  // as the brief line in the row while the comparison is read (mb-z8ea).
+  if (outcome === "brief") {
+    const summary = {
+      number: body.number,
+      state: "listed",
+      reason: null,
+      listing: false,
+      listed_from: "comparison",
+      generation: "brief-" + window.__summaryRuns,
+      head: body.record.comparison.head,
+      files: kinds.length,
+      additions: lines[0],
+      deletions: lines[1],
+      exact: true,
+      // In a pull request's words, which the list is kept in: GitHub's "removed".
+      statuses: statuses.map(([status, count]) => ({ status: status === "deleted" ? "removed" : status, count })),
+    };
+    window.fetch = async (route) =>
+      String(route).startsWith("/api/plugin/github/pull-files-summary?")
+        ? new Response(JSON.stringify({ source: body.source, rows: [summary] }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response(null, { status: 304 });
+  }
   const view = {
     prefetch: () => read,
     summary: async (slot, ctx) =>
@@ -728,7 +751,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
         return () => clearTimeout(id);
       },
       ensureKindAssets: async () => {},
-      loadChangedFilesTree: async () => {},
+      loadChangedFilesTree: async () => window.MetabrowserChangedFilesTree,
       getRegisteredView: () => view,
       decorateExternalLink: mb.decorateExternalLink,
       refChip: mb.refChip,
@@ -738,6 +761,9 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       countPartsNodes: mb.countPartsNodes,
+      changeLine: mb.changeLine,
+      changeLineNodes: mb.changeLineNodes,
+      formatInteger: mb.formatInteger,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -759,6 +785,12 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   const round = (value) => Math.round(value * 100) / 100;
   const box = (node) => node.getBoundingClientRect();
   const wrapper = () => row.querySelector(".github-pull-summary-pending");
+  // The text a line shows: without the words only a screen reader is told.
+  const seenText = (node) => {
+    const copy = node.cloneNode(true);
+    for (const hidden of copy.querySelectorAll(".visually-hidden, .diff-summary-chevron")) hidden.remove();
+    return copy.textContent;
+  };
   // Inside the quiet period: the placeholder is in the row and not yet seen.
   const quiet = wrapper() ? getComputedStyle(wrapper()).visibility : null;
   await document.fonts.ready;
@@ -793,6 +825,20 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     centre: block ? round((box(block).top + box(block).bottom) / 2 - (box(row).top + box(row).bottom) / 2) : null,
     row: round(box(row).height),
     places: places(),
+    brief: (() => {
+      const line = row.querySelector(".github-pull-summary-brief");
+      const words = line?.querySelector(".diff-summary-files");
+      if (!line || !words) return null;
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      return {
+        text: seenText(line),
+        wordsLeft: round(box(words).left - contentLeft),
+        wordsTop: round(box(words).top - box(row).top),
+        textRight: round(range.getBoundingClientRect().right - contentLeft),
+        em: round(parseFloat(getComputedStyle(line).fontSize)),
+      };
+    })(),
   };
   if (outcome === "fails") {
     answer.reject(new Error("refused"));
@@ -818,6 +864,8 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     toggleLeft: summary ? round(box(summary).left - contentLeft) : null,
     chevronLeft: chevron ? round(box(chevron).left - contentLeft) : null,
     wordsLeft: words ? round(box(words).left - contentLeft) : null,
+    wordsTop: words ? round(box(words).top - box(row).top) : null,
+    text: summary ? seenText(summary) : null,
     width: summary ? round(box(summary).width) : null,
     em: summary ? round(parseFloat(getComputedStyle(summary).fontSize)) : null,
     label: summary ? summary.getAttribute("aria-label") : null,
@@ -1461,6 +1509,7 @@ async function main() {
       const offersDrawn = new Set();
       const summaryWaits = [];
       const revisits = [];
+      const briefs = [];
       const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
       for (const width of widths) {
         const seen = {};
@@ -1715,6 +1764,42 @@ async function main() {
                 JSON.stringify(arrived.places) === JSON.stringify(waiting.places),
               JSON.stringify({ waiting, arrived }),
             );
+            // The cached list's brief line in the placeholder's place (mb-z8ea): the summary's
+            // words, where the summary's will be, which replaces it moving nothing.
+            const briefed = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "brief")`,
+            );
+            const { brief } = briefed.waiting;
+            check(
+              `${where}: while the comparison is read, the row holds the cached list's brief line, saying what the summary will`,
+              brief !== null &&
+                briefed.waiting.shown === null &&
+                brief.text === briefed.arrived.text &&
+                Math.abs(briefed.waiting.row - 24) <= 0.5,
+              JSON.stringify(briefed),
+            );
+            check(
+              `${where}: the summary replaces the brief line with its words in the same place, and nothing in the header or under it moves`,
+              brief !== null &&
+                briefed.arrived.summary &&
+                briefed.arrived.children === 1 &&
+                Math.abs(brief.wordsLeft - briefed.arrived.wordsLeft) <= 0.5 &&
+                Math.abs(brief.wordsTop - briefed.arrived.wordsTop) <= 0.5 &&
+                Math.abs(brief.textRight - briefed.arrived.textRight) <= 0.5 &&
+                Math.abs(briefed.arrived.row - briefed.waiting.row) <= 0.5 &&
+                JSON.stringify(briefed.arrived.places) === JSON.stringify(briefed.waiting.places),
+              JSON.stringify(briefed),
+            );
+            briefs.push({
+              where,
+              brief,
+              summary: [
+                briefed.arrived.wordsLeft,
+                briefed.arrived.wordsTop,
+                briefed.arrived.textRight,
+              ],
+              row: [briefed.waiting.row, briefed.arrived.row],
+            });
             const failed = await browser.evaluate(
               `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "fails")`,
             );
@@ -1747,6 +1832,7 @@ async function main() {
           }
         }
         process.stderr.write(`summary-revisit: ${JSON.stringify(revisits)}\n`);
+        process.stderr.write(`summary-brief: ${JSON.stringify(briefs)}\n`);
         process.stderr.write(
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );

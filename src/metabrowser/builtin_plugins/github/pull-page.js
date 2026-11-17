@@ -57,6 +57,7 @@ import {
   pullStateIcon,
   withListedState,
 } from "./pull-state.js";
+import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -392,6 +393,7 @@ const TRUNCATED = Object.freeze({
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string, headMoved: boolean} | null,
  *   comparisonComing: boolean,
+ *   head: string | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
@@ -1225,6 +1227,9 @@ export function rateLimitLifts(envelope) {
  * GitHub's, a server or core with no store (`no_store`), and a read that failed with nothing
  * running have none coming until Changes asks, so the placeholder never outlives its wait.
  *
+ * `head` is the head commit the page knows, the one its Diff summary is drawn for: the
+ * comparison's, else the record's or the core's, and null before either.
+ *
  * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
@@ -1253,6 +1258,7 @@ export function describePull(envelope, page) {
     notes: [],
     comparison: null,
     comparisonComing: false,
+    head: null,
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     changesPending: false,
@@ -1308,6 +1314,7 @@ export function describePull(envelope, page) {
       knownLabels(envelope.repository_labels),
     );
     model.corePreview = true;
+    model.head = text(preview.pull?.head?.sha) || null;
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
@@ -1410,6 +1417,7 @@ export function describePull(envelope, page) {
   model.checkNotes = notes(record, true);
   model.notes = notes(record, false);
   const head = text(pull.head?.sha);
+  model.head = head || null;
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
@@ -1456,6 +1464,8 @@ export function describePull(envelope, page) {
   }
   const comparison = pullComparison(envelope);
   if (comparison !== null) {
+    // The Diff summary's head: the comparison's, which a record read at a newer head keeps.
+    model.head = comparison.right;
     model.comparison = {
       ...comparison,
       // The page's code is the served pin; a record read at a newer head says so
@@ -5635,6 +5645,62 @@ export function mountPullPage(container, ctx, mb) {
    * read of it starts again (mb-pb35, mb-onr2).
    */
   let summaryFailed = "";
+  /**
+   * The cached changed-files list's brief line, drawn in the Diff summary's row while the
+   * comparison is on its way or read (pull-summary-brief.js, mb-z8ea), and the line drawn,
+   * by the list's generation and the tree's breakdown having loaded. An SDK without the
+   * change line's painters has none.
+   */
+  const summaryBrief =
+    typeof mb.changeLine === "function" &&
+    typeof mb.changeLineNodes === "function" &&
+    typeof mb.countPartsNodes === "function" &&
+    typeof mb.formatInteger === "function"
+      ? createSummaryBrief({
+          async read(asked, signal) {
+            const response = await fetch(`${PULL_FILES_SUMMARY_ROUTE}?numbers=${asked}`, {
+              signal,
+            });
+            return { status: response.status, body: response.ok ? await response.json() : null };
+          },
+          // What the line is painted with, as the summary that replaces it is: the diff
+          // plugin's styles and the changed-files tree, whose breakdown says its letters.
+          async ready() {
+            const [, tree] = await Promise.all([
+              mb.ensureKindAssets("diff"),
+              mb.loadChangedFilesTree(),
+            ]);
+            return tree.statusBreakdown;
+          },
+          changed: () => paintSummaryWait(shown),
+        })
+      : null;
+  let briefShown = { key: "", node: /** @type {HTMLElement | null} */ (null) };
+  // Asked as the page mounts: a page opened from a Pulls row has the row's line in the
+  // document's memory, by the repository its envelope names; any other asks the route once.
+  const readerSource = /** @type {{source?: unknown} | null | undefined} */ (
+    ctx.reader?.initial?.body
+  )?.source;
+  summaryBrief?.want(number, typeof readerSource === "string" ? readerSource : null);
+
+  /**
+   * The brief line for *model*'s head, or null: the node drawn, kept while its list is the
+   * same, so a repaint moves nothing.
+   *
+   * @param {PullModel | null} model
+   */
+  function briefFor(model) {
+    const summary = summaryBrief?.summary(model?.head ?? null) ?? null;
+    if (summary === null || summaryBrief === null) {
+      return null;
+    }
+    const breakdown = summaryBrief.breakdown();
+    const key = `${summary.generation}:${summary.head}:${breakdown === null ? 0 : 1}`;
+    if (briefShown.key !== key || briefShown.node === null) {
+      briefShown = { key, node: briefLine(mb, h, summary, breakdown) };
+    }
+    return briefShown.node;
+  }
   /** The comparison whose first screen's Markdown this page asked for, and how to stop it. */
   let markdownAsked = { key: "", controller: /** @type {AbortController | null} */ (null) };
 
@@ -5704,12 +5770,17 @@ export function mountPullPage(container, ctx, mb) {
       awaited === null
         ? model?.comparisonComing === true
         : comparisonKey(awaited) !== summaryFailed;
-    if (waits) {
-      if (summaryRow.firstChild !== summaryPending || summaryRow.childNodes.length !== 1) {
-        summaryRow.replaceChildren(summaryPending);
+    // The cached list's line for the head the page knows takes the placeholder's place, and
+    // stays when the wait ends with no summary; another head's is never shown.
+    const brief = briefFor(model);
+    const holds = brief ?? (waits ? summaryPending : null);
+    if (holds !== null) {
+      if (summaryRow.firstChild !== holds || summaryRow.childNodes.length !== 1) {
+        summaryRow.replaceChildren(holds);
       }
     } else {
       summaryPending.remove();
+      briefShown.node?.remove();
     }
   }
 

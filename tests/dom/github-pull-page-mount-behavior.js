@@ -1407,6 +1407,17 @@ async function mountScripted(page, tab, options = {}) {
     if (options.markdown === "waits" && route.startsWith("/api/plugin/github/pull-markdown")) {
       return new Promise(() => {});
     }
+    if (route.startsWith("/api/plugin/github/pull-files-summary?")) {
+      // The cached list's sums, which *brief* names, for the brief line (mb-z8ea).
+      steps.briefReads.push(route);
+      const rows = options.brief === undefined ? [] : [options.brief];
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ source: recorded.current.body.source, rows }),
+      };
+    }
     const body = route.startsWith("/api/plugin/github/pull?") ? (polled ?? served) : null;
     if (body === polled) {
       polled = null;
@@ -1428,6 +1439,7 @@ async function mountScripted(page, tab, options = {}) {
     jumps: [],
     openFile: null,
     markdown: [],
+    briefReads: [],
   };
   const diffDoes =
     typeof options.diff === "function" ? options.diff : () => options.diff ?? "reads";
@@ -1526,6 +1538,38 @@ async function mountScripted(page, tab, options = {}) {
       navigation: { href: () => "/view/", async open() {} },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
+      // page draws the cached list's brief line (mb-z8ea).
+      ...(options.brief === undefined && options.briefPainters !== true
+        ? {}
+        : {
+            formatInteger: (value) => value.toLocaleString("en-US"),
+            countPartsNodes: (parts) =>
+              parts.map((part) =>
+                typeof part === "string"
+                  ? part
+                  : part.separator === undefined
+                    ? part.number
+                    : ` ${part.separator} `,
+              ),
+            changeLine: (input) => ({
+              text: `${input.statuses.map(({ count, letter }) => `${count} ${letter}`).join(", ")} · +${input.additions} −${input.deletions}`,
+              label: "",
+            }),
+            changeLineNodes: (line) => [line.text],
+            loadChangedFilesTree: async () => ({
+              statusBreakdown: (statuses) => {
+                const counts = new Map();
+                for (const status of statuses) {
+                  counts.set(status, (counts.get(status) ?? 0) + 1);
+                }
+                return [...counts].map(([status, count]) => ({
+                  count,
+                  letter: status[0].toUpperCase(),
+                }));
+              },
+            }),
+          }),
     },
   );
   await settle();
@@ -1991,6 +2035,124 @@ async function headerSummary(page) {
   await settle();
   tell("the record then names no comparison", reading.row());
   reading.handle.dispose();
+  return told;
+}
+
+// The cached changed-files list's brief line in the Diff summary's row (mb-z8ea): drawn while
+// the comparison is on its way or read, for the head the page knows or any while it knows
+// none, from the document's memory of the Pulls rows' lines with no request, else one read
+// at mount; the Diff summary replaces it in one step; it stays when a read draws no
+// summary; and another head's line is never shown, the placeholder holding the row instead.
+async function summaryBrief(page) {
+  const rowLines = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/row-lines.js")).href
+  );
+  const full = recorded.current.body;
+  const head = full.record.comparison.head;
+  const listed = (listedHead) => ({
+    number: 7,
+    state: "listed",
+    reason: null,
+    listing: false,
+    listed_from: "github",
+    generation: `g-${listedHead.slice(0, 4)}`,
+    head: listedHead,
+    files: 3,
+    additions: 12,
+    deletions: 4,
+    exact: true,
+    statuses: [
+      { status: "added", count: 1 },
+      { status: "modified", count: 2 },
+    ],
+  });
+  const told = [];
+  const holds = (row) => {
+    const [only] = row.children;
+    if (row.children.length === 0) {
+      return "nothing";
+    }
+    if (only.classes.has("github-pull-summary-brief")) {
+      return `the brief line "${only.textContent}"`;
+    }
+    if (only.classes.has("github-pull-summary-pending")) {
+      return "the pending placeholder";
+    }
+    return only.classes.has("diff-summary") ? "the summary" : "other";
+  };
+  const tell = (step, mounted) =>
+    told.push(`${step}: ${holds(mounted.row())}; ${mounted.steps.briefReads.length} reads`);
+  const core = structuredClone(full);
+  Object.assign(core, {
+    state: "pending",
+    reason: null,
+    refreshing: true,
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    core_preview: {
+      source: full.source,
+      number: 7,
+      reader: full.record.reader,
+      observed_at: full.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: structuredClone(full.record.pull),
+      comparison_state: "pending",
+    },
+  });
+
+  const cold = await mountScripted(page, "", { cold: true, brief: listed(head) });
+  tell("a direct link's page before its first answer, its head unknown", cold);
+  const line = cold.row().children[0];
+  await cold.poll(core);
+  tell("its core preview, of the list's head", cold);
+  cold.serve(full);
+  await cold.idle();
+  tell("its record lands, the comparison not yet read", cold);
+  assert.equal(cold.row().children[0], line, "one line, kept across paints");
+  await cold.idle();
+  await cold.idle();
+  tell("the comparison read", cold);
+  cold.handle.dispose();
+
+  const moved = await mountScripted(page, "", { brief: listed("9".repeat(40)) });
+  tell("a record whose head the list was not listed for", moved);
+  await moved.idle();
+  await moved.idle();
+  tell("its comparison read", moved);
+  moved.handle.dispose();
+
+  const failing = await mountScripted(page, "", { brief: listed(head), read: "fails" });
+  tell("a record of the list's head, its comparison not yet read", failing);
+  await failing.idle();
+  tell("the comparison's read fails", failing);
+  failing.handle.dispose();
+
+  const absent = await mountScripted(page, "", {
+    brief: { ...listed(head), state: "absent", reason: "not_cached", files: null },
+  });
+  tell("no list cached", absent);
+  absent.handle.dispose();
+
+  // A page opened from a Pulls row: the row's line is in the document's memory.
+  rowLines.documentRowLines.set(rowLines.rowLineKey(full.source, 7), {
+    head,
+    generation: "g-row",
+    summary: {
+      ...listed(head),
+      generation: "g-row",
+      files: 1,
+      statuses: [{ status: "modified", count: 1 }],
+    },
+    due: false,
+    listing: false,
+    failedAt: null,
+    at: 0,
+  });
+  const fromRow = await mountScripted(page, "", { briefPainters: true });
+  tell("opened from a Pulls row that drew its line", fromRow);
+  fromRow.handle.dispose();
+  rowLines.documentRowLines.clear();
   return told;
 }
 
@@ -2658,6 +2820,7 @@ async function run() {
   await headerAges(page);
   await headerShape(page);
   const headerSummarySteps = await headerSummary(page);
+  const summaryBriefSteps = await summaryBrief(page);
   const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
   for (const label of [
@@ -2683,6 +2846,7 @@ async function run() {
     headerAges: true,
     headerShape: true,
     headerSummary: headerSummarySteps,
+    summaryBrief: summaryBriefSteps,
     coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,
   };
