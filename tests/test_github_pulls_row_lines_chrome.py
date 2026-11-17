@@ -5,7 +5,7 @@ What a row's third line shows, and when, and what a press and each key do, is br
 (``tests/dom/github-pulls-row-lines-chrome.mjs``): that a row is three lines, the state icon on
 the first and the chevron on the third, in the first icon slot; that nothing moves when the line
 arrives; that the line stays one line at every pane width from 420 px to the 180 px minimum in
-both themes, whole, its statuses cut short, or out of view; that its inks and weights are the
+both themes, whole, its totals alone with its statuses never cut short, or out of view; that its inks and weights are the
 component's; that the open row's highlight carries onto it, and that it hovers and takes the
 focus ring on its own; and that a real press on a title expands nothing while one on the chevron
 or the line opens and closes the files under it. ``METABROWSER_ROW_LINES_MEASURED`` names a file

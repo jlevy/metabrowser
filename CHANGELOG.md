@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A Pulls row now leads with its title, right after the state icon, on its first line,
+  and puts the stack position, number, author, and age on the second; its author’s
+  avatar is a little smaller.
+  Where a row or a stack heading is too narrow for its file status counts (“2 A, 30 M”),
+  they are left out whole, and its line totals stay, rather than being cut short with an
+  ellipsis.
+
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read
   of a record now opens the rewritten one and checks it again, so it reads the old

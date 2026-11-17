@@ -21,7 +21,7 @@
 // - nothing moves when the line arrives: the row, its chevron, its icon, its label, and the
 //   placeholder's start, which is the line's;
 // - the heading stays one line: the row is one `--ui-row-height`, and the line is either
-//   whole on the heading's line, its totals whole and its statuses cut short at most, or out
+//   whole on the heading's line, its totals alone with its statuses out of view, or out
 //   of view entirely, never cut through its totals or across the label;
 // - the line's inks and weights are the component's, part for part, as the same line drawn
 //   by the SDK outside the heading resolves them in that theme;
@@ -233,6 +233,11 @@ const READ = `(() => {
       line: box(line), stats: box(stats),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
+      // Statuses are whole or out of view, on the line's hidden second line, never cut short.
+      statusesShown:
+        statuses === null ||
+        (line !== null &&
+          statuses.getBoundingClientRect().top < line.getBoundingClientRect().bottom - 0.5),
       text: change.textContent, name: row.getAttribute("aria-label"), rowHeight,
       headingLines: heading.scrollHeight,
     }];
@@ -474,7 +479,18 @@ async function main() {
             `${inks.dot} ${inks.muted}`,
           );
         }
-        measured[at].shown = shown ? (now.statusesCut ? "statuses cut" : "whole") : "dropped";
+        measured[at].shown = shown
+          ? now.statusesCut
+            ? "statuses cut"
+            : now.statusesShown
+              ? "whole"
+              : "totals only"
+          : "dropped";
+        check(
+          `${at}: the statuses are whole or out of view, never cut short`,
+          !now.statusesCut,
+          JSON.stringify({ text: now.text }),
+        );
         measured[at].waited = waitedInView ? "in view" : "out of view";
         if (width === 299) {
           // The Pulls tab mounted again in the document: the line is in its first paint, from

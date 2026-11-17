@@ -24,7 +24,7 @@
 //   first icon slot and the line in the title's column; the link holds no chevron;
 // - nothing moves when the line arrives: the item, the link, the change line, the chevron, the
 //   state icon, the title, and the placeholder's start, which is the line's;
-// - the change line stays one line: whole, its statuses cut short with its totals whole, or out
+// - the change line stays one line: whole, its totals alone with its statuses out of view, or out
 //   of view entirely, never cut through its totals; nothing scrolls sideways;
 // - the line's inks and weights are the component's, part for part, as the same line drawn by
 //   the SDK outside the row resolves them in that theme, and its item's name says it in words;
@@ -308,6 +308,11 @@ const READ = `(() => {
       line: box(said), stats: box(stats),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
+      // Statuses are whole or out of view, on the line's hidden second line, never cut short.
+      statusesShown:
+        statuses === null ||
+        (line !== null &&
+          statuses.getBoundingClientRect().top < line.getBoundingClientRect().bottom - 0.5),
       text: line?.textContent ?? null, nodes: line?.childNodes.length ?? null,
       name: change?.getAttribute("aria-label") ?? null,
       expanded: change?.getAttribute("aria-expanded") ?? null,
@@ -406,23 +411,25 @@ function threeLines(r) {
   const within = (inner, outer) =>
     inner.top >= outer.top - TOLERANCE_PX && inner.bottom <= outer.bottom + TOLERANCE_PX;
   const parts = {
-    // The state icon and the number's line are the first line, the title alone the second.
+    // The state icon and the title alone are the first line, the number's line and the age
+    // the second.
     iconOnFirst:
-      middle(r.icon) >= r.meta.top - TOLERANCE_PX && middle(r.icon) <= r.meta.bottom + TOLERANCE_PX,
-    titleUnder:
-      r.meta.bottom <= r.title.top + TOLERANCE_PX && r.age.bottom <= r.title.top + TOLERANCE_PX,
+      middle(r.icon) >= r.title.top - TOLERANCE_PX &&
+      middle(r.icon) <= r.title.bottom + TOLERANCE_PX,
+    titleAbove:
+      r.title.bottom <= r.meta.top + TOLERANCE_PX && r.title.bottom <= r.age.top + TOLERANCE_PX,
     // The state icon is in the second icon slot; the link holds no chevron.
     iconInSecond: near(r.icon.left, r.inset + r.slot + r.gap),
     noLinkChevron: r.rowToggles === 0,
     // The change line is under the link, and the item is the two.
     changeUnder:
-      r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.title.bottom - TOLERANCE_PX,
+      r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.meta.bottom - TOLERANCE_PX,
     itemIsBoth: near(r.item.height, r.row.height + r.change.height),
     // The chevron is on the change line, in the first icon slot, and the line in the title's column.
     chevronOnThird:
       within(r.chevron, r.change) &&
       within(r.toggle, r.change) &&
-      r.chevron.top >= r.title.bottom - TOLERANCE_PX,
+      r.chevron.top >= r.meta.bottom - TOLERANCE_PX,
     chevronInFirst:
       near(r.toggle.left, r.changeInset) &&
       near(r.toggle.width, r.slot) &&
@@ -643,7 +650,18 @@ async function main() {
             shown !== dropped,
             JSON.stringify({ line: now.line, changeLine: now.changeLine }),
           );
-          measured[at][number] = shown ? (now.statusesCut ? "statuses cut" : "whole") : "dropped";
+          measured[at][number] = shown
+            ? now.statusesCut
+              ? "statuses cut"
+              : now.statusesShown
+                ? "whole"
+                : "totals only"
+            : "dropped";
+          check(
+            `${at}: #${number}'s statuses are whole or out of view, never cut short`,
+            !now.statusesCut,
+            JSON.stringify({ text: now.text }),
+          );
           if (shown) {
             if (waitedInView) {
               check(

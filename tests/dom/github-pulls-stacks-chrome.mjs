@@ -138,9 +138,9 @@ const LIST = `(() => {
     memberRow: list.querySelector('a.github-pulls-row[data-number="10"]')?.getBoundingClientRect().height ?? null,
     flatRow: list.querySelector('a.github-pulls-row[data-number="106"]')?.getBoundingClientRect().height ?? null,
   };
-  // A pull request's three lines (mb-lkkt, mb-3cbf, mb-d0a3): its link's two, the state icon,
-  // the number's line, and the age, then the title alone, from the text column to the row's
-  // end; and under them its change line, the chevron in the first icon slot and the line in
+  // A pull request's three lines (mb-lkkt, mb-3cbf, mb-d0a3): its link's two, the state icon
+  // and the title alone, from the text column to the row's end, then the number's line and
+  // the age; and under them its change line, the chevron in the first icon slot and the line in
   // the title's column. Each row's parts, from its link's content box.
   const lines = Object.fromEntries(
     [10, 9, 106].map((number) => {
@@ -165,8 +165,8 @@ const LIST = `(() => {
       const round = (value) => Math.round(value * 100) / 100;
       return [number, {
         text: metaBox.textContent,
-        // The number's line is above the title's, and one line of the number's type.
-        firstAbove: meta.bottom <= title.top + 0.5 && age.bottom <= title.top + 0.5,
+        // The title's line is above the number's, which is one line of the number's type.
+        titleAbove: title.bottom <= meta.top + 0.5 && title.bottom <= age.top + 0.5,
         oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
         // The number's line starts in the title's column; the age ends at the row's end.
         metaFromTitle: round(meta.left - title.left),
@@ -175,15 +175,15 @@ const LIST = `(() => {
         titleToEnd: round(end - title.right),
         titleFromInset: round(title.left - inset),
         textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
-        // The state icon is on the number's line, inside its box, above the title; the link
-        // holds no chevron.
-        withNumber: icon.top >= meta.top - 0.5 && icon.bottom <= meta.bottom + 0.5 && icon.bottom <= title.top + 0.5,
-        iconOffNumber: round((icon.top + icon.bottom) / 2 - (meta.top + meta.bottom) / 2),
+        // The state icon is on the title's line, centred on it, above the number's line; the
+        // link holds no chevron.
+        withTitle: icon.bottom <= meta.top + 0.5,
+        iconOffTitle: round((icon.top + icon.bottom) / 2 - (title.top + title.bottom) / 2),
         iconFromInset: round(icon.left - inset),
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
         // The change line is under the link, and the item is the two; the chevron is inside it,
         // under the title, in the first slot, and the line starts in the title's column.
-        changeUnder: line !== null && line.top >= r.bottom - 0.5 && line.top >= title.bottom - 0.5,
+        changeUnder: line !== null && line.top >= r.bottom - 0.5 && line.top >= meta.bottom - 0.5,
         threeLines: line !== null && Math.abs(item.getBoundingClientRect().height - r.height - line.height) < 0.5,
         toggleOnChange: toggle !== null && line !== null && toggle.top >= line.top - 0.5 && toggle.bottom <= line.bottom + 0.5,
         toggleFromInset: toggle === null ? null : round(toggle.left - inset),
@@ -614,25 +614,26 @@ try {
     );
     // Its place on the title line once cut a member's title to 65 px at the default pane,
     // where a first-level row's had 176 (mb-dzsi, measured before the change).
-    // The number's line first and the title under it, to the row's end (mb-lkkt): at the
-    // default pane a member's title had 170 px, beside its age, and has 208. The icon leads
-    // the number's line (mb-3cbf): on the title's line its middle sat 19.5 px below its
-    // middle, and the title, after it, started in the text column it starts in alone. The
+    // The title on a line of its own to the row's end (mb-lkkt): at the default pane a
+    // member's title had 170 px, beside its age, and has 208. The title's line comes first,
+    // the icon leading it, and the number's line under it, with the age (2026-11-17, at the
+    // owner's word: the title is what a reader scans for); before, the number's line came
+    // first and the icon led it (mb-3cbf). The
     // chevron is on the row's third line, its change line (mb-d0a3), in the first slot: on the
     // number's line it led the row's link, which a press then both opened and expanded.
     check(
-      "a pull request's first line is the icon, its number's line, and its age, its second the title alone, from the text column to the row's end, and its third its change line, the chevron in the first slot and the line in the title's column",
+      "a pull request's first line is the icon and the title alone, from the text column to the row's end, its second its number's line and its age, and its third its change line, the chevron in the first slot and the line in the title's column",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
-          row?.firstAbove &&
+          row?.titleAbove &&
           row.oneLine &&
           Math.abs(row.metaFromTitle) < 0.5 &&
           Math.abs(row.ageToEnd) < 0.5 &&
           Math.abs(row.titleToEnd) < 0.5 &&
           Math.abs(row.titleFromInset - row.textColumn) < 0.5 &&
-          row.withNumber &&
-          Math.abs(row.iconOffNumber) < 0.5 &&
+          row.withTitle &&
+          Math.abs(row.iconOffTitle) < 1 &&
           row.linkToggles === 0 &&
           row.changeUnder &&
           row.threeLines &&
