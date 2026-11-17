@@ -350,9 +350,7 @@
      small chrome text would have moved every tooltip with it. A tooltip is
      prose the reader has stopped to read. Its detail lines, a file's size
      and age under its name, are secondary metadata, so they read at the
-     tooltip's size, muted, as metadata does everywhere (mb-ctlu); they were
-     a step smaller, the one place a tooltip's measurements read smaller
-     than the row they describe. */
+     tooltip's size, muted, as metadata does everywhere. */
   --tooltip-font-size: var(--body-font-size);
   --tooltip-detail-font-size: var(--tooltip-font-size);
   --micro-font-size: 10px;
@@ -6531,8 +6529,8 @@ pre.code-block.metabrowser-source-lines > code {
   flex-shrink: 0;
 }
 /* In a column too narrow for both, the author gives way and the age stays whole: "never
-   the age" (docs/design-system.md, "History Rows"). The column's own clip cut the age's
-   end instead, 9.6px of it at the 180px pane in 12px type and 14.2px in 13px. */
+   the age" (docs/design-system.md, "History Rows"), where the column's own clip cut the
+   age's end at the narrowest pane. */
 .git-graph-meta > .actor-name {
   min-width: 0;
   overflow: hidden;
