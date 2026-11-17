@@ -1,16 +1,16 @@
 ---
 type: is
 id: is-01m7kp7k8sq30h8fsrw6x5c0gc
-title: "Upstream fdu: format, cost, observation, and test support (F1, F16-F18, F20-F23, F25)"
+title: "Upstream fdu: cost, observation, and test support (F4, F16-F18, F21, F25, F27)"
 kind: task
 status: open
 priority: 3
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 created_at: 2026-11-17T02:43:59.897Z
-updated_at: 2026-11-17T02:43:59.897Z
+updated_at: 2026-11-17T06:24:56.383Z
 ---
-Track schema-5 registry with a presentation namespace (F1), discovery commit batching (F16), serving-index pricing (F17), test seams (F18), polling decision (F20), ignore control base (F21), retained versions if D13 needs them (F22), deterministic SBOM (F23), wakeable poll (F25). See docs/project/research/research-2026-11-17-fdu-backend-revisited.md.
+Track prioritize depth (F4), discovery throughput (F16), serving-index memory pricing (F17), public test seams with a fault (F18), caller-supplied ancestor ignore rules (F21), a cancellable change wait (F25), and case and normalization aliasing (F27). F22 is a fallback only; F23 is a separate packaging issue. Proposed in jlevy/fdu#215. See the research.
