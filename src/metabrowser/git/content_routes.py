@@ -81,7 +81,7 @@ from typing import Any, Literal
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
-from metabrowser import kpress_adapter
+from metabrowser import kpress_adapter, markdown_render_bound
 from metabrowser.capabilities import get_capabilities
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
 from metabrowser.file_extensions import (
@@ -1444,12 +1444,41 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
         {
             "type": "text",
             "kind": kind,
-            "views": _views_for_kind(kind),
+            "views": await _bounded_views(_views_for_kind(kind), body),
             **_git_text_preview_fields(request, entry, ext, body),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
     )
     return payload
+
+
+async def _within_render_bound(body: bytes) -> bool:
+    """Whether a blob may render through KPress here: always under a trusting profile, and
+    under the untrusted one, which a pin always runs under, only within the bound of
+    :mod:`metabrowser.markdown_render_bound`."""
+
+    if get_capabilities().active_content:
+        return True
+    if len(body) > markdown_render_bound.DOCUMENT_BYTES:
+        return False
+    return await asyncio.to_thread(markdown_render_bound.within_render_bound, body)
+
+
+async def _bounded_views(views: list[dict[str, Any]], body: bytes) -> list[dict[str, Any]]:
+    """*views* without its KPress render when *body* is past the render bound.
+
+    The file opens as Source, the view left, rather than on a render the route would
+    refuse; a kind with no KPress view is as it was.
+    """
+
+    if not any(view.get("render_runtime") == "kpress" for view in views):
+        return views
+    if await _within_render_bound(body):
+        return views
+    kept = [dict(view) for view in views if view.get("render_runtime") != "kpress"]
+    if kept and not any(view.get("default") for view in kept):
+        kept[0] = {**kept[0], "default": True}
+    return live_view_keys(kept)
 
 
 # Every content predicate reads a bounded prefix: a JSON mapping is refused past 256 KiB,
@@ -1715,11 +1744,27 @@ async def git_revision_kpress_render(
         logical_size = len(body)
 
     kind = classify_by_ext(ext) if ext else "text"
+    rendered_source = source_override.encode() if source_override is not None else body
+    # The file envelope offers no render of a document past the bound, which opens as Source;
+    # this refuses a request for one all the same.
+    trusted = get_capabilities().active_content
+    if not await _within_render_bound(rendered_source):
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "This document is too costly to render from an untrusted source",
+                "detail": "its Source view shows it",
+                "path": path.to_wire(),
+                "size": len(rendered_source),
+                "max_size": markdown_render_bound.DOCUMENT_BYTES,
+                "max_work_ms": markdown_render_bound.DOCUMENT_WORK_MS,
+            },
+            status_code=413,
+        )
     frontmatter = None
     frontmatter_error = None
     if ext == ".md":
-        parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
+        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, rendered_source)
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:
         rendered = await asyncio.to_thread(
@@ -1736,6 +1781,9 @@ async def git_revision_kpress_render(
             frontmatter_error=envelope.get("frontmatter_error"),
             profile=profile,
             include_toc=include_toc,
+            # An untrusted author's fences are not highlighted: no estimate over the text
+            # bounds what a lexer costs (`markdown_render_bound`).
+            plain_code=not trusted,
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1757,7 +1805,7 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
+    if not trusted:
         rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
