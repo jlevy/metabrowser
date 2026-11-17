@@ -790,6 +790,12 @@ time.
   longest `unit (3.14t, 2/2)`; its critical path was that part and `ci-ok`, 4.8 minutes
   of running time. It ran the eight `stack-integration` jobs, since #499 had moved on
   past the commit #504 was built on, and they ran 1.2 to 4.2 minutes each.
+- **With runners free, push to verdict was 4.7 minutes.** Run 44043888346, at
+  `e6f77bfb`, waited 0.1 minutes at most for a runner.
+  Its critical path was `plan`, the slowest Chrome part (4.3), and `ci-ok`; the slowest
+  `unit` part took 4.2. It used 57.0 runner minutes.
+  One `unit` leg failed, on a race in `test_cli_github_pull_files_golden.py` that the
+  module shows whole and in order too (`mb-kq72`).
 
 ### Phase 3: Flakes, Slow Tests, and Path Classes
 
