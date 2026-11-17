@@ -305,9 +305,13 @@ Strict mode is off on a developer machine, which can add these:
   against a document’s in the light and the dark theme;
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
   Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
-  host, and reads that only the Mac’s binds them; and
-  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
-  computed weight, face, size, and ink on every title surface.
+  host, and reads that only the Mac’s binds them;
+  `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
+  Overview legend entry and its bar segment and reads the segment’s computed lift and
+  growth and where the tooltip lands; and `tests/test_title_prefix_chrome.py`, which
+  reads a title prefix’s and the rest’s computed weight, face, size, and ink on every
+  title surface. Any other check that calls `require_chrome` in `tests/required_tools.py`
+  skips for the same reason.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until

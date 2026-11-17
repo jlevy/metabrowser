@@ -279,12 +279,14 @@ function applyDetailsState(handle) {
  * entry under the pointer holds, which it lets go of first.
  *
  * A family's entry is a second handle on that family's segment in the tally row
- * the legend's shares are of: pointing at the entry is pointing at the segment,
- * through the one hover the bars draw (distribution-hover.js). The entry itself
- * does not change, as no other mark does. Other names no one segment — it is the
- * families too small to name and the files no family claims, each its own segment
- * in its own place — so it answers no hover. No entry is a tab stop, as no
- * segment is (docs/design-system.md, "Aggregate Distributions").
+ * the legend's shares are of: pointing at the entry lifts and grows the segment,
+ * through the one hover the bars draw (distribution-hover.js), and shows the
+ * segment's file count and byte size, anchored on the entry, which already shows
+ * the name. The entry itself does not change, as no other mark does. Other names
+ * no one segment — it is the families too small to name and the files no family
+ * claims, each its own segment in its own place — so it answers no hover. No
+ * entry is a tab stop, as no segment is (docs/design-system.md, "Aggregate
+ * Distributions").
  *
  * @param {DistributionHandle} handle
  * @param {ReadonlyArray<SummaryLegendEntry>} entries
@@ -318,15 +320,12 @@ function updateLegend(handle, entries) {
           key: entry.key,
           anchor: item,
         });
-        const enter = () => {
+        // The bars redraw whenever the folder's sums arrive, and this entry outlives that
+        // draw, so the bars draw its hover again themselves (folder-totals.js, render).
+        item.addEventListener("mouseenter", () => {
           handle.legendHover = target;
           handle.hover.enter(target);
-        };
-        item.addEventListener("mouseenter", enter);
-        // The bars redraw whenever the folder's sums arrive, which puts the hover away,
-        // and this entry outlives that draw. Moving over it brings the hover back, as
-        // moving over a redrawn segment does; moving while it is up changes nothing.
-        item.addEventListener("mousemove", enter);
+        });
         item.addEventListener("mouseleave", () => {
           handle.legendHover = null;
           handle.hover.leave(target);

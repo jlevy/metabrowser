@@ -11,10 +11,12 @@ Other, reading after each move the segments marked as hovered with their compute
 growth and the tooltip's words and place. This holds that:
 
 - the entry's name and its dot each lift and grow the Total row's segment for that family,
-  and no other, and show that segment's tooltip, placed on the segment, not the entry;
+  and no other, and show that segment's file count and byte size, the name the entry
+  shows left out, centered on the entry and clear of it;
 - moving from the name to the dot changes nothing, the tooltip included;
 - moving off puts the tooltip and the segment's lift away;
-- pointing at the segment draws exactly what pointing at its entry did;
+- pointing at the segment lifts and grows the same segment alone, and shows the same
+  counts under the family's name, centered on the segment and clear of it;
 - Other draws nothing, and no legend entry is ever marked.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``), and CI runs
@@ -38,10 +40,11 @@ from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "overview-legend-hover-chrome.mjs"
 # A server start, one Chrome, a page load, and seven pointer moves, each read once the
-# tooltip's 300 ms delay or 150 ms fade has settled, took 10.9 s on a 10-core Mac at a load
-# average near 21 (2026-11-17). A cold Chrome start in CI has taken 28.2 s (the Overview
-# alignment test, 2026-11-14), and the server's own start is bounded at 30 s inside the
-# session, so the bound leaves room for both, and fires before the module's limit.
+# shell's tooltip appear delay or fade (TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT in
+# static/app.js) has settled, took 10.9 s on a 10-core Mac at a load average near 21
+# (2026-11-17). A cold Chrome start in CI has taken 28.2 s (the Overview alignment test,
+# 2026-11-14), and the server's own start is bounded at 30 s inside the session, so the
+# bound leaves room for both, and fires before the module's limit.
 SESSION_TIMEOUT_S = 90
 # The session's bound, its process group stopped after it (Chrome and the server are in
 # it), and the profile's teardown (tests/process_group.py), with 10 s more for the rest of
@@ -67,6 +70,11 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
+# The Python family's tooltip on its legend entry, which shows the name, and on its segment,
+# which does not (docs/design-system.md, "Aggregate Distributions").
+_PYTHON_TOOLTIP = {"legend": "4 files · 12 B", "segment": "Python 4 files · 12 B"}
+
+
 def _python_hover(reading: dict[str, Any], label: str, anchor: str) -> None:
     """The Total row's Python segment alone lifted and grown, with its tooltip on *anchor*."""
 
@@ -79,7 +87,7 @@ def _python_hover(reading: dict[str, Any], label: str, anchor: str) -> None:
     assert style["filter"] != "none", (label, reading)
     assert reading["othersAtRest"], (label, reading)
     assert reading["legendMarked"] == 0, (label, reading)
-    assert reading["tooltip"] == "Python 4 files · 12 B", (label, reading)
+    assert reading["tooltip"] == _PYTHON_TOOLTIP[anchor], (label, reading)
     placed = reading["tooltipOnAnchor"]
     # Centred on what the pointer is on, the legend entry or the segment, unless the
     # viewport's margin clamps it, and clear of it above or below.
@@ -125,8 +133,7 @@ def test_a_legend_entry_hovers_its_segment_in_chrome(tmp_path: Path, chrome_prof
     assert measured["entryDot"]["tooltipLeft"] == measured["entryName"]["tooltipLeft"], measured
     _nothing(measured["left"], "off the legend")
     _python_hover(measured["segment"], "the segment", "segment")
-    # The same mark and words; only where the tooltip sits follows the pointer.
-    for key in ("marked", "tooltip"):
-        assert measured["segment"][key] == measured["entryName"][key], (key, measured)
+    # The same mark; the tooltip sits by what the pointer is on.
+    assert measured["segment"]["marked"] == measured["entryName"]["marked"], measured
     _nothing(measured["segmentLeft"], "off the segment")
     _nothing(measured["other"], "Other")

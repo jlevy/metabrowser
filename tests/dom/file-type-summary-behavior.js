@@ -443,16 +443,15 @@ function familyRow() {
   const [hoverPython, hoverOther] = hoverHandle.legend.children;
   const pythonClassBefore = hoverPython.className;
   hoverPython.listeners.mouseenter();
-  hoverPython.listeners.mousemove();
   hoverPython.listeners.mouseleave();
+  // It hears the pointer enter and leave it, and nothing more: moving within it changes
+  // nothing, and a repaint of the bars draws its hover again without it (folder-totals.js).
   check(
     "a family's entry enters and leaves its Total segment's hover, and stays as it was",
     JSON.stringify(hoverCalls) ===
-      JSON.stringify([
-        "enter all family:python",
-        "enter all family:python",
-        "leave all family:python",
-      ]) &&
+      JSON.stringify(["enter all family:python", "leave all family:python"]) &&
+      JSON.stringify(Object.keys(hoverPython.listeners)) ===
+        JSON.stringify(["mouseenter", "mouseleave"]) &&
       hoverPython.className === pythonClassBefore &&
       Object.keys(hoverPython.attributes).length === 0 &&
       !("hovered" in hoverPython.dataset),

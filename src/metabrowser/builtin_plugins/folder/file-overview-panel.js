@@ -19,9 +19,9 @@
 // entangled that for the sake of a heading.
 //
 // They share one hover. The breakdown's legend names the families of one of
-// the totals' bars, so pointing at an entry is pointing at that bar's segment:
-// the section holds the hover, the totals draw it, and both say where the
-// pointer is (distribution-hover.js).
+// the totals' bars, so pointing at an entry lifts that bar's segment: the
+// section holds the hover, the totals draw it, and both say where the pointer
+// is (distribution-hover.js).
 
 import { createDistributionHover } from "./distribution-hover.js";
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
@@ -119,11 +119,11 @@ export function mountFileOverviewPanel(
     }
     disposed = true;
     clearTimeout(waiting);
-    // Bodies first, then the controls and the hover they share.
+    // Bodies first, then the controls they subscribe to. Each body lets go of the hover
+    // it shares as it goes, so nothing is left holding or hearing it.
     breakdown.dispose();
     totals.dispose();
     unmountControls();
-    hover.dispose();
   }
   return Object.freeze({ dispose, ready });
 }

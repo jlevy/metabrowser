@@ -3607,15 +3607,26 @@ and its file count and byte size, and a tooltip-bearing mark brightens by
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
 A family’s legend entry, its dot and its words, is a second handle on that family’s
 segment in the tally row the legend’s shares are of, Total while Show ignored is on and
-Files while it is off: pointing at the entry lifts and grows that segment and shows its
-tooltip, as pointing at the segment does, anchored on the entry the pointer is on, as
+Files while it is off: pointing at the entry lifts and grows that segment, as pointing
+at the segment does.
+The tooltip is anchored on the handle the pointer is on, the entry or the segment, as
 any tooltip sits by what the reader points at.
-The two share one hover, which the bars draw (`distribution-hover.js`), so neither keeps
-a copy of the other’s behavior; the entry itself does not change.
+On the segment it names the family; on the entry, which shows the name, it gives the
+file count and byte size alone, since restating the name adds nothing
+([Tooltips Add Information](#tooltips-add-information)). The two share one hover, which
+the bars draw (`distribution-hover.js`), so neither keeps a copy of the other’s
+behavior; the entry itself does not change.
 Other answers no hover: it is the families too small to name and the files no family
 claims, each its own segment in its own place, so there is no one mark to point at.
-A repaint of the bars or the legend puts the hover away with its tooltip, and the
-pointer’s next move over a segment or an entry brings it back.
+The bars draw again whenever the folder’s sums arrive, which a changed file sends.
+A segment under the pointer is replaced, and the browser enters its replacement; an
+entry outlives the draw and hears nothing, so the bars draw its hover again themselves.
+A legend rebuilt or emptied under the pointer lets go of the hover its entry held,
+because a removed element never hears the pointer leave, and the browser enters the
+rebuilt entry under the pointer.
+In a window too short for the tooltip under the legend, the shell flips it above the
+entry, onto the bars, where it can cover part of the segment it describes; File Overview
+is the first panel, so that takes a window about 330 px tall or less.
 These tooltips add no tab stops, on a segment or an entry; the distribution stays the
 accessible source. The Ignored row dims through `--dimmed-content-opacity`, as ignored
 navigation and Treemap entries do.
@@ -4405,6 +4416,9 @@ arrive, and a bare `hide()` there would take away a hovered Files tree row’s t
 keep it from appearing, each time the folder view beside it updated.
 The folder view’s totals and treemap and the Commits history hide within their own
 element when they repaint or are disposed.
+File Overview’s totals also show a tooltip anchored outside their element, on the legend
+entry the pointer is on, and put that one away by the entry it is anchored on
+([Aggregate Distributions](#aggregate-distributions)).
 `tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
 `tests/dom/files-tab-chrome.mjs` checks it in Chrome on a tree row while the totals
 redraw and the filter bar rebuilds.

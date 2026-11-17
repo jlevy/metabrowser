@@ -13,9 +13,9 @@
 // when the hover is put away run browserlessly in tests/dom/file-overview-session.js.
 // What only a browser can say is that Chrome's pointer reaches them: that moving it onto
 // an entry's name and its dot lifts and grows the segment, in the computed style, and
-// shows the segment's tooltip, placed on the entry the pointer is on, as pointing at the
-// segment places it on the segment; that moving
-// it off puts both away; and that pointing at the segment itself draws the same.
+// shows the segment's file count and byte size, placed on the entry the pointer is on;
+// that moving it off puts both away; and that pointing at the segment itself lifts the
+// same segment and shows the same counts under the family's name, placed on the segment.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
@@ -88,20 +88,23 @@ const SEGMENT = (row, key) =>
 
 // What the hover draws once it has settled: the segments marked as hovered, with each
 // one's row, its computed lift and growth, and the tooltip's words and box against the
-// segment it is anchored on. Waits out the tooltip's appear delay and fade and the
-// segment's transition rather than guessing at them.
+// handle it is anchored on, the legend entry or the segment the pointer is on. Waits out
+// the shell's tooltip appear delay and fade (TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT in
+// static/app.js, read from the page) and the segment's transition rather than guessing
+// at them.
 const READ = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const tip = document.querySelector(".custom-tooltip");
   const shown = () => tip?.style.display === "block" && tip.classList.contains("visible");
   const end = performance.now() + 3000;
-  // Up, or gone, and holding still for two reads apart.
+  // Up, or gone, and holding still for two reads an appear delay and a fade apart, so a
+  // tooltip on its way up or out is never read as settled.
   let last = null;
   while (performance.now() < end) {
     const now = JSON.stringify([shown(), tip?.style.display, tip?.textContent]);
     if (now === last) break;
     last = now;
-    await wait(450);
+    await wait(TOOLTIP_APPEAR_DELAY + TOOLTIP_FADE_OUT);
   }
   const marked = [...document.querySelectorAll(".folder-totals [data-hovered]")];
   await Promise.all(
