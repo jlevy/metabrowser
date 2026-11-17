@@ -260,6 +260,7 @@ GOLDEN_RECORDERS := \
 	tests/test_inert_html.py
 GOLDEN_DRIVERS := \
 	tests/test_cli_golden.py \
+	tests/test_cli_inventory_moved_golden.py \
 	tests/test_serve_pin.py \
 	tests/test_cli_cache_acquire_golden.py \
 	tests/test_cli_cache_recovery_golden.py \

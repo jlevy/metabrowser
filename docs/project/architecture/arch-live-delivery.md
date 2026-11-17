@@ -113,6 +113,10 @@ A Git pin has no watcher, so the route answers `unsupported_for_subject`.
    A change the snapshot already covers is suppressed for that connection, and every
    newer change queues after attachment, so neither a stale delta nor a gap can occur
    (`tests/test_browser_events_route.py::test_snapshot_handoff_drops_a_change_already_covered_by_the_snapshot`).
+   A snapshot the assembly cannot read at one version within its bounded attempts
+   attaches nothing: the route sends `fs.resync_required` with the reason
+   `inventory_version_moved` and ends, so the browser reconnects with its backoff
+   (`tests/test_inventory_moved.py::test_an_unassemblable_snapshot_asks_the_stream_to_resync`).
 2. **Snapshot frame.** The snapshot is sent with id 0, outside the live id sequence,
    because it is a reset boundary rather than a ring event.
    `Last-Event-ID` is read only to log a resume from a previous process; nothing before

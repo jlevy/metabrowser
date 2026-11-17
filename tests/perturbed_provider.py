@@ -18,6 +18,11 @@ the Python one included, so a host fix can be tested without fdu:
 - ``provider_name`` renames the provider in diagnostics, so identity is not pinned.
 - ``replay_capacity`` shrinks the provider's change history, in its own batches.
 - ``delivery_delay_s`` delays every batch the change iterator delivers.
+- ``unavailable`` names the reads that raise `VersionUnavailableError`, as a provider
+  does that no longer retains a pinned version or cannot answer at its current one;
+  :func:`reads_asking_for` builds the usual predicate. Every assembly retry then fails
+  the same way, so a test reaches the host's moved-version outcome
+  (`metabrowser/inventory_moved.py`) without racing real changes.
 
 Each opened handle also carries a fault seam, so relay recovery can be tested:
 :meth:`PerturbedHandle.fail_next_read` and :meth:`PerturbedHandle.fail_changes` raise
@@ -35,7 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -50,10 +55,13 @@ from metabrowser.inventory_engine.contract import (
     InventoryHandle,
     PriorityRequest,
     ProjectionResult,
+    QueryKind,
+    ReadQuery,
     ReadRequest,
     ReadResult,
     RefreshReceipt,
     RefreshRequest,
+    VersionUnavailableError,
 )
 
 
@@ -65,6 +73,7 @@ class Perturbation:
     provider_name: str | None = None
     replay_capacity: int | None = None
     delivery_delay_s: float = 0.0
+    unavailable: Callable[[ReadRequest], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.provider_name is not None and not self.provider_name:
@@ -73,6 +82,29 @@ class Perturbation:
             raise ValueError("replay_capacity must be positive")
         if self.delivery_delay_s < 0:
             raise ValueError("delivery_delay_s must not be negative")
+
+
+def reads_asking_for(
+    *kinds: QueryKind,
+    pinned_only: bool = False,
+    matching: Callable[[ReadQuery], bool] = lambda _query: True,
+) -> Callable[[ReadRequest], bool]:
+    """Select the reads that ask for one of *kinds*, only the pinned ones if *pinned_only*.
+
+    *matching* narrows the queries that count, so a test can leave a background reader of
+    the same kind, such as the activity tracker's catalog, answering.
+    """
+
+    if not kinds:
+        raise ValueError("name at least one query kind")
+    wanted = frozenset(kinds)
+
+    def selects(request: ReadRequest) -> bool:
+        if pinned_only and request.at_version is None:
+            return False
+        return any(query.kind in wanted and matching(query) for query in request.queries)
+
+    return selects
 
 
 class PerturbedBackend:
@@ -132,6 +164,9 @@ class PerturbedHandle:
         fault, self._read_fault = self._read_fault, None
         if fault is not None:
             raise fault
+        unavailable = self._perturbation.unavailable
+        if unavailable is not None and unavailable(request):
+            raise VersionUnavailableError("the perturbed provider made this read unavailable")
         if request.at_version is not None:
             request = replace(request, at_version=self._inner_version(request.at_version))
         result = await self._inner.read(request)
@@ -247,4 +282,4 @@ class PerturbedHandle:
         return replace(projection, payload=replace(projection.payload, provider=name))
 
 
-__all__ = ["Perturbation", "PerturbedBackend", "PerturbedHandle"]
+__all__ = ["Perturbation", "PerturbedBackend", "PerturbedHandle", "reads_asking_for"]

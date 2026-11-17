@@ -22,10 +22,13 @@ from metabrowser.inventory_engine.contract import (
     ChangeBatch,
     DiagnosticsProjection,
     DiagnosticsQuery,
+    DirectoryQuery,
+    EntryQuery,
     Freshness,
     InventoryConfig,
     LifecyclePhase,
     ObservationKind,
+    QueryKind,
     ReadRequest,
     RefreshObservation,
     RefreshRequest,
@@ -34,7 +37,12 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.coordinator import RECONCILING_HOLD_S, HostChange
 from metabrowser.inventory_engine.factory import create_inventory_backend
 from tests.inventory_harness import inventory_harness, selected_inventory_provider
-from tests.perturbed_provider import Perturbation, PerturbedBackend, PerturbedHandle
+from tests.perturbed_provider import (
+    Perturbation,
+    PerturbedBackend,
+    PerturbedHandle,
+    reads_asking_for,
+)
 
 _SETTLED = frozenset(
     {LifecyclePhase.READY, LifecyclePhase.WATCHING, LifecyclePhase.STOPPED, LifecyclePhase.FAILED}
@@ -211,6 +219,35 @@ def test_faults_raise_from_the_next_read_and_from_a_waiting_change_iterator(
             await handle.close()
 
     asyncio.run(run())
+
+
+def test_unavailable_reads_raise_on_every_attempt_and_others_answer(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("one")
+    directory = DirectoryQuery(query_id="directory", path="", max_depth=1, max_rows=8)
+    entry = EntryQuery(query_id="entry", path="one.txt")
+
+    async def run() -> None:
+        backend = _wrapped(
+            Perturbation(unavailable=reads_asking_for(QueryKind.DIRECTORY, pinned_only=True))
+        )
+        handle = await _open_settled(backend, tmp_path)
+        try:
+            unpinned = await handle.read(ReadRequest(queries=(directory,)))
+            for _attempt in range(3):
+                with pytest.raises(VersionUnavailableError, match="perturbed"):
+                    await handle.read(
+                        ReadRequest(queries=(directory,), at_version=unpinned.version)
+                    )
+            pinned_entry = await handle.read(
+                ReadRequest(queries=(entry,), at_version=unpinned.version)
+            )
+            assert pinned_entry.version == unpinned.version
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+    with pytest.raises(ValueError, match="at least one query kind"):
+        reads_asking_for()
 
 
 def _wrap(perturbation: Perturbation) -> Callable[..., PerturbedBackend]:
