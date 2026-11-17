@@ -183,6 +183,78 @@ def test_pinned_kpress_owns_the_inline_code_base_style() -> None:
     assert "padding: 0.1em 0.25em;" in inline_block
 
 
+def _kpress_values(css: str, selector: str, prop: str) -> list[str]:
+    """Each value KPress gives *prop* in a rule that lists exactly *selector*."""
+
+    uncommented = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    return [
+        value.strip()
+        for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", uncommented)
+        if selector in (one.strip() for one in selectors.split(","))
+        for value in re.findall(rf"(?:^|;)\s*{re.escape(prop)}\s*:\s*([^;]+)", declarations)
+    ]
+
+
+def _is_toc_entry(selector: str) -> bool:
+    """Whether *selector* styles a table-of-contents entry, its link, or its title."""
+
+    subject = re.split(r"\s*[>+~]\s*|\s+", selector.strip())[-1]
+    return "kpress-toc" in selector and (
+        subject in {"a", "li"}
+        or re.fullmatch(r"\.kpress-toc-(?:title|level-\d)", subject) is not None
+    )
+
+
+def test_pinned_kpress_owns_the_toc_insets() -> None:
+    """KPress sets each table-of-contents entry's inset, and the host restates none of it.
+
+    KPress 0.3.6 pulled an entry's first line back by a 1em hanging indent against a
+    1.3rem base, which put the text about 5px from the active bar, so Metabrowser dropped
+    the indent and re-set the insets from a 0.75rem base with KPress's 0.7rem step per
+    level, the CONTENTS title on the same base so it aligns with level-1 text. KPress
+    0.3.8 ships exactly that, as `padding-inline-start` so a right-to-left document
+    mirrors it, and the host's rules left. This fails if a release restores the hanging
+    indent, the old base, or the old step, or if the host takes any of it back.
+    """
+
+    components = get_static_asset("css/components.css").content.decode("utf-8")
+    uncommented = re.sub(r"/\*.*?\*/", "", components, flags=re.DOTALL)
+    toc_rules = [
+        (selectors.strip(), declarations)
+        for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", uncommented)
+        if "kpress-toc" in selectors
+    ]
+    insets = {
+        level: _kpress_values(components, f".kpress-toc-level-{level} > a", "padding-inline-start")
+        for level in range(1, 7)
+    }
+
+    assert [selectors for selectors, body in toc_rules if "text-indent" in body] == []
+    assert [selectors for selectors, body in toc_rules if "padding-left" in body] == []
+    # The 0.75rem base, then 0.7rem a level.
+    assert insets == {
+        1: ["0.75rem"],
+        2: ["1.45rem"],
+        3: ["2.15rem"],
+        4: ["2.85rem"],
+        5: ["3.55rem"],
+        6: ["4.25rem"],
+    }
+    assert _kpress_values(components, ".kpress-toc-title", "padding-inline-start") == ["0.75rem"]
+
+    inset = re.compile(
+        r"(?:^|;)\s*(?:text-indent|padding(?:-left|-right|-inline(?:-start|-end)?)?)\s*:"
+    )
+    restated: list[str] = []
+    for path in sorted(SOURCE_DIR.rglob("*.css")):
+        css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+        for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            for selector in selectors.split(","):
+                if _is_toc_entry(selector) and inset.search(declarations):
+                    restated.append(f"{path.relative_to(PROJECT_FILE.parent)}: {selector.strip()}")
+    assert restated == []
+
+
 def test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment() -> None:
     """Every KPress fragment in the page takes the app's color and corner tokens.
 
