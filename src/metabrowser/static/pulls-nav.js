@@ -519,18 +519,19 @@
           const target = event?.target;
           // Consume held Space without toggling again. The element's actual focus can
           // outlast a catalog update that changes the tab stop. A pull request's change
-          // line and a stack's row carry their numbers; a pull request's own row toggles
-          // nothing, so Space there keeps the browser's own meaning.
+          // line and a stack's row carry their numbers. A pull request's own row toggles
+          // nothing, and Space there is consumed all the same, as every row collection's
+          // is, so it does not scroll the list a page from under the focused row.
           if (!(target instanceof HTMLElement)) {
             return false;
           }
           if (target.matches(".github-pulls-change")) {
             return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));
           }
-          return (
-            target.matches(".github-pulls-stack-row") &&
-            (event?.repeat === true || nav.toggleStack(Number(target.dataset.stack)))
-          );
+          if (target.matches(".github-pulls-stack-row")) {
+            return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
+          }
+          return target.matches(".github-pulls-row");
         },
         id: "pulls.toggle-files",
         order: 35,

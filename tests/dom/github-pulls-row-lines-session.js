@@ -234,6 +234,53 @@ async function laneStory(lines, prefetch) {
     lane.want(rows, SOURCE);
     await runIdle();
   });
+  // A request with no room left for a list defers it, which says nothing of the list: the
+  // line the row had stays shown until the next request reads it.
+  await step("#106 is pushed again: its line stays shown while it is read again", () => {
+    rows = rows.map((row) => (row.number === 106 ? { ...row, head: "6".repeat(40) } : row));
+    lane.want(rows, SOURCE);
+  });
+  answers = (numbers) => answerFor(recordedRows("summed", "deferred"), numbers);
+  await step(
+    "the request had no room for #106's list (deferred): its line stays, and the next request reads it",
+    async () => {
+      idle.shift()();
+      await settle();
+    },
+  );
+  assert.equal(shows()["#106"].startsWith("shown"), true, "a deferral keeps the line");
+  answers = (numbers) => answerFor(recordedRows("summed"), numbers);
+  await step("the next request reads it: shown", runIdle);
+  // The prefetch lane took the ask for #104's files, and then the panel stopped following
+  // the lane, hidden or offline, before its report said the lane was done.
+  await step("the lane takes the ask for #104's files: it waits", () => lane.listing([104]));
+  await step("the panel stops following the lane: nothing more is read", async () => {
+    lane.want(rows, SOURCE);
+    await runIdle();
+  });
+  assert.equal(shows()["#104"], "waiting");
+  now += ROW_LINE_RETRY_MS;
+  await step(
+    "a minute on, #104 is read again and leaves the placeholder: its list is not cached",
+    async () => {
+      lane.want(rows, SOURCE);
+      await runIdle();
+    },
+  );
+  assert.equal(shows()["#104"], "none", "a wait for the lane ends a minute on");
+  // An answer that sums to nothing, a list still filling or too large to sum, names its
+  // list's refresh, so the row's tree reading that same list reads nothing more.
+  index.clear();
+  await step("read again from nothing: #103's list is still filling", async () => {
+    lane.want(rows, SOURCE);
+    await runIdle();
+  });
+  const filling = summaries.summed.body.rows.find((row) => row.number === 103).generation;
+  await step("#103's tree reads that refresh's list: nothing more is read", async () => {
+    lane.heard(103, filling);
+    await runIdle();
+  });
+  assert.equal(steps.at(-1).asked.length, 0, "the same refresh's list is not read again");
   // A server that serves no GitHub repository has no row's list: one answer says so.
   index.clear();
   lane.dispose();

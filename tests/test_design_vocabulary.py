@@ -2327,6 +2327,8 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -
         "builtin_plugins/github/pull-page.js",
         "builtin_plugins/github/pulls-panel.js",
         "builtin_plugins/github/stack-lines.js",
+        "builtin_plugins/github/row-lines.js",
+        "builtin_plugins/github/change-lines.js",
     ):
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         assert _PAINTED_CLASSES.findall(source) == [], path

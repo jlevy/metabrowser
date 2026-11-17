@@ -31,9 +31,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import os
 import re
-import stat
 import threading
 from collections import OrderedDict
 from collections.abc import Mapping
@@ -41,12 +39,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github.pull_change_sums import accumulate
+from metabrowser.builtin_plugins.github.pull_files_route import list_file_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_PULL_FILES_BYTES,
     PullFileList,
     read_pull_files,
 )
-from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_files
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
 from metabrowser.http_caching import build_scoped_etag
 
 if TYPE_CHECKING:
@@ -59,9 +58,9 @@ PULL_FILES_SUMMARY_ROUTE: Final = "/api/plugin/github/pull-files-summary"
 # PULL_ROWS_OVERSCAN (40) each way, 100 in a pane 1,200 px tall at 61 px a row; a taller
 # pane's rest are named in the next request. Measured 2026-11-16 in-process at a load average
 # of 45 to 58, 100 numbers took 0.7 to 1.0 ms once their lists were summed, a stat each, and
-# as long when none was cached; an answer was 293 to 411 bytes a listed pull request, 330 at the median, and 202 for one with
-# none. The whole list, which `GET pull-files` answers, was 150 bytes to 50 KB, 4.2 KB at the
-# median, and 6.4 MB at the bound.
+# as long when none was cached; an answer was 293 to 411 bytes a listed pull request, 330 at
+# the median, and 202 for one with none. The whole list, which `GET pull-files` answers, was
+# 150 bytes to 50 KB, 4.2 KB at the median, and 6.4 MB at the bound.
 MAX_SUMMARY_NUMBERS: Final = 100
 # The bytes of lists one request reads to sum, the bound of one list (``MAX_PULL_FILES_BYTES``):
 # past them, the lists left are ``deferred``, and the next request reads them. The first list
@@ -162,23 +161,23 @@ def summary_numbers(params: Mapping[str, str]) -> tuple[int, ...]:
     return numbers
 
 
-def _stamp(home: Path, slug: str, number: int) -> _Stamp | None:
-    try:
-        status = os.lstat(home / source_pull_files(slug, number))
-    except OSError:
-        return None
-    if not stat.S_ISREG(status.st_mode):
-        return None
-    return status.st_ino, status.st_mtime_ns, status.st_size
-
-
 def _sum(listed: PullFileList) -> _Sums:
+    def absent(reason: SummaryAbsence) -> _Sums:
+        # A list that sums to nothing still names its refresh, so a tree reading its pages
+        # is known to read the list already answered.
+        return _Sums(
+            reason,
+            listed_from=listed.listed_from,
+            generation=listed.generation,
+            head=listed.head,
+        )
+
     if not listed.complete:
-        return _Sums("filling")
+        return absent("filling")
     # The one sum a stack's heading says too, of this one pull request's list.
     sums = accumulate([listed])
     if sums.short:
-        return _Sums("too_large")
+        return absent("too_large")
     return _Sums(
         None,
         listed_from=listed.listed_from,
@@ -209,7 +208,7 @@ def _keep(key: tuple[str, str, int], stamp: _Stamp, sums: _Sums) -> None:
             _KEPT.popitem(last=False)
 
 
-def summed_lists(
+def _summed_lists(
     home: Path, slug: str, numbers: tuple[int, ...]
 ) -> dict[int, _Sums | SummaryAbsence]:
     """What each cached list sums to. Blocking, and bounded by :data:`MAX_SUMMARY_BYTES`.
@@ -222,7 +221,7 @@ def summed_lists(
     read_any = False
     out: dict[int, _Sums | SummaryAbsence] = {}
     for number in numbers:
-        stamp = _stamp(home, slug, number)
+        stamp = list_file_stamp(home, slug, number)
         if stamp is None:
             out[number] = "not_cached"
             continue
@@ -257,14 +256,15 @@ def summed_lists(
 def _wire(number: int, found: _Sums | SummaryAbsence, listing: bool) -> FilesSummaryWire:
     reason = found if isinstance(found, str) else found.reason
     if isinstance(found, str) or reason is not None:
+        held = None if isinstance(found, str) else found
         return FilesSummaryWire(
             number=number,
             state="absent",
             reason=reason,
             listing=listing,
-            listed_from=None,
-            generation=None,
-            head=None,
+            listed_from=None if held is None else held.listed_from,
+            generation=None if held is None else held.generation,
+            head=None if held is None else held.head,
             files=None,
             additions=None,
             deletions=None,
@@ -294,7 +294,7 @@ async def files_summary(
 
     if repository is None:
         return FilesSummaryEnvelope(source=None, rows=[])
-    found = await asyncio.to_thread(summed_lists, repository.home, repository.slug, numbers)
+    found = await asyncio.to_thread(_summed_lists, repository.home, repository.slug, numbers)
     return FilesSummaryEnvelope(
         source=repository.source,
         rows=[_wire(number, found[number], number in listing) for number in numbers],
@@ -354,5 +354,4 @@ __all__ = [
     "files_summary",
     "listing_numbers",
     "summary_numbers",
-    "summed_lists",
 ]

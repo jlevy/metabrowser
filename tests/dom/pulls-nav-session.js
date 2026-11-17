@@ -1345,11 +1345,12 @@ async function twoTreesStory() {
   const beforeSpace = page.shell.address;
   const [firstPull, nextPull] = page.pulls;
   const [firstChange, nextChange] = page.changeLines;
-  // On a pull request's own row, Space toggles nothing (mb-h0ml): it is not the row's key, so
-  // it keeps the browser's meaning.
+  // On a pull request's own row, Space toggles nothing (mb-h0ml), and is consumed, so it does
+  // not scroll the list a page from under the focused row.
   story["Space on a pull request's row toggles nothing"] = page.press(" ");
-  assert.equal(story["Space on a pull request's row toggles nothing"].handled, false);
+  assert.equal(story["Space on a pull request's row toggles nothing"].handled, true);
   assert.deepEqual(story["Space on a pull request's row toggles nothing"].did, []);
+  assert.equal(story["Space on a pull request's row toggles nothing"].address, beforeSpace);
   assert.equal(firstChange.getAttribute("aria-expanded"), "false", "the row's files stay closed");
   // Its change line, the row's child, takes Space.
   firstChange.focus();

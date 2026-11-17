@@ -30,6 +30,7 @@
 // there, as the chevron is. A row whose list is not cached and is not being listed shows no
 // line and no placeholder.
 
+import { changeLineInput, createBoundedIndex } from "./change-lines.js";
 import { documentComparisons } from "./comparison-prefetch.js";
 
 export const PULL_FILES_SUMMARY_ROUTE = "/api/plugin/github/pull-files-summary";
@@ -74,9 +75,11 @@ const RECENT = 8;
  * @typedef {{phase: "shown", summary: FilesSummary} | {phase: "waiting"} | {phase: "none"}} RowLineState
  *
  * What the document remembers of a row: the head it was read for, its last listed answer,
+ * the refresh its last answer was of (`generation`, a list summed or one too large to sum),
  * whether that holds, and whether a list was being listed.
  * @typedef {{
  *   head: string | null,
+ *   generation: string | null,
  *   summary: FilesSummary | null,
  *   due: boolean,
  *   listing: boolean,
@@ -115,26 +118,15 @@ export function isFilesSummary(value) {
 }
 
 /**
- * The change line's input from a row's summary: its statuses in the header's order, each with
- * its letter and word, from the changed-files tree's own breakdown, which the Diff summary's
- * header reads, and its line totals; with no tree, a line of its totals alone. It is a stack
- * heading's input built the same way (`stackLineInput`) from the same sums, so a stack of one
- * pull request draws the line its row draws.
+ * The change line's input from a row's summary, built as a stack heading's is
+ * (change-lines.js), so a stack of one pull request draws the line its row draws.
  *
- * @param {FilesSummary} summary
+ * @param {FilesSummary} change
  * @param {((statuses: Iterable<string>) => MetabrowserChangeLineInput["statuses"]) | null} breakdown
  * @returns {MetabrowserChangeLineInput}
  */
-export function rowLineInput(summary, breakdown) {
-  const statuses =
-    breakdown === null
-      ? []
-      : breakdown(
-          summary.statuses.flatMap((entry) =>
-            Array.from({ length: entry.count }, () => entry.status),
-          ),
-        );
-  return { statuses, additions: summary.additions, deletions: summary.deletions };
+export function rowLineInput(change, breakdown) {
+  return changeLineInput(change, breakdown);
 }
 
 /**
@@ -152,23 +144,13 @@ export function rowLineHint(words) {
  */
 export const rowLineKey = (source, number) => `${source ?? ""}#${number}`;
 
-/** The document's memory of each row's line, by `rowLineKey`, oldest out first. */
+/**
+ * The document's memory of each row's line, by `rowLineKey`, oldest out first.
+ *
+ * @returns {import("./change-lines.js").BoundedIndex<RowLineOutcome>}
+ */
 export function createRowLineIndex() {
-  /** @type {Map<string, RowLineOutcome>} */
-  const outcomes = new Map();
-  return Object.freeze({
-    /** @param {string} key */
-    get: (key) => outcomes.get(key),
-    /** @param {string} key @param {RowLineOutcome} outcome */
-    set(key, outcome) {
-      outcomes.delete(key);
-      outcomes.set(key, outcome);
-      if (outcomes.size > REMEMBERED_ROWS) {
-        outcomes.delete(/** @type {string} */ (outcomes.keys().next().value));
-      }
-    },
-    clear: () => outcomes.clear(),
-  });
+  return createBoundedIndex(REMEMBERED_ROWS);
 }
 
 /** The document's index, which every Pulls tab mounted in it shares. */
@@ -199,9 +181,13 @@ export function createRowLines(deps) {
   let handle = null;
   /** @type {{numbers: number[], controller: AbortController} | null} */
   let running = null;
-  /** Rows the prefetch lane was asked to list that have no line yet: each waits for it. */
-  /** @type {Set<number>} */
-  const awaiting = new Set();
+  /**
+   * Rows the prefetch lane was asked to list that have no line yet, and since when: each waits
+   * for it, a minute at most (`ROW_LINE_RETRY_MS`), as a listing an answer reported does, so
+   * a row whose lane the panel stopped following before it said it was done is read again.
+   */
+  /** @type {Map<number, number>} */
+  const awaiting = new Map();
   /** A refusal of the server's that holds for every row: it serves no GitHub repository. */
   let refusedAll = false;
   /** @type {string[]} */
@@ -231,11 +217,23 @@ export function createRowLines(deps) {
     return true;
   }
 
+  /** End the waits for the lane that have lasted a minute: those rows are read again. */
+  function expireAwaiting() {
+    const now = deps.now();
+    for (const [number, since] of [...awaiting]) {
+      if (now - since >= ROW_LINE_RETRY_MS) {
+        awaiting.delete(number);
+        unsettle([number]);
+      }
+    }
+  }
+
   /** The rows drawn whose line is to be read, in the list's order, at most one read's worth. */
   function wanted() {
     if (disposed || refusedAll) {
       return [];
     }
+    expireAwaiting();
     const queued = running === null ? [] : running.numbers;
     return drawn
       .filter((row) => !queued.includes(row.number) && !settled(row))
@@ -301,6 +299,7 @@ export function createRowLines(deps) {
           // A failure keeps the line the row had, and is asked again after a minute.
           index.set(key, {
             head: heads.get(number) ?? null,
+            generation: had?.generation ?? null,
             summary: had?.summary ?? null,
             due: false,
             listing: false,
@@ -314,11 +313,14 @@ export function createRowLines(deps) {
         if (summary.state === "listed") {
           awaiting.delete(number);
         }
+        // A list the request had no room to read is asked for in the next, and says nothing
+        // of the list: the line the row had stays, as it does over a failure.
+        const deferred = summary.reason === "deferred";
         index.set(key, {
           head: heads.get(number) ?? null,
-          summary: summary.state === "listed" ? summary : null,
-          // A list the request had no room to read is asked for in the next.
-          due: summary.reason === "deferred",
+          generation: deferred ? (had?.generation ?? null) : summary.generation,
+          summary: summary.state === "listed" ? summary : deferred ? (had?.summary ?? null) : null,
+          due: deferred,
           listing: summary.state !== "listed" && summary.listing,
           failedAt: null,
           at,
@@ -340,6 +342,7 @@ export function createRowLines(deps) {
           const had = index.get(key);
           index.set(key, {
             head: heads.get(number) ?? null,
+            generation: had?.generation ?? null,
             summary: had?.summary ?? null,
             due: false,
             listing: false,
@@ -387,7 +390,10 @@ export function createRowLines(deps) {
       if (disposed || refusedAll) {
         return { phase: "none" };
       }
-      if (awaiting.has(row.number) || seen?.listing === true || !settled(row)) {
+      const waitingForLane =
+        awaiting.has(row.number) &&
+        deps.now() - (awaiting.get(row.number) ?? 0) < ROW_LINE_RETRY_MS;
+      if (waitingForLane || seen?.listing === true || !settled(row)) {
         return seen?.failedAt != null && settled(row) ? { phase: "none" } : { phase: "waiting" };
       }
       return { phase: "none" };
@@ -430,7 +436,7 @@ export function createRowLines(deps) {
       const waiting = [];
       for (const number of numbers) {
         if (index.get(rowLineKey(source, number))?.summary == null && !awaiting.has(number)) {
-          awaiting.add(number);
+          awaiting.set(number, deps.now());
           waiting.push(number);
         }
       }
@@ -453,7 +459,7 @@ export function createRowLines(deps) {
       }
       const all = new Set(numbers);
       if (how.idle === true) {
-        for (const number of awaiting) {
+        for (const number of awaiting.keys()) {
           all.add(number);
         }
       }
@@ -479,7 +485,9 @@ export function createRowLines(deps) {
         return;
       }
       const seen = index.get(rowLineKey(source, number));
-      if (seen !== undefined && seen.summary?.generation !== generation) {
+      // An answer too large to sum names its list's refresh too, so a capped list's tree
+      // reading its pages reads nothing more.
+      if (seen !== undefined && seen.generation !== generation) {
         unsettle([number]);
         awaiting.delete(number);
         next();
@@ -499,7 +507,7 @@ export function createRowLines(deps) {
     snapshot: () => ({
       wanted: wanted().map((row) => row.number),
       running: running?.numbers ?? null,
-      awaiting: [...awaiting],
+      awaiting: [...awaiting.keys()],
       refusedAll,
       recent: [...recent],
     }),

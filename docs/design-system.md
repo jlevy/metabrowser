@@ -2150,11 +2150,13 @@ line: the pull request’s [brief change line](#brief-change-line), “21 A, 7 D
 The change line opens and closes the pull request’s changed-files tree, which hangs
 under it, connected by `aria-owns`, and starts collapsed.
 Clicking the row’s title or number’s line opens the page and expands nothing; clicking
-the chevron or the change line toggles the tree and opens no page, and the row stays
-under the pointer, even above a row a reveal placed, whose place gives way to the press.
-No row expands on its own: not when it opens, not when it is selected, and not on a
-key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
-its change. An address naming a changed file opens its owner’s tree if needed
+the chevron or the change line toggles the tree and opens no page.
+A press there, or Enter, Space, Right, or Left on the change line, keeps the row where
+it is, under the pointer or the focus, even above a row a reveal placed, whose place
+gives way to it. No row expands on its own: not when it opens, not when it is selected,
+and not on a key’s walk, so Up, Down, J, and K walk the pull requests and each row shows
+the size of its change.
+An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
 
@@ -2393,9 +2395,9 @@ The title is the link’s first text, so the row’s accessible name gives the s
 the state icon’s label, and then the title, before the number’s line.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
 text is text: GitHub’s users write it, and none of it reaches markup or a style.
-A row is 61 px where it was 43 px as two lines (`ROW_ESTIMATE_PX` in
-`builtin_plugins/github/pulls-panel.js`), and whatever its line holds, so nothing moves
-when one arrives.
+A closed row is one height whatever its line holds, so nothing moves when one arrives:
+`ROW_ESTIMATE_PX` in `builtin_plugins/github/pulls-panel.js`, which
+`tests/dom/github-pulls-row-lines-chrome.mjs` holds the measured row to.
 
 New pull requests use the [shared arrival highlight](#live-row-arrivals).
 
@@ -2414,10 +2416,10 @@ A row’s change line is its one child item: Right on the row goes to it and ope
 nothing; there Enter and Space open or close the files in place, Right opens them or
 goes to the first, Left closes them or goes back to the row, Up goes back to the row,
 and Down goes into the open files, or on to the next row.
-On the row itself Space toggles nothing, so it keeps the browser’s meaning, and Left
-goes to the stack’s row it is under.
-Grouped by stack, a stack’s row is a stop of its own that opens nothing, and Enter,
-Space, Right, and Left open, close, enter, and leave it as a folder’s
+On the row itself Space toggles nothing and is consumed, as every row collection’s is,
+so the list does not scroll from under the focused row; Left goes to the stack’s row it
+is under. Grouped by stack, a stack’s row is a stop of its own that opens nothing, and
+Enter, Space, Right, and Left open, close, enter, and leave it as a folder’s
 ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)). `J` and `K` move the
 rows with or without Shift; walking a pull request’s stack is Control-N and Control-P on
 macOS and iOS ([The Pull Request Page](#the-pull-request-page)). Help reads the

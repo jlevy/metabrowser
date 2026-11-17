@@ -99,7 +99,7 @@ $ node tests/dom/pulls-nav-session.js
       ]
     },
     "Space on a pull request's row toggles nothing": {
-      "handled": false,
+      "handled": true,
       "did": [],
       "focus on": "/pull/3900",
       "address": "/view/"

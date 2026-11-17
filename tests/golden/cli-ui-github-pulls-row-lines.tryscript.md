@@ -52,7 +52,7 @@ Run alone, the session holds every part’s invariants and says how many steps e
 $ node tests/dom/github-pulls-row-lines-session.js
 {
   "steps": {
-    "lane": 15,
+    "lane": 23,
     "row": 22
   },
   "invariants": true
@@ -335,6 +335,165 @@ $ node tests/dom/github-pulls-row-lines-session.js lane
       "repainted": [
         "106,105,104,103"
       ],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "#106 is pushed again: its line stays shown while it is read again",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none"
+      },
+      "asked": [],
+      "lane": {
+        "wanted": [
+          106
+        ],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "the request had no room for #106's list (deferred): its line stays, and the next request reads it",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none"
+      },
+      "asked": [
+        "GET /api/plugin/github/pull-files-summary?numbers=106"
+      ],
+      "repainted": [
+        "106"
+      ],
+      "lane": {
+        "wanted": [
+          106
+        ],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "the next request reads it: shown",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none"
+      },
+      "asked": [
+        "GET /api/plugin/github/pull-files-summary?numbers=106"
+      ],
+      "repainted": [
+        "106"
+      ],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "the lane takes the ask for #104's files: it waits",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "waiting",
+        "#103": "none"
+      },
+      "asked": [],
+      "repainted": [
+        "104"
+      ],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [
+          104
+        ],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "the panel stops following the lane: nothing more is read",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "waiting",
+        "#103": "none"
+      },
+      "asked": [],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [
+          104
+        ],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "a minute on, #104 is read again and leaves the placeholder: its list is not cached",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none"
+      },
+      "asked": [
+        "GET /api/plugin/github/pull-files-summary?numbers=104"
+      ],
+      "repainted": [
+        "104"
+      ],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "read again from nothing: #103's list is still filling",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none"
+      },
+      "asked": [
+        "GET /api/plugin/github/pull-files-summary?numbers=106,105,104,103"
+      ],
+      "repainted": [
+        "106,105,104,103"
+      ],
+      "lane": {
+        "wanted": [],
+        "running": null,
+        "awaiting": [],
+        "refusedAll": false
+      }
+    },
+    {
+      "step": "#103's tree reads that refresh's list: nothing more is read",
+      "shows": {
+        "#106": "shown 249 files: 3 added, 243 modified, 1 removed, 2 renamed; +1093 −493",
+        "#105": "shown 1 file: 1 modified; +3 −1",
+        "#104": "none",
+        "#103": "none"
+      },
+      "asked": [],
       "lane": {
         "wanted": [],
         "running": null,

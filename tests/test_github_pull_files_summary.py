@@ -236,15 +236,24 @@ def _summed(
     return {row["number"]: dict(row) for row in envelope["rows"]}
 
 
-def _absent(number: int, reason: str, *, listing: bool = False) -> dict[str, Any]:
+def _absent(
+    number: int,
+    reason: str,
+    *,
+    listing: bool = False,
+    listed: tuple[str, str, str | None] | None = None,
+) -> dict[str, Any]:
+    """An absent answer. *listed* is the list file's source, refresh, and head, for a list
+    that is cached and sums to nothing: one still filling, or too large to sum."""
+
     return {
         "number": number,
         "state": "absent",
         "reason": reason,
         "listing": listing,
-        "listed_from": None,
-        "generation": None,
-        "head": None,
+        "listed_from": None if listed is None else listed[0],
+        "generation": None if listed is None else listed[1],
+        "head": None if listed is None else listed[2],
         "files": None,
         "additions": None,
         "deletions": None,
@@ -452,7 +461,8 @@ def test_each_list_that_sums_to_nothing_says_why(
 
     long = "d/" + "\x01" * (MAX_FILE_PATH_BYTES // 6 + 1)
     _answer(tmp_path, monkeypatch, file_pages(6, [file_item("a.md"), file_item(long)]))
-    assert _refresh(repository, 6).truncated
+    six = _refresh(repository, 6)
+    assert six.truncated
     _write_raw(repository, 2, json.dumps({"schema_version": PULL_FILES_SCHEMA - 1}).encode())
     _write_raw(repository, 3, b"{not json")
     rows = [_row(f"f{index:03d}.txt") for index in range(100)]
@@ -466,9 +476,10 @@ def test_each_list_that_sums_to_nothing_says_why(
         1: _absent(1, "not_cached"),
         2: _absent(2, "schema_mismatch"),
         3: _absent(3, "unreadable"),
-        4: _absent(4, "filling"),
-        5: _absent(5, "too_large"),
-        6: _absent(6, "too_large"),
+        # A list that sums to nothing names its refresh, which a tree reading it compares.
+        4: _absent(4, "filling", listed=("github", "1" * 32, None)),
+        5: _absent(5, "too_large", listed=("github", "1" * 32, None)),
+        6: _absent(6, "too_large", listed=("github", six.generation, six.head)),
     }
     assert reads == [2, 3, 4, 5, 6], "a pull request with no list file was read"
     reads.clear()
@@ -788,6 +799,7 @@ def test_recording_pull_files_summary_answers_real_routes(
     ``POST pull-files-refresh`` from the fake gh's full-size pages of real items. ``listing``
     is 104 while the prefetch lane holds a files item for it; ``relisted`` is 104 and 103 once
     their lists are read, 104's a list of two files and 103's read again to its end;
+    ``deferred`` is 105 and 106 past a request's byte budget, 106 left for the next;
     ``refused`` a request that names more than its pull requests, and ``not_github`` a server
     with no GitHub repository.
     """
@@ -853,6 +865,17 @@ def test_recording_pull_files_summary_answers_real_routes(
     assert [(row["number"], row["state"], row["files"]) for row in relisted] == [
         (104, "listed", 2),
         (103, "listed", 249),
+    ]
+    # A request past its byte budget: the first list it has not summed is read, the next is
+    # deferred to the next request.
+    clear_kept_summaries()
+    with monkeypatch.context() as budget:
+        budget.setattr(pull_files_summary, "MAX_SUMMARY_BYTES", 1)
+        recorded["deferred"] = _recorded(_get(client, "105,106"))
+    deferred = recorded["deferred"]["body"]["rows"]
+    assert [(row["number"], row["state"], row["reason"]) for row in deferred] == [
+        (105, "listed", None),
+        (106, "absent", "deferred"),
     ]
     recorded["refused"] = _recorded(client.get(ROUTE, params={"numbers": "106", "extra": "1"}))
     assert recorded["refused"]["status"] == 400

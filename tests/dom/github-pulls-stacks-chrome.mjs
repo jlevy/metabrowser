@@ -859,6 +859,19 @@ try {
       ),
     ];
     await evaluate(`document.querySelector('a.github-pulls-row[data-number="106"]').focus()`);
+    // Space on a pull request's own row toggles nothing and is consumed: the list does not
+    // scroll a page from under the focused row, as the browser's Space on a link scrolls it.
+    const scrolled = `Math.round(document.querySelector(".tree-content").scrollTop)`;
+    const spaceBefore = await evaluate(scrolled);
+    await press(" ");
+    await frames();
+    const space = { before: spaceBefore, after: await evaluate(scrolled), state: await state() };
+    measured.spaceOnRow = space;
+    check(
+      "Space on a pull request's row toggles nothing and leaves the list where it was",
+      space.after === space.before && JSON.stringify(space.state) === '["#106","false",0]',
+      JSON.stringify(space),
+    );
     const walk = [];
     for (const [key, want] of [
       ["ArrowDown", ["#105", "false", 0]],

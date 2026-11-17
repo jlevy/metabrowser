@@ -73,8 +73,8 @@
           "state": "absent",
           "reason": "filling",
           "listing": false,
-          "listed_from": null,
-          "generation": null,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000003",
           "head": null,
           "files": null,
           "additions": null,
@@ -165,6 +165,47 @@
               "count": 2
             }
           ]
+        }
+      ]
+    }
+  },
+  "deferred": {
+    "status": 200,
+    "body": {
+      "source": "https://github.com/octo/demo",
+      "rows": [
+        {
+          "number": 105,
+          "state": "listed",
+          "reason": null,
+          "listing": false,
+          "listed_from": "github",
+          "generation": "00000000000000000000000000000002",
+          "head": null,
+          "files": 1,
+          "additions": 3,
+          "deletions": 1,
+          "exact": true,
+          "statuses": [
+            {
+              "status": "modified",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "number": 106,
+          "state": "absent",
+          "reason": "deferred",
+          "listing": false,
+          "listed_from": null,
+          "generation": null,
+          "head": null,
+          "files": null,
+          "additions": null,
+          "deletions": null,
+          "exact": false,
+          "statuses": []
         }
       ]
     }

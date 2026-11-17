@@ -573,6 +573,16 @@ async function main() {
           ),
           placeholder: before.rows[106]?.block?.width ?? null,
         };
+        // A closed row is the height the panel places an unmeasured row at, waiting or shown,
+        // so a row the window has not drawn yet takes its own room (`ROW_ESTIMATE_PX`).
+        const estimate = await browser.evaluate(`window.__module.ROW_ESTIMATE_PX`);
+        check(
+          `${at}: a closed row is ROW_ESTIMATE_PX tall, waiting and shown`,
+          Object.values(measured[at].heights).every(
+            (height) => near(height.waiting, estimate) && near(height.shown, estimate),
+          ),
+          JSON.stringify({ estimate, heights: measured[at].heights }),
+        );
         for (const number of [...SHOWN, ...NONE]) {
           const was = before.rows[number];
           const now = after.rows[number];
@@ -861,6 +871,40 @@ async function main() {
         result.line.opened.length === result.title.opened.length,
       JSON.stringify(result.line),
     );
+    // Right and Left on the change line, its handle's `expand` and `collapse`, keep it where
+    // it is too, over #105, the open row, placed again by a reveal before each.
+    const CHANGE106 = `document.querySelector('.github-pulls-change[data-number="106"]')`;
+    for (const [handler, key, want] of [
+      ["expand", "Right", "true"],
+      ["collapse", "Left", "false"],
+    ]) {
+      await browser.evaluate(`window.__panel.setCurrent(105, null, { again: true }), true`);
+      await frames();
+      await browser.evaluate(`${CHANGE106}.focus(), true`);
+      const before = await browser.evaluate(`${CHANGE106}.getBoundingClientRect().top`);
+      await browser.evaluate(`window.__panel.${handler}(), true`);
+      await pause(250);
+      if (want === "true") {
+        await browser
+          .waitFor(
+            `${CHANGE106}.closest("li").querySelector(".github-pull-files-rows")?.firstElementChild != null`,
+            5000,
+          )
+          .catch(() => false);
+        await frames();
+      }
+      const moved = {
+        before,
+        after: await browser.evaluate(`${CHANGE106}.getBoundingClientRect().top`),
+        expanded: await browser.evaluate(`${CHANGE106}.getAttribute("aria-expanded")`),
+      };
+      result[key] = moved;
+      check(
+        `${at}: ${key} on the change line ${want === "true" ? "opens" : "closes"} the files and leaves it where it was, over a revealed row`,
+        moved.expanded === want && Math.abs(moved.after - moved.before) <= TOLERANCE_PX,
+        JSON.stringify(moved),
+      );
+    }
     return result;
   }
 

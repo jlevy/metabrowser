@@ -86,6 +86,10 @@ export const PREFETCH_FILES = 16;
 // Rows the pointer or focus rested on that a prefetch names first, newest first: the row a
 // click is about to open, and the one the pointer left for it.
 export const PREFETCH_RESTED = 2;
+// The prefetch lane's files outcomes the panel remembers having heard, so each tells the rows'
+// change lines once: twice the most a report lists, the server's MAX_RECENT (16,
+// pull_prefetch.py), so an outcome still in a report is never heard again as new.
+const LISTED_SEEN = 32;
 // How long the rows in view stay put before their changed files are asked for, so a reader
 // scrolling past rows starts no list for them. A choice, not a bound on any cost: past the
 // pauses inside one scroll, and under the seconds a reader spends reading rows before
@@ -2366,8 +2370,7 @@ export function createPullsController(deps, options = {}) {
           }
         }
       }
-      // Past the lane's own record of recent outcomes, twice over.
-      for (const key of [...listedSeen].slice(0, Math.max(0, listedSeen.size - 32))) {
+      for (const key of [...listedSeen].slice(0, Math.max(0, listedSeen.size - LISTED_SEEN))) {
         listedSeen.delete(key);
       }
       if (listed.length > 0 || !busy) {
@@ -3111,8 +3114,9 @@ export function createPullsController(deps, options = {}) {
       }
     },
     /**
-     * A row took the pointer or focus: read its record ahead of a click, and ask for its
-     * changed files, which the click expands. A walk does not come here, so it reads
+     * A row or its change line took the pointer, or the row focus: read its record ahead of
+     * a click on the row, and ask for its changed files, which a click on its change line
+     * expands. A walk does not come here, so it reads
      * nothing per row, and neither does the row whose page holds the pane or is opening,
      * which reads its own: a pointer resting on the row it just clicked would otherwise read
      * the record the page has just read. That row's files are in every ask already.
@@ -3703,20 +3707,28 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The reader opens or closes a row's files, by a press or a key on its change line: the row
-   * stays where it is, under the pointer or the focus, and the files open or close below it.
-   * A reveal's place gives way to it, as a reader's scroll ends one, so opening a row above
-   * the one a reveal placed does not move the row the reader pressed.
+   * The reader is about to open or close a row's files, by a press on its change line, or
+   * Enter, Space, Right, or Left there: the row stays where it is, under the pointer or the
+   * focus, and the files open or close below it. A reveal's place gives way to it, as a
+   * reader's scroll ends one, so opening a row above the one a reveal placed does not move
+   * the row the reader acted on. Called before the files change, while the row is where the
+   * reader sees it.
    *
    * @param {number} number
    */
-  function toggleRowFiles(number) {
+  function holdRowPlace(number) {
     const item = painted.get(number)?.item;
     const view = tab.scrollRoot?.getBoundingClientRect();
     if (item !== undefined && view !== undefined) {
       revealedPlace = null;
       readingPlace = { key: number, offset: item.getBoundingClientRect().top - view.top };
     }
+  }
+
+  /** A press, Enter, or Space on a row's change line: its files open or close in place.
+   * @param {number} number */
+  function toggleRowFiles(number) {
+    holdRowPlace(number);
     setExpanded(number, expansion.toggle(number));
   }
 
@@ -5100,7 +5112,8 @@ export function mountPullsPanel(container, ctx, mb) {
   list.addEventListener(
     "pointerover",
     (event) => {
-      const row = rowOf(event.target);
+      // The row, or its change line, whose press opens the files a peek asks for.
+      const row = rowOf(event.target) ?? changeOf(event.target);
       if (row === null) {
         return;
       }
@@ -5309,9 +5322,12 @@ export function mountPullsPanel(container, ctx, mb) {
     expand() {
       const line = focusedChange();
       if (line !== null) {
-        if (expansion.expand(line)) {
-          setExpanded(line, true);
-        } else if (!treeFor(line).controller.enter()) {
+        const open = expansion.isExpanded(line);
+        // The files are the reader's from here, whoever opened them: an address's own close
+        // with it, and these stay.
+        expansion.expand(line);
+        if (!open || !treeFor(line).controller.enter()) {
+          holdRowPlace(line);
           setExpanded(line, true);
         }
         return true;
@@ -5334,7 +5350,9 @@ export function mountPullsPanel(container, ctx, mb) {
     collapse() {
       const line = focusedChange();
       if (line !== null) {
-        if (expansion.collapse(line)) {
+        if (expansion.isExpanded(line)) {
+          holdRowPlace(line);
+          expansion.collapse(line);
           setExpanded(line, false);
         } else {
           focusRow(line);
