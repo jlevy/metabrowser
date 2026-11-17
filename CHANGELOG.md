@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s page opened at its address, or from a Pulls row whose record is not
+  cached yet, shows the Diff summary’s gentle loading box from its first paint, after
+  the usual short quiet period, instead of an empty row until GitHub’s first answer
+  arrives, which took a second or more.
+  A pull request that is not GitHub’s, or whose refresh failed with nothing running,
+  shows no box.
+
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read
   of a record now opens the rewritten one and checks it again, so it reads the old

@@ -1214,11 +1214,15 @@ export function rateLimitLifts(envelope) {
  * when the list saw a later update than the record or preview did.
  *
  * `comparisonComing` is a comparison on its way that the page has none of yet, so the Diff
- * summary's row waits for it (mb-onr2): a core preview whose selected read prepares the
- * comparison with the record (`comparison_state: "pending"`), and a record whose comparison
- * is not in the store and that the page asked the server to prepare, as Conversation's idle
- * work does (`preparing_comparison`) and Changes does while it fetches it. A core with no
- * store, or one no read is running for, has none coming until Changes asks.
+ * summary's row waits for it (mb-onr2), from the page's first paint (mb-30dz): before
+ * anything is read, until a read fails; with no record or core, while the selected read
+ * runs or will be sent, or the page waits for the reader to send it; a core preview while a
+ * read that brings its record runs or will be sent, unless the server said it has no store
+ * to compare in (`comparison_state: "no_store"`); and a record whose comparison is not in
+ * the store and that the page asked the server to prepare, as Conversation's idle work does
+ * (`preparing_comparison`) and Changes does while it fetches it. A pull request that is not
+ * GitHub's, a core with no store, and a read that failed with nothing running have none
+ * coming until Changes asks, so the placeholder never outlives its wait.
  *
  * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
@@ -1258,6 +1262,9 @@ export function describePull(envelope, page) {
   if (envelope === null) {
     // Nothing read yet: the page shows a skeleton, and an error once a read failed.
     model.status = page.error ? "unavailable" : "loading";
+    // The first read brings the record, or the core whose read prepares its comparison, so
+    // the Diff summary's row waits from the first paint rather than empty until the core.
+    model.comparisonComing = !page.error;
     return model;
   }
   model.status = envelope.state;
@@ -1315,7 +1322,11 @@ export function describePull(envelope, page) {
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
       : "Changes are unavailable because the full pull request could not be loaded.";
-    model.comparisonComing = envelope.refreshing && preview.comparison_state === "pending";
+    // The record follows the core, and its comparison with it unless the server has no store;
+    // a core read from the cache (`not_started`) has its record coming once a read runs.
+    model.comparisonComing =
+      preview.comparison_state !== "no_store" &&
+      (envelope.refreshing || page.fetching === true || page.fetchQueued === true);
     return model;
   }
   if (record === null) {
@@ -1329,6 +1340,11 @@ export function describePull(envelope, page) {
     // Nothing is shown to refresh: the skeleton or the message is all there is.
     model.revalidating = false;
     model.contentReady = Boolean(page.error) || (!fetching && !page.waitForReader);
+    // The selected read, running, still to be sent, or waiting for the reader, brings the
+    // core and then the record; nothing running after a failure brings neither.
+    model.comparisonComing =
+      envelope.reason !== "not_github" &&
+      (fetching || page.fetchQueued === true || page.waitForReader === true);
     model.canRefresh =
       !fetching &&
       envelope.state === "absent" &&

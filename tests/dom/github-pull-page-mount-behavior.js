@@ -1567,9 +1567,10 @@ async function mountScripted(page, tab, options = {}) {
 // comparison is read for it too; and the page's disposal disposes it. The summary's own
 // header and tree are the diff plugin's, pinned in tests/dom/diff-summary-session.js.
 // The header's Diff summary row (mb-pb35), and what it holds while it waits (mb-onr2): the
-// shell's pending placeholder while a comparison is on its way, from a core preview whose
-// selected read prepares it, or a record whose comparison the page asked to prepare, through
-// the read of the comparison the record names, on Changes the mounted diff's; the summary
+// shell's pending placeholder while a comparison is on its way, from the first paint of a
+// page whose read will bring one (mb-30dz), a core preview whose selected read prepares it,
+// or a record whose comparison the page asked to prepare, through the read of the
+// comparison the record names, on Changes the mounted diff's; the summary
 // in its place once read; and nothing once a read draws none, until a read of the same
 // comparison starts again, so a placeholder never outlives its wait and every wait has one.
 // Each state the row passes through is told, in order, for the golden.
@@ -1795,6 +1796,71 @@ async function headerSummary(page) {
   tell("the record on its way", loading.row());
   loading.handle.dispose();
 
+  // A direct link's cold page waits from its first paint (mb-30dz): before its first answer,
+  // through the absence its own fetch fills, the core, and the record, in one placeholder, so
+  // the row is never empty while the comparison is on its way and has one quiet period.
+  const coldCore = (state, refreshing) => ({
+    ...structuredClone(recorded.current.body),
+    state: refreshing ? "pending" : "absent",
+    reason: refreshing ? null : "not_cached",
+    refreshing,
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    core_preview: {
+      source: recorded.current.body.source,
+      number: 7,
+      reader: recorded.current.body.record.reader,
+      observed_at: recorded.current.body.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: structuredClone(recorded.current.body.record.pull),
+      comparison_state: state,
+    },
+  });
+  const cold = await mount("", { cold: true });
+  tell("a direct link's page before its first answer", cold.row());
+  const coldWait = cold.row().children[0];
+  await cold.poll(recorded.absent.body);
+  tell("its first answer: not cached, its own fetch to be sent", cold.row());
+  await cold.poll(coldCore("pending", true));
+  tell("its fetch's core preview", cold.row());
+  cold.serve(recorded.current.body);
+  await cold.idle();
+  tell("its record lands, the comparison not yet read", cold.row());
+  assert.equal(cold.row().children[0], coldWait, "one placeholder from the first paint on");
+  await cold.idle();
+  await cold.idle();
+  assert.deepEqual(cold.steps.summaries, ["the comparison read"]);
+  tell("the comparison read", cold.row());
+  cold.handle.dispose();
+  // What no read will bring has no wait: a pull request that is not GitHub's, and a refresh
+  // that failed with nothing running, on a direct link's page as with a reader's record.
+  const failedRefresh = {
+    outcome: "network",
+    message: "GitHub could not be reached.",
+    reset_at: null,
+    at: recorded.current.body.record.fetched_at,
+  };
+  for (const [said, body] of [
+    [
+      "a direct link's first answer: not GitHub's",
+      { ...structuredClone(recorded.absent.body), reason: "not_github" },
+    ],
+    [
+      "a direct link's first answer: its refresh failed, nothing running",
+      { ...structuredClone(recorded.absent.body), last_refresh: failedRefresh },
+    ],
+    [
+      "a direct link's first answer: a core, its refresh failed, nothing running",
+      { ...coldCore("not_started", false), last_refresh: failedRefresh },
+    ],
+  ]) {
+    const answered = await mount("", { cold: true });
+    await answered.poll(body);
+    tell(said, answered.row());
+    answered.handle.dispose();
+  }
+
   const none = structuredClone(recorded.current.body);
   delete none.record.comparison;
   const nameless = await mount("", { body: none });
@@ -1805,8 +1871,10 @@ async function headerSummary(page) {
 
   // A core preview, the description the selected refresh's core read staged while it reads
   // the record (served_pull.py): "pending" when that read prepares the comparison too, as a
-  // server with a store does; "no_store" when it does not, and "not_started" for a prepared
-  // core no read is running for, both of which only Changes asks for.
+  // server with a store does; "no_store" when it does not, which only Changes asks for; and
+  // "not_started" for a prepared core no read is running for. A reader's absent record has
+  // the page's own fetch still to send, which brings the record and its comparison
+  // (mb-30dz); a refresh that failed with nothing running is told above.
   const full = recorded.current.body;
   const core = (state, refreshing) => ({
     ...structuredClone(full),
@@ -1845,8 +1913,8 @@ async function headerSummary(page) {
   preparing.handle.dispose();
   for (const [said, body] of [
     ["a core preview whose read prepares no comparison", core("no_store", true)],
-    ["a prepared core no read is running for", core("not_started", false)],
-    ["a core preview whose read prepared nothing and ended", core("pending", false)],
+    ["a prepared core, the page's own fetch still to be sent", core("not_started", false)],
+    ["a core whose read ended, the page's own fetch still to be sent", core("pending", false)],
   ]) {
     const cored = await mount("", { body });
     tell(said, cored.row());

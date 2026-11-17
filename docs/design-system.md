@@ -1496,18 +1496,21 @@ row’s line from the row’s start, and as wide as a summary of one status, so 
 takes its place and nothing moves
 ([Loading States Are Shapes, Not Sentences](#loading-states-are-shapes-not-sentences)).
 The wait starts when a comparison is on its way, before the page has one: on a pull
-request’s page, a core preview whose read prepares the comparison with the record, or a
-record whose comparison the page asked the server to prepare.
-One placeholder carries the wait from the core through its record to the read, with one
-quiet period and one pulse.
+request’s page, from the first paint of a page whose read will bring one, before its
+first answer and while its own fetch is running, still to be sent, or waiting for the
+reader; a core preview whose read prepares the comparison with the record; or a record
+whose comparison the page asked the server to prepare.
+One placeholder carries the wait from the first paint through the core and its record to
+the read, with one quiet period and one pulse, so the row is never empty while the
+comparison is on its way.
 The wait is the read in flight: on Changes the mounted diff’s, so a newer comparison the
 record names waits until the reader takes it.
-A core whose read prepares no comparison, or that no read is running for, has nothing on
-its way, and only Changes asks for its comparison.
-A read that draws no summary, because it failed or its comparison is not a valid
-document, leaves the place empty until a read of the same comparison starts again: at
-the page’s next paint, such as a switch of tab or a poll that repaints it, or a Retry,
-so a placeholder never outlives its wait and every wait has one.
+A pull request that is not GitHub’s, a core whose read prepares no comparison, and a
+read that failed with nothing running have nothing on its way, and only Changes asks for
+its comparison. A read that draws no summary, because it failed or its comparison is not
+a valid document, leaves the place empty until a read of the same comparison starts
+again: at the page’s next paint, such as a switch of tab or a poll that repaints it, or
+a Retry, so a placeholder never outlives its wait and every wait has one.
 A summary already drawn stays while a newer comparison is read
 ([Refreshing Content](#refreshing-content)), and the newer one’s summary replaces it in
 one step. A pull request’s header shows it on every tab.
@@ -1816,9 +1819,10 @@ in `builtin_plugins/github/styles.css`, and `tests/test_github_pull_header_chrom
 The header’s last row is the pull request’s [Diff summary](#diff-summary), on every tab,
 so its counts are at the page’s top and not inside Changes.
 The row is held at `--ui-row-height` from first paint, holding the
-[pending placeholder](#diff-summary) while the comparison is read, and the summary’s
-header is one line, its breakdown cut short at its end, so the summary that arrives
-moves nothing; opened, its tree pushes the tabs down, as the reader asked.
+[pending placeholder](#diff-summary) from first paint while the comparison is on its way
+and while it is read, and the summary’s header is one line, its breakdown cut short at
+its end, so the summary that arrives moves nothing; opened, its tree pushes the tabs
+down, as the reader asked.
 How the page reads the comparison the row is drawn from, what the row holds while it
 waits, and what a read that fails leaves there are the [Diff Summary](#diff-summary)’s
 rules.

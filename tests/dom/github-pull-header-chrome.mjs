@@ -847,8 +847,9 @@ const PENDING_EM = 14.5;
 // hold's animation itself, before the read for `slow`, and while the header waits for the
 // conversation's held first paint for `held`, whose description's Markdown never answers,
 // so that paint runs to its bound. Every frame from the mount to the landing is read: whether
-// the header and the tab column show, the cold header or the record's, and where the tab
-// bar is against the same record mounted in hand.
+// the header and the tab column show, the cold header or the record's, where the tab bar is
+// against the same record mounted in hand, and what the Diff summary's row holds. Its
+// placeholder's own reveal, the same quiet period's (`.mb-delayed-loading`), ends with it.
 const COLD_LANDING = `async (width, labelled, outcome) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
@@ -930,13 +931,20 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
       cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
       tabBar: tabColumn ? tabBarOf(container) : null,
       live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
+      // The Diff summary's row: its pending placeholder from first paint (mb-30dz), and
+      // whether its quiet period is over.
+      pending: (() => {
+        const placeholder = header.querySelector(".github-pull-summary > .github-pull-summary-pending");
+        return placeholder === null ? "none" : getComputedStyle(placeholder).visibility;
+      })(),
     };
     seen.push(state);
     return state;
   };
   // The quiet period's end: the hold's animation, run to its end.
   const quietEnds = () => {
-    for (const part of [header, column()]) {
+    const placeholder = header.querySelector(".github-pull-summary-pending");
+    for (const part of [header, column(), placeholder]) {
       for (const animation of part?.getAnimations() ?? []) {
         animation.finish();
       }
@@ -1794,6 +1802,11 @@ async function main() {
               landings.push({ where, run });
               const { before, shownCold, waited, landed } = run;
               check(
+                `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
+                before.pending === "hidden",
+                JSON.stringify(before),
+              );
+              check(
                 `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
                 before.cold &&
                   before.header === "0" &&
@@ -1818,6 +1831,11 @@ async function main() {
                 check(
                   `${where}: after the quiet period the cold header shows, rows held`,
                   shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                  JSON.stringify(shownCold),
+                );
+                check(
+                  `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
+                  shownCold.pending === "visible",
                   JSON.stringify(shownCold),
                 );
                 check(

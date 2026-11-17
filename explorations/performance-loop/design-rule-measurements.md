@@ -304,6 +304,19 @@ later.
 Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
 the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
 
+Recorded on 2026-11-17, when the placeholder began at a page’s first paint rather than
+at its core preview (mb-30dz): headless Chrome 152, this repository served as a checkout
+on a copy of an everyday cache, three back-to-back pairs a case at a load average of 16
+to 41, each frame’s row read from navigation start, or from the click.
+A direct link to #470, its record not cached: the header was in sight with an empty row
+for 1455 to 1886 ms, the placeholder showed at 1822 to 2286 ms; after, the row was never
+seen empty and the placeholder showed at 286 to 315 ms, with the header.
+A Pulls row of #521, its record not cached, clicked: empty for 993 to 1268 ms, the
+placeholder at 1074 to 1419 ms; after, never empty, the placeholder at 67 to 87 ms.
+#502, cached, on a server’s first visit: empty for 517 to 596 ms, the placeholder at 849
+to 959 ms; after, never empty, at 295 to 330 ms.
+The summary arrived as before in each case, 2.7 to 4.8 s cold and 1.1 to 1.3 s warm.
+
 ### A Kept Comparison
 
 Recorded on 2026-11-16, when a pull request’s page began keeping the comparisons it read

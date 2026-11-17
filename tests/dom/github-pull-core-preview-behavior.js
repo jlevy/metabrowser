@@ -525,6 +525,47 @@ async function run() {
     "Changes are still being prepared.",
     "an adopted description does not make the active comparison look unrequested",
   );
+  // The Diff summary's row waits from the first paint for a comparison a read will bring
+  // (mb-30dz), and for nothing no read brings, so its placeholder never outlives the wait.
+  const home = { number: 7, tab: "", nowMs: Date.now() };
+  const absentNoCore = { ...idleCore, core_preview: null };
+  const pendingCore = {
+    ...preview,
+    core_preview: { ...preview.core_preview, comparison_state: "pending" },
+  };
+  const comingFor = (envelope, extra = {}) =>
+    page.describePull(envelope, { ...home, ...extra }).comparisonComing;
+  assert.deepEqual(
+    [
+      ["nothing read yet", comingFor(null)],
+      ["the first read failed", comingFor(null, { error: "Not found" })],
+      ["no record, the fetch on its way", comingFor(absentNoCore, { fetching: true })],
+      ["no record, the fetch still to send", comingFor(absentNoCore, { fetchQueued: true })],
+      [
+        "no record, the reader's fetch to wait for",
+        comingFor(absentNoCore, { waitForReader: true }),
+      ],
+      ["no record, nothing running", comingFor(absentNoCore)],
+      ["not GitHub's", comingFor({ ...absentNoCore, reason: "not_github" }, { fetching: true })],
+      ["a core, its read running", comingFor(pendingCore)],
+      ["a core, its read running, no store", comingFor(preview)],
+      ["a prepared core, the fetch still to send", comingFor(idleCore, { fetchQueued: true })],
+      ["a prepared core, nothing running", comingFor(failedCore)],
+    ],
+    [
+      ["nothing read yet", true],
+      ["the first read failed", false],
+      ["no record, the fetch on its way", true],
+      ["no record, the fetch still to send", true],
+      ["no record, the reader's fetch to wait for", true],
+      ["no record, nothing running", false],
+      ["not GitHub's", false],
+      ["a core, its read running", true],
+      ["a core, its read running, no store", false],
+      ["a prepared core, the fetch still to send", true],
+      ["a prepared core, nothing running", false],
+    ],
+  );
   const fullWins = page.describePull(
     { ...full, core_preview: preview.core_preview },
     { number: 7, tab: "", nowMs: Date.now() },
