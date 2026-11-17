@@ -5,7 +5,7 @@ title: Implement and evaluate the fdu inventory provider
 kind: feature
 status: open
 priority: 1
-version: 33
+version: 34
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
@@ -42,8 +42,9 @@ child_order_hints:
   - is-01m7kp7tkg5gpjb3vy3e2g6b42
   - is-01m7kp8pp3yx6b4xcad1da0y1n
   - is-01m7krf558hqc66yc8d6qabedg
+  - is-01m7m17dpsrh1qmdx50e08xkzn
 created_at: 2026-08-23T21:37:47.300Z
-updated_at: 2026-11-17T03:23:04.744Z
+updated_at: 2026-11-17T05:56:08.536Z
 ---
 Phase 2 of the inventory-provider implementation plan. Prove the real PyO3 seam, implement the fdu Rust library behind the same InventoryHandle contract without mirror state, run the shared parity and reliability suites, measure Python versus fdu at the engine/server/browser layers, and add automatic selection only if the adoption gates pass.
 
