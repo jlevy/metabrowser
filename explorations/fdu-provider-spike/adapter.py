@@ -30,6 +30,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, cast
 
+import fdu as fdu_package
 from fdu import opened as fdu
 from probe import AdapterProbe
 
@@ -108,12 +109,24 @@ NATIVE_MAX_PRIORITY_PATHS = 64
 _MATERIALIZE_PAGE_WORK = 1_000_000
 # The 2A spike measured iterator cancellation joining within this poll interval.
 _CHANGE_POLL_SECONDS = 0.25
-# Bounded attempts for an unpinned read whose follow-up native read found the version
-# moved; a pinned read raises VersionUnavailableError instead of retrying.
-_READ_ATTEMPTS = 4
+# An unpinned read whose follow-up native reads (a chained page, the fallback image, a
+# helper) found the version moved is retried, never failed: VersionUnavailableError is
+# the contract's answer to a pinned read only. Back-off starts at 5 ms and doubles to
+# 200 ms, and the deadline is a safety bound against a version that never holds still,
+# reported as a typed contract error. A pinned read raises VersionUnavailableError at once.
+_RETRY_FIRST_SECONDS = 0.005
+_RETRY_MAX_SECONDS = 0.2
+_RETRY_DEADLINE_SECONDS = 120.0
+# Native reads run on a dedicated pool so close() can join reads still in flight; fallback
+# reads serialize on the oracle lock, so a larger pool would only hold idle threads.
+_READ_WORKERS = 4
 # Handle-local continuation ledger: fdu's own continuation table holds 128 records, so
 # twice that is enough to never be the tighter bound.
 _LEDGER_CAPACITY = 256
+# Attempts to read a moving state and its issues at one version before refusing.
+_ISSUE_READ_ATTEMPTS = 8
+# Marks a directory or catalog page larger than fdu's native page bound (see _paged).
+_CHAINED = -2
 # Rows per native page when probing a file-less directory for symlink leaves.
 _EMPTY_PROBE_ROWS = 256
 _EMPTY_PROBE_PAGES = 64
@@ -207,6 +220,10 @@ def _translate[T](function: Callable[..., T], /, *args: Any, **kwargs: Any) -> T
     ) as error:
         raise VersionUnavailableError(str(error)) from error
     except fdu.OpenedIndexError as error:
+        raise InventoryContractError(str(error)) from error
+    except fdu_package.FduError as error:
+        # InvalidArgumentError (a bad registry, a refused bound) and FilesystemError (an
+        # unreadable root) are fdu's other typed failures; neither is retryable here.
         raise InventoryContractError(str(error)) from error
 
 
@@ -329,6 +346,9 @@ class FduInventoryHandle:
         self._close_task: asyncio.Task[None] | None = None
         self._poll_executor = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="metabrowser-fdu-spike-poll"
+        )
+        self._read_executor = ThreadPoolExecutor(
+            max_workers=_READ_WORKERS, thread_name_prefix="metabrowser-fdu-spike-read"
         )
         self._work_lock = threading.Lock()
         self._read_requests = 0
@@ -622,7 +642,9 @@ class FduInventoryHandle:
                 raise VersionUnavailableError(
                     "the continuation is unavailable or belongs to a different query"
                 )
-            return entry
+        # fdu's Continue carries no query, so the adapter checks the resubmitted one.
+        self._probe.fallback("continuation_identity_ledger", rows_returned=0)
+        return entry
 
     def _ledger_consume(self, token: str) -> None:
         with self._ledger_lock:
@@ -659,7 +681,8 @@ class FduInventoryHandle:
 
     async def read(self, request: ReadRequest) -> ReadResult:
         self._ensure_open()
-        return await asyncio.to_thread(self._read_sync, request)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._read_executor, self._read_sync, request)
 
     def _ensure_open(self) -> None:
         with self._lifecycle_lock:
@@ -669,16 +692,24 @@ class FduInventoryHandle:
     def _read_sync(self, request: ReadRequest) -> ReadResult:
         wall_started = time.monotonic_ns()
         cpu_started = time.thread_time_ns()
-        attempts = 1 if request.at_version is not None else _READ_ATTEMPTS
-        for attempt in range(attempts):
+        delay = _RETRY_FIRST_SECONDS
+        deadline = time.monotonic() + _RETRY_DEADLINE_SECONDS
+        while True:
             try:
                 result = self._read_once(request)
             except _VersionMoved as moved:
-                if request.at_version is not None or attempt + 1 == attempts:
+                if request.at_version is not None:
                     raise VersionUnavailableError(
                         "the fdu version moved during a coherent read"
                     ) from moved
+                if time.monotonic() >= deadline:
+                    self._probe.typed_failure("unpinned_read_deadline")
+                    raise InventoryContractError(
+                        "fdu did not hold one version long enough to answer an unpinned read"
+                    ) from moved
                 self._probe.count("read_retries")
+                time.sleep(delay)
+                delay = min(delay * 2, _RETRY_MAX_SECONDS)
                 continue
             metrics = _sum_metrics(
                 result.metrics,
@@ -697,7 +728,6 @@ class FduInventoryHandle:
                 self._cumulative_work = _sum_work(self._cumulative_work, result.work)
                 self._cumulative_metrics = _sum_metrics(self._cumulative_metrics, metrics)
             return replace(result, metrics=metrics)
-        raise AssertionError("unreachable")  # pragma: no cover
 
     def _checkpoint(self, expected: fdu.EngineVersion | None) -> ReadResult:
         response = _translate(self._index.state)
@@ -728,105 +758,89 @@ class FduInventoryHandle:
             return self._checkpoint(expected)
 
         projections: list[fdu.Projection] = []
-        # (query, native index of main projection, native index of aggregate or -1)
-        plan: list[tuple[ReadQuery, int, int]] = []
+        # (query, native index of its bundled projection). _CHAINED means the query is
+        # read on its own at the bundle's version: a directory page larger than fdu's
+        # native bound, and every catalog, whose count and pages share one work budget.
+        plan: list[tuple[ReadQuery, int]] = []
         fallback_queries: list[_FallbackQuery] = []
         for query in request.queries:
             if isinstance(query, EntryQuery):
                 native = _native_path(query.path)
                 if native is None:
-                    plan.append((query, -1, -1))
+                    plan.append((query, -1))
                     continue
-                plan.append((query, len(projections), -1))
+                plan.append((query, len(projections)))
                 projections.append(fdu.Lookup(native))
             elif isinstance(query, DirectoryQuery):
-                page = fdu.Page(
-                    limit=min(query.max_rows, NATIVE_MAX_PAGE_ROWS), max_work=query.max_work
-                )
                 if query.after is not None:
                     self._ledger_take(query.after, self._directory_identity(query))
-                    plan.append((query, len(projections), -1))
-                    projections.append(
-                        fdu.Continue(continuation=self._decode("tree", query.after), page=page)
-                    )
-                else:
-                    native = _native_path(query.path)
-                    if native is None:
-                        plan.append((query, -1, -1))
-                        continue
-                    plan.append((query, len(projections), -1))
-                    projections.append(
-                        fdu.Tree(
-                            path=native,
-                            page=page,
-                            depth=query.max_depth,
-                            include_ignored=query.include_ignored,
-                        )
-                    )
+                if query.max_rows > NATIVE_MAX_PAGE_ROWS:
+                    plan.append((query, _CHAINED))
+                    continue
+                if query.after is not None:
+                    plan.append((query, len(projections)))
+                    projections.append(self._directory_first(query))
+                    continue
+                if _native_path(query.path) is None:
+                    plan.append((query, -1))
+                    continue
+                plan.append((query, len(projections)))
+                projections.append(self._directory_first(query))
             elif isinstance(query, CatalogQuery):
-                page = fdu.Page(
-                    limit=min(query.max_rows, NATIVE_MAX_PAGE_ROWS), max_work=query.max_work
-                )
-                selection = self._catalog_selection(query)
-                main_index = len(projections)
+                # A catalog is read on its own at the bundle's version (see _catalog_read),
+                # so its count and pages share one work budget and its charge is exact.
                 if query.after is not None:
                     self._ledger_take(query.after, self._catalog_identity(query))
-                    projections.append(
-                        fdu.Continue(continuation=self._decode("flat", query.after), page=page)
-                    )
-                else:
-                    projections.append(
-                        fdu.Flat(selection=selection, shape=fdu.RowShape.COMPACT, page=page)
-                    )
-                aggregate_index = -1
-                if query.after is None:
-                    # A continued page reuses the first page's count from the ledger, as
-                    # the Python oracle reuses its memo: recounting would rescan the whole
-                    # selection under the page's work bound.
-                    aggregate_index = len(projections)
-                    projections.append(
-                        fdu.Aggregate(
-                            selection=selection,
-                            count_cap=query.count_cap,
-                            max_work=query.max_work,
-                        )
-                    )
-                plan.append((query, main_index, aggregate_index))
+                plan.append((query, _CHAINED))
             elif isinstance(query, DiagnosticsQuery):
-                plan.append((query, -1, -1))
+                plan.append((query, -1))
             else:
                 # The closed algebra leaves exactly the five kinds fdu cannot project.
-                plan.append((query, -1, -1))
+                plan.append((query, -1))
                 fallback_queries.append(query)
-        # Helper projections cost native work, so they ride along only when a fallback
-        # (entry count, root record) or a diagnostics query needs them. A read whose state
-        # carries issues fetches them in a follow-up read at the same version.
+        # A fallback needs the root record and the retained-entry count, and a diagnostics
+        # query the directory count; neither is work the request asked for, so the helper
+        # projections are read separately at the same version and not charged to it.
         needs_helpers = bool(fallback_queries) or any(
             isinstance(query, DiagnosticsQuery) for query in request.queries
         )
-        root_index = diagnostics_index = -1
-        if needs_helpers:
-            root_index = len(projections)
-            projections.append(fdu.Lookup(""))
-            diagnostics_index = len(projections)
-            projections.append(fdu.Diagnostics())
 
         native_started = time.monotonic_ns()
-        first = self._read_chunked(projections, expected)
-        native_wall = time.monotonic_ns() - native_started
+        helper: fdu.ReadResponse | None = None
+        if projections:
+            first = self._read_chunked(projections, expected)
+            charged = _work(first.work)
+        elif needs_helpers:
+            first = helper = _translate(
+                self._index.read, fdu.Lookup(""), fdu.Diagnostics(), expected=expected
+            )
+            charged = WorkCounters()
+        else:
+            first = _translate(self._index.state)
+            if expected is not None and first.version.sequence != expected.sequence:
+                raise VersionUnavailableError("the requested fdu version is no longer current")
+            charged = _work(first.work)
         self._remember(first.version)
         version = first.version
+        if needs_helpers and helper is None:
+            try:
+                helper = _translate(
+                    self._index.read, fdu.Lookup(""), fdu.Diagnostics(), expected=version
+                )
+            except VersionUnavailableError as error:
+                raise _VersionMoved() from error
+        self._probe.native_read(time.monotonic_ns() - native_started)
         complete = first.state.coverage.kind is fdu.CoverageKind.COMPLETE
         diagnostics: fdu.ReadDiagnostics | None = None
         root_entry: fdu.Entry | None = None
-        if needs_helpers:
-            diagnostics_result = first.results[diagnostics_index]
-            if isinstance(diagnostics_result, fdu.DiagnosticsResult):
-                diagnostics = diagnostics_result.value
-            root_result = first.results[root_index]
-            if isinstance(root_result, fdu.LookupResult):
-                root_entry = root_result.value.value
-        elif first.state.issues.retained or first.state.issues.omitted:
+        if helper is not None:
+            self._probe.count("helper_reads")
+            for result in helper.results:
+                if isinstance(result, fdu.DiagnosticsResult):
+                    diagnostics = result.value
+                elif isinstance(result, fdu.LookupResult):
+                    root_entry = result.value.value
+        if diagnostics is None and (first.state.issues.retained or first.state.issues.omitted):
             try:
                 follow = _translate(self._index.read, fdu.Diagnostics(), expected=version)
             except VersionUnavailableError as error:
@@ -835,33 +849,39 @@ class FduInventoryHandle:
             if isinstance(follow_result, fdu.DiagnosticsResult):
                 diagnostics = follow_result.value
         if root_entry is not None and root_entry.rollup is not None:
+            # Cached for ProviderDiagnostics.directories_indexed, which fdu's state lacks.
             self._directories_indexed = root_entry.rollup.all.dirs
         state = self._state(first.state, diagnostics)
-        work = _work(first.work)
+        work = charged
         metrics = BoundaryMetrics()
         results: dict[str, ProjectionResult] = {}
 
-        for query, main_index, aggregate_index in plan:
+        for query, main_index in plan:
             if isinstance(query, EntryQuery):
                 results[query.query_id] = self._entry_projection(
-                    query, first.results[main_index] if main_index >= 0 else None, complete
-                )
-                self._probe.native("entry", rows_returned=1, wall_time_ns=native_wall)
-            elif isinstance(query, DirectoryQuery):
-                results[query.query_id], extra = self._directory_projection(
                     query,
                     first.results[main_index] if main_index >= 0 else None,
                     complete=complete,
                     version=version,
                 )
+                self._probe.native("entry", rows_returned=1)
+            elif isinstance(query, DirectoryQuery):
+                if main_index == _CHAINED:
+                    page_result, extra = self._paged(
+                        "tree", self._directory_first(query), query, version=version
+                    )
+                else:
+                    page_result, extra = (
+                        (first.results[main_index] if main_index >= 0 else None),
+                        WorkCounters(),
+                    )
+                results[query.query_id] = self._directory_projection(
+                    query, page_result, complete=complete, version=version
+                )
                 work = _sum_work(work, extra)
             elif isinstance(query, CatalogQuery):
-                results[query.query_id], extra = self._catalog_projection(
-                    query,
-                    first.results[main_index],
-                    first.results[aggregate_index] if aggregate_index >= 0 else None,
-                    version=version,
-                )
+                projection, extra = self._catalog_read(query, version=version)
+                results[query.query_id] = projection
                 work = _sum_work(work, extra)
 
         if fallback_queries:
@@ -871,8 +891,6 @@ class FduInventoryHandle:
                 total_entries=diagnostics.entries if diagnostics is not None else 0,
                 complete=complete,
                 root_entry=root_entry,
-                first=first,
-                at_version=request.at_version,
             )
             results.update(fallback_results)
             work = _sum_work(work, fallback_work)
@@ -892,6 +910,25 @@ class FduInventoryHandle:
             projections=tuple(results[query.query_id] for query in request.queries),
             work=work,
             metrics=metrics,
+        )
+
+    def _directory_first(self, query: DirectoryQuery) -> fdu.Projection:
+        page = fdu.Page(limit=min(query.max_rows, NATIVE_MAX_PAGE_ROWS), max_work=query.max_work)
+        if query.after is not None:
+            return fdu.Continue(continuation=self._decode("tree", query.after), page=page)
+        native = _native_path(query.path)
+        if native is None:  # pragma: no cover - the planner answers these without fdu
+            raise InventoryContractError("the directory path has no native spelling")
+        return fdu.Tree(
+            path=native, page=page, depth=query.max_depth, include_ignored=query.include_ignored
+        )
+
+    def _catalog_first(self, query: CatalogQuery) -> fdu.Projection:
+        page = fdu.Page(limit=min(query.max_rows, NATIVE_MAX_PAGE_ROWS), max_work=query.max_work)
+        if query.after is not None:
+            return fdu.Continue(continuation=self._decode("flat", query.after), page=page)
+        return fdu.Flat(
+            selection=self._catalog_selection(query), shape=fdu.RowShape.COMPACT, page=page
         )
 
     def _read_chunked(
@@ -932,7 +969,12 @@ class FduInventoryHandle:
         return replace(first, results=tuple(results), work=native_work)
 
     def _entry_projection(
-        self, query: EntryQuery, result: fdu.ProjectionResult | None, complete: bool
+        self,
+        query: EntryQuery,
+        result: fdu.ProjectionResult | None,
+        *,
+        complete: bool,
+        version: fdu.EngineVersion,
     ) -> EntryProjection:
         if result is None:
             presence = EntryPresence.ABSENT if complete else EntryPresence.UNKNOWN
@@ -943,7 +985,7 @@ class FduInventoryHandle:
         if knowledge.kind is fdu.KnowledgeKind.PRESENT and knowledge.value is not None:
             entry = self._contract_entry(knowledge.value, complete=complete)
             if entry.type is EntryType.DIRECTORY and entry.empty is None and complete:
-                entry = replace(entry, empty=not self._has_leaf(entry.path, None))
+                entry = replace(entry, empty=not self._has_leaf(entry.path, version))
             return EntryProjection(
                 query_id=query.query_id, presence=EntryPresence.PRESENT, entry=entry
             )
@@ -954,7 +996,7 @@ class FduInventoryHandle:
         )
         return EntryProjection(query_id=query.query_id, presence=presence, entry=None)
 
-    def _has_leaf(self, path: str, version: fdu.EngineVersion | None) -> bool:
+    def _has_leaf(self, path: str, version: fdu.EngineVersion) -> bool:
         """Whether a file-less directory holds a symlink leaf (fdu counts files only)."""
 
         native = _native_path(path)
@@ -962,8 +1004,7 @@ class FduInventoryHandle:
             return False
         started = time.monotonic_ns()
         cpu = time.thread_time_ns()
-        with self._version_lock:
-            expected = version or self._native_identity
+        expected = version
         calls = 0
         rows_seen = 0
         found = False
@@ -1005,53 +1046,106 @@ class FduInventoryHandle:
         )
         return found
 
-    def _chain(
+    def _paged(
         self,
         kind: str,
-        rows: list[fdu.Entry],
-        continuation: fdu.Continuation | None,
+        first_projection: fdu.Projection,
+        query: DirectoryQuery | CatalogQuery,
         *,
-        max_rows: int,
-        max_work: int,
         version: fdu.EngineVersion,
-    ) -> tuple[fdu.Continuation | None, WorkCounters]:
-        """Fill a Metabrowser page larger than fdu's native page bound at one version."""
+        spent_before: WorkCounters | None = None,
+    ) -> tuple[fdu.ProjectionResult | None, WorkCounters]:
+        """Read a page larger than fdu's native bound as a chain of native pages.
 
-        extra = WorkCounters()
+        Every native page is its own read at the bundle's version, so its work is exact,
+        and the query's ``max_work`` is one budget across the chain: each page gets what
+        the earlier pages left. A flat (catalog) chain that runs out returns fdu's typed
+        limit, as the contract requires; a tree chain stops with rows and a continuation,
+        because fdu's tree budget is soft by design. Pages already read consumed their
+        continuations, so a limit after the first page cannot hand the caller's
+        continuation back (fdu restores only the record it was handed).
+        """
+
+        rows: list[fdu.Entry] = []
+        spent = spent_before or WorkCounters()
         calls = 0
         started = time.monotonic_ns()
-        while continuation is not None and len(rows) < max_rows:
+        projection = first_projection
+        first_tree: fdu.TreePage | None = None
+        continuation: fdu.Continuation | None = None
+        while True:
             calls += 1
-            projection = fdu.Continue(
-                continuation=continuation,
-                page=fdu.Page(
-                    limit=min(max_rows - len(rows), NATIVE_MAX_PAGE_ROWS), max_work=max_work
-                ),
-            )
             try:
                 response = _translate(self._index.read, projection, expected=version)
             except VersionUnavailableError as error:
                 raise _VersionMoved() from error
-            extra = _sum_work(extra, _work(response.work))
+            page_work = _work(response.work)
             result = response.results[0]
-            if isinstance(result, fdu.TreeResult) and result.value.value is not None:
-                rows.extend(result.value.value.rows)
-                continuation = result.value.value.next
+            if isinstance(result, fdu.LimitResult):
+                if calls > 1 and query.after is not None:
+                    self._probe.typed_failure("chain_limit_after_consumed_continuation")
+                reached = min(query.max_work, spent.rows_visited + result.rows_visited)
+                return fdu.LimitResult(
+                    "limit",
+                    projection=result.projection,
+                    max_work=query.max_work,
+                    rows_visited=reached,
+                ), _sum_work(spent, page_work)
+            spent = _sum_work(spent, page_work)
+            if isinstance(result, fdu.RefusedResult):
+                return result, spent
+            if isinstance(result, fdu.TreeResult):
+                if result.value.value is None:
+                    return result, spent
+                page = result.value.value
+                first_tree = first_tree or page
+                rows.extend(page.rows)
+                continuation = page.next
             elif isinstance(result, fdu.FlatResult):
                 rows.extend(result.value.rows)
                 continuation = result.value.next
             else:
-                self._probe.typed_failure(f"{kind}_chain_refused")
-                raise _VersionMoved()
-        if calls:
-            self._probe.fallback(
-                "page_chaining",
-                native_calls=calls,
-                native_pages=calls,
-                rows_returned=len(rows),
-                wall_time_ns=time.monotonic_ns() - started,
+                raise InventoryContractError(f"fdu answered a {kind} page with {result.kind}")
+            remaining = query.max_work - spent.rows_visited
+            if continuation is None or len(rows) >= query.max_rows:
+                break
+            if remaining <= 0:
+                if kind == "flat":
+                    return fdu.LimitResult(
+                        "limit",
+                        projection=fdu.LimitedProjection.FLAT,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    ), spent
+                break
+            projection = fdu.Continue(
+                continuation=continuation,
+                page=fdu.Page(
+                    limit=min(query.max_rows - len(rows), NATIVE_MAX_PAGE_ROWS),
+                    max_work=remaining,
+                ),
             )
-        return continuation, extra
+        self._probe.fallback(
+            "page_chaining",
+            native_calls=calls,
+            native_pages=calls,
+            rows_returned=len(rows),
+            wall_time_ns=time.monotonic_ns() - started,
+        )
+        if first_tree is not None:
+            return fdu.TreeResult(
+                "tree",
+                fdu.Knowledge(
+                    fdu.KnowledgeKind.PRESENT,
+                    fdu.TreePage(
+                        directory=first_tree.directory,
+                        rows=tuple(rows),
+                        next=continuation,
+                        complete=first_tree.complete,
+                    ),
+                ),
+            ), spent
+        return fdu.FlatResult("flat", fdu.FlatPage(rows=tuple(rows), next=continuation)), spent
 
     def _directory_projection(
         self,
@@ -1060,12 +1154,11 @@ class FduInventoryHandle:
         *,
         complete: bool,
         version: fdu.EngineVersion,
-    ) -> tuple[ProjectionResult, WorkCounters]:
-        none = WorkCounters()
+    ) -> ProjectionResult:
         if query.after is not None:
             self._ledger_consume(query.after)
         if result is None:
-            return DirectoryProjection(query_id=query.query_id, entries=()), none
+            return DirectoryProjection(query_id=query.query_id, entries=())
         if isinstance(result, fdu.LimitResult):
             if query.after is not None:
                 # fdu restores an underfunded continuation; keep the ledger entry too.
@@ -1075,28 +1168,20 @@ class FduInventoryHandle:
                 query_kind=QueryKind.DIRECTORY,
                 max_work=query.max_work,
                 rows_visited=min(result.rows_visited, query.max_work),
-            ), none
+            )
         if isinstance(result, fdu.RefusedResult):
             if result.reason is fdu.RefusalReason.NOT_A_DIRECTORY:
-                return DirectoryProjection(query_id=query.query_id, entries=()), none
+                return DirectoryProjection(query_id=query.query_id, entries=())
             raise VersionUnavailableError(f"fdu refused the directory page: {result.reason.value}")
         if not isinstance(result, fdu.TreeResult):
             raise InventoryContractError("fdu answered a tree with another projection")
         knowledge = result.value
         if knowledge.value is None:
-            return DirectoryProjection(query_id=query.query_id, entries=()), none
+            return DirectoryProjection(query_id=query.query_id, entries=())
         page = knowledge.value
-        rows = list(page.rows)
-        continuation, extra = self._chain(
-            "tree",
-            rows,
-            page.next,
-            max_rows=query.max_rows,
-            max_work=query.max_work,
-            version=version,
-        )
+        continuation = page.next
         entries: list[InventoryEntry] = []
-        for row in rows:
+        for row in page.rows:
             entry = self._contract_entry(row, complete=complete)
             if entry.type is EntryType.DIRECTORY and complete and entry.empty is None:
                 entry = replace(entry, empty=not self._has_leaf(entry.path, version))
@@ -1105,20 +1190,96 @@ class FduInventoryHandle:
         if continuation is not None:
             next_page = self._token("tree", continuation)
             self._ledger_put(next_page, self._directory_identity(query), 0)
-        self._probe.native("directory", rows_returned=len(entries), wall_time_ns=0)
+        self._probe.native("directory", rows_returned=len(entries))
         return DirectoryProjection(
             query_id=query.query_id, entries=tuple(entries), next_page=next_page
-        ), extra
+        )
+
+    def _catalog_read(
+        self, query: CatalogQuery, *, version: fdu.EngineVersion
+    ) -> tuple[ProjectionResult, WorkCounters]:
+        """One catalog page and, on a first page, its capped count, under one budget.
+
+        ``max_work`` bounds the whole query: the count's scan and every page. A limit
+        anywhere is the contract's typed limit, charged at the bound it reached rather
+        than at the rows of the pages read before it fired.
+        """
+
+        projections: list[fdu.Projection] = [self._catalog_first(query)]
+        if query.after is None:
+            # A continued page reuses the first page's count from the ledger, as the Python
+            # oracle reuses its memo: recounting would rescan the whole selection.
+            projections.append(
+                fdu.Aggregate(
+                    selection=self._catalog_selection(query),
+                    count_cap=query.count_cap,
+                    max_work=query.max_work,
+                )
+            )
+        try:
+            response = _translate(self._index.read, *projections, expected=version)
+        except VersionUnavailableError as error:
+            raise _VersionMoved() from error
+        spent = _work(response.work)
+        page_result = response.results[0]
+        aggregate = response.results[1] if len(response.results) > 1 else None
+        limits = [r for r in (page_result, aggregate) if isinstance(r, fdu.LimitResult)]
+        if limits or spent.rows_visited > query.max_work:
+            reached = min(query.max_work, max([r.rows_visited for r in limits] or [query.max_work]))
+            limit = QueryLimitProjection(
+                query_id=query.query_id,
+                query_kind=QueryKind.CATALOG,
+                max_work=query.max_work,
+                rows_visited=reached,
+            )
+            return limit, WorkCounters(rows_visited=reached)
+        if (
+            isinstance(page_result, fdu.FlatResult)
+            and page_result.value.next is not None
+            and len(page_result.value.rows) < query.max_rows
+        ):
+            remaining = query.max_work - spent.rows_visited
+            chained, spent = self._paged(
+                "flat",
+                fdu.Continue(
+                    continuation=page_result.value.next,
+                    page=fdu.Page(
+                        limit=min(
+                            query.max_rows - len(page_result.value.rows), NATIVE_MAX_PAGE_ROWS
+                        ),
+                        max_work=max(1, remaining),
+                    ),
+                ),
+                query,
+                version=version,
+                spent_before=spent,
+            )
+            if isinstance(chained, fdu.LimitResult) or remaining <= 0:
+                if query.after is not None:
+                    self._probe.typed_failure("chain_limit_after_consumed_continuation")
+                limit = QueryLimitProjection(
+                    query_id=query.query_id,
+                    query_kind=QueryKind.CATALOG,
+                    max_work=query.max_work,
+                    rows_visited=query.max_work,
+                )
+                return limit, WorkCounters(rows_visited=query.max_work)
+            if isinstance(chained, fdu.FlatResult):
+                page_result = fdu.FlatResult(
+                    "flat",
+                    fdu.FlatPage(
+                        rows=page_result.value.rows + chained.value.rows,
+                        next=chained.value.next,
+                    ),
+                )
+        return self._catalog_projection(query, page_result, aggregate), spent
 
     def _catalog_projection(
         self,
         query: CatalogQuery,
-        result: fdu.ProjectionResult,
+        result: fdu.ProjectionResult | None,
         aggregate: fdu.ProjectionResult | None,
-        *,
-        version: fdu.EngineVersion,
-    ) -> tuple[ProjectionResult, WorkCounters]:
-        none = WorkCounters()
+    ) -> ProjectionResult:
         emitted_before = 0
         carried: CountResult | None = None
         if query.after is not None:
@@ -1131,7 +1292,7 @@ class FduInventoryHandle:
                 query_kind=QueryKind.CATALOG,
                 max_work=query.max_work,
                 rows_visited=min(result.rows_visited, query.max_work),
-            ), none
+            )
         if isinstance(result, fdu.RefusedResult):
             raise VersionUnavailableError(f"fdu refused the catalog page: {result.reason.value}")
         if not isinstance(result, fdu.FlatResult):
@@ -1142,20 +1303,13 @@ class FduInventoryHandle:
                 query_kind=QueryKind.CATALOG,
                 max_work=query.max_work,
                 rows_visited=min(aggregate.rows_visited, query.max_work),
-            ), none
+            )
         if aggregate is not None and not isinstance(aggregate, fdu.AggregateResult):
             raise InventoryContractError("fdu answered a catalog count with another projection")
         if query.after is not None:
             self._ledger_consume(query.after)
-        rows = list(result.value.rows)
-        continuation, extra = self._chain(
-            "flat",
-            rows,
-            result.value.next,
-            max_rows=query.max_rows,
-            max_work=query.max_work,
-            version=version,
-        )
+        rows = result.value.rows
+        continuation = result.value.next
         records = tuple(
             CatalogRecord(
                 path=_canonical_portable(row.portable_path, self._probe),
@@ -1185,10 +1339,10 @@ class FduInventoryHandle:
         if continuation is not None:
             next_page = self._token("flat", continuation)
             self._ledger_put(next_page, self._catalog_identity(query), emitted, first_count)
-        self._probe.native("catalog", rows_returned=len(records), wall_time_ns=0)
+        self._probe.native("catalog", rows_returned=len(records))
         return CatalogProjection(
             query_id=query.query_id, records=records, total_matches=total, next_page=next_page
-        ), extra
+        )
 
     # Temporary fallback ----------------------------------------------------------------
 
@@ -1292,6 +1446,13 @@ class FduInventoryHandle:
         oracle._aggregate_evicted_at = {}
         oracle._navigation_tally_memo = None
         oracle._navigation_read_memo = None
+        # Continuations retained for an older image can never be served: fdu pins only
+        # its current version. Drop their rows rather than hold them until eviction.
+        current = oracle._version(image.sequence)
+        with oracle._page_lock:
+            for token in [t for t, memo in oracle._page_memos.items() if memo.version != current]:
+                del oracle._page_memos[token]
+                oracle._evicted_page_tokens[token] = "the fdu version moved"
 
     def _fallback(
         self,
@@ -1301,8 +1462,6 @@ class FduInventoryHandle:
         total_entries: int,
         complete: bool,
         root_entry: fdu.Entry | None,
-        first: fdu.ReadResponse,
-        at_version: EngineVersion | None,
     ) -> tuple[dict[str, ProjectionResult], WorkCounters, BoundaryMetrics]:
         results: dict[str, ProjectionResult] = {}
         work = WorkCounters()
@@ -1377,7 +1536,6 @@ class FduInventoryHandle:
             if not IMAGE_MEMO:
                 self._oracle._entries = {}
             metrics = BoundaryMetrics(bytes_copied=0 if reused else image.path_bytes)
-        del first, at_version
         return results, work, metrics
 
     def _diagnostics(self, state: fdu.OpenedState) -> ProviderDiagnostics:
@@ -1441,24 +1599,16 @@ class FduInventoryHandle:
                     return
                 except VersionUnavailableError:
                     # A foreign or future cursor: the consumer must reread from a reset.
-                    current = await asyncio.to_thread(_translate, self._index.state)
-                    self._remember(current.version)
-                    cursor = current.version
-                    translated = self._to_version(current.version)
+                    reset, cursor = await asyncio.to_thread(self._reset_batch)
                     self._probe.count("change_batches")
-                    yield ChangeBatch(
-                        cursor=translated.cursor,
-                        version=translated,
-                        state=self._state(current.state, None),
-                        reset=True,
-                    )
+                    yield reset
                     continue
                 self._probe.count("change_polls")
                 self._remember(poll.version)
                 cursor = poll.cursor
                 if poll.outcome.kind is fdu.ChangeOutcomeKind.IDLE:
                     continue
-                batch = await asyncio.to_thread(self._batch, poll)
+                batch, cursor = await asyncio.to_thread(self._batch, poll)
                 if batch is None:
                     continue
                 self._probe.count("change_batches")
@@ -1467,24 +1617,53 @@ class FduInventoryHandle:
             with self._lifecycle_lock:
                 self._changes_active = False
 
-    def _batch(self, poll: fdu.ChangePoll) -> ChangeBatch | None:
+    def _current_with_issues(self) -> tuple[fdu.ReadResponse, fdu.ReadDiagnostics | None]:
+        """The current state with its issues, read coherently at one version."""
+
+        for _attempt in range(_ISSUE_READ_ATTEMPTS):
+            response = _translate(self._index.state)
+            self._remember(response.version)
+            if not (response.state.issues.retained or response.state.issues.omitted):
+                return response, None
+            try:
+                follow = _translate(self._index.read, fdu.Diagnostics(), expected=response.version)
+            except VersionUnavailableError:
+                continue
+            result = follow.results[0]
+            if isinstance(result, fdu.DiagnosticsResult):
+                return response, result.value
+        self._probe.typed_failure("issues_unreadable_under_churn")
+        raise InventoryContractError("fdu's issues could not be read at one version")
+
+    def _reset_batch(self) -> tuple[ChangeBatch, fdu.EngineVersion]:
+        current, diagnostics = self._current_with_issues()
+        translated = self._to_version(current.version)
+        return ChangeBatch(
+            cursor=translated.cursor,
+            version=translated,
+            state=self._state(current.state, diagnostics),
+            reset=True,
+        ), current.version
+
+    def _batch(self, poll: fdu.ChangePoll) -> tuple[ChangeBatch | None, fdu.EngineVersion]:
         diagnostics: fdu.ReadDiagnostics | None = None
         if poll.state.issues.retained or poll.state.issues.omitted:
             try:
                 follow = _translate(self._index.read, fdu.Diagnostics(), expected=poll.version)
-                first = follow.results[0]
-                if isinstance(first, fdu.DiagnosticsResult):
-                    diagnostics = first.value
             except VersionUnavailableError:
-                # The state moved on; the next poll carries it with its own diagnostics.
-                diagnostics = None
+                # The poll's issues are gone with its version. A batch without them would
+                # report an issue-free state, so the consumer rereads from a reset instead.
+                return self._reset_batch()
+            first = follow.results[0]
+            if isinstance(first, fdu.DiagnosticsResult):
+                diagnostics = first.value
         version = self._to_version(poll.version)
         state = self._state(poll.state, diagnostics)
         work = _work(poll.work)
         if poll.outcome.kind is fdu.ChangeOutcomeKind.RESET:
             return ChangeBatch(
                 cursor=version.cursor, version=version, state=state, reset=True, work=work
-            )
+            ), poll.cursor
         impact = poll.outcome.impact
         if impact is None:
             raise InventoryContractError("fdu change outcome omitted its impact")
@@ -1531,7 +1710,7 @@ class FduInventoryHandle:
             dirty_queries=frozenset(dirty_queries),
             all_dirty=all_dirty,
             work=work,
-        )
+        ), poll.cursor
 
     # Commands ------------------------------------------------------------------------
 
@@ -1601,6 +1780,9 @@ class FduInventoryHandle:
     async def _close_owned(self) -> None:
         self._monitor_stop.set()
         loop = asyncio.get_running_loop()
+        # New reads are refused once closing is set; join the ones already running so
+        # none touches the native handle after it closes.
+        await asyncio.to_thread(self._read_executor.shutdown, True, cancel_futures=False)
         try:
             await loop.run_in_executor(self._poll_executor, partial(_translate, self._index.close))
         finally:

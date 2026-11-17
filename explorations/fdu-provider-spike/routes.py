@@ -2,14 +2,17 @@
 
 The injection replaces the runtime composition root's backend constructor for the
 duration of one pytest session, so every `InventoryRuntime` the tests build gets an fdu
-handle. Nothing in `src/` changes. Tests that construct the Python provider directly are
-not redirected; their results under this plugin say nothing about fdu and are marked so.
+handle. Nothing in `src/` changes. A test that never builds a runtime (one that
+constructs the Python provider or a coordinator directly) runs Python even under the
+injection, so each result records how many fdu backends that test built; only a test
+that built at least one says anything about fdu.
 """
 
 from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast
 
@@ -49,6 +52,8 @@ class _InjectFdu:
         self.inject = inject
         self.results: list[dict[str, object]] = []
         self.backends_built = 0
+        self.per_test: dict[str, int] = {}
+        self.phase_failures: list[dict[str, object]] = []
 
     def pytest_configure(self) -> None:
         if not self.inject:
@@ -59,21 +64,27 @@ class _InjectFdu:
             self.backends_built += 1
             return FduInventoryBackend(probe=self.probe)
 
-        runtime.create_inventory_backend = build  # type: ignore[attr-defined]
+        setattr(runtime, "create_inventory_backend", build)  # noqa: B010
+
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_protocol(self, item: Any, nextitem: Any) -> Generator[None]:
+        del nextitem
+        before = self.backends_built
+        yield
+        self.per_test[item.nodeid] = self.backends_built - before
 
     def pytest_runtest_logreport(self, report: Any) -> None:
+        if report.when != "call" and report.outcome == "failed":
+            self.phase_failures.append(
+                {"test": report.nodeid, "phase": report.when, "detail": str(report.longrepr)[-900:]}
+            )
         if report.when == "call" or (report.when == "setup" and report.outcome != "passed"):
-            detail = ""
-            if report.failed:
-                text = str(report.longrepr)
-                detail = text[-1500:]
             self.results.append(
                 {
                     "test": report.nodeid,
                     "phase": report.when,
                     "outcome": report.outcome,
-                    "detail": detail,
-                    "wall_time_s": round(report.duration, 3),
+                    "detail": str(report.longrepr)[-1500:] if report.failed else "",
                 }
             )
 
@@ -82,13 +93,15 @@ def run_selection(
     selection: tuple[str, ...], probe: AdapterProbe, *, inject: bool
 ) -> dict[str, object]:
     plugin = _InjectFdu(probe, inject=inject)
-    args = ["-q", "--tb=short", "-p", "no:cacheprovider", "-x" if False else "-q", *selection]
-    exit_code = pytest.main(args, plugins=[plugin])
+    exit_code = pytest.main(["-q", "--tb=short", "-p", "no:cacheprovider", *selection], plugins=[plugin])
+    for row in plugin.results:
+        row["fdu_backends_built"] = plugin.per_test.get(cast("str", row["test"]), 0)
     return {
         "injected": inject,
         "exit_code": int(exit_code),
         "selected": list(selection),
         "fdu_backends_built": plugin.backends_built,
+        "setup_or_teardown_failures": plugin.phase_failures,
         "results": plugin.results,
     }
 
@@ -99,5 +112,5 @@ if __name__ == "__main__":
     outcome = run_selection(selection, AdapterProbe(), inject=sys.argv[2:3] != ["python"])
     results = cast("list[dict[str, object]]", outcome["results"])
     for row in results:
-        print(row["outcome"], row["test"])
+        print(row["outcome"], row["fdu_backends_built"], row["test"])
     print("backends", outcome["fdu_backends_built"], "exit", outcome["exit_code"])

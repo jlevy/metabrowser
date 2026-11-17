@@ -96,18 +96,23 @@ class FallbackTotals:
 
 @dataclass(slots=True)
 class NativeTotals:
-    """Cumulative work for projections answered by one native fdu projection."""
+    """Projections answered by a native fdu projection, by kind.
+
+    One native read answers a whole bundle, so wall time is recorded per read
+    (``ProbeState.native_reads``), never apportioned to the kinds inside it.
+    """
 
     invocations: int = 0
-    native_calls: int = 0
     rows_returned: int = 0
-    wall_time_ns: int = 0
 
 
 @dataclass(slots=True)
 class ProbeState:
     fallbacks: dict[str, FallbackTotals] = field(default_factory=dict)
     native: dict[str, NativeTotals] = field(default_factory=dict)
+    native_reads: int = 0
+    native_read_wall_ns: int = 0
+    helper_reads: int = 0
     change_polls: int = 0
     change_batches: int = 0
     refreshes: int = 0
@@ -163,13 +168,16 @@ class AdapterProbe:
             totals.cpu_time_ns += cpu_time_ns
             totals.max_wall_time_ns = max(totals.max_wall_time_ns, wall_time_ns)
 
-    def native(self, kind: str, *, rows_returned: int, wall_time_ns: int) -> None:
+    def native(self, kind: str, *, rows_returned: int) -> None:
         with self._lock:
             totals = self._state.native.setdefault(kind, NativeTotals())
             totals.invocations += 1
-            totals.native_calls += 1
             totals.rows_returned += rows_returned
-            totals.wall_time_ns += wall_time_ns
+
+    def native_read(self, wall_time_ns: int) -> None:
+        with self._lock:
+            self._state.native_reads += 1
+            self._state.native_read_wall_ns += wall_time_ns
 
     def count(self, name: str, amount: int = 1) -> None:
         with self._lock:
@@ -200,6 +208,9 @@ class AdapterProbe:
                     for name, totals in sorted(state.fallbacks.items())
                 },
                 "native": {name: asdict(totals) for name, totals in sorted(state.native.items())},
+                "native_reads": state.native_reads,
+                "native_read_wall_ns": state.native_read_wall_ns,
+                "helper_reads": state.helper_reads,
                 "change_polls": state.change_polls,
                 "change_batches": state.change_batches,
                 "refreshes": state.refreshes,

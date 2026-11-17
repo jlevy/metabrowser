@@ -21,11 +21,11 @@ def install() -> None:
         sys.path.insert(0, str(_HERE))
     runtime = importlib.import_module("metabrowser.inventory_engine.runtime")
     original = runtime.create_inventory_backend
-    adapter = importlib.import_module("adapter")
 
     def create(provider: object = "python") -> object:
-        if str(provider).strip().lower() == adapter.PROVIDER_ID:
-            return adapter.FduInventoryBackend()
+        # Imported only when selected, so the Python arm never loads fdu's native module.
+        if str(provider).strip().lower() == "fdu":
+            return importlib.import_module("adapter").FduInventoryBackend()
         return original(provider)
 
     # The composition root's module attribute is the one seam; patched for this process.
