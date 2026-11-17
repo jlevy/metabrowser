@@ -5,7 +5,7 @@ title: CI takes ~20-25 minutes per push; assess end to end and design how to get
 kind: task
 status: in_progress
 priority: 1
-version: 20
+version: 21
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -27,7 +27,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T01:14:58.454Z
-updated_at: 2026-11-17T03:08:17.392Z
+updated_at: 2026-11-17T03:34:43.226Z
 started_at: 2026-11-17T01:15:52.976Z
 ---
 Owner, 2026-11-16: 'investigate why CI is taking so long. This is unacceptably slow for CI. CI should be something like 3 to 5 minutes, or else we should figure out ways to avoid extraneous checks except when they're appropriate. ... properly assess this end-to-end and what the proper engineering solution is to maintain the same levels of coverage but speed up our development velocity.' Deliverable: a research brief and plan PR with implementation beads; workflow-file changes need the owner's OK (no grant covers workflow files).
@@ -39,3 +39,5 @@ Owner, 2026-11-16: 'investigate why CI is taking so long. This is unacceptably s
 2026-11-16, owner decisions, relayed by the coordinating session and recorded in the plan at commit 1e6f437f4: Q1 approved (restructure ci.yml and add the nightly workflow, through reviewed pull requests); Q2 yes (pytest-xdist 3.8.0 and execnet 2.1.2 in the dev group); Q3 the serial tier on Python 3.13 for a pull request and on all four interpreters on main; Q5 yes, the owner sets a ruleset requiring ci-ok once the job exists. Q4, Q6, Q7, Q8 open. Phase 1 is implemented on branch claude/ci-parallel-tests and Phase 2 stacked on it.
 
 2026-11-17: owner decisions recorded on #496 at 1e6f437f4. Phase 1 not started (branch claude/ci-parallel-tests has no commits, not pushed). Sub-agent stopped for handoff (PR #497).
+
+2026-11-17 (2): #496 review A published (A1, A2 Medium); decisions in coordinator attic/coord/reviews/pr496-A-decisions.md; not addressed yet. Handoff PR #497.
