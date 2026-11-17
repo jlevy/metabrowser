@@ -236,7 +236,7 @@ observe(
 // key belongs to the document, but no presentation parameter exists yet, so the codec
 // must still treat the whole query as opaque data. Implementing the split means changing
 // these three observations deliberately rather than discovering the change downstream.
-// See docs/architecture.md#browser-url-grammar.
+// See docs/project/architecture/arch-views-models-routes.md#browser-url-grammar.
 observe(
   "reserved keys are carried, not yet interpreted",
   route.parse("/view/docs/a.md", "?_mb_view=source&plain=1", ""),

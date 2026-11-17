@@ -460,33 +460,35 @@
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
-    let identity = '<span class="git-commit-identity">';
-    identity += '<span class="git-commit-revision">';
-    identity += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    // The revision and its refs, `.git-commit-identity`: the commit's own identity, not its
+    // author's, which is the shell's `.actor-identity` below.
+    let revisionGroup = '<span class="git-commit-identity">';
+    revisionGroup += '<span class="git-commit-revision">';
+    revisionGroup += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
     if (compact) {
-      identity +=
+      revisionGroup +=
         '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +
         `${copyIcon()}</span>`;
     } else {
-      identity +=
+      revisionGroup +=
         '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
         ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
         (sdk()?.delegateOwnerAttribute() ?? "") +
         ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
         ` aria-label="Copy revision">${copyIcon()}</button>`;
     }
-    identity += "</span>";
+    revisionGroup += "</span>";
     if (commit.refs?.length) {
-      identity += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
+      revisionGroup += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
     }
-    identity += "</span>";
+    revisionGroup += "</span>";
     const author = commit.author?.name || "";
     const age =
       `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}"` +
       (compact ? "" : ` data-tip-text="${escapeHtml(exactTime(commit.committed_at))}"`) +
       `>${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
     if (compact) {
-      html += `<div class="git-commit-meta">${identity}`;
+      html += `<div class="git-commit-meta">${revisionGroup}`;
       html += `<span class="actor-name git-commit-author">${escapeHtml(author)}</span>${age}</div>`;
     } else {
       // The author as a pull request's header draws its author: the shell's identity, an
@@ -495,7 +497,7 @@
       html +=
         '<div class="git-commit-byline page-header-line">' +
         `${window.metabrowser.actorIdentityHtml(author, { nameClass: "git-commit-author" })}</div>`;
-      html += `<div class="git-commit-revision-line page-header-line">${identity}</div>`;
+      html += `<div class="git-commit-revision-line page-header-line">${revisionGroup}</div>`;
       html += `<div class="git-commit-ages page-header-line">Committed ${age}</div>`;
     }
     // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
@@ -505,7 +507,7 @@
     // summary's words and paint.
     html += compact
       ? renderCommitChangeStats(stats)
-      : `<div class="git-commit-diff-summary metabrowser-diff-host">${renderCommitTotals(stats)}</div>`;
+      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
@@ -2301,7 +2303,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
-    sdk()?.tooltip?.hide();
+    // The history's tooltip, and no other surface's: a rebuild of the panel must not take
+    // a Files row's from under the pointer (mb-alff).
+    sdk()?.tooltip?.hide(panelElement());
     hoverRevision = null;
   }
 
@@ -2736,7 +2740,7 @@
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes
     // the comparison layer instead of growing a diff surface of its own
-    // (arch-nav-containers.md, the general diff rendering plan).
+    // (arch-plugin-system.md, the general diff rendering plan).
     html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
     html += "</div>";
 

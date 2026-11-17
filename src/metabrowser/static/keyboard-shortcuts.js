@@ -23,6 +23,24 @@
    */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} ShortcutControlBinding */
   /**
+   * The descriptor contract. Every presented command declares a stable `id` and `scope`;
+   * semantic `bindings`, each one key with no modifier policy, and an explicit `repeat`
+   * policy; a `group` whose heading, context sentence, and order come from
+   * GROUP_DEFINITIONS; `copy` with a sentence-case action label and no terminal
+   * punctuation, an active-voice Help description ending in a period, and a compact hint
+   * of one to three words; and the `surfaces` where it appears and when they may show it.
+   * A command rendered as a control that opens a managed surface also supplies a
+   * `control` binding, which connects the trigger to its controlled element's ID, popup
+   * role, and expanded state and restores any prior state when disconnected, so no call
+   * site hand-writes the controls, popup, or expanded ARIA attributes; pointer
+   * invocation carries the trigger so an overlay can restore focus. The key formatter,
+   * not the descriptor, supplies abbreviations and glyphs. The registry rejects duplicate
+   * normalized bindings within a scope and incomplete copy for a requested surface;
+   * equivalent keys are aliases in one descriptor, and adjacent commands that share a
+   * compact hint are coalesced with "or". Full Help lists contextual commands even while
+   * their scope is inactive; compact hints list only the commands selected for that
+   * surface, and they leave, rather than look disabled, when their scope does.
+   *
    * @typedef {object} ShortcutCommand
    * @property {boolean} [allowInEditable]
    * @property {readonly ShortcutBinding[]} bindings

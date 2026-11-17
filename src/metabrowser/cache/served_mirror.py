@@ -6,9 +6,8 @@ the server reaches the store, its record, and its origin only through these meth
 
 The server learns one cache path from it, as text to show and never to open:
 :attr:`StoreMirror.display` says where the mirror is kept, beside the repository's name
-and its origin. A page that showed a commit ID where a folder shows its name, and said
-nowhere that its files came out of ``~/.cache/metabrowser``, hid both (decided 2026-10-01,
-``mb-fndz``).
+and its origin, so a mirror's page, like a folder's, says what it is called and where its
+files are kept.
 """
 
 from __future__ import annotations

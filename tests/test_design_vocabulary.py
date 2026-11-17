@@ -1126,10 +1126,12 @@ def test_git_commit_summary_is_one_component() -> None:
     assert (
         "html += compact\n"
         "      ? renderCommitChangeStats(stats)\n"
-        '      : `<div class="git-commit-diff-summary metabrowser-diff-host">'
+        '      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">'
         "${renderCommitTotals(stats)}</div>`;"
     ) in panel
-    assert panel.count('class="git-commit-diff-summary metabrowser-diff-host"') == 1
+    assert (
+        panel.count('class="git-commit-diff-summary metabrowser-diff-host page-header-line"') == 1
+    )
     assert 'preview.querySelector(".git-commit-diff-summary")' in panel
     commit_place = _rule(styles, ".git-commit-diff-summary")
     assert "flex-direction: column" in commit_place
@@ -1204,8 +1206,9 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
     """A commit's page and a pull request's have one header (mb-26zj, "Page Headers").
 
     Each is a `.page-header`, its title then its lines 6 px apart, and every line under the
-    title is a `.page-header-line` at `--body-font-size`, an age in it included, and the Diff
-    summary's header is that size too: the owner found the summary and the pull request's
+    title but the labels, a row of chips, is a `.page-header-line` at `--body-font-size`, an
+    age in it and the Diff summary's row included, whose header the diff plugin sets at the
+    same token: the owner found the summary and the pull request's
     rows of ages and status a step smaller than the lines above them (mb-kisi). No rule sets
     another size on a line or its text; a chip keeps its own (Branch Chips, Label Colors) and
     a revision its one step down. `tests/dom/page-header-chrome.mjs` reads the computed sizes
@@ -1239,14 +1242,18 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
             size = declarations.get("font-size")
             if size is not None and line.search(selector):
                 assert size == "var(--body-font-size)", (sheet.name, selector, size)
-    # Both pages write the classes: the commit summary on its page, and the pull request's
-    # header on every one of its lines but the labels, a row of chips.
+    # Both pages write the classes on every line under the title but the labels, a row of
+    # chips at a chip's size: the commit summary on its page, and the pull request's header,
+    # the Diff summary's row included on both (A1 of review A on #487). Which order they
+    # come in is held by tests/dom/git-panel-behavior.js for the commit page and by
+    # tests/dom/page-header-chrome.mjs for both.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert '`<div class="git-commit-header${compact ? "" : " page-header"}">`' in panel
     for written in (
         "'<div class=\"git-commit-byline page-header-line\">'",
-        '`<div class="git-commit-revision-line page-header-line">${identity}</div>`',
+        '`<div class="git-commit-revision-line page-header-line">${revisionGroup}</div>`',
         '`<div class="git-commit-ages page-header-line">Committed ${age}</div>`',
+        '`<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
     ):
         assert written in panel, written
     page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
@@ -1256,8 +1263,10 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "github-pull-branches",
         "github-pull-opened",
         "github-pull-status",
+        "github-pull-summary metabrowser-diff-host",
     ):
         assert f'class: "{row} page-header-line"' in page, row
+    assert 'class: "github-pull-labels"' in page, "the labels row is a row of chips"
 
 
 def test_a_person_is_one_identity_on_every_page() -> None:
@@ -1299,6 +1308,17 @@ def test_a_person_is_one_identity_on_every_page() -> None:
     assert shell[".actor-avatar"]["width"] == "var(--actor-avatar-size)"
     assert shell[".actor-avatar"]["border-radius"] == "var(--radius-circle)"
     assert shell[".actor-avatar"]["color"] == "var(--muted)", "the glyph is muted"
+    # The glyph takes the avatar's box, the second exception One Glyph Size names, at its
+    # rule and in the section (A3 of review A on #487).
+    fills = shell[".actor-avatar > :is(img, svg)"]
+    assert (fills["width"], fills["height"]) == ("100%", "100%")
+    glyph_size = doc[doc.index("### One Glyph Size") : doc.index("### Every Icon-Only Control")]
+    assert "`.actor-avatar > :is(img, svg)`" in glyph_size
+    # Lucide's license travels with the glyph, and NOTICE.md lists it with its release and
+    # commit (A2 of review A on #487).
+    assert "circle-user-round.svg, the person in an actor identity's box" in views
+    notice = (REPO_ROOT / "NOTICE.md").read_text(encoding="utf-8")
+    assert "`circle-user-round.svg`" in notice
 
 
 def test_navigation_tooltips_are_pointer_only() -> None:

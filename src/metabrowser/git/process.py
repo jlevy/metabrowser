@@ -1,7 +1,10 @@
 """Bounded ``git`` subprocess execution.
 
-The single place in the package that spawns a process. Every
-``/api/git/`` handler runs on a request path, so each invocation is
+The one place that starts a ``git`` process for serving, reading a store,
+and acquisition. The only other is ``build_version.py``, which asks a
+source checkout for its version once per process and never reads a
+served repository; ``tests/test_git_arch_doc.py`` holds that list.
+Every ``/api/git/`` handler runs on a request path, so each invocation is
 bounded on both axes that can hurt the server: wall clock, and how much
 output we are willing to buffer.
 
@@ -85,7 +88,9 @@ _STDERR_MAX_BYTES = 64 * 1024
 # unescaped in each parser.
 GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
-# Store reads must not apply the operator's mailmap to acquired objects.
+# Store reads must not apply the operator's mailmap to acquired objects. Measured
+# 2026-09-16 (explorations/repository-cache/README.md): with Git's defaults, history reads
+# loaded ``HEAD:.mailmap``, and with lazy fetch off they printed an error and exited 0.
 GIT_DISABLE_MAILMAP_ARGS: Final[tuple[str, ...]] = (
     "-c",
     "mailmap.blob=",
@@ -125,6 +130,8 @@ class GitProcessPolicy:
     timeout_s: float
     max_bytes: int
     stdin: Literal["inherit", "devnull", "pipe"]
+    # ``0o077`` for every spawn that writes a store: under umask ``022``, measured
+    # 2026-09-16, Git wrote store files other users could read.
     child_umask: int | None
     isolate_user_config: bool
     no_lazy_fetch: bool

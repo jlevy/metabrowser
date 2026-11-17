@@ -891,13 +891,13 @@ interface findings follow from current code and documented contracts.
 
 ## References
 
-- [State and delivery](../architecture/arch-state-and-delivery.md)
+- [State and delivery](../architecture/arch-live-delivery.md)
 - [File Rollup Format](../architecture/file-rollup-format/file-rollup-format.md)
 - [Views, models, and routes](../architecture/arch-views-models-routes.md)
 - [End-to-end load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)
 - [Load-time performance review](../reviews/review-2026-08-22-load-time-performance.md)
 - [Metabrowser performance loop](../../../explorations/performance-loop/README.md)
-- [Earlier high-performance rollup research](research-2026-08-06-file-rollup-engine.md)
+- [Earlier high-performance rollup research](archive/research-2026-08-06-file-rollup-engine.md)
 - [fdu pull request 44](https://github.com/jlevy/fdu/pull/44)
 - [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/64398b7/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
 - [fdu design principles](https://github.com/jlevy/fdu/blob/64398b7/docs/project/architecture/fdu-design-principles.md)

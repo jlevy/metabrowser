@@ -259,13 +259,15 @@ const MEASURE = `async (which, width) => {
   };
   // An avatar arriving in the box, in the glyph's place: a data image, so nothing is asked of
   // the network. Nothing moves: the name starts where it did, and every line keeps its place.
+  // The image is 40 px, as GitHub serves an avatar (s=40), and has no size of its own on the
+  // element, so only the box's own size holds it to 18 px: with the box unsized, the glyph and
+  // the image would lay out at their own sizes and the name would move (A4 of review A on
+  // #487).
   if (avatar) {
     const image = document.createElement("img");
     image.className = "actor-avatar-image";
     image.alt = "";
-    image.width = 18;
-    image.height = 18;
-    image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#8a8f98"/></svg>');
+    image.src = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#8a8f98"/></svg>');
     avatar.replaceChildren(image);
     await image.decode().catch(() => null);
     await frames();
@@ -344,6 +346,16 @@ async function main() {
             `${where}: every line under the ${name}'s title is at the body size`,
             off.length === 0 && page.lines.length >= 4,
             JSON.stringify(off.map((line) => [line.cls, line.size])),
+          );
+          // Each is a page header's line, the Diff summary's row among them; the labels, a
+          // row of chips, are the one row that is not (A1 of review A on #487).
+          const classless = page.lines.filter(
+            (line) => !labelsRow(line) && !line.cls.split(" ").includes("page-header-line"),
+          );
+          check(
+            `${where}: every line under the ${name}'s title but the labels is a page header line`,
+            classless.length === 0,
+            JSON.stringify(classless.map((line) => line.cls)),
           );
           const runs = textRuns(page);
           const small = runs.filter((run) => run.size !== body);

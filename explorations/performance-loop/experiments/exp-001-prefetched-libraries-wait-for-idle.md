@@ -132,8 +132,8 @@ treats the page as still loading until then, not that 3.1 seconds of work disapp
 
 **ACCEPTED, with its primary metric unmet.** The reader-facing measure did not move.
 What justifies keeping the change is the `load_ms` result and the tier policy in
-[docs/development.md](../../../docs/development.md#asset-loading-tiers), which already
-described this tier as fetched during idle while the code started it on
+[docs/development.md](../../../docs/project/architecture/arch-browser-shell.md#asset-loading-tiers),
+which already described this tier as fetched during idle while the code started it on
 `DOMContentLoaded`.
 
 Verified in a browser that a Python source view still renders `language-python hljs`:

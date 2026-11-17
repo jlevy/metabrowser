@@ -1,7 +1,7 @@
 """The nav-container contract, server side.
 
 A missing path whose nearest file ancestor is a container kind resolves
-to that kind's envelope for the virtual path (arch-nav-containers.md);
+to that kind's envelope for the virtual path (arch-plugin-system.md, "Containers");
 everything else keeps the ordinary not-found behavior. The diff plugin
 is the first container, so the cases run against real `.patch` files.
 """

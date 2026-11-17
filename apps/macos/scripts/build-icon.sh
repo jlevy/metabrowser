@@ -8,7 +8,8 @@
 # only the Swift toolchain and macOS frameworks.
 #
 # It also writes Sources/ShellCore/App/AppIconMarkGeometry.swift, the mark alone, which the
-# title bar draws.
+# title bar draws, and images/metabrowser-icon.png at the repository root, the release master
+# at 512 px, which the README shows.
 #
 # Usage: scripts/build-icon.sh [--check | --review] [--sister SISTER.svg]
 #   --check           only check that the renderer refuses every file in AppIcon/rejects/
@@ -97,6 +98,13 @@ icns() {
 }
 icns AppIcon/metabrowser-icon.svg Resources/AppIcon.icns
 icns AppIcon/metabrowser-icon-dev.svg Resources/AppIcon-Dev.icns
+
+# The README's icon: the release master, from the renderer that builds the .icns, so the two
+# change together. The README draws it smaller than 512 px, so it stays sharp on high-density
+# screens.
+readme_icon=../../images/metabrowser-icon.png
+"$work/render-svg" AppIcon/metabrowser-icon.svg "$readme_icon" 512
+echo "wrote $readme_icon"
 
 [[ "$review" == 1 ]] || exit 0
 

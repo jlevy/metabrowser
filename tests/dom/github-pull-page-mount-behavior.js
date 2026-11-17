@@ -197,6 +197,34 @@ const perf = {
     }
   },
 };
+// What a page reads of a comparison is kept for the document (mb-neg9), in module state that
+// outlives a mount. Each mount here is a fresh load of the page, with an empty keep, unless
+// it is mountScripted's revisit in the same document, so no story takes what another kept,
+// whatever order they run in (B10 of review B on #478).
+const comparisonPrefetchUrl = pathToFileURL(
+  path.join(root, "src/metabrowser/builtin_plugins/github/comparison-prefetch.js"),
+).href;
+
+/**
+ * The pull page module at *url*, whose `mountPullPage` mounts a fresh load of the page, its
+ * document's keep empty, and whose `revisitPullPage` mounts it again in the same document.
+ *
+ * @param {string} url
+ * @returns {Promise<Record<string, any>>}
+ */
+async function importPage(url) {
+  const page = await import(url);
+  const { documentComparisons } = await import(comparisonPrefetchUrl);
+  return {
+    ...page,
+    mountPullPage(...args) {
+      documentComparisons.clear();
+      return page.mountPullPage(...args);
+    },
+    revisitPullPage: page.mountPullPage,
+  };
+}
+
 async function settle() {
   for (let turn = 0; turn < 10; turn += 1) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -341,8 +369,8 @@ async function markdownOwnership() {
   for (const delayed of ["inert", "styles"]) {
     for (const transition of ["response", "replace", "metadata", "tab", "dispose"]) {
       // Kept renders and loaded styles belong to the module, so each story has its own.
-      const page = await import(
-        `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?${delayed}-${transition}`
+      const page = await importPage(
+        `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?${delayed}-${transition}`,
       );
       const timers = new Map();
       globalThis.document = {
@@ -1327,31 +1355,28 @@ async function headerShape(page) {
   handle.dispose();
 }
 
-/**
- * The production page mounted on a scripted diff view, its pull route answering what
- * `serve` gives it, and every timer and idle callback a task that `idle` runs.
- * *diff* says what the Changes diff does with each comparison it is asked to draw, by its
- * head and the how-manyth render it is: reads it, reads nothing, throws, which offers
- * the page's Retry, or is still reading. *cold* mounts it with no record in hand, as a direct load does.
- *
- * @param {Record<string, any>} page
- * @param {string} tab
- * @param {{read?: "answers" | "fails", summary?: "draws" | "declines", diff?: "reads" | "fails" | ((right: string, attempt: number) => "reads" | "fails" | "throws" | "waits"), body?: unknown, cold?: boolean, markdown?: "waits"}} [options]
- */
 // The recorded comparison's read, one object for every mount, so a revisit drawn from the
 // document's keep is told apart from another comparison's read.
 const SCRIPTED_RAW = { comparison: "read" };
 
+/**
+ * The production page mounted on a scripted diff view, its pull route answering what
+ * `serve` gives it, and every timer and idle callback a task that `idle` runs.
+ * *read* says whether the prefetch's read of a comparison answers or fails, and *summary*
+ * whether the diff view's summary draws or declines. *diff* says what the Changes diff does
+ * with each comparison it is asked to draw, by its head and the how-manyth render it is:
+ * reads it, reads nothing, throws, which offers the page's Retry, or is still reading.
+ * *body* is the record in hand, and *cold* mounts it with none, as a direct load does.
+ * *markdown* "waits" holds the description's Markdown unanswered. *revisit* mounts it again
+ * in the same document, keeping what earlier mounts read; any other mount is a fresh load,
+ * with an empty keep (`importPage`). *hidden* opens it out of sight, which `show` brings
+ * into view. With *routes*, the page opens its routes as pull-route.js's `open` answers.
+ *
+ * @param {Record<string, any>} page
+ * @param {string} tab
+ * @param {{read?: "answers" | "fails", summary?: "draws" | "declines", diff?: "reads" | "fails" | ((right: string, attempt: number) => "reads" | "fails" | "throws" | "waits"), body?: unknown, cold?: boolean, markdown?: "waits", revisit?: boolean, hidden?: boolean, routes?: boolean}} [options]
+ */
 async function mountScripted(page, tab, options = {}) {
-  // What a page reads is kept for the document (mb-neg9). Each mount here is a fresh load of
-  // the page, with an empty keep, unless it is a `revisit` in the same document.
-  const { documentComparisons } = await import(
-    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/comparison-prefetch.js"))
-      .href
-  );
-  if (options.revisit !== true) {
-    documentComparisons.clear();
-  }
   const tasks = [];
   const listeners = [];
   globalThis.document = {
@@ -1459,7 +1484,8 @@ async function mountScripted(page, tab, options = {}) {
   };
   const container = new Element("main");
   let handle = null;
-  handle = page.mountPullPage(
+  const mountPage = options.revisit === true ? page.revisitPullPage : page.mountPullPage;
+  handle = mountPage(
     container,
     {
       number: 7,
@@ -1579,8 +1605,20 @@ async function headerSummary(page) {
   assert.ok(conversation.row().classes.has("metabrowser-diff-host"), "with the diff's styles");
   tell("Conversation, the comparison not yet read", conversation.row());
   const placeholder = conversation.row().children[0];
+  // A repaint while the comparison is on its way keeps the placeholder, so its quiet period
+  // and pulse run once. Landing again on the tab shown repaints nothing, as the controller
+  // skips a model it has painted; a switch of tab repaints the page and runs no timer, so
+  // the comparison is still unread (B9 of review B on #478).
+  const paints = () => perfEntries.filter((label) => label === "githubPull:render").length;
+  const paintsBefore = paints();
+  window.location.pathname = "/pull/7/checks";
+  conversation.handle.land({ tab: "checks" });
+  await settle();
+  window.location.pathname = "/pull/7";
   conversation.handle.land({ tab: "" });
   await settle();
+  assert.equal(paints(), paintsBefore + 2, "each switch of tab repaints the page");
+  assert.equal(conversation.steps.reads, 0, "the comparison is still on its way");
   assert.equal(conversation.row().children[0], placeholder, "a repaint keeps the placeholder");
   conversation.idle();
   await settle();
@@ -1722,9 +1760,22 @@ async function headerSummary(page) {
   await settle();
   assert.deepEqual(refused.steps.summaries, []);
   tell("the read fails", refused.row());
-  refused.handle.land({ tab: "" });
-  await settle();
-  tell("a repaint after it failed", refused.row());
+  assert.equal(refused.steps.reads, 1);
+  // A failed read is asked for again at the page's next paint, which a poll that retitles
+  // the record is, and waited for again: landing on the tab shown is no paint (B9 of review B
+  // on #478).
+  const retitled = structuredClone(recorded.current.body);
+  retitled.record.pull.title = "Count to two in the app, retitled";
+  await refused.poll(retitled);
+  assert.equal(
+    refused.container.querySelector(".github-pull-title").children[1].textContent,
+    "Count to two in the app, retitled",
+    "the poll repainted the page",
+  );
+  tell("a repaint after it failed, its read asked again", refused.row());
+  await refused.idle();
+  assert.equal(refused.steps.reads, 2, "the repaint read the comparison again");
+  tell("that read fails too", refused.row());
   refused.handle.dispose();
 
   const declined = await mount("", { summary: "declines" });
@@ -1960,8 +2011,8 @@ async function run() {
     }
   };
   globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
-  const page = await import(
-    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
+  const page = await importPage(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href,
   );
   const initial = recorded.current;
   for (const failure of ["assets", "render"]) {

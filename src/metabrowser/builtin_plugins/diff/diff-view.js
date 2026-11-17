@@ -1447,6 +1447,21 @@ function summaryFiles(parts, paint, separator) {
 }
 
 /**
+ * The note of a list cut short at its bound, "(2,000 listed)": its figure a bold number,
+ * muted with the note, as a count summary's numbers are (docs/design-system.md, "Count
+ * Summaries Bold Their Numbers").
+ *
+ * @param {string} listed the number of files listed, formatted
+ * @param {(parts: MetabrowserCountParts) => Array<Node | string>} paint
+ * @returns {HTMLElement}
+ */
+function listedNote(listed, paint) {
+  const note = el("span", "diff-summary-note");
+  note.append(...paint(["(", { number: listed }, " listed)"]));
+  return note;
+}
+
+/**
  * What a Diff summary reads of what it heads: a diff's view (`summaryOwnerOf`), or a page that
  * draws the summary on its own (`mountDiffSummary`). *jump* goes to a changed file, through
  * the host's address where it has one, or in the diff.
@@ -1530,7 +1545,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
     parts.push(el("span", "diff-summary-note", "(estimated)"));
   }
   if (listed !== null) {
-    parts.push(el("span", "diff-summary-note", `(${listed} listed)`));
+    parts.push(listedNote(listed, paint.countPartsNodes));
   }
   if (rows.length === 0) {
     const line = el("div", "diff-summary");
@@ -1693,7 +1708,7 @@ function summaryOrTotals(totals, files, view, whole = null) {
     line.append(el("span", "diff-summary-note", "(estimated)"));
   }
   if (whole !== null) {
-    line.append(el("span", "diff-summary-note", `(${formatCount(files.length)} listed)`));
+    line.append(listedNote(formatCount(files.length), paint.countPartsNodes));
   }
   return { element: line, dispose: () => {} };
 }
@@ -3382,8 +3397,8 @@ export function mountDiffView(container, document_, api, options = {}) {
   }
   return {
     /**
-     * Go to the file a path names: see `FileJump`, and docs/large-content-rendering.md
-     * ("Going to a file") for what it promises.
+     * Go to the file a path names: see `FileJump`, and
+     * docs/project/architecture/arch-diff-pipeline.md, "Hydration", for what it promises.
      *
      * @param {string} path
      */

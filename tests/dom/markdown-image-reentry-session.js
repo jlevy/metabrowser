@@ -19,8 +19,8 @@
 // and forgets the least recently loaded past that.
 //
 // This checks attributes, their order, listeners, and the record, not loading or paint,
-// which are the engine's; the design-system section has the WebKit and Chrome
-// measurements.
+// which are the engine's; explorations/performance-loop/design-rule-measurements.md has
+// the WebKit and Chrome measurements.
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 

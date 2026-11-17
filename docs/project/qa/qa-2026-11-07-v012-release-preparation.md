@@ -422,7 +422,7 @@ The previous published release is 0.11.0. The preserved tag-built control wheel 
 its published SHA-256,
 `b099786f84408968df10296fdf7226218dd8853faf1cdb02a25787c5ab396e7f`. The
 [publishing checklist](../../publishing.md#release-checklist) defines the release gates
-and the [QA runbook](../../qa-v012-repository-library.md) defines the manual rows.
+and the [QA runbook](qa-2026-09-19-v012-repository-library.md) defines the manual rows.
 
 Measurements retain their exact application source and artifact identities.
 Historical loaded-host runs, interrupted captures and mixed-cache observations are not

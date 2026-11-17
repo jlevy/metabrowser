@@ -3862,7 +3862,9 @@ export function mountPullPage(container, ctx, mb) {
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
   // changed files. Its row is held from first paint, so the summary arriving with the
   // comparison moves nothing. Its class carries the diff plugin's styles for a summary.
-  const summaryRow = h("div", { class: "github-pull-summary metabrowser-diff-host" });
+  const summaryRow = h("div", {
+    class: "github-pull-summary metabrowser-diff-host page-header-line",
+  });
   // While the page waits for the comparison its summary is drawn from, the row holds the
   // shell's pending placeholder (mb-onr2): the navigation tally's gray block and slow pulse
   // (`.tally-pending`), after the quiet period (`.mb-delayed-loading`), where the summary's
@@ -5953,8 +5955,8 @@ export function mountPullPage(container, ctx, mb) {
   let wantedFile = null;
 
   /**
-   * Go to a file of the mounted diff. docs/large-content-rendering.md ("Going to a file")
-   * says what it promises.
+   * Go to a file of the mounted diff. docs/project/architecture/arch-diff-pipeline.md,
+   * "Hydration", says what it promises.
    *
    * @param {string} path
    * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
@@ -6865,7 +6867,7 @@ export function mountPullPage(container, ctx, mb) {
     },
     /**
      * Go to a file of Files changed, for a list of the pull request's files beside the page.
-     * docs/large-content-rendering.md ("Going to a file") says what it promises.
+     * docs/project/architecture/arch-diff-pipeline.md, "Hydration", says what it promises.
      *
      * @param {string} path
      * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}

@@ -27,7 +27,11 @@ run (a branch, a commit, "before"), ``--json`` to write it somewhere, and
 
 The client half -- request coalescing and validator behavior as the browser
 actually experiences them -- is not visible from here. ``--browser-probe``
-prints the in-page probe; see ``devtools/bench-browser-probe.js``.
+prints the in-page probe, ``devtools/bench-browser-probe.js``: load it in an open
+folder view and call ``await metabrowser.bench.run({clients: 8})``. It reads the
+``Server-Timing`` header every non-streaming route emits, because a request count
+cannot tell a shared computation from a repeated one, and reports per query shape whether
+validators work and what simultaneous clients cost.
 
 Usage::
 
@@ -39,7 +43,12 @@ Usage::
 
 Run the two on the same machine and the same corpus size; the absolute numbers
 move a lot with the filesystem and the page cache, and only the comparison
-carries over.
+carries over. A corpus is reused when it already matches ``--files``, and the
+corpus, server logs, and result JSON stay in ``.bench/``. Pass ``--metab`` on both
+sides to compare installed artifacts: the harness resolves the console script and
+records its ``--version`` output, so ``PATH`` order cannot change the build under
+test. Record the comparison in the pull request of any change to the walker, the
+derived index state, or the delivery layer.
 
 The corpus generators here are also what the load-time loop and the release
 comparison run on, which is easy to miss because that loop is otherwise a
@@ -1421,6 +1430,38 @@ def render_report(result: dict[str, Any], baseline: dict[str, Any] | None) -> st
     return "\n".join(lines)
 
 
+def render_markdown_summary(results: list[dict[str, Any]]) -> str:
+    """The baseline benchmark's table: one row per saved ``--json`` result.
+
+    Three figures a reader can compare across machines and inventory providers,
+    all from the scan with a client attached: when the first folder count
+    reached the wire, how long the scan took, and the highest server RSS the
+    harness sampled. ``make benchmark`` prints this; docs/scale-benchmark.md
+    records it.
+    """
+
+    lines = [
+        "| Provider | Files | First folder counts (s) | Scan with a client attached (s) "
+        "| Peak server RSS (MiB) |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+    for result in results:
+        attached = result.get("scan_with_client", {})
+        process = _phase_diagnostics(result, "scan_with_client").get("process", {})
+        peak_kb = process.get("peak_rss_kb")
+        peak_mib = round(peak_kb / 1024) if isinstance(peak_kb, int) else None
+        files = result.get("corpus", {}).get("files")
+        cells = (
+            _fmt(result.get("inventory", {}).get("provider")),
+            f"{files:,}" if isinstance(files, int) else _fmt(files),
+            _fmt(attached.get("first_count_s")),
+            _fmt(attached.get("wall_s")),
+            _fmt(peak_mib),
+        )
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 # Every corpus shape, by the name the CLI takes. Two of these existed with no
 # way to select them: the figures for scan ordering were measured on `project`,
 # and reproducing them meant importing this module and calling the generator by
@@ -1487,10 +1528,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print the in-page probe for the client-side half, then exit",
     )
+    parser.add_argument(
+        "--markdown",
+        type=Path,
+        nargs="+",
+        default=None,
+        metavar="RESULT_JSON",
+        help="print the baseline benchmark's Markdown table from saved --json results, then exit",
+    )
     args = parser.parse_args(argv)
 
     if args.browser_probe:
         print(PROBE_PATH.read_text())
+        return 0
+    if args.markdown is not None:
+        print(render_markdown_summary([json.loads(path.read_text()) for path in args.markdown]))
         return 0
 
     build = resolve_metab_build(args.metab)
