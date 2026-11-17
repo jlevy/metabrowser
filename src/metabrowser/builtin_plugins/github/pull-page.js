@@ -3254,7 +3254,10 @@ export function avatarUrl(value) {
     : null;
 }
 
-/** A decorative image accompanies the same visible actor, never a replacement name.
+/** An actor, as the shell draws every person (docs/design-system.md, "Actor Identity"): the
+ * SDK's identity, the avatar's box and then the bold name, with GitHub's avatar in the box
+ * where the record carries one that passes `avatarUrl`. The image is decorative beside the
+ * same visible name, never a replacement for it.
  *
  * When the image loads is its placement's (docs/design-system.md, "A Repaint Keeps Its
  * Images"). Lazy, the default, leaves an avatar the reader has not scrolled to unasked, as
@@ -3264,50 +3267,33 @@ export function avatarUrl(value) {
  * the network again, and when the header built its actor on every tab switch and poll the
  * unchanged avatar had no image for that round trip after each one.
  *
- * A Conversation card head passes `slot`: an author with no usable avatar then keeps the
- * avatar's empty box, so the name starts where its neighbors' names do and the timeline's
- * line meets the head where an avatar would be (docs/design-system.md, "Conversation
- * Timeline"). The header and Pulls rows leave the name where it is.
+ * An author with no usable avatar keeps the box, holding the shell's person glyph, in the
+ * header and on a Conversation card head: the name starts where it would beside an avatar,
+ * as a commit's author's does on its page, and the timeline's line meets the head where an
+ * avatar would be (docs/design-system.md, "Conversation Timeline"). A Pulls row passes
+ * `placeholder: false`, and its name stays where it is.
  *
+ * @param {MetabrowserPublicSdk} mb
  * @param {string} name
  * @param {unknown} url
  * @param {string} [className]
- * @param {{loading?: "lazy" | "eager", slot?: boolean}} [options]
+ * @param {{loading?: "lazy" | "eager", placeholder?: boolean}} [options]
+ * @returns {HTMLElement}
  */
-export function authorLabel(name, url, className = "", { loading = "lazy", slot = false } = {}) {
-  const label = h("span", { class: "github-pull-identity" });
-  const safe = avatarUrl(url);
-  if (safe === null && slot) {
-    label.append(h("span", { class: "github-pull-avatar-slot", "aria-hidden": "true" }));
-  } else if (safe !== null) {
-    const image = h("img", {
-      class: "github-pull-avatar",
-      alt: "",
-      width: "18",
-      height: "18",
-      loading,
-      decoding: "async",
-      fetchpriority: "low",
-      crossorigin: "anonymous",
-      referrerpolicy: "no-referrer",
-    });
-    // A broken image keeps its fixed slot while the name remains immediately readable.
-    image.addEventListener(
-      "error",
-      () => {
-        image.style.visibility = "hidden";
-      },
-      { once: true },
-    );
-    image.setAttribute("src", safe);
-    label.append(image);
-  }
-  label.append(
-    h("strong", { class: `actor-name github-pull-author${className ? ` ${className}` : ""}` }, [
-      name,
-    ]),
-  );
-  return label;
+export function authorLabel(
+  mb,
+  name,
+  url,
+  className = "",
+  { loading = "lazy", placeholder = true } = {},
+) {
+  return mb.actorIdentity(name, {
+    avatar: avatarUrl(url),
+    loading,
+    placeholder,
+    className: "github-pull-identity",
+    nameClass: `github-pull-author${className ? ` ${className}` : ""}`,
+  });
 }
 
 /** Whether a destination is this exact known pull request, including its subpages.
@@ -3833,7 +3819,10 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  const header = h("div", { class: "github-pull-header page-reading-column" });
+  // A page header, as a commit's summary is (docs/design-system.md, "Page Headers"): the
+  // title, then lines at the body size, 6 px apart, the author's first and the Diff summary
+  // last, in the order a commit's page has the parts the two share.
+  const header = h("div", { class: "github-pull-header page-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
   // line each, so nothing that arrives later, a stack, a label's color, a Refresh, moves the
@@ -3859,18 +3848,23 @@ export function mountPullPage(container, ctx, mb) {
   const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
-  const stateRow = h("div", { class: "github-pull-meta" }, [stateDetails, stackColumn]);
+  const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [
+    stateDetails,
+    stackColumn,
+  ]);
   // The head and base branches, on a line of their own under the author's sentence: a line
   // tall, the merge's arrow's, while no record is shown too.
-  const branchesRow = h("div", { class: "github-pull-branches" });
+  const branchesRow = h("div", { class: "github-pull-branches page-header-line" });
   // The pull request's state leads the row of its ages: its badge, then when it was
   // opened, updated, merged, or closed.
-  const openedRow = h("div", { class: "github-pull-opened" });
+  const openedRow = h("div", { class: "github-pull-opened page-header-line" });
   // The pull request's Diff summary, the header's last row, above the tabs and on every one
   // of them (mb-pb35): its header the change set's file and line totals, its tree the
   // changed files. Its row is held from first paint, so the summary arriving with the
   // comparison moves nothing. Its class carries the diff plugin's styles for a summary.
-  const summaryRow = h("div", { class: "github-pull-summary metabrowser-diff-host" });
+  const summaryRow = h("div", {
+    class: "github-pull-summary metabrowser-diff-host page-header-line",
+  });
   // While the page waits for the comparison its summary is drawn from, the row holds the
   // shell's pending placeholder (mb-onr2): the navigation tally's gray block and slow pulse
   // (`.tally-pending`), after the quiet period (`.mb-delayed-loading`), where the summary's
@@ -3891,7 +3885,7 @@ export function mountPullPage(container, ctx, mb) {
   // It is one of the header's metadata lines, under the row of ages and as tall as it: its
   // controls are text actions, a line tall (mb-2u08).
   const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
-  const status = h("div", { class: "github-pull-status" }, [freshnessLine]);
+  const status = h("div", { class: "github-pull-status page-header-line" }, [freshnessLine]);
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;
   let stackIndex = createStackIndex(null);
@@ -4633,7 +4627,7 @@ export function mountPullPage(container, ctx, mb) {
         ? []
         : [
             headerPart("identity", [actor, pull.actorAvatar], () =>
-              authorLabel(actor, pull.actorAvatar, "", { loading: "eager" }),
+              authorLabel(mb, actor, pull.actorAvatar, "", { loading: "eager" }),
             ),
           ]),
       headerPart("action", [actor === null, pull.action], () =>
@@ -5284,7 +5278,7 @@ export function mountPullPage(container, ctx, mb) {
       () =>
         h("section", { class: "page-card github-pull-card github-pull-event" }, [
           h("div", { class: "github-pull-card-head" }, [
-            authorLabel(pull.author, pull.avatar, "", { slot: true }),
+            authorLabel(mb, pull.author, pull.avatar),
             " opened ",
             age(pull.created),
           ]),
@@ -5308,7 +5302,7 @@ export function mountPullPage(container, ctx, mb) {
     for (const item of model.corePreview ? [] : model.timeline) {
       const card = section(["card", pull.state, item], () => {
         const head = h("div", { class: "github-pull-card-head" }, [
-          authorLabel(item.author, item.avatar, "", { slot: true }),
+          authorLabel(mb, item.author, item.avatar),
         ]);
         // Every event's heading reads alike: the author, a plain verb, and the age, and a
         // review's chip after them only for a state its verb does not say (mb-novh).
@@ -5418,7 +5412,7 @@ export function mountPullPage(container, ctx, mb) {
         comment.outdated ? " " : "",
         comment.outdated ? badge("outdated", "outdated", "review") : null,
         " ",
-        authorLabel(comment.author, comment.avatar),
+        authorLabel(mb, comment.author, comment.avatar),
         ` ${comment.reply ? "replied" : "commented"} `,
         age(comment.at),
       ]);

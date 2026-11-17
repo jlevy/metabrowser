@@ -93,6 +93,8 @@ The header gives the title and number; the author’s sentence, such as “octo 
 merge 2 commits”, with any stack button at its end; the head and base branches on a line
 of their own, head → base; the state and dates, with **View on GitHub**; and the labels,
 each in the color GitHub gives it, with its description, if any, shown on hover.
+The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
+where GitHub gave none, as on a commit’s page; a Pulls row shows none.
 Its last row is the **Diff summary**, on every tab, collapsed: the files and lines
 changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”, which opens into
 the tree of changed files with rolled-up line counts, and a file there opens **Changes**

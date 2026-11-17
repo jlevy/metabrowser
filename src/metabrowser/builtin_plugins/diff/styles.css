@@ -50,14 +50,18 @@
 /* The Diff summary (diff-summary.js): a multi-file diff's header, which says what the change
    set holds and is the disclosure toggle of its files as a tree by folder. The header is a
    row-like trigger, so it leads with the registry's chevron in the tree's icon slot. Its text
-   is one size, so its parts share a line box and need no baseline opt-in. */
+   is one size, so its parts share a line box and need no baseline opt-in. That size is the
+   body's, the size of every line under a page's title it is drawn among (docs/design-system.md,
+   "Page Headers"), and the same in a patch's toolbar: it was the navigation rows' 13 px, a
+   step smaller than the lines above it on a commit's page and in a pull request's header. Its
+   tree's rows keep the navigation rows' size. */
 .metabrowser-diff-host .diff-summary {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   min-width: 0;
   column-gap: 6px;
-  font-size: var(--nav-font-size);
+  font-size: var(--body-font-size);
   color: var(--text);
 }
 
