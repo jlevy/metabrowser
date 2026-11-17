@@ -677,6 +677,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "G: showed Changes",
             "disposed: keys none",
         ],
+        # Browse code's switch is the diff plugin's, in a module it loads on demand: the
+        # plugin's assets or that module not loading is said as a failed request, and asks
+        # the server nothing (A3 of review A on #511).
+        "switchUnavailable": [
+            "the diff plugin's assets not loading: The switch request failed.; asked nothing",
+            "the switch module not loading: The switch request failed.; asked nothing",
+        ],
     }
 
 

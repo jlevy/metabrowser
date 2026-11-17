@@ -6718,19 +6718,25 @@ export function mountPullPage(container, ctx, mb) {
       },
       reload: () => window.location.reload(),
       // The diff plugin's one switch, which this page's Changes uses too, so a View on
-      // branch and a Browse code never race, and both say a refusal in the same words.
+      // branch and a Browse code never race, and both say a refusal in the same words. The
+      // switch is in a module the diff plugin loads on demand, so the plugin's assets, or
+      // that module, failing to load is said as a failed request, never left unhandled.
       async switchPin(selection, wanted) {
+        const failed = /** @type {const} */ ({
+          kind: "refused",
+          message: "The switch request failed.",
+        });
         try {
           await mb.ensureKindAssets("diff");
+          const view = /** @type {{switchPin?: PullDependencies["switchPin"]} | null} */ (
+            mb.getRegisteredView("diff", "diff")
+          );
+          return typeof view?.switchPin === "function"
+            ? await view.switchPin(selection, wanted)
+            : failed;
         } catch {
-          return { kind: "refused", message: "The switch request failed." };
+          return failed;
         }
-        const view = /** @type {{switchPin?: PullDependencies["switchPin"]} | null} */ (
-          mb.getRegisteredView("diff", "diff")
-        );
-        return typeof view?.switchPin === "function"
-          ? view.switchPin(selection, wanted)
-          : { kind: "refused", message: "The switch request failed." };
       },
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
