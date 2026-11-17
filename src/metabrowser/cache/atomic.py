@@ -30,6 +30,7 @@ from metabrowser.cache.contracts import (
 )
 from metabrowser.cache.locks import CacheLock, LockOrderError
 from metabrowser.home import (
+    PrivateStorageError,
     SharedEntryPolicy,
     ensure_private_directory,
     open_private_file,
@@ -41,6 +42,13 @@ from metabrowser.plugin_loader.artifact_contracts import serialize_artifact, val
 # The largest f01 record in the conformance corpus is under 1 KiB; the bound only stops a
 # corrupted or substituted file from being parsed at any size.
 MAX_RECORD_BYTES: Final = 64 * 1024
+# How many times a read opens a record that is republished, by rename, while it is opened.
+# Measured 2026-11-17 on a 4-CPU Linux container with six busy loops beside it: a thread
+# republished one record with write_private_file_atomic in a tight loop, far more often
+# than any Metabrowser writer, while another read it. Of 100,000 reads, 351 needed two
+# opens, 13 three, and 1 four; unloaded, 1 needed three. A writer that never stops is
+# refused after this many.
+MAX_READ_OPENS: Final = 4
 
 
 class RecordError(Exception):
@@ -65,10 +73,11 @@ def read_bytes_bounded(
 
     *shared* is passed to :func:`~metabrowser.home.open_private_file`: a caller that must
     change nothing, such as a read route, passes ``"refuse"`` so a shared record is
-    reported rather than tightened.
+    reported rather than tightened. A record republished while it is opened is opened
+    again, up to :data:`MAX_READ_OPENS` times, so a read sees the old record or the new.
     """
 
-    fd = open_private_file(home, relative_path, os.O_RDONLY | os.O_NONBLOCK, shared=shared)
+    fd = _open_record(home, relative_path, shared)
     try:
         if os.fstat(fd).st_size > max_bytes:
             raise RecordError("the record is larger than any valid record", home / relative_path)
@@ -86,6 +95,21 @@ def read_bytes_bounded(
     if len(data) > max_bytes:
         raise RecordError("the record is larger than any valid record", home / relative_path)
     return data
+
+
+def _open_record(home: Path, relative_path: str, shared: SharedEntryPolicy) -> int:
+    for opens in range(1, MAX_READ_OPENS + 1):
+        try:
+            return open_private_file(
+                home, relative_path, os.O_RDONLY | os.O_NONBLOCK, shared=shared
+            )
+        except PrivateStorageError as exc:
+            # A writer renamed a newer record into place while this open checked the old
+            # one. Opening again judges the newer one in full, as a read begun a moment
+            # later would have.
+            if not exc.replaced or opens == MAX_READ_OPENS:
+                raise
+    raise AssertionError("unreachable")
 
 
 def parse_record(payload: bytes, contract_id: str, path: Path) -> BaseModel:
@@ -189,6 +213,7 @@ def _sync(directory: Path) -> None:
 
 
 __all__ = [
+    "MAX_READ_OPENS",
     "MAX_RECORD_BYTES",
     "RecordError",
     "parse_record",
