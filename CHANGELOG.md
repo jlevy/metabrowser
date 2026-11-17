@@ -4,6 +4,26 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A cached record read at the moment a refresh rewrites it is no longer taken as
+  missing. The storage checks refuse a file that is replaced while they check it; a read
+  of a record now opens the rewritten one and checks it again, so it reads the old
+  record or the new. Before, a pull request’s changed files read at that moment could say
+  that no refresh had ended and that the list was current, though the last refresh had
+  ended `account_changed` and the list was stale, and the list itself could read as
+  unreadable. The answer to a request that starts a refresh of the changed files
+  (`/api/plugin/github/pull-files-refresh`) or of the list of pull requests
+  (`/api/plugin/github/pulls-refresh`) now shows the list as that refresh found it; it
+  could show the refresh’s own outcome when the refresh ended at once, as one with no
+  `gh` does.
+
+- On Python 3.12, `metab --api` asking the diff plugin for a Git comparison could,
+  rarely, hang without answering when Git failed to list it.
+  The check for a textconv driver that runs beside the listing was left running, and
+  Python 3.12 could wait forever, on its way out, for that check’s Git.
+  Now whichever of the two fails first stops the other, and its Git, before the
+  comparison answers, so a failed check no longer leaves the listing’s `git diff`
+  running either.
+
 - The Files panel’s totals no longer move the tree when the count of ignored files
   arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
   ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
