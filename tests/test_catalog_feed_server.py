@@ -45,6 +45,7 @@ from metabrowser.inventory_engine.contract import (
     RefreshObservation,
     RefreshRequest,
 )
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
 from tests.inventory_harness import inventory_harness, wait_until_settled
 
 
@@ -116,32 +117,18 @@ def test_api_catalog_lists_the_complete_nonignored_file_universe(tmp_path: Path)
     assert body["truncated"] is False
 
 
-def test_api_catalog_is_incomplete_while_discovery_is_blocked(
-    tmp_path: Path,
-    monkeypatch: Any,
-) -> None:
-    from metabrowser.inventory_engine.providers import python_inventory as python_provider
-
-    started = asyncio.Event()
-    release = asyncio.Event()
-    original_walk = python_provider.walk_tree
-
-    async def blocked_walk(*args: Any, **kwargs: Any):
-        started.set()
-        await release.wait()
-        async for entry in original_walk(*args, **kwargs):
-            yield entry
-
-    monkeypatch.setattr(python_provider, "walk_tree", blocked_walk)
+def test_api_catalog_is_incomplete_while_discovery_is_blocked(tmp_path: Path) -> None:
+    gate = DiscoveryGate(before="")
 
     async def run() -> dict[str, Any]:
-        async with inventory_harness(tmp_path, settle=False) as harness:
-            await asyncio.wait_for(started.wait(), timeout=1)
+        seams = ProviderSeams(discovery_gate=gate)
+        async with inventory_harness(tmp_path, settle=False, seams=seams) as harness:
+            await asyncio.wait_for(gate.wait_reached(), timeout=1)
             try:
                 response = await api_catalog(cast(Any, _FakeRequest(harness.app)))
                 return _body(response)
             finally:
-                release.set()
+                gate.release()
 
     body = asyncio.run(run())
     assert body["complete"] is False
@@ -398,26 +385,18 @@ def test_catalog_change_passes_depth_scope_filter() -> None:
     assert _filter_event_for_scope(event, "root-depth-2") is event
 
 
-def test_walker_completion_projects_capability_update(
-    tmp_path: Path,
-    monkeypatch: Any,
-) -> None:
-    from metabrowser.inventory_engine.providers import python_inventory as python_provider
-
+def test_walker_completion_projects_capability_update(tmp_path: Path) -> None:
     for index in range(30):
         (tmp_path / f"file-{index}.txt").write_text("x")
-    original_walk = python_provider.walk_tree
-
-    async def slow_walk(*args: Any, **kwargs: Any):
-        async for entry in original_walk(*args, **kwargs):
-            yield entry
-            await asyncio.sleep(0.001)
-
-    monkeypatch.setattr(python_provider, "walk_tree", slow_walk)
+    # Discovery is held until the connection is attached, so its completion, which the
+    # connection must see, cannot happen first.
+    gate = DiscoveryGate(before="")
 
     async def run() -> CapabilityUpdate:
-        async with inventory_harness(tmp_path, settle=False) as harness:
+        seams = ProviderSeams(discovery_gate=gate)
+        async with inventory_harness(tmp_path, settle=False, seams=seams) as harness:
             queue = harness.bus.attach_connection()
+            gate.release()
             try:
                 await wait_until_settled(harness.runtime)
                 while True:

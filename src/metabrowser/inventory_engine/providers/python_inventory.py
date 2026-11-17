@@ -110,6 +110,7 @@ from metabrowser.inventory_engine.contract import (
     inventory_scope_fingerprint,
     native_inventory_path,
 )
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
 from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
@@ -912,10 +913,18 @@ class _PythonInventoryStore:
         self,
         *,
         config: InventoryConfig | None = None,
+        seams: ProviderSeams | None = None,
     ) -> None:
         if config is None:
             config = InventoryConfig()
+        if seams is None:
+            seams = ProviderSeams()
         self._config = config
+        self._discovery_gate: DiscoveryGate | None = seams.discovery_gate
+        # The rows `_page_memos` may hold at once (`_retain_page_memo_locked`).
+        self._max_retained_rows = (
+            MAX_ASSEMBLED_ROWS if seams.max_retained_rows is None else seams.max_retained_rows
+        )
         self._session = uuid.uuid4().hex
         self._scope_fingerprint = inventory_scope_fingerprint(config)
         self._closed = False
@@ -1772,18 +1781,19 @@ class _PythonInventoryStore:
         memo_rows = len(memo.records) if isinstance(memo, _CatalogPageMemo) else len(memo.rows)
         if memo_rows > MAX_ASSEMBLED_ROWS:  # pragma: no cover - query validation prevents it
             raise ValueError("page memo exceeds the provider row bound")
+        max_retained_rows = self._max_retained_rows
         retained_rows = sum(
             len(retained.records) if isinstance(retained, _CatalogPageMemo) else len(retained.rows)
             for retained in self._page_memos.values()
         )
         while self._page_memos and (
             len(self._page_memos) >= _PAGE_MEMO_CAPACITY
-            or retained_rows + memo_rows > MAX_ASSEMBLED_ROWS
+            or retained_rows + memo_rows > max_retained_rows
         ):
             reason = (
                 f"the provider retains at most {_PAGE_MEMO_CAPACITY} continuations"
                 if len(self._page_memos) >= _PAGE_MEMO_CAPACITY
-                else f"retained continuations reached {MAX_ASSEMBLED_ROWS:,} rows"
+                else f"retained continuations reached {max_retained_rows:,} rows"
             )
             evicted = self._page_memos.pop(next(iter(self._page_memos)))
             retained_rows -= (
@@ -3895,12 +3905,14 @@ class _PythonInventoryStore:
                     cancel_event=cancel_event,
                 )
             )
+            gate = self._discovery_gate
             async for observation in walk_tree(
                 root,
                 max_depth=None,
                 max_files=self._max_files,
                 gitignore_check=gi_check,
                 hidden_allowlist=self._config.hidden_allowlist,
+                before_scan=gate.hold if gate is not None else None,
             ):
                 entry = _internal_entry(observation)
                 if entry.type == "dir" and entry.total_files is None:
@@ -4516,7 +4528,15 @@ class _PythonInventoryStore:
 
 
 class PythonInventoryBackend:
-    """Construct one Python reference-provider handle per served root."""
+    """Construct one Python reference-provider handle per served root.
+
+    *seams* (`inventory_engine/seams.py`) apply to every handle this backend opens: the
+    discovery gate holds the boot walk before it scans the gate's directory, and the
+    retained-row bound replaces `MAX_ASSEMBLED_ROWS` for continuations.
+    """
+
+    def __init__(self, *, seams: ProviderSeams | None = None) -> None:
+        self._seams = seams if seams is not None else ProviderSeams()
 
     async def open(
         self,
@@ -4524,7 +4544,7 @@ class PythonInventoryBackend:
         config: InventoryConfig,
     ) -> InventoryHandle:
         canonical_root = await asyncio.to_thread(root.resolve)
-        store = _PythonInventoryStore(config=config)
+        store = _PythonInventoryStore(config=config, seams=self._seams)
         watcher = store.start_watcher(canonical_root)
         if watcher is not None:
             try:

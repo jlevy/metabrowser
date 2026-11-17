@@ -43,6 +43,10 @@ and read projection for one root.
 - **Delivery.** `_run_walker` groups stored entries into changes of `WALKER_EMIT_BATCH`
   ops, so the first walk produces a bounded number of change batches rather than one per
   file.
+- **The discovery gate.** `_run_walker` passes a `DiscoveryGate`’s `hold` to `walk_tree`
+  as `before_scan`, which the walker awaits once per directory, before its scandir, so a
+  held walk has published every placeholder level order reached before the gate.
+  Watcher rewalks pass no gate.
 
 How long a walk takes depends on the tree and the filesystem, slower on network mounts;
 [Scale Benchmark](../../scale-benchmark.md) measures it on synthetic trees.
@@ -174,10 +178,11 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
   identity per store, so a tag never repeats for different content across roots or
   handles.
 - **Continuations** are retained in `_page_memos`, bounded by `_PAGE_MEMO_CAPACITY` and
-  `MAX_ASSEMBLED_ROWS`. A page consumes its single-use cursor, and eviction raises
-  `VersionUnavailableError`, whose message names the eviction for a cursor among the
-  last `_EVICTED_PAGE_TOKEN_MEMORY` evicted, so it does not read as a change to the
-  files. A grouped tree retains every outrunning group’s rows at once, against the
+  `MAX_ASSEMBLED_ROWS`, or the lower `ProviderSeams.max_retained_rows` a test passes.
+  A page consumes its single-use cursor, and eviction raises `VersionUnavailableError`,
+  whose message names the eviction for a cursor among the last
+  `_EVICTED_PAGE_TOKEN_MEMORY` evicted, so it does not read as a change to the files.
+  A grouped tree retains every outrunning group’s rows at once, against the
   `MAX_ASSEMBLED_ROWS` bound that every continuation shares, which is why `/api/tree`
   admits one grouped assembly at a time per runtime
   (`InventoryRuntime.grouped_tree_admission`) and overlapping grouped reads take turns

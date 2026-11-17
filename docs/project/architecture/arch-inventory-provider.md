@@ -414,6 +414,35 @@ one reports unavailability rather than reconstructing cursor authority from call
 A typed work-limit result does not consume a continuation, so a caller can retry the
 same version and token with an adequate bound; a successfully returned page does.
 
+## Test and Measurement Seams
+
+A product test that needs a provider held at a known point asks the provider through the
+contract rather than patching one provider’s internals, so the suites run unchanged
+against any provider.
+`ProviderSeams` (`inventory_engine/seams.py`) reaches a backend through its constructor,
+by way of `create_inventory_backend(..., seams=)` and `InventoryRuntime(seams=)`, and
+never through `InventoryConfig`, because a seam changes neither scope nor semantics.
+The application lifespan passes none.
+
+- **A discovery gate.** `DiscoveryGate(before=path)` holds opening discovery before it
+  lists that directory until `release()`, and reports `reached` when it arrives there.
+  `before=""` holds discovery before anything below the root is listed; a deeper path
+  lets level order publish everything it reaches first, which scripts a partially
+  discovered tree. A held provider answers reads, reports `discovering`, and closes
+  promptly.
+- **A retained-row bound.** `max_retained_rows` lowers the bound on rows retained for
+  continuations below `MAX_ASSEMBLED_ROWS`, so a test reaches the eviction a large tree
+  reaches.
+
+`tests/test_inventory_seams.py` holds the selected provider to both.
+Two more seams live only in the tests.
+Route tests count and hold rollup passes as the coordinated reads that carry a
+`RollupQuery`, which measures the host’s coalescing whichever provider aggregates.
+`tests/perturbed_provider.py` wraps any backend and changes only its granularity and
+identity, or injects a fault, to reproduce over the Python provider host behavior that a
+provider with different commit granularity exposes; `InventoryRuntime(backend=)` accepts
+such a wrapped backend.
+
 ## Adding a Provider
 
 Only the sealed factory imports a concrete provider; routes, browser-event projection,
@@ -425,10 +454,12 @@ A new provider:
 2. passes the registry below with `METABROWSER_INVENTORY_PROVIDER` naming it, which is
    how `PROVIDER_FACTORIES` in `tests/test_inventory_provider_contract.py` selects it,
    and the product suites and goldens the same way;
-3. adds an engine document beside
+3. implements the [test and measurement seams](#test-and-measurement-seams), which
+   `tests/test_inventory_seams.py` and the product suites hold it to;
+4. adds an engine document beside
    [Python Inventory Engine](arch-inventory-engine-python.md) with its walker,
    concurrency, observer, retained state, and unit costs; and
-4. reruns the serving benchmark with `--provider` and records the result in
+5. reruns the serving benchmark with `--provider` and records the result in
    [Scale Benchmark](../../scale-benchmark.md).
 
 Nothing above this contract changes, with one exception: `metab --walk` (`walk.py`)

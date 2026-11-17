@@ -30,7 +30,7 @@ import logging
 import os
 import stat as stat_module
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Collection
+from collections.abc import AsyncIterator, Awaitable, Callable, Collection
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
@@ -218,6 +218,7 @@ async def walk_tree(
     max_files: int | None = DEFAULT_MAX_FILES,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
     hidden_allowlist: Collection[str] | None = None,
+    before_scan: Callable[[str], Awaitable[None]] | None = None,
 ) -> AsyncIterator[FsEntry]:
     """BFS the filesystem rooted at *root*; yield ``FsEntry``
     records as the tree is discovered and as directories finalize.
@@ -244,6 +245,11 @@ async def walk_tree(
     of re-deriving on every request. Callers that don't have a
     checker handy (tests, file-system scopes outside a git repo)
     pass None and entries land with ``gitignored=False``.
+
+    *before_scan*, when given, is awaited with each directory's canonical
+    path, relative to *root*, immediately before that directory is read:
+    once per directory, never per entry. The provider passes its
+    `DiscoveryGate` here (`inventory_engine/seams.py`).
 
     Tests drive this with ``async for entry in walk_tree(...): ...``
     and can interrupt by breaking out of the loop. The generator
@@ -393,6 +399,8 @@ async def walk_tree(
                 yield entry
             continue
 
+        if before_scan is not None:
+            await before_scan(rel_path_cur)
         # Read directory in a worker thread; blocking call.
         try:
             child_entries = await asyncio.to_thread(

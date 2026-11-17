@@ -1,4 +1,4 @@
-"""End-to-end tests for Python-inventory-backed API behavior.
+"""End-to-end tests for inventory-backed API behavior.
 
 * ``api_tree`` uses the inventory path when the index has data;
   the response carries ``tally_cache_status`` reflecting walker
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
 
@@ -37,12 +36,11 @@ from metabrowser.inventory_engine.contract import (
     EntryQuery,
     FilteredTreeQuery,
     GroupedTreeQuery,
-    InventoryEntry,
     ReadRequest,
     VersionUnavailableError,
 )
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, InventoryReadSession
-from metabrowser.inventory_engine.providers import python_inventory
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
 from metabrowser.settings import INVENTORY_MAX_FILES, INVENTORY_TREE_PAGE_ROWS
 from tests.inventory_harness import inventory_harness
 
@@ -329,9 +327,10 @@ def test_api_tree_group_by_reads_overlapping_wide_groupings_without_missing_a_pa
     continuations, take turns, so none evicts another's pages (mb-ub75).
 
     The provider keeps one grouped read's continuations within `MAX_ASSEMBLED_ROWS`, here
-    lowered to exactly what one read retains, so a second read retaining its own beside
-    it would evict the first's. Each read's first pass is held until every grouped pass
-    already begun has retained its pages, as passes that take seconds overlap."""
+    lowered through `ProviderSeams.max_retained_rows` to exactly what one read retains, so
+    a second read retaining its own beside it would evict the first's. Each read's first
+    pass is held until every grouped pass already begun has retained its pages, as passes
+    that take seconds overlap."""
 
     _build_fixture(tmp_path)
     for folder, extension in (("docs", ".md"), ("src", ".py"), ("data", ".json")):
@@ -365,34 +364,35 @@ def test_api_tree_group_by_reads_overlapping_wide_groupings_without_missing_a_pa
                 )
         return read
 
+    async def grouped(harness: Any) -> Any:
+        return await proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
+
     async def run() -> tuple[dict[str, Any], list[Any]]:
         paths_safe._set_root_dir(tmp_path)
         async with inventory_harness(tmp_path) as harness:
-            alone = await proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
-            body = json.loads(bytes(alone.body))
-            retained = sum(
-                count
-                for group in body["groups"]
-                if (count := len(_tree_paths(group["tree"]))) > page_rows
-            )
-            # One row less, and a read evicts its own pages: it says so when it gives up.
-            monkeypatch.setattr(python_inventory, "MAX_ASSEMBLED_ROWS", retained - 1)
+            body = json.loads(bytes((await grouped(harness)).body))
+        retained = sum(
+            count
+            for group in body["groups"]
+            if (count := len(_tree_paths(group["tree"]))) > page_rows
+        )
+        # One row less, and a read evicts its own pages: it says so when it gives up.
+        tight = ProviderSeams(max_retained_rows=retained - 1)
+        async with inventory_harness(tmp_path, seams=tight) as harness:
             with pytest.raises(
                 VersionUnavailableError,
                 match=r"grouped tree assembly failed 3 attempts; the last: the filtered-tree "
                 r"page cursor is unavailable: its page was evicted, as retained continuations "
                 rf"reached {retained - 1} rows",
             ):
-                await proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
-            monkeypatch.setattr(python_inventory, "MAX_ASSEMBLED_ROWS", retained)
+                await grouped(harness)
+        exact = ProviderSeams(max_retained_rows=retained)
+        async with inventory_harness(tmp_path, seams=exact) as harness:
+            alone = json.loads(bytes((await grouped(harness)).body))
             monkeypatch.setattr(InventoryReadSession, "read", overlapping_read)
-            responses = await asyncio.gather(
-                *(
-                    proc_browser.api_tree(cast(Any, _FakeRequest(query, app=harness.app)))
-                    for _request in range(3)
-                )
-            )
-            return body, list(responses)
+            responses = await asyncio.gather(*(grouped(harness) for _request in range(3)))
+        assert alone == body
+        return alone, list(responses)
 
     alone, responses = asyncio.run(run())
     assert sum(1 for group in alone["groups"] if len(_tree_paths(group["tree"])) > 3) >= 2
@@ -429,24 +429,9 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
     monkeypatch: Any,
 ) -> None:
     (tmp_path / "runs" / "local" / "known").mkdir(parents=True)
-    blocker = asyncio.Event()
-
-    async def partial_walk(
-        *_args: object,
-        **_kwargs: object,
-    ) -> AsyncIterator[InventoryEntry]:
-        yield InventoryEntry.for_observed_dir(path="", parent="", name=tmp_path.name)
-        yield InventoryEntry.for_observed_dir(path="runs", parent="", name="runs")
-        yield InventoryEntry.for_observed_dir(path="runs/local", parent="runs", name="local")
-        yield InventoryEntry.for_observed_dir(
-            path="runs/local/known", parent="runs/local", name="known"
-        )
-        await blocker.wait()
-
-    monkeypatch.setattr(
-        "metabrowser.inventory_engine.providers.python_inventory.walk_tree",
-        partial_walk,
-    )
+    # Discovery lists the root, `runs`, and `runs/local`, then holds before it lists
+    # `runs/local/known`, which therefore stays a placeholder with pending totals.
+    seams = ProviderSeams(discovery_gate=DiscoveryGate(before="runs/local/known"))
 
     def fail_filesystem_walk(*_args: object, **_kwargs: object) -> list[dict[str, Any]]:
         raise AssertionError("api_tree must not use _dir_tree for pending inventory rows")
@@ -455,7 +440,7 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
 
     async def run() -> dict[str, Any]:
         paths_safe._set_root_dir(tmp_path)
-        async with inventory_harness(tmp_path, settle=False) as harness:
+        async with inventory_harness(tmp_path, settle=False, seams=seams) as harness:
             while True:
                 read = await harness.runtime.coordinator.read(
                     ReadRequest(queries=(EntryQuery(query_id="parent", path="runs/local"),))
