@@ -255,6 +255,22 @@ marked.
 `--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
 by node ID, so that one tier can be split across machines.
 
+`make test` runs the default tier as four targets, in this order, and each also runs
+alone, as a CI job can call it:
+
+| Target | Runs | How |
+| --- | --- | --- |
+| `make test-parallel` | every test in neither marker’s tier | under pytest-xdist, `PYTEST_WORKERS` workers, each test file on one worker, its tests in order |
+| `make test-serial` | the tests marked `serial` and not `chrome` | one at a time, after the parallel tier, so never beside its workers |
+| `make test-chrome` | the tests marked `chrome` | one at a time, after the serial tier |
+| `make test-goldens` | `tests/golden/*.tryscript.md` | `devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time |
+
+`PYTEST_WORKERS` defaults to one worker per logical processor, and a shared or loaded
+machine lowers it: `make test PYTEST_WORKERS=2`. `make test-chrome SHARD=2/4` runs the
+second of four parts of a tier, and `SHARD` works with each pytest target.
+`make test-admitted-git` runs its list under pytest-xdist too.
+The `Makefile` documents each variable beside its default.
+
 `tests/suite_gates.py` holds each marker to its meaning.
 A test fails when:
 

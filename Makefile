@@ -30,7 +30,7 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-admitted-git audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -51,7 +51,8 @@ browser-types:
 	npx --no-install tsc --noEmit -p tsconfig.legacy.json
 	npx --no-install tsc --noEmit -p apps/macos/webkit-gate/tsconfig.json
 
-format lint lint-check test test-admitted-git audit build: | install
+# A CI job calls each test tier's target directly, so each installs first, as `test` does.
+format lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit build: | install
 
 lint:
 	$(UV_RUN) python -m devtools.lint
@@ -120,12 +121,42 @@ GOLDEN_JOBS ?= 4
 # the caller sets the variable; see tests/suite_gates.py.
 STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 
-# The default tier. -rs names every skipped test with its reason, so a skip is read
-# rather than counted, and --durations and --file-durations list the slowest tests and
-# test files (tests/suite_timing.py), so a run says where its time went. A missing Node or
-# Git stops the run; see tests/required_tools.py.
-test:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=25
+# Workers for the parallel tier and test-admitted-git, one per logical processor. xdist's
+# `auto` counts physical cores through psutil, which this project installs, and a CI
+# runner's four processors can be two cores with two threads each. A shared or loaded
+# machine lowers it, as in `make test PYTEST_WORKERS=2`.
+PYTEST_WORKERS ?= logical
+# `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py);
+# empty runs the whole tier.
+SHARD ?=
+# -rs names every skipped test with its reason, so a skip is read rather than counted,
+# and --durations and --file-durations list the slowest tests and test files
+# (tests/suite_timing.py), so a run says where its time went. A missing Node or Git
+# stops the run; see tests/required_tools.py.
+PYTEST := $(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=25 \
+	$(if $(SHARD),--shard=$(SHARD))
+# The tiers' -m expressions, which tests/suite_tiers.py defines as TIERS: together they
+# hold every test once, whatever is marked.
+PARALLEL_TIER := not serial and not chrome
+SERIAL_TIER := serial and not chrome
+CHROME_TIER := chrome
+
+# The default tier, as four parts that CI can also run one at a time. Each file of the
+# parallel tier runs on one worker, its tests in order (--dist loadfile), so module-scoped
+# fixtures behave as they do in one process. The serial and Chrome tiers run one test at
+# a time, after the parallel tier and so never beside its workers.
+test: test-parallel test-serial test-chrome test-goldens
+
+test-parallel:
+	$(PYTEST) -m "$(PARALLEL_TIER)" -n $(PYTEST_WORKERS) --dist loadfile
+
+test-serial:
+	$(PYTEST) -m "$(SERIAL_TIER)"
+
+test-chrome:
+	$(PYTEST) -m "$(CHROME_TIER)"
+
+test-goldens:
 	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' -- $(TRYSCRIPT)
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
@@ -168,7 +199,9 @@ benchmark: | install
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git
 # job builds each admitted release and sets METABROWSER_REQUIRE_ADMITTED_GIT, which
 # turns that skip into a failure; see tests/admitted_git.py. A test that asks for the
-# floor from a module this list leaves out fails; see tests/suite_gates.py.
+# floor from a module this list leaves out fails; see tests/suite_gates.py. The list runs
+# beside other workers, like the parallel tier, so the same gates fail a serial or chrome
+# test in it.
 ADMITTED_GIT_TESTS := \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
@@ -235,7 +268,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 $(ADMITTED_GIT_TESTS)
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 -n $(PYTEST_WORKERS) --dist loadfile \
+		$(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.

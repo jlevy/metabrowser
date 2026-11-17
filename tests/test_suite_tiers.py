@@ -4,6 +4,7 @@ marker is held to its meaning (``tests/suite_tiers.py``, ``tests/suite_gates.py`
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import random
 import re
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from devtools.check_goldens import makefile_list, recipe
 from tests.required_tools import require_chrome
 from tests.suite_gates import (
     admitted_git_tests,
@@ -32,6 +34,7 @@ from tests.suite_tiers import (
     dealt,
     parse_shard,
 )
+from tests.suite_workers import encodable
 from tests.test_suite_gates import MAX_INNER_BOUND_S
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -158,6 +161,14 @@ def probe_a_test_that_asks_for_chrome_without_the_fixture() -> None:
     require_chrome()
 
 
+def probe_a_test_that_calls_gh() -> None:
+    subprocess.run(["gh", "auth", "status"], capture_output=True, check=False, timeout=10)
+
+
+def probe_a_test_that_logs_a_name_that_is_not_utf8() -> None:
+    logging.getLogger("tests.probe").warning("reran for %s", os.fsdecode(b"calf\xe9.txt"))
+
+
 def _session(tmp_path: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     run = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:sugar"]
     basetemp = tmp_path / f"nested-{len(list(tmp_path.glob('nested-*')))}"
@@ -168,6 +179,8 @@ def _session(tmp_path: Path, *arguments: str) -> subprocess.CompletedProcess[str
         env={**os.environ, "CHROME_BIN": "/bin/true"},
         capture_output=True,
         text=True,
+        # A probe logs a name that is not UTF-8, which pytest prints as its bytes.
+        errors="backslashreplace",
         timeout=MAX_INNER_BOUND_S,
         check=False,
     )
@@ -189,12 +202,14 @@ def tiers(tmp_path_factory: pytest.TempPathFactory) -> dict[str, set[str]]:
 
 def test_the_three_tiers_partition_the_suite(tiers: dict[str, set[str]]) -> None:
     every = tiers[""]
-    assert len(every) == 8
+    assert len(every) == 10
     assert sum(len(tiers[tier]) for tier in TIERS) == len(every)
     assert set().union(*(tiers[tier] for tier in TIERS)) == every
     assert tiers[PARALLEL_TIER] == {
         "probe_a_plain_test",
         "probe_a_test_that_asks_for_chrome_without_the_fixture",
+        "probe_a_test_that_calls_gh",
+        "probe_a_test_that_logs_a_name_that_is_not_utf8",
     }
     assert tiers[SERIAL_TIER] == {"probe_a_serial_test", "probe_a_serial_test_without_a_reason"}
     # Using chrome_profile, directly or through another fixture, is what makes a test
@@ -222,11 +237,17 @@ def test_a_shard_outside_its_count_stops_the_session(tmp_path: Path) -> None:
     assert "the parts are 1 through 2" in completed.stderr
 
 
-def test_a_real_session_holds_each_marker_to_its_meaning(tmp_path: Path) -> None:
-    completed = _session(tmp_path, "-v")
+@pytest.mark.parametrize("workers", [[], ["-n", "2"]], ids=["one process", "two workers"])
+def test_a_real_session_holds_each_marker_to_its_meaning(
+    tmp_path: Path, workers: list[str]
+) -> None:
+    """The gates judge a test where it runs, so they hold on a worker as in one process,
+    and the gh guard's summary names a call a worker's test made."""
+
+    completed = _session(tmp_path, "-rA", *workers)
     report = completed.stdout
-    ran = re.findall(rf"^{re.escape(str(THIS))}::(probe_\w+) ([A-Z]+)", report, re.MULTILINE)
-    assert dict(ran) == {
+    ran = re.findall(rf"^([A-Z]+) {re.escape(str(THIS))}::(probe_\w+)", report, re.MULTILINE)
+    assert {probe: outcome for outcome, probe in ran} == {
         "probe_a_plain_test": "PASSED",
         "probe_a_test_on_chrome_profile": "PASSED",
         "probe_a_test_whose_fixture_uses_chrome_profile": "PASSED",
@@ -235,8 +256,59 @@ def test_a_real_session_holds_each_marker_to_its_meaning(tmp_path: Path) -> None
         "probe_a_test_marked_chrome_by_hand": "FAILED",
         "probe_a_serial_test_without_a_reason": "FAILED",
         "probe_a_test_that_asks_for_chrome_without_the_fixture": "FAILED",
+        "probe_a_test_that_calls_gh": "PASSED",
+        # A worker sends its report, with the log line it captured, intact.
+        "probe_a_test_that_logs_a_name_that_is_not_utf8": "PASSED",
     }, report + completed.stderr
     assert f"is marked {CHROME_MARKER} but does not use the {CHROME_FIXTURE} fixture" in report
     assert f"is marked {SERIAL_MARKER} without a reason" in report
     assert "asks for Chrome through require_chrome but is not in the Chrome tier" in report
+    assert (
+        "gh guard: 1 gh call(s) reached the failing stand-in, from 1 test(s): "
+        f"{THIS}::probe_a_test_that_calls_gh"
+    ) in report
     assert completed.returncode == 1
+
+
+# ── The Makefile's tier targets ────────────────────────────────────────────────
+
+
+def _makefile_value(makefile: str, name: str) -> str:
+    found = re.search(rf"^{name} := (.*)$", makefile, re.MULTILINE)
+    assert found is not None, name
+    return found.group(1).strip()
+
+
+def test_make_test_runs_each_tier_by_its_expression_and_the_parallel_ones_on_workers() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    targets = ("test-parallel", "test-serial", "test-chrome", "test-goldens")
+
+    prerequisites = re.search(r"^test: (.*)$", makefile, re.MULTILINE)
+    assert prerequisites is not None and prerequisites.group(1).split() == list(targets)
+    names = ("PARALLEL_TIER", "SERIAL_TIER", "CHROME_TIER")
+    assert tuple(_makefile_value(makefile, name) for name in names) == TIERS
+    workers = "-n $(PYTEST_WORKERS) --dist loadfile"
+    assert recipe(makefile, "test-parallel") == f'\t$(PYTEST) -m "$(PARALLEL_TIER)" {workers}'
+    assert recipe(makefile, "test-serial") == '\t$(PYTEST) -m "$(SERIAL_TIER)"'
+    assert recipe(makefile, "test-chrome") == '\t$(PYTEST) -m "$(CHROME_TIER)"'
+    assert workers in recipe(makefile, "test-admitted-git")
+    assert "$(if $(SHARD),--shard=$(SHARD))" in " ".join(makefile_list(makefile, "PYTEST"))
+    # A CI job calls each target directly, so each installs first and is phony.
+    order_only = re.search(r"^([\w -]+): \| install$", makefile, re.MULTILINE)
+    phony = re.search(r"^\.PHONY: (.*)$", makefile, re.MULTILINE)
+    assert order_only is not None and phony is not None
+    assert set(targets) <= set(order_only.group(1).split()) & set(phony.group(1).split())
+
+
+def test_a_report_s_strings_are_made_encodable_and_nothing_else_changes() -> None:
+    name = os.fsdecode(b"calf\xe9.txt")
+    report = {"sections": [("Captured log call", f"reran for {name}")], "duration": 0.5}
+
+    assert encodable(report) == {
+        "sections": [("Captured log call", "reran for calf\\udce9.txt")],
+        "duration": 0.5,
+    }
+    assert encodable({"nodeid": "tests/test_a.py::test_b", "keywords": {"b": 1}}) == {
+        "nodeid": "tests/test_a.py::test_b",
+        "keywords": {"b": 1},
+    }

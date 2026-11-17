@@ -271,6 +271,44 @@ Its one dependency, `undici-types` 7.24.6 from
 March 25, 2026), is the only other new lock record.
 Neither is loaded at run time; only TypeScript reads them.
 
+### pytest-xdist Review (November 17, 2026)
+
+`pytest-xdist` is a new development dependency, and `execnet`, its one requirement that
+the lock did not hold, comes with it.
+`make test-parallel` and `make test-admitted-git` run their tests under it, one worker
+per logical processor and each test file on one worker (`--dist loadfile`), so a CI test
+leg uses its runner’s four processors where pytest alone used one.
+pytest has no way to run tests side by side without a plugin, and the owner approved
+this one on 2026-11-16.
+
+| Package | Release | Published | Source | License | Wheel SHA-256 | sdist SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pytest-xdist` | 3.8.0 | 2025-07-01 | [pytest-dev/pytest-xdist](https://github.com/pytest-dev/pytest-xdist) | MIT | `202ca578…d10f0b88` | `7e578125…d8d3a9f1` |
+| `execnet` | 2.1.2 | 2025-11-12 | [pytest-dev/execnet](https://github.com/pytest-dev/execnet) | MIT | `67fba928…79e296ec` | `63d83bfd…3e0befcd` |
+
+- **Cool-off.** Each is the newest release of its package, and each was published more
+  than a year before this selection, so neither needs an exception.
+- **Artifacts.** The four digests above were read from PyPI and match `uv.lock`, and the
+  artifacts downloaded for this review hash to them.
+  Both wheels are pure Python, `py3-none-any`, and hold no `.pth` file, console script,
+  or compiled module, so installing them runs no code.
+  The sdists build with setuptools and hatchling; uv installs the wheels.
+- **Import.** The xdist wheel registers two `pytest11` entry points, `xdist.plugin` and
+  `xdist.looponfail`, so every pytest run in this environment imports them and gains
+  their options. Without `-n` or `--dist` they start nothing.
+  execnet is imported when xdist starts workers.
+- **Runtime.** With `-n`, xdist starts each worker through execnet’s `popen` gateway: a
+  new `sys.executable` that reads execnet’s bootstrap from a pipe and sends its reports
+  back over the same pipes.
+  execnet’s `ssh`, `socket`, and `rsync` gateways open network connections, and nothing
+  here asks for them. `-n auto` counts physical cores through psutil, which this project
+  already installs, so `PYTEST_WORKERS` in the `Makefile` asks for `logical` instead and
+  says why.
+- **Lock delta.** The two packages, and `pytest-xdist` among the `dev` group’s
+  requirements, and nothing else; pytest, xdist’s other requirement, is already locked.
+- **Reach.** Development only: neither is a runtime requirement, in the wheel, or used
+  by the publish workflow.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:

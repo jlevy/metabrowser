@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import suite_gates, suite_tiers, suite_timing
+from tests import suite_gates, suite_tiers, suite_timing, suite_workers
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -80,6 +80,8 @@ def pytest_configure(config: pytest.Config) -> None:
     config.pluginmanager.register(suite_tiers)
     # --file-durations; see tests/suite_timing.py.
     config.pluginmanager.register(suite_timing.FileTimes(), "suite-file-times")
+    # Reports a pytest-xdist worker can send; see tests/suite_workers.py.
+    config.pluginmanager.register(suite_workers)
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
@@ -172,7 +174,10 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
 
     basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
-    logs = {log.resolve() for log in basetemp.glob("no-real-gh*/calls.log")}
+    # Under pytest-xdist each worker's base is ``popen-gw<N>`` in this one, with its own
+    # stand-in and log, and the summary this process prints reads them all.
+    patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
+    logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
     calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
     if calls:
         tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})

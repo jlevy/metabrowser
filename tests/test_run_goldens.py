@@ -159,7 +159,7 @@ def test_a_run_without_a_command_is_refused(
     assert "usage:" in capsys.readouterr().err
 
 
-def test_make_test_runs_every_golden_through_the_runner_with_the_makefiles_tryscript(
+def test_make_test_goldens_runs_every_golden_through_the_runner_with_the_makefiles_tryscript(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The recipe's words, and ``TRYSCRIPT``'s words as the command, on two real goldens."""
@@ -169,7 +169,7 @@ def test_make_test_runs_every_golden_through_the_runner_with_the_makefiles_trysc
         "\t$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' "
         "-- $(TRYSCRIPT)"
     )
-    assert line in recipe(makefile, "test").split("\n")
+    assert recipe(makefile, "test-goldens") == line
     assert makefile_list(makefile, "GOLDENS") == ["tests/golden/*.tryscript.md"]
     require_node()
     command = [
