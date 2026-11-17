@@ -504,6 +504,11 @@
   --icon-glyph: 14px;
   --icon-box: 16px;
   --icon-btn-size: 24px;
+  /* A person's avatar box and the gap before the name (`.actor-identity`), on every page
+     that names a person: a commit's author, a pull request's, a comment's, a Pulls row's.
+     The Conversation timeline's geometry is derived from both (github/styles.css). */
+  --actor-avatar-size: 18px;
+  --actor-identity-gap: 4px;
 
   /* Border-radius tokens — split into "chrome" (interactive UI:
      buttons, badges, chips, bars, controls, tooltips, log rows)
@@ -4499,6 +4504,28 @@ a.tab-btn {
 .git-commit-subject.page-heading {
   min-height: 2lh;
 }
+/* A page's header, a commit's summary and a pull request's (docs/design-system.md, "Page
+   Headers"): its title, then its lines, each 6 px under the one before. Every line under
+   the title is a `.page-header-line` at the body size, the Diff summary's row included (its
+   header's own size is the diff plugin's, the same token), so the two pages read in one
+   type: an age in one keeps the line's size, not the age primitive's small one. The one
+   row that is not is a pull request's labels, a row of chips. A chip in a line keeps its
+   own size (Branch Chips, Label Colors), and a revision its one step down. */
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.page-header > .page-heading {
+  margin: 0;
+}
+.page-header-line {
+  min-height: 1lh;
+  font-size: var(--body-font-size);
+}
+.page-header-line :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
+  font-size: var(--body-font-size);
+}
 
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
    width, converted from characters at :root) onto KPress's token.
@@ -6510,6 +6537,36 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
+/* A person (plugin-sdk-views.js, `actorIdentity`; docs/design-system.md, "Actor Identity"):
+   an avatar's box, then the bold name, on the line's baseline. The box is the avatar's size
+   from first paint, centred on the line, whether it holds the avatar or, where there is
+   none or the image failed, the neutral person glyph in the muted ink, so the name starts
+   in one place and an avatar that arrives later moves nothing. */
+.actor-identity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--actor-identity-gap);
+  vertical-align: baseline;
+}
+.actor-avatar {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  width: var(--actor-avatar-size);
+  height: var(--actor-avatar-size);
+  overflow: hidden;
+  border-radius: var(--radius-circle);
+  color: var(--muted);
+}
+/* The avatar, or the person glyph in its place, fills the box. The glyph is the second
+   deliberate exception to --icon-glyph (docs/design-system.md, "One Glyph Size"): it stands
+   in for an avatar image, so it takes the image's 18 px box, not the 14 px glyph size. */
+.actor-avatar > :is(img, svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* A number in a count summary, "8 files changed · 8 M", "15,458 files (324.1 MB)",
    "3,310 commits": bold, at --count-numeral-weight, and the words around it in their
    line's weight, so the counts read at a glance. It sets the weight alone: the number
@@ -6762,6 +6819,23 @@ pre.code-block.metabrowser-source-lines > code {
   --icon-btn-size: 20px;
 }
 
+/* The page's lines under its subject, each a page header's line at the body size
+   (`.page-header-line`), in a pull request's header's order (docs/design-system.md, "Page
+   Headers"): the author, as the shell's identity; the revision and its refs, where a pull
+   request has its branches, which wrap under it when there are many; and the age, muted,
+   "Committed 3d ago", where a pull request has its row of ages. */
+.git-commit-byline,
+.git-commit-revision-line,
+.git-commit-ages {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.git-commit-ages {
+  gap: 0.3em;
+  color: var(--muted);
+}
+
 .git-commit-revision:hover .git-commit-revision-copy,
 .git-commit-revision:focus-within .git-commit-revision-copy {
   opacity: 1;
@@ -6770,12 +6844,12 @@ pre.code-block.metabrowser-source-lines > code {
 
 /* The commit's Diff summary, where its change stats were (mb-pb35): the diff plugin draws its
    header and tree here (`.diff-summary`, builtin_plugins/diff/styles.css), above the body and
-   the diff, as the summary sits at the top of a pull request's page. The tree opens under it. */
+   the diff, as the summary sits at the top of a pull request's page. The tree opens under it.
+   It is the page header's last line, the header's gap above it (`.page-header`). */
 .git-commit-diff-summary {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  margin-top: 6px;
 }
 /* No diff, as when its comparison failed: the place takes no room. */
 .git-commit-diff-summary:empty {

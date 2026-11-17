@@ -197,6 +197,7 @@ or working-tree copy is a proposal, and `tbd policy show` reports the effective 
 
 - `github-workflows`: granted
 - `github-editing`: granted
+- `github-merge`: autonomous
 - `github-stacked-prs`: granted
 - `subagents`: granted
 

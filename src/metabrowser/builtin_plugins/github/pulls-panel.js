@@ -3734,8 +3734,12 @@ export function mountPullsPanel(container, ctx, mb) {
           // Eager: only the rows in view and PULL_ROWS_OVERSCAN beside them are mounted, so
           // this asks for no avatar outside that window, and a row the window mounts again
           // as the list scrolls back draws its avatar at once: WebKit fetches a new lazy
-          // image again (docs/design-system.md, "A Repaint Keeps Its Images").
-          authorLabel(row.author, row.avatar, "github-pulls-author", { loading: "eager" }),
+          // image again (docs/design-system.md, "A Repaint Keeps Its Images"). A dense row
+          // draws no box for an author with no avatar: its avatar comes with the row.
+          authorLabel(mb, row.author, row.avatar, "github-pulls-author", {
+            loading: "eager",
+            placeholder: false,
+          }),
         ]),
       ]),
     ]);

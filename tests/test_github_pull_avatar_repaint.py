@@ -7,10 +7,11 @@ tab and back, and lets two polls find a refresh running, the second changing onl
 status line's age. Then four polls each change one of the header's inputs: a label, the
 head branch, the author's avatar, and the state, merged by another actor. It asserts that
 every avatar the page creates has its placement's loading, eager in the header and lazy in
-the conversation, decodes asynchronously, keeps its 18 px slot, and hides itself on an
-error; that the header's avatar is the one its actor has at each step; and this pins the
-steps it went through, which of the header's parts each found new, how many header
-elements each built, and how many it kept but took out of their parents and put back.
+the conversation, decodes asynchronously, sits in its 18 px box, and gives the box to
+the person glyph on an error; that the header's avatar is the one its actor has at each
+step; and this pins the steps it went through, which of the header's parts each found
+new, how many header elements each built, and how many it kept but took out of their
+parents and put back.
 
 A repaint that changes none of the header's inputs builds none of its nodes and moves
 none. Before, it built every part again, about 30 elements on each tab switch and poll,
@@ -43,8 +44,9 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 # rows of their own, and the author's row ends in the stack's slot, not a strut
                 # of its own (mb-cf0l); the Diff summary's row ends it, built once and kept
                 # by every repaint below (mb-pb35), with its pending placeholder, a reveal and
-                # its block, built once at mount and kept across the waits (mb-onr2).
-                "built": 45,
+                # its block, built once at mount and kept across the waits (mb-onr2). The
+                # author is the shell's identity, its avatar in a box of its own (mb-nunw).
+                "built": 46,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,
@@ -106,7 +108,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 "step": "the author's avatar changes",
                 "header": "new",
                 "rebuilt": ["identity"],
-                "built": 3,
+                "built": 4,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 1},
                 "shown": 7,
@@ -126,7 +128,7 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                     "opened row",
                     "GitHub link",
                 ],
-                "built": 16,
+                "built": 17,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

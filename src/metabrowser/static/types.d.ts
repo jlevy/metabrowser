@@ -1421,6 +1421,17 @@ type MetabrowserSdk = {
     options?: { kind?: string; copy?: "inline" | "sibling" | false },
   ): HTMLElement;
   mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
+  /** A person, as every page draws one: an avatar's box, `--actor-avatar-size` square from
+   *  first paint, then the bold name in `.actor-name`. The box holds the avatar where
+   *  `avatar` is an https address the caller vouches for, and the shell's person glyph
+   *  where it is not or the image fails; `placeholder: false` draws no box without one
+   *  (docs/design-system.md, "Actor Identity"). */
+  actorIdentity(name: string, options?: MetabrowserActorIdentityOptions): HTMLElement;
+  /** The same identity as markup, its box holding the person glyph. */
+  actorIdentityHtml(
+    name: string,
+    options?: Pick<MetabrowserActorIdentityOptions, "className" | "nameClass">,
+  ): string;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,
@@ -3674,6 +3685,23 @@ declare global {
   type MetabrowserChangeLineOptions = {
     /** What a screen reader is told in the hidden dot's place, on a line with no name in words. */
     spoken?: string;
+  };
+
+  /** How a person's identity is drawn where it stands (plugin-sdk-views.js, `actorIdentity`). */
+  type MetabrowserActorIdentityOptions = {
+    /** The avatar's https address, which the caller vouches for; none draws the glyph. It is
+     *  requested in anonymous CORS mode with no referrer, so its host must send
+     *  `Access-Control-Allow-Origin`, and a folder served untrusted loads images only from
+     *  `avatars.githubusercontent.com`; any other image shows the glyph. */
+    avatar?: string | null;
+    /** When the avatar loads: lazy, unless the placement is built again on a repaint. */
+    loading?: "lazy" | "eager";
+    /** Classes the placement adds to the identity's `span.actor-identity`. */
+    className?: string;
+    /** Classes the placement adds to the name's `strong.actor-name`. */
+    nameClass?: string;
+    /** False draws no box for a person with no avatar, as a dense list row does. */
+    placeholder?: boolean;
   };
 
   type MetabrowserChangedFilesSummary = {

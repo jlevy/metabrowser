@@ -42,10 +42,12 @@ Every commit has an address, `/commit/<id>`, with its full 40- or 64-character I
 or bookmark it to come back to that commit; a short ID or a branch name in the address
 shows **Full commit ID needed** instead.
 
-The page begins with the commit’s summary:
+The page begins with the commit’s summary, laid out as a pull request’s header is:
 
-- the subject, then the short ID with a copy control, the commit’s branches and tags,
-  the author, and the age
+- the subject
+- the author, with a person icon where a pull request shows the author’s avatar
+- the short ID with a copy control, and the commit’s branches and tags
+- “Committed” and the age
 - the **Diff summary**, on every commit, one file or many: the files changed, counted by
   status, and the lines added and deleted; it starts collapsed and opens into the tree
   of changed files, where a file takes you to its diff
