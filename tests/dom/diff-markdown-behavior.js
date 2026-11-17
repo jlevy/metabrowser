@@ -207,7 +207,7 @@ async function main() {
     appendBlocks,
     createMarkdownViews,
     firstScreenMarkdown,
-    snapshotTargets,
+    markdownTargets,
     supportsMarkdownChange,
   } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
   const md = { entry_type: "file", path: "docs/readme.MD" };
@@ -222,28 +222,38 @@ async function main() {
     false,
   );
 
-  // Snapshot addresses are the comparison's own route, which the server names, completed
-  // with a side, a path and, for an image, its mode.
-  const route = `/api/plugin/github/pull-snapshot?${new URLSearchParams({
+  // An image opens on the comparison's own image route, which the server names, completed
+  // with a path; a link to a file of the head is its `/view/` address, kept only while the
+  // page shows that head.
+  const route = `/api/plugin/github/pull-image?${new URLSearchParams({
     number: "346",
     left: "1".repeat(40),
     right: "2".repeat(40),
     store: "3".repeat(16),
   })}`;
-  const isSnapshotTarget = snapshotTargets(route);
-  const href = `${route}&side=head&path=g1-ZG9jcw%2Fg1-UkVBRE1FLm1k`;
-  assert.equal(isSnapshotTarget(href, false), true);
-  assert.equal(isSnapshotTarget(`${href}&mode=document`, false), true);
-  assert.equal(isSnapshotTarget(`${href}&mode=image`, true), true);
-  assert.equal(isSnapshotTarget(`${href}&mode=image`, false), false);
-  assert.equal(isSnapshotTarget(`${href}&mode=source`, false), false);
-  assert.equal(isSnapshotTarget(`${href}&side=base`, false), false, "a repeated name");
-  assert.equal(isSnapshotTarget(`${href}&offset=9`, false), false);
-  assert.equal(isSnapshotTarget(`https://example.org${href}`, false), false);
-  assert.equal(isSnapshotTarget(href.replace("left=1", "left=0"), false), false);
-  assert.equal(isSnapshotTarget("/raw?path=README.md", true), false);
-  assert.equal(isSnapshotTarget(href.replace("g1-ZG9jcw", ".."), false), false);
-  assert.equal(snapshotTargets(undefined)(href, false), false, "no route opens nothing");
+  let showsHead = true;
+  const isTarget = markdownTargets(route, () => showsHead);
+  const image = `${route}&path=g1-ZG9jcw%2Fg1-UkVBRE1FLm1k`;
+  const link = "/view/g1-ZG9jcw/g1-UkVBRE1FLm1k";
+  assert.equal(isTarget(image, true), true);
+  assert.equal(isTarget(image, false), false, "an image's address is no link");
+  assert.equal(isTarget(`${image}&mode=image`, true), false);
+  assert.equal(isTarget(`${image}&path=g1-eA`, true), false, "a repeated name");
+  assert.equal(isTarget(`https://example.org${image}`, true), false);
+  assert.equal(isTarget(image.replace("left=1", "left=0"), true), false);
+  assert.equal(isTarget("/raw?path=README.md", true), false);
+  assert.equal(isTarget(image.replace("g1-ZG9jcw", ".."), true), false);
+  assert.equal(isTarget(link, false), true);
+  assert.equal(isTarget(`${link}#user-content-setup`, false), true);
+  assert.equal(isTarget(`${link}#elsewhere`, false), false, "a fragment outside the anchors");
+  assert.equal(isTarget(`${link}?plain=1`, false), false);
+  assert.equal(isTarget(link, true), false, "a link's address is no image");
+  assert.equal(isTarget("/view/README.md", false), false, "not a pin's address");
+  assert.equal(isTarget("/view/g1-ZG9jcw/../g1-UkVBRE1FLm1k", false), false);
+  showsHead = false;
+  assert.equal(isTarget(link, false), false, "a page on another commit keeps no link");
+  assert.equal(isTarget(image, true), true, "and keeps its images");
+  assert.equal(markdownTargets(undefined, () => true)(image, true), false, "no route, no image");
 
   // The first screen's Markdown files, asked for ahead of Changes.
   const entry = (id, path, availability = "ready") => ({

@@ -470,19 +470,18 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     assert compared.exit_code == 0, compared.stderr
     assert compared.payload()["manifest"]["files"]
     assert fingerprint(read_only_checkout) == before
-    # A revision file opens from the store beside the checkout and leaves it as it was.
+    # The head's tree is read from the store beside the checkout, which stays as it was: the
+    # image route admits the pair and finds the file, which is no image.
     from metabrowser.git.tree_source import GitPath
 
     revision = _api(
         root,
-        after["snapshot_route"]
-        + "&side=head&mode=download&path="
-        + GitPath.from_display("docs/draft.md").to_wire(),
+        after["image_route"] + "&path=" + GitPath.from_display("docs/draft.md").to_wire(),
         None,
         request,
     )
-    assert revision.exit_code == 0, revision.stderr
-    assert revision.stdout.endswith("# Draft\n\n"), revision.stdout
+    assert revision.exit_code != 0
+    assert '"code": "unsupported_image"' in revision.stdout, revision.stdout
     assert fingerprint(read_only_checkout) == before
 
     # A fresh server adopts the persisted store without acquisition or a timestamp write.
@@ -1674,11 +1673,15 @@ def test_attaching_a_store_keeps_the_observed_reader_for_reader_scoped_checks(
     theirs = mine.model_copy(update={"reader": f"gh:{ANOTHER_READER}"})
     write_pull_record(held.home, held.slug, theirs, store_id=published.store_id)
     assert cached_comparison_record(published, held.observed_reader, 10) is None
-    # A snapshot of that record's comparison is refused.
+    # An image of that record's comparison is refused: the pair is not admitted.
+    from metabrowser.git.tree_source import GitPath
+
     envelope = session.get("/api/plugin/github/pull?number=10").payload()
     query = envelope["comparison_route"].split("?", 1)[1]
-    snapshot = session.get(f"/api/plugin/github/pull-snapshot?{query}&side=head&path=README.md")
+    readme = GitPath.from_display("README.md").to_wire()
+    snapshot = session.get(f"/api/plugin/github/pull-image?{query}&path={readme}")
     assert snapshot.exit_code != 0, snapshot.stdout
+    assert '"code": "snapshot_expired"' in snapshot.stdout, snapshot.stdout
 
     # Core admission and cached cores refuse another reader's catalog.
     lists = list_entries(pull_origin)

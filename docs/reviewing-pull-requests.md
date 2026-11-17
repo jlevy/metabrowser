@@ -138,10 +138,20 @@ The page has three tabs:
 | A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. When the head has moved since, **Switch to the head** offers the new one. |
 | A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
-Each changed file offers **View file** at the head and **View at base** at the merge
-base.
-A side the page does not show opens on its own revision page, at that exact commit,
-and never moves the server’s pin.
+Each changed file offers **View on branch**, which opens the file at the pull request’s
+head in the main view, with the file tree, tabs, and ref selector around it, as **Browse
+code** opens the whole tree.
+When another commit is served, it first switches the pin to the head, which every tab
+shares, as Browse code does.
+Beside a checkout it opens the file in your working tree, and only while the checkout’s
+`HEAD` is the pull request’s head.
+A deleted file has none, and neither does a file of an earlier head than the pull
+request’s, which no branch holds any more.
+A tab whose pin another tab switched turns its links into the switch back.
+
+A Markdown file of the pull request large or complex enough that rendering it could
+stall the server opens in **Source**: a mirror’s content is the pull request author’s,
+so its render work is bounded.
 
 ### Rendered Markdown in Changes
 

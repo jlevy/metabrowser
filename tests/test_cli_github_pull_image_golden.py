@@ -1,19 +1,18 @@
-"""Golden transcript: a pull request's revision files through ``metab --api``.
+"""Golden transcript: the images a pull request's rendered Markdown shows, through ``metab --api``.
 
-``GET github/pull-snapshot`` opens a file at the base or the head of the comparison a
-pull request's record names, without changing the served pin, and admits nothing else.
-This drives it in-process, as ``tests/test_cli_github_pull_golden.py`` drives the rest of
-the pull routes, and writes ``tests/golden/cli-github-pull-snapshot.txt``: the pair the
-envelope's ``snapshot_route`` names opens on both sides, every refusal has its own code,
-``<n>.snapshots.json`` keeps the pair a refresh replaced, and that earlier pair still
-opens after the head moved. The page's three preference scripts are the shell's two and
-the width default they read, pinned by the shell's goldens, so each is shown by name.
+``GET github/pull-image`` serves an image at the head of the comparison a pull request's
+record names, without changing the served pin, and admits nothing else. This drives it
+in-process, as ``tests/test_cli_github_pull_golden.py`` drives the rest of the pull
+routes, and writes ``tests/golden/cli-github-pull-image.txt``: the pair the envelope's
+``image_route`` names is admitted, which a text file at its head shows by being no image,
+every refusal has its own code, ``<n>.snapshots.json`` keeps the pair a refresh replaced,
+and that earlier pair is still admitted after the head moved. The fixture's commits hold
+no image; ``tests/test_github_pull_snapshot.py`` serves one.
 """
 
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,25 +32,49 @@ from tests.golden_harness import (
 from tests.test_cli_github_pull_golden import PULL, ROUTE, _body, _Session
 from tests.test_github_pulls import _answering_head  # pyright: ignore[reportPrivateUsage]
 
-_SCRIPT = re.compile(r"<script>(.*?)</script>", re.DOTALL)
-
-
-def _script_name(found: re.Match[str]) -> str:
-    body = found.group(1)
-    if "metabrowser.themeMode" in body:
-        name = "the shell's theme script"
-    elif "function normalize" in body:
-        name = "the shell's document width script"
-    else:
-        name = "the document width default"
-    return f"<script>[{name}]</script>"
+_LOGO = b"logo bytes\n"
 
 
 def _wire(path: str) -> str:
     return GitPath.from_display(path).to_wire()
 
 
-def test_golden_revision_files_open_only_from_an_admitted_pair(
+def _commit_with_logo(origin: Origin, tmp_path: Path) -> str:
+    """A commit on pull request 7's head that adds ``logo.png``, now its head on the origin.
+
+    Its identity and dates are fixed, so its ID is the same on every run.
+    """
+
+    env = {
+        **git_env(tmp_path),
+        "GIT_AUTHOR_NAME": "Forker",
+        "GIT_AUTHOR_EMAIL": "forker@example.invalid",
+        "GIT_AUTHOR_DATE": "1789000000 +0000",
+        "GIT_COMMITTER_NAME": "Forker",
+        "GIT_COMMITTER_EMAIL": "forker@example.invalid",
+        "GIT_COMMITTER_DATE": "1789000000 +0000",
+    }
+
+    def git(*args: str, data: bytes = b"") -> str:
+        result = subprocess.run(
+            ["git", "--git-dir", str(origin.path), *args],
+            input=data,
+            capture_output=True,
+            check=True,
+            env=env,
+        )
+        return result.stdout.decode().strip()
+
+    parent = origin["fork_head"]
+    logo = git("hash-object", "-w", "--stdin", data=_LOGO)
+    listing = git("ls-tree", parent) + f"\n100644 blob {logo}\tlogo.png\n"
+    tree = git("mktree", data=listing.encode())
+    head = git("commit-tree", tree, "-p", parent, data=b"add a logo\n")
+    git("update-ref", "refs/pull/7/head", head)
+    return head
+
+
+def test_golden_images_open_only_from_an_admitted_pair(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
     session = _Session(tmp_path, monkeypatch, pull_origin)
@@ -59,60 +82,51 @@ def test_golden_revision_files_open_only_from_an_admitted_pair(
     acquired = session.run(selected, "--no-serve")
     assert acquired.exit_code == 0, acquired.stderr
     envelope = run_metab((selected, "--api", f"{ROUTE}?number=7")).payload()
-    first = envelope["snapshot_route"]
-    assert first.startswith("/api/plugin/github/pull-snapshot?number=7&")
+    first = envelope["image_route"]
+    assert first.startswith("/api/plugin/github/pull-image?number=7&")
 
-    def snapshot(route: str, query: str, *, ok: bool = True) -> str:
+    def image(route: str, query: str) -> str:
         result = session.run(selected, "--api", f"{route}&{query}")
-        assert (result.exit_code == 0) is ok, (query, result.stdout, result.stderr)
+        assert result.exit_code != 0, (query, result.stdout)
         return result.stdout
 
-    app = _wire("src/app.txt")
-    # Both sides of the record's own comparison open, as files and as a Source window.
-    assert snapshot(first, f"side=head&path={app}&mode=download").endswith("one\ntwo\n\n")
-    assert snapshot(first, f"side=base&path={app}&mode=download").endswith("one\n\n")
-    assert "<pre><code>one\ntwo\n</code></pre>" in snapshot(
-        first, f"side=head&path={app}&mode=source"
-    )
-    # Each refusal says what it is, as JSON for an image request.
+    app = f"path={_wire('src/app.txt')}"
+    # The record's own pair is admitted: its head has the file, which is no image.
+    assert '"code": "unsupported_image"' in image(first, app)
+    # Each refusal says what it is.
     other = first.replace(f"left={envelope['record']['comparison']['base']}", "left=" + "0" * 40)
-    snapshot(other, f"side=head&path={app}&mode=image", ok=False)
-    snapshot(first, f"side=middle&path={app}&mode=image", ok=False)
-    snapshot(first, f"side=head&path={_wire('src/absent.txt')}&mode=image", ok=False)
-    snapshot(first, f"side=head&path={_wire('src')}&mode=image", ok=False)
-    snapshot(first, f"side=head&path={_wire('README.md')}&mode=image", ok=False)
-    snapshot(first, f"side=head&path={app}&mode=source&offset=99", ok=False)
+    assert '"code": "snapshot_expired"' in image(other, app)
+    assert '"code": "invalid_image"' in image(first, "path=")
+    assert '"code": "file_not_found"' in image(first, f"path={_wire('src/absent.png')}")
+    assert '"code": "not_a_file"' in image(first, f"path={_wire('src')}")
     history = sorted((session.home / "sources").glob("*/pulls/7.snapshots.json"))
     assert len(history) == 1, history
     snapshots = history[0]
     session.blocks.append(f"# sources/<SLUG>/pulls/7.snapshots.json\n{snapshots.read_text()}\n\n")
 
-    # The pull request's head moves on GitHub; a reader's refresh reads it.
-    earlier = pull_origin["fork_earlier"]
-    subprocess.run(
-        ["git", "--git-dir", str(pull_origin.path), "update-ref", "refs/pull/7/head", earlier],
-        check=True,
-        capture_output=True,
-        env=git_env(tmp_path),
-    )
-    session.answer(_answering_head(SimpleNamespace(origin=pull_origin), earlier))  # pyright: ignore[reportArgumentType]
+    # The pull request gains a commit that adds an image, and a reader's refresh reads it.
+    # Its bytes are a few of text, which the route serves by its name's type.
+    head = _commit_with_logo(pull_origin, tmp_path)
+    session.answer(_answering_head(SimpleNamespace(origin=pull_origin), head))  # pyright: ignore[reportArgumentType]
     refreshed = session.run(
         selected, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=7, retry=True)
     )
     assert refreshed.exit_code == 0, refreshed.stderr
-    later = run_metab((selected, "--api", f"{ROUTE}?number=7")).payload()["snapshot_route"]
-    assert later != first
+    later = run_metab((selected, "--api", f"{ROUTE}?number=7")).payload()["image_route"]
+    assert later != first and f"right={head}" in later
     session.blocks.append(f"# sources/<SLUG>/pulls/7.snapshots.json\n{snapshots.read_text()}\n\n")
-    # The earlier pair still opens, and so does the new one.
-    assert snapshot(first, f"side=head&path={app}&mode=download").endswith("one\ntwo\n\n")
-    assert snapshot(later, f"side=head&path={app}&mode=download").endswith("one\nextra\n\n")
+    served = session.run(selected, "--api", f"{later}&path={_wire('logo.png')}")
+    assert served.exit_code == 0, served.stdout
+    assert served.stdout.endswith(f"status: 200\n{_LOGO.decode()}\n"), served.stdout
+    # The earlier pair is still admitted, and its head has no such image.
+    assert '"code": "unsupported_image"' in image(first, app)
+    assert '"code": "file_not_found"' in image(first, f"path={_wire('logo.png')}")
 
     labels = Labels()
     labels.origin(CANONICAL)
     rendered = normalize_pull_comparison_scopes(
         label_home(labels.apply("".join(session.blocks)), session.home)
     )
-    rendered = _SCRIPT.sub(_script_name, rendered)
     assert str(tmp_path) not in rendered
     assert json.loads(snapshots.read_text())[0]["reader"] == "gh:octo-reader"
-    check_golden("cli-github-pull-snapshot.txt", rendered)
+    check_golden("cli-github-pull-image.txt", rendered)

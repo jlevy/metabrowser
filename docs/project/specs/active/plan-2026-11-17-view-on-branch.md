@@ -4,11 +4,11 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Approved 2026-11-17; being implemented.
+**Status:** Approved 2026-11-17; implemented on
+[#511](https://github.com/jlevy/metabrowser/pull/511), in review.
 Bead `mb-ej0w` tracks it.
 The design below merges a survey of `origin/main` at `e442ed10d` with an independent
 adversarial review of the same code; the open questions at the end are the owner’s.
-Nothing here has been implemented.
 
 ## Overview
 

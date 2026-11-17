@@ -6,44 +6,43 @@ env:
 patterns:
   STORE: '[0-9a-f]{16}'
 ---
-# Golden Test: View File From a Diff
+# Golden Test: View File and View on Branch From a Diff
 
-On a page that shows a pinned revision, each file bar of a diff offers the file at the
-sides of the change that exist: **View file** at the new side, and **View at parent** (a
-commit’s diff) or **View at base** (a comparison from a merge base, as a pull request’s
-Files changed is) at the old side.
-A deleted file has only its old side, an added file only its new side, and a renamed
-file’s old side is its old path.
-Only a regular file’s side is offered: a submodule has no file to show, and a symbolic
-link would open its target rather than the link text the diff shows.
+Each file bar of a diff offers one control, for the side of the change that is a file at
+a commit: the change’s new side.
+A deleted file has none, a renamed file opens at its new path, and a submodule or a
+symbolic link has none, since a submodule has no file to show and a link would open its
+target rather than the link text the diff shows.
+The old side has no place in the main UI: a commit’s parent is a bare commit, and a pull
+request’s is the merge base, which no branch is at.
 
-A side at the commit the page shows is a link to the file’s `/view/` address, which the
-browser follows as it follows any link.
-A side at another commit has no address until the server serves that commit, so it is a
-button: it sends `POST /api/source/pin` with the commit and the address, and the page
+On a commit’s diff the control is **View file**. At the commit the page shows it is a
+link to the file’s `/view/` address, which the browser follows as it follows any link.
+At another commit the file has no address until the server serves that commit, so it is
+a button: it sends `POST /api/source/pin` with the commit and the address, and the page
 goes where the answer says.
 A switch the server does not make says why under the bar, and the page stays.
 One switch runs at a time, and a page that is leaving after one asks nothing more until
 the browser brings it back; a diff unmounted before the answer goes nowhere.
 
-A pull request’s Changes never switches the pin.
-Its comparison names the route that opens a file at either end of it,
-`GET github/pull-snapshot`, and every side at another commit than the page shows is a
-link there, on a mirror and beside a checkout alike.
-A side at the commit the page shows keeps its `/view/` link.
-A side whose commit is not the end the route names has no control, so a control’s label
-and the file it opens are at one commit.
-A route that is not this origin’s plugin route gives no revision links and is logged,
-and the diff still shows.
-Beside a checkout the page has no pin, and the diff plugin imports the route codec its
-shell did not load.
+On a pull request’s Changes the control is **View on branch**, offered only while the
+diff shows the pull request’s head, which the pull request’s page names with its head
+ref. On a mirror it follows the same rule, and a switch names that ref (`under`) beside
+the commit, so the page lands on the pull request’s code as Browse code lands on it.
+A diff of another commit than the head has none.
+Beside a checkout the page has no pin: the control is a link to the working-tree file
+while the checkout’s HEAD is the diff’s head, mapped into the served folder when that is
+a folder inside the checkout, and absent otherwise.
+When the page learns that another tab switched the server’s pin, each link, which would
+now open the same path at that other pin, becomes the switch back.
 
 This browserless session loads the production `builtin_plugins/diff/index.js` with its
 modules and `static/navigation.js`, and plays the server’s side from
 `tests/fixtures/diff-view-file-responses.json`: the documents, the block the shell
 writes into a page, and the pin route’s answers, as the in-process application gave them
-while it served the mirror of `tests/diff_view_file_fixture.py`, and then while a server
-on another repository, and one on a folder, answered a page left open from it.
+while it served the mirror of `tests/diff_view_file_fixture.py` with pull request 7’s
+head ref, and then while a server on another repository, and one on a folder, answered a
+page left open from it.
 `tests/test_diff_view_file_session.py` replays that story and fails when the recording
 drifts. The plugin-data transport, syntax highlighting, and preferences are stand-ins,
 and the page is an element tree that records what the production code builds.
@@ -53,7 +52,8 @@ server does, and each request line shows the type it was sent with.
 Each bar lists its controls as `[label] link <address>` or
 `[label] button[type=button]`, then what following it does, which is also its tooltip
 and accessible name.
-`latin1-�.txt` is a name that is not UTF-8: its address carries the name’s bytes.
+`latin1-�.txt` is a name that is not UTF-8: its address on a pin carries the name’s
+bytes, and a checkout’s folder has no address for it.
 `opens` is the path an address names, by the production decoder, `busy` lists the
 controls marked `aria-busy`, and a refusal is shown with the role it is announced by.
 `modules` lists the plugin modules a step loaded, which a browser requests once each
@@ -97,26 +97,21 @@ $ node tests/dom/diff-view-file-session.js
       "bars": {}
     },
     {
-      "step": "a commit's diff on the page that shows that commit",
+      "step": "a commit's diff on the page that shows that commit has one View file a file",
       "requests": [],
       "bars": {
         "M README.md": [
-          "[View at parent] button[type=button] · Switch to a5232ab93056 and open README.md",
           "[View file] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94, the commit this page shows"
         ],
         "A added.txt": [
           "[View file] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94, the commit this page shows"
         ],
-        "D gone.txt": [
-          "[View at parent] button[type=button] · Switch to a5232ab93056 and open gone.txt"
-        ],
+        "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View at parent] button[type=button] · Switch to a5232ab93056 and open latin1-�.txt",
           "[View file] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94, the commit this page shows"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View at parent] button[type=button] · Switch to a5232ab93056 and open src/old_name.py",
           "[View file] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94, the commit this page shows"
         ],
         "M vendor/lib": []
@@ -136,12 +131,33 @@ $ node tests/dom/diff-view-file-session.js
       "barStillOpen": false
     },
     {
-      "step": "View at parent asks the server to switch",
+      "step": "the same diff from the page on the parent switches to the commit",
+      "requests": [],
+      "bars": {
+        "M README.md": [
+          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open README.md"
+        ],
+        "A added.txt": [
+          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open added.txt"
+        ],
+        "D gone.txt": [],
+        "M latin1-�.txt": [
+          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open latin1-�.txt"
+        ],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open src/new_name.py"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "View file asks the server to switch",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-c3Jj/g1-b2xkX25hbWUucHk\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-c3Jj/g1-bmV3X25hbWUucHk\"}"
       ],
       "busy": [
-        "R100 src/old_name.py → src/new_name.py [View at parent]"
+        "R100 src/old_name.py → src/new_name.py [View file]"
       ],
       "barStillOpen": true
     },
@@ -149,87 +165,51 @@ $ node tests/dom/diff-view-file-session.js
       "step": "a second switch waits for the first",
       "requests": [],
       "busy": [
-        "R100 src/old_name.py → src/new_name.py [View at parent]"
+        "R100 src/old_name.py → src/new_name.py [View file]"
       ]
     },
     {
-      "step": "the page goes where the server says",
+      "step": "the page goes where the server says, and the server is on its branch again",
       "requests": [],
-      "opens": "src/old_name.py",
+      "opens": "src/new_name.py",
+      "served": "refs/remotes/origin/trunk",
       "busy": [
-        "R100 src/old_name.py → src/new_name.py [View at parent]"
+        "R100 src/old_name.py → src/new_name.py [View file]"
       ],
       "navigated": [
-        "/view/g1-c3Jj/g1-b2xkX25hbWUucHk"
+        "/view/g1-c3Jj/g1-bmV3X25hbWUucHk"
       ]
     },
     {
       "step": "a page that is leaving asks nothing more",
       "requests": [],
       "busy": [
-        "R100 src/old_name.py → src/new_name.py [View at parent]"
+        "R100 src/old_name.py → src/new_name.py [View file]"
       ]
     },
     {
       "step": "a pageshow that restores nothing changes nothing",
       "requests": [],
       "busy": [
-        "R100 src/old_name.py → src/new_name.py [View at parent]"
+        "R100 src/old_name.py → src/new_name.py [View file]"
       ]
     },
     {
       "step": "a page the browser brings back switches again",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-Z29uZS50eHQ\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "busy": [
-        "D gone.txt [View at parent]"
+        "M README.md [View file]"
       ]
     },
     {
       "step": "a diff unmounted before the answer goes nowhere",
       "requests": [],
-      "listeningForPageshow": 0
+      "pageshowListeners": 1
     },
     {
-      "step": "the same diff from the page on the parent",
-      "requests": [],
-      "bars": {
-        "M README.md": [
-          "[View at parent] link /view/g1-UkVBRE1FLm1k · Open README.md at a5232ab93056, the commit this page shows",
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open README.md"
-        ],
-        "A added.txt": [
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open added.txt"
-        ],
-        "D gone.txt": [
-          "[View at parent] link /view/g1-Z29uZS50eHQ · Open gone.txt at a5232ab93056, the commit this page shows"
-        ],
-        "M latin1-�.txt": [
-          "[View at parent] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at a5232ab93056, the commit this page shows",
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open latin1-�.txt"
-        ],
-        "M link": [],
-        "R100 src/old_name.py → src/new_name.py": [
-          "[View at parent] link /view/g1-c3Jj/g1-b2xkX25hbWUucHk · Open src/old_name.py at a5232ab93056, the commit this page shows",
-          "[View file] button[type=button] · Switch to 6ac4c8b5eb94 and open src/new_name.py"
-        ],
-        "M vendor/lib": []
-      }
-    },
-    {
-      "step": "View file switches to the commit, and the server is on its branch again",
-      "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-c3Jj/g1-bmV3X25hbWUucHk\"}"
-      ],
-      "opens": "src/new_name.py",
-      "served": "refs/remotes/origin/trunk",
-      "navigated": [
-        "/view/g1-c3Jj/g1-bmV3X25hbWUucHk"
-      ]
-    },
-    {
-      "step": "a root commit has only its own side",
+      "step": "a root commit's diff opens at its own commit",
       "requests": [],
       "bars": {
         "A README.md": [
@@ -258,96 +238,70 @@ $ node tests/dom/diff-view-file-session.js
       }
     },
     {
-      "step": "a pull request's Changes at its head opens the base on its revision page",
+      "step": "a pull request's Changes at its head has one View on branch a file, a link",
       "requests": [
         "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
       ],
       "bars": {
         "M README.md": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-UkVBRE1FLm1k · Open README.md at a5232ab93056 without changing this page's commit",
-          "[View file] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94, the commit this page shows"
+          "[View on branch] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94, the commit this page shows"
         ],
         "A added.txt": [
-          "[View file] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94, the commit this page shows"
-        ],
-        "D gone.txt": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-Z29uZS50eHQ · Open gone.txt at a5232ab93056 without changing this page's commit"
-        ],
-        "M latin1-�.txt": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at a5232ab93056 without changing this page's commit",
-          "[View file] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94, the commit this page shows"
-        ],
-        "M link": [],
-        "R100 src/old_name.py → src/new_name.py": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-c3Jj%2Fg1-b2xkX25hbWUucHk · Open src/old_name.py at a5232ab93056 without changing this page's commit",
-          "[View file] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94, the commit this page shows"
-        ],
-        "M vendor/lib": []
-      }
-    },
-    {
-      "step": "a revision page is a link the browser follows",
-      "requests": [],
-      "prevented": false,
-      "follows": "/api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-UkVBRE1FLm1k"
-    },
-    {
-      "step": "beside a checkout both sides open on their revision page",
-      "requests": [
-        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
-      ],
-      "modules": [
-        "/static/git-path.js"
-      ],
-      "codecLoaded": true,
-      "bars": {
-        "M README.md": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-UkVBRE1FLm1k · Open README.md at a5232ab93056 without changing this page's commit",
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94 without changing this page's commit"
-        ],
-        "A added.txt": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94 without changing this page's commit"
-        ],
-        "D gone.txt": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-Z29uZS50eHQ · Open gone.txt at a5232ab93056 without changing this page's commit"
-        ],
-        "M latin1-�.txt": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at a5232ab93056 without changing this page's commit",
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94 without changing this page's commit"
-        ],
-        "M link": [],
-        "R100 src/old_name.py → src/new_name.py": [
-          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-c3Jj%2Fg1-b2xkX25hbWUucHk · Open src/old_name.py at a5232ab93056 without changing this page's commit",
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-c3Jj%2Fg1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94 without changing this page's commit"
-        ],
-        "M vendor/lib": []
-      }
-    },
-    {
-      "step": "a side at another commit than the route's end of it has no control",
-      "requests": [
-        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
-      ],
-      "bars": {
-        "M README.md": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94 without changing this page's commit"
-        ],
-        "A added.txt": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94 without changing this page's commit"
+          "[View on branch] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94, the commit this page shows"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94 without changing this page's commit"
+          "[View on branch] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94, the commit this page shows"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-c3Jj%2Fg1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94 without changing this page's commit"
+          "[View on branch] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94, the commit this page shows"
         ],
         "M vendor/lib": []
       }
     },
     {
-      "step": "a revision route from elsewhere gives no controls and keeps the diff",
+      "step": "View on branch at the head is a link the browser follows",
+      "requests": [],
+      "prevented": false,
+      "follows": "/view/g1-UkVBRE1FLm1k"
+    },
+    {
+      "step": "on a page at another commit, View on branch switches to the head",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open README.md"
+        ],
+        "A added.txt": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open added.txt"
+        ],
+        "D gone.txt": [],
+        "M latin1-�.txt": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open latin1-�.txt"
+        ],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open src/new_name.py"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "the switch names the pull request's ref, which the server then serves",
+      "requests": [
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+      ],
+      "opens": "README.md",
+      "served": "refs/pull/7/head",
+      "navigated": [
+        "/view/g1-UkVBRE1FLm1k"
+      ]
+    },
+    {
+      "step": "a pull request's diff of another commit than its head has no controls",
       "requests": [
         "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
       ],
@@ -359,11 +313,60 @@ $ node tests/dom/diff-view-file-session.js
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [],
         "M vendor/lib": []
-      },
-      "failure": [],
-      "logged": [
-        "metabrowser diff: revision links unavailable · diff/view-file · The comparison route is not a same-origin plugin route."
-      ]
+      }
+    },
+    {
+      "step": "beside a checkout at the head, View on branch opens the working-tree file",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [
+          "[View on branch] link /view/README.md · Open README.md in this checkout, whose HEAD is this pull request's head"
+        ],
+        "A added.txt": [
+          "[View on branch] link /view/added.txt · Open added.txt in this checkout, whose HEAD is this pull request's head"
+        ],
+        "D gone.txt": [],
+        "M latin1-�.txt": [],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View on branch] link /view/src/new_name.py · Open src/new_name.py in this checkout, whose HEAD is this pull request's head"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "a checkout served from a folder inside it opens only what is in that folder",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [],
+        "A added.txt": [],
+        "D gone.txt": [],
+        "M latin1-�.txt": [],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View on branch] link /view/new_name.py · Open src/new_name.py in this checkout, whose HEAD is this pull request's head"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "a checkout whose HEAD is elsewhere has no controls",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [],
+        "A added.txt": [],
+        "D gone.txt": [],
+        "M latin1-�.txt": [],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [],
+        "M vendor/lib": []
+      }
     },
     {
       "step": "a patch file names no commit",
@@ -378,44 +381,44 @@ $ node tests/dom/diff-view-file-session.js
     {
       "step": "a commit the server's mirror lacks is being fetched",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "busy": [],
       "notices": {
-        "M README.md": "[role=status] The mirror is fetching a5232ab93056; try again when the fetch ends."
+        "M README.md": "[role=status] The mirror is fetching 6ac4c8b5eb94; try again when the fetch ends."
       }
     },
     {
       "step": "asked again after the fetch, the origin does not have it",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Commit a5232ab93056 is not in the mirror, and its origin does not have it."
+        "M README.md": "[role=status] Commit 6ac4c8b5eb94 is not in the mirror, and its origin does not have it."
       }
     },
     {
       "step": "a fetch that could not run says so",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Commit a5232ab93056 is not in the mirror, and fetching it failed."
+        "M README.md": "[role=status] Commit 6ac4c8b5eb94 is not in the mirror, and fetching it failed."
       }
     },
     {
       "step": "a server that now serves a folder refuses",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
-        "M README.md": "[role=status] Could not switch to a5232ab93056 (unsupported_for_subject)."
+        "M README.md": "[role=status] Could not switch to 6ac4c8b5eb94 (unsupported_for_subject)."
       }
     },
     {
       "step": "a request that fails says so",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "notices": {
         "M README.md": "[role=status] The switch request failed."
@@ -424,7 +427,37 @@ $ node tests/dom/diff-view-file-session.js
     {
       "step": "asking again clears what the last refusal said",
       "requests": [
-        "POST /api/source/pin [content-type: application/json] {\"oid\":\"a5232ab93056074aa3dd87c7b3c28ca84081a6a0\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+      ],
+      "waiting": 1
+    },
+    {
+      "step": "a pin another tab changed turns each link into the switch back",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open README.md"
+        ],
+        "A added.txt": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open added.txt"
+        ],
+        "D gone.txt": [],
+        "M latin1-�.txt": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open latin1-�.txt"
+        ],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View on branch] button[type=button] · Switch to 6ac4c8b5eb94, this pull request's head, and open src/new_name.py"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "and following it switches first",
+      "requests": [
+        "POST /api/source/pin [content-type: application/json] {\"oid\":\"6ac4c8b5eb94eecbdb621d629b31066f050c75f1\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
       ],
       "waiting": 1
     },

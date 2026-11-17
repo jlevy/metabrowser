@@ -207,7 +207,9 @@ class PageElement {
             : selector === "a[href], img[src]"
               ? (tag === "A" && child.getAttribute("href") !== null) ||
                 (tag === "IMG" && child.getAttribute("src") !== null)
-              : tag === selector.toUpperCase();
+              : selector === 'a[href^="/view/"]'
+                ? tag === "A" && (child.getAttribute("href") ?? "").startsWith("/view/")
+                : tag === selector.toUpperCase();
         if (wanted) {
           found.push(child);
         }
@@ -445,22 +447,22 @@ async function main() {
 
   const supported = recorded.manifest.filter((entry) => markdown.supportsMarkdownChange(entry));
   const ahead = markdown.firstScreenMarkdown(recorded.manifest);
-  const isSnapshotTarget = markdown.snapshotTargets(recorded.snapshot_route);
-  const route = recorded.snapshot_route;
+  // The page shows the comparison's head until a step says another pin is served.
+  let showsHead = true;
+  const isTarget = markdown.markdownTargets(recorded.image_route, () => showsHead);
+  const route = recorded.image_route;
   const links = {
     route,
     opens: Object.fromEntries(
       [
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document`, false],
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image`, true],
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image`, false],
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&offset=4`, false],
-        [route.replace("left=a", "left=0"), false],
+        ["/view/g1-ZG9jcw/g1-c2V0dXAubWQ", false],
+        ["/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup", false],
+        [`${route}&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc`, true],
+        [`${route}&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc`, false],
+        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc`, true],
+        [route.replace("left=a", "left=0"), true],
         ["/api/tree?path=docs", false],
-      ].map(([href, image]) => [
-        `${image ? "image" : "link"} ${href}`,
-        isSnapshotTarget(href, image),
-      ]),
+      ].map(([href, image]) => [`${image ? "image" : "link"} ${href}`, isTarget(href, image)]),
     ),
   };
 
@@ -490,7 +492,7 @@ async function main() {
     ensureInert: async () => inert,
     loadStyles: async () => {},
     mutate: (change) => change(),
-    isSnapshotTarget,
+    isTarget,
     now: clock.now,
     later: clock.later,
     cancel: clock.cancel,
@@ -590,6 +592,13 @@ async function main() {
   await choose(byId.f1, "rendered");
   near("f1");
   step("switching formats asks for nothing", [byId.f1]);
+
+  // Another tab switched the server's pin: a link to a file of the head would open that
+  // path at the other pin, so every one drawn becomes plain text, and so does any drawn
+  // later; images stay on the comparison's own route.
+  showsHead = false;
+  views.closeHeadLinks();
+  step("a page that learns another pin is served keeps no link to a file", [byId.f1]);
 
   views.dispose();
   step("disposal unbinds the chooser and stops every timer", files);

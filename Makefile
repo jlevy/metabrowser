@@ -179,7 +179,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
-	tests/test_cli_github_pull_snapshot_golden.py \
+	tests/test_cli_github_pull_image_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
@@ -268,7 +268,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_git_refresh_golden.py \
 	tests/test_cli_github_url_golden.py \
 	tests/test_cli_github_pull_golden.py \
-	tests/test_cli_github_pull_snapshot_golden.py \
+	tests/test_cli_github_pull_image_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \

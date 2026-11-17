@@ -11,8 +11,8 @@ patterns:
 A pull request’s Changes opens each changed Markdown file in **Rendered** when the
 server can map its Git hunks to the document.
 The comparison names the route that answers a file’s rendered redline,
-`GET github/pull-rendered-diff`, and the route its links open,
-`GET github/pull-snapshot`; the diff plugin spells neither.
+`GET github/pull-rendered-diff`, and the route its images load from,
+`GET github/pull-image`; the diff plugin spells neither.
 Before the reader opens Changes, the page asks for the projections of the Markdown files
 among the first eight, at most four, so the first screen finds them computed.
 
@@ -34,37 +34,41 @@ A block whose source changed in a way its render does not show, here an HTML com
 drawn like any other and never folds, and nothing is drawn to say that Source shows
 more: each row is its label and its content, and the session fails on anything else.
 Long runs of unchanged blocks fold, and a fold builds its blocks when it opens.
-A link or image that opens a file of the comparison keeps its snapshot address; every
-other local address is dropped before the shared sanitizer.
+An image of the head keeps its address on the image route.
+A link to a file of the head keeps its `/view/` address only while the page shows the
+head, which is where that address opens the file; the server’s answer is the same for
+every page, and a page that learns another pin is served makes every such link plain
+text. Every other local address is dropped before the shared sanitizer.
 
 This browserless session loads the production `builtin_plugins/diff/diff-markdown.js`
 and `static/inert-html.js` whole, and plays the server’s side from
 `tests/fixtures/diff-markdown-responses.json`: what the production projection answers
-for these documents, bound to a pull request’s snapshot route, with Python’s HTML parse
-of every block, from which the session builds the template a page parses a block into.
+for these documents, bound to a pull request’s head, with Python’s HTML parse of every
+block, from which the session builds the template a page parses a block into.
 `tests/test_diff_markdown_session.py` fails when the recording drifts.
 The route itself is pinned by `tests/golden/cli-github-pull-rendered.txt`. The shared
 chip family and the stylesheet loader are stand-ins, the page is an element tree that
 records what the production code builds, and time is a clock the session advances by
 hand.
 
-`links` says which addresses in a rendered block open a file of the comparison.
-Each step lists the requests the page made and each file whose state it changed: its
-chooser (`*` chosen, `none` when the file can show only Source), what its body shows
-(`nothing` while it waits within the loading delay), `progress` while its mark counts
-down, and its rendered rows.
+`links` says which addresses in a rendered block open something, on a page that shows
+the head. Each step lists the requests the page made and each file whose state it
+changed: its chooser (`*` chosen, `none` when the file can show only Source), what its
+body shows (`nothing` while it waits within the loading delay), `progress` while its
+mark counts down, and its rendered rows.
 
 ```console
 $ node tests/dom/diff-markdown-session.js
 {
   "links": {
-    "route": "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
+    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
     "opens": {
-      "link /api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document": true,
-      "image /api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image": true,
-      "link /api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image": false,
-      "link /api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&offset=4": false,
-      "link /api/plugin/github/pull-snapshot?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": false,
+      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": true,
+      "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": true,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
+      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
+      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": false,
       "link /api/tree?path=docs": false
     }
   },
@@ -134,12 +138,12 @@ $ node tests/dom/diff-markdown-session.js
           "rows": [
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
-            "added: <p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document\">first setup notes</a> first.</p>",
+            "added: <p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
             "[5 unchanged blocks]",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -246,7 +250,7 @@ $ node tests/dom/diff-markdown-session.js
           "rows": [
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
-            "added: <p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document\">first setup notes</a> first.</p>",
+            "added: <p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
             "context: <p>Unchanged paragraph 0.</p>",
             "context: <p>Unchanged paragraph 1.</p>",
             "[5 unchanged blocks, open]",
@@ -256,7 +260,7 @@ $ node tests/dom/diff-markdown-session.js
             "  context: <p>Unchanged paragraph 5.</p>",
             "  context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -267,6 +271,33 @@ $ node tests/dom/diff-markdown-session.js
       "step": "switching formats asks for nothing",
       "requests": [],
       "files": {}
+    },
+    {
+      "step": "a page that learns another pin is served keeps no link to a file",
+      "requests": [],
+      "files": {
+        "f1 docs/guide.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+            "removed: <p>Read the <span>setup notes</span> first.</p>",
+            "added: <p>Read the <a>first setup notes</a> first.</p>",
+            "context: <p>Unchanged paragraph 0.</p>",
+            "context: <p>Unchanged paragraph 1.</p>",
+            "[5 unchanged blocks, open]",
+            "  context: <p>Unchanged paragraph 2.</p>",
+            "  context: <p>Unchanged paragraph 3.</p>",
+            "  context: <p>Unchanged paragraph 4.</p>",
+            "  context: <p>Unchanged paragraph 5.</p>",
+            "  context: <p>Unchanged paragraph 6.</p>",
+            "context: <p>Unchanged paragraph 7.</p>",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "removed: <p>The <del>old</del> closing line.</p>",
+            "added: <p>The <ins>new</ins> closing line.</p>"
+          ]
+        }
+      }
     },
     {
       "step": "disposal unbinds the chooser and stops every timer",

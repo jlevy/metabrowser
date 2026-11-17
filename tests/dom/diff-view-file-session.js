@@ -1,15 +1,17 @@
-// Browserless session: View file on a diff's file bars, driven through the production
-// browser code.
+// Browserless session: View file on a commit's diff and View on branch on a pull request's
+// Changes, on a diff's file bars, driven through the production browser code.
 //
 // Every document here, the block the shell writes into a page, and every answer of
 // POST /api/source/pin is one the in-process application gave: while it served
-// tests/diff_view_file_fixture.py's mirror, then while a server on another repository,
-// and one on a folder, answered a page left open from it. They are recorded in
-// tests/fixtures/diff-view-file-responses.json; tests/test_diff_view_file_session.py
-// replays that story against real stores and fails when the recording drifts, so this
-// session never runs on an envelope a test wrote by hand. The two routes a pull request's
-// page names, its comparison's and the one that opens its revision files, are recorded as
-// the server's own `snapshot_route` spells them, with a stand-in for the store's token.
+// tests/diff_view_file_fixture.py's mirror, holding pull request 7's head ref, then while
+// a server on another repository, and one on a folder, answered a page left open from it.
+// They are recorded in tests/fixtures/diff-view-file-responses.json;
+// tests/test_diff_view_file_session.py replays that story against real stores and fails
+// when the recording drifts, so this session never runs on an envelope a test wrote by
+// hand. The two routes a pull request's page names, its comparison's and its rendered
+// Markdown's images', are recorded as the server spells them, with a stand-in for the
+// store's token. A checkout's page, which has no pin, is a folder whose repository's HEAD
+// a step sets, as the shell writes it from the checkout.
 //
 // builtin_plugins/diff/index.js loads whole, as the shell loads the plugin, with its
 // modules: it reads the page's pin, validates the document, and mounts the diff view,
@@ -155,6 +157,15 @@ class PageElement {
     this.append(...nodes);
   }
 
+  replaceWith(node) {
+    const parent = this.parentNode;
+    if (parent) {
+      parent.children[parent.children.indexOf(this)] = node;
+      node.parentNode = parent;
+      this.parentNode = null;
+    }
+  }
+
   remove() {
     if (this.parentNode) {
       this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
@@ -293,6 +304,9 @@ function pluginRoute(plugin, name, params) {
 /** @type {{render: (container: PageElement, ctx: object) => Promise<{dispose(): void}>} | null} */
 let diffView = null;
 
+/** What the page the step opens knows of its source, for a checkout's steps. */
+const pageSource = { sourceKind: "git_revision", repository: null };
+
 globalThis.document = {
   createElement: (tag) => new PageElement(tag),
   addEventListener() {},
@@ -333,6 +347,13 @@ globalThis.window = {
       return structuredClone(pluginData.get(request));
     },
     navigation: { href: route.href },
+    // What a page beside a checkout knows of it: a folder, and the repository's HEAD, which
+    // the shell writes from the checkout (`METABROWSER_REPOSITORY_CONTEXT`). A step sets
+    // both; a pin's page is a Git revision and names no checkout.
+    sourceKind: () => pageSource.sourceKind,
+    get repository() {
+      return pageSource.repository;
+    },
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForPath: () => "",
@@ -351,6 +372,13 @@ globalThis.fetch = (url, init) => {
     waiting.push({ body: JSON.parse(init.body), resolve, reject });
   });
 };
+
+/** What the pin guard announces when a data request finds the server serves another pin. */
+function pinChanged(served) {
+  for (const handler of windowListeners.get("metabrowser:pin-changed") ?? []) {
+    handler({ detail: { pin: served } });
+  }
+}
 
 /** A `pageshow`, as the browser fires it when it brings the page back. */
 function pageshow(persisted) {
@@ -544,7 +572,11 @@ async function main() {
   comparisonArrives(recorded.commit.body);
   mounted = await rendering;
   await settle();
-  step("a commit's diff on the page that shows that commit", { bars: bars(container) });
+  // One control a file, for the side the commit makes; a deleted file, a link, and a
+  // submodule have none.
+  step("a commit's diff on the page that shows that commit has one View file a file", {
+    bars: bars(container),
+  });
 
   // A link has no handler: the browser follows its address, and the bar does not fold.
   const link = control(container, readme, "View file");
@@ -556,30 +588,40 @@ async function main() {
     opens: pathOf(link.getAttribute("href")),
     barStillOpen: expanded(container, readme),
   });
-  const latin1 = control(container, "M latin1-\ufffd.txt", "View file").getAttribute("href");
+  const latin1 = control(container, "M latin1-�.txt", "View file").getAttribute("href");
   assert(latin1 === recorded.views.latin1, "a name that is not UTF-8 keeps its bytes");
 
   // The rest of the bar still folds the file.
   container.find("diff-file-path")[0].click();
   step("the rest of the bar still folds the file", { barStillOpen: expanded(container, readme) });
 
-  control(container, renamed, "View at parent").click();
+  // The page that switch to the parent brought: the same diff's controls switch back to the
+  // commit, as they would to any commit the page does not show.
+  await open(recorded.page_at_parent, commitDiff);
+  step("the same diff from the page on the parent switches to the commit", {
+    bars: bars(container),
+  });
+
+  control(container, renamed, "View file").click();
   await settle();
-  step("View at parent asks the server to switch", {
+  step("View file asks the server to switch", {
     busy: busy(container),
     barStillOpen: expanded(container, renamed),
   });
 
-  control(container, "D gone.txt", "View at parent").click();
+  control(container, readme, "View file").click();
   await settle();
   step("a second switch waits for the first", { busy: busy(container) });
 
-  await answer(recorded.switch_parent);
-  const went = navigated[0];
-  step("the page goes where the server says", { opens: pathOf(went), busy: busy(container) });
+  await answer(recorded.switch_head);
+  step("the page goes where the server says, and the server is on its branch again", {
+    opens: pathOf(navigated[0]),
+    served: recorded.switch_head.body.status.ref,
+    busy: busy(container),
+  });
 
   // The page is leaving. Until it has, nothing more is asked of the server.
-  control(container, "D gone.txt", "View at parent").click();
+  control(container, readme, "View file").click();
   await settle();
   step("a page that is leaving asks nothing more", { busy: busy(container) });
 
@@ -588,37 +630,27 @@ async function main() {
   pageshow(false);
   step("a pageshow that restores nothing changes nothing", { busy: busy(container) });
   pageshow(true);
-  control(container, "D gone.txt", "View at parent").click();
+  control(container, readme, "View file").click();
   await settle();
   step("a page the browser brings back switches again", { busy: busy(container) });
 
-  // Unmounted while that switch was on its way: its answer takes the page nowhere.
+  // Unmounted while that switch was on its way: its answer takes the page nowhere. The
+  // page's one switch listens for the page's whole life; the diff left nothing behind.
   mounted.dispose();
   mounted = null;
-  await answer(recorded.switch_gone);
+  await answer(recorded.switch_readme);
   step("a diff unmounted before the answer goes nowhere", {
-    listeningForPageshow: (windowListeners.get("pageshow") ?? []).length,
-  });
-
-  // The page that load brings is rendered for the parent; Back returns to the diff on it.
-  await open(recorded.page_at_parent, commitDiff);
-  step("the same diff from the page on the parent", { bars: bars(container) });
-
-  control(container, renamed, "View file").click();
-  await settle();
-  await answer(recorded.switch_head);
-  step("View file switches to the commit, and the server is on its branch again", {
-    opens: pathOf(navigated[0]),
-    served: recorded.switch_head.body.status.ref,
+    pageshowListeners: (windowListeners.get("pageshow") ?? []).length,
   });
 
   await open(recorded.page, { revision: ids.first, raw: Promise.resolve(recorded.root.body) });
-  step("a root commit has only its own side", { bars: bars(container) });
+  step("a root commit's diff opens at its own commit", { bars: bars(container) });
 
-  // A pull request's page names the route that opens a file at either end of its
-  // comparison without changing the pin, and its comparison's own route; the server spells
-  // both (tests/test_diff_view_file_session.py records them). The comparison's base is the
-  // merge base, as a pull request's record names it.
+  // A pull request's Changes. The pull request's page names its head ref when the diff
+  // shows the pull request's head, and the routes its comparison and rendered Markdown are
+  // answered on; the server spells them (tests/test_diff_view_file_session.py records them).
+  // The comparison's base is the merge base, as a pull request's record names it, and no
+  // control opens it.
   const routes = recorded.pull_routes;
   const merged = recorded.pull.body.resolved.left.id;
   const comparisonTarget = new URL(routes.comparison, "http://metabrowser.invalid");
@@ -626,72 +658,72 @@ async function main() {
     pluginRoute("github", "pull-comparison", Object.fromEntries(comparisonTarget.searchParams)),
     recorded.pull.body,
   );
+  const pullRef = "refs/pull/7/head";
   const pullPage = {
     left: merged,
     right: ids.second,
     base_policy: "merge_base",
     route: routes.comparison,
-    snapshot_route: routes.snapshot,
+    image_route: routes.image,
+    branch: { ref: pullRef },
   };
-  const noSwitch = () =>
-    assert(
-      !requests.some((request) => request.startsWith("POST")),
-      "a pull request's View file never asks the server to switch its pin",
-    );
 
   // On a mirror serving the pull request's head, the head is the commit the page shows.
-  // The only page that mounts a two-endpoint comparison is a pull request's, and it always
-  // names these routes, so no comparison here switches the pin.
   await open(recorded.page, { comparison: pullPage });
-  noSwitch();
-  assert(
-    control(container, readme, "View at base")
-      .getAttribute("data-tip-text")
-      .includes(ids.first.slice(0, 12)),
-    "the base side is the merge base, not the base branch's tip",
-  );
-  step("a pull request's Changes at its head opens the base on its revision page", {
+  step("a pull request's Changes at its head has one View on branch a file, a link", {
     bars: bars(container),
   });
-  const atBase = control(container, readme, "View at base");
-  step("a revision page is a link the browser follows", {
-    prevented: atBase.click(),
-    follows: atBase.getAttribute("href"),
+  const onBranch = control(container, readme, "View on branch");
+  step("View on branch at the head is a link the browser follows", {
+    prevented: onBranch.click(),
+    follows: onBranch.getAttribute("href"),
   });
 
-  // Beside a checkout the page has no pin and its shell no route codec: both sides open on
-  // their revision page, and the codec is asked for once, with the module.
+  // Elsewhere, it serves the pull request's head first, by its commit and under its ref.
+  await open(recorded.page_at_parent, { comparison: pullPage });
+  step("on a page at another commit, View on branch switches to the head", {
+    bars: bars(container),
+  });
+  control(container, readme, "View on branch").click();
+  await settle();
+  await answer(recorded.switch_on_branch);
+  step("the switch names the pull request's ref, which the server then serves", {
+    opens: pathOf(navigated[0]),
+    served: recorded.switch_on_branch.body.status.ref,
+  });
+  // Back to Changes: the browser brings the page back, and the page's switch lets go.
+  pageshow(true);
+
+  // Changes shows a commit that is not the pull request's head (here, a page on an earlier
+  // head while the record names a newer one): no branch holds that file, so nothing opens,
+  // and nothing is loaded to decide so.
+  await open(recorded.page, { comparison: { ...pullPage, branch: null } });
+  step("a pull request's diff of another commit than its head has no controls", {
+    bars: bars(container),
+  });
+
+  // Beside a checkout the page has no pin. Its working tree is the pull request's code only
+  // while its HEAD is the diff's head, and then each file opens there, at the folder's own
+  // address; the codec of a pin's addresses is never asked for.
   const codec = globalThis.window.MetabrowserGitPath;
   delete globalThis.window.MetabrowserGitPath;
+  pageSource.sourceKind = "filesystem";
+  pageSource.repository = { revision: ids.second, served_prefix: "" };
   await open(null, { comparison: pullPage });
-  noSwitch();
-  step("beside a checkout both sides open on their revision page", {
-    codecLoaded: globalThis.window.MetabrowserGitPath !== undefined,
+  step("beside a checkout at the head, View on branch opens the working-tree file", {
     bars: bars(container),
   });
+  pageSource.repository = { revision: ids.second, served_prefix: "src" };
+  await open(null, { comparison: pullPage });
+  step("a checkout served from a folder inside it opens only what is in that folder", {
+    bars: bars(container),
+  });
+  pageSource.repository = { revision: ids.first, served_prefix: "" };
+  await open(null, { comparison: pullPage });
+  step("a checkout whose HEAD is elsewhere has no controls", { bars: bars(container) });
+  pageSource.sourceKind = "git_revision";
+  pageSource.repository = null;
   globalThis.window.MetabrowserGitPath = codec;
-
-  // A side whose commit is not the end the route names would open another commit than
-  // its label says, so it has no control: here a route for the base branch's tip.
-  const tipRoute = routes.snapshot.replace(`left=${merged}`, `left=${ids.base}`);
-  assert(tipRoute !== routes.snapshot, "the route names the merge base");
-  await open(null, { comparison: { ...pullPage, snapshot_route: tipRoute } });
-  noSwitch();
-  step("a side at another commit than the route's end of it has no control", {
-    bars: bars(container),
-  });
-
-  // A route that is not this origin's plugin route gives no revision links, and the diff
-  // still shows.
-  const elsewhere = "https://elsewhere.invalid/api/plugin/github/pull-snapshot?number=7";
-  const refused = await logging(() =>
-    open(null, { comparison: { ...pullPage, snapshot_route: elsewhere } }),
-  );
-  step("a revision route from elsewhere gives no controls and keeps the diff", {
-    bars: bars(container),
-    failure: failure(container),
-    logged: refused,
-  });
 
   const patch = gitPath.wire("changes.patch");
   pluginData.set(pluginRoute("diff", "document", { path: patch }), recorded.patch.body);
@@ -701,10 +733,10 @@ async function main() {
     bars: bars(container),
   });
 
-  // A page left open while its server was restarted on another repository.
-  await open(recorded.page, commitDiff);
+  // A page left open on the parent while its server was restarted on another repository.
+  await open(recorded.page_at_parent, commitDiff);
   requests.splice(0);
-  const lacking = control(container, readme, "View at parent");
+  const lacking = control(container, readme, "View file");
   lacking.click();
   await settle();
   await answer(recorded.other_pending);
@@ -733,6 +765,22 @@ async function main() {
   lacking.click();
   await settle();
   step("asking again clears what the last refusal said", { waiting: waiting.length });
+  await failRequest();
+  requests.splice(0);
+
+  // Another tab switched the server's pin while this page showed the pull request's head:
+  // its links would open the same paths at that other pin, so each becomes the switch back.
+  // The page hears it once, from the pin guard, for the rest of its life, so this is the
+  // session's last step on a pin.
+  await open(recorded.page, { comparison: pullPage });
+  pinChanged(ids.first);
+  await settle();
+  step("a pin another tab changed turns each link into the switch back", {
+    bars: bars(container),
+  });
+  control(container, readme, "View on branch").click();
+  await settle();
+  step("and following it switches first", { waiting: waiting.length });
   await failRequest();
   requests.splice(0);
 

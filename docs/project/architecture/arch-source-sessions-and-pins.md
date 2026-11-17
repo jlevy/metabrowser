@@ -218,17 +218,35 @@ the comparison is measured in the module header and in
 The functional rows `source.stale-pin-guard` and `source.history-landing` in the
 [parity registry](arch-parity-registry.md) pin both behaviors.
 
-**View file.** On a pin’s page, a diff’s file bar opens the changed file at either side
-of the change. The comparison document says which commit each side belongs to, so a side
-at the commit the page shows is a link to its `/view/` address, and a side at another
-commit is a button that switches the pin with `POST /api/source/pin`, naming the address
-so the answer’s `view_href` says where to go.
-A pull request’s Changes never switches the pin: every side at another commit links to
-the GitHub plugin’s revision page.
-Only a regular file’s side gets a control, since a submodule’s side is another
+**View file and View on branch.** A diff’s file bar opens the file the change makes, its
+new side, in the main UI: **View file** on a commit’s diff, and **View on branch** on a
+pull request’s Changes while the diff shows the pull request’s head.
+The comparison document says which commit that side is at, so on a pin’s page the
+control is a link to its `/view/` address when the page shows that commit, and otherwise
+a button that switches the pin with `POST /api/source/pin`, naming the address so the
+answer’s `view_href` says where to go.
+A pull request’s switch names the commit and, as `under`, its `refs/pull/<n>/head`, so
+the page lands on the pull request rather than a bare commit or another pull request
+with the same head. Beside a checkout, which has no pin, View on branch is a link to the
+working-tree file while the checkout’s `HEAD` is the diff’s head.
+The old side has no control: a parent is a bare commit, and a merge base is on no
+branch. Only a regular file’s side gets a control, since a submodule’s side is another
 repository’s commit and a symbolic link’s would open its target.
+
+The pin is server-wide, so a switch from one tab moves every tab’s; a tab learns it when
+a data request is refused (`metabrowser:pin-changed`). A mounted diff then turns each
+link into the button that switches back, since the same `/view/` address now opens the
+other pin, and its rendered Markdown’s links to files of the head into plain text.
+A switch and the navigation after it are two steps, because a `/view/` address names no
+revision; that is a limit of this design, not something View on branch adds.
 `builtin_plugins/diff/diff-view-file.js` holds the rules in its header, and the parity
 rows `diff.view-file` and `diff.view-file-sides` pin them.
+
+**Large Markdown.** A pin runs under the untrusted profile, so its Markdown’s author is
+not the reader’s to trust: a document past the render bound in
+`metabrowser/markdown_render_bound.py` opens as Source, its file envelope offering no
+rendered view and the render route refusing one, and one within it renders with its
+fenced code plain. The module records the measurements behind the bound.
 
 ## How a Mirror’s Page Names Itself
 

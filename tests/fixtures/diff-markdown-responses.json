@@ -1,5 +1,5 @@
 {
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
+  "image_route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
   "manifest": [
     {
       "id": "f1",
@@ -73,7 +73,7 @@
         {
           "kind": "added",
           "side": "new",
-          "html": "<p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&amp;mode=document\">first setup notes</a> first.</p>",
+          "html": "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
           "source_only": false
         },
         {
@@ -127,7 +127,7 @@
         {
           "kind": "context",
           "side": "new",
-          "html": "<img loading=\"lazy\" src=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&amp;mode=image\" alt=\"Diagram\">",
+          "html": "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
           "source_only": false
         },
         {
@@ -209,7 +209,7 @@
         ]
       }
     ],
-    "<p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&amp;mode=document\">first setup notes</a> first.</p>": [
+    "<p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>": [
       {
         "tag": "p",
         "attrs": [],
@@ -220,7 +220,7 @@
             "attrs": [
               [
                 "href",
-                "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document"
+                "/view/g1-ZG9jcw/g1-c2V0dXAubWQ"
               ]
             ],
             "children": [
@@ -303,7 +303,7 @@
         ]
       }
     ],
-    "<img loading=\"lazy\" src=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&amp;mode=image\" alt=\"Diagram\">": [
+    "<img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">": [
       {
         "tag": "img",
         "attrs": [
@@ -313,7 +313,7 @@
           ],
           [
             "src",
-            "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image"
+            "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc"
           ],
           [
             "alt",

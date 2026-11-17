@@ -1,37 +1,46 @@
-// View file: open a changed file at either side of the comparison a diff shows.
+// View file and View on branch: open the file a change makes in the app's own viewer.
 //
 // A File Diff Format document whose snapshots are commits says which commit each side
-// of a change belongs to: `resolved.left` for `change.old` (a commit's parent, or a
-// comparison's base) and `resolved.right` for `change.new` (the commit, or the head).
-// A page on a pinned revision reaches a file at a commit by its `/view/` address while
-// the server's pin is that commit. So a side at the commit the page shows is a link to
-// that address, which the browser follows as it follows any link: a new tab, a copied
-// link, and back and forward are the browser's own. A side at another commit has no
-// address yet, so it is a button that asks the server to switch its pin with the ref
-// selector's own request, `POST /api/source/pin`, naming the address so the answer
-// says where the page goes.
+// of a change belongs to; `resolved.right` is the commit `change.new` is at (a commit, or
+// a pull request's head). Each file bar offers that side, and only that side, in the
+// main UI: with the tree, the tabs, and the ref selector around it. The old side has no
+// such place: a commit's parent is a bare commit, and a pull request's is the merge base,
+// which no branch is at.
 //
-// A pull request's comparison names a route that opens a file at either end without
-// changing the pin (`snapshotHref`, the GitHub plugin's revision page). On its page every
-// side at another commit than the page shows is a link there, on a mirror and beside a
-// checkout alike, and nothing switches the pin; a side at the commit the page shows keeps
-// its `/view/` link, so the file opens in the app's own viewer.
+// A commit's diff, on a pinned revision, offers "View file". A page reaches a file at a
+// commit by its `/view/` address while the server's pin is that commit, so at the commit
+// the page shows the control is a link to that address, which the browser follows as it
+// follows any link: a new tab, a copied link, and back and forward are the browser's own.
+// At another commit it is a button that asks the server to switch its pin with the ref
+// selector's own request, `POST /api/source/pin`, naming the address so the answer says
+// where the page goes.
+//
+// A pull request's Changes offers "View on branch", by the same rule, when the diff shows
+// the pull request's head: the pull request's page names its head ref (`branch`), a
+// switch names that ref (`under`) beside the commit, and the page lands on the pull
+// request's code as Browse code lands on it. Beside a checkout, which has no pin, the
+// control is a link to the working-tree file when the checkout's HEAD is the diff's
+// head, and absent otherwise. A control with no target is absent, never disabled.
+//
+// The pin is the server's, shared by every tab. When this page learns another tab
+// switched it (`metabrowser:pin-changed`), its links would open the same path at the
+// other pin, so each link becomes the button that switches back first.
 //
 // Only a regular file's side gets a control. A submodule's side is a commit of another
 // repository, which the view has nothing to show for. A symbolic link's side would open
 // the file the link points at, while the diff shows the link's own text, so it is left
 // out rather than opened as something the diff did not show.
 //
-// Every decision lives here without a DOM. `viewFileSides` reads the document,
-// `describeViewFile` says what each control is and does, and `createViewFileOpener`
-// owns the switch and what a refusal says. diff-view.js paints the controls, and
+// One switch runs at a time on a page, whoever asks for it: the diff's controls and the
+// pull request page's Browse code share `createPinSwitch`, which owns the request and
+// what a refusal says. Every decision lives here without a DOM. `viewFileSide` reads the
+// document, `describeViewFile` says what a control is and does, and
+// `createViewFileOpener` owns a mounted diff's controls. diff-view.js paints them, and
 // tests/dom/diff-view-file-session.js runs all of it from the command line.
 
 /**
  * @typedef {object} ViewFileSide
- * @property {"base" | "head"} side
- * @property {"parent" | "base" | "head"} role What the side is to the comparison.
- * @property {string} commit The full ID of the commit the side belongs to.
+ * @property {string} commit The full ID of the commit the change's new side is at.
  * @property {string} path The side's path, as the diff shows it.
  * @property {string | Uint8Array} address The path as an address is built from it: its
  *   bytes when the name is not UTF-8, since `path` then holds replacement characters.
@@ -39,10 +48,9 @@
 
 /**
  * @typedef {object} ViewFileAction
- * @property {"base" | "head"} side
  * @property {string} commit
  * @property {string} path
- * @property {string} href The file address at the requested revision.
+ * @property {string} href The file's address in the main UI.
  * @property {"link" | "switch"} mode A link opens an address the page already has; a
  *   switch changes the served pin first.
  * @property {string} label The control's text.
@@ -50,21 +58,36 @@
  */
 
 /**
+ * A request to switch the served pin: a commit, the ref it is served under when it is
+ * that ref's tip, and the `/view/` address the page goes to.
+ *
+ * @typedef {{oid: string, under?: string, view?: string}} PinSelection
+ */
+
+/**
+ * @typedef {{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}} PinSwitchOutcome
+ *   *href* is where the server says the page goes on the new pin, when it said.
+ */
+
+/** @typedef {ReturnType<typeof createPinSwitch>} PinSwitch */
+
+/**
  * What the diff view needs of the page it is mounted in. The plugin supplies it on a
- * pinned revision; a served folder has none, and the diff shows no controls.
+ * pinned revision, and for a pull request beside a checkout at its head; anywhere else
+ * the diff shows no controls.
  *
  * @typedef {object} ViewFileHost
- * @property {string} pin The full ID of the commit the page shows.
- * @property {(side: ViewFileSide) => string | null} [snapshotHref] A side's address on a
- *   route that opens it without changing the pin; null for a side the route does not
- *   serve. A host with it never switches the pin.
- * @property {(path: string | Uint8Array) => string | null} href The `/view/` address of
- *   a path on a pin; null for a path no tree entry has.
- * @property {(body: {oid: string, view: string}) => Promise<{status: number, body: unknown}>} switchPin
- *   `POST /api/source/pin`.
+ * @property {"pin" | "checkout"} kind
+ * @property {string} pin The full ID of the commit the page shows: the served pin, or
+ *   the checkout's HEAD.
+ * @property {string | null} branch The pull request's head ref on its Changes, and null
+ *   on a commit's diff.
+ * @property {(path: string | Uint8Array) => string | null} href The file's address at
+ *   the page's commit; null for a path the page has no address for.
+ * @property {PinSwitch} pinSwitch The page's one switch.
  * @property {(href: string) => void} navigate Load an address, as a link does.
- * @property {(restored: () => void) => () => void} onRestored Call *restored* when the
- *   browser brings the page back from its back/forward cache; returns how to stop.
+ * @property {(changed: () => void) => () => void} onPinChanged Call *changed* when the
+ *   page learns the server serves another pin; returns how to stop.
  */
 
 /**
@@ -75,13 +98,16 @@
 
 /**
  * What makes a page's opener. The plugin holds the page's host, and the diff view supplies
- * *released*, which closes over the mounted view.
+ * *released*, which closes over the mounted view, and *changed*, which repaints its
+ * controls.
  *
- * @typedef {(options?: {released?: () => void}) => ViewFileOpener} ViewFileOpenerFactory
+ * @typedef {(options?: {released?: () => void, changed?: () => void}) => ViewFileOpener} ViewFileOpenerFactory
  */
 
 const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const VIEW_PREFIX = "/view/";
+export const VIEW_FILE_LABEL = "View file";
+export const VIEW_ON_BRANCH_LABEL = "View on branch";
 
 /** @param {string} commit */
 function short(commit) {
@@ -123,58 +149,53 @@ function snapshotCommit(snapshot) {
 }
 
 /**
- * The sides of one change that are regular files at a commit, base before head.
- *
- * A deleted file has only its base side and an added one only its head side; a renamed
- * or copied file's base side is its old path. A comparison whose snapshots are not
- * commits, as a patch file's are not, has none, and neither has a root commit's base.
- * A submodule's or a symbolic link's side is left out (see the head of this file).
+ * The side of one change a control opens: its new side, when that is a regular file at a
+ * commit. Null for a deleted file, a comparison whose right snapshot is not a commit, as a
+ * patch file's is not, and a submodule's or a symbolic link's side (see the head of this
+ * file).
  *
  * @param {Record<string, unknown>} change A manifest entry of the document.
  * @param {Record<string, unknown>} resolved The document's resolved comparison.
- * @returns {ViewFileSide[]}
+ * @returns {ViewFileSide | null}
  */
-export function viewFileSides(change, resolved) {
-  /** @type {ViewFileSide[]} */
-  const sides = [];
-  /** @param {"base" | "head"} side @param {ViewFileSide["role"]} role @param {unknown} snapshot @param {unknown} entry */
-  const add = (side, role, snapshot, entry) => {
-    const commit = snapshotCommit(snapshot);
-    if (commit === null || entry === null || typeof entry !== "object") {
-      return;
-    }
-    const record = /** @type {{path?: unknown, path_b64?: unknown, entry_type?: unknown}} */ (
-      entry
-    );
-    const address = sidePathForAddress(record);
-    if (record.entry_type === "file" && address !== null && typeof record.path === "string") {
-      sides.push({ side, role, commit, path: record.path, address });
-    }
-  };
-  add(
-    "base",
-    resolved.base_policy === "first_parent" ? "parent" : "base",
-    resolved.left,
-    change.old ?? null,
-  );
-  add("head", "head", resolved.right, change.new ?? null);
-  return sides;
+export function viewFileSide(change, resolved) {
+  const commit = snapshotCommit(resolved.right);
+  const entry = change.new ?? null;
+  if (commit === null || entry === null || typeof entry !== "object") {
+    return null;
+  }
+  const record = /** @type {{path?: unknown, path_b64?: unknown, entry_type?: unknown}} */ (entry);
+  const address = sidePathForAddress(record);
+  return record.entry_type === "file" && address !== null && typeof record.path === "string"
+    ? { commit, path: record.path, address }
+    : null;
 }
 
 /**
  * What one side's control is. Pure.
  *
  * @param {ViewFileSide} side
- * @param {string} href The side's `/view/` address.
- * @param {{pin: string}} page The commit the page shows.
+ * @param {string} href The side's address in the main UI.
+ * @param {{kind: ViewFileHost["kind"], pin: string, branch: string | null, pinChanged?: boolean}} page
+ *   The commit the page shows, the pull request's head ref on its Changes, and whether
+ *   the page learned that the server serves another pin.
  * @returns {ViewFileAction}
  */
 export function describeViewFile(side, href, page) {
-  const mode = side.commit === page.pin ? "link" : "switch";
-  const label = side.side === "head" ? "View file" : `View at ${side.role}`;
+  const label = page.branch === null ? VIEW_FILE_LABEL : VIEW_ON_BRANCH_LABEL;
   const at = short(side.commit);
+  if (page.kind === "checkout") {
+    return {
+      commit: side.commit,
+      path: side.path,
+      href,
+      mode: "link",
+      label,
+      detail: `Open ${side.path} in this checkout, whose HEAD is this pull request's head`,
+    };
+  }
+  const mode = side.commit === page.pin && page.pinChanged !== true ? "link" : "switch";
   return {
-    side: side.side,
     commit: side.commit,
     path: side.path,
     href,
@@ -183,7 +204,9 @@ export function describeViewFile(side, href, page) {
     detail:
       mode === "link"
         ? `Open ${side.path} at ${at}, the commit this page shows`
-        : `Switch to ${at} and open ${side.path}`,
+        : page.branch === null
+          ? `Switch to ${at} and open ${side.path}`
+          : `Switch to ${at}, this pull request's head, and open ${side.path}`,
   };
 }
 
@@ -194,7 +217,7 @@ export function describeViewFile(side, href, page) {
  * @param {number} status
  * @param {unknown} body
  */
-function switchRefusal(commit, status, body) {
+export function switchRefusal(commit, status, body) {
   const record = /** @type {{code?: unknown} | null} */ (
     body !== null && typeof body === "object" ? body : null
   );
@@ -213,28 +236,122 @@ function switchRefusal(commit, status, body) {
 }
 
 /**
+ * A page's one switch of the served pin, which every control that switches it shares: a
+ * diff's View file and View on branch, and the pull request page's Browse code and its
+ * offer of a newer head.
+ *
+ * One switch runs at a time: the pin is the server's, so a second request while the first
+ * is on its way would race it. A switch the server made keeps the hold while the page
+ * leaves, as the ref selector's does, so nothing else is asked of a page that is going
+ * away; the hold ends if the browser brings the page back from its back/forward cache,
+ * and each listener of `onReleased` hears so. A caller that no longer wants the answer
+ * when it comes, such as a diff unmounted meanwhile, says so with *wanted*: the hold then
+ * ends and nothing is said.
+ *
+ * @param {{
+ *   post: (selection: PinSelection) => Promise<{status: number, body: unknown}>,
+ *   onRestored: (restored: () => void) => () => void,
+ * }} host *post* is `POST /api/source/pin`; *onRestored* calls back when the browser
+ *   brings the page back from its back/forward cache.
+ */
+export function createPinSwitch(host) {
+  let holding = false;
+  /** @type {Set<() => void>} */
+  const released = new Set();
+  host.onRestored(() => {
+    if (holding) {
+      holding = false;
+      for (const listener of [...released]) {
+        listener();
+      }
+    }
+  });
+
+  /**
+   * @param {PinSelection} selection
+   * @param {() => boolean} [wanted]
+   * @returns {Promise<PinSwitchOutcome>}
+   */
+  async function switchTo(selection, wanted = () => true) {
+    if (holding) {
+      return { kind: "busy" };
+    }
+    holding = true;
+    let response;
+    try {
+      response = await host.post(selection);
+    } catch {
+      holding = false;
+      return wanted()
+        ? { kind: "refused", message: "The switch request failed." }
+        : { kind: "abandoned" };
+    }
+    if (!wanted()) {
+      // The caller's reason to leave the page is gone. The server may have switched; the
+      // freshness row says so.
+      holding = false;
+      return { kind: "abandoned" };
+    }
+    if (response.status !== 200) {
+      holding = false;
+      return {
+        kind: "refused",
+        message: switchRefusal(selection.oid, response.status, response.body),
+      };
+    }
+    const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
+    const href = answer?.view_href;
+    return {
+      kind: "switched",
+      href: typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : null,
+    };
+  }
+
+  return Object.freeze({
+    switchTo,
+    switching: () => holding,
+    /** @param {() => void} listener @returns {() => void} */
+    onReleased(listener) {
+      released.add(listener);
+      return () => {
+        released.delete(listener);
+      };
+    },
+  });
+}
+
+/**
  * The controls of one mounted diff and what following one does.
  *
- * One switch runs at a time: the pin is the server's, so a second request while the
- * first is on its way would race it. A switch the server made keeps the hold while the
- * page leaves, as the ref selector's does, so nothing else is asked of a page that is
- * going away; the hold ends if the browser brings the page back from its back/forward
- * cache with the pin it shows served again. A diff that was unmounted while its switch
- * was on the way does not take the page anywhere.
+ * A switch that this diff made keeps the page's hold (`createPinSwitch`), and *released*
+ * is called if the browser brings the page back with it let go. A diff that was unmounted
+ * while its switch was on the way does not take the page anywhere. *changed* is called
+ * once, when the page learns the server serves another pin, so the view asks `actions`
+ * again and paints each link as the switch it now is.
  *
  * @param {ViewFileHost} host
- * @param {{released?: () => void}} [options] *released* is called when a restored page
- *   lets go of the hold.
+ * @param {{released?: () => void, changed?: () => void}} [options]
  */
 export function createViewFileOpener(host, options = {}) {
-  let switching = false;
   let disposed = false;
-  const stopListening = host.onRestored(() => {
-    if (switching) {
-      switching = false;
+  let pinChanged = false;
+  // Whether the page's hold is this diff's switch, so a release is this diff's to show.
+  let mine = false;
+  const stopReleased = host.pinSwitch.onReleased(() => {
+    if (mine) {
+      mine = false;
       options.released?.();
     }
   });
+  const stopPinChanged =
+    host.kind === "pin"
+      ? host.onPinChanged(() => {
+          if (!pinChanged && !disposed) {
+            pinChanged = true;
+            options.changed?.();
+          }
+        })
+      : () => {};
 
   /**
    * @param {Record<string, unknown>} change
@@ -242,28 +359,22 @@ export function createViewFileOpener(host, options = {}) {
    * @returns {ViewFileAction[]}
    */
   function actions(change, resolved) {
-    /** @type {ViewFileAction[]} */
-    const found = [];
-    for (const side of viewFileSides(change, resolved)) {
-      const shown = side.commit === host.pin ? host.href(side.address) : null;
-      if (shown !== null) {
-        found.push(describeViewFile(side, shown, host));
-      } else if (host.snapshotHref !== undefined) {
-        const href = host.snapshotHref(side);
-        if (href !== null) {
-          found.push({
-            ...describeViewFile(side, href, { pin: side.commit }),
-            detail: `Open ${side.path} at ${short(side.commit)} without changing this page's commit`,
-          });
-        }
-      } else {
-        const href = host.href(side.address);
-        if (href !== null) {
-          found.push(describeViewFile(side, href, host));
-        }
-      }
+    const side = viewFileSide(change, resolved);
+    // A checkout shows its working tree, which is the diff's head only at its HEAD.
+    if (side === null || (host.kind === "checkout" && side.commit !== host.pin)) {
+      return [];
     }
-    return found;
+    const href = host.href(side.address);
+    return href === null
+      ? []
+      : [
+          describeViewFile(side, href, {
+            kind: host.kind,
+            pin: host.pin,
+            branch: host.branch,
+            pinChanged,
+          }),
+        ];
   }
 
   /**
@@ -273,37 +384,24 @@ export function createViewFileOpener(host, options = {}) {
    * @returns {Promise<ViewFileOutcome>}
    */
   async function switchTo(action) {
-    if (switching || disposed) {
-      return { kind: disposed ? "abandoned" : "busy" };
-    }
-    switching = true;
-    let response;
-    try {
-      response = await host.switchPin({ oid: action.commit, view: action.href });
-    } catch {
-      switching = false;
-      return disposed
-        ? { kind: "abandoned" }
-        : { kind: "refused", message: "The switch request failed." };
-    }
     if (disposed) {
-      // The diff is gone, and with it the reader's reason to leave this page. The
-      // server may have switched; the freshness row says so.
-      switching = false;
       return { kind: "abandoned" };
     }
-    if (response.status !== 200) {
-      switching = false;
-      return {
-        kind: "refused",
-        message: switchRefusal(action.commit, response.status, response.body),
-      };
+    const outcome = await host.pinSwitch.switchTo(
+      {
+        oid: action.commit,
+        ...(host.branch === null ? {} : { under: host.branch }),
+        view: action.href,
+      },
+      () => !disposed,
+    );
+    if (outcome.kind !== "switched") {
+      return outcome;
     }
-    const answer = /** @type {{view_href?: unknown} | null} */ (response.body);
-    const href = answer?.view_href;
+    mine = true;
     // The server says where the page goes on the new pin; the address asked for stands
     // in when it says nothing.
-    const target = typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : action.href;
+    const target = outcome.href ?? action.href;
     host.navigate(target);
     return { kind: "navigated", href: target };
   }
@@ -311,10 +409,11 @@ export function createViewFileOpener(host, options = {}) {
   return Object.freeze({
     actions,
     switchTo,
-    switching: () => switching,
+    switching: () => host.pinSwitch.switching(),
     dispose() {
       disposed = true;
-      stopListening();
+      stopReleased();
+      stopPinChanged();
     },
   });
 }

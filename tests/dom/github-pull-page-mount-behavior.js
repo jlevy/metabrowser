@@ -711,6 +711,22 @@ async function tabKeys(page) {
   const registry = shell.MetabrowserKeyboardShortcuts.create({ document: globalThis.document });
   const detachRegistry = facade.attachShortcutRegistry(registry);
   const opened = [];
+  // The diff plugin's view, whose pin switch the page's Browse code shares: the production
+  // switch (diff-view-file.js), posting as builtin_plugins/diff/index.js posts.
+  const { createPinSwitch } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view-file.js")).href
+  );
+  const pinSwitch = createPinSwitch({
+    async post(selection) {
+      const response = await fetch("/api/source/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(selection),
+      });
+      return { status: response.status, body: null };
+    },
+    onRestored: () => () => {},
+  });
   /** Mount #7 into a new container in the page; `reader` is the Pulls tab's, if any. */
   const mountPage = (reader) => {
     const target = new LiveElement("main");
@@ -730,6 +746,7 @@ async function tabKeys(page) {
         ensureAsset: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
+        getRegisteredView: () => ({ switchPin: pinSwitch.switchTo }),
         ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
