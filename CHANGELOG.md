@@ -9,7 +9,10 @@ All notable changes to Metabrowser are documented here.
   the full Diff summary, which then replaces the line in place.
   Opened from a Pulls row, the page asks nothing for it; opened at its address, one
   quick read of the cache.
-  A list of an older head, after new commits were pushed, is not shown.
+  A list of an earlier head or base, after new commits were pushed or the pull request
+  was retargeted, is not shown.
+  The changed-files summary route (`/api/plugin/github/pull-files-summary`) now also
+  says what each list was listed against, its `base` commit or GitHub’s `base_ref`.
 
 - A pull request’s page opened at its address, or from a Pulls row whose record is not
   cached yet, shows the Diff summary’s gentle loading box from its first paint, after

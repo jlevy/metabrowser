@@ -671,6 +671,8 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       listed_from: "comparison",
       generation: "brief-" + window.__summaryRuns,
       head: body.record.comparison.head,
+      base: body.record.comparison.base,
+      base_ref: null,
       files: kinds.length,
       additions: lines[0],
       deletions: lines[1],

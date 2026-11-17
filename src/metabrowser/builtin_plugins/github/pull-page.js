@@ -394,6 +394,7 @@ const TRUNCATED = Object.freeze({
  *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string, headMoved: boolean} | null,
  *   comparisonComing: boolean,
  *   head: string | null,
+ *   baseRef: string | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
@@ -1228,7 +1229,8 @@ export function rateLimitLifts(envelope) {
  * running have none coming until Changes asks, so the placeholder never outlives its wait.
  *
  * `head` is the head commit the page knows, the one its Diff summary is drawn for: the
- * comparison's, else the record's or the core's, and null before either.
+ * comparison's, else the record's or the core's, and null before either; `baseRef` is the
+ * record's or the core's base branch.
  *
  * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
@@ -1259,6 +1261,7 @@ export function describePull(envelope, page) {
     comparison: null,
     comparisonComing: false,
     head: null,
+    baseRef: null,
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     changesPending: false,
@@ -1315,6 +1318,7 @@ export function describePull(envelope, page) {
     );
     model.corePreview = true;
     model.head = text(preview.pull?.head?.sha) || null;
+    model.baseRef = text(preview.pull?.base?.ref) || null;
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
@@ -1418,6 +1422,7 @@ export function describePull(envelope, page) {
   model.notes = notes(record, false);
   const head = text(pull.head?.sha);
   model.head = head || null;
+  model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
@@ -5684,13 +5689,22 @@ export function mountPullPage(container, ctx, mb) {
   summaryBrief?.want(number, typeof readerSource === "string" ? readerSource : null);
 
   /**
-   * The brief line for *model*'s head, or null: the node drawn, kept while its list is the
+   * The brief line for what *model*'s Diff summary is drawn for, or null: on Changes the
+   * mounted diff's comparison, else the record's, or the record's or core's head and base
+   * branch before it has one (`briefMatches`). The node drawn is kept while its list is the
    * same, so a repaint moves nothing.
    *
    * @param {PullModel | null} model
    */
   function briefFor(model) {
-    const summary = summaryBrief?.summary(model?.head ?? null) ?? null;
+    const compared =
+      model?.tab === "files" && diffFor !== null ? diffFor : (model?.comparison ?? null);
+    const summary =
+      summaryBrief?.summary({
+        head: compared?.right ?? model?.head ?? null,
+        base: compared?.left ?? null,
+        baseRef: model?.baseRef ?? null,
+      }) ?? null;
     if (summary === null || summaryBrief === null) {
       return null;
     }
@@ -5762,7 +5776,7 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel | null} model
    */
   function paintSummaryWait(model) {
-    if (summaryShown.handle !== null) {
+    if (summaryShown.handle !== null || listening.signal.aborted) {
       return;
     }
     const awaited = model === null ? null : model.tab === "files" ? diffFor : model.comparison;
@@ -6882,6 +6896,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    summaryBrief?.dispose();
     cancelTimeline();
     body.querySelector(".github-pull-diff-loading")?.remove();
     observer?.disconnect();

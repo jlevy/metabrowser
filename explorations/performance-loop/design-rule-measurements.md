@@ -333,8 +333,9 @@ On this repository served as a checkout, at a load average of 38 to 94, three ru
 case: opened from a Pulls row, the line showed 110 and 151 ms after the click, read from
 the row’s line with no request (in the third run the row’s list was of another head, and
 the placeholder held the row), and the summary at 3.2 to 4.4 s; a direct link to #470,
-its record not cached, showed it at 1.3 to 2.2 s, its read 0.8 to 1.3 s on a server just
-started, and the summary at 4.5 to 6.4 s.
+its record not cached, showed it at 1.3 to 2.2 s (before the line waited for a known
+head, which the core brings at about the same time), its read 0.66 to 1.27 s on a server
+just started, and the summary at 4.5 to 6.4 s.
 
 ### A Kept Comparison
 

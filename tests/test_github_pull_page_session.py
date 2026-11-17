@@ -620,20 +620,27 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the record then names no comparison: nothing",
         ],
         # The cached changed-files list's brief line holds the Diff summary's row while its
-        # comparison is on its way or read, for the head the page knows or any before it
-        # knows one, from the Pulls rows' memory or one read at mount; the summary replaces
-        # it, a failed read keeps it, and another head's is never shown (mb-z8ea).
+        # comparison is on its way or read, once the page knows the head, for its head and
+        # base only, from the Pulls rows' memory when nothing said it changed, else one read
+        # at mount; the summary replaces it, a failed read keeps it, and a page that went
+        # draws nothing more (mb-z8ea).
         "summaryBrief": [
-            'a direct link\'s page before its first answer, its head unknown: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
-            'its core preview, of the list\'s head: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads",
+            'its core preview, of the list\'s head and base branch: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             'its record lands, the comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "the comparison read: the summary; 1 reads",
-            "a record whose head the list was not listed for: the pending placeholder; 1 reads",
-            "its comparison read: the summary; 1 reads",
+            "a direct link's page, the list of an older head: the pending placeholder; 1 reads",
+            "its core preview, of a newer head: the pending placeholder; 1 reads",
+            "a record whose list was read for another base branch: the pending placeholder; 1 reads",
+            "a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads",
+            'its record lands, naming the same comparison: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a record whose comparison has another base than the local list's: the pending placeholder; 1 reads",
             'a record of the list\'s head, its comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             'the comparison\'s read fails: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
             "no list cached: the pending placeholder; 1 reads",
             'opened from a Pulls row that drew its line: the brief line "1 file changed \u00b7 1 M \u00b7 +12 \u22124"; 0 reads',
+            'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a page that went before its read answered, its summary drawn: the summary; 1 reads",
         ],
         # A page mounted with no record in hand holds its cold header and tab column for the
         # quiet period, kept unseen while a record that landed in it waits for the

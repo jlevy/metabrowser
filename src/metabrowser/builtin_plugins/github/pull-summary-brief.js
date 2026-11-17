@@ -13,12 +13,14 @@
 // `GET pull-files-summary?numbers=<n>` when the page mounts, the cache alone (no GitHub call,
 // no Git), not behind the comparisons a page reads (row-lines.js reads behind them), since
 // it is this page's own first screen. Measured 2026-11-17 in headless Chrome 152, that read
-// answered in 2 ms on a running server, and in 0.8 to 1.3 s on one just started at a load
+// answered in 2 ms on a running server, and in 0.66 to 1.27 s on one just started at a load
 // average of 38 to 94, behind its first requests.
 //
-// Which head it is for: a list names the commit it was listed for. The page draws it only
-// for the head it knows, the comparison's or the core's, or for any while it knows none;
-// another head's line is never shown, so a pushed pull request waits for its own counts.
+// Which pull request it is of: a list names the head it was listed for and its base, the
+// comparison's base commit or GitHub's base branch. The page draws it only once it knows
+// the head, and only for the head and base it shows (`briefMatches`); another head's or
+// base's line is never shown, so a pushed or retargeted pull request waits for its own
+// counts, and a line the Pulls lane knows is out of date is read again.
 
 import {
   documentRowLines,
@@ -32,6 +34,50 @@ import {
 const SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
 
 /**
+ * A cached list's sums with what it was listed against, as `GET pull-files-summary` answers
+ * them (pull_files_summary.py, `FilesSummaryWire`).
+ *
+ * @typedef {import("./row-lines.js").FilesSummary & {base: string | null, base_ref: string | null}} BriefSummary
+ *
+ * What the page shows its Diff summary for: the head, and the comparison's base, or with
+ * no comparison yet the base branch; each null while unknown.
+ * @typedef {{head: string | null, base: string | null, baseRef: string | null}} BriefFor
+ */
+
+/** @param {unknown} value @returns {value is BriefSummary} */
+function isBriefSummary(value) {
+  if (!isFilesSummary(value)) {
+    return false;
+  }
+  const body = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (value));
+  const named = (/** @type {unknown} */ part) => part === null || typeof part === "string";
+  return named(body.base) && named(body.base_ref);
+}
+
+/**
+ * Whether *summary* is the list of what the page shows (*shown*), so its counts are this
+ * pull request's now and not an earlier head's or base's: the same head, and a local
+ * comparison's list of the same base commit, or GitHub's list read for the same base
+ * branch, as the changed-files route calls a list current (pull_files_route.py, `_state`).
+ * Nothing is drawn before the page knows a head.
+ *
+ * @param {BriefSummary} summary
+ * @param {BriefFor} shown
+ */
+export function briefMatches(summary, shown) {
+  if (shown.head === null || summary.head !== shown.head) {
+    return false;
+  }
+  if (summary.listed_from === "comparison") {
+    return shown.base !== null && summary.base === shown.base;
+  }
+  if (summary.listed_from === "github") {
+    return shown.baseRef !== null && summary.base_ref === shown.baseRef;
+  }
+  return false;
+}
+
+/**
  * The brief line's source for one page.
  *
  * @param {{
@@ -39,94 +85,100 @@ const SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
  *   ready(): Promise<((statuses: Iterable<string>) => MetabrowserChangeLineInput["statuses"]) | null>,
  *   changed(): void,
  *   index?: import("./change-lines.js").BoundedIndex<import("./row-lines.js").RowLineOutcome>,
- * }} deps *read* asks the route for one pull request; *ready* loads what the line is painted
- * with, the diff plugin's styles and the changed-files tree, and answers the tree's status
- * breakdown; *changed* repaints the row once the line is here.
+ * }} deps *read* asks the route for one pull request, under the brief's signal, which
+ * `dispose` aborts; *ready* loads what the line is painted with, the diff plugin's styles
+ * and the changed-files tree, and answers the tree's status breakdown, asked only once a
+ * listed line is in hand; *changed* repaints the row once the line can be drawn.
  */
 export function createSummaryBrief(deps) {
   const index = deps.index ?? documentRowLines;
   const controller = new AbortController();
-  /** @type {import("./row-lines.js").FilesSummary | null} */
+  /** @type {BriefSummary | null} */
   let summary = null;
   /** @type {((statuses: Iterable<string>) => MetabrowserChangeLineInput["statuses"]) | null} */
   let breakdown = null;
   let asked = false;
   let painted = false;
 
-  /** @param {import("./row-lines.js").FilesSummary | null | undefined} found */
-  function take(found) {
-    if (
-      controller.signal.aborted ||
-      found == null ||
-      found.state !== "listed" ||
-      typeof found.files !== "number"
-    ) {
+  /** @param {unknown} found @returns {BriefSummary | null} */
+  function listed(found) {
+    return isBriefSummary(found) && found.state === "listed" && typeof found.files === "number"
+      ? found
+      : null;
+  }
+
+  /** @param {BriefSummary} found */
+  async function paintWith(found) {
+    breakdown = await deps.ready().catch(() => null);
+    if (controller.signal.aborted) {
       return;
     }
     summary = found;
+    painted = true;
+    deps.changed();
   }
 
   return Object.freeze({
     /**
      * The page for pull request *number* of *source*, null while unknown, mounts: its line
-     * from the document's memory, or one read. Asked once a page; later calls take a line the
-     * Pulls rows drew since, and ask nothing.
+     * from the document's memory of the Pulls rows' lines when a row drew it and nothing
+     * since said its list changed, else one read. Asked once a page.
      *
      * @param {number} number
      * @param {string | null} source
      */
     want(number, source) {
-      if (controller.signal.aborted) {
-        return;
-      }
-      if (summary === null && source !== null) {
-        take(index.get(rowLineKey(source, number))?.summary);
-      }
-      if (asked) {
+      if (controller.signal.aborted || asked) {
         return;
       }
       asked = true;
-      const known = summary !== null;
-      void Promise.all([
-        known
-          ? Promise.resolve(null)
-          : deps.read(number, controller.signal).then(
-              (answer) => answer,
-              () => null,
-            ),
-        deps.ready().catch(() => null),
-      ]).then(([answer, loaded]) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        breakdown = loaded;
-        const body = /** @type {{rows?: unknown} | null} */ (answer?.body ?? null);
-        if (answer?.status === 200 && Array.isArray(body?.rows)) {
-          take(body.rows.find((row) => isFilesSummary(row) && row.number === number));
-        }
-        painted = true;
-        if (summary !== null) {
-          deps.changed();
-        }
-      });
+      const seen = source === null ? undefined : index.get(rowLineKey(source, number));
+      const kept =
+        seen !== undefined && !seen.due && seen.head === seen.summary?.head
+          ? listed(seen.summary)
+          : null;
+      if (kept !== null) {
+        void paintWith(kept);
+        return;
+      }
+      void deps.read(number, controller.signal).then(
+        (answer) => {
+          const body = /** @type {{rows?: unknown} | null} */ (answer.body);
+          const found =
+            answer.status === 200 && Array.isArray(body?.rows)
+              ? listed(
+                  body.rows.find(
+                    (row) =>
+                      isFilesSummary(row) &&
+                      /** @type {{number: number}} */ (row).number === number,
+                  ),
+                )
+              : null;
+          if (found !== null && !controller.signal.aborted) {
+            void paintWith(found);
+          }
+        },
+        () => {},
+      );
     },
     /**
-     * The line's sums for *head*, the head the page knows, or any for null; null when there
-     * is none, it is another head's, or what it is painted with has not loaded.
+     * The line's sums for what the page shows, or null: none listed, another head's or
+     * base's (`briefMatches`), or what it is painted with not yet loaded.
      *
-     * @param {string | null} head
-     * @returns {import("./row-lines.js").FilesSummary | null}
+     * @param {BriefFor} shown
+     * @returns {BriefSummary | null}
      */
-    summary(head) {
-      if (!painted || summary === null || (head !== null && summary.head !== head)) {
+    summary(shown) {
+      if (!painted || summary === null || controller.signal.aborted) {
         return null;
       }
-      return summary;
+      return briefMatches(summary, shown) ? summary : null;
     },
     /** The status breakdown the line is painted with, once loaded. */
     breakdown() {
       return breakdown;
     },
+    /** The page went: its read is stopped, and nothing more is drawn. */
     dispose() {
       controller.abort();
     },
@@ -147,27 +199,39 @@ export function createSummaryBrief(deps) {
  *   formatInteger(value: number): string,
  * }} mb
  * @param {(tag: string, attributes?: Record<string, string>, children?: Array<Node | string>) => HTMLElement} h
- * @param {import("./row-lines.js").FilesSummary} summary
+ * @param {BriefSummary} summary
  * @param {((statuses: Iterable<string>) => MetabrowserChangeLineInput["statuses"]) | null} breakdown
  * @returns {HTMLElement}
  */
 export function briefLine(mb, h, summary, breakdown) {
   const files = summary.files ?? 0;
-  return h("div", { class: "diff-summary github-pull-summary-brief" }, [
-    h("span", { class: "diff-summary-chevron", "aria-hidden": "true" }),
-    h("span", { class: "diff-summary-group" }, [
-      h(
-        "span",
-        { class: "diff-summary-files" },
-        mb.countPartsNodes([
-          { number: mb.formatInteger(files) },
-          ` ${files === 1 ? "file" : "files"} changed`,
-        ]),
-      ),
-      ...mb.countPartsNodes([SEPARATOR]),
-    ]),
-    ...mb.changeLineNodes(mb.changeLine(rowLineInput(summary, breakdown)), { spoken: ", " }),
-  ]);
+  const line = mb.changeLine(rowLineInput(summary, breakdown));
+  const words = `${mb.formatInteger(files)} ${files === 1 ? "file" : "files"} changed`;
+  // Still a wait to a screen reader, as the placeholder it replaces is: the counts so far,
+  // and that the summary of changes is on its way.
+  return h(
+    "div",
+    {
+      class: "diff-summary github-pull-summary-brief",
+      role: "status",
+      "aria-label": `${words}${line.label === "" ? "" : `: ${line.label}`}; loading the summary of changes`,
+    },
+    [
+      h("span", { class: "diff-summary-chevron", "aria-hidden": "true" }),
+      h("span", { class: "diff-summary-group" }, [
+        h(
+          "span",
+          { class: "diff-summary-files" },
+          mb.countPartsNodes([
+            { number: mb.formatInteger(files) },
+            ` ${files === 1 ? "file" : "files"} changed`,
+          ]),
+        ),
+        ...mb.countPartsNodes([SEPARATOR]),
+      ]),
+      ...mb.changeLineNodes(line, { spoken: ", " }),
+    ],
+  );
 }
 
 export { PULL_FILES_SUMMARY_ROUTE };

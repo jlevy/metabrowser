@@ -1411,6 +1411,9 @@ async function mountScripted(page, tab, options = {}) {
       // The cached list's sums, which *brief* names, for the brief line (mb-z8ea).
       steps.briefReads.push(route);
       const rows = options.brief === undefined ? [] : [options.brief];
+      if (options.briefGate !== undefined) {
+        await options.briefGate;
+      }
       return {
         ok: true,
         status: 200,
@@ -2049,12 +2052,15 @@ async function summaryBrief(page) {
   );
   const full = recorded.current.body;
   const head = full.record.comparison.head;
-  const listed = (listedHead) => ({
+  const base = full.record.comparison.base;
+  const baseRef = full.record.pull.base.ref;
+  // A list as the route answers it: GitHub's, read for a head and a base branch, or the
+  // local comparison's, of a head and a base commit.
+  const listed = (listedHead, from = { listed_from: "github", base: null, base_ref: baseRef }) => ({
     number: 7,
     state: "listed",
     reason: null,
     listing: false,
-    listed_from: "github",
     generation: `g-${listedHead.slice(0, 4)}`,
     head: listedHead,
     files: 3,
@@ -2065,6 +2071,12 @@ async function summaryBrief(page) {
       { status: "added", count: 1 },
       { status: "modified", count: 2 },
     ],
+    ...from,
+  });
+  const compared = (listedBase) => ({
+    listed_from: "comparison",
+    base: listedBase,
+    base_ref: null,
   });
   const told = [];
   const holds = (row) => {
@@ -2073,6 +2085,8 @@ async function summaryBrief(page) {
       return "nothing";
     }
     if (only.classes.has("github-pull-summary-brief")) {
+      assert.equal(only.getAttribute("role"), "status", "still a wait to a screen reader");
+      assert.match(only.getAttribute("aria-label"), /; loading the summary of changes$/);
       return `the brief line "${only.textContent}"`;
     }
     if (only.classes.has("github-pull-summary-pending")) {
@@ -2103,9 +2117,9 @@ async function summaryBrief(page) {
 
   const cold = await mountScripted(page, "", { cold: true, brief: listed(head) });
   tell("a direct link's page before its first answer, its head unknown", cold);
-  const line = cold.row().children[0];
   await cold.poll(core);
-  tell("its core preview, of the list's head", cold);
+  tell("its core preview, of the list's head and base branch", cold);
+  const line = cold.row().children[0];
   cold.serve(full);
   await cold.idle();
   tell("its record lands, the comparison not yet read", cold);
@@ -2115,12 +2129,29 @@ async function summaryBrief(page) {
   tell("the comparison read", cold);
   cold.handle.dispose();
 
-  const moved = await mountScripted(page, "", { brief: listed("9".repeat(40)) });
-  tell("a record whose head the list was not listed for", moved);
-  await moved.idle();
-  await moved.idle();
-  tell("its comparison read", moved);
-  moved.handle.dispose();
+  const older = await mountScripted(page, "", { cold: true, brief: listed("9".repeat(40)) });
+  tell("a direct link's page, the list of an older head", older);
+  await older.poll(core);
+  tell("its core preview, of a newer head", older);
+  older.handle.dispose();
+
+  const retargeted = await mountScripted(page, "", {
+    brief: listed(head, { listed_from: "github", base: null, base_ref: "an-earlier-base" }),
+  });
+  tell("a record whose list was read for another base branch", retargeted);
+  retargeted.handle.dispose();
+
+  const local = await mountScripted(page, "", { cold: true, brief: listed(head, compared(base)) });
+  await local.poll(core);
+  tell("a core preview, the local comparison's list, whose base the core cannot say", local);
+  local.serve(full);
+  await local.idle();
+  tell("its record lands, naming the same comparison", local);
+  local.handle.dispose();
+
+  const rebased = await mountScripted(page, "", { brief: listed(head, compared("8".repeat(40))) });
+  tell("a record whose comparison has another base than the local list's", rebased);
+  rebased.handle.dispose();
 
   const failing = await mountScripted(page, "", { brief: listed(head), read: "fails" });
   tell("a record of the list's head, its comparison not yet read", failing);
@@ -2135,24 +2166,44 @@ async function summaryBrief(page) {
   absent.handle.dispose();
 
   // A page opened from a Pulls row: the row's line is in the document's memory.
-  rowLines.documentRowLines.set(rowLines.rowLineKey(full.source, 7), {
-    head,
-    generation: "g-row",
-    summary: {
-      ...listed(head),
+  const remember = (due) =>
+    rowLines.documentRowLines.set(rowLines.rowLineKey(full.source, 7), {
+      head,
       generation: "g-row",
-      files: 1,
-      statuses: [{ status: "modified", count: 1 }],
-    },
-    due: false,
-    listing: false,
-    failedAt: null,
-    at: 0,
-  });
+      summary: {
+        ...listed(head),
+        generation: "g-row",
+        files: 1,
+        statuses: [{ status: "modified", count: 1 }],
+      },
+      due,
+      listing: false,
+      failedAt: null,
+      at: 0,
+    });
+  remember(false);
   const fromRow = await mountScripted(page, "", { briefPainters: true });
   tell("opened from a Pulls row that drew its line", fromRow);
   fromRow.handle.dispose();
+  remember(true);
+  const dueRow = await mountScripted(page, "", { brief: listed(head) });
+  tell("opened from a Pulls row whose line the lane marked out of date, read again", dueRow);
+  dueRow.handle.dispose();
   rowLines.documentRowLines.clear();
+
+  // A page that goes before its read answers draws nothing more (B3 of review on #536).
+  let release = () => {};
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const gone = await mountScripted(page, "", { brief: listed(head), briefGate: gate });
+  await gone.idle();
+  await gone.idle();
+  assert.equal(holds(gone.row()), "the summary");
+  gone.handle.dispose();
+  release();
+  await settle();
+  tell("a page that went before its read answered, its summary drawn", gone);
   return told;
 }
 
