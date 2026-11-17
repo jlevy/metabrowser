@@ -111,7 +111,7 @@ against one that did.
 | exp-086 | [Comparison Cache, Route Memo, and Markdown Render Cache, Confirmation on Revision 5](experiments/exp-086-comparison-cache-route-memo-and-markdown-render-cache-confirmation.md) | H88, H90 | `H88(a): requests_data and painted_ready_ms on commits.revisit.1 and .2; H88(b): client ms of /api/git/log?limit=250, /api/git/summary, and /api/git/refs; H90: requests_kpress and post_body_bytes on four Markdown transitions, and requests_plugin on one` | unresolved |
 | exp-087 | [Frame Quantization Accounts for exp-083’s Wrong-Way Frames](experiments/exp-087-frame-quantization-confirms-h87.md) | H87 | `share of runs on the later frame (frames to ready above the pooled modal count) for files.cold.json, files.cold.image, and files.revisit.markdown_large, by a two-sided Fisher exact test` | accepted |
 | exp-099 | [The Cached Pull Request Page’s Regression Is #369’s First-Paint Hold](experiments/exp-099-pr-view-regression-is-369-first-paint-hold.md) | H119 | `time to the record's title on a pull request page opened from a cache that holds the record (pr-warm), pair ratio candidate/control at the 1.3x rough cut` | accepted |
-| exp-100 | [Asking for a Held First Screen’s Markdown at Once Does Not Shorten the Hold](experiments/exp-100-held-markdown-at-once-rejected.md) | H120 | `>-` | rejected |
+| exp-100 | [Asking for a Held First Screen’s Markdown at Once Does Not Shorten the Hold](experiments/exp-100-held-markdown-at-once-rejected.md) | H120 | `pr-warm title_after_pull, the title's first frame minus the first GET pull's response end, pair ratio candidate/control under 1/1.3 in at least 3 of 5 pairs` | rejected |
 
 ## Absolute numbers, per condition
 

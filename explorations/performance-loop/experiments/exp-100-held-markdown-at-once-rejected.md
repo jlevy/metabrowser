@@ -128,15 +128,13 @@ experiment:
       record and pr-view-stats.mjs's hold metrics.
   verdict:
     decision: rejected
-    primary_metric: >-
-      pr-warm title_after_pull, the title's first frame minus the first GET pull's response
-      end, pair ratio candidate/control under 1/1.3 in at least 3 of 5 pairs
+    primary_metric: "pr-warm title_after_pull, the title's first frame minus the first GET pull's response end, pair ratio candidate/control under 1/1.3 in at least 3 of 5 pairs"
     reason: >-
       On #487 from a warm cache on a fresh server, the held title came 233 ms after the
       record on the control and 230 ms on the candidate, pair ratios 0.99, 1.08, 0.99, 1.13,
       and 0.95: none under 1/1.3, so the change is rejected as registered. The four
-      Markdown requests started at the same times in both builds, and each render took the
-      fresh server 50 to 85 ms either way.
+      Markdown requests started at the same times in both builds, and the title came 41 to
+      117 ms after the last answer in every run, so the wait is not in the requests.
 ---
 **Status:** Rejected.
 Asking for the held first screen’s texts at once, past `MARKDOWN_CONCURRENCY`, leaves a
@@ -161,11 +159,16 @@ It gives the builds, the series, the decision rule, and the analysis script by s
 [pr-view-pairs.sh](../pr-view-pairs.sh) ran five rounds of `pr-fresh`, `pr-store`,
 `pr-warm`, and `pr-warm-reload`, each step for both builds back to back, the leading
 build alternating by round.
-[pr-view-stats.mjs](../pr-view-stats.mjs) at the registered sha256, which is the file at
-`b79bdafa6`, read the samples.
-The committed file has changed since only for #524’s review, which pairs runs by round
-when they carry one; these runs carry none, and the committed file prints the same
-figures from them. GitHub’s core budget stayed above 3353 and free disk at 5 GB.
+[pr-view-stats.mjs](../pr-view-stats.mjs) at the registered sha256 read the samples.
+The registered scripts are kept in history: `pr-view.mjs`, `pr-view-pairs.sh`, and
+`pr-view-wheel.sh` are #524’s first commit’s (`2cbf65b2b`), and `pr-view-stats.mjs` is
+that commit’s with this round’s hold metrics, as at `b79bdafa6`. The measured candidate
+and the registration commit are kept under the tag `exp-100-candidate`: it names
+`cb5fe1b56`, which registered the protocol, and whose parent `b79bdafa6` is the
+candidate.
+All four committed scripts have changed since for #524’s review; the committed
+`pr-view-stats.mjs` prints the same figures from these samples, which carry no round.
+GitHub’s core budget stayed above 3353 and free disk at 5 GB.
 
 ## Results
 
@@ -194,21 +197,30 @@ From the record’s arrival, on pr-warm:
 | 3 | 59–89 ms | 61–74 ms | 32–85 ms |
 | 4 | 86–99 ms | 72–108 ms | 19–73 ms |
 
-Two things keep the change from helping:
+The change cannot help, for two reasons:
 
 - **Only two texts are on the first screen when the hold first looks.** It measures the
   screen with every text still plain, and the plain description is long.
-  The third and fourth texts are `FIRST_SCREEN_AHEAD` texts past the screen, which the
-  change still queues, and they come onto the screen only once the texts above them
-  render shorter.
-- **A fresh server renders them one at a time.** Each first render takes 50 to 85 ms of
-  server time, and overlapping requests take longer each (up to 85 ms against 51 to 82),
-  so sending more at once moves the queue from the browser to the server.
+  Those two were already in flight together in both builds (requests 1 and 2 overlap in
+  every run). The third and fourth texts are `FIRST_SCREEN_AHEAD` texts past the screen,
+  which the change still queues; in both builds the third starts as the first answers,
+  and the fourth as the second answers.
+- **The hold does not end when the answers come.** On pr-warm the title, which is the
+  hold’s release, came 113 to 183 ms after the two waited texts were answered, and 41 to
+  117 ms after the last of all four answers, in all ten runs.
+  In three of them the description was still plain at the release (`description_final`
+  15 to 64 ms after the title), though its Markdown had been answered at 58 to 74 ms.
+  On the warm reload, where the browser already holds the page’s assets, the title came
+  37 to 47 ms after the record.
 
-Sending the `ahead` texts at once too would not get past the second point.
-The cost is the server’s first renders, which exp-099’s third fix (warming KPress at
-server start) addresses, and the title’s wait on them, which painting the header at once
-removes.
+So the wait sits in the browser after the answers.
+By inference, not measured: a text’s Markdown is inserted only once KPress’s stylesheets
+for it have loaded (`Promise.all([inertReady, documentStyles])` in `pull-page.js`), and
+`documentStyles` starts loading on the first answer, so on a fresh browser profile the
+insertion waits for that load, or the hold ends at its bound.
+That asset load, not the server’s renders or the request queue, is the next candidate
+for the conversation’s wait.
+The title’s wait goes away with the header painted at once (exp-101).
 
 ## Limits
 
