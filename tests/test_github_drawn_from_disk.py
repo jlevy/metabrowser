@@ -32,7 +32,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -662,6 +661,31 @@ def test_every_route_is_drawn_from_disk_or_a_job() -> None:
     )
 
 
+def test_a_diff_summary_answers_from_disk_after_the_build_changed(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kept manifest names its schema and its listing, not the build that wrote it.
+
+    Another tag in every module that holds one is what an upgrade, or any edit of the
+    source of an editable install, does to the build (``http_caching.py``): the record
+    names a comparison route of the new build, and the manifest the old one kept answers.
+    """
+
+    tag = http_caching.BUILD_TAG
+    for module in list(sys.modules.values()):
+        if getattr(module, "BUILD_TAG", None) == tag:
+            monkeypatch.setattr(module, "BUILD_TAG", "0" * 12)
+    spawns = _offline(monkeypatch, built.root)
+    envelope = answer(run_offline(spawns, ["--api", f"{ROUTES}/pull?number=7"]).result)
+    route = envelope["comparison_route"]
+    assert "build=000000000000" in route and route != built.comparison_route
+    ran = run_offline(spawns, ["--api", route])
+    assert (ran.result.exit_code, ran.network, ran.gh, ran.sockets) == (0, [], [], [])
+    assert ran.git == _COMPARES, sorted(ran.git)
+    assert not any("--raw" in argv for argv in ran.git_args), "the manifest was listed again"
+    _summary(built, ran.result)
+
+
 # ── Gaps: what a surface draws that does not answer from disk ──────────────────────
 
 
@@ -701,30 +725,6 @@ def _evicted_manifest_gap(_built: Built, patch: pytest.MonkeyPatch, tmp: Path) -
         raise StillAGap("pull request 10's manifest took 7's slot, so Git listed 7 again")
 
 
-def _rebuilt_manifest_gap(built: Built, patch: pytest.MonkeyPatch, tmp: Path) -> None:
-    # A copy of the home, so the comparison's healing write leaves the module's bank as it is.
-    # A store's path is in a manifest's key, so the copy's first read lists it again and
-    # keeps it under the copy's store; the control read after it must not.
-    shutil.copytree(built.root / "home", tmp / "home", symlinks=True)
-    spawns = _offline(patch, tmp)
-    run_offline(spawns, ["--api", built.comparison_route])
-    patch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
-    control = run_offline(spawns, ["--api", built.comparison_route])
-    assert not any("--raw" in argv for argv in control.git_args), "the copy did not heal"
-    # What any change to the source of an editable install does to the build's tag, in
-    # every module that holds it.
-    tag = http_caching.BUILD_TAG
-    for module in list(sys.modules.values()):
-        if getattr(module, "BUILD_TAG", None) == tag:
-            patch.setattr(module, "BUILD_TAG", "0" * 12)
-    patch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
-    ran = run_offline(spawns, ["--api", built.comparison_route])
-    assert (ran.result.exit_code, ran.network, ran.gh) == (0, [], [])
-    _summary(built, ran.result)
-    if any("--raw" in argv for argv in ran.git_args):
-        raise StillAGap("the manifest names the build that wrote it, so Git listed 7 again")
-
-
 @dataclass(frozen=True)
 class Gap:
     """An element that does not answer from disk, and why."""
@@ -748,14 +748,6 @@ GAPS: Final[tuple[Gap, ...]] = (
         "(pull_manifest.py), so a manifest another pull request's replaced is listed by "
         "Git again on its next read: local, but it costs Git's raw listing.",
         _evicted_manifest_gap,
-    ),
-    Gap(
-        "Diff summary after Metabrowser's build changed",
-        "A manifest's identity names BUILD_TAG (pull_manifest.py), which an editable install "
-        "derives from its newest source change (http_caching.py), so every manifest misses "
-        "after an upgrade or any edit of a checkout metab runs from, while the "
-        "changed-files lists, which name only their schema, still answer.",
-        _rebuilt_manifest_gap,
     ),
 )
 

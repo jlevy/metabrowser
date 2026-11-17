@@ -126,8 +126,11 @@ the origin’s branches and tags, so a fork’s commits arrive with it:
 
 Before the record is published, `pull_manifest.py` prepares its comparison manifest in a
 disposable bank beside the store: `MANIFEST_SLOTS` direct-mapped slots, each holding a
-File Diff Format document without patches and the full build, store, endpoint, and
-base-policy identity, so a collision evicts and never answers another comparison.
+File Diff Format document without patches and the full identity: the document’s schema,
+the listing (`MANIFEST_LISTING` in `diff/adapters/git.py`), the store, both endpoints,
+and the base policy, so a collision evicts and never answers another comparison.
+The identity names no build, so a manifest outlives an upgrade and an edit of the
+source; a change to the listing’s options, or to how its output is read, moves it.
 A slot’s epoch makes old data miss after detected corruption even when the slot itself
 cannot be rewritten.
 A read-only bank still serves recomputed comparisons.
@@ -536,6 +539,9 @@ failing, the remote unreachable, every Git transport command refused, and every 
 that would leave the machine refused.
 `JOBS` names every other route, each of which starts or reports work, so a new route is
 classified before it lands.
+`test_a_diff_summary_answers_from_disk_after_the_build_changed` reads a Diff summary
+after the build’s tag changes, as an upgrade or an edit of an editable install’s source
+changes it.
 
 Four routes compute from local data rather than read a stored answer: `pull-comparison`
 takes its manifest from the bank and runs Git only to check that the store answers for
@@ -553,10 +559,6 @@ failure:
 - **A replaced manifest.** The bank’s slots are direct-mapped (`MANIFEST_SLOTS` in
   `pull_manifest.py`), so a repository with more than a few pull requests replaces one’s
   manifest with another’s, and that one’s next Diff summary is listed by Git again.
-- **A manifest from another build.** A manifest’s identity names `BUILD_TAG`, which an
-  editable install derives from its newest source change (`http_caching.py`), so after
-  an upgrade, or any edit of a checkout `metab` runs from, every Diff summary is listed
-  by Git again; the changed-files lists name only their schema and still answer.
 
 ## Clearing the Cache
 

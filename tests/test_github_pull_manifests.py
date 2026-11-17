@@ -12,10 +12,10 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import http_caching, server
 from metabrowser.builtin_plugins.diff import sidekick as diff
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
-from metabrowser.builtin_plugins.github import pull_manifest
+from metabrowser.builtin_plugins.github import pull_manifest, pull_route
 from metabrowser.builtin_plugins.github.pull_prefetch import lane_of
 from metabrowser.builtin_plugins.github.pull_record import Comparison, PullRecord
 from metabrowser.builtin_plugins.github.pull_route import pull_host
@@ -183,7 +183,7 @@ def test_a_damaged_manifest_is_recomputed_once_and_healed(
     assert path.read_bytes() == original
 
 
-def test_attributes_builds_and_slot_collisions_are_cache_misses(
+def test_attributes_listings_and_slot_collisions_are_cache_misses_and_builds_are_not(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stand, client = pinned_pull
@@ -199,8 +199,16 @@ def test_attributes_builds_and_slot_collisions_are_cache_misses(
 
     monkeypatch.setattr(GitDiffSource, "manifest", counted)
     _fresh(monkeypatch)
-    monkeypatch.setattr(pull_manifest, "BUILD_TAG", "another-build")
+    # Another build reads the manifest this one kept: its identity names no build (mb-g8oe).
+    for module in (http_caching, pull_route, diff):
+        monkeypatch.setattr(module, "BUILD_TAG", "another-build")
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    assert "build=another-build" in route
+    assert client.get(route).status_code == 200
+    assert calls == 0
+    # Another listing does not.
+    monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", "another-listing")
+    _fresh(monkeypatch)
     assert client.get(route).status_code == 200
     assert calls == 1
     (stand.published.git_dir / "info").mkdir(exist_ok=True)
@@ -213,8 +221,8 @@ def test_attributes_builds_and_slot_collisions_are_cache_misses(
     assert all(change["binary"] for change in changed.json()["manifest"]["files"])
     # One fixed slot forces a collision, which is only an eviction, never a wrong hit.
     monkeypatch.setattr(pull_manifest, "MANIFEST_SLOTS", 1)
-    for build in ("one", "two", "one"):
-        monkeypatch.setattr(pull_manifest, "BUILD_TAG", build)
+    for listing in ("one", "two", "one"):
+        monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", listing)
         _fresh(monkeypatch)
         assert client.get(new_route).status_code == 200
     assert calls == 5
@@ -514,7 +522,7 @@ def test_invalidation_preserves_other_slots_and_their_disk_hits(
     # Slot collisions are legitimate evictions. Choose a namespace in which these two
     # actual comparisons do not collide, so this test exercises isolation instead.
     for namespace in range(32):
-        monkeypatch.setattr(pull_manifest, "BUILD_TAG", f"slot-isolation-{namespace}")
+        monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", f"slot-isolation-{namespace}")
         if pull_manifest._slot(first_key) != pull_manifest._slot(other_key):
             break
     else:

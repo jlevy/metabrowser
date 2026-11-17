@@ -9,6 +9,7 @@ everything the renderer could need.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import subprocess
 from base64 import b64decode
@@ -693,3 +694,27 @@ def test_a_folders_prefix_and_external_diff_settings_do_not_reach_the_parser(
     ready = [c.id for c in manifest.files if c.availability is Availability.ready]
     page = asyncio.run(source.hydrate(resolved, ready, manifest=manifest))
     assert page.left_out == () and _patch_bytes(page.patches) == whole
+
+
+# What the fixture comparison's manifest reads as, by the version of the reading that made
+# it (`MANIFEST_READING`). A manifest kept on disk names that version, not the build.
+_READINGS: dict[int, str] = {
+    1: "8b64cf516799c7b61c04ba31daaab823d166429a51b47cfc535cab9ec4eb1d32",
+}
+
+
+def test_a_kept_manifest_names_how_it_was_read(repo: tuple[Path, str, str]) -> None:
+    """A change to what a listing reads as changes the manifest of the fixture's change
+    taxonomy. Its kept manifests must then miss: raise ``MANIFEST_READING`` and record the
+    new reading under it, rather than replace this one's."""
+    root, base, target = repo
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    reading = hashlib.sha256(
+        json.dumps(manifest.model_dump(mode="json"), sort_keys=True).encode()
+    ).hexdigest()
+    assert max(_READINGS) == adapter.MANIFEST_READING
+    assert reading == _READINGS[adapter.MANIFEST_READING], reading
+    # Each version reads the fixture its own way.
+    assert len(set(_READINGS.values())) == len(_READINGS)

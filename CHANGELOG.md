@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s Diff summary and Changes are read from the manifest kept beside the
+  store after an upgrade, and after any edit of the source of an editable install.
+  A kept manifest named the build that wrote it, so each of those listed every
+  comparison with Git again.
+  It now names the diff document’s schema and the listing it was read from
+  (`MANIFEST_LISTING` in `diff/adapters/git.py`); manifests kept before this change are
+  listed once more.
+
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read
   of a record now opens the rewritten one and checks it again, so it reads the old

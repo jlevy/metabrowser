@@ -29,7 +29,7 @@ from metabrowser.builtin_plugins.github.pull_record import MAX_PULL_RECORD_BYTES
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import store_directory
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.git import MAX_MANIFEST_FILES, GitDiffSource
+from metabrowser.diff.adapters.git import MANIFEST_LISTING, MAX_MANIFEST_FILES, GitDiffSource
 from metabrowser.diff.format import FILE_DIFF_SCHEMA_VERSION, ChangeSetDocument
 from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.home import (
@@ -38,7 +38,7 @@ from metabrowser.home import (
     private_directory_is_writable,
     write_private_file_atomic,
 )
-from metabrowser.http_caching import BUILD_TAG, store_tag
+from metabrowser.http_caching import store_tag
 from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
@@ -59,15 +59,20 @@ _FLIGHTS_LOCK = Lock()
 class _ManifestRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     epoch: str = Field(pattern=r"^[0-9a-f]{64}$")
-    identity: tuple[str, ...] = Field(min_length=6, max_length=6)
+    identity: tuple[str, ...] = Field(min_length=7, max_length=7)
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     document: ChangeSetDocument
 
 
 def _identity(key: tuple[str, ...]) -> tuple[str, ...]:
-    return (BUILD_TAG, *key)
+    """What a kept manifest answers for: the document's schema, the listing, and *key*.
+
+    Not the build, so a manifest outlives an upgrade and an edit of the source (mb-g8oe);
+    a change to the schema or to the listing moves it (`MANIFEST_LISTING`).
+    """
+    return (f"file-diff-v{FILE_DIFF_SCHEMA_VERSION}", MANIFEST_LISTING, *key)
 
 
 def _directory(published: PublishedSource) -> str:
