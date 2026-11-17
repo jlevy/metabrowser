@@ -381,6 +381,10 @@ def _head_moved(listed: PullFileList, facts: _Facts) -> bool | None:
 
 def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) -> FilesState:
     if listed.listed_from == "comparison":
+        if listed.base_ref is not None:
+            # Listed from a head and base branch the list of pull requests named, not from a
+            # record's comparison: current while those are still the newest known.
+            return "current" if (listed.head, listed.base_ref) == facts.known_head else "stale"
         comparison = facts.record.comparison if facts.record is not None else None
         current = (
             comparison is not None
@@ -407,8 +411,9 @@ def list_settled(home: Path, slug: str, listed: PullFileList) -> bool:
     list's refresh stamp, and the record and the catalog row through their parse caches.
 
     A list from the local comparison is current while the record names the same comparison,
-    whatever head the catalog has seen since, and a list from GitHub while it was read for
-    the newest known head; a stack's change line waits on the same rule
+    whatever head the catalog has seen since; one listed from the newest known head and base
+    branch before the record had a comparison, and a list from GitHub, while it was read for
+    those; a stack's change line waits on the same rule
     (:mod:`.pull_stack_change`).
     """
 
@@ -555,10 +560,41 @@ def _local(view: FilesView, facts: _Facts) -> LocalComparison | None:
     return LocalComparison(view.git_dir, record.comparison.base, record.comparison.head)
 
 
+def _still_known(prepared: LocalComparison, facts: _Facts) -> bool:
+    return (prepared.head, prepared.base_ref) == facts.known_head
+
+
+def list_source(home: Path, slug: str, number: int) -> Literal["record"] | tuple[str, str] | None:
+    """Where the store would list *number*'s changed files from. Blocking and bounded: the
+    record and the catalog row through their parse caches.
+
+    ``"record"`` when the record's comparison is of the newest known head; otherwise, for an
+    open pull request whose newest known source names its head and base branch, those two,
+    which the prefetch fetches together for many pull requests and lists each from the
+    mirror's base branch (:mod:`.pull_prefetch`); ``None`` when neither holds.
+    """
+
+    facts = _facts(home, slug, number)
+    head, base_ref = facts.known_head
+    comparison = facts.record.comparison if facts.record is not None else None
+    if comparison is not None and comparison.head == head:
+        return "record"
+    row = cached_list_row(home, slug, number)
+    if head is None or base_ref is None or row is None or row.state != "open":
+        return None
+    if facts.record is not None and facts.record.pull.state != "open":
+        return None
+    return head, base_ref
+
+
 def files_refresh_wanted(
-    view: FilesView, ask: FilesRefreshRequest
+    view: FilesView, ask: FilesRefreshRequest, prepared: LocalComparison | None = None
 ) -> tuple[bool, LocalComparison | None]:
     """Whether *ask* may start a refresh, and the local comparison it would list. Blocking.
+
+    The comparison is the record's, unless the record's is of an older head than the newest
+    known and *prepared*, one the prefetch computed from a head and base branch
+    (:func:`list_source`), is of the newest known head and base branch.
 
     A list the local comparison can give needs no GitHub, so GitHub's limit does not hold
     it. Otherwise, while that limit holds nothing may start, a reader's **Retry** included,
@@ -574,6 +610,12 @@ def files_refresh_wanted(
     home, slug = repository.home, repository.slug
     facts = _facts(home, slug, view.number)
     local = _local(view, facts)
+    if (
+        prepared is not None
+        and _still_known(prepared, facts)
+        and (local is None or local.head != facts.head)
+    ):
+        local = prepared
     now = pull_list.utc_now()
     stamp = read_files_refresh(home, slug, view.number)
     if local is None and rate_limit_holds(stamp, now=now):
@@ -721,6 +763,7 @@ __all__ = [
     "files_window",
     "list_file_stamp",
     "list_settled",
+    "list_source",
     "pull_files_envelope",
     "read_files",
     "start_files_refresh",

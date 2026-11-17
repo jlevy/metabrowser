@@ -29,6 +29,7 @@ import asyncio
 import functools
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -462,6 +463,46 @@ async def fetch_pull_head(
     return await ref_commit(published, ref)
 
 
+async def fetch_pull_heads(
+    published: PublishedSource, numbers: Sequence[int], *, base_branches: Sequence[str] = ()
+) -> None:
+    """Fetch every ``refs/pull/<n>/head`` of *numbers*, and each usable base branch, at once.
+
+    One network command for a page of pull requests where :func:`fetch_pull_head` is one
+    each, so the prefetch lane lists their changed files from the store
+    (:mod:`metabrowser.builtin_plugins.github.pull_prefetch`) rather than from GitHub's API.
+    ``--atomic`` writes every ref or none: a number the origin has no head for fails the
+    whole fetch, as :class:`PullRefError`, and nothing moves.
+    """
+
+    specs = [f"+{ref}:{ref}" for ref in map(pull_head_ref, dict.fromkeys(numbers))]
+    if not specs:
+        return
+    for branch in dict.fromkeys(base_branches):
+        if await base_branch_usable(published, branch):
+            specs.append(f"+refs/heads/{branch}:{BRANCH_MIRROR_PREFIX}{branch}")
+    await _fetch(published, specs)
+
+
+async def branch_endpoints(
+    published: PublishedSource, *, head: str, base_branch: str
+) -> PullEndpoints | None:
+    """An open pull request's comparison from the mirror's base branch as the store has it.
+
+    :func:`comparison_endpoints` for a caller that knows the head and the base branch's name
+    but not ``base.sha``, as a row of the list of pull requests: ``None`` when the mirror has
+    no usable ref for the branch, where that function would start from ``base.sha``. Raises
+    :class:`BaseUncertainError` or :class:`PullRefError` as it does.
+    """
+
+    if not await base_branch_usable(published, base_branch):
+        return None
+    base_commit = await ref_commit(published, BRANCH_MIRROR_PREFIX + base_branch)
+    if base_commit is None:
+        return None
+    return await _endpoints_from(published, head, base_commit, "base_branch")
+
+
 async def fetch_commit(published: PublishedSource, oid: str) -> None:
     """Fetch one commit by ID, which the origin may still serve without any ref naming it.
 
@@ -600,12 +641,14 @@ __all__ = [
     "PullRefError",
     "RefCaseCollisionError",
     "base_branch_usable",
+    "branch_endpoints",
     "comparison_endpoints",
     "deepen_until_certain",
     "fetch_commit",
     "fetch_objects",
     "fetch_into_store",
     "fetch_pull_head",
+    "fetch_pull_heads",
     "has_commit",
     "pull_head_ref",
     "ref_commit",

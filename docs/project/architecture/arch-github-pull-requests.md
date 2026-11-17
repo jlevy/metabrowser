@@ -444,12 +444,20 @@ step with `pull_stacks.py` (`repository_snapshot.py`).
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
 (`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
 starts that work by itself, so a hidden or offline page spends nothing.
-The lane is one coordinator job per served repository that runs one item at a time,
-alternating records and file lists, rereads each from disk before it runs, and stops
-when the governor refuses; the module docstring works out its caps and the GitHub points
-they cost. A background job takes no network slot, waits behind every other job at a
-store turn and is cancelled when one starts waiting, and is joined and promoted by a
-reader’s request for the same pull request.
+The lane is one coordinator job per served repository that runs one item at a time.
+It first makes the queued file lists local where the store can give them: an open pull
+request with no current comparison is listed from the head and base branch the list of
+pull requests names, with every head the store lacks fetched in one Git command
+(`fetch_pull_heads` in `cache/pull_refs.py`), and a served checkout attaches its store
+for that if no reader has yet.
+Those lists cost no GitHub request and go first; the rest alternate records and file
+lists from GitHub.
+The lane rereads each item from disk before it runs and stops when the
+governor refuses; the module docstring works out its caps, the GitHub points they cost,
+and the measurements behind the order.
+A background job takes no network slot, waits behind every other job at a store turn and
+is cancelled when one starts waiting, and is joined and promoted by a reader’s request
+for the same pull request.
 `GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
 `pulls-panel.js` chooses what to name and when.
 

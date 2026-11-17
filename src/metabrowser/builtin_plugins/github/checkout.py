@@ -703,6 +703,28 @@ async def _attach_store(
     return True
 
 
+async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSource | None:
+    """The checkout's store, attached now if it has none, for the prefetch to list changed
+    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached.
+
+    A reader's comparison attaches the same store (:func:`_attach_store`). This one is
+    background work: it holds no network slot, and a failure is only logged, since each
+    list then goes to GitHub as it would have, and a reader's comparison reports its own.
+    """
+
+    state = _checkout_state(repository)
+    if state.pulls.git_dir is None:
+        try:
+            await _wait_for_cold_open(repository)
+            if state.pulls.git_dir is None:
+                state.pulls.bind(await _acquire_comparison(repository))
+        except PullDataError as exc:
+            log.debug("the prefetch could not attach the checkout's store: %s", exc)
+            return None
+    published = state.pulls.published
+    return None if isinstance(published, ListedRepository) else published
+
+
 async def _prepare_foreground(
     coordinator: RefreshCoordinator,
     state: _CheckoutPulls,
@@ -830,6 +852,7 @@ async def _pull_job(
 
 __all__ = [
     "CheckoutRepository",
+    "attach_store_for_lists",
     "checkout_pulls",
     "checkout_job_key",
     "claim_source",

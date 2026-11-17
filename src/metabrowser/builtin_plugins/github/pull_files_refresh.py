@@ -395,6 +395,7 @@ async def _from_comparison(
             reader=None,
             head=local.head,
             base=local.base,
+            base_ref=local.base_ref,
             pages=0,
             last_page=None,
             complete=True,
