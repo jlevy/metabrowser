@@ -77,7 +77,11 @@ async def _present(coordinator: InventoryCoordinator, path: str) -> bool:
 
 
 async def _assert_live(coordinator: InventoryCoordinator, root: Path, name: str) -> None:
-    """A refresh after recovery reaches the host stream: live updates did not stop."""
+    """A refresh after recovery reaches the host stream: live updates did not stop.
+
+    The reopened handle may still be discovering, so changes from that discovery can
+    come first; the refresh's change converges among them.
+    """
 
     cursor, _version, _state = await coordinator.checkpoint()
     changes = coordinator.changes(after=cursor)
@@ -85,9 +89,12 @@ async def _assert_live(coordinator: InventoryCoordinator, root: Path, name: str)
     await coordinator.refresh(
         RefreshRequest(observations=(RefreshObservation(path=name, kind=ObservationKind.CREATED),))
     )
-    change = await _next(changes)
-    await changes.aclose()
-    assert name in change.dirty_paths
+    try:
+        async with asyncio.timeout(5):
+            while name not in (await anext(changes)).dirty_paths:
+                pass
+    finally:
+        await changes.aclose()
     assert await _present(coordinator, name)
 
 
