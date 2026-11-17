@@ -5,7 +5,7 @@ title: The Files nav panel's '+ N ignored' summary line is laid out from first p
 kind: bug
 status: open
 priority: 1
-version: 18
+version: 19
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -27,7 +27,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:39:50.746Z
-updated_at: 2026-11-17T03:05:26.323Z
+updated_at: 2026-11-17T03:16:34.644Z
 started_at: 2026-11-16T21:40:37.650Z
 closed_at: null
 close_reason: null
@@ -39,3 +39,5 @@ Owner, 2026-11-16: 'also on the main files nav panel, the + xxxx ignored line ap
 ## Notes
 
 2026-11-17 handoff: PR #490 (claude/ignored-line-stable) reviewed A+B, both dispositions posted at 0855877; main merged twice (head f2c81b5f4); CI running. Merge when CI green; then close mb-h3hc and mb-w3va (W3VA reopened earlier by mistake-close). mb-a5pa, mb-v2ls remain as follow-ups.
+
+2026-11-17: CI at f2c81b5f4 failed on test_files_totals_stable_chrome.py:171 (none unknown slow 180px light, 3.13); PR now conflicts with main in CHANGELOG.md after #491. See handoff PR #497.
