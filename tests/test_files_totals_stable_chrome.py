@@ -10,9 +10,10 @@ down 19.5 px when it arrived, measured on this repository in Chrome on 2026-11-1
 The count is now a line of its own, the shell inlines the root's totals with its first
 rows, and a line drawn without them holds the ignored line with the pending placeholder
 (docs/design-system.md, "Navigation Metadata Line"). ``tests/dom/files-totals-stable-
-chrome.mjs`` serves a folder with ignored files and one with none and records each load
-frame by frame from the document's start, in both themes, with the tally answered at once
-and held 2 s, in the default pane and the narrowest. This judges it:
+chrome.mjs`` serves a folder with ignored files, the same with a longer tracked count,
+and one with nothing ignored, and records each load frame by frame from the document's
+start, in both themes, with the tally answered at once and held 2 s, in the default pane
+and the narrowest. This judges it:
 
 - from first paint, the first frame with rows under a filled filter bar, to the settled
   frame, no box in the navigation (the filter bar, each metadata line, the first twelve
@@ -24,16 +25,21 @@ and held 2 s, in the default pane and the narrowest. This judges it:
 - the line is its settled self from first paint: the ignored count's line for the folder
   with ignored files, and no ignored line for the folder with none;
 - a shell drawn before the walk finished the root, its inlined totals taken out, holds
-  the ignored line from first paint; the count fills it in place, in the narrowest pane
-  too, where it is cut short on its one line rather than wrapped, and for a folder with
-  nothing ignored the held line goes away, the one move this keeps, which is measured
-  here as exactly that line's height.
+  the ignored line from first paint and no load moves: the count fills it in place, in
+  the narrowest pane too, where it is cut short on its one line rather than wrapped; a
+  first tally answered as the server does mid-walk, provisional and counting nothing
+  ignored yet, does not release it; and for a folder with nothing ignored it keeps its
+  box as "No ignored files";
+- the ignored line's tooltip, its whole phrase, shows only while the line is cut short,
+  and in the narrowest pane it is.
 
 The browserless states of the line are pinned by
 ``tests/golden/cli-ui-tree-summary-line.tryscript.md``. Where text sits is computed
 layout, so this needs a browser; it skips without Chrome (``docs/e2e-testing.md``), and
 CI runs it. The session leads a process group of its own, which Chrome and both servers
 join, and the whole group is stopped however it ends (``tests/process_group.py``).
+Each server searches for a port from the one after the last server's and the session
+reads the one it took from its banner, so a port taken meanwhile moves it, not the test.
 """
 
 from __future__ import annotations
@@ -52,9 +58,10 @@ from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
-# Two server starts, one Chrome, and seventeen loads, eleven of them holding the tally
-# 2 s: about 40 s of a 60 s test on a 10-core Mac at a load average near 30. A cold Chrome start in CI has
-# taken 28.2 s, and each server's start is bounded at 30 s inside the session.
+# Three server starts, one Chrome, and twenty-four loads, twelve of them holding the tally
+# 2 s and two the event stream 1.5 s: the session took 59 s, and the test 92 s, on a
+# 10-core Mac at a load average near 25. A cold Chrome start in CI has taken 28.2 s, and
+# each server's start is bounded at 30 s inside the session.
 SESSION_TIMEOUT_S = 240
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
@@ -64,8 +71,11 @@ TOLERANCE_PX = 0.5
 # As one line the two wrapped in the narrowest pane, so main's code moved the tree there;
 # the tracked count is short enough to stay one line at 180 px in a wider font set than
 # the Mac's, so the check measures the ignored line and not that (the design system's
-# "The Files totals" names it). The files are sparse, so they take no disk.
+# "The Files totals" names it). The wide folder is the same with "1,201 files (45.8 MB)",
+# whose two halves outgrew one line in the default pane on main's code, the owner's case;
+# it is loaded only there. The files are sparse, so they take no disk.
 _TRACKED_FILES = 40
+_WIDE_TRACKED_FILES = 1200
 _TRACKED_BYTES = 40_000
 _IGNORED_FILES = 2000
 _IGNORED_BYTES = 70_000
@@ -76,40 +86,37 @@ def _sparse(path: Path, size: int) -> None:
         handle.truncate(size)
 
 
-def _folders(root: Path) -> tuple[Path, Path]:
-    ignoring = root / "ignoring"
-    (ignoring / ".git").mkdir(parents=True)
-    (ignoring / ".gitignore").write_text("build/\n", encoding="utf-8")
-    (ignoring / "src").mkdir()
-    for index in range(_TRACKED_FILES):
-        _sparse(ignoring / "src" / f"m{index:04d}.py", _TRACKED_BYTES)
-    (ignoring / "build").mkdir()
+def _ignoring(root: Path, tracked: int) -> Path:
+    (root / ".git").mkdir(parents=True)
+    (root / ".gitignore").write_text("build/\n", encoding="utf-8")
+    (root / "src").mkdir()
+    for index in range(tracked):
+        _sparse(root / "src" / f"m{index:04d}.py", _TRACKED_BYTES)
+    (root / "build").mkdir()
     for index in range(_IGNORED_FILES):
-        _sparse(ignoring / "build" / f"o{index:04d}.bin", _IGNORED_BYTES)
-    (ignoring / "README.md").write_text("# Ignoring\n", encoding="utf-8")
+        _sparse(root / "build" / f"o{index:04d}.bin", _IGNORED_BYTES)
+    (root / "README.md").write_text("# Ignoring\n", encoding="utf-8")
+    return root
+
+
+def _folders(root: Path) -> tuple[Path, Path, Path]:
+    ignoring = _ignoring(root / "ignoring", _TRACKED_FILES)
+    wide = _ignoring(root / "wide", _WIDE_TRACKED_FILES)
     clean = root / "clean"
     (clean / ".git").mkdir(parents=True)
     (clean / "src").mkdir()
     for index in range(40):
         (clean / "src" / f"m{index:02d}.py").write_text(f"x = {index}\n", encoding="utf-8")
     (clean / "README.md").write_text("# Clean\n", encoding="utf-8")
-    return ignoring, clean
+    return ignoring, wide, clean
 
 
-def _free_ports() -> int:
-    """A port whose successor is free too: the session serves the two folders on both."""
+def _free_port() -> int:
+    """A port to start the first server's search from; the banner says where it went."""
 
-    for _ in range(50):
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = int(probe.getsockname()[1])
-        with socket.socket() as second:
-            try:
-                second.bind(("127.0.0.1", port + 1))
-            except OSError:
-                continue
-        return port
-    pytest.fail("no two adjacent free ports")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
 
 
 def _still(result: dict[str, Any]) -> list[str]:
@@ -120,9 +127,9 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()
-    ignoring, clean = _folders(tmp_path / "served")
+    ignoring, wide, clean = _folders(tmp_path / "served")
     state = tmp_path / "state"
-    for name in ("ignoring", "clean"):
+    for name in ("ignoring", "wide", "clean"):
         for part in ("cache", "config"):
             (state / name / part).mkdir(mode=0o700, parents=True)
     run = run_in_own_group(
@@ -131,8 +138,9 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
             str(SESSION),
             str(_METAB),
             str(ignoring),
+            str(wide),
             str(clean),
-            str(_free_ports()),
+            str(_free_port()),
             str(state),
         ],
         timeout_s=SESSION_TIMEOUT_S,
@@ -143,7 +151,7 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
     # Shown with a failure: every load's frames, and each phase's time.
     print(run.stdout, run.stderr)
     results: list[dict[str, Any]] = json.loads(run.stdout.strip().splitlines()[-1])["results"]
-    assert len(results) == 17, [result["name"] for result in results]
+    assert len(results) == 24, [result["name"] for result in results]
 
     for result in results:
         name = result["name"]
@@ -151,30 +159,27 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
         assert result["scheme"] == result["theme"], f"{name}: drawn in {result['scheme']}"
         assert result["paneWidth"] == result["width"], f"{name}: pane {result['paneWidth']} px"
         ignored = name.startswith("ignored")
-        assert result["last"]["ignoredLine"] == ("counted" if ignored else "none"), (
-            f"{name}: settled as {result['last']}"
-        )
-        if result["unknown"] and not ignored:
-            # The held line goes away once the root's totals say nothing is ignored: the
-            # line loses exactly that line, and the rows under it rise by as much.
-            assert result["first"]["ignoredLine"] == "held", f"{name}: {result['first']}"
-            held, settled = result["first"]["line"][1], result["last"]["line"][1]
-            line = held - settled
-            assert line > 0, f"{name}: the held line was {held} px, settled {settled}"
-            for key, px in result["moved"].items():
-                assert (key == "bar" and px <= TOLERANCE_PX) or abs(px - line) <= TOLERANCE_PX, (
-                    f"{name}: {key} moved {px} px, the held line is {line} px: {result['trail']}"
-                )
-            continue
         # Nothing moves from first paint to settled.
         assert not _still(result), f"{name}: {_still(result)}: {result['trail']}"
         assert result["shift"] == 0, f"{name}: layout shift {result['shift']}: {result['trail']}"
         # And it is not luck: the line paints its settled shape from the first frame, from
-        # the root's totals the shell inlined, or holding the ignored line without them.
+        # the root's totals the shell inlined, or holding the ignored line without them,
+        # which nothing but the root's totals settles.
         assert result["inline"] is not result["unknown"], f"{name}: inline {result['inline']}"
         if result["unknown"]:
-            assert result["first"]["ignoredLine"] == "held", f"{name}: {result['first']}"
+            settled = "counted" if ignored else "no ignored files"
+            assert result["lines"] == ["held", settled], f"{name}: {result['trail']}"
         else:
-            assert result["first"]["ignoredLine"] == result["last"]["ignoredLine"], (
-                f"{name}: first {result['first']}, settled {result['last']}"
-            )
+            settled = "counted" if ignored else "none"
+            assert result["lines"] == [settled], f"{name}: {result['trail']}"
+        # The ignored line's tooltip shows only while the line is cut short.
+        tip = result["tip"]
+        if ignored:
+            assert tip is not None and tip["shows"] is tip["cut"], f"{name}: {tip}"
+            assert tip["text"] == "+ 2,000 ignored (133.5 MB)", f"{name}: {tip}"
+            if result["width"] == 180:
+                assert tip["cut"], f"{name}: not cut short at 180 px: {tip}"
+        else:
+            assert tip is None, f"{name}: {tip}"
+    provisional = [result for result in results if result["provisional"]]
+    assert len(provisional) == 2 and all(result["settled"] for result in provisional)

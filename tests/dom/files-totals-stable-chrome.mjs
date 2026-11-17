@@ -1,12 +1,16 @@
-// The Files nav panel from first paint to settled, laid out by headless Chrome against two
-// live `metab` servers: a folder with ignored files and one with none.
+// The Files nav panel from first paint to settled, laid out by headless Chrome against
+// three live `metab` servers: a folder with ignored files, the same with a longer tracked
+// count, and one with nothing ignored.
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
-//     node tests/dom/files-totals-stable-chrome.mjs METAB IGNORING_ROOT CLEAN_ROOT PORT STATE_DIR
+//     node tests/dom/files-totals-stable-chrome.mjs METAB IGNORING_ROOT WIDE_ROOT CLEAN_ROOT \
+//       PORT STATE_DIR
 //
-// tests/test_files_totals_stable_chrome.py writes both folders, owns the profile and
-// STATE_DIR, runs this in a process group of its own, which Chrome and both servers join,
-// and judges what it prints: one JSON line of measurements.
+// tests/test_files_totals_stable_chrome.py writes the folders, owns the profile and
+// STATE_DIR, runs this in a process group of its own, which Chrome and the servers join,
+// and judges what it prints: one JSON line of measurements. Each server searches for a
+// port from the one after the last server's, and the session reads the port it took from
+// its banner.
 //
 // The Files totals line's ignored count, "+ 7,898 ignored (132.5 MB)", arrived with the
 // server's pass over every file, half a second to seconds after the tree, and in the
@@ -17,21 +21,28 @@
 // input after that frame. Each load is recorded from the document's start, frame by
 // frame, in both themes; with the server's tally answered at once and held 2 s ("slow");
 // in the default pane and the narrowest; for the folder with ignored files and for the
-// one with none.
+// one with none. The folder with the longer tracked count is loaded in the default pane,
+// where its two halves outgrew one line on main's code.
 //
-// Five loads take the shell as a server drawn before the walk finished the root would
+// Seven loads take the shell as a server drawn before the walk finished the root would
 // send it, its inlined totals taken out ("unknown"): with ignored files the line holds the
 // ignored line from first paint and the count fills it, in the narrowest pane too, where
-// the count is cut short on its one line rather than wrapped; with none, the held line is taken
-// away once the root's totals say so, which is the one move the design keeps
-// (docs/design-system.md, "Navigation Metadata Line"), and this measures it.
+// the count is cut short on its one line rather than wrapped; with none, the held line
+// keeps its box and says "No ignored files" (docs/design-system.md, "Navigation Metadata
+// Line"). Two of them ("provisional") answer the first tally as the server does mid-walk,
+// `tally_cache_status: "scanning"` with nothing ignored yet, and hold the event stream
+// that brings the root's entry until 1.5 s after it, so the held line must outlast a
+// provisional tally that says nothing is ignored.
+//
+// Once a load settles, the ignored line's tooltip is read as the shell decides it
+// (`tipAddsInformation`): it shows only while the line is cut short.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
-const [metab, ignoringRoot, cleanRoot, port, state] = process.argv.slice(2);
+const [metab, ignoringRoot, wideRoot, cleanRoot, port, state] = process.argv.slice(2);
 const started = Date.now();
 const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - started}\n`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,10 +55,14 @@ const QUIET_MS = 700;
 const LOAD_MS = 30000;
 // The default pane (`--tree-pane-width`) and the narrowest the resize handle allows.
 const WIDTHS = [300, 180];
+// How long a provisional load holds the event stream after its provisional tally.
+const ENTRY_AFTER_MS = 1500;
+// The server's first line names the port it took, which a port in use moves.
+const SERVING = /Serving .* at http:\/\/127\.0\.0\.1:(\d+)\/view\//;
+const TALLY = /\/api\/tree\?depth=0(&|$)/;
 
-/** Start one server, resolving with its base URL once it says it is serving. */
+/** Start one server searching from port *at*, resolving once it says where it serves. */
 async function serve(root, at, dir) {
-  const base = `http://127.0.0.1:${at}`;
   const server = spawn(
     metab,
     [
@@ -67,13 +82,15 @@ async function serve(root, at, dir) {
   );
   const exited = new Promise((resolve) => server.once("exit", resolve));
   let output = "";
-  await new Promise((resolve, reject) => {
+  /** @type {number} */
+  const took = await new Promise((resolve, reject) => {
     const bound = setTimeout(() => reject(new Error(`no server: ${output}`)), 30000);
     const read = (chunk) => {
       output += chunk;
-      if (output.includes("Serving ") && output.includes(base)) {
+      const serving = SERVING.exec(output);
+      if (serving) {
         clearTimeout(bound);
-        resolve();
+        resolve(Number(serving[1]));
       }
     };
     server.stdout.on("data", read);
@@ -81,7 +98,8 @@ async function serve(root, at, dir) {
     server.once("exit", () => reject(new Error(`server exited: ${output}`)));
   });
   return {
-    base,
+    base: `http://127.0.0.1:${took}`,
+    port: took,
     async stop() {
       server.kill("SIGTERM");
       await Promise.race([exited, sleep(20000)]);
@@ -125,7 +143,7 @@ const PROBE = `(() => {
         at: Math.round(performance.now()),
         boxes,
         reads: summary ? summary.textContent.replace(/\\s+/g, " ").trim() : null,
-        ignoredLine: panel.querySelector(".tree-summary-ignored") ? "counted" : panel.querySelector(".tree-summary-ignored-pending") ? "held" : "none",
+        ignoredLine: panel.querySelector(".tree-summary-ignored-none") ? "no ignored files" : panel.querySelector(".tree-summary-ignored") ? "counted" : panel.querySelector(".tree-summary-ignored-pending") ? "held" : "none",
       };
       const key = JSON.stringify([frame.boxes, frame.reads, frame.ignoredLine]);
       if (key !== last) {
@@ -161,7 +179,8 @@ function movement(frames) {
 
 async function main() {
   const ignoring = await serve(ignoringRoot, Number(port), path.join(state, "ignoring"));
-  const clean = await serve(cleanRoot, Number(port) + 1, path.join(state, "clean"));
+  const wide = await serve(wideRoot, ignoring.port + 1, path.join(state, "wide"));
+  const clean = await serve(cleanRoot, wide.port + 1, path.join(state, "clean"));
   phase("servers");
   const browser = await launchChrome(process.env.CHROME_BIN, {
     profiles: process.env.CHROME_PROFILES,
@@ -177,45 +196,92 @@ async function main() {
     await browser.send("Page.addScriptToEvaluateOnNewDocument", { source: PROBE });
     let holdMs = 0;
     let answered = 0;
+    // A provisional load: its first tally answered as mid-walk, and the event stream, which
+    // brings the root's entry, held until ENTRY_AFTER_MS after that.
+    let provisional = false;
+    let tallies = 0;
+    /** @type {string[]} */
+    let heldStreams = [];
+    let streamsReleased = true;
+    const releaseStreams = async () => {
+      streamsReleased = true;
+      for (const requestId of heldStreams.splice(0)) {
+        await browser.send("Fetch.continueRequest", { requestId }).catch(() => {});
+      }
+    };
     browser.on("Network.responseReceived", (params) => {
-      if (/\/api\/tree\?depth=0(&|$)/.test(params.response.url)) {
+      if (TALLY.test(params.response.url)) {
         answered += 1;
       }
     });
+    /** @param {any} params @param {(text: string) => string} rewrite */
+    const fulfill = async (params, rewrite) => {
+      const body = await browser.send("Fetch.getResponseBody", { requestId: params.requestId });
+      const text = body.base64Encoded
+        ? Buffer.from(body.body, "base64").toString("utf8")
+        : body.body;
+      await browser.send("Fetch.fulfillRequest", {
+        requestId: params.requestId,
+        responseCode: params.responseStatusCode,
+        responseHeaders: params.responseHeaders.filter(
+          (header) => !/^content-(length|encoding)$/i.test(header.name),
+        ),
+        body: Buffer.from(rewrite(text), "utf8").toString("base64"),
+      });
+    };
     browser.on("Fetch.requestPaused", async (params) => {
       try {
-        if (params.responseStatusCode !== undefined) {
-          // The shell, as a server drawing it before the walk finished the root sends it.
-          const body = await browser.send("Fetch.getResponseBody", {
-            requestId: params.requestId,
+        const url = params.request.url;
+        if (params.responseStatusCode !== undefined && TALLY.test(url)) {
+          tallies += 1;
+          if (tallies > 1) {
+            await fulfill(params, (text) => text);
+            return;
+          }
+          // The first tally, as the server answers it mid-walk: provisional, and with the
+          // ignored files the walk has not reached yet not counted.
+          await fulfill(params, (text) => {
+            const answer = JSON.parse(text);
+            answer.tally_cache_status = "scanning";
+            answer.summary = { ...answer.summary, ignored_files: 0, ignored_size: 0 };
+            return JSON.stringify(answer);
           });
-          const html = (
-            body.base64Encoded ? Buffer.from(body.body, "base64").toString("utf8") : body.body
-          ).replace(
-            /(window\.METABROWSER_INITIAL_TREE=\{.*?), "summary": \{[^}]*\}/,
-            (_, before) => before,
-          );
-          await browser.send("Fetch.fulfillRequest", {
-            requestId: params.requestId,
-            responseCode: params.responseStatusCode,
-            responseHeaders: params.responseHeaders.filter(
-              (header) => !/^content-(length|encoding)$/i.test(header.name),
-            ),
-            body: Buffer.from(html, "utf8").toString("base64"),
-          });
+          setTimeout(releaseStreams, ENTRY_AFTER_MS);
           return;
         }
-        const tally = /\/api\/tree\?depth=0(&|$)/.test(params.request.url);
-        await sleep(tally ? holdMs : 0);
+        if (params.responseStatusCode !== undefined && params.resourceType !== "Document") {
+          // A provisional load's other tree answers, as the server sent them.
+          await fulfill(params, (text) => text);
+          return;
+        }
+        if (params.responseStatusCode !== undefined) {
+          // The shell, as a server drawing it before the walk finished the root sends it.
+          await fulfill(params, (html) =>
+            html.replace(
+              /(window\.METABROWSER_INITIAL_TREE=\{.*?), "summary": \{[^}]*\}/,
+              (_, before) => before,
+            ),
+          );
+          return;
+        }
+        if (/\/api\/events/.test(url) && !streamsReleased) {
+          heldStreams.push(params.requestId);
+          return;
+        }
+        await sleep(TALLY.test(url) ? holdMs : 0);
         await browser.send("Fetch.continueRequest", { requestId: params.requestId });
       } catch {
         // A request the page abandoned while it was held is gone already.
       }
     });
     let widthScript = null;
-    const load = async ({ server, name, theme, width, slow, strip }) => {
+    const load = async ({ server, name, theme, width, slow, strip, early = false }) => {
       holdMs = slow ? SLOW_MS : 0;
       answered = 0;
+      provisional = early;
+      tallies = 0;
+      heldStreams = [];
+      streamsReleased = !early;
       await browser.send("Emulation.setEmulatedMedia", {
         features: [{ name: "prefers-color-scheme", value: theme }],
       });
@@ -239,6 +305,12 @@ async function main() {
           ...(strip
             ? [{ urlPattern: "*/view/*", requestStage: "Response", resourceType: "Document" }]
             : []),
+          ...(provisional
+            ? [
+                { urlPattern: "*/api/tree*", requestStage: "Response" },
+                { urlPattern: "*/api/events*", requestStage: "Request" },
+              ]
+            : []),
         ],
       });
       await browser.send("Page.navigate", { url: `${server.base}/view/` });
@@ -247,16 +319,35 @@ async function main() {
       while (Date.now() < deadline) {
         await sleep(100);
         const now = await browser.evaluate(
-          "({ now: performance.now(), last: window.__frames?.at(-1)?.at ?? null, inline: !!window.METABROWSER_INITIAL_TREE?.summary })",
+          "({ now: performance.now(), last: window.__frames?.at(-1)?.at ?? null, held: window.__frames?.at(-1)?.ignoredLine === 'held' })",
         );
-        if (answered > 0 && now.last !== null && now.now - now.last > QUIET_MS) {
+        // A held line is never settled: it waits for the root's totals, so a load whose
+        // line stays held runs to LOAD_MS and fails as never settled.
+        if (
+          answered > 0 &&
+          streamsReleased &&
+          now.last !== null &&
+          !now.held &&
+          now.now - now.last > QUIET_MS
+        ) {
           settled = true;
           break;
         }
       }
+      await releaseStreams();
       await browser.send("Fetch.disable");
       const page = await browser.evaluate(
-        "({ frames: window.__frames, shifts: window.__shifts, inline: !!window.METABROWSER_INITIAL_TREE?.summary, paneWidth: Math.round(document.querySelector('.tree-pane').getBoundingClientRect().width), scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' })",
+        `({
+          frames: window.__frames,
+          shifts: window.__shifts,
+          inline: !!window.METABROWSER_INITIAL_TREE?.summary,
+          paneWidth: Math.round(document.querySelector('.tree-pane').getBoundingClientRect().width),
+          scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+          tip: (() => {
+            const line = document.querySelector('#tab-files .tree-summary-ignored:not(.tree-summary-ignored-none)');
+            return line && { text: line.dataset.tipText, cut: tipAnchorIsCut(line), shows: tipAddsInformation(line) };
+          })(),
+        })`,
       );
       const first = page.frames[0] ?? null;
       const last = page.frames.at(-1) ?? null;
@@ -266,6 +357,7 @@ async function main() {
         width,
         slow,
         unknown: strip,
+        provisional: early,
         settled,
         inline: page.inline,
         paneWidth: page.paneWidth,
@@ -281,6 +373,10 @@ async function main() {
           ignoredLine: last.ignoredLine,
           line: last.boxes["line 0"],
         },
+        lines: page.frames
+          .map((frame) => frame.ignoredLine)
+          .filter((one, i, all) => i === 0 || all[i - 1] !== one),
+        tip: page.tip,
         moved: movement(page.frames),
         // The shifts after first paint. One in that frame is the move into it: in the
         // narrowest pane, the filter bar's wrap as it is filled (above).
@@ -309,6 +405,14 @@ async function main() {
       }
       for (const slow of [false, true]) {
         await load({
+          server: wide,
+          name: `ignored wide ${slow ? "slow" : "fast"} 300px ${theme}`,
+          theme,
+          width: 300,
+          slow,
+          strip: false,
+        });
+        await load({
           server: clean,
           name: `none ${slow ? "slow" : "fast"} 300px ${theme}`,
           theme,
@@ -327,18 +431,28 @@ async function main() {
           strip: true,
         });
       }
+      await load({
+        server: ignoring,
+        name: `ignored unknown provisional 300px ${theme}`,
+        theme,
+        width: 300,
+        slow: false,
+        strip: true,
+        early: true,
+      });
+      await load({
+        server: clean,
+        name: `none unknown slow 300px ${theme}`,
+        theme,
+        width: 300,
+        slow: true,
+        strip: true,
+      });
     }
-    await load({
-      server: clean,
-      name: "none unknown slow 300px light",
-      theme: "light",
-      width: 300,
-      slow: true,
-      strip: true,
-    });
   } finally {
     await browser.close();
     await ignoring.stop();
+    await wide.stop();
     await clean.stop();
   }
   process.stdout.write(`${JSON.stringify({ results })}\n`);
