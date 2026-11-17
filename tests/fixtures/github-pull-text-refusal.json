@@ -1,0 +1,10 @@
+{
+  "status": 422,
+  "body": {
+    "code": "render_deadline",
+    "error": "Rendering took longer than 0.2 seconds, so it was stopped",
+    "deadline_ms": 200,
+    "number": 7,
+    "part": "body"
+  }
+}

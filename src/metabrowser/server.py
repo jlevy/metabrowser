@@ -81,6 +81,13 @@ from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untruste
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    text_identity,
+)
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
@@ -3872,20 +3879,47 @@ async def api_kpress_render(request: Request) -> Response:
 
     try:
         with server_timing.phase("render"):
-            rendered = await asyncio.to_thread(
-                kpress_adapter.render_kpress_view,
-                source_text=content,
-                source_path=subpath,
-                kind=kind,
-                view=view,
-                ext=ext,
-                mtime_hash=mtime_hash,
-                size=logical_size,
-                frontmatter=frontmatter,
-                frontmatter_error=frontmatter_error,
-                profile=profile,
-                include_toc=include_toc,
-            )
+            if get_capabilities().active_content:
+                rendered = await asyncio.to_thread(
+                    kpress_adapter.render_kpress_view,
+                    source_text=content,
+                    source_path=subpath,
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=mtime_hash,
+                    size=logical_size,
+                    frontmatter=frontmatter,
+                    frontmatter_error=frontmatter_error,
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            else:
+                # A document the reader does not trust renders inert, in the Markdown
+                # child under its deadline (diff/markdown_projection_worker.py), and is
+                # known by its text, which a folder's file has no other name for.
+                rendered = await shared_worker().render_inert(
+                    InertRender(
+                        source_text=content,
+                        source_path=subpath,
+                        identity=await asyncio.to_thread(text_identity, content),
+                        kind=kind,
+                        view=view,
+                        ext=ext,
+                        mtime_hash=mtime_hash,
+                        size=logical_size,
+                        frontmatter=frontmatter,
+                        frontmatter_error=frontmatter_error,
+                        profile=profile,
+                        include_toc=include_toc,
+                    )
+                )
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, subpath),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
+        )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
             {
@@ -3906,10 +3940,6 @@ async def api_kpress_render(request: Request) -> Response:
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
-        # A document the reader does not trust renders inert (kpress_adapter.inert_render).
-        with server_timing.phase("render"):
-            rendered = kpress_adapter.inert_render(rendered)
     # The version of each file the document embeds, which the page puts in that file's
     # /raw address, so a replaced image is a new address (_raw_versions). Read on every
     # render, which is never kept: a render names the files as they are when it is asked.
@@ -4999,6 +5029,8 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         try:
             yield
         finally:
+            # The Markdown child belongs to this loop; a later one starts its own.
+            shared_worker().stop()
             await close_history_sessions()
 
 

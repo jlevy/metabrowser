@@ -1181,8 +1181,8 @@ def test_a_request_ahead_of_changes_starts_the_projection_process(
     starts: list[str] = []
 
     class Recording(ProjectionWorker):
-        def start(self) -> None:
-            starts.append("start")
+        def start(self, *, renders: bool = False) -> None:
+            starts.append("renders" if renders else "start")
 
     stand, client = pinned_pull
     stand.refresh(8)

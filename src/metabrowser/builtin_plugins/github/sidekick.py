@@ -251,9 +251,7 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
         return _invalid_request(str(exc))
     await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
-    status_code, body = await asyncio.to_thread(
-        render_part, view, request.query_params.get("part", "")
-    )
+    status_code, body = await render_part(view, request.query_params.get("part", ""))
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 

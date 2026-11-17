@@ -230,7 +230,25 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
             })
           : mb.kpressInitToc(container);
     } catch (error) {
-      if (!disposed && !mb.errors.isAbortError(error)) {
+      if (disposed || mb.errors.isAbortError(error)) {
+        return;
+      }
+      // A render the server refused is a readable document: its source, and why. What
+      // draws it loads at the first failed render, which a trusted folder never has: 6,729
+      // bytes, 2,548 gzipped (2026-11-17).
+      try {
+        const { mountRefusedSource, renderRefusal } = await import("./render-refusal.js");
+        const refusal = renderRefusal(error);
+        if (refusal !== null) {
+          await mountRefusedSource(container, ctx, refusal, mb, { signal: controller.signal });
+          return;
+        }
+      } catch (sourceError) {
+        if (disposed || mb.errors.isAbortError(sourceError)) {
+          return;
+        }
+      }
+      if (!disposed) {
         container.innerHTML = renderKpressError(error, mb);
       }
     }

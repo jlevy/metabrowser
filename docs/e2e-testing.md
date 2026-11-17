@@ -300,12 +300,14 @@ Strict mode is off on a developer machine, which can add these:
   reads the face documents and chrome prose are drawn in under each reading font and
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
-  `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
-  fold of unchanged blocks closed, open, and under the pointer, and its quote and code
-  against a document’s in the light and the dark theme;
-  `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
-  Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
-  host, and reads that only the Mac’s binds them; and
+  `tests/test_inert_render_refusal_chrome.py`, which reads the notice and the source an
+  untrusted document past its render deadline shows in its Document tab and in the
+  folder Overview’s README panel; `tests/test_diff_markdown_fold_chrome.py`, which
+  measures a rendered Markdown diff’s fold of unchanged blocks closed, open, and under
+  the pointer, and its quote and code against a document’s in the light and the dark
+  theme; `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P
+  through Chrome’s input under a navigator overridden to name a Mac and then Linux, on
+  every host, and reads that only the Mac’s binds them; and
   `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
   computed weight, face, size, and ink on every title surface.
   The CI runners have Chrome, so CI runs them.

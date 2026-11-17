@@ -63,6 +63,7 @@ from metabrowser.cli.selection import (
 )
 from metabrowser.cli.serve import serve_until_interrupted, stop_on_interrupt
 from metabrowser.cli.show_cli import git_wire_candidates
+from metabrowser.diff.markdown_projection_worker import shared_worker
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, GitTimeoutError, GitUnavailableError
@@ -266,10 +267,14 @@ def _serving_opener(selected: _Selected) -> Callable[[], Awaitable[GitRevisionSu
 
     async def open_to_serve() -> GitRevisionSubject:
         try:
-            return await opener()
+            subject = await opener()
         except _PIN_CLI_ERRORS as exc:
             LOG.debug("opening the pinned revision to serve it failed: %s", exc)
             raise SubjectOpenError(_pin_failure_message(exc)) from None
+        # Every document a pin serves renders in the Markdown child, so it starts as the
+        # pin attaches rather than at the first document, which would wait for it.
+        shared_worker().start(renders=True)
+        return subject
 
     return open_to_serve
 

@@ -84,6 +84,13 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from metabrowser import kpress_adapter
 from metabrowser.capabilities import get_capabilities
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    text_identity,
+)
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -1722,20 +1729,50 @@ async def git_revision_kpress_render(
         _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:
-        rendered = await asyncio.to_thread(
-            kpress_adapter.render_kpress_view,
-            source_text=content,
-            # Display text is not a route identity; wiki rewrite must stay on the wire.
-            source_path=entry.path.to_wire(),
-            kind=kind,
-            view=view,
-            ext=ext,
-            mtime_hash=entry.oid,
-            size=logical_size,
-            frontmatter=envelope.get("frontmatter"),
-            frontmatter_error=envelope.get("frontmatter_error"),
-            profile=profile,
-            include_toc=include_toc,
+        if get_capabilities().active_content:
+            rendered = await asyncio.to_thread(
+                kpress_adapter.render_kpress_view,
+                source_text=content,
+                # Display text is not a route identity; wiki rewrite must stay on the wire.
+                source_path=entry.path.to_wire(),
+                kind=kind,
+                view=view,
+                ext=ext,
+                mtime_hash=entry.oid,
+                size=logical_size,
+                frontmatter=envelope.get("frontmatter"),
+                frontmatter_error=envelope.get("frontmatter_error"),
+                profile=profile,
+                include_toc=include_toc,
+            )
+        else:
+            # Inert, in the Markdown child under its deadline, and known by its blob, or
+            # by the text a page sent in its place.
+            rendered = await shared_worker().render_inert(
+                InertRender(
+                    source_text=content,
+                    source_path=entry.path.to_wire(),
+                    identity=(
+                        f"blob:{entry.oid}"
+                        if source_override is None
+                        else await asyncio.to_thread(text_identity, source_override)
+                    ),
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=entry.oid,
+                    size=logical_size,
+                    frontmatter=envelope.get("frontmatter"),
+                    frontmatter_error=envelope.get("frontmatter_error"),
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            )
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, path.to_wire()),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1757,8 +1794,6 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
-        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 

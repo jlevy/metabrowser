@@ -287,6 +287,7 @@ assets in static_root:
   - place-rendered.js
   - project-adapters.js
   - reconciliation-coordinator.js
+  - render-refusal.js
   - rendered.js
   - source.js
   - transclusion.js
@@ -360,6 +361,7 @@ $ metab --plugin markdown --json
       "place-rendered.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
+      "render-refusal.js",
       "rendered.js",
       "source.js",
       "transclusion.js",

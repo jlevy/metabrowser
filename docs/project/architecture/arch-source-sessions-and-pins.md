@@ -171,6 +171,16 @@ The rules they follow:
   Markdown carries parsed `frontmatter`, text keeps the folder’s first-window and
   highlight bound, and an image is image chrome with `/raw` serving the stored bytes.
   LFS pointers stay pointer bytes.
+- **Rendered Markdown:** a pin always runs under the untrusted profile, so
+  `/api/kpress/render` renders a blob in the server’s Markdown child
+  (`diff/markdown_projection_worker.py`), never on a server thread, with fenced code
+  plain and the HTML reduced to the inert allowlist there.
+  A served pin starts the child as it attaches, so its first document does not wait for
+  the child to start. A render past the child’s deadline stops the child and answers
+  `422` with the code `render_deadline`; the refusal is kept by the blob’s object ID for
+  as long as the server runs, so a reload is refused without rendering again.
+  The page then shows the file’s source with one line saying why, in the Document tab
+  and in the folder Overview’s README panel alike.
 - **Symlinks:** `/api/file`, `/raw`, KPress, and plugin hooks follow an in-tree relative
   symlink blob; listings show the link, and kind checks use the leaf path.
 - **Plugin data:** binary chunks, structured parses, and agent-log charts read one blob

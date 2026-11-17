@@ -1541,6 +1541,42 @@ export function isEnvelope(value) {
   );
 }
 
+// ── Texts the server would not render ─────────────────────────
+
+/**
+ * What a text's notice says when the Markdown route will not render it, or null when
+ * its answer says nothing a reader needs: a record the page no longer shows, say, whose
+ * text stays plain until the newer record's is asked for. The server renders a text in
+ * its Markdown child under a deadline (`pull_markdown.render_part`), and refuses one that
+ * runs past it, whose renderer stops, or whose renderer cannot start; KPress can also
+ * fail on a text. Each shows the text as plain text, with this line saying why.
+ *
+ * @param {number} status
+ * @param {Record<string, any> | null} body
+ * @returns {string | null}
+ */
+export function refusedTextNote(status, body) {
+  if (status === 200 || body === null || typeof body.code !== "string") {
+    return null;
+  }
+  switch (body.code) {
+    case "render_deadline": {
+      const seconds = typeof body.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
+      const took =
+        seconds === null ? "too long" : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
+      return `This text took ${took} to render, so it is shown as plain text.`;
+    }
+    case "renderer_exited":
+      return "The renderer stopped while rendering this text, so it is shown as plain text.";
+    case "renderer_unavailable":
+      return "The renderer could not start, so this text is shown as plain text. Reload to try again.";
+    case "render_failed":
+      return "This text could not be rendered, so it is shown as plain text.";
+    default:
+      return null;
+  }
+}
+
 // ── Rendered texts, across pages ──────────────────────────────
 
 /**
@@ -1708,7 +1744,7 @@ export function renderedTextsHeld() {
  *   scheduleComparison?(callback: () => void): () => void,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>, text: string): void,
- *   textUnavailable?(part: string, text: string): void,
+ *   textUnavailable?(part: string, text: string, note?: string | null): void,
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   timelineStateChanged?(): void,
  *   reload(): void,
@@ -2674,9 +2710,10 @@ export function createPullController(deps, options) {
             revision !== markdownFor
           ) {
             // A render of a record the page no longer shows, or none at all: the
-            // plain text stays, and a newer record is asked for again.
+            // plain text stays, and a newer record is asked for again. A text the
+            // server would not render says why.
             if (!disposed && text !== null) {
-              deps.textUnavailable?.(part, text);
+              deps.textUnavailable?.(part, text, refusedTextNote(response.status, body));
             }
             return;
           }
@@ -4269,6 +4306,27 @@ export function mountPullPage(container, ctx, mb) {
       decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
     }
     return h("div", { class: "metabrowser-kpress-host" }, [article]);
+  }
+
+  /**
+   * Say under a text's plain text why its Markdown will not come, once.
+   *
+   * @param {string} part
+   * @param {string} text The text the server would not render.
+   * @param {string} note
+   */
+  function refusedText(part, text, note) {
+    const element = texts.get(part);
+    const plain =
+      element === undefined || textOf.get(element) !== text
+        ? null
+        : element.querySelector(":scope > .github-pull-plain");
+    if (plain && element?.querySelector(":scope > .github-pull-text-refused") === null) {
+      const said = notice("warning", [note]);
+      said.classList.add("github-pull-text-refused");
+      said.setAttribute("role", "status");
+      plain.after(said);
+    }
   }
 
   /**
@@ -6716,7 +6774,10 @@ export function mountPullPage(container, ctx, mb) {
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
       listed: listedState,
-      textUnavailable(part, text) {
+      textUnavailable(part, text, note) {
+        if (note) {
+          refusedText(part, text, note);
+        }
         // A text a held first paint waits for will not come: it shows plain, and waits no longer.
         const held = firstPaint;
         if (held?.mode === "delayed" && part === "body" && held.text === text) {
