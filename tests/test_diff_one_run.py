@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
 import os
 import subprocess
 import threading
@@ -637,7 +638,9 @@ def test_a_listing_run_that_fails_stops_the_answer_asked_beside_it(
     held = _HeldGit(tmp_path, monkeypatch)
 
     async def listing_fails(*_args: Any, **_kwargs: Any) -> bytes:
-        await held.spawned.wait()  # the answer's `git config` is running
+        # Until the answer's `git config` has started. Bounded, so a Git that never starts
+        # fails this test and not the whole run (pyproject.toml's `timeout`).
+        await asyncio.wait_for(held.spawned.wait(), 20)
         raise GitCommandError(["diff"], 128, "fatal: listing")
 
     monkeypatch.setattr(GitDiffSource, "_patch", listing_fails)
@@ -659,14 +662,75 @@ def test_an_answer_that_fails_stops_the_listing_run_beside_it(
     failure = RuntimeError("the answer failed")
 
     async def answer_fails(_location: GitLocation) -> bool | None:
-        await held.spawned.wait()  # the listing run's `git diff` is running
+        # Until the listing run's `git diff` has started, bounded as above.
+        await asyncio.wait_for(held.spawned.wait(), 20)
         raise failure
 
     monkeypatch.setattr(adapter, "textconv_answer", answer_fails)
     outcome, left = _left_running(lambda: source._list_with_patch(resolved))
     assert outcome is failure, "the answer's failure, as it was raised"
-    assert left == [], "nothing the listing run started outlives it"
+    assert left == [], "nothing the listing run started outlives the answer's failure"
     held.assert_reaped()
+
+
+def test_a_caller_cancelled_as_one_call_fails_is_cancelled() -> None:
+    """Review A2 on #514: `gather` hands a caller cancelled in the loop step in which one call
+    fails that failure in place of the cancellation, and the comparison would then go on to
+    list alone, running Git for a request nobody waits for. The caller is cancelled instead,
+    with the failure as the cause."""
+    failure = GitCommandError(["diff"], 128, "fatal: listing")
+
+    async def run() -> BaseException | None:
+        caller = asyncio.current_task()
+        assert caller is not None
+
+        async def fails() -> None:
+            caller.cancel()  # in the step in which this call fails
+            raise failure
+
+        try:
+            await adapter._side_by_side(fails(), asyncio.Event().wait())
+        except asyncio.CancelledError as exc:
+            caller.uncancel()  # this test takes the cancellation
+            return exc
+        except Exception as exc:
+            return exc
+        return None
+
+    outcome = asyncio.run(run())
+    assert isinstance(outcome, asyncio.CancelledError), f"cancelled, not {outcome!r}"
+    assert outcome.__cause__ is failure
+
+
+def test_a_failure_of_the_call_stopped_beside_it_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Review A3 on #514: the call stopped because the other failed can fail too, here while
+    it is stopped. Its failure is logged, not dropped, and the first is the one raised."""
+    failure = RuntimeError("the first failure")
+    also = RuntimeError("raised while it was stopped")
+
+    async def run() -> None:
+        waiting = asyncio.Event()
+
+        async def fails() -> None:
+            await waiting.wait()
+            raise failure
+
+        async def fails_when_stopped() -> None:
+            try:
+                waiting.set()
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                raise also from None
+
+        await adapter._side_by_side(fails(), fails_when_stopped())
+
+    caplog.set_level(logging.DEBUG, logger=adapter.__name__)
+    with pytest.raises(RuntimeError) as raised:
+        asyncio.run(run())
+    assert raised.value is failure
+    assert [record.exc_info[1] for record in caplog.records if record.exc_info] == [also]
 
 
 def test_a_cold_configuration_is_asked_beside_the_one_run(

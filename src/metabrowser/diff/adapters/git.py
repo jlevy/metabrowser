@@ -533,16 +533,30 @@ async def _side_by_side[A, B](
     3.13); the comparison route's tests hung so (mb-pc9v). So when either fails, or the
     caller is cancelled, both are cancelled and awaited, which kills and reaps their Git
     (:func:`~metabrowser.git.process.run_git`), and the first failure propagates as raised.
+
+    ``gather`` hands a caller cancelled in the loop step in which a call fails that failure
+    in place of the cancellation, and the comparison would then go on to list alone, running
+    Git for a request nobody waits for. So a caller with a cancellation outstanding
+    (:meth:`asyncio.Task.cancelling`) gets :exc:`asyncio.CancelledError`, with the failure
+    as its cause. A failure of the call stopped beside it, which ``gather`` drops, is
+    logged.
     """
     one = asyncio.ensure_future(first)
     two = asyncio.ensure_future(second)
     try:
-        return await asyncio.gather(one, two)
-    except BaseException:
+        a, b = await asyncio.gather(one, two)
+    except BaseException as failure:
         one.cancel()
         two.cancel()
-        await asyncio.gather(one, two, return_exceptions=True)
+        for result in await asyncio.gather(one, two, return_exceptions=True):
+            stopped = isinstance(result, asyncio.CancelledError)
+            if isinstance(result, BaseException) and not stopped and result is not failure:
+                log.debug("a call stopped beside a failure failed too", exc_info=result)
+        caller = asyncio.current_task()
+        if isinstance(failure, Exception) and caller is not None and caller.cancelling():
+            raise asyncio.CancelledError from failure
         raise
+    return a, b
 
 
 class GitDiffSource:
