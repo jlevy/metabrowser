@@ -54,11 +54,24 @@ Metabrowser fetches the repository’s list of pull requests in the background a
 each page as it arrives; scroll toward the end to load more, and a spinner below the
 last row says how many have been fetched so far.
 
-Click a row to open its pull request and show its changed files under it.
+Each row’s third line is its pull request’s brief change line, “21 A, 7 D, 15 M · +1,234
+−567”: how many files it adds, deletes, modifies, and renames, and its lines added and
+deleted, so walking the list shows the size of each change.
+It sums the same list of changed files the row’s tree shows, as a stack’s heading sums
+its pull requests’, and asks GitHub for nothing: the lists come from what the Pulls tab
+already reads behind you for the rows in view and from trees you open, and a gray
+placeholder holds the line’s place until one arrives.
+
+Click a row’s title or number to open its pull request; its files stay as they were.
+The change line carries the chevron for the files, which start collapsed: click it to
+show or hide them under the row.
+No row expands on its own.
 Click a file to open **Changes** at that file.
-Move between rows with `J` and `K` or the arrow keys; Right expands a row’s files and
-Left collapses them, Enter opens the focused pull request, and Space shows or hides its
-files in place. The file list says **Listing changed files…** until GitHub answers.
+Move between rows with `J` and `K` or the arrow keys, and Enter opens the focused pull
+request. Right moves to the row’s change line, where Enter or Space shows or hides the
+files, Right shows them or moves into them, Left hides them and then returns to the row,
+and Up returns to the row.
+The file list says **Listing changed files…** until GitHub answers.
 Once the files show, a later page or an updated list does not move the rows you are
 reading: it is offered as **Show N more files** or **Show the updated list of N files**.
 

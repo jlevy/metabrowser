@@ -441,7 +441,7 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
     github-pulls-panel-session.js pins the built row's order."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
-    assert "[toggle, icon, title, updated, meta]," in panel
+    assert "[icon, title, updated, meta]," in panel
     meta = panel[panel.index("function rowMeta(") :]
     meta = meta[: meta.index("\n  }\n")]
     assert meta.index("place,") < meta.index('"github-pulls-number"'), "the place leads the line"
@@ -460,17 +460,20 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
 
 
 def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() -> None:
-    """A pull request's row is two lines (mb-lkkt): the chevron and the state icon in their
-    slots, then the number's line, "1/4 · #113 · jlevy", with the age at the row's end; then
-    the title alone, from the text column under the age to the row's end. The chevron and
-    the icon sat on the title's line until mb-3cbf. The number's line is one line, so the row
-    is always two: the author leaves it whole onto a clipped second line rather than growing
-    the row. The DOM keeps the title the row's first text, so its accessible name gives the
-    state icon's label and then the title, before the number's line.
-    github-pulls-stacks-chrome.mjs and github-pull-header-chrome.mjs measure it."""
+    """A pull request's row is three lines (mb-lkkt, mb-d0a3). Its link is two: the state
+    icon in its slot, then the number's line, "1/4 · #113 · jlevy", with the age at the
+    row's end; then the title alone, from the text column under the age to the row's end.
+    The chevron and the icon sat on the title's line until mb-3cbf, and the chevron on the
+    number's line until mb-h0ml, when it moved to the row's third line, its change line,
+    which is not part of the link. The number's line is one line, so the link is always
+    two: the author leaves it whole onto a clipped second line rather than growing the row.
+    The DOM keeps the title the link's first text, so its accessible name gives the state
+    icon's label and then the title, before the number's line.
+    github-pulls-stacks-chrome.mjs, github-pull-header-chrome.mjs, and
+    github-pulls-row-lines-chrome.mjs measure it."""
 
     panel = (GITHUB / "pulls-panel.js").read_text(encoding="utf-8")
-    assert "[toggle, icon, title, updated, meta]," in panel, "the title leads the name"
+    assert "[icon, title, updated, meta]," in panel, "the title leads the name"
     css = _github_css()
     meta = _rule(css, ".github-pulls-meta")
     for declaration in ("grid-row: 1;", "grid-column: 3;", "height: 1lh;", "overflow: clip;"):
@@ -479,10 +482,15 @@ def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() ->
     assert "grid-row: 1;" in age and "grid-column: 4;" in age and "justify-self: end;" in age
     title = _rule(css, ".github-pulls-row > .github-pulls-title")
     assert "grid-row: 2;" in title and "grid-column: 3 / -1;" in title
-    # The chevron and the icon lead the first line, and only the title is on the second.
+    # The icon leads the first line in the second slot, and only the title is on the second.
+    # A stack's row keeps its chevron in the first slot of its one line.
     for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 2)):
         rule = _rule(css, f".github-pulls-row > .{part}")
         assert "grid-row: 1;" in rule and f"grid-column: {column};" in rule, part
+    # A pull request's chevron is on its change line, in the first slot, and the line in the
+    # text column.
+    assert "grid-column: 1;" in _rule(css, ".github-pulls-change > .github-pulls-toggle")
+    assert "grid-column: 3;" in _rule(css, ".github-pulls-change-line")
     second = re.findall(r"(?m)^(\.github-pulls-row[^{\n]*)\{[^}]*grid-row: 2;", css)
     assert [selector.strip() for selector in second] == [".github-pulls-row > .github-pulls-title"]
     # The number's line and the age share a baseline.
