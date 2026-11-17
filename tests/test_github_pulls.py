@@ -1890,6 +1890,13 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
             assert time.monotonic() < deadline, "gh did not start"
             await asyncio.sleep(0.01)
         pid = int(pid_file.read_text(encoding="utf-8"))
+        # gh can start before its spawn returns and registers the group, and a stop in
+        # that window is stop_process_groups' case, which kill_live_process_groups leaves
+        # alone: stopped then, gh ran on to its own deadline, as it did on 3.14t in CI run
+        # 44032890807. This test is of a gh still answering, so it waits for the group.
+        while pid not in git_process._LIVE_PROCESS_GROUPS:
+            assert time.monotonic() < deadline, "gh's group was never registered"
+            await asyncio.sleep(0.01)
         try:
             # The leader of a group of its own, so the kill cannot reach this process.
             assert os.getpgid(pid) == pid != os.getpgid(0)
