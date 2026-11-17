@@ -206,7 +206,7 @@ A release is one command, `make macos-release`, and it uses only Apple’s tools
 For the first release, follow the owner steps in the
 [publishing plan](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)
 instead: they keep the identity and the notary profile in a release keychain that stays
-locked except during a release, and its runbook (`mb-63cx`) replaces this section.
+locked except during a release, and the plan’s release runbook replaces this section.
 
 1. **A Developer ID Application certificate**, with its private key, in the login
    keychain. It needs the Apple Developer Program, and only the account holder can create
