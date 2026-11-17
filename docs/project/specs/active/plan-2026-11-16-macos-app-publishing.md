@@ -9,9 +9,11 @@ Bead `mb-hl2i`, under the 0.13 release epic `mb-wzsl`, tracks this design; each
 agent-implementable step below is a bead under it.
 It details the open items of `mb-e9fm` (Developer ID signing, notarization, a DMG, and a
 Homebrew cask) in the [native macOS app plan](plan-2026-11-10-native-macos-app.md).
-The owner answered Q1, Q2, Q3, and Q5 on 2026-11-16; Q4, Q6, Q7, and Q8 are open
-([Open Questions](#open-questions)). Nothing here has been implemented, and no Developer
-ID build has been made.
+The owner answered Q1, Q2, Q3, and Q5 on 2026-11-16 and Q6, Q7, and Q8 on 2026-11-17; Q4
+is open ([Open Questions](#open-questions)). Phase 1’s tooling is implemented, in two
+stacked pull requests (`mb-qu6j` and `mb-tfap`, then `mb-4hwg`, `mb-xd4o`, `mb-u36j`,
+and `mb-63cx`), and no Developer ID build has been made, so nothing that needs one is
+verified: the runbook’s signing-session checks list what the first release confirms.
 
 ## Overview
 
@@ -403,7 +405,8 @@ accepts a download before anything is published.
    CI, the owner confirms that the waiting run’s commit is `RELEASE_COMMIT` and approves
    the `macos-release` deployment in the web UI.
 4. **Build, sign, notarize, and draft**, as below.
-5. **Check the draft** with `make macos-check-release TAG=macos-vX.Y.Z BUILT=local` or
+5. **Check the draft** with
+   `make macos-check-release TAG=macos-vX.Y.Z BUILT=local EXPECTED_TEAM_ID=TEAMID` or
    `BUILT=ci`, then O8 on the draft’s download.
 6. **Approve the image’s SHA-256 and the notes, and publish** the draft with
    `gh release edit macos-vX.Y.Z --draft=false --latest=false`, so the Python package’s
@@ -452,8 +455,10 @@ instead of cancelling one that is signing.
 3. **`draft`** needs `sign`, holds no Apple secrets, attests the image, and creates the
    draft release with `--verify-tag --latest=false`. Permissions: `contents: write`,
    `id-token: write`, `attestations: write`.
-4. The owner runs or watches `make macos-check-release BUILT=ci` on the draft, which
-   also verifies the attestation, then does O8 and publishes as in step 6 above.
+4. The owner runs or watches
+   `make macos-check-release TAG=macos-vX.Y.Z BUILT=ci EXPECTED_TEAM_ID=TEAMID` on the
+   draft, which also verifies the attestation, then does O8 and publishes as in step 6
+   above.
 
 Once the release workflow exists, a release built locally is the exception: its tag
 starts a run that waits at the approval, which the owner rejects, so the job ends
@@ -524,8 +529,10 @@ approves `macos-release` deployments only in the web UI ([Who Can Sign](#who-can
     certificate, and `codesign` builds the chain only from keychains on the search list.
   - Create the release keychain with
     `security create-keychain ~/Library/Keychains/metabrowser-release.keychain-db`,
-    typing its password at the prompt (never `-p`); keep it on the user search list; and
-    make it lock on sleep and after 15 minutes idle with
+    typing its password at the prompt (never `-p`); add it to the user search list,
+    which `create-keychain` does not do on macOS 26, with the
+    `security list-keychains -d user -s` command the doctor prints, which keeps the
+    keychains already on it; and make it lock on sleep and after 15 minutes idle with
     `security set-keychain-settings -l -u -t 900` on it.
   - Move the Developer ID Application identity into it: export it from the login
     keychain as a `.p12`; import it with `security import FILE -k KEYCHAIN -x`, with
@@ -667,7 +674,8 @@ owner’s Mac.
   Under `NOTARIZE=1`, a log it could not fetch or parse is fatal.
 
 - [ ] **`mb-xd4o` A release-download check.** `scripts/check-release.sh`, run by
-  `make macos-check-release TAG=… BUILT=local|ci`, for a draft or published release:
+  `make macos-check-release TAG=… BUILT=local|ci EXPECTED_TEAM_ID=…`, for a draft or
+  published release:
   - downloads the assets with `gh release download` into a scratch folder;
   - checks `shasum -a 256 -c` and the asset digest from `gh release view --json assets`;
   - with `BUILT=ci`, requires the build provenance attestation, verified with
@@ -776,7 +784,7 @@ owner’s Mac.
 | `mb-63cx` | `make format` and `make lint-check` (public hygiene included) pass; the owner follows the runbook for the first release |
 | `mb-3ey5` | The rehearsal in `macos-app.yml` passes, and a deliberate failure in import still leaves cleanup run |
 | `mb-yqrs` | Unit tests in `tests/` for each refused shape, and the real workflow passes |
-| `mb-mww5` | The first `macos-v*` tag after O4 produces a draft whose image passes `make macos-check-release BUILT=ci`; until then, `check_supply_chain.py` and a review of the workflow |
+| `mb-mww5` | The first `macos-v*` tag after O4 produces a draft whose image passes `make macos-check-release TAG=… BUILT=ci EXPECTED_TEAM_ID=…`; until then, `check_supply_chain.py` and a review of the workflow |
 | `mb-eoez` | The lint step passes on the rehearsal cask, and fails in a test run on a cask with a malformed `url` stanza, which `brew style` or the offline audit reports |
 | `mb-epgm` | The step passes in CI, and fails in a test run on a deliberately broken launch |
 
@@ -862,20 +870,26 @@ owner’s Mac.
   burden. The decision sets `mb-fl72`’s scope.
 - **Q5. The cask.** Decided 2026-11-16: no cask with 0.1.0; the tap and the cask follow
   the alpha’s first round of feedback (O6). The lint (`mb-eoez`) can land before then.
-- **Q6. Architectures** (open): arm64 only, as now?
-  Recommendation: yes for the alpha; `ARCHES="arm64 x86_64"` builds a universal image if
-  feedback asks for Intel Macs.
-- **Q7. Notarize twice or once** (open): keep notarizing the app before packaging, so a
-  dragged-out copy launches offline, or notarize only the DMG, as Apple’s simplest path
-  does? The ZIP and manifest the native plan puts beside the DMG (`mb-5jr9`), from which
+- **Q6. Architectures.** Decided 2026-11-17: arm64 only, the recommendation, for the
+  alpha; `ARCHES="arm64 x86_64"` builds a universal image if feedback asks for Intel
+  Macs.
+- **Q7. Notarize twice or once.** Decided 2026-11-17: twice, the recommendation.
+  The question was whether to keep notarizing the app before packaging, so a dragged-out
+  copy launches offline, or notarize only the DMG, as Apple’s simplest path does?
+  The ZIP and manifest the native plan puts beside the DMG (`mb-5jr9`), from which
   `metab` would install the app (`mb-92d9`), bear on it: a ZIP cannot carry a ticket, so
   an app in one launches offline only if the app itself was stapled.
-  Recommendation: keep both submissions.
-- **Q8. Who creates the tag** (open): after the owner approves `RELEASE_COMMIT`, does
-  the agent or the owner run the `gh api` command that creates the `macos-v*` tag
-  ([macOS App Releases](../../../publishing.md#macos-app-releases))? Recommendation: the
-  agent, as it creates the Python package’s tag; from Phase 2 that command starts the
-  release workflow, whose deployment only the owner approves, in the web UI.
+  The recommendation was to keep both submissions.
+- **Q8. Who creates the tag.** Decided 2026-11-17: the agent, as recommended.
+  The question was whether, after the owner approves `RELEASE_COMMIT`, the agent or the
+  owner runs the `gh api` command that creates the `macos-v*` tag
+  ([macOS App Releases](../../../publishing.md#macos-app-releases)). The recommendation
+  was the agent, as it creates the Python package’s tag; from Phase 2 that command
+  starts the release workflow, whose deployment only the owner approves, in the web UI.
+  The order is Release Flow’s: the agent creates the tag after the owner approves
+  `RELEASE_COMMIT`, at its step 2, before the build and the draft
+  (`gh release create --verify-tag` refuses a missing tag), and the owner approves the
+  image’s SHA-256 and the notes before the draft is published.
 
 ## References
 
