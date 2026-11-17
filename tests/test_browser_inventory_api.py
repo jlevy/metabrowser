@@ -441,15 +441,18 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
     async def run() -> dict[str, Any]:
         paths_safe._set_root_dir(tmp_path)
         async with inventory_harness(tmp_path, settle=False, seams=seams) as harness:
-            while True:
-                read = await harness.runtime.coordinator.read(
-                    ReadRequest(queries=(EntryQuery(query_id="parent", path="runs/local"),))
-                )
-                parent = read.result.projection("parent")
-                assert isinstance(parent, EntryProjection)
-                if parent.presence is EntryPresence.PRESENT:
-                    break
-                await asyncio.sleep(0)
+            # `runs/local` is present as soon as `runs` is listed, before `runs/local`
+            # itself is listed, so waiting for its presence races the listing that
+            # reveals `known`. The gate is reached only after that listing.
+            gate = seams.discovery_gate
+            assert gate is not None
+            await asyncio.wait_for(gate.wait_reached(), timeout=30)
+            read = await harness.runtime.coordinator.read(
+                ReadRequest(queries=(EntryQuery(query_id="parent", path="runs/local"),))
+            )
+            parent = read.result.projection("parent")
+            assert isinstance(parent, EntryProjection)
+            assert parent.presence is EntryPresence.PRESENT
             response = await proc_browser.api_tree(
                 cast(
                     Any,
