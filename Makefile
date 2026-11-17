@@ -101,8 +101,18 @@ lint-check:
 # `--api` requests of cli-api-cache.tryscript.md took 2.4 to 8.0 s and each printed the
 # line. It is a wall-clock measurement and not behavior, so the threshold is put past
 # tryscript's own 30 s command timeout, where it cannot fire before the command fails.
-TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
+#
+# `env` sets both, so the same words work as a shell command and as the command
+# devtools/run_goldens.py runs once for each golden.
+TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
 	npx --no-install tryscript
+GOLDENS := tests/golden/*.tryscript.md
+# How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
+# runner, which has four. tryscript runs a file's commands one after another, each in a
+# process of its own. On a shared 4-processor machine at a load average near 1, the 82
+# goldens and their 457 commands took 307 s one at a time and 81 s four at a time, with
+# the same verdict for every file (2026-11-17); the longest file alone is 38 s.
+GOLDEN_JOBS ?= 4
 
 # In CI a skip has to belong to a tier docs/e2e-testing.md names, or the test fails:
 # a reason outside them means a test the suite is believed to run did not. Locally a
@@ -115,7 +125,7 @@ STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 # time went. A missing Node or Git stops the run; see tests/required_tools.py.
 test:
 	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25
-	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
+	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' -- $(TRYSCRIPT)
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
 # LOG the time each test file and golden took in that CI job log:
@@ -283,9 +293,9 @@ GOLDEN_DRIVERS := \
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)
-	$(TRYSCRIPT) run --update 'tests/golden/*.tryscript.md' || true
+	$(TRYSCRIPT) run --update '$(GOLDENS)' || true
 	$(UV_RUN) python -m devtools.golden_fixup
-	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
+	$(TRYSCRIPT) run '$(GOLDENS)'
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_DRIVERS)
 
 audit:
