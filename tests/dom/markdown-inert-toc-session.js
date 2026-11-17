@@ -7,9 +7,9 @@
 // tests/test_inert_toc.py in tests/fixtures/inert-toc-render.json -- Python's HTML parse
 // of the server's inert HTML, rebuilt by the production static/inert-html.js -- then
 // wires the table of contents in a scrolling viewport: the entry for the section at the
-// reading line is active, the narrow toggle opens and closes the drawer, an entry click
-// closes it, and disposal removes every listener. Paint, the real scroll, and the
-// stylesheet's layout are the QA runbook's.
+// reading line is active, a heading with no layout box is stepped past, the narrow toggle
+// opens and closes the drawer, an entry click closes it, and disposal removes every
+// listener. Paint, the real scroll, and the stylesheet's layout are the QA runbook's.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -334,6 +334,56 @@ async function main() {
   transcript.scrollFramesQueued = frames.length;
   flush();
   transcript.scrolled = state(article, viewport);
+
+  // A heading with no layout box, as one inside a closed disclosure, reports an all-zero
+  // rectangle, whose top of 0 is above the reading line wherever the reader is. The search
+  // steps past it, so the section above it stays active; laid out again, it is active.
+  const constructorHeading = headings.find(
+    (heading) => heading.getAttribute("id") === "user-content-constructor",
+  );
+  const laidOut = constructorHeading.getBoundingClientRect;
+  constructorHeading.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+  });
+  viewport.dispatch("scroll");
+  flush();
+  transcript.hiddenHeading = state(article, viewport);
+  constructorHeading.getBoundingClientRect = laidOut;
+  viewport.dispatch("scroll");
+  flush();
+  transcript.shownAgain = state(article, viewport).active;
+
+  // A run of hidden headings that reaches the end of the search range: the step forward
+  // finds no laid-out heading, and the section above the run stays active.
+  const lastHeadings = headings.filter((heading) =>
+    ["user-content-constructor", "user-content-troubleshooting"].includes(
+      heading.getAttribute("id"),
+    ),
+  );
+  const shown = lastHeadings.map((heading) => heading.getBoundingClientRect);
+  for (const heading of lastHeadings) {
+    heading.getBoundingClientRect = () => ({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+    });
+  }
+  viewport.dispatch("scroll");
+  flush();
+  transcript.hiddenRun = state(article, viewport).active;
+  lastHeadings.forEach((heading, index) => {
+    heading.getBoundingClientRect = shown[index];
+  });
+  viewport.dispatch("scroll");
+  flush();
 
   const toggle = article.querySelector(".kpress-toc-toggle");
   transcript.toggleNamed = {

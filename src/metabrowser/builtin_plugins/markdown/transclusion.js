@@ -1,6 +1,5 @@
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { placeRendered } from "./place-rendered.js";
-import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 
 /** Bounds recursive embedding depth. */
 const DEFAULT_MAX_TRANSCLUSION_DEPTH = 4;
@@ -468,7 +467,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
                 });
               },
             })
-          : initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
+          : mb.kpressInitToc?.(aside) || null;
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;

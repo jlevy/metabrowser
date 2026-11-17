@@ -141,7 +141,7 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     assert "--kpress-doc-bg: var(--bg);" in css
     assert "--kpress-host-bg" not in css
     normalized_css = " ".join(css.split())
-    assert ".metabrowser-kpress-host .kpress, :root .kpress-tooltip {" in normalized_css
+    assert ":root .kpress, :root .kpress-tooltip {" in normalized_css
     # Notices print through the `.notice` primitive rather than each use site,
     # so a new one prints correctly without being named here.
     # See tests/test_notice_style.py.
@@ -230,15 +230,23 @@ def test_legacy_md_body_chrome_never_reaches_into_an_embedded_document() -> None
     )
 
 
-def test_embedded_kpress_blockquote_states_its_divergence_directly() -> None:
-    """KPress indents a blockquote but gives it no rule and no color."""
+def test_embedded_kpress_blockquote_takes_kpress_rule_and_muted_text() -> None:
+    """KPress draws the accent rule and muted text the app uses for quoted material.
+
+    It colors both from the document tokens the host maps to `--border` and `--muted`,
+    so the embed adds no blockquote rule of its own.
+    """
 
     css = _read_styles_css()
-    rule_start = css.index(".metabrowser-kpress-host .kpress blockquote {")
-    rule_block = css[rule_start : rule_start + 200]
+    document = get_static_asset("css/document.css").content.decode("utf-8")
+    rule_start = document.index("\n.kpress blockquote {")
+    rule_block = document[rule_start : document.index("}\n", rule_start)]
 
-    assert "border-left: 3px solid var(--border);" in rule_block
-    assert "color: var(--muted);" in rule_block
+    assert "border-inline-start: 3px solid var(--kpress-doc-border);" in rule_block
+    assert "color: var(--kpress-doc-muted);" in rule_block
+    assert "--kpress-doc-border: var(--border);" in css
+    assert "--kpress-doc-muted: var(--muted);" in css
+    assert ".metabrowser-kpress-host .kpress blockquote" not in css
 
 
 def test_embedded_kpress_wide_toc_uses_borderless_rail() -> None:

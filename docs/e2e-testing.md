@@ -57,8 +57,8 @@ identifies the responsible transform.
 `cli-ui-markdown-scrollspy.tryscript.md` applies the same pattern to rendered Markdown
 in one composed command.
 It enters through the production rendered-Markdown mount, which runs the link enhancer
-over authored same-document TOC anchors before passing them to the installed KPress TOC
-through the production observation fallback.
+over authored same-document TOC anchors before passing them to the installed KPress TOC,
+in a runtime without `IntersectionObserver` so KPress’s own scroll fallback runs.
 The transcript records the delegated target and active section through a long document,
 including frame coalescing and lifecycle disposal.
 
@@ -301,7 +301,8 @@ Strict mode is off on a developer machine, which can add these:
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
-  fold of unchanged blocks closed, open, and under the pointer;
+  fold of unchanged blocks closed, open, and under the pointer, and its quote and code
+  against a document’s in the light and the dark theme;
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
   Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
   host, and reads that only the Mac’s binds them; and

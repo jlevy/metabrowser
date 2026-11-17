@@ -20,6 +20,32 @@ All notable changes to Metabrowser are documented here.
   arrives after a newer one.
   See [Navigation Metadata Line](docs/design-system.md#navigation-metadata-line).
 
+- KPress moves to 0.3.8. The table of contents now follows the section you are reading
+  in webviews without `IntersectionObserver` through KPress’s own fallback, which
+  replaces Metabrowser’s, and a reader-pane reload on a URL with a fragment returns to
+  the saved position in WebKit.
+  That fallback, and the table of contents Metabrowser draws for an untrusted document
+  (a served mirror or an `--untrusted` folder), step past a heading inside a closed
+  disclosure instead of marking its section as the one you are reading.
+  Keyboard input (`kbd`) and sample output (`samp`) are set in the app’s code face at
+  KPress’s code size, as other code is, instead of the browser’s default monospace at
+  the size of the text around them, and code in a link’s preview popover is set in the
+  app’s code face. In a document, inline code, code blocks, blockquotes, and the table of
+  contents look the same as before; the styles Metabrowser added for them are now
+  KPress’s defaults. The rendered view of a Markdown diff now draws as a document does,
+  in the app’s colors instead of KPress’s own: quoted text has the document’s rule
+  beside it and its muted color, where it had neither; inline code is square, with the
+  document’s padding, where its corners were rounded; inline and block code have the
+  document’s edge color; text, links, and table rules take the app’s colors; and in the
+  dark theme the rendered diff sits on the page’s background instead of a darker one.
+  For plugin authors: `--kpress-code-border` and `--kpress-code-radius` set the edge and
+  corners of inline and block code, and KPress’s inline code is square by default.
+  Metabrowser now maps KPress’s color and corner tokens on every `.kpress` element in
+  the page, not only under `.metabrowser-kpress-host`, so a plugin’s own KPress fragment
+  draws in the app’s palette.
+  A plugin that wants other values on its own fragment sets them on the `.kpress`
+  element, in its own stylesheet, with a selector of at least two classes.
+
 - Each pull request’s row in the Pulls tab has a third line, its brief change line, “21
   A, 7 D, 15 M · +1,234 −567”, in the coloring of the Diff summary’s, with no file
   total, so walking the list shows the size of each change.
@@ -101,6 +127,32 @@ All notable changes to Metabrowser are documented here.
   navigation’s header, as before.
   See
   [A Surface Puts Away Only Its Own Tooltip](docs/design-system.md#a-surface-puts-away-only-its-own-tooltip).
+
+- Secondary metadata, such as ages, update and fetch times, counts, and sizes, is the
+  size of the text beside it, where it was a step smaller.
+  The navigation column reads at 13 px throughout, its metadata included: a file’s size
+  and age in Files, a commit’s author and age in Commits, a pull request’s author and
+  age in Pulls, and “Fetched just now” at the column’s foot, all 12 px in 0.12.0, so
+  “Updated just now” under the Pulls filters and the ages in the rows under it are one
+  size. The main view reads at the body size, 14 px, its metadata included.
+  A file’s or a folder’s header, its path, size, count, age, and mirror note, and a diff
+  file bar, its path, change letter, line counts, and note, are 14 px, where the path
+  was 13 px and the rest 12 px.
+  A commit’s files outside the served folder are 14 px, and their line counts, which
+  were 10 px, take the row’s size.
+  A pull request’s Checks summary and each check, its other quiet notes, a treemap’s
+  status line, and a byte view’s note were 12 px; a review comment’s file was 13 px.
+  A notice, such as a partly loaded file’s, is 14 px in the main view and 13 px in the
+  navigation column, where it was 12 px in both, and so is the Files tab’s “No files
+  match the filters.” A tooltip’s detail lines, a file’s size and age, are the tooltip’s
+  14 px, where they were 12 px; and Help’s descriptions, Quick Search’s status, and a
+  changed-files tree’s line counts are their lists’ 13 px, where they were 12 px.
+  In a Commits row too narrow for both, the author’s name ends in an ellipsis and the
+  age stays whole; at the narrowest navigation pane the age was cut off at its end.
+  Chips, badges, buttons, menus, keycaps, labels, and code keep their sizes.
+  For plugin authors, an age from `metabrowser.formatAge` and a `.notice` set no size of
+  their own, so they read at their container’s size, where both were 12 px.
+  See [Type Scale](docs/design-system.md#type-scale).
 
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
