@@ -4,6 +4,26 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s page says how fresh it is once, at the end of the author’s line, in
+  muted text after a dot: “jlevy wants to merge 1 commit · Fetched just now via GitHub
+  CLI”, with Refresh after it.
+  It no longer says “Checked just now · fetched 3 h ago”: a check that found nothing
+  changed does not make what is shown newer, so the page names the fetch alone.
+  The age ticking and Refresh appearing move nothing.
+  The line under the row of ages is there only while it has something to say, such as a
+  failure or an offer to switch to the pull request’s head.
+  See [The Pull Request Page](docs/design-system.md#the-pull-request-page).
+
+- In the Pulls tab, a pull request’s row starts at the list’s left edge, and only the
+  rows of a stack are indented, under their stack’s row: each one’s state icon under the
+  stack’s icon and its title under the stack’s label.
+  The chevron on a row’s third line sits under the state icon, just before the change
+  counts it opens. See [The Pulls Tab](docs/design-system.md#the-pulls-tab).
+
+- The modified status color, the “M” in “2 A, 45 M” wherever a change is summed, reads
+  clearly yellow: dark gold in the light theme, where it read olive, and a brighter
+  yellow in the dark theme, where it read as tan.
+
 - The Files panel’s totals no longer move the tree when the count of ignored files
   arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
   ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
