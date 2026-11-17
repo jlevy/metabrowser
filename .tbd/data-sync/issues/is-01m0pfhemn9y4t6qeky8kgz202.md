@@ -5,13 +5,17 @@ title: "H54: the tally row's reservation cannot cover a row that wraps"
 kind: task
 status: open
 priority: 2
-version: 3
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-23T04:54:53.332Z
-updated_at: 2026-11-14T18:47:14.446Z
+updated_at: 2026-11-17T02:34:06.368Z
+closed_at: null
+close_reason: null
+resolution: null
+duplicate_of: null
 ---
 The remainder of exp-009. The navigation tally row reserves one line box (min-height: calc(1.5 * var(--nav-font-size) + 13px) on .tree-summary), which is exactly the height of a .tree-summary-split row that fits on one line. On a real tree in a 300px navigation pane the settled row reads like '20,640 files (248.7 MB) +90,030 ignored (1430.1 MB)' and wraps to two lines, standing 56px, so 23px of downward shift remains out of the original 67px.
 
