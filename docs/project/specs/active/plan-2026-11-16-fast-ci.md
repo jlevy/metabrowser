@@ -251,8 +251,11 @@ Review A1 of #504 found edits that passed those rules and still dropped a check:
 `SHARD`, a matrix `exclude`, a step or job allowed to fail or skipped, a deleted `lint`,
 `distribution`, or `stack-integration` job, a dropped `audit`, and a dropped `push`
 trigger. The check now fails each, and review B2 added every spelling of the event and
-every workflow’s write permissions; its docstring lists the rules, and
-`tests/test_check_ci.py` breaks each one.
+every workflow’s write permissions.
+Review C of #504 added a condition on a step it does not belong to, a `make` option or
+variable, a `ci-ok` step other than `devtools/ci_verdict.sh` on every job’s result, the
+event in another case or past a `}}` in a quoted string, and `env` in a `run:` line.
+Its docstring lists the rules, and `tests/test_check_ci.py` breaks each one.
 
 The tests of `devtools/ci_plan.sh` hold that a push to `main`, and a pull request while
 `main` is red, get all of `PYTHONS`. `devtools/check_supply_chain.py` already holds the
@@ -340,8 +343,11 @@ So the `plan` job first asks whether the commit the other jobs check out contain
 - **Conflict:** `ci-ok` fails with today’s message, and the other jobs still run.
 
 So `different` and `conflict` now come from an informal chain, whose merge ref holds the
-branch below alone. A formal stack that conflicts with `main` may get no merge ref, and
-then no `pull_request` run at all; `mb-ohsk` checks it.
+branch below alone, and from a formal stack’s run planned once `main` has moved past the
+commit its merge ref holds, as a full rerun can be, which reads no `main` state and
+writes no verdict line, so a red `main` still refuses its merge (review C7 of #504). A
+formal stack that conflicts with `main` may get no merge ref, and then no `pull_request`
+run at all; `mb-ohsk` checks it.
 
 Before this, the job gated its steps, not itself, so that it always reported what it
 decided.
@@ -390,7 +396,7 @@ The nightly workflow runs it and fails when a job’s 90th percentile passes 80 
 its limit, which is the early warning.
 
 The `unit` jobs start split in two with `SHARD=I/2`, since Phase 1 measured the parallel
-tier at up to 5.0 minutes whole, over the 4.5 that splits it
+tier whole at a median over the 4.5 minutes that splits it, on every interpreter
 ([Phase 1 Measurements](#phase-1-measurements)). Each part holds whole files
 (`--shard-by=file`), as a worker does.
 
@@ -873,7 +879,7 @@ brief’s methodology and, once it exists, `make ci-report`.
 | The verdict line | `ci_verdict.sh`’s tests | While `main` is red, the line has the fixed format, in the log and as a `::notice::`; while it is green, there is no line |
 | A red `main` in CI | The first pull request run after `main` is next red, and a rerun of a run from before | Both have the Chrome tier on all four; the first’s verdict line says `tested=yes` with `main`’s head, and the rerun’s says `tested=no` |
 | Cancellation | Two pushes a minute apart | The first run is cancelled; a `main` run is never cancelled |
-| `stack-integration` | A formal stack, an informal chain behind `main`, one level with it, and one that conflicts | `contained`, `needed`, `identical`, and `conflict`, each with its summary |
+| `stack-integration` | A formal stack, an informal chain behind `main`, one level with it, and one that conflicts; and a formal stack planned after `main` moved | `contained`, `needed`, `identical`, and `conflict`, each with its summary; and `needed` with no `main` state read |
 | Nightly soak | One manual run by `workflow_dispatch` | 5 serial-tier jobs and 20 Chrome shard jobs run and report |
 | Flake fixes | The loaded-machine loop that `mb-alff` and `mb-nvo0` used | The failure reproduces before the fix and not in 30 runs after it |
 | The whole plan | The research brief’s tables, taken again 7 days after Phase 2 | The goals above |

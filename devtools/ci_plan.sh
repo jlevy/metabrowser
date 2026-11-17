@@ -102,8 +102,8 @@ if [ "$EVENT" = pull_request ] && [ "$BASE" != main ]; then
 fi
 
 # main's state is read wherever the red-main rule can apply: a pull request to main, and
-# one whose tested commit contains main's head (the coordinator's decision of
-# 2026-11-17 on review A3 of #504). An informal chain's run tests no main, so it is not.
+# one whose tested commit contains main's head (the plan's "A Red main"). An informal
+# chain's run tests no main, so it is not.
 main_state=none main_run= main_run_sha= tests_red=no why=
 if [ "$EVENT" = pull_request ] && { [ "$BASE" = main ] || [ "$contains_main" = yes ]; }; then
   if answer=$(main_state_from_api); then

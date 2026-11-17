@@ -11,7 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from devtools.check_ci import interpreters, make_targets, verify
+from devtools.check_ci import (
+    expressions,
+    interpreters,
+    jobs,
+    load,
+    make_targets,
+    pr_chrome_python,
+    verify,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 CI_TEXT = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -355,6 +363,71 @@ DROPS = {
         ),
         "ci.yml job unit must run `make test-parallel SHARD=${{ matrix.shard }}/2 || true` alone",
     ),
+    # C1 of review C on #504: a condition on the wrong step, a make option, and ci-ok's
+    # own step.
+    "the acceptance tests skipped on a cached Git build": (
+        CI_TEXT.replace(
+            "      - name: Run acquisition and full-clone acceptance on the admitted Git\n",
+            "      - name: Run acquisition and full-clone acceptance on the admitted Git\n"
+            "        if: steps.restore-git.outputs.cache-hit != 'true'\n",
+        ),
+        "ci.yml job admitted-git has a step under if: steps.restore-git.outputs.cache-hit",
+    ),
+    "the goldens skipped by the cache-miss condition": (
+        CI_TEXT.replace(
+            "      - name: Run the goldens\n",
+            "      - name: Run the goldens\n"
+            "        if: steps.restore-git.outputs.cache-hit != 'true'\n",
+        ),
+        "ci.yml job goldens has a step under if: steps.restore-git.outputs.cache-hit",
+    ),
+    "the verdict's step skipped": (
+        CI_TEXT.replace(
+            "      - name: Decide the run's verdict\n",
+            "      - name: Decide the run's verdict\n        if: false\n",
+        ),
+        "ci.yml job ci-ok has a step under if: False",
+    ),
+    "a tier whose failure make ignores": (
+        CI_TEXT.replace("run: make test-goldens", "run: make -i test-goldens"),
+        "ci.yml job goldens runs `make -i test-goldens`; a make step's words are make,",
+    ),
+    "a tier make only prints": (
+        CI_TEXT.replace(
+            "run: make test-chrome SHARD=${{ matrix.shard }}/4",
+            "run: make -n test-chrome SHARD=${{ matrix.shard }}/4",
+        ),
+        "ci.yml job chrome runs `make -n test-chrome SHARD=${{ matrix.shard }}/4`; a make",
+    ),
+    "a tier whose pytest a make variable replaces": (
+        CI_TEXT.replace("run: make test-serial", "run: make test-serial PYTEST=true"),
+        "ci.yml job goldens runs `make test-serial PYTEST=true`; a make step's words are",
+    ),
+    "a stack part make only prints": (
+        CI_TEXT.replace(
+            "          - test-chrome SHARD=2/4\n", "          - -n test-chrome SHARD=2/4\n"
+        ),
+        "ci.yml stack-integration part `-n test-chrome SHARD=2/4`: a part's words are -k,",
+    ),
+    "a stack part whose failure is swallowed": (
+        CI_TEXT.replace("          - lint-check\n", "          - lint-check || true\n"),
+        "ci.yml stack-integration part `lint-check || true`: a part's words are -k,",
+    ),
+    "the verdict replaced": (
+        CI_TEXT.replace("run: bash devtools/ci_verdict.sh", "run: echo ok"),
+        "ci.yml ci-ok must run `bash devtools/ci_verdict.sh` and no other command",
+    ),
+    "the verdict's failure swallowed": (
+        CI_TEXT.replace(
+            "run: bash devtools/ci_verdict.sh", "run: bash devtools/ci_verdict.sh || true"
+        ),
+        "ci.yml ci-ok must run `bash devtools/ci_verdict.sh` and no other command",
+    ),
+    "the verdict given no results": (
+        CI_TEXT.replace("RESULTS: ${{ toJSON(needs) }}", "RESULTS: '{}'"),
+        "ci.yml ci-ok must run `bash devtools/ci_verdict.sh` and no other command, with "
+        "RESULTS: ${{ toJSON(needs) }}",
+    ),
 }
 
 
@@ -443,6 +516,14 @@ def test_the_nightly_report_alone_may_read_runs(tmp_path: Path) -> None:
         "toJSON(github)",
         "toJSON(github.event)",
         "github.event",
+        # C2 of review C on #504: the runner reads a context in any case, and ends an
+        # expression at the first }} outside a quoted string.
+        "GITHUB.EVENT.pull_request.title",
+        "github.EVENT.pull_request.title",
+        "GitHub.Head_Ref",
+        "format('{{}} {0}', github.event.pull_request.title)",
+        "'}}' && github.event.pull_request.title",
+        "'it''s }}' && github.event.pull_request.title",
     ],
 )
 def test_every_spelling_of_the_event_is_untrusted(tmp_path: Path, expression: str) -> None:
@@ -451,6 +532,41 @@ def test_every_spelling_of_the_event_is_untrusted(tmp_path: Path, expression: st
     assert verify(_repository(tmp_path, other=workflow)) == [
         "other.yml job job interpolates the event into a run: line; pass it through env:"
     ]
+
+
+@pytest.mark.parametrize(
+    ("text", "bodies"),
+    [
+        ("${{ a }} and ${{ b }}", [" a ", " b "]),
+        ("${{ format('{{}} {0}', a) }}", [" format('{{}} {0}', a) "]),
+        ("${{ 'x''}}' }} ${{ b }}", [" 'x''}}' ", " b "]),
+        ("${{}}", [""]),
+        ("${{ a", [" a"]),
+    ],
+)
+def test_an_expression_ends_where_the_runner_ends_it(text: str, bodies: list[str]) -> None:
+    assert expressions(text) == bodies
+
+
+# C2 of review C on #504: env in a run: line is pasted into the script, as the event is.
+@pytest.mark.parametrize(
+    "expression", ["env.TITLE", "ENV.TITLE", "env['TITLE']", "toJSON(env)", "format('{0}', env.X)"]
+)
+def test_no_run_line_interpolates_env(tmp_path: Path, expression: str) -> None:
+    workflow = _workflow("pull_request", run=f'echo "${{{{ {expression} }}}}"')
+
+    assert verify(_repository(tmp_path, other=workflow)) == [
+        'other.yml job job interpolates env into a run: line; read it as "$NAME"'
+    ]
+
+
+def test_a_property_named_env_and_env_read_by_the_shell_are_fine(tmp_path: Path) -> None:
+    workflow = _workflow(
+        "pull_request",
+        run='echo "$TITLE ${{ github.env }} ${{ steps.x.outputs.env }} ${{ matrix.environment }}"',
+    )
+
+    assert verify(_repository(tmp_path, other=workflow)) == []
 
 
 def test_the_event_name_and_the_repository_are_trusted(tmp_path: Path) -> None:
@@ -472,10 +588,18 @@ def test_a_step_input_that_reads_the_event_is_untrusted(tmp_path: Path) -> None:
     ]
 
 
-def test_a_commit_or_a_release_tag_is_a_trusted_step_input(tmp_path: Path) -> None:
-    workflow = _workflow(
-        "pull_request", checkout="ref: ${{ github.event.pull_request.head.sha }}"
-    ).replace("        with:\n", "        with:\n          persist-credentials: false\n")
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "github.event.pull_request.head.sha",
+        "GitHub.Event.Pull_Request.Head.Sha",
+        "github.event.release.tag_name",
+    ],
+)
+def test_a_commit_or_a_release_tag_is_a_trusted_step_input(tmp_path: Path, expression: str) -> None:
+    workflow = _workflow("pull_request", checkout=f"ref: ${{{{ {expression} }}}}").replace(
+        "        with:\n", "        with:\n          persist-credentials: false\n"
+    )
 
     assert verify(_repository(tmp_path, other=workflow)) == []
 
@@ -515,31 +639,46 @@ def test_a_job_may_write_only_where_the_grant_is_registered(tmp_path: Path) -> N
     ]
 
 
-# A5 of review A on #504: the nightly keeps the values it shares with ci.yml.
+# A5 of review A on #504: the nightly keeps the values it shares with ci.yml. Each case
+# edits the value the files hold now, so a re-measured limit changes ci.yml and
+# nightly.yml and not this test (C6 of review C on #504).
+CI = load(ROOT / ".github" / "workflows" / "ci.yml")
+NIGHTLY_JOBS = jobs(load(ROOT / ".github" / "workflows" / "nightly.yml"))
+PR_CHROME_PYTHON = pr_chrome_python(CI)
+CHROME_LIMIT = jobs(CI)["chrome"]["timeout-minutes"]
+SERIAL_LIMIT = NIGHTLY_JOBS["serial"]["timeout-minutes"]
+
+
 @pytest.mark.parametrize(
-    ("old", "new", "message"),
+    ("job", "old", "new", "message"),
     [
         (
-            'python-version: "3.13"',
-            'python-version: "3.12"',
-            "nightly.yml job serial must install PR_CHROME_PYTHON, '3.13', not '3.12'",
+            "serial",
+            f'python-version: "{PR_CHROME_PYTHON}"',
+            'python-version: "3.11"',
+            f"nightly.yml job serial must install PR_CHROME_PYTHON, '{PR_CHROME_PYTHON}', "
+            "not '3.11'",
         ),
         (
-            "    timeout-minutes: 7\n",
-            "    timeout-minutes: 9\n",
-            "nightly.yml job chrome's timeout-minutes 9 must be ci.yml's 7",
+            "chrome",
+            f"    timeout-minutes: {CHROME_LIMIT}\n",
+            "    timeout-minutes: 99\n",
+            f"nightly.yml job chrome's timeout-minutes 99 must be ci.yml's {CHROME_LIMIT}",
         ),
         (
+            "serial",
             "      fail-fast: false\n",
             "      fail-fast: true\n",
             "nightly.yml job serial must set fail-fast: false",
         ),
         (
-            "    timeout-minutes: 3\n",
+            "serial",
+            f"    timeout-minutes: {SERIAL_LIMIT}\n",
             "",
             "nightly.yml job serial must set timeout-minutes to a number of minutes",
         ),
         (
+            "serial",
             "      - name: Run the serial tier\n",
             "      - name: Run the serial tier\n        continue-on-error: true\n",
             "nightly.yml job serial has a step with continue-on-error",
@@ -547,9 +686,10 @@ def test_a_job_may_write_only_where_the_grant_is_registered(tmp_path: Path) -> N
     ],
 )
 def test_the_nightly_keeps_ci_yml_s_interpreter_and_limit(
-    tmp_path: Path, old: str, new: str, message: str
+    tmp_path: Path, job: str, old: str, new: str, message: str
 ) -> None:
-    assert NIGHTLY_TEXT.count(old) >= 1, old
-    nightly = NIGHTLY_TEXT.replace(old, new, 1)
+    start = NIGHTLY_TEXT.index(f"\n  {job}:\n")
+    at = NIGHTLY_TEXT.index(old, start)
+    nightly = NIGHTLY_TEXT[:at] + new + NIGHTLY_TEXT[at + len(old) :]
 
     assert message in verify(_repository(tmp_path, nightly=nightly))

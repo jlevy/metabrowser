@@ -246,8 +246,11 @@ more, reviewed on November 17, 2026:
   credentials;
 - an expression in a `run:` line, or in a step’s `with:` other than a commit or a
   release tag, that reads the event, the head branch, or the whole `github` context, in
-  any spelling: `github.event.`, `github['event']`, `toJSON(github)`, or inside
-  `format()`.
+  any spelling or case: `github.event.`, `github['event']`, `toJSON(github)`,
+  `GitHub.Head_Ref`, or inside `format()`, with the expression ended where the runner
+  ends it, so a `}}` in a quoted string hides nothing;
+- an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
+  instead.
 
 ## Verification
 

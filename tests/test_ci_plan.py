@@ -549,6 +549,31 @@ def test_a_stack_that_contains_main_s_red_head_tests_it(
     assert result.chrome == WIDE
 
 
+def test_a_formal_stack_planned_after_main_moved_is_read_as_an_informal_chain(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    """A rerun once main has moved reads no main state (C7 of review C on #504).
+
+    ci_verdict.sh writes a verdict line only for a red main-state, so this run gives none,
+    and a red main still refuses the merge.
+    """
+
+    upper, base = _stack(repos)
+    checkout = repos.check_out_merge(upper, base)  # holds main as it was
+    main = repos.commit("main", {"main.txt": "newer\n"})
+    runs = [_done(503, main, "failure")]
+    result = plan(tmp_path, checkout, base="lower", head_sha=upper, runs=runs, env=repos.env)
+
+    assert result.returncode == 0, result.log
+    assert result.outputs["main-sha"] == main
+    assert result.outputs["main-state"] == "none"
+    assert result.outputs["main-run-sha"] == ""
+    assert result.outputs["tests-red"] == "no"
+    assert result.outputs["integration"] == "needed"
+    assert result.chrome == NARROW
+    assert result.calls == []
+
+
 def test_a_stack_level_with_main_by_content_needs_no_integration(
     tmp_path: Path, repos: Repositories
 ) -> None:

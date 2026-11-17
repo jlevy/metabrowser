@@ -20,9 +20,14 @@ verdict. The fast CI plan (``docs/project/specs/active/plan-2026-11-16-fast-ci.m
 - **Shards.** A tier step takes ``SHARD`` only as ``${{ matrix.shard }}/N`` with a shard
   matrix of ``1`` through ``N``, or from a matrix list that deals each part ``1``
   through ``N``; no matrix has ``include`` or ``exclude``.
-- **Nothing silenced.** A ``make`` step is that one command, with no shell around it; no
-  job or step has ``continue-on-error``; a step's ``if:`` is one of ``STEP_IFS`` and a
-  job's one of ``JOB_IFS``; ``ci-ok`` needs every other job and runs ``always()``.
+- **Nothing silenced.** A ``make`` step is that one command, with no shell around it,
+  and its words are ``make``, target names, and ``SHARD=${{ matrix.shard }}/N``, so no
+  option ignores a failure or runs nothing; a ``stack-integration`` part's are ``-k``,
+  target names, and ``SHARD=I/N``. No job or step has ``continue-on-error``. A job's
+  ``if:`` is one of ``JOB_IFS``. A step's is ``SERIAL_IF`` on the step that runs ``make
+  test-serial``, or ``CACHE_MISS_IF`` on an ``admitted-git`` step that runs no ``make``,
+  and no other. ``ci-ok`` needs every other job, runs ``always()``, and runs only
+  ``VERDICT_RUN`` with ``RESULTS: ${{ toJSON(needs) }}``.
 - **Limits.** Every matrix job has ``fail-fast: false``, every job a ``timeout-minutes``,
   and only a pull request's run is cancelled by a newer one. The ``plan`` job checks out
   with ``fetch-depth: 0``, which ``tests-red`` and ``git merge-tree`` need.
@@ -41,8 +46,12 @@ And of every workflow file:
 - every checkout sets ``persist-credentials: false``;
 - no ``run:`` line, and no string under a step's ``with:`` but ``TRUSTED_WITH``, has an
   expression that reads the event, the head branch, or the whole ``github`` context,
-  which a pull request's author can set, in any spelling: ``github.event.``,
-  ``github['event']``, ``toJSON(github)``, or inside ``format()``.
+  which a pull request's author can set, in any spelling or case: ``github.event.``,
+  ``github['event']``, ``toJSON(github)``, ``GitHub.Head_Ref``, or inside ``format()``.
+  An expression ends where the runner ends it, so a ``}}`` in a quoted string does not
+  hide the rest;
+- no ``run:`` line has an expression that reads ``env``: the shell reads a variable as
+  ``"$NAME"``, which the runner does not paste into the script.
 
 ``devtools/check_supply_chain.py`` holds the ``admitted-git`` matrix to both Git floors
 and ``publish.yml`` to trusted publishing, and ``tests/test_ci_plan.py`` holds that a
@@ -84,6 +93,10 @@ STACK_RUN: Final = "make ${{ matrix.part }}"
 STACK_REF: Final = "${{ github.event.pull_request.head.sha }}"
 STACK_MERGE: Final = 'git merge --no-edit "$MAIN_SHA"'
 STACK_MAIN_SHA: Final = "${{ needs.plan.outputs.main-sha }}"
+# ci-ok's one command, and the job results it reads: what every other job's half of
+# these rules ends in.
+VERDICT_RUN: Final = "bash devtools/ci_verdict.sh"
+VERDICT_RESULTS: Final = "${{ toJSON(needs) }}"
 # The jobs besides the tiers that ci.yml keeps, each with the targets it runs.
 REQUIRED_JOBS: Final = {
     "lint": frozenset({"lint-check", "audit"}),
@@ -92,16 +105,18 @@ REQUIRED_JOBS: Final = {
 }
 # The only conditions a ci.yml job or step may carry. A skipped job reads as a failure
 # in ci-ok but stack-integration's, whose condition is therefore fixed. A skipped step
-# reads as success, so only the serial tier's step (it runs after a failed golden too)
-# and the admitted Git build's cache-miss steps may have one.
+# reads as success, so only two kinds may have one: the serial tier's make step, which
+# runs after a failed golden too, and the admitted Git build's cache-miss steps, which
+# run no make. A step of ci-ok has none.
 VERDICT_IF: Final = frozenset({"always()", "${{ always() }}"})
 JOB_IFS: Final = {
     STACK_JOB: frozenset({"needs.plan.outputs.integration == 'needed'"}),
     VERDICT_JOB: VERDICT_IF,
 }
-STEP_IFS: Final = frozenset(
-    {"${{ !cancelled() }}", "steps.restore-git.outputs.cache-hit != 'true'"}
-)
+SERIAL_IF: Final = "${{ !cancelled() }}"
+SERIAL_TARGET: Final = "test-serial"
+CACHE_MISS_IF: Final = "steps.restore-git.outputs.cache-hit != 'true'"
+CACHE_JOB: Final = "admitted-git"
 CI_TRIGGERS: Final = {"push": {"branches": ["main"]}, "pull_request": None}
 FORBIDDEN_TRIGGERS: Final = ("pull_request_target", "workflow_run")
 
@@ -120,21 +135,33 @@ WRITE_GRANTS: Final = {("publish.yml", "build-and-publish"): frozenset({"id-toke
 CANCEL_IN_PROGRESS: Final = "${{ github.event_name == 'pull_request' }}"
 
 CLASSIFIER: Final = re.compile(r"Programming Language :: Python :: (3\.\d+)")
-EXPRESSION: Final = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+OPEN_EXPRESSION: Final = "${{"
 MATRIX_SHARD: Final = re.compile(r"SHARD=\$\{\{\s*matrix\.shard\s*\}\}/(\d+)")
 LITERAL_SHARD: Final = re.compile(r"(?P<part>.*?)\s*SHARD=(?P<index>\d+)/(?P<count>\d+)")
+# The words of a make step and of a stack-integration part, beside `make` itself: a
+# target's name, a shard the matrix deals, and, in a part, make's `-k`. Any other word,
+# such as `-i`, `-n`, or `VARIABLE=value`, can turn a failing tier green.
+TARGET: Final = re.compile(r"[a-z][a-z0-9-]*")
+DEALT_SHARD: Final = re.compile(r"SHARD=\d+/\d+")
+KEEP_GOING: Final = "-k"
 # What a pull request's author can set: the event (its title, body, branch, and the
 # rest), the head branch, and the whole context, which holds the event. It is matched
 # in an expression with its spaces removed, so `format('{0}', github.event.x)` is read
-# whole; `github.event_name` is not the event.
-UNTRUSTED: Final = re.compile(r"github(?:\.event(?:[.\[),]|$)|\.head_ref|\[|\)|,|$)")
-# The event fields a step's `with:` may take: a commit, and a release's tag, which only
-# a writer creates and checkout reads as a ref.
+# whole; `github.event_name` is not the event. The runner reads a context's name and
+# its properties in any case (actions/runner, ExpressionParser.cs), so this does too.
+UNTRUSTED: Final = re.compile(r"github(?:\.event(?:[.\[),]|$)|\.head_ref|\[|\)|,|$)", re.IGNORECASE)
+# The event fields a step's `with:` may take, lowercase: a commit, and a release's tag,
+# which only a writer creates and checkout reads as a ref.
 TRUSTED_WITH: Final = frozenset(
     {"github.event.pull_request.head.sha", "github.event.release.tag_name"}
 )
+# The env context, in any case, as a context and not a property: `env.NAME`,
+# `env['NAME']`, `toJSON(env)`. A `run:` line reads a variable as "$NAME" instead.
+ENVIRONMENT: Final = re.compile(r"(?<![\w.])env(?:[.\[),]|$)", re.IGNORECASE)
 # A shell operator, substitution, or second line around a make step's command.
 SHELL: Final = re.compile(r"[;&|<>`$()\n]")
+# A word that runs make, wherever it is in a step's command.
+MAKE_WORD: Final = re.compile(r"\bmake\b")
 
 Json = dict[str, object]
 
@@ -190,12 +217,52 @@ def matrix(job: Json) -> Json:
     return _mapping(_mapping(job.get("strategy")).get("matrix"))
 
 
+def _expression_spans(text: str) -> Iterator[tuple[int, int, str]]:
+    """Each ``${{ … }}`` in *text*: its start, its end, and its body.
+
+    It ends as the runner ends one (actions/runner, ``TemplateReader.cs``): at the first
+    ``}}`` outside a single-quoted string, so ``format('{{}} {0}', x)`` and
+    ``'}}' && x`` are read whole. One with no end runs to the end of *text*.
+    """
+
+    start = text.find(OPEN_EXPRESSION)
+    while start != -1:
+        body_start = start + len(OPEN_EXPRESSION)
+        end, body_end = len(text), len(text)
+        in_string = False
+        for index in range(body_start, len(text)):
+            if text[index] == "'":
+                in_string = not in_string  # a quote written '' toggles twice
+            elif not in_string and text[index] == "}" and text[index - 1] == "}":
+                end, body_end = index + 1, index - 1
+                break
+        yield start, end, text[body_start:body_end]
+        start = text.find(OPEN_EXPRESSION, end)
+
+
+def expressions(text: str) -> list[str]:
+    """The body of each expression in *text*, ended as the runner ends it."""
+
+    return [body for _, _, body in _expression_spans(text)]
+
+
+def _blanked(text: str, placeholder: str) -> str:
+    """*text* with each expression replaced by *placeholder*."""
+
+    kept: list[str] = []
+    position = 0
+    for start, end, _ in _expression_spans(text):
+        kept += [text[position:start], placeholder]
+        position = end
+    return "".join([*kept, text[position:]])
+
+
 def make_targets(command: str) -> set[str]:
     """The targets each ``make`` line of a ``run:`` names; an expression names none."""
 
     found: set[str] = set()
     for line in command.splitlines():
-        words = EXPRESSION.sub("$", line).split()
+        words = _blanked(line, "$").split()
         if words[:1] == ["make"]:
             found |= {
                 word
@@ -252,14 +319,22 @@ def _strings(value: object) -> Iterator[str]:
 def untrusted(text: str, trusted: frozenset[str] = frozenset()) -> bool:
     """Whether an expression in *text*, other than one of *trusted*, reads the event."""
 
-    for body in EXPRESSION.findall(text):
+    for body in expressions(text):
         squeezed = re.sub(r"\s+", "", body)
-        if squeezed not in trusted and UNTRUSTED.search(squeezed):
+        if squeezed.lower() not in trusted and UNTRUSTED.search(squeezed):
             return True
     return False
 
 
-def _pr_chrome_python(ci: Json) -> object:
+def reads_environment(text: str) -> bool:
+    """Whether an expression in *text* reads the ``env`` context."""
+
+    return any(ENVIRONMENT.search(re.sub(r"\s+", "", body)) for body in expressions(text))
+
+
+def pr_chrome_python(ci: Json) -> object:
+    """The ``plan`` job's ``PR_CHROME_PYTHON`` in ``ci.yml``, or ``None``."""
+
     for step in steps(jobs(ci).get(PLAN_JOB, {})):
         if "PR_CHROME_PYTHON" in (variables := _mapping(step.get("env"))):
             return variables["PR_CHROME_PYTHON"]
@@ -286,8 +361,38 @@ def _check_owned(name: str, workflow: Json) -> list[str]:
     return errors
 
 
+def _may_carry(job_name: str, condition: str, command: str) -> bool:
+    """Whether a ci.yml step of *job_name* that runs *command* may run under *condition*."""
+
+    if condition == SERIAL_IF:
+        return make_targets(command) == {SERIAL_TARGET}
+    if condition == CACHE_MISS_IF:
+        return job_name == CACHE_JOB and not MAKE_WORD.search(command)
+    return False
+
+
+def _plain_make(command: str) -> bool:
+    """Whether *command* is ``make``, target names, and ``SHARD=${{ matrix.shard }}/N``."""
+
+    shard = "\0"
+    words = MATRIX_SHARD.sub(shard, command).split()
+    return words[:1] == ["make"] and all(
+        word == shard or TARGET.fullmatch(word) for word in words[1:]
+    )
+
+
+def _plain_part(part: str) -> bool:
+    """Whether a stack-integration *part* is ``-k``, target names, and ``SHARD=I/N``."""
+
+    words = part.split()
+    return any(TARGET.fullmatch(word) for word in words) and all(
+        word == KEEP_GOING or TARGET.fullmatch(word) or DEALT_SHARD.fullmatch(word)
+        for word in words
+    )
+
+
 def _check_steps(found: dict[str, Json]) -> list[str]:
-    """Each make step is that one command, and each condition is one this allows."""
+    """Each make step is that one plain command, and each condition is one this allows."""
 
     errors: list[str] = []
     for name, job in sorted(found.items()):
@@ -295,15 +400,21 @@ def _check_steps(found: dict[str, Json]) -> list[str]:
         if condition is not None and str(condition) not in JOB_IFS.get(name, frozenset()):
             errors.append(f"ci.yml job {name} must not run under if: {condition}")
         for step in steps(job):
+            run = step.get("run")
+            command = run if isinstance(run, str) else ""
             condition = step.get("if")
-            if condition is not None and str(condition) not in STEP_IFS:
+            if condition is not None and not _may_carry(name, str(condition), command):
                 errors.append(f"ci.yml job {name} has a step under if: {condition}")
-            command = step.get("run")
-            if not isinstance(command, str) or not make_targets(command):
+            if not make_targets(command):
                 continue
-            plain = EXPRESSION.sub("EXPR", command.strip())
+            plain = _blanked(command.strip(), "EXPR")
             if not plain.startswith("make ") or SHELL.search(plain):
                 errors.append(f"ci.yml job {name} must run `{command.strip()}` alone")
+            elif not _plain_make(command):
+                errors.append(
+                    f"ci.yml job {name} runs `{command.strip()}`; a make step's words are "
+                    "make, targets, and SHARD=${{ matrix.shard }}/N"
+                )
             tier = bool(make_targets(command) & set(TIER_TARGETS))
             if tier and "SHARD=" in command and not MATRIX_SHARD.search(command):
                 errors.append(
@@ -318,6 +429,11 @@ def _check_stack(stack: Json) -> list[str]:
     parts = [str(part) for part in _list(matrix(stack).get("part"))]
     if missing := sorted(set(STACK_TARGETS) - _targets_of(f"make {part}" for part in parts)):
         errors.append(f"ci.yml {STACK_JOB} parts run no {', '.join(missing)}")
+    errors += [
+        f"ci.yml {STACK_JOB} part `{part}`: a part's words are -k, targets, and SHARD=I/N"
+        for part in parts
+        if not _plain_part(part)
+    ]
     if PLAN_JOB not in _needs(stack):
         errors.append(f"ci.yml {STACK_JOB} must need {PLAN_JOB}")
     made = [command.strip() for command in runs(stack) if "make" in command]
@@ -423,6 +539,16 @@ def check_ci(workflow: Json, expected: list[str]) -> list[str]:
             )
         if verdict.get("if") not in VERDICT_IF:
             errors.append(f"ci.yml {VERDICT_JOB} must run if: always()")
+        commands = [
+            (str(step["run"]).strip(), _mapping(step.get("env")).get("RESULTS"))
+            for step in steps(verdict)
+            if "run" in step
+        ]
+        if commands != [(VERDICT_RUN, VERDICT_RESULTS)]:
+            errors.append(
+                f"ci.yml {VERDICT_JOB} must run `{VERDICT_RUN}` and no other command, with "
+                f"RESULTS: {VERDICT_RESULTS}"
+            )
     if _mapping(workflow.get("concurrency")).get("cancel-in-progress") != CANCEL_IN_PROGRESS:
         errors.append(f"ci.yml concurrency must cancel in progress only {CANCEL_IN_PROGRESS}")
     return errors
@@ -432,7 +558,7 @@ def check_nightly(nightly: Json, ci: Json) -> list[str]:
     """What ``nightly.yml`` gets wrong: its rules, and the values it shares with ``ci.yml``."""
 
     errors = _check_owned("nightly.yml", nightly)
-    chrome_python = _pr_chrome_python(ci)
+    chrome_python = pr_chrome_python(ci)
     found = jobs(nightly)
     for name, job in sorted(found.items()):
         uses = _uv_python(job)
@@ -492,6 +618,8 @@ def check_workflow(name: str, workflow: Json) -> list[str]:
                 errors.append(
                     f"{where} interpolates the event into a run: line; pass it through env:"
                 )
+            if reads_environment(command):
+                errors.append(f'{where} interpolates env into a run: line; read it as "$NAME"')
         dealt: dict[str, list[tuple[int, int]]] = {}
         for value in values.values():
             for item in _list(value):

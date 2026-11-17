@@ -147,10 +147,11 @@ jobs:
         run: make build
 
   unit:
-    # The parallel tier, in two parts of whole files on each interpreter. Whole, it took
-    # 3.3 to 5.0 minutes under xdist on the eight test legs of run 44026747033's first two
-    # attempts, over the 4.5 at which the fast CI plan splits it (Time Limits), and xdist
-    # ran it 2.0 to 2.4 times faster, under the plan's 2.3 (Phase 1 Measurements).
+    # The parallel tier, in two parts of whole files on each interpreter. Whole, under
+    # xdist, it ran past the time at which the fast CI plan splits a job (Time Limits),
+    # and xdist sped it up less than the factor below which the plan splits it from the
+    # start (Testing Strategy). Phase 1 Measurements in the plan has the times and the
+    # factor.
     name: unit (${{ matrix.python-version }}, ${{ matrix.shard }}/2)
     strategy:
       fail-fast: false

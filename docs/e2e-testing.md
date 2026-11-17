@@ -326,10 +326,11 @@ the same way.
 `devtools/check_ci.py`, part of `make lint-check`, fails an edit that drops
 a check and still goes green: a sharded job whose shards are not `1` through `N`, a
 fixed `SHARD`, a matrix `include` or `exclude`, a tier or required job no step runs, a
-step or job skipped or allowed to fail, an interpreter list that differs from
-`pyproject.toml`’s classifiers and the free-threaded build, and a lost trigger.
-It also fails a permission, trigger, or expression that widens what a pull request can
-reach. Its docstring lists every rule.
+step or job skipped or allowed to fail, a `make` option or variable on a tier, a `ci-ok`
+step other than `devtools/ci_verdict.sh` on every job’s result, an interpreter list that
+differs from `pyproject.toml`’s classifiers and the free-threaded build, and a lost
+trigger. It also fails a permission, trigger, or expression that widens what a pull
+request can reach. Its docstring lists every rule.
 
 **The nightly soak.** `.github/workflows/nightly.yml` repeats the serial and Chrome
 tiers on the interpreter a pull request draws the Chrome tier on, so that a flake is
