@@ -1799,13 +1799,15 @@ A page mounted with no record in hand, as a direct load or a reload mounts it, k
 header and tab column out of sight for the shell’s quiet period
 (`--loading-state-delay`), by opacity alone, so its rows keep their layout and the tab
 keys stay live, and shows them with the first header that has a record or core.
-A read that lands within the quiet period never shows the cold header; when the
-conversation’s first paint then waits for its description (`DESCRIPTION_HOLD_MS`), the
-header waits with it, and the page stays unseen until that paint, as the body does.
-So the one move left on a cold page is a slow read of a pull request with no labels:
-past the quiet period the cold page shows, rows held, rather than a blank pane, and the
-record that lands later takes the labels row and its gap away, moving the tab bar up by
-their height. A pull request with labels lands moving nothing.
+A read that lands within the quiet period never shows the cold header.
+When the conversation’s first paint then waits for its texts’ Markdown
+(`DESCRIPTION_HOLD_MS`), only the body waits: the header paints the record at once, so
+the title shows as soon as the record is in hand, and the body follows below the
+header’s held rows (exp-099). So the one move left on a cold page is a slow read of a
+pull request with no labels: past the quiet period the cold page shows, rows held,
+rather than a blank pane, and the record that lands later takes the labels row and its
+gap away, moving the tab bar up by their height.
+A pull request with labels lands moving nothing.
 A Pulls open whose read answers within its wait hands the page its record, and a
 retained navigation keeps the page out of sight until it has one, so neither shows a
 cold page. The header’s rows are one gap apart (`.page-header`), whatever its state

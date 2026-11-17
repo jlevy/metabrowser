@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request opened from the cache shows its title, state, and branches as soon as
+  its record is read, instead of waiting with the conversation for the Markdown of every
+  text on the first screen.
+  The conversation still waits for that Markdown, out of sight.
+  On a pull request with four texts on its first screen, the title had come about 280 ms
+  later than in v0.12.0. The tab keys, and Control-N and Control-P for the stack, work
+  from that paint too.
+
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read
   of a record now opens the rewritten one and checks it again, so it reads the old

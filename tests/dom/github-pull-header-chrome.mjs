@@ -959,15 +959,8 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   const shownCold = look("the read on its way");
   answer();
   const deadline = performance.now() + 5000;
-  let waited = null;
   while (performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 5));
-    if (outcome === "held" && waited === null && header.classList.contains("github-pull-cold-held")) {
-      // The record is in hand and the header waits for the conversation: the quiet period ends.
-      quietEnds();
-      await frames();
-      waited = look("the header waits, the quiet period over");
-    }
     if (!look("landing").cold) {
       break;
     }
@@ -975,6 +968,9 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   await frames();
   sampling = false;
   const landed = look("landed");
+  // A held landing's conversation is still out of sight, waiting for its Markdown.
+  const bodyHeld =
+    container.querySelector(".github-pull-body")?.classList.contains("github-pull-body-holding") ?? null;
   handle.dispose();
   document.documentElement.style.removeProperty("--loading-state-delay");
   window.fetch = realFetch;
@@ -982,8 +978,8 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     landsAt,
     before,
     shownCold,
-    waited,
     landed,
+    bodyHeld,
     coldShown: seen.filter((state) => state.cold && Number(state.header) > 0).length,
     halfShown: seen.filter((state) => state.header !== state.column && state.column !== null).length,
     tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
@@ -1792,7 +1788,7 @@ async function main() {
                 `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
               );
               landings.push({ where, run });
-              const { before, shownCold, waited, landed } = run;
+              const { before, shownCold, landed } = run;
               check(
                 `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
                 before.cold &&
@@ -1834,9 +1830,9 @@ async function main() {
               }
               if (outcome === "held") {
                 check(
-                  `${where}: a record that lands in the quiet period keeps the cold page unseen past it while the header waits for the conversation`,
-                  waited?.cold === true && waited.header === "0" && waited.column === "0",
-                  JSON.stringify(waited),
+                  `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
+                  !landed.cold && landed.header === "1" && run.bodyHeld === true,
+                  JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
                 );
               }
             }

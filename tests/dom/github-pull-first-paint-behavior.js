@@ -163,9 +163,9 @@ function host() {
 
 /**
  * The tabs' C, G, and E under a held first paint (review E2): a landing whose description's
- * Markdown is on its way holds the conversation over the loading page, header included. The
- * header keeps its tab column from first paint, so the column shows, inert, and no tab key is
- * live; at release the header paints, the column wakes, and all three keys are. The registry
+ * Markdown is on its way holds the conversation over the loading page, but not the header,
+ * which paints the record at once (exp-099). So the tab column is live, all three keys act,
+ * and the stack's menu and keys are there while the body still waits, as after it shows. The registry
  * and facade are the production ones, loaded as the page mount session's tabKeys loads them,
  * and the hold really holds: the Markdown is answered when the session says, with the
  * allowlist in place.
@@ -413,8 +413,7 @@ async function heldTabKeys(page) {
     return bar.parentNode.getAttribute("inert") === null ? "live" : "inert";
   };
   const bodyNode = () => container.querySelector(".github-pull-body");
-  // A reader on the Changes link as the hold begins: the column goes inert, and the link
-  // has focus again when it wakes (review F4).
+  // A reader on the Changes link as the hold begins keeps its focus: nothing goes inert.
   const changes = container
     .querySelectorAll(".tab-btn")
     .find((link) => link.textContent === "Changes");
@@ -426,14 +425,12 @@ async function heldTabKeys(page) {
     globalThis.document.activeElement = changes;
   };
   await settle();
-  // Inert, the column lets go of focus, as Chrome moves it to the body.
-  globalThis.document.activeElement = body;
-  // The stack arrives while the header waits: its menu waits with it, and so do
-  // Control-N and Control-P.
+  // The stack arrives while the body waits: the header paints its menu, and Control-N and
+  // Control-P are live.
   assert.equal(stackAnswers.length, 1, "the page asked for its stack");
   stackAnswers.shift()();
   await settle();
-  // Shift held under the hold: the inert links carry no badge, and waking them badges them.
+  // Shift held under the hold: the live links carry their badges.
   registry.setRevealed(true);
   /** Each tab that carries a Shift badge now, as its label and its badge's key. */
   const badged = () =>
@@ -455,14 +452,10 @@ async function heldTabKeys(page) {
     "control-n": press("n", { ctrlKey: true }),
   };
   assert.equal(whileHeld.holding, true, "the landing's first paint is held");
-  assert.deepEqual(whileHeld.live, [], "no tab key is live while the header waits");
-  assert.equal(whileHeld.stackMenus, 0, "the stack menu waits with the header");
-  assert.equal(whileHeld.stackKeys, "none", "Control-N and Control-P wait with the header");
-  assert.equal(
-    whileHeld["control-n"],
-    "not handled",
-    "Control-N opens nothing while the header waits",
-  );
+  assert.equal(whileHeld.tabColumn, "live", "the header does not wait for the body");
+  assert.deepEqual(whileHeld.live, ["conversation", "files", "checks"], "all three while held");
+  assert.equal(whileHeld.stackMenus, 1, "the header paints its stack menu while the body waits");
+  assert.notEqual(whileHeld.stackKeys, "none", "Control-N and Control-P are live while held");
   while (markdown.length > 0) {
     markdown.shift()();
     await settle();
@@ -485,7 +478,7 @@ async function heldTabKeys(page) {
     "control-p": press("p", { ctrlKey: true }),
   };
   assert.deepEqual(released.live, ["conversation", "files", "checks"], "all three at release");
-  assert.equal(released.stackMenus, 1, "the header paints its stack menu at release");
+  assert.equal(released.stackMenus, 1, "the stack menu stays at release");
   assert.equal(
     released.strip,
     released.stackKeys,
@@ -705,11 +698,15 @@ async function run() {
       holding: landing.holding(),
       sameBlocks: before !== null && blocks() === before,
       cover: blocks()?.classes.has("github-pull-loading-cover") ?? false,
-      // The header waits with the body, so the blocks stay where they were (review D1).
+      // The header paints the record at once; only the body waits (exp-099).
       heading: landing.heading(),
     };
     assert.ok(whileHeld.sameBlocks, "the blocks that showed stay, the same node, while held");
-    assert.equal(whileHeld.heading, "Pull request #7", "the loading heading stays while held");
+    assert.equal(
+      whileHeld.heading,
+      "Count to two in the app #7",
+      "the record's heading shows while the body is held",
+    );
     session.holdMarkdown(false);
     session.held.shift()();
     await settle();
