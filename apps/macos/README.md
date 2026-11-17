@@ -203,6 +203,11 @@ A release is one command, `make macos-release`, and it uses only Apple’s tools
 
 ### Once per Mac
 
+For the first release, follow the owner steps in the
+[publishing plan](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)
+instead: they keep the identity and the notary profile in a release keychain that stays
+locked except during a release, and the plan’s release runbook replaces this section.
+
 1. **A Developer ID Application certificate**, with its private key, in the login
    keychain. It needs the Apple Developer Program, and only the account holder can create
    one. `security find-identity -v -p codesigning` lists it as
@@ -223,16 +228,23 @@ A release is one command, `make macos-release`, and it uses only Apple’s tools
 
 ### Each Release
 
-Write the new version to `apps/macos/VERSION`, commit it, tag the commit, and build:
+Set the new version, `V`, with `echo "$V" > apps/macos/VERSION` in a reviewed pull
+request, land it on `main`, and record that commit’s full SHA as `RELEASE_COMMIT`. After
+the owner approves it, create the `macos-v$V` tag on GitHub at that SHA as
+[macOS App Releases](../../docs/publishing.md#macos-app-releases) describes, never by
+pushing it from a clone.
+Then build the approved commit:
 
 ```shell
 V=MAJOR.MINOR.PATCH
-echo "$V" > apps/macos/VERSION
-git commit -m "release(macos): $V" apps/macos/VERSION
-git tag -a "macos-v$V" -m "Metabrowser for macOS $V"
+git switch --detach "$RELEASE_COMMIT"
 make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
   APPLE_KEYCHAIN_PROFILE=metabrowser-notary
 ```
+
+The tag is permanent from then on: a failure that needs a change is released under the
+next version, and a transient one is retried at the same tag
+([Failure Handling](../../docs/publishing.md#failure-handling)).
 
 `scripts/release.sh` then runs, stopping at the first failure:
 
@@ -278,22 +290,32 @@ its default.
 `make macos-notarize FILE=build/Metabrowser-<VERSION>-arm64.dmg` retries one
 step, and `make macos-release NOTARIZE=0` rehearses every step without credentials.
 
-To publish, push the tag and attach the image and its checksum to a draft release, then
-review the draft and publish it:
+To publish, attach the image and its checksum to a draft release on the tag:
 
 ```shell
-git push origin "macos-v$V"
 gh release create "macos-v$V" --draft --verify-tag --latest=false \
   --title "Metabrowser for macOS $V" \
   "apps/macos/build/Metabrowser-$V-arm64.dmg" \
   "apps/macos/build/Metabrowser-$V-arm64.dmg.sha256"
 ```
 
-`--latest=false` keeps the Python package’s release as the repository’s latest.
-Then copy `build/metabrowser-app.rb` to `Casks/` in a personal tap.
-Publishing the release does not publish to PyPI: `publish.yml` runs its job only for a
-`v` tag, the Python package’s. No workflow builds, signs, or drafts the release yet;
-that job is [planned](../../docs/project/architecture/arch-macos-app.md#planned).
+Before publishing, the owner opens the draft’s image from a browser download on a Mac
+that has not run the app, and approves the image’s SHA-256 and the notes (O8 and O7 in
+the
+[publishing plan’s owner steps](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)).
+Then publish it without making it the repository’s Latest release, which stays the
+Python package’s:
+
+```shell
+gh release edit "macos-v$V" --draft=false --latest=false
+```
+
+0.1.0 ships without a cask (the plan’s Q5): the tap and the cask follow the alpha’s
+first round of feedback, when a release copies `build/metabrowser-app.rb` to `Casks/` in
+a personal tap. Publishing the release does not publish to PyPI: `publish.yml` runs its
+job only for a `v` tag, the Python package’s. No workflow builds, signs, or drafts the
+release yet; that job is
+[planned](../../docs/project/architecture/arch-macos-app.md#planned).
 
 What a downloader of a signed release meets, from Gatekeeper’s first check to the
 privacy prompts, is in [the user guide](../../docs/macos-app.md).

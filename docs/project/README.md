@@ -60,6 +60,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
+  a draft for one modeled object per file, folder, commit, and pull request, drawn in
+  several view shapes; its key decisions are open
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
@@ -71,6 +74,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
+- [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
+  Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
+  the checks of a downloaded copy, with the owner-only steps
 - [Instant transitions and stable layout](specs/active/plan-2026-11-11-ui-apparent-performance.md):
   retained surfaces, fixed boxes at first paint, and prediction behind admission
   control, each a measured performance-loop round

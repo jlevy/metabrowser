@@ -1506,16 +1506,17 @@ function summaryOwnerOf(view) {
 /**
  * A multi-file diff's Diff summary: the header that says what the change set holds, "35
  * files changed · 2 A, 3 D, 30 M · +1,234 −3,423", and is the disclosure toggle of its files
- * as a tree by folder. Each status is its rows' letter, in the status's ink, and the dots
- * between the groups, the commas, and the notes after the totals are muted. It starts
- * collapsed, and the tree is not mounted, or its module imported, until the header is first
- * opened; hovering or focusing the header asks for the module first. Its words are the
- * shared model's (`describeChanges`), from the manifest's totals and the kinds of the
- * files it lists, or, for a list cut short, the whole change set's totals (*whole*) and how
- * many files it lists, and its accessible name says them in words, "35 files changed: 2
- * added, 3 deleted, 30 modified; …". A change set of no files has nothing to open, so its
- * header is a line. A header whose host cuts its breakdown short, as a pull request's
- * header does to keep one line, has its whole words as its tooltip while it is cut.
+ * as a tree by folder. Each status is its count and its rows' letter, both bold in the
+ * status's ink, and the dots between the groups, the commas, and the notes after the totals
+ * are muted. It starts collapsed, and the tree is not mounted, or its module imported, until
+ * the header is first opened; hovering or focusing the header asks for the module first.
+ * Its words are the shared model's (`describeChanges`), from the manifest's totals and the
+ * kinds of the files it lists, or, for a list cut short, the whole change set's totals
+ * (*whole*) and how many files it lists, and its accessible name says them in words, "35
+ * files changed: 2 added, 3 deleted, 30 modified; …". A change set of no files has nothing
+ * to open, so its header is a line. A header whose host cuts its breakdown short, as a
+ * pull request's header does to keep one line, has its whole words as its tooltip while it
+ * is cut.
  *
  * @param {Record<string, unknown>} totals
  * @param {Record<string, unknown>[]} files

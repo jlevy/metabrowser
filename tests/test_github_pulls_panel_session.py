@@ -923,6 +923,10 @@ def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() 
 
     facts = run_session("github-pulls-files-prefetch-behavior.js")
     assert facts["asksBeforeDwell"] == 0
+    # A drawn stack's members whose lists its change line waits for take the last places,
+    # and each list the lane refreshes reaches the stack lines (review B of #484, B1, B2).
+    assert facts["stackAsk"][-4:] == [9001, 9002, 9003, 9004]
+    assert sorted(facts["listedForStacks"]) == sorted(facts["stackAsk"])
     assert facts["visibleAsk"]["afterMs"] == 500
     assert len(facts["visibleAsk"]["files"]) == 16
     assert facts["restedAsk"] == {"afterMs": 0, "first": 89}

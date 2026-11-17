@@ -672,6 +672,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/stack-change",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/stacks",
       "methods": [
         "GET",
@@ -858,7 +866,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 65
+  "count": 66
 }
 ? 0
 ```

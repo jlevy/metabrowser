@@ -253,6 +253,13 @@ A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 fil
 the block ends between the two; one of three statuses, “35 files changed · 2 A, 3 D, 30
 M · +1,234 −3,423”, ends its text at 22.18 em.
 
+Recorded again on 2026-11-16, when each status count’s letter became bold with its
+number: measured in headless Chrome 152 at 560 px in both themes, in the header’s
+navigation size, a summary of one status ends 13.91 to 15.92 em from the row’s start,
+its text 13.45 to 15.46 em, 0.03 to 0.04 em later than before, and the 14.5 em block
+still ends between the two; one of three statuses ends its text at 22.26 em, 0.08 em
+later.
+
 Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
 the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
 

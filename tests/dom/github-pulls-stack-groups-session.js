@@ -257,8 +257,12 @@ async function mountStory() {
     const filesClosed = pull(8).getAttribute("aria-expanded");
     await step("Left again goes to the stack's row", () => handle.collapse());
     await step("Left on the stack's row closes it", () => handle.collapse());
-    // A press on the stack's label, as a click lands: the row takes the anchor and opens.
-    const label = stackRow().childNodes.find((node) =>
+    // A press on the stack's label, in its heading, as a click lands: the row takes the
+    // anchor and opens.
+    const heading = stackRow().childNodes.find((node) =>
+      node.classList?.contains("github-pulls-stack-heading"),
+    );
+    const label = heading.childNodes.find((node) =>
       node.classList?.contains("github-pull-stack-label"),
     );
     await step("a press on the stack's row opens it", () =>

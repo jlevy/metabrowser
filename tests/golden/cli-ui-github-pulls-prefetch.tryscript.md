@@ -144,6 +144,10 @@ the server has not answered holds up none of the reader’s reads.
 A files ask made while another prefetch is on its way waits for its answer and is
 checked again when that answer comes, so a walk, a metadata read, or a hold that began
 meanwhile keeps it from being sent.
+After the reader’s own rows, an ask names the members whose lists the drawn stacks’
+change lines wait for, in the last four places, kept for them (`stackAsk`), and each
+list the lane reports refreshed is passed on once to the stack lines
+(`listedForStacks`).
 
 The panel also names to the page’s comparison warmer the pull requests whose comparison
 to have ready before they are opened (mb-neg9): the open pull request first, so its page
@@ -202,6 +206,42 @@ $ node tests/dom/github-pulls-files-prefetch-behavior.js
     "94 by prefetch",
     "93 by prefetch",
     "92 by prefetch"
+  ],
+  "stackAsk": [
+    105,
+    106,
+    104,
+    103,
+    102,
+    101,
+    100,
+    99,
+    98,
+    97,
+    96,
+    95,
+    9001,
+    9002,
+    9003,
+    9004
+  ],
+  "listedForStacks": [
+    105,
+    106,
+    104,
+    103,
+    102,
+    101,
+    100,
+    99,
+    98,
+    97,
+    96,
+    95,
+    9001,
+    9002,
+    9003,
+    9004
   ],
   "expandedAfterPrefetch": {
     "drawnAfterMs": 0,
