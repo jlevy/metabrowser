@@ -817,7 +817,8 @@
 
   /**
    * The Files tab's totals, a navigation metadata line (`.nav-metadata`): the tracked
-   * count, and the ignored count as a line of its own, muted as ignored rows are. Without
+   * count, and the ignored count as a line of its own, muted as ignored rows are; each
+   * one line, cut short at its end, its phrase its tooltip. Without
    * the split it gives the combined figure, "4 files (38 B)", whose two spans the shell
    * patches live (app.js, `updateRootAggregatePresentation`); *keepIgnoredLine* holds the
    * ignored line pending then, or says "No ignored files" in it (docs/design-system.md,
@@ -839,20 +840,26 @@
         : "";
       return (
         '<div class="tree-summary nav-metadata">' +
-        `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span>` +
-        `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span>` +
+        '<span class="tree-summary-line">' +
+        `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span> ` +
+        `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span></span>` +
         held +
         "</div>"
       );
     }
+    const parts = format.formatCountParts(summary.files);
+    const words = parts
+      .map((part) => (typeof part === "string" ? part : "number" in part ? part.number : ""))
+      .join("");
     const tracked =
-      `<span class="tree-summary-tracked">${countSummaryHtml(format.formatCountParts(summary.files))}</span>` +
-      `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span>`;
+      `<span class="tree-summary-line" data-tip-text="${words} (${format.formatSize(summary.size)})">` +
+      `<span class="tree-summary-tracked">${countSummaryHtml(parts)}</span> ` +
+      `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span></span>`;
     let ignored = "";
     const ignoredFiles = summary.ignored_files ?? 0;
     if (ignoredFiles > 0) {
       // One item for the count and its word. The spaces between items are not drawn in a
-      // flex box, but make the line's text its tooltip's phrase (digits and a unit).
+      // flex box, but make each line's text its tooltip's phrase (digits and words).
       const number = ignoredFiles.toLocaleString();
       const phrase = `+ ${number} ignored (${format.formatSize(summary.ignored_size ?? 0)})`;
       ignored =

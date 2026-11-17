@@ -3870,11 +3870,12 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   figure will fill, so it sits across the middle of the line, where the text will.
   On Commits the server ships it so, and the tally replaces it in place.
 - **The Files totals.** The tracked count is the first line and the gitignored count a
-  line of its own under it, one line in every pane: in a pane too narrow for it, its
-  size is cut short at its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never
-  wrapped, and the whole phrase is its tooltip, which the shell shows only while it is
-  cut ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
-  decided by whether it has that line, never by the figures’ lengths.
+  line of its own under it.
+  Each is one line in every pane: in a pane too narrow for it, its size is cut short at
+  its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never wrapped, and its
+  whole phrase is its tooltip, which the shell shows only while it is cut
+  ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
+  decided by whether it has the ignored line, never by the figures’ lengths.
   The shell inlines the root’s totals with its first rows (the root’s own entry carries
   them, so they cost nothing to read), and the band paints at its settled height in the
   first frame: two lines for a folder with something ignored, one for a folder with
@@ -3894,18 +3895,8 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   A folder that gains its first ignored file while it is open gains the line, as the
   pull request header gains its labels row with its first label ([Layout](#layout));
   that is the folder changing, not a count arriving late.
-  The tracked count can still wrap between its two figures in a pane too narrow for
-  both, as a six-digit count with its size does at the narrowest pane, and such a shell
-  then gains that line when the count lands.
-  As half of one line, the ignored count wrapped only when the two halves outgrew the
-  pane, and it arrived with the server’s pass over every file, half a second to seconds
-  after the tree: measured in Chrome 152 on this repository in the default 300 px pane
-  on 2026-11-16, the band grew from 37 to 56.5 px and the tree moved down 19.5 px when
-  it arrived, and on a folder of the same figures’ lengths 39 px in the narrowest pane.
-  Now nothing in the navigation moves from first paint to settled: with the tally
-  answered at once or held 2 s, in both themes, at 300 and 180 px, and with the root’s
-  totals unknown at first paint, a first tally provisional with nothing ignored yet
-  among them, for a folder with ignored files and for one with none.
+  The [Files totals layout record](project/qa/qa-2026-11-16-files-totals-layout.md)
+  holds the measurements.
 - **Height.** Each line reserves its own line box before anything arrives.
   While a line’s text fits the pane, a pending tally, a count still being taken, and a
   settled one are one height, and the Pulls lines are one height from loading through a
@@ -3928,9 +3919,9 @@ page: a provisional tally, a tally older than an upsert, a Git revision.
 navigation from the document’s start to settled, for a folder with ignored files and one
 with none, with the tally answered at once and held, in both themes, in the default pane
 and the narrowest, with the shell’s inlined totals taken out, and with a provisional
-first tally; and reads the ignored line’s tooltip, which shows only while the line is
-cut. `tests/test_nav_metadata_chrome.py` measures, in Chrome, at the default pane width
-and at one wide enough for every text: the Files totals settled, pending, counting,
+first tally; and reads each line’s tooltip, which shows only while the line is cut.
+`tests/test_nav_metadata_chrome.py` measures, in Chrome, at the default pane width and
+at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
 loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short

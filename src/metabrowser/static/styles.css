@@ -2226,10 +2226,8 @@ html.theme-anim .menu {
    root's totals, so that is only a shell drawn before the walk finished the root.
    A page keeps a line it has drawn: with nothing ignored it says so,
    `.tree-summary-ignored-none`, "No ignored files", in the same box. Cut short,
-   the line's whole phrase is its tooltip (`data-tip-text`). The tracked count can
-   still wrap between its two figures in a pane too narrow for both, as a
-   six-digit count with its size does at the narrowest pane, and such a shell
-   then gains that line when the count lands. */
+   the line's whole phrase is its tooltip (`data-tip-text`). The tracked count is
+   one line by the same rule (`.tree-summary-line`). */
 /* The ignored half is muted to the same degree the gitignored rows
    below it are, so the header reads at a glance as "this much is
    yours, that much is build output". */
@@ -2245,6 +2243,16 @@ html.theme-anim .menu {
   gap: var(--nav-metadata-gap);
   white-space: nowrap;
 }
+/* The tracked count's line keeps the same rule: one line, its size cut short at its end. */
+.tree-summary-line {
+  display: inline-flex;
+  flex-basis: 100%;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--nav-metadata-gap);
+  white-space: nowrap;
+}
+.tree-summary-line > :last-child,
 .tree-summary-ignored > .tree-summary-bytes {
   min-width: 0;
   overflow: hidden;

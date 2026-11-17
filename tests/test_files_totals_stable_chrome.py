@@ -30,8 +30,8 @@ and the narrowest. This judges it:
   first tally answered as the server does mid-walk, provisional and counting nothing
   ignored yet, does not release it; and for a folder with nothing ignored it keeps its
   box as "No ignored files";
-- the ignored line's tooltip, its whole phrase, shows only while the line is cut short,
-  and in the narrowest pane it is.
+- the tracked and ignored lines' tooltips, each its line's whole phrase, show only while
+  the line is cut short, and in the narrowest pane the ignored line is.
 
 The browserless states of the line are pinned by
 ``tests/golden/cli-ui-tree-summary-line.tryscript.md``. Where text sits is computed
@@ -58,9 +58,9 @@ from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
 _METAB = Path(sys.executable).with_name("metab")
-# Three server starts, one Chrome, and twenty-four loads, twelve of them holding the tally
-# 2 s and two the event stream 1.5 s: the session took 59 s, and the test 92 s, on a
-# 10-core Mac at a load average near 25. A cold Chrome start in CI has taken 28.2 s, and
+# Three server starts, one Chrome, and thirty loads, eighteen of them holding the tally
+# 2 s and two the event stream 1.5 s: the session took 71 s, and the test 98 s, on a
+# 10-core Mac at a load average near 30. A cold Chrome start in CI has taken 28.2 s, and
 # each server's start is bounded at 30 s inside the session.
 SESSION_TIMEOUT_S = 240
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
@@ -151,7 +151,7 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
     # Shown with a failure: every load's frames, and each phase's time.
     print(run.stdout, run.stderr)
     results: list[dict[str, Any]] = json.loads(run.stdout.strip().splitlines()[-1])["results"]
-    assert len(results) == 24, [result["name"] for result in results]
+    assert len(results) == 30, [result["name"] for result in results]
 
     for result in results:
         name = result["name"]
@@ -181,5 +181,8 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
                 assert tip["cut"], f"{name}: not cut short at 180 px: {tip}"
         else:
             assert tip is None, f"{name}: {tip}"
+        # So does the tracked line's, its whole phrase too.
+        tracked = result["trackedTip"]
+        assert tracked is not None and tracked["shows"] is tracked["cut"], f"{name}: {tracked}"
     provisional = [result for result in results if result["provisional"]]
     assert len(provisional) == 2 and all(result["settled"] for result in provisional)

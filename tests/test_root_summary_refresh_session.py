@@ -34,6 +34,7 @@ LIVE = "a live tree upserts its root every 100 ms and each answer takes 3.2 s"
 SLOW = "a live tree whose every answer takes 20 s"
 QUIET = "an isolated change on a quiet tree"
 FAILING = "the server fails the first two requests"
+PROVISIONAL = "the walk is still running when the first answer comes"
 HIDDEN = "a page that is hidden while its tree changes"
 BEHIND = "a Files panel behind the Commits tab while its tree changes"
 # The session's server answers each request in this long.
@@ -60,7 +61,7 @@ def _settled_at(step: dict[str, Any]) -> list[int]:
 
 
 def test_the_session_runs_every_scenario(scenarios: dict[str, list[dict[str, Any]]]) -> None:
-    assert list(scenarios) == [LIVE, SLOW, QUIET, FAILING, HIDDEN, BEHIND]
+    assert list(scenarios) == [LIVE, SLOW, QUIET, PROVISIONAL, FAILING, HIDDEN, BEHIND]
 
 
 def test_a_live_tree_holds_one_request_at_a_time(
@@ -142,3 +143,19 @@ def test_a_summary_no_one_can_see_waits_until_it_can(
     assert unseen["after"]["requests"] == 0, "a summary no one could see was requested"
     assert shown["after"]["requests"] == 1, "showing the summary again must refresh it once"
     assert _sent_at(shown) == [10000 + 500]
+
+
+def test_a_provisional_answer_leaves_the_line_held(
+    scenarios: dict[str, list[dict[str, Any]]],
+) -> None:
+    """Mid-walk the server's tally is provisional, and can count nothing ignored yet: the
+    refresh passes its status, so the line keeps its ignored line and its figures pending
+    rather than say "9,000 files" and "No ignored files" (createRootTotals). Passing a
+    settled status instead fails here."""
+
+    provisional, settled = scenarios[PROVISIONAL]
+    assert provisional["did"][-2:] == [
+        "t=800 #1 answered provisionally: scanning",
+        't=800 painted "" (3 pending)',
+    ]
+    assert settled["did"][-1] == 't=20800 painted "2 files (2.0 KB) No ignored files"'

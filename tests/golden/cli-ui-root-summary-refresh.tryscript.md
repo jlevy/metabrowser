@@ -37,6 +37,9 @@ The transcript pins these behaviors:
 - Asks made while a request was in flight are answered by one more request after the
   writes stop.
 - An isolated change on a quiet tree is requested after the debounce alone.
+- An answer the server gives mid-walk, provisional (`scanning`) and counting nothing
+  ignored yet, leaves the line held, its figures and its ignored line pending; the next
+  settled answer fills it.
 - A failed request is asked again after a backoff that doubles with each failure.
 - A hidden page, or a Files panel behind another tab, requests nothing, and is refreshed
   once when it is shown again.
@@ -129,6 +132,41 @@ $ node tests/dom/root-summary-refresh-session.js
       },
       {
         "step": "another write, long after",
+        "did": [
+          "t=20500 sent #2 /api/tree?depth=0 (1 in flight)",
+          "t=20800 #2 answered",
+          "t=20800 painted \"2 files (2.0 KB) No ignored files\""
+        ],
+        "after": {
+          "asks": 2,
+          "requests": 2,
+          "maxInFlight": 1,
+          "inFlight": 0,
+          "cached": "2 files (2.0 KB) No ignored files"
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "the walk is still running when the first answer comes",
+    "steps": [
+      {
+        "step": "one write, answered provisionally",
+        "did": [
+          "t=500 sent #1 /api/tree?depth=0 (1 in flight)",
+          "t=800 #1 answered provisionally: scanning",
+          "t=800 painted \"\" (3 pending)"
+        ],
+        "after": {
+          "asks": 1,
+          "requests": 1,
+          "maxInFlight": 1,
+          "inFlight": 0,
+          "cached": ""
+        }
+      },
+      {
+        "step": "another write, once the walk has finished",
         "did": [
           "t=20500 sent #2 /api/tree?depth=0 (1 in flight)",
           "t=20800 #2 answered",

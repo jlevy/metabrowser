@@ -27,9 +27,10 @@ The transcript pins these behaviors:
 - The fallback, before the split arrives, says the figure in the split’s own words, “N
   files (size)”, so the line reads the same when the split replaces it.
 - A Git pin has no size fact, so its line states none.
-- The split adds the gitignored half only when there is one, as a line of its own
-  (`.tree-summary-ignored`), whose whole phrase is its tooltip, which the shell shows
-  only while the line is cut short.
+- The tracked count is one line (`.tree-summary-line`), and the split adds the
+  gitignored half only when there is one, as a line of its own
+  (`.tree-summary-ignored`); each split line’s whole phrase is its tooltip, which the
+  shell shows only while the line is cut short.
 - A line drawn before the root’s totals are known, asked to hold the ignored line, holds
   it with the pending placeholder after the quiet period, a status named for a screen
   reader; no other state holds one.
@@ -62,7 +63,7 @@ $ node tests/dom/tree-summary-line-session.js
       "ignoredLine": "none",
       "numbers": [],
       "regular": "",
-      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"count tally-pending\"></span></span><span class=\"tree-summary-size\"><span class=\"size tally-pending\"></span></span></div>"
+      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-line\"><span class=\"tree-summary-count\"><span class=\"count tally-pending\"></span></span> <span class=\"tree-summary-size\"><span class=\"size tally-pending\"></span></span></span></div>"
     },
     "counted, before the split arrives": {
       "classes": "tree-summary nav-metadata",
@@ -74,7 +75,7 @@ $ node tests/dom/tree-summary-line-session.js
         "394.6 MB"
       ],
       "regular": "files ( )",
-      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-size\">(<span class=\"summary-number\">394.6 MB</span>)</span></div>"
+      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-line\"><span class=\"tree-summary-count\"><span class=\"summary-number\">12,797</span> files</span> <span class=\"tree-summary-size\">(<span class=\"summary-number\">394.6 MB</span>)</span></span></div>"
     },
     "a Git pin, which has no sizes": {
       "classes": "tree-summary nav-metadata",
@@ -85,7 +86,7 @@ $ node tests/dom/tree-summary-line-session.js
         "4"
       ],
       "regular": "files",
-      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-count\"><span class=\"summary-number\">4</span> files</span><span class=\"tree-summary-size\"></span></div>"
+      "html": "<div class=\"tree-summary nav-metadata\"><span class=\"tree-summary-line\"><span class=\"tree-summary-count\"><span class=\"summary-number\">4</span> files</span> <span class=\"tree-summary-size\"></span></span></div>"
     },
     "the split, nothing ignored": {
       "classes": "tree-summary tree-summary-split nav-metadata",
@@ -97,7 +98,7 @@ $ node tests/dom/tree-summary-line-session.js
         "38 B"
       ],
       "regular": "files ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">4</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">38 B</span>)</span></div>"
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-line\" data-tip-text=\"4 files (38 B)\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">4</span> files</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">38 B</span>)</span></span></div>"
     },
     "the split, with ignored files": {
       "classes": "tree-summary tree-summary-split nav-metadata",
@@ -111,7 +112,7 @@ $ node tests/dom/tree-summary-line-session.js
         "9.4 GB"
       ],
       "regular": "files ( ) + ignored ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">12,797</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">394.6 MB</span>)</span><span class=\"tree-summary-ignored\" data-tip-text=\"+ 248,189 ignored (9.4 GB)\"><span class=\"tree-summary-plus\">+</span> <span><span class=\"summary-number\">248,189</span> ignored</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">9.4 GB</span>)</span></span></div>"
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-line\" data-tip-text=\"12,797 files (394.6 MB)\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">12,797</span> files</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">394.6 MB</span>)</span></span><span class=\"tree-summary-ignored\" data-tip-text=\"+ 248,189 ignored (9.4 GB)\"><span class=\"tree-summary-plus\">+</span> <span><span class=\"summary-number\">248,189</span> ignored</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">9.4 GB</span>)</span></span></div>"
     },
     "an empty folder": {
       "classes": "tree-summary tree-summary-split nav-metadata",
@@ -123,7 +124,7 @@ $ node tests/dom/tree-summary-line-session.js
         "0 B"
       ],
       "regular": "files ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">0</span> files</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">0 B</span>)</span></div>"
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-line\" data-tip-text=\"0 files (0 B)\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">0</span> files</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">0 B</span>)</span></span></div>"
     },
     "one file": {
       "classes": "tree-summary tree-summary-split nav-metadata",
@@ -135,7 +136,7 @@ $ node tests/dom/tree-summary-line-session.js
         "2.0 KB"
       ],
       "regular": "file ( )",
-      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">1</span> file</span><span class=\"tree-summary-bytes\">(<span class=\"summary-number\">2.0 KB</span>)</span></div>"
+      "html": "<div class=\"tree-summary tree-summary-split nav-metadata\"><span class=\"tree-summary-line\" data-tip-text=\"1 file (2.0 KB)\"><span class=\"tree-summary-tracked\"><span class=\"summary-number\">1</span> file</span> <span class=\"tree-summary-bytes\">(<span class=\"summary-number\">2.0 KB</span>)</span></span></div>"
     }
   },
   "totals": {

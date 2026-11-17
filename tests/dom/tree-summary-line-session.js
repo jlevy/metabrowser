@@ -343,6 +343,12 @@ check(
     git[1].took === false,
 );
 check(
+  "the split's tracked line has its whole phrase as its tooltip",
+  states["the split, with ignored files"].html.includes(
+    'class="tree-summary-line" data-tip-text="12,797 files (394.6 MB)"',
+  ),
+);
+check(
   "the split's ignored line has its whole phrase as its tooltip",
   states["the split, with ignored files"].html.includes(
     'data-tip-text="+ 248,189 ignored (9.4 GB)"',

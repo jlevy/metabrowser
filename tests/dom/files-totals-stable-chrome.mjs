@@ -24,7 +24,7 @@
 // one with none. The folder with the longer tracked count is loaded in the default pane,
 // where its two halves outgrew one line on main's code.
 //
-// Seven loads take the shell as a server drawn before the walk finished the root would
+// Ten loads take the shell as a server drawn before the walk finished the root would
 // send it, its inlined totals taken out ("unknown"): with ignored files the line holds the
 // ignored line from first paint and the count fills it, in the narrowest pane too, where
 // the count is cut short on its one line rather than wrapped; with none, the held line
@@ -34,8 +34,8 @@
 // that brings the root's entry until 1.5 s after it, so the held line must outlast a
 // provisional tally that says nothing is ignored.
 //
-// Once a load settles, the ignored line's tooltip is read as the shell decides it
-// (`tipAddsInformation`): it shows only while the line is cut short.
+// Once a load settles, the tracked and ignored lines' tooltips are read as the shell
+// decides them (`tipAddsInformation`): each shows only while its line is cut short.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { spawn } from "node:child_process";
@@ -347,6 +347,10 @@ async function main() {
             const line = document.querySelector('#tab-files .tree-summary-ignored:not(.tree-summary-ignored-none)');
             return line && { text: line.dataset.tipText, cut: tipAnchorIsCut(line), shows: tipAddsInformation(line) };
           })(),
+          trackedTip: (() => {
+            const line = document.querySelector('#tab-files .tree-summary-line[data-tip-text]');
+            return line && { text: line.dataset.tipText, cut: tipAnchorIsCut(line), shows: tipAddsInformation(line) };
+          })(),
         })`,
       );
       const first = page.frames[0] ?? null;
@@ -377,6 +381,7 @@ async function main() {
           .map((frame) => frame.ignoredLine)
           .filter((one, i, all) => i === 0 || all[i - 1] !== one),
         tip: page.tip,
+        trackedTip: page.trackedTip,
         moved: movement(page.frames),
         // The shifts after first paint. One in that frame is the move into it: in the
         // narrowest pane, the filter bar's wrap as it is filled (above).
@@ -393,14 +398,19 @@ async function main() {
     for (const theme of ["light", "dark"]) {
       for (const width of WIDTHS) {
         for (const slow of [false, true]) {
-          await load({
-            server: ignoring,
-            name: `ignored ${slow ? "slow" : "fast"} ${width}px ${theme}`,
-            theme,
-            width,
-            slow,
-            strip: false,
-          });
+          for (const [server, folder] of [
+            [ignoring, "ignored"],
+            [clean, "none"],
+          ]) {
+            await load({
+              server,
+              name: `${folder} ${slow ? "slow" : "fast"} ${width}px ${theme}`,
+              theme,
+              width,
+              slow,
+              strip: false,
+            });
+          }
         }
       }
       for (const slow of [false, true]) {
@@ -412,24 +422,21 @@ async function main() {
           slow,
           strip: false,
         });
-        await load({
-          server: clean,
-          name: `none ${slow ? "slow" : "fast"} 300px ${theme}`,
-          theme,
-          width: 300,
-          slow,
-          strip: false,
-        });
       }
       for (const width of WIDTHS) {
-        await load({
-          server: ignoring,
-          name: `ignored unknown slow ${width}px ${theme}`,
-          theme,
-          width,
-          slow: true,
-          strip: true,
-        });
+        for (const [server, folder] of [
+          [ignoring, "ignored"],
+          [clean, "none"],
+        ]) {
+          await load({
+            server,
+            name: `${folder} unknown slow ${width}px ${theme}`,
+            theme,
+            width,
+            slow: true,
+            strip: true,
+          });
+        }
       }
       await load({
         server: ignoring,
@@ -439,14 +446,6 @@ async function main() {
         slow: false,
         strip: true,
         early: true,
-      });
-      await load({
-        server: clean,
-        name: `none unknown slow 300px ${theme}`,
-        theme,
-        width: 300,
-        slow: true,
-        strip: true,
       });
     }
   } finally {
