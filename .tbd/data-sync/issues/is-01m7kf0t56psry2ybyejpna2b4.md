@@ -5,12 +5,12 @@ title: "Chrome flake: tests/test_nav_reveal_chrome.py:217 'a long folder's fifth
 kind: bug
 status: open
 priority: 1
-version: 3
+version: 4
 labels: []
 dependencies: []
 parent_id: is-01m7hgpc9550w78kmwqsvv64xh
 created_at: 2026-11-17T00:37:57.540Z
-updated_at: 2026-11-17T07:27:18.061Z
+updated_at: 2026-11-17T21:32:46.137Z
 ---
 Seen on #453 at aeb95e38f (run 43982860238, test (3.14t)); docs-only change on main, did not recur at the next head. Reproduce under load (6x CPU throttle loop, as mb-alff and mb-nvo0 did) and fix the cause.
 
@@ -19,3 +19,5 @@ Seen on #453 at aeb95e38f (run 43982860238, test (3.14t)); docs-only change on m
 2026-11-17: seen again on #490 at 8957c4d92 (run 44014847095, test (3.12)), same line 217 and inView:false (at [1251,1275,108,674,0]). The coordinator reran the failed jobs once per the known-flake rule. Second sighting, so raising to P1 for the fix pass.
 
 2026-11-17 coordinator: not a 0.13 release gate (PR #497 lists it as a non-blocking follow-up); fix it in the fast-CI plan's Phase 3.
+
+2026-11-17 (later): seen a third time on #516 at 10102ef6b (run 44175789894, test (3.13)), same case, row at y=1256 in a 674 px pane, inView false; #516 does not touch reveal or scrolling. Failed job rerun once per the known-flake rule. Also hit #504's stack-integration (test-chrome SHARD=2/4) earlier today.

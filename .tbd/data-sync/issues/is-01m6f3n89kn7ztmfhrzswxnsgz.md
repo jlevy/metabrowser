@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: open
 priority: 1
-version: 110
+version: 112
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -89,10 +89,12 @@ child_order_hints:
   - is-01m734yq0xac22pqms8am9sy50
   - is-01m6g1zdwbrnjm5cfvg0dyqqyf
   - is-01m758dtc7p78btkjrhc1xfkqv
+  - is-01m7nr76frgc8gdmbj2j53zknw
+  - is-01m7nr7j5vjsjbxwa2trt2wecq
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-14T18:48:18.401Z
+updated_at: 2026-11-17T21:57:24.794Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. The delivered layers, native stacks #302 and #339, are merged and shipped in 0.12.0. The open children hold the rest: large-PR performance (mb-9n12, mb-4ifm, mb-jwfx, mb-ivvw), the folder comparison re-run (mb-8pyc), the owner's walkthrough (mb-i9ll), and the paused working-tree workflow design (mb-itzy).
