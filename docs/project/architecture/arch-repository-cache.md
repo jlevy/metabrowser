@@ -96,7 +96,7 @@ lock, and refuses only new ones.
     store.yml
     state.yml
     github-pull-manifests/      provider records
-    github-pull-manifest-epochs/
+    github-pull-manifest-<slot>.epoch
 ```
 
 `cache/paths.py` spells every record and directory location and `cache/locks.py` every
@@ -182,9 +182,10 @@ record or the new.
 ### Provider Records
 
 The files under `sources/<slug>/pulls/`, a store’s `github-pull-manifests/`, and its
-`github-pull-manifest-epochs/` belong to the GitHub plugin and are not SoftSchema
-contracts. Nothing in the cache enumerates them, so the layout, probe, sweep, and
-`/api/cache/` projections leave them alone.
+`github-pull-manifest-<slot>.epoch` files belong to the GitHub plugin and are not
+SoftSchema contracts.
+Nothing in the cache enumerates them, so the layout, probe, sweep, and `/api/cache/`
+projections leave them alone.
 [GitHub Pull Requests](arch-github-pull-requests.md#files-beside-a-source) lists them
 and how each is written.
 

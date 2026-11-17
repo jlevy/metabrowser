@@ -8,9 +8,10 @@ All notable changes to Metabrowser are documented here.
   repository’s Diff summaries no longer replace each other’s. The bank held sixteen
   direct-mapped slots, where 19 open pull requests kept about 11 manifests, and each of
   the rest was listed by Git again (about 77 ms) whenever it was opened.
-  Manifests are now `github-pull-manifests/pull-<n>.json`, with their epochs in
-  `github-pull-manifest-epochs/`. The sixteen slot files and epochs v0.12 kept are no
-  longer read; each is at most one manifest, and they go with the store.
+  Manifests are now `github-pull-manifests/pull-<n>.json`; their epochs are still
+  direct-mapped by comparison, so detecting a corrupt comparison invalidates it for
+  every pull request that keeps it.
+  The sixteen slot files v0.12 kept are no longer read; each is at most one manifest.
 
 - A pull request’s Diff summary and Changes are read from the manifest kept beside the
   store after an upgrade, and after any edit of the source of an editable install.

@@ -3,9 +3,12 @@
 The record's immutable endpoints are prepared after fetch, before its record is
 published. A fresh server reads the manifest instead of running the costly raw
 listing. Resolution still verifies that this store can answer for both commits.
-Each pull request keeps the manifest of the last comparison read for it, so the bank
-grows as its records do, with no index, enumeration or LRU lock: another comparison of
-the same pull request replaces it and can only cause a later cache miss.
+Each pull request keeps the manifest of the last comparison read for it, with no index,
+enumeration or LRU lock: another comparison of the same pull request replaces it and can
+only cause a later cache miss. So the bank holds one manifest for each pull request ever
+prepared in the store; clearing the cache leaves it, as it leaves the store. Only a
+cached record's comparison is read, so the count is the records', each read is bounded
+by `MAX_MANIFEST_RECORD_BYTES`, and the measurement below sizes the whole.
 
 Measured 2026-11-17 on a reader's cache: 90 manifests in 9 stores, a median of 10.7 KB,
 90th percentile 44 KB, and largest 68 KB, about 500 bytes a changed file; beside them,
@@ -63,6 +66,10 @@ log = logging.getLogger(__name__)
 # Cache admission uses the existing PR-record read bound; a larger result is still served
 # in full.
 MAX_MANIFEST_RECORD_BYTES: Final = MAX_PULL_RECORD_BYTES
+# Epochs, direct-mapped by comparison. An epoch advances only when a comparison is found
+# corrupt, so a collision costs one more listing after that, and these few files at the
+# store's root are the ones v0.12 kept, which hold only random values.
+EPOCH_SLOTS: Final = 16
 _FLIGHTS: WeakKeyDictionary[
     asyncio.AbstractEventLoop, LoadingCache[tuple[str, ...], ResolvedManifest]
 ] = WeakKeyDictionary()
@@ -109,38 +116,41 @@ def _directory(published: PublishedSource) -> str:
     return f"{store_directory(published.store_key)}/github-pull-manifests"
 
 
-def _epochs(published: PublishedSource) -> str:
-    """Beside the bank, not in it, so an epoch moves even when the bank cannot be written."""
-    return f"{store_directory(published.store_key)}/github-pull-manifest-epochs"
+def _epoch_slot(key: tuple[str, ...]) -> int:
+    digest = hashlib.sha256("\0".join(_identity(key)).encode()).digest()
+    return int.from_bytes(digest[:8]) % EPOCH_SLOTS
 
 
-def _epoch_path(published: PublishedSource, number: int) -> str:
-    return f"{_epochs(published)}/pull-{number}.epoch"
+def _epoch_path(published: PublishedSource, key: tuple[str, ...]) -> str:
+    """Beside the bank, not in it, so an epoch moves even when the bank cannot be written;
+    and the comparison's, not the pull request's, so invalidating a comparison reaches
+    every pull request that keeps it."""
+    slot = _epoch_slot(key)
+    return f"{store_directory(published.store_key)}/github-pull-manifest-{slot:02d}.epoch"
 
 
-def _epoch(published: PublishedSource, number: int) -> str:
+def _epoch(published: PublishedSource, key: tuple[str, ...]) -> str:
     data = read_bytes_bounded(
-        published.home, _epoch_path(published, number), max_bytes=64, shared="refuse"
+        published.home, _epoch_path(published, key), max_bytes=64, shared="refuse"
     )
     if len(data) != 64 or any(byte not in b"0123456789abcdef" for byte in data):
         raise RecordError("the disposable manifest epoch is invalid", published.home)
     return data.decode("ascii")
 
 
-def _current_epoch(published: PublishedSource, number: int) -> str:
+def _current_epoch(published: PublishedSource, key: tuple[str, ...]) -> str:
     """Read or exclusively establish an epoch before any manifest computation."""
     try:
-        return _epoch(published, number)
+        return _epoch(published, key)
     except FileNotFoundError:
-        ensure_private_directory(published.home, _epochs(published))
         with contextlib.suppress(FileExistsError):
             write_private_file_atomic(
                 published.home,
-                _epoch_path(published, number),
+                _epoch_path(published, key),
                 secrets.token_hex(32).encode("ascii"),
                 replace=False,
             )
-        return _epoch(published, number)
+        return _epoch(published, key)
 
 
 def _path(published: PublishedSource, number: int) -> str:
@@ -163,7 +173,7 @@ def _read(
         if not private_directory_is_writable(published.home, _directory(published)):
             return None
         if epoch is None:
-            epoch = _epoch(published, number)
+            epoch = _epoch(published, key)
         data = read_bytes_bounded(
             published.home,
             _path(published, number),
@@ -211,17 +221,25 @@ def _write(
     write_private_file_atomic(published.home, _path(published, number), data)
 
 
-def invalidate_pull_manifest(published: PublishedSource, number: int) -> None:
-    """Invalidate the manifest pull request *number* keeps, after a detected corrupt
-    comparison.
+def invalidate_pull_manifest(
+    published: PublishedSource, number: int, pair: tuple[str, str]
+) -> None:
+    """Invalidate the manifests of *pair*, a comparison detected corrupt that pull request
+    *number* read.
 
     The private atomic writer publishes an invalid cache marker instead of deleting
     through an unchecked path. A later read recomputes it. Refusals are reported by the
-    caller; a failed invalidation must not be presented as successful repair. An epoch
-    beside the bank invalidates this pull request's manifest and its older in-flight
-    computations, even when the bank itself cannot be written. Epoch publication must
-    succeed.
+    caller; a failed invalidation must not be presented as successful repair. The
+    comparison's epoch beside the bank invalidates every pull request's manifest of it,
+    and older in-flight computations, even when the bank itself cannot be written. Epoch
+    publication must succeed.
     """
+    location = GitLocation.revision(
+        RepositoryStoreTarget(published.git_dir, published.object_format), pair[1]
+    )
+    intent = {"left": pair[0], "right": pair[1], "base_policy": "merge_base"}
+    key = comparison_cache_key(location, intent, store_tag(published.git_dir))
+    assert key is not None
     # Invalidation must not depend on whether the current reader can adopt or even
     # inspect the manifest, whichever comparison it holds: it is disposable.
     slot_error: OSError | PrivateStorageError | None = None
@@ -233,9 +251,8 @@ def invalidate_pull_manifest(published: PublishedSource, number: int) -> None:
         # Advance even when the manifest was cleared: a computation already in flight can
         # publish afterward. Its captured old epoch must remain a miss. This also
         # invalidates an untouched manifest when only the bank is read-only.
-        ensure_private_directory(published.home, _epochs(published))
         write_private_file_atomic(
-            published.home, _epoch_path(published, number), secrets.token_hex(32).encode("ascii")
+            published.home, _epoch_path(published, key), secrets.token_hex(32).encode("ascii")
         )
     except (OSError, PrivateStorageError) as error:
         if slot_error is not None:
@@ -256,7 +273,7 @@ async def load_pull_manifest(
     ready result in the comparison's memory cache.
     """
     try:
-        epoch = await asyncio.to_thread(_current_epoch, published, number)
+        epoch = await asyncio.to_thread(_current_epoch, published, key)
     except (OSError, RecordError, PrivateStorageError):
         epoch = None
     loop = asyncio.get_running_loop()

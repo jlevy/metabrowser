@@ -356,7 +356,7 @@ async def pull_comparison_handler(request: Request) -> Response:
         for failure in observed_object_failures.pending(target, (left, right))
     ):
         try:
-            await asyncio.to_thread(invalidate_pull_manifest, published, number)
+            await asyncio.to_thread(invalidate_pull_manifest, published, number, (left, right))
         except (OSError, PrivateStorageError):
             return JSONResponse(
                 {

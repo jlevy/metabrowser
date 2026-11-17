@@ -35,6 +35,25 @@ def _fresh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(diff, "_COMPARISONS", ComparisonCache())
 
 
+def _key(stand: _Stand, comparison: Comparison) -> tuple[str, ...]:
+    location = GitLocation.revision(
+        RepositoryStoreTarget(stand.published.git_dir, stand.published.object_format),
+        comparison.head,
+    )
+    intent = {"left": comparison.base, "right": comparison.head, "base_policy": "merge_base"}
+    key = diff.comparison_cache_key(location, intent, store_tag(stand.published.git_dir))
+    assert key is not None
+    return key
+
+
+def _epoch_file(stand: _Stand, number: int) -> Path:
+    record = stand.record(number)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    return stand.published.home / pull_manifest._epoch_path(
+        stand.published, _key(stand, record.comparison)
+    )
+
+
 def test_comparison_without_a_github_repository_is_not_github(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     with TestClient(server.app) as client:
@@ -361,10 +380,7 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
     slot = next(directory.glob("*.json"))
     damaged = slot.read_bytes()
     directory.chmod(bank_mode)
-    epochs = stand.published.home / pull_manifest._epochs(stand.published)
     if deny_parent:
-        # The store, and the epochs beside the bank, which a read-only store does not stop.
-        epochs.chmod(0o500)
         directory.parent.chmod(0o500)
     try:
         if bank_mode == 0o500:
@@ -382,7 +398,7 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
         else:
             assert "could not be discarded" not in refused.json()["message"]
         if bank_mode != 0o700 and not deny_parent:
-            epoch = stand.published.home / pull_manifest._epoch_path(stand.published, 7)
+            epoch = _epoch_file(stand, 7)
             assert len(epoch.read_bytes()) == 64
         # Restore genuine backing data, then discard process-local failure/cache state.
         if saved is None:
@@ -398,7 +414,6 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
         if bank_mode == 0o500:
             assert slot.read_bytes() == damaged, "the read-only bank was not modified"
         directory.parent.chmod(0o700)
-        epochs.chmod(0o700)
         directory.chmod(0o700)
         if deny_parent:
             # Neither invalidation could persist; the refusal requires explicit clearing.
@@ -421,7 +436,6 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
         assert stand.calls() == [], "neither read-only serving nor repair reads may fetch"
     finally:
         directory.parent.chmod(0o700)
-        epochs.chmod(0o700)
         directory.chmod(0o700)
 
 
@@ -432,6 +446,7 @@ def test_manifest_computation_cannot_relabel_itself_after_invalidation(
     stand, client = pinned_pull
     record = stand.record(7)
     assert isinstance(record, PullRecord) and record.comparison is not None
+    pair = (record.comparison.base, record.comparison.head)
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     directory = stand.published.home / pull_manifest._directory(stand.published)
     slot = next(directory.glob("*.json"))
@@ -447,7 +462,7 @@ def test_manifest_computation_cannot_relabel_itself_after_invalidation(
         if calls == 1:
             directory.chmod(bank_mode)
             try:
-                pull_manifest.invalidate_pull_manifest(stand.published, 7)
+                pull_manifest.invalidate_pull_manifest(stand.published, 7, pair)
             finally:
                 directory.chmod(0o700)
         return answer
@@ -474,7 +489,7 @@ def test_unusable_epoch_bypasses_persistence_without_changing_private_paths(
     stand, client = pinned_pull
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     expected = client.get(route).json()
-    path = stand.published.home / pull_manifest._epoch_path(stand.published, 7)
+    path = _epoch_file(stand, 7)
     victim = stand.tmp_path / "untouched"
     victim.write_bytes(b"private witness")
     path.unlink()
@@ -512,13 +527,24 @@ def test_invalidation_preserves_other_pull_requests_and_their_disk_hits(
     other = stand.refresh(8)
     assert isinstance(first, PullRecord) and first.comparison is not None
     assert isinstance(other, PullRecord) and other.comparison is not None
+    first_key, other_key = _key(stand, first.comparison), _key(stand, other.comparison)
+    # Epoch collisions are legitimate spurious invalidations. Choose a namespace in which
+    # these two comparisons' epochs differ, so this test exercises isolation instead.
+    for namespace in range(64):
+        monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", f"epoch-isolation-{namespace}")
+        if pull_manifest._epoch_slot(first_key) != pull_manifest._epoch_slot(other_key):
+            break
+    else:
+        raise AssertionError("could not separate the fixture comparisons' epochs")
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     _fresh(monkeypatch)
     expected = client.get(route).json()
     asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, other))
-    epoch = stand.published.home / pull_manifest._epoch_path(stand.published, first.number)
+    epoch = stand.published.home / pull_manifest._epoch_path(stand.published, first_key)
     old = epoch.read_bytes()
-    pull_manifest.invalidate_pull_manifest(stand.published, other.number)
+    pull_manifest.invalidate_pull_manifest(
+        stand.published, other.number, (other.comparison.base, other.comparison.head)
+    )
     assert epoch.read_bytes() == old
     _fresh(monkeypatch)
 
@@ -527,6 +553,68 @@ def test_invalidation_preserves_other_pull_requests_and_their_disk_hits(
 
     monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
     assert client.get(route).json() == expected
+
+
+def test_invalidating_a_comparison_reaches_every_pull_request_that_keeps_it(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #533: a pull request reopened from the same branch keeps the same pair.
+
+    Both keep a manifest listed while an object was forged. Reading 7 finds the object
+    corrupt and invalidates the comparison; once the object is repaired, 12 lists it
+    again rather than replaying the forged statistics.
+    """
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+
+    stand, client = pinned_pull
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    expected = client.get(route).json()
+    record = stand.record(7)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    twin = record.model_copy(update={"number": 12})
+    store = stand.published.git_dir
+    oid = git(store, "rev-parse", f"{record.comparison.head}:src/app.txt").decode().strip()
+    loose = store / "objects" / oid[:2] / oid[2:]
+    loose.parent.mkdir(exist_ok=True)
+    saved = loose.read_bytes() if loose.exists() else None
+    borrowed = stand.tmp_path / "empty-borrowed-objects"
+    borrowed.mkdir()
+    (store / "objects/info/alternates").write_text(str(borrowed) + "\n")
+    forged = b"forged line\n" * 23
+    loose.unlink(missing_ok=True)
+    loose.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    directory = stand.published.home / pull_manifest._directory(stand.published)
+    for path in directory.glob("*.json"):
+        path.unlink()
+    asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, record))
+    asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, twin))
+    assert sorted(path.name for path in directory.glob("*.json")) == [
+        "pull-12.json",
+        "pull-7.json",
+    ]
+    _fresh(monkeypatch)
+    refused = client.get(route)
+    assert refused.status_code == 409 and refused.json()["error"] == "object_corrupt"
+    if saved is None:
+        loose.unlink()
+    else:
+        loose.write_bytes(saved)
+    observed_object_failures.forget_store(repository_store_target(git_dir=store))
+    _fresh(monkeypatch)
+    comparison = record.comparison
+    answer = asyncio.run(
+        pull_manifest.shared_pull_manifest(
+            stand.published, 12, comparison.base, comparison.head, retain_memory=False
+        )
+    )
+    genuine = [
+        (change["id"], change.get("additions"), change.get("deletions"))
+        for change in expected["manifest"]["files"]
+    ]
+    assert [
+        (change.id, change.additions, change.deletions) for change in answer.manifest.files
+    ] == genuine, "12 replayed the forged statistics"
 
 
 def test_preparation_and_a_reader_share_one_manifest_computation(

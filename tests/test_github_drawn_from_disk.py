@@ -708,9 +708,12 @@ def test_every_pull_requests_diff_summary_answers_from_disk(
             ]
             for number in numbers
         }
-    assert len(set(routes.values())) == len(numbers), routes
+    pairs = {route.partition("&left=")[2].partition("&store=")[0] for route in routes.values()}
+    assert len(pairs) == len(numbers), routes
     spawns = _offline(monkeypatch, tmp_path)
     for number, route in routes.items():
+        # A fresh process for each, so no comparison answers from another's memory.
+        monkeypatch.setattr(diff_sidekick, "_COMPARISONS", ComparisonCache())
         ran = run_offline(spawns, ["--api", route])
         assert (ran.result.exit_code, ran.network, ran.gh, ran.sockets) == (0, [], [], []), number
         assert answer(ran.result)["manifest"]["files"], number

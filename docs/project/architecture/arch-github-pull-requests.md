@@ -70,8 +70,8 @@ Every file is disposable and carries its own schema version.
   together under the same lock, and `pull_catalog.py`’s docstring says when a catalog
   this release cannot use is replaced.
 - **The prepared manifests** beside a store are written atomically without a lock: each
-  key has one of a fixed set of slots, so a collision replaces a slot and costs only a
-  later miss (`pull_manifest.py`).
+  pull request has one, so a comparison of it at another pair replaces it and costs only
+  a later miss (`pull_manifest.py`).
 
 | File | Holds | Module |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ Every file is disposable and carries its own schema version.
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
-| `repository-stores/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-epochs/pull-<n>.epoch` | Each pull request’s prepared comparison manifest, and its epoch | `pull_manifest.py` |
+| `repository-stores/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
 `cache/paths.py` spells the source-side names.
 
@@ -130,12 +130,14 @@ replaces no other’s. Each is a File Diff Format document without patches and t
 identity: the document’s schema, the listing (`MANIFEST_LISTING` in
 `diff/adapters/git.py`), how the store’s Git is run, the store, both endpoints, and the
 base policy, so a comparison of the pull request at another pair replaces it and never
-answers for it. The bank grows as the records do, by about a third of a record each; the
-measurement is in `pull_manifest.py`. The identity names no build, so a manifest
-outlives an upgrade and an edit of the source.
+answers for it. The bank holds one for each pull request ever prepared, about a third of
+a record each, and clearing the cache leaves it; the measurement is in
+`pull_manifest.py`. The identity names no build, so a manifest outlives an upgrade and
+an edit of the source.
 A change to the listing’s options or to the store read’s isolation moves it, and so does
 raising `MANIFEST_READING`, which a change to how a listing is read must do (a test pins
-it). A pull request’s epoch makes old data miss after detected corruption even when its
+it). An epoch, direct-mapped by comparison (`EPOCH_SLOTS`), makes old data miss after
+detected corruption for every pull request that keeps that comparison, even when its
 manifest cannot be rewritten.
 A read-only bank still serves recomputed comparisons.
 
