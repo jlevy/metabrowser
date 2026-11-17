@@ -86,9 +86,10 @@ function isProjection(value) {
 }
 
 // A path in the Git path codec's wire form, and a `/view/` address of one with, at most,
-// a fragment into the document's own heading anchors.
+// a fragment, which the server writes into the file's own heading anchors and spells with
+// percent escapes.
 const GIT_PATH = /^g1-[\w-]+(?:\/g1-[\w-]+)*$/;
-const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#user-content-[\w%.~-]*)?$/;
+const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#[\w%.~-]+)?$/;
 
 /**
  * Which addresses in a rendered block open something of this comparison, as the server

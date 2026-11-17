@@ -245,7 +245,7 @@ async function main() {
   assert.equal(isTarget(image.replace("g1-ZG9jcw", ".."), true), false);
   assert.equal(isTarget(link, false), true);
   assert.equal(isTarget(`${link}#user-content-setup`, false), true);
-  assert.equal(isTarget(`${link}#elsewhere`, false), false, "a fragment outside the anchors");
+  assert.equal(isTarget(`${link}#a"b`, false), false, "a fragment the server never spells");
   assert.equal(isTarget(`${link}?plain=1`, false), false);
   assert.equal(isTarget(link, true), false, "a link's address is no image");
   assert.equal(isTarget("/view/README.md", false), false, "not a pin's address");
