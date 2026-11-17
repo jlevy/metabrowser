@@ -424,8 +424,47 @@ def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class FilesFound:
+    """What one envelope is built from, as :func:`read_files` read it from the cache.
+
+    ``facts`` are read only with a list, whose state they judge.
+    """
+
+    stamp: PullRefreshStamp | None
+    listed: PullFileList | RecordAbsence
+    rows: list[FileRowWire]
+    facts: _Facts | None
+
+
+def read_files(view: FilesView) -> FilesFound | None:
+    """What *view*'s envelope is built from, or ``None`` with no repository. Blocking and
+    bounded: the stamp, the list through its parse cache, and the facts."""
+
+    repository = view.repository
+    if repository is None:
+        return None
+    home, slug = repository.home, repository.slug
+    stamp = read_files_refresh(home, slug, view.number)
+    listed, rows = _cached_files(home, slug, view.number)
+    facts = _facts(home, slug, view.number) if isinstance(listed, PullFileList) else None
+    return FilesFound(stamp, listed, rows, facts)
+
+
 def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelope:
     """The envelope for one window of a pull request's files. Blocking and bounded."""
+
+    return files_envelope(view, read_files(view), window)
+
+
+def files_envelope(
+    view: FilesView, found: FilesFound | None, window: FilesWindow
+) -> PullFilesEnvelope:
+    """The envelope for one window of what *found* holds, as *view* is. Reads no file.
+
+    ``refreshing`` is *view*'s, which may be newer than *found*: the refresh route reads
+    what a job finds before it starts the job.
+    """
 
     empty = PullFilesEnvelope(
         state="absent",
@@ -453,12 +492,10 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         rows=[],
     )
     repository = view.repository
-    if repository is None:
+    if repository is None or found is None:
         return empty
-    home, slug = repository.home, repository.slug
-    stamp = read_files_refresh(home, slug, view.number)
-    listed, rows = _cached_files(home, slug, view.number)
-    last_refresh = _last_refresh(stamp)
+    listed = found.listed
+    last_refresh = _last_refresh(found.stamp)
     if not isinstance(listed, PullFileList):
         return {
             **empty,
@@ -467,9 +504,10 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
             "source": repository.source,
             "last_refresh": last_refresh,
         }
+    assert found.facts is not None
     return {
         **empty,
-        "state": _state(listed, stamp, _facts(home, slug, view.number)),
+        "state": _state(listed, found.stamp, found.facts),
         "reason": None,
         "source": listed.source,
         "listed_from": listed.listed_from,
@@ -486,7 +524,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         "complete": listed.complete,
         "capped": listed.capped,
         "truncated": listed.truncated,
-        "rows": rows[window.offset : window.offset + window.limit],
+        "rows": found.rows[window.offset : window.offset + window.limit],
     }
 
 
@@ -664,6 +702,7 @@ __all__ = [
     "NUMBER_REQUIRED",
     "PULL_FILES_ROUTE",
     "FileRowWire",
+    "FilesFound",
     "FilesRefreshRequest",
     "FilesRefreshStart",
     "FilesRequestError",
@@ -673,6 +712,7 @@ __all__ = [
     "PullFilesEnvelope",
     "display_path",
     "envelope_etag",
+    "files_envelope",
     "files_file_stamp",
     "files_job_key",
     "files_refresh_request",
@@ -682,6 +722,7 @@ __all__ = [
     "list_file_stamp",
     "list_settled",
     "pull_files_envelope",
+    "read_files",
     "start_files_refresh",
     "status_route",
 ]

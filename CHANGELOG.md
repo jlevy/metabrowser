@@ -33,6 +33,18 @@ All notable changes to Metabrowser are documented here.
   the Python provider’s log line, so any provider is timed the same way, and the
   benchmark’s cold-scan row is now “cold scan, discovery (ms)”.
 
+- A cached record read at the moment a refresh rewrites it is no longer taken as
+  missing. The storage checks refuse a file that is replaced while they check it; a read
+  of a record now opens the rewritten one and checks it again, so it reads the old
+  record or the new. Before, a pull request’s changed files read at that moment could say
+  that no refresh had ended and that the list was current, though the last refresh had
+  ended `account_changed` and the list was stale, and the list itself could read as
+  unreadable. The answer to a request that starts a refresh of the changed files
+  (`/api/plugin/github/pull-files-refresh`) or of the list of pull requests
+  (`/api/plugin/github/pulls-refresh`) now shows the list as that refresh found it; it
+  could show the refresh’s own outcome when the refresh ended at once, as one with no
+  `gh` does.
+
 - On Python 3.12, `metab --api` asking the diff plugin for a Git comparison could,
   rarely, hang without answering when Git failed to list it.
   The check for a textconv driver that runs beside the listing was left running, and
