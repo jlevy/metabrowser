@@ -5,13 +5,13 @@ title: "CI speed 2.5: verify Phase 2 after the merge: 20 pull request runs, a re
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
 parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 created_at: 2026-11-17T07:17:00.392Z
-updated_at: 2026-11-17T07:17:00.392Z
+updated_at: 2026-11-17T09:10:54.106Z
 ---
 After-merge acceptance of Fast CI Phase 2 (jlevy/metabrowser#504, branch claude/ci-split-jobs), from the accept criteria of mb-oz36, mb-r283, and mb-stg2 that need runs only a merged workflow can produce. plan-2026-11-16-fast-ci.md, Testing Strategy.
 
@@ -22,3 +22,7 @@ After-merge acceptance of Fast CI Phase 2 (jlevy/metabrowser#504, branch claude/
 - stack-integration: a stack behind main (needed; seen on #504's first run), one level with it (identical), and one that conflicts (conflict), each with its plan summary.
 - Nightly soak: one workflow_dispatch run of nightly.yml (it needs the file on main): 5 serial jobs and 20 Chrome shard jobs run and report, and the time-limits job reads ci.yml's runs since the last change to ci.yml.
 - Replace each new job's estimated timeout-minutes (plan, unit, chrome, ci-ok, nightly time-limits) with 1.5 times its measured 90th percentile once the runs exist.
+
+## Notes
+
+2026-11-17: after reviews A and B of #504, the stack cases are four: contained (a formal stack), and needed, identical, and conflict (an informal chain). Review A7 notes that a formal stack that conflicts with main may get no merge ref and so no pull_request run; check which. The unit, chrome, and stack-integration limits are now 7, from the slowest part's 90th percentile over runs 44037230262 to 44046843606.

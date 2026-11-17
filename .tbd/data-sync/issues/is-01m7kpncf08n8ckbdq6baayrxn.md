@@ -5,7 +5,7 @@ title: "CI speed 2.3: run stack-integration only when merging main changes the t
 kind: task
 status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 hold: null
 hold_until: null
 created_at: 2026-11-17T02:51:31.679Z
-updated_at: 2026-11-17T07:52:06.797Z
+updated_at: 2026-11-17T09:10:52.827Z
 started_at: 2026-11-17T07:08:53.533Z
 closed_at: 2026-11-17T07:52:06.796Z
 close_reason: "Implemented in jlevy/metabrowser#504: ci_plan.sh compares git merge-tree of head and main with the tested merge commit's tree (identical, needed, conflict), with tests on real repositories for all three; stack-integration runs as eight split jobs on the exact main commit only when needed (run 44037230262: needed, 7 of 8 green, the eighth the shard-order failure since fixed); a conflict fails ci-ok with today's message. Finding: once a PR is in a formal GitHub stack, its merge ref already merges main (run 44038762653 tested 'Merge 6dfc1ae5 into 20686e6c' = 'Merge de96415a into e442ed10'), so the plan reports identical. Q4 asked again in the PR. Conflict and level-with-main cases in CI are in mb-ohsk."
@@ -28,3 +28,5 @@ Phase 2 of plan-2026-11-16-fast-ci.md, Stacks; Q4 is open, so build it as the pl
 ## Notes
 
 2026-11-16: plan Q4 (the plan job's summary as the record of a skipped integration) was not asked of the owner; build it as the plan proposes and ask again in the pull request.
+
+2026-11-17, review A7 of #504: the plan job reports integration=contained, and runs no stack-integration job, when the tested merge commit already contains main's head (a formal stack's does); the tree comparison (identical, needed, conflict) is kept for an informal chain. ci-ok prints why it accepted the skip (A8), and Q4 is decided yes by the coordinator. Landed in bc1aaf4f0.

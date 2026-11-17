@@ -5,7 +5,7 @@ title: "CI speed 2.1: split ci.yml into unit, goldens, and chrome jobs, with no 
 kind: task
 status: closed
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@vm
 labels: []
@@ -20,7 +20,7 @@ parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 hold: null
 hold_until: null
 created_at: 2026-11-17T02:51:30.714Z
-updated_at: 2026-11-17T07:52:06.081Z
+updated_at: 2026-11-17T09:10:51.486Z
 started_at: 2026-11-17T06:43:46.184Z
 closed_at: 2026-11-17T07:52:06.081Z
 close_reason: "Implemented in jlevy/metabrowser#504 (branch claude/ci-split-jobs, stacked on #499 as stack #505): ci.yml split into plan, unit (two whole-file shards per interpreter), goldens and serial, chrome (plan's chrome-pythons), admitted-git, stack-integration, and ci-ok; no fail-fast, superseded PR runs cancelled and main never, measured time limits; ci_plan.sh and ci_verdict.sh with tests for every state-rule case; the merge procedure in AGENTS.md (Git); the actions: read grant in SUPPLY-CHAIN-SECURITY.md. Run 44038762653 green. After-merge acceptance (20 PR runs, red main, cancellation, deliberate failing shard) is mb-ohsk."
@@ -64,3 +64,5 @@ Accept:
 2026-11-17: owner approved the workflow changes (Q1, 2026-11-16), so the workflow-file OK in this title is given.
 
 2026-11-17: Q3 was narrowed after review A of #496: only the tests that use chrome_profile (the Chrome tier) run on 3.13 alone for a pull request; the serial tier runs on all four interpreters. Q6 is decided: a red main widens a pull request's run to main's whole matrix, and the merging agent merges by main's state (A Red main); after review B the procedure waits for main's newest run and requires a run that tested main's red head.
+
+2026-11-17, coordinator's decision on review A3 of #504: the plan job reads main's state, and applies the red-main rule (the wide Chrome matrix, tests-red, and ci-ok's verdict line), for a pull request to main and for any other pull request whose tested merge commit contains main's head, whatever its base. A formal GitHub stack's merge ref merges the head into its base merged with main, so its layers qualify honestly; an informal chain's does not contain main, is not read, and qualifies once its branch is updated from main. AGENTS.md (Git) says so, reads the verdict line from the ci-ok job's own log (review B1), and says the flake rule means a failed main run (A4). Landed in bc1aaf4f0.
