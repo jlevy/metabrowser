@@ -110,6 +110,7 @@ from tests.github_pull_fixture import (
     scenario,
 )
 from tests.golden_harness import read_recording, settle
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -119,35 +120,6 @@ pytestmark = [
 ]
 
 SOURCE = GitSource(transport="https", form="url", normalized=CANONICAL)
-
-# How often a step held by :func:`held_until` looks at its gate: what a release adds to
-# the step's latency, against the 0.3 to 0.4 s a selected-core scenario took on 3.14t
-# (2026-11-17).
-HELD_POLL_S: Final = 0.005
-
-
-async def held_until(gate: threading.Event, timeout_s: float | None = None) -> bool:
-    """Hold a stubbed step on its event loop until another thread sets *gate*.
-
-    Answers as ``gate.wait(timeout_s)`` does, but keeps no worker thread, as the ``gh``
-    read a stub stands in for keeps none: it awaits gh's pipes on the loop. A stub that
-    awaits ``asyncio.to_thread(gate.wait)`` keeps one of the server's default-executor
-    threads for the whole hold, and the server's own next step can then find no thread.
-    CPython's ``ThreadPoolExecutor`` can count an idle thread that is not there: a job
-    submitted while a worker has found its queue empty, but not yet counted itself idle,
-    starts a thread; the worker takes the job, and the new thread counts itself idle too.
-    The next job to spend that count starts no thread, so with every live thread held it
-    waits behind them, for a gate the test opens only once the request that submitted it
-    has answered (mb-xorh: a selected core's ``POST pull-refresh`` on 3.14t, CI run
-    44046980214).
-    """
-
-    deadline = None if timeout_s is None else time.monotonic() + timeout_s
-    while not gate.is_set():
-        if deadline is not None and time.monotonic() >= deadline:
-            return False
-        await asyncio.sleep(HELD_POLL_S)
-    return True
 
 
 @dataclass
@@ -628,7 +600,7 @@ def pinned_pull_on_one_worker(
 
     On it, a step that keeps a worker thread while it waits for work that needs one waits
     forever, which on the production pool only CPython's miscount makes possible (see
-    :func:`held_until`).
+    ``tests/loop_gate.py``).
     """
 
     from metabrowser import events_route
@@ -1772,13 +1744,13 @@ def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_no
 
     async def waiting(served: ServedPull) -> None:
         ran.append(served.number)
-        await asyncio.to_thread(release.acquire, True, 30)
+        await held_until(release, 30)
 
     original = StoreMirror.refresh
 
     async def recording(self: StoreMirror) -> Any:
         ran.append("mirror")
-        await asyncio.to_thread(release.acquire, True, 30)
+        await held_until(release, 30)
         return await original(self)
 
     monkeypatch.setattr(ServedPull, "refresh", waiting)
@@ -2707,7 +2679,7 @@ def test_a_selected_core_wait_and_its_settlement_run_on_one_worker_thread(
     The hold is a read in flight, as GitHub's slow answer is, and nothing in the refresh,
     its ``wait_core`` request, or the reads that settle it may keep a worker thread while
     it waits for work that needs one. The production pool starts a thread for each job it
-    has none idle for, so only CPython's miscount (:func:`held_until`) brings it to the
+    has none idle for, so only CPython's miscount (``tests/loop_gate.py``) brings it to the
     state a one-thread pool is always in: every live thread busy, the next job queued.
     A hold kept in a worker thread then queues the request's own next step behind it, as
     ``asyncio.to_thread(release.wait)`` did in CI run 44046980214. The snapshot scenario

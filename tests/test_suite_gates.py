@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
 import sys
+import textwrap
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from tests.admitted_git import required_admitted_git
+from tests.loop_gate import held_until
 from tests.required_tools import ALLOW_MISSING_TOOLS_ENV, require_git, require_node
 from tests.suite_gates import (
     ADMITTED_GIT_SKIP,
@@ -130,6 +133,117 @@ def test_no_inner_bound_reaches_the_suites_timeout() -> None:
         if float(value) > MAX_INNER_BOUND_S
     )
     assert offenders == []
+
+
+# ── A gate held in a worker thread ─────────────────────────────────────────────
+
+# What a test's gate blocks its waiter in: an Event's or a Condition's ``wait``, a Lock's
+# or a Semaphore's ``acquire``.
+GATE_METHODS = frozenset({"wait", "acquire"})
+# Where each way of handing a callable to a worker thread takes it, by position.
+HANDED_TO_A_WORKER = {"to_thread": 0, "run_in_executor": 1}
+HELD_IN_A_WORKER = (
+    "keeps a worker thread until the test opens its gate, and a step queued behind it can "
+    "then wait for that gate until the bound (tests/loop_gate.py says how). Hold the step "
+    f"on its loop instead: await {held_until.__module__}.{held_until.__name__}(gate, "
+    "timeout_s)"
+)
+
+
+def _called(func: ast.expr) -> str | None:
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return func.id if isinstance(func, ast.Name) else None
+
+
+def _waits_on_a_gate(handed: ast.expr) -> bool:
+    """Whether *handed*, run in a worker thread, blocks it in a gate's wait."""
+
+    if isinstance(handed, ast.Call) and _called(handed.func) == "partial" and handed.args:
+        return _waits_on_a_gate(handed.args[0])
+    if isinstance(handed, ast.Lambda):
+        return any(
+            isinstance(node, ast.Call) and _waits_on_a_gate(node.func)
+            for node in ast.walk(handed.body)
+        )
+    return isinstance(handed, ast.Attribute) and handed.attr in GATE_METHODS
+
+
+def gates_held_in_a_worker(path: Path) -> list[str]:
+    """``<file>:<line>: <callable>`` for each gate wait *path* hands to a worker thread.
+
+    That is a ``wait`` or ``acquire`` passed to ``asyncio.to_thread`` or
+    ``run_in_executor``: bound, through ``functools.partial``, or called in a lambda.
+    Read from the syntax tree, so a mention in a string or a comment is not one.
+    """
+
+    held = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+        if not isinstance(node, ast.Call):
+            continue
+        position = HANDED_TO_A_WORKER.get(_called(node.func) or "")
+        if position is None or len(node.args) <= position:
+            continue
+        handed = node.args[position]
+        if _waits_on_a_gate(handed):
+            held.append((node.lineno, f"{path.name}:{node.lineno}: {ast.unparse(handed)}"))
+    return [found for _, found in sorted(held)]
+
+
+def test_no_test_holds_a_gate_in_a_worker_thread() -> None:
+    """A stub that waits for the test in a worker thread keeps that thread the whole time.
+
+    The step it stands in for awaits on the loop and keeps none, so the hold is a test
+    model the server never meets, and a miscount in CPython's pool can queue the
+    server's next step behind it (mb-xorh).
+    """
+
+    offenders = [
+        found for path in sorted(TESTS.glob("*.py")) for found in gates_held_in_a_worker(path)
+    ]
+    assert not offenders, "\n".join([f"Each of these {HELD_IN_A_WORKER}:", *offenders])
+
+
+def test_a_gate_handed_to_a_worker_thread_is_found(tmp_path: Path) -> None:
+    """Every way a module hands a gate's wait to a worker is found, and nothing else is."""
+
+    source = textwrap.dedent(
+        """\
+        import asyncio
+        import functools
+        import threading
+
+        gate, slot, ready = threading.Event(), threading.Semaphore(0), threading.Condition()
+
+
+        async def holds(holder, loop):
+            await asyncio.to_thread(gate.wait, 5)  # held
+            await asyncio.to_thread(holder.started.wait)  # held
+            await asyncio.to_thread(slot.acquire, True, 5)  # held
+            await loop.run_in_executor(None, gate.wait, 5)  # held
+            await asyncio.get_running_loop().run_in_executor(None, slot.acquire)  # held
+            await asyncio.to_thread(functools.partial(gate.wait, 5))  # held
+            await asyncio.to_thread(lambda: ready.wait(5))  # held
+
+
+        async def holds_nothing(loop):
+            await held_until(gate, 5)
+            await asyncio.to_thread(_wait_for_pid, "helper.pid")
+            await asyncio.to_thread(functools.partial(write_record, "home"))
+            await asyncio.wait_for(asyncio.Event().wait(), 5)
+            await loop.run_in_executor(None, lambda: index.rollup(""))
+            gate.wait(5)
+            assert "await asyncio.to_thread(gate.wait)"  # A mention is not a call.
+        """
+    )
+    module = tmp_path / "test_holds.py"
+    module.write_text(source, encoding="utf-8")
+    held = [n for n, line in enumerate(source.splitlines(), 1) if line.endswith("# held")]
+    found = gates_held_in_a_worker(module)
+    assert [int(entry.split(":")[1]) for entry in found] == held
+    assert found[:2] == ["test_holds.py:9: gate.wait", "test_holds.py:10: holder.started.wait"]
+    assert found[-1] == "test_holds.py:15: lambda: ready.wait(5)"
+    assert "await tests.loop_gate.held_until(gate, timeout_s)" in HELD_IN_A_WORKER
 
 
 # ── A skip, judged against its tier ────────────────────────────────────────────
