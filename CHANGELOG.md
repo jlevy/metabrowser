@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
+  words, now lifts its family’s segment in the bar above and shows that segment’s
+  tooltip, as pointing at the segment does.
+  See [Aggregate Distributions](docs/design-system.md#aggregate-distributions).
+
 - The Files panel’s totals no longer move the tree when the count of ignored files
   arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
   ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s

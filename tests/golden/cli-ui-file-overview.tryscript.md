@@ -25,6 +25,11 @@ Other for the rest; the table of every group, family, and type waits behind Deta
 On a folder of many types, Details starts closed, opens to the full table, stays open
 through a measure change, Show ignored, a refresh, and a rescan, closes back to the
 compact summary, and starts closed again on the next mount.
+Pointing at a legend entry draws what pointing at its family’s segment draws, in the
+tally row the legend’s shares are of, Total with Show ignored on and Files with it off:
+that segment marked as hovered and its tooltip, anchored on it.
+Other draws nothing, and a refresh or the section’s disposal under the pointer puts the
+hover away.
 
 ```console
 $ node tests/dom/file-overview-session.js
@@ -251,6 +256,68 @@ $ node tests/dom/file-overview-session.js
     },
     "disposed, then mounted again": {
       "details": "false"
+    }
+  },
+  "a legend entry hovers its segment": {
+    "at rest": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "pointer on the JSON entry, Show ignored on": {
+      "marked": [
+        "Total family:json"
+      ],
+      "tooltip": "JSON 240 files · 100 B",
+      "anchoredOn": "Total family:json"
+    },
+    "moved within the entry": {
+      "marked": [
+        "Total family:json"
+      ],
+      "tooltip": "JSON 240 files · 100 B",
+      "anchoredOn": "Total family:json"
+    },
+    "left the entry": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "pointer on the Total row's JSON segment": {
+      "marked": [
+        "Total family:json"
+      ],
+      "tooltip": "JSON 240 files · 100 B",
+      "anchoredOn": "Total family:json"
+    },
+    "pointer on Other": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "pointer on the Markdown entry, Show ignored off": {
+      "marked": [
+        "Files family:markdown"
+      ],
+      "tooltip": "Markdown 150 files · 300 B",
+      "anchoredOn": "Files family:markdown"
+    },
+    "the rollup refreshed under the pointer": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "moved over the entry again": {
+      "marked": [
+        "Files family:markdown"
+      ],
+      "tooltip": "Markdown 150 files · 300 B",
+      "anchoredOn": "Files family:markdown"
+    },
+    "the section disposed under the pointer": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
     }
   },
   "the folder header's tally": {

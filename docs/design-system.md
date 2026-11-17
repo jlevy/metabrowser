@@ -3605,11 +3605,22 @@ A segment’s hover tooltip, the shared body-portaled one, gives the family name
 and its file count and byte size, and a tooltip-bearing mark brightens by
 `--viz-data-mark-hover-filter`, as a Treemap cell does, and grows
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
-These tooltips add no tab stops; the distribution stays the accessible source.
-The Ignored row dims through `--dimmed-content-opacity`, as ignored navigation and
-Treemap entries do. The table keeps screen-reader-only headers and updates the metric
-header between Files and Bytes, so assistive technology gets the relationships alignment
-gives sighted readers.
+A family’s legend entry, its dot and its words, is a second handle on that family’s
+segment in the tally row the legend’s shares are of, Total while Show ignored is on and
+Files while it is off: pointing at the entry lifts and grows that segment and shows its
+tooltip, anchored on the segment, exactly as pointing at the segment does.
+The two share one hover, which the bars draw (`distribution-hover.js`), so neither keeps
+a copy of the other’s behavior; the entry itself does not change.
+Other answers no hover: it is the families too small to name and the files no family
+claims, each its own segment in its own place, so there is no one mark to point at.
+A repaint of the bars or the legend puts the hover away with its tooltip, and the
+pointer’s next move over a segment or an entry brings it back.
+These tooltips add no tab stops, on a segment or an entry; the distribution stays the
+accessible source. The Ignored row dims through `--dimmed-content-opacity`, as ignored
+navigation and Treemap entries do.
+The table keeps screen-reader-only headers and updates the metric header between Files
+and Bytes, so assistive technology gets the relationships alignment gives sighted
+readers.
 
 Zero totals produce no colored fill, division artifact, or header-only table: a zero
 metric uses the neutral track while the other stays meaningful, an empty population
@@ -4731,6 +4742,10 @@ can point at:
 | Grow the hovered mark on the axis that carries **no** data, with `--viz-hover-grow` on `--viz-hover-grow-ease` | Grow the axis that encodes the value |
 | Lift its own color a step with `--viz-data-mark-hover-filter` | Dim, fade, or desaturate the other marks |
 | Leave every other mark exactly as it was | Outline, ring, or border the mark, or move the layout |
+
+A legend entry that names one mark is a second handle on it: pointing at the entry draws
+this hover on the mark it names, and nowhere else, as File Overview’s legend does
+([Aggregate Distributions](#aggregate-distributions)).
 
 **Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
 meant to point at, it competes with whatever separators the component already has

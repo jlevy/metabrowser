@@ -17,7 +17,13 @@
 // lifecycles — the breakdown owns the rollup fetch and projects its result to
 // the totals (see rollup-projection.js) — and merging their code would have
 // entangled that for the sake of a heading.
+//
+// They share one hover. The breakdown's legend names the families of one of
+// the totals' bars, so pointing at an entry is pointing at that bar's segment:
+// the section holds the hover, the totals draw it, and both say where the
+// pointer is (distribution-hover.js).
 
+import { createDistributionHover } from "./distribution-hover.js";
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
 import { mountFileTypeSummary } from "./file-type-summary.js";
 import { notIndexedStatement } from "./folder-totals.js";
@@ -66,6 +72,7 @@ export function mountFileOverviewPanel(
   // This row is both halves of the rollup controls, which is the whole point
   // of the section.
   const unmountControls = rollupControls.mount(controls);
+  const hover = createDistributionHover();
 
   // Totals first, then the breakdown that refines them — the same order a
   // reader asks the two questions in. The breakdown mounts second but drives
@@ -77,7 +84,7 @@ export function mountFileOverviewPanel(
     palette,
     projectionPool,
     rollupControls,
-    options,
+    { ...options, hover },
   );
   const breakdown = mountFileTypeSummary(
     breakdownContainer,
@@ -88,6 +95,7 @@ export function mountFileOverviewPanel(
     rollupControls,
     {
       ...options,
+      hover,
       onNoTotals: () => totals.stopLoading(),
       onTotalsPending: () => totals.resumeLoading(),
     },
@@ -111,10 +119,11 @@ export function mountFileOverviewPanel(
     }
     disposed = true;
     clearTimeout(waiting);
-    // Bodies first, then the controls they subscribe to.
+    // Bodies first, then the controls and the hover they share.
     breakdown.dispose();
     totals.dispose();
     unmountControls();
+    hover.dispose();
   }
   return Object.freeze({ dispose, ready });
 }

@@ -251,7 +251,10 @@ for (const relative of [
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   vm.runInContext(source, sandbox, { filename: relative });
 }
+// In dependency order, since each runs in the one sandbox with its imports taken out:
+// folder-totals.js imports the hover its bars keep.
 const moduleSources = [
+  "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
   "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
@@ -260,6 +263,7 @@ const moduleSources = [
 for (const relative of moduleSources) {
   const source = fs
     .readFileSync(path.join(repoRoot, relative), "utf8")
+    .replace(/^import\s[^;]*;$/gm, "")
     .replace(/^export\s*\{[^}]*\};$/gm, "")
     .replace(/^export\s+/gm, "");
   vm.runInContext(source, sandbox, { filename: relative });

@@ -18,7 +18,9 @@
 // the legend, and whether it offers Retry. The distribution's table is behind Details,
 // closed on mount, so it is in the text only where a step opens it. The caption naming
 // the population the shares are of is for screen readers only, so it is not in the text;
-// a step with one prints it apart as `caption`. Exits 1 on a failed invariant.
+// a step with one prints it apart as `caption`. A hover step prints the segments marked
+// as hovered and the tooltip the shell would show, with the segment it is anchored on.
+// Exits 1 on a failed invariant.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -259,10 +261,22 @@ const rollupError = (status) =>
   const { createFolderRollupControls } = await import(folder("rollup-controls.js"));
   const { createFolderRollupProjectionPool } = await import(folder("rollup-projection.js"));
 
+  /** The family segments of the tally bars, in every row. */
+  const segmentsOf = (container) =>
+    container.descendants().filter((element) => element.dataset.segmentKey !== undefined);
+  /** The tally row a segment is drawn in, by its heading: Files, Ignored, or Total. */
+  const rowOf = (segment) =>
+    segment.parentNode.parentNode.parentNode.parentNode.children[0].textContent;
+
   /** One mounted panel for a folder whose envelope carries `dir`, and its next rollup. */
   function page(dir, firstAnswer) {
     const answers = { next: firstAnswer };
     let requests = 0;
+    // The page's one tooltip, as the shell keeps it: what it shows and the element it is
+    // anchored on, until a hide puts it away. A hide within an element puts away only a
+    // tooltip anchored there (docs/design-system.md, "A Surface Puts Away Only Its Own
+    // Tooltip"). `shows` counts the shows, which a tooltip that holds still makes once.
+    const tooltip = { html: null, anchor: null, shows: 0 };
     const mb = {
       countClass: () => "",
       directoryTotals: { subscribe: () => () => {} },
@@ -276,7 +290,20 @@ const rollupError = (status) =>
       formatSize: (value) => `${value.toLocaleString("en-US")} B`,
       prefs: { get: () => null, set() {} },
       sizeClass: () => "",
-      tooltip: { hide() {}, show() {} },
+      tooltip: {
+        hide(within) {
+          const anchor = tooltip.anchor;
+          if (!within || within === anchor || within.descendants().includes(anchor)) {
+            tooltip.html = null;
+            tooltip.anchor = null;
+          }
+        },
+        show(html, anchor) {
+          tooltip.html = html;
+          tooltip.anchor = anchor;
+          tooltip.shows += 1;
+        },
+      },
       viewState: { isActive: () => true, subscribeActive: () => () => {} },
       watchRollup: (scope, options, onUpdate) =>
         window.MetabrowserInventoryScope.createInventoryWatch(
@@ -361,6 +388,54 @@ const rollupError = (status) =>
       summaryRoot() {
         return container.querySelector(".file-type-summary");
       },
+      /** The legend entry whose name is `label`. */
+      legendEntry(label) {
+        return container
+          .descendants()
+          .find(
+            (element) =>
+              element.classList.contains("file-type-summary-legend-item") &&
+              element.querySelector(".file-type-summary-legend-label")?.textContent === label,
+          );
+      },
+      /** The segment of family `key` in the tally row named `row`. */
+      segment(row, key) {
+        return segmentsOf(container).find(
+          (segment) => segment.dataset.segmentKey === key && rowOf(segment) === row,
+        );
+      },
+      /**
+       * What the hover draws: the segments marked as hovered, by row and family, the
+       * tooltip's words, and the segment it is anchored on. Nothing else marks itself, so a
+       * legend entry is never in it.
+       */
+      hover() {
+        const marked = container
+          .descendants()
+          .filter((element) => "hovered" in element.dataset)
+          .map((element) =>
+            element.dataset.segmentKey === undefined
+              ? `not a segment: ${element.className}`
+              : `${rowOf(element)} ${element.dataset.segmentKey}`,
+          );
+        return {
+          marked,
+          tooltip:
+            tooltip.html === null
+              ? null
+              : tooltip.html
+                  .replace(/<br>/g, " ")
+                  .replace(/<[^>]*>/g, "")
+                  .trim(),
+          anchoredOn:
+            tooltip.anchor === null
+              ? null
+              : tooltip.anchor.dataset.segmentKey === undefined
+                ? "not a segment"
+                : `${rowOf(tooltip.anchor)} ${tooltip.anchor.dataset.segmentKey}`,
+        };
+      },
+      tooltipShows: () => tooltip.shows,
       /** The event the inventory stream sends, past the watch's debounce of zero. */
       async inventoryChanged() {
         windowListeners.get("metabrowser:inventory-change")(
@@ -717,6 +792,98 @@ const rollupError = (status) =>
       "disposed, then mounted again": { details: fresh },
     };
     remounted.panel.dispose();
+  }
+
+  // A legend entry is a second handle on its family's segment in the tally row the
+  // legend's shares are of: Total while Show ignored is on, Files while it is off.
+  // Pointing at the entry draws what pointing at the segment draws, through the one
+  // hover the section holds: that segment marked and its tooltip, anchored on it. The
+  // entry itself is not marked, Other names no one segment and draws nothing, moving
+  // within an entry changes nothing, and a repaint or the section's disposal puts the
+  // hover away (docs/design-system.md, "Aggregate Distributions").
+  {
+    const view = page(
+      {
+        total_files: 1000,
+        total_size: 1000,
+        unignored_files: 800,
+        unignored_size: 920,
+        state: "complete",
+      },
+      MANY_TYPES_ROLLUP,
+    );
+    await view.settle();
+    const nothing = { marked: [], tooltip: null, anchoredOn: null };
+    const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+    const atRest = view.hover();
+    assert(same(atRest, nothing), `a hover before any pointer: ${JSON.stringify(atRest)}`);
+
+    const json = () => view.legendEntry("JSON");
+    json().listeners.mouseenter();
+    const entry = view.hover();
+    const shows = view.tooltipShows();
+    json().listeners.mousemove();
+    json().listeners.mousemove();
+    const moved = view.hover();
+    assert(
+      same(entry.marked, ["Total family:json"]) && entry.anchoredOn === "Total family:json",
+      `the JSON entry under Show ignored: ${JSON.stringify(entry)}`,
+    );
+    assert(
+      same(moved, entry) && view.tooltipShows() === shows,
+      "moving within an entry moved its tooltip",
+    );
+    json().listeners.mouseleave();
+    const left = view.hover();
+    assert(same(left, nothing), `leaving the entry: ${JSON.stringify(left)}`);
+
+    const segment = view.segment("Total", "family:json");
+    segment.listeners.mouseenter();
+    const onSegment = view.hover();
+    segment.listeners.mouseleave();
+    assert(same(onSegment, entry), "the entry and its segment drew different hovers");
+    assert(same(view.hover(), nothing), "leaving the segment left a hover");
+
+    view.legendEntry("Other").listeners.mouseenter?.();
+    const other = view.hover();
+    assert(same(other, nothing), `Other drew a hover: ${JSON.stringify(other)}`);
+    view.legendEntry("Other").listeners.mouseleave?.();
+
+    view.controls.set({ includeIgnored: false });
+    const markdown = () => view.legendEntry("Markdown");
+    markdown().listeners.mouseenter();
+    const filesOnly = view.hover();
+    assert(
+      same(filesOnly.marked, ["Files family:markdown"]),
+      `the Markdown entry without ignored files: ${JSON.stringify(filesOnly)}`,
+    );
+    view.segment("Files", "family:markdown").listeners.mouseenter();
+    assert(same(view.hover(), filesOnly), "the Files row's segment drew another hover");
+    view.segment("Files", "family:markdown").listeners.mouseleave();
+
+    markdown().listeners.mouseenter();
+    await view.inventoryChanged();
+    const repainted = view.hover();
+    assert(same(repainted, nothing), `a repaint kept the hover: ${JSON.stringify(repainted)}`);
+    markdown().listeners.mousemove();
+    const movedAgain = view.hover();
+    assert(same(movedAgain, filesOnly), "moving over the entry after a repaint drew nothing");
+
+    view.panel.dispose();
+    const disposed = view.hover();
+    assert(same(disposed, nothing), `disposal kept the hover: ${JSON.stringify(disposed)}`);
+    transcript["a legend entry hovers its segment"] = {
+      "at rest": atRest,
+      "pointer on the JSON entry, Show ignored on": entry,
+      "moved within the entry": moved,
+      "left the entry": left,
+      "pointer on the Total row's JSON segment": onSegment,
+      "pointer on Other": other,
+      "pointer on the Markdown entry, Show ignored off": filesOnly,
+      "the rollup refreshed under the pointer": repainted,
+      "moved over the entry again": movedAgain,
+      "the section disposed under the pointer": disposed,
+    };
   }
 
   // The shell's folder header reads the same envelope: pending aggregates are a skeleton

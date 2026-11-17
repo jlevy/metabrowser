@@ -52,8 +52,17 @@ function createGroupBody(className, label) {
  * @param {Palette} palette
  * @param {MetricClasses} metricClasses
  * @param {FileTypeIconResolver} fileTypeIcon
+ * @param {DistributionHover} hover The hover the legend shares with the population bars
+ *   above it, which draw it.
  */
-export function mountDistributionView(container, model, palette, metricClasses, fileTypeIcon) {
+export function mountDistributionView(
+  container,
+  model,
+  palette,
+  metricClasses,
+  fileTypeIcon,
+  hover,
+) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
   const body = element(root, "file-type-summary-body");
@@ -64,6 +73,12 @@ export function mountDistributionView(container, model, palette, metricClasses, 
     palette,
     metricClasses,
     fileTypeIcon,
+    hover,
+    // The tally row the legend's shares are of, Total while Show ignored is on and
+    // Files while it is off: the row whose segments its entries name.
+    legendPopulation: /** @type {DistributionPopulation} */ ("files"),
+    // The hover a legend entry under the pointer entered, until the pointer leaves it.
+    legendHover: /** @type {DistributionHoverTarget | null} */ (null),
     idPrefix: `file-type-summary-${++distributionViewSequence}`,
     /** @type {Map<string, SummaryRowHandle>} */
     rows: new Map(),
@@ -138,6 +153,7 @@ export function updateDistributionView(handle, model) {
   if (handle.caption) {
     handle.caption.textContent = model.caption ?? "";
   }
+  handle.legendPopulation = model.showIgnored ? "all" : "files";
   updateLegend(handle, model.legend ?? []);
   // The rows are kept current while Details is closed. They are bounded — ten
   // to a group and the families someone opened — so opening Details has
@@ -189,8 +205,23 @@ function renderScanningProgress(status, indexedFiles) {
   status.append(spinner, text);
 }
 
+/**
+ * Let go of the hover a legend entry holds, when the entry is about to leave the
+ * document: a removed element never hears the pointer leave it, so without this the
+ * segment it named would stay lifted and its tooltip up.
+ *
+ * @param {DistributionHandle} handle
+ */
+function releaseLegendHover(handle) {
+  if (handle.legendHover) {
+    handle.hover.leave(handle.legendHover);
+    handle.legendHover = null;
+  }
+}
+
 /** @param {DistributionHandle} handle @param {string} mode */
 function resetBody(handle, mode) {
+  releaseLegendHover(handle);
   handle.mode = mode;
   handle.body.replaceChildren();
   handle.rows.clear();
@@ -244,7 +275,16 @@ function applyDetailsState(handle) {
  * a dot, the type, and its share, for each entry the model names.
  *
  * Rebuilt whole on each update. It is at most a handful of items with nothing
- * focusable in them, so there is no state in it to preserve.
+ * focusable in them, so there is no state in it to preserve but the hover an
+ * entry under the pointer holds, which it lets go of first.
+ *
+ * A family's entry is a second handle on that family's segment in the tally row
+ * the legend's shares are of: pointing at the entry is pointing at the segment,
+ * through the one hover the bars draw (distribution-hover.js). The entry itself
+ * does not change, as no other mark does. Other names no one segment — it is the
+ * families too small to name and the files no family claims, each its own segment
+ * in its own place — so it answers no hover. No entry is a tab stop, as no
+ * segment is (docs/design-system.md, "Aggregate Distributions").
  *
  * @param {DistributionHandle} handle
  * @param {ReadonlyArray<SummaryLegendEntry>} entries
@@ -253,6 +293,7 @@ function updateLegend(handle, entries) {
   if (!handle.legend) {
     return;
   }
+  releaseLegendHover(handle);
   handle.legend.hidden = entries.length === 0;
   handle.legend.replaceChildren(
     ...entries.map((entry) => {
@@ -270,6 +311,23 @@ function updateLegend(handle, entries) {
       percent.className = "file-type-summary-legend-percent";
       percent.textContent = entry.percent;
       item.append(swatch, label, percent);
+      if (entry.kind === "family") {
+        /** @type {DistributionHoverTarget} */
+        const target = Object.freeze({ population: handle.legendPopulation, key: entry.key });
+        const enter = () => {
+          handle.legendHover = target;
+          handle.hover.enter(target);
+        };
+        item.addEventListener("mouseenter", enter);
+        // The bars redraw whenever the folder's sums arrive, which puts the hover away,
+        // and this entry outlives that draw. Moving over it brings the hover back, as
+        // moving over a redrawn segment does; moving while it is up changes nothing.
+        item.addEventListener("mousemove", enter);
+        item.addEventListener("mouseleave", () => {
+          handle.legendHover = null;
+          handle.hover.leave(target);
+        });
+      }
       return item;
     }),
   );
@@ -573,4 +631,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 /** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, legend: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
+/** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
+/** @typedef {import("./distribution-hover.js").DistributionPopulation} DistributionPopulation */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendPopulation: DistributionPopulation, legendHover: DistributionHoverTarget | null, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, legend: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
