@@ -66,11 +66,6 @@ It links each document below and the contributor standards in `docs/`.
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
-- [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md):
-  the owner’s requests of 2026-11-15, from Files Group by, a Diff summary, Pulls stack
-  groups, and the conversation timeline to the pull request header, the keys, tooltips,
-  titles, label colors, and a design-system consistency pass, as one stack of pull
-  requests
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
@@ -128,6 +123,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Done Plans
 
+- [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md):
+  the owner’s requests of 2026-11-15, as one stack of pull requests and three of their
+  own on `main`, merged after 0.12.0
 - [Event-based pull-request freshness and budgeted prefetch](specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md):
   merged after 0.12.0
 - [Shift key reveal and a systematic keymap](specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md)
