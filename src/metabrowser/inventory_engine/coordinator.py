@@ -21,9 +21,12 @@ from types import MappingProxyType
 
 from metabrowser.inventory_engine.contract import (
     MAX_CHANGE_PATHS,
+    MAX_ISSUE_DETAIL_BYTES,
     CatalogProjection,
     ChangeBatch,
     ChangeCursor,
+    Coverage,
+    CoverageReason,
     DirectoryProjection,
     EngineVersion,
     EntryProjection,
@@ -36,8 +39,11 @@ from metabrowser.inventory_engine.contract import (
     InventoryContractError,
     InventoryEntry,
     InventoryHandle,
+    InventoryIssue,
+    IssueCode,
     LifecyclePhase,
     PriorityRequest,
+    ProviderFailureError,
     QueryKind,
     ReadRequest,
     ReadResult,
@@ -89,6 +95,21 @@ RECONCILING_HOLD_S = 0.25
 # never delivers the version its receipt named, not a latency target: a relay that
 # delivers answers within the provider's own commit latency plus one reconciling hold.
 REFRESH_PUBLICATION_TIMEOUT_S = 5.0
+
+
+# Recovery after a provider failure (D14 in
+# docs/project/architecture/arch-inventory-provider.md). The supervisor waits this long
+# for operations on the failed handle to finish, and then this long for the handle to
+# close: a poisoned native root may never join, and an abandoned close is logged and
+# left to finish on its own rather than holding the root closed. Both match the
+# refresh-publication bound's order, seconds, because nothing served the root meanwhile.
+RECOVERY_DRAIN_TIMEOUT_S = 2.0
+RECOVERY_CLOSE_TIMEOUT_S = 2.0
+# The delay before each reopen attempt; their count is the cap, after which the root is
+# left failed until it is opened again. The first attempt is immediate, because most
+# failures are of the handle rather than the root; the later ones give a transient cause
+# (a watch limit, a busy volume) time to clear.
+RECOVERY_ATTEMPT_DELAYS_S = (0.0, 0.5, 2.0)
 
 
 class InventoryPublicationError(InventoryContractError):
@@ -216,7 +237,7 @@ class InventoryReadSession:
 
         if not self._active:
             raise RuntimeError("the inventory read session is no longer active")
-        result = await _drain_provider_operation_on_cancel(self._handle.read(request))
+        result = await self._coordinator._provider_call(self._handle, self._handle.read(request))
         async with self._coordinator._lock:
             if self._handle is not self._coordinator._handle:
                 raise InventoryConsistencyError("the served root changed during a read session")
@@ -353,6 +374,12 @@ class InventoryCoordinator:
         # stand for what the change stream has published.
         self._published_sequence = -1
         self._publication = asyncio.Event()
+        # The supervisor that replaces a failed handle (D14), and the failure that ended
+        # recovery when every reopen attempt failed; reads raise it until the root opens
+        # again.
+        self._recovery_task: asyncio.Task[None] | None = None
+        self._failure: ProviderFailureError | None = None
+        self._abandoned_closes: set[asyncio.Future[None]] = set()
         self._host_session: str | None = None
         self._host_sequence = 0
         self._history: deque[HostChange] = deque(maxlen=config.change_queue_size)
@@ -443,7 +470,7 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            result = await _drain_provider_operation_on_cancel(handle.read(request))
+            result = await self._provider_call(handle, handle.read(request))
             async with self._lock:
                 if handle is not self._handle:
                     raise InventoryConsistencyError(
@@ -488,7 +515,7 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            receipt = await _drain_provider_operation_on_cancel(handle.refresh(request))
+            receipt = await self._provider_call(handle, handle.refresh(request))
             receipt_paths = frozenset((*receipt.accepted_paths, *receipt.rejected_paths))
             if receipt_paths != frozenset(request.paths):
                 raise InventoryConsistencyError(
@@ -533,6 +560,15 @@ class InventoryCoordinator:
                 f"within {REFRESH_PUBLICATION_TIMEOUT_S} s"
             ) from error
 
+    async def _provider_call[T](self, handle: InventoryHandle, operation: Awaitable[T]) -> T:
+        """Await one provider command, and start recovery if it reports the root failed."""
+
+        try:
+            return await _drain_provider_operation_on_cancel(operation)
+        except ProviderFailureError as error:
+            self._request_recovery(handle, error)
+            raise
+
     def _signal_publication(self) -> None:
         event, self._publication = self._publication, asyncio.Event()
         event.set()
@@ -542,7 +578,7 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            await _drain_provider_operation_on_cancel(handle.prioritize(request))
+            await self._provider_call(handle, handle.prioritize(request))
         finally:
             await asyncio.shield(self._end_operation())
 
@@ -639,7 +675,7 @@ class InventoryCoordinator:
 
         async with self._condition:
             await self._wait_for_transition_locked()
-            self._require_handle_locked()
+            self._require_served_locked()
             return (
                 self._current_host_cursor_locked(),
                 self._current_host_version_locked(),
@@ -673,11 +709,19 @@ class InventoryCoordinator:
         # Shutdown belongs to the coordinator, not whichever request first called
         # close. Every caller joins it, even after another caller was cancelled.
         await asyncio.shield(task)
+        recovery = self._recovery_task
+        if recovery is not None:
+            # A supervisor still waiting for the lock sees the coordinator closed and
+            # returns without reopening.
+            await asyncio.shield(recovery)
 
     async def _close_owned_handle(self) -> None:
         """Drain active operations and release provider ownership exactly once."""
 
         async with self._condition:
+            # Wake a recovery supervisor backing off between reopen attempts, so it sees
+            # the coordinator closed and ends instead of finishing its wait.
+            self._condition.notify_all()
             await self._wait_for_transition_locked()
             self._transitioning = True
             try:
@@ -692,9 +736,10 @@ class InventoryCoordinator:
                 self._transitioning = False
                 self._condition.notify_all()
 
-    async def _replace_root_locked(self, root: Path) -> HostChange:
+    async def _replace_root_locked(self, root: Path, *, keep_overlay: bool = False) -> HostChange:
         await self._stop_handle_locked()
-        self._overlay.clear()
+        if not keep_overlay:
+            self._overlay.clear()
         self._root = None
         self._engine_version = None
         self._engine_cursor = None
@@ -713,6 +758,7 @@ class InventoryCoordinator:
 
         self._handle = handle
         self._root = root
+        self._failure = None
         self._engine_version = initial.version
         self._engine_cursor = initial.cursor
         self._state = initial.state
@@ -780,11 +826,15 @@ class InventoryCoordinator:
                         after_sequence=after.sequence,
                     )
                 )
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
             raise
-        except Exception:
-            LOG.exception("inventory provider change relay failed")
-            await self._publish_relay_reset(handle)
+        except BaseException as error:
+            # `BaseException`, because a native panic is one, and the TaskGroup raises a
+            # failed child as a `BaseExceptionGroup`, which `except Exception` misses.
+            # Recovery runs in its own task: reopening from here would cancel and await
+            # this relay itself.
+            LOG.error("inventory provider change relay failed", exc_info=error)
+            self._request_recovery(handle, error)
         finally:
             # A refresh waiting on this relay fails fast once it has stopped.
             self._signal_publication()
@@ -922,19 +972,165 @@ class InventoryCoordinator:
             self._signal_publication()
         self._notify_listeners(published)
 
-    async def _publish_relay_reset(self, handle: InventoryHandle) -> None:
-        published: HostChange | None = None
-        async with self._lock:
-            if handle is not self._handle or self._closed:
+    def _request_recovery(self, handle: InventoryHandle, cause: BaseException) -> None:
+        """Start the supervisor for *handle*, once, unless it is no longer served."""
+
+        if self._closed or handle is not self._handle:
+            return
+        # A relay failure arrives wrapped by its TaskGroup; name the failure itself.
+        while isinstance(cause, BaseExceptionGroup) and len(cause.exceptions) == 1:
+            cause = cause.exceptions[0]
+        task = self._recovery_task
+        if task is not None and not task.done():
+            return
+        self._recovery_task = asyncio.create_task(
+            self._recover(handle, cause), name="metabrowser-inventory-recovery"
+        )
+
+    async def _recover(self, failed: InventoryHandle, cause: BaseException) -> None:
+        """Replace a failed handle: drain, close with a bound, reopen up to the cap (D14).
+
+        Each successful reopen publishes a host reset in a new host session, keeping the
+        root's decorations. When every attempt fails, the root is left failed: the
+        coordinator publishes a reset whose state is `failed` with a `provider_failure`
+        issue, and reads raise `ProviderFailureError` until the root is opened again.
+        """
+
+        async with self._condition:
+            await self._wait_for_transition_locked()
+            root = self._root
+            if self._closed or failed is not self._handle or root is None:
                 return
-            published = self._new_host_change_locked(
-                version=self._current_host_version_locked(),
-                state=self._require_state_locked(),
-                reset=True,
-                facts_changed=True,
-            )
-            self._publish_locked(published)
+            self._transitioning = True
+            try:
+                await self._drain_operations_locked()
+                last_version = self._require_engine_version_locked()
+                last_state = self._require_state_locked()
+                await self._stop_failed_handle_locked()
+                last_error = cause
+                for attempt, delay in enumerate(RECOVERY_ATTEMPT_DELAYS_S, start=1):
+                    if delay:
+                        # Waiting on the condition releases the lock, so a close or a
+                        # checkpoint is not held behind the backoff.
+                        with contextlib.suppress(TimeoutError):
+                            async with asyncio.timeout(delay):
+                                await self._condition.wait()
+                    if self._closed:
+                        return
+                    try:
+                        published = await self._replace_root_locked(root, keep_overlay=True)
+                    except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+                        raise
+                    except BaseException as error:
+                        last_error = error
+                        LOG.error(
+                            "inventory provider reopen attempt %d of %d failed",
+                            attempt,
+                            len(RECOVERY_ATTEMPT_DELAYS_S),
+                            exc_info=error,
+                        )
+                    else:
+                        LOG.warning(
+                            "inventory provider recovered after %s on attempt %d",
+                            type(cause).__name__,
+                            attempt,
+                        )
+                        break
+                else:
+                    published = self._fail_locked(root, last_version, last_state, last_error)
+            finally:
+                self._transitioning = False
+                self._condition.notify_all()
         self._notify_listeners(published)
+
+    async def _drain_operations_locked(self) -> None:
+        """Wait a bounded time for operations on the failed handle to finish."""
+
+        try:
+            async with asyncio.timeout(RECOVERY_DRAIN_TIMEOUT_S):
+                await self._wait_for_operations_locked()
+        except TimeoutError:
+            LOG.warning(
+                "inventory recovery proceeded with %d operation(s) still on the failed handle",
+                self._active_operations,
+            )
+
+    async def _stop_failed_handle_locked(self) -> None:
+        """Stop the relay and close the failed handle, abandoning a close that hangs."""
+
+        relay = self._relay_task
+        self._relay_task = None
+        if relay is not None and not relay.done():
+            relay.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await relay
+        handle = self._handle
+        self._handle = None
+        if handle is None:
+            return
+        closing = asyncio.ensure_future(handle.close())
+        try:
+            async with asyncio.timeout(RECOVERY_CLOSE_TIMEOUT_S):
+                await asyncio.shield(closing)
+        except TimeoutError:
+            LOG.error(
+                "the failed inventory handle did not close within %s s; abandoning it",
+                RECOVERY_CLOSE_TIMEOUT_S,
+            )
+            self._abandoned_closes.add(closing)
+            closing.add_done_callback(self._abandoned_close_done)
+        except (asyncio.CancelledError, KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as error:
+            LOG.warning("the failed inventory handle raised while closing", exc_info=error)
+
+    def _abandoned_close_done(self, closing: asyncio.Future[None]) -> None:
+        self._abandoned_closes.discard(closing)
+        if not closing.cancelled() and (error := closing.exception()) is not None:
+            LOG.warning("an abandoned inventory handle close failed", exc_info=error)
+
+    def _fail_locked(
+        self,
+        root: Path,
+        version: EngineVersion,
+        state: IndexState,
+        error: BaseException,
+    ) -> HostChange:
+        """Leave *root* failed after the last reopen attempt and publish that state."""
+
+        detail = (
+            f"the inventory provider failed and {len(RECOVERY_ATTEMPT_DELAYS_S)} reopen "
+            f"attempts failed; the last raised {type(error).__name__}"
+        )
+        failed_state = IndexState(
+            phase=LifecyclePhase.FAILED,
+            coverage=Coverage(complete=False, reason=CoverageReason.FAILED),
+            freshness=Freshness.STALE,
+            source=state.source,
+            progress=state.progress,
+            issues=(
+                InventoryIssue(
+                    code=IssueCode.PROVIDER_FAILURE,
+                    detail=detail.encode("utf-8")[:MAX_ISSUE_DETAIL_BYTES].decode(
+                        "utf-8", errors="ignore"
+                    ),
+                ),
+            ),
+        )
+        self._root = root
+        self._engine_version = version
+        self._state = failed_state
+        failure = ProviderFailureError(detail)
+        failure.__cause__ = error
+        self._failure = failure
+        published = self._new_host_change_locked(
+            version=self._current_host_version_locked(),
+            state=failed_state,
+            reset=True,
+            facts_changed=True,
+        )
+        self._publish_locked(published)
+        return published
 
     @staticmethod
     def _merge_provider_batches(batches: tuple[ChangeBatch, ...]) -> ChangeBatch:
@@ -978,7 +1174,7 @@ class InventoryCoordinator:
         )
         async with self._condition:
             await self._wait_for_transition_locked()
-            self._require_handle_locked()
+            self._require_served_locked()
             replay = self._replay_locked(after)
             self._subscribers.add(queue)
         try:
@@ -1184,9 +1380,20 @@ class InventoryCoordinator:
 
     def _require_handle_locked(self) -> InventoryHandle:
         self._ensure_not_closed_locked()
+        failure = self._failure
+        if failure is not None:
+            raise ProviderFailureError(str(failure)) from failure.__cause__
         if self._handle is None:
             raise InventoryNotOpenError("the inventory coordinator is not open")
         return self._handle
+
+    def _require_served_locked(self) -> None:
+        """Require an open root, or one left failed, whose state and stream still answer."""
+
+        if self._failure is None:
+            self._require_handle_locked()
+        else:
+            self._ensure_not_closed_locked()
 
     async def _begin_operation(self) -> InventoryHandle:
         async with self._condition:
@@ -1228,6 +1435,9 @@ class InventoryCoordinator:
 
 __all__ = [
     "DISCOVERY_PHASES",
+    "RECOVERY_ATTEMPT_DELAYS_S",
+    "RECOVERY_CLOSE_TIMEOUT_S",
+    "RECOVERY_DRAIN_TIMEOUT_S",
     "RECONCILING_HOLD_S",
     "REFRESH_PUBLICATION_TIMEOUT_S",
     "CoordinatedRead",

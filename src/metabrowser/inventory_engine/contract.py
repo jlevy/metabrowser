@@ -1783,6 +1783,16 @@ class InventoryClosedError(InventoryContractError):
     """The opened-root handle has already closed."""
 
 
+class ProviderFailureError(InventoryContractError):
+    """The provider can no longer serve its opened root.
+
+    A provider raises it, or an adapter translates into it, a failure the handle cannot
+    recover from itself: a native panic (``pyo3_runtime.PanicException``, a
+    ``BaseException``), a poisoned root, or an internal invariant broken mid-command.
+    The coordinator answers it by closing the handle and reopening the root (D14).
+    """
+
+
 class VersionUnavailableError(InventoryContractError):
     """The requested coherent version is no longer retained."""
 

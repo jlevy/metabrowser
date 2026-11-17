@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Live updates recover when the inventory provider fails.
+  Before, a failure in the provider’s change stream stopped live updates until the
+  server restarted, and a failure that was not an ordinary exception, as a native
+  engine’s panic is, stopped them without the browser being told.
+  The server now closes the failed provider, reopens the folder, and tells the browser
+  to reload what it shows; if reopening keeps failing, the folder reports a failed index
+  with a `provider_failure` issue instead.
+
 - `/_debug/inventory` reports `discovery`, when the served root’s first discovery ended
   as the server observed it: its index status and phase, and how long the inventory
   provider’s open and then its discovery took, along with `files_indexed`.

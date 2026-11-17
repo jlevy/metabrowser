@@ -761,7 +761,23 @@ def test_old_root_changes_cannot_publish_and_close_ends_subscriptions(
     asyncio.run(_run())
 
 
-def test_provider_session_drift_fails_reads_and_resets_stream_consumers(
+async def _assert_reopened(
+    coordinator: InventoryCoordinator,
+    backend: _FakeBackend,
+    cursor: HostCursor,
+    reset: HostChange,
+) -> None:
+    """The supervisor replaced the failed handle and published a reset in a new session."""
+
+    assert reset.reset is True
+    assert reset.cursor.session != cursor.session
+    assert len(backend.handles) == 2
+    assert backend.handles[0].closed
+    read = await coordinator.read(ReadRequest())
+    assert read.version.engine.session == backend.handles[1].session
+
+
+def test_provider_session_drift_reopens_the_root_and_resets_stream_consumers(
     tmp_path: Path,
 ) -> None:
     async def _run() -> None:
@@ -776,10 +792,7 @@ def test_provider_session_drift_fails_reads_and_resets_stream_consumers(
 
         handle.session = "illegal-replacement-session"
         handle.emit(dirty_paths=("changed",))
-        reset = await asyncio.wait_for(pending, timeout=1)
-        assert reset.reset is True
-        with pytest.raises(InventoryConsistencyError, match="changed provider session"):
-            await coordinator.read(ReadRequest())
+        await _assert_reopened(coordinator, backend, cursor, await asyncio.wait_for(pending, 1))
 
         await changes.aclose()
         await coordinator.close()
@@ -787,7 +800,7 @@ def test_provider_session_drift_fails_reads_and_resets_stream_consumers(
     asyncio.run(_run())
 
 
-def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
+def test_provider_fingerprint_drift_reopens_the_root_and_resets_stream_consumers(
     tmp_path: Path,
 ) -> None:
     async def _run() -> None:
@@ -807,10 +820,7 @@ def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
         )
         handle.config = InventoryConfig(registry_document=changed_registry)
         handle.emit(dirty_paths=("changed",))
-        reset = await asyncio.wait_for(pending, timeout=1)
-        assert reset.reset is True
-        with pytest.raises(InventoryConsistencyError, match="changed provider fingerprints"):
-            await coordinator.read(ReadRequest())
+        await _assert_reopened(coordinator, backend, cursor, await asyncio.wait_for(pending, 1))
 
         await changes.aclose()
         await coordinator.close()
@@ -945,27 +955,24 @@ def test_refresh_returns_after_the_relay_publishes_its_receipt_version(tmp_path:
     asyncio.run(_run())
 
 
-def test_refresh_fails_fast_when_the_relay_has_stopped(tmp_path: Path) -> None:
+def test_refresh_fails_fast_when_the_relay_stops_while_it_waits(tmp_path: Path) -> None:
     async def _run() -> None:
         backend = _FakeBackend()
         coordinator = _coordinator(backend)
         await coordinator.open(tmp_path)
         handle = backend.handles[0]
         await asyncio.wait_for(handle.changes_started.wait(), timeout=1)
-        cursor, _version, _state_value = await coordinator.checkpoint()
-        changes = coordinator.changes(after=cursor)
-        # Ending the provider's stream while the handle is open stops the relay, which
-        # publishes a reset as it goes.
+        handle.refresh_receipt = _ahead_receipt(handle, "a")
+        refresh = asyncio.ensure_future(
+            coordinator.refresh(RefreshRequest(observations=(RefreshObservation(path="a"),)))
+        )
+        await asyncio.sleep(0.05)
+        assert not refresh.done()
+        # Ending the provider's stream while the handle is open stops the relay.
         for queue in tuple(handle.subscribers):
             queue.put_nowait(None)
-        assert (await asyncio.wait_for(anext(changes), timeout=1)).reset
-        handle.refresh_receipt = _ahead_receipt(handle, "a")
         with pytest.raises(InventoryPublicationError, match="stopped"):
-            await asyncio.wait_for(
-                coordinator.refresh(RefreshRequest(observations=(RefreshObservation(path="a"),))),
-                timeout=1,
-            )
-        await changes.aclose()
+            await asyncio.wait_for(refresh, timeout=1)
         await coordinator.close()
 
     asyncio.run(_run())

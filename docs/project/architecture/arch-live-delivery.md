@@ -63,8 +63,17 @@ revision), the provider state, and dirty paths, dirty query kinds, `all_dirty`, 
 queue is full, or whose cursor predates the history, gets a reset.
 Invalidation listeners run after each change: `InventoryRuntime` uses one to clear the
 per-file projection caches for the dirty paths.
-If the relay fails, the coordinator logs it and publishes a reset, so consumers reread
-rather than trusting a stream that may have lost a batch.
+If the relay fails, including on a `BaseException` such as a native panic, or a command
+raises `ProviderFailureError`, a supervisor task replaces the handle (D14 in
+[the provider contract](arch-inventory-provider.md#decisions-for-a-second-provider)). It
+waits up to `RECOVERY_DRAIN_TIMEOUT_S` for operations on the failed handle, closes it
+within `RECOVERY_CLOSE_TIMEOUT_S` or abandons the close, and reopens the root after each
+delay in `RECOVERY_ATTEMPT_DELAYS_S`, keeping its decorations.
+A successful reopen publishes a reset in a new host session, so consumers reread rather
+than trusting a stream that may have lost a batch.
+When every attempt fails, the coordinator publishes a reset whose state is `failed` with
+a `provider_failure` issue; checkpoints and subscriptions still answer, reads raise
+`ProviderFailureError`, and opening the root again clears it.
 
 ## The Event Bus
 
