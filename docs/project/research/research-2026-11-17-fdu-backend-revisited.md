@@ -1007,9 +1007,10 @@ Revisit only if F14 and R20 together leave the catalog bound by conversion.
   marked decided or open pending fdu (`mb-54tl`).
 - [x] Track R1 to R31 as Metabrowser beads under `mb-hej8`, linking the existing beads
   each one absorbs; the table below maps them.
-- [ ] Propose the fdu changes to the fdu project in one issue: the joint decisions, F1
+- [x] Propose the fdu changes to the fdu project in one issue: the joint decisions, F1
   to F28 in the five groups above, and the points in fdu’s opened-root plan that the
-  evidence suggests revisiting, framed as questions.
+  evidence suggests revisiting, framed as questions
+  ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)).
 - [ ] Implement the thin adapter after the open-time group releases (`mb-urh5`).
 
 | Items | Bead |
@@ -1036,12 +1037,12 @@ Revisit only if F14 and R20 together leave the catalog bound by conversion.
 | R26 (D14) | `mb-quis`, with `mb-6o0l` |
 | R27, with D8’s coalescing | `mb-not1`, with `mb-3p3x` |
 | R30 | `mb-0658` |
-| R31 | (new bead) |
+| R31 | `mb-e19z` |
 | F1, F3, F5, F6, F19, F24, F26 (open-time) | `mb-xd56` |
 | F10, F12, F14, F15 (first answers) | `mb-sdqe` |
 | F7 to F9, F11, F13 (complete the algebra) | `mb-bve2` |
 | F4, F16 to F18, F21, F22, F25, F27 (cost, observation, test support) | `mb-77tq` |
-| F2, F20, F28 (adoption gates) | (new bead) |
+| F2, F20, F28 (adoption gates) | `mb-pvc4` |
 
 ## Methodology
 
