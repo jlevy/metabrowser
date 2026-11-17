@@ -2276,8 +2276,9 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
 
 # A count's numeral and a pull request's number are both bold, each through a token of its
 # own, so the two may part (docs/design-system.md, "Count Summaries Bold Their Numbers" and
-# "Pull Request Numbers"): the selectors that take each.
-_COUNT_NUMERALS = frozenset({".summary-number", ".heading-tally-figure"})
+# "Pull Request Numbers"): the selectors that take each. A status count, "21 A", takes the
+# count's weight for its number and its letter alike (mb-8iwn).
+_COUNT_NUMERALS = frozenset({".summary-number", ".heading-tally-figure", ".summary-status-count"})
 _PULL_NUMBERS = frozenset(
     {
         ".github-pull-number",
@@ -2378,11 +2379,14 @@ def test_count_summaries_bold_their_numbers_through_one_token() -> None:
 _PUNCTUATION_PAINTERS = {
     "static/formatters.js": (
         'const SUMMARY_PUNCTUATION_CLASS = "summary-punctuation";',
+        'const SUMMARY_STATUS_COUNT_CLASS = "summary-status-count";',
         'const FILE_CHANGE_STATUS_CLASS = "file-change-status";',
+        "className: `${SUMMARY_STATUS_COUNT_CLASS} ${FILE_CHANGE_STATUS_CLASS}`,",
+        "children: [{ className: SUMMARY_NUMBER_CLASS, text: part.count }, ` ${part.letter}`],",
         'const VISUALLY_HIDDEN_CLASS = "visually-hidden";',
         'attributes: [["aria-hidden", "true"]],',
         '...(at === 0 ? [] : [{ punctuation: "," }, " "]),',
-        "{ status: entry.status, letter: entry.letter },",
+        "{ status: entry.status, letter: entry.letter, count: written(entry.count) },",
         'const CHANGE_LINE_CLASS = "change-line";',
         "{ statuses: entries, additions: totals.additions, deletions: totals.deletions },",
     ),
@@ -2417,35 +2421,44 @@ _PUNCTUATION_PAINTERS = {
 }
 # A class only the one painter writes: no other source spells one as a class of its own.
 _PAINTED_CLASSES = re.compile(
-    r"""["'](summary-number|summary-punctuation|file-change-status|change-line(?:-[a-z]+)?)["']"""
+    r"""["'](summary-number|summary-punctuation|summary-status-count|file-change-status|change-line(?:-[a-z]+)?)["']"""
 )
 
 
-def test_count_summaries_mute_their_punctuation_and_ink_their_status_letters() -> None:
-    """A count summary's separators and list punctuation are muted, and a status letter takes
-    its status's ink ("Count Summaries Bold Their Numbers"; mb-vb51).
+def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() -> None:
+    """A count summary's separators and list punctuation are muted, and a status count, "21 A",
+    is bold in its status's ink, number and letter alike ("Count Summaries Bold Their
+    Numbers"; mb-vb51, mb-8iwn).
 
     One shell class, `.summary-punctuation`, sets the muted ink and nothing else, and no
-    stylesheet restyles it; a status letter in a count summary is the shell's status
-    primitive, `.file-change-status`, whose inks `test_file_status_ink_is_shared_and_legible`
-    holds. What a change set's summary says is one function, `changeSummary`, which the Diff
-    summary's model and a commit's hover card both say it through, and its parts have one
-    painter, formatters.js's, which a plugin reaches through the SDK's `countPartsNodes`:
-    the Diff summary and the Checks summary paint none of those classes themselves.
+    stylesheet restyles it. A status count in a count summary is one span, the shell's
+    `.summary-status-count`, which sets the count's weight and nothing else, and the
+    shell's status primitive, `.file-change-status`, whose inks
+    `test_file_status_ink_is_shared_and_legible` holds; no stylesheet restyles the status
+    count, so its number and letter take one ink. What a change set's summary says is one
+    function, `changeSummary`, which the Diff summary's model and a commit's hover card both
+    say it through, and its parts have one painter, formatters.js's, which a plugin reaches
+    through the SDK's `countPartsNodes`: the Diff summary and the Checks summary paint none
+    of those classes themselves.
     tests/dom/count-parts-session.js pins each kind's markup, tests/dom/diff-view-behavior.js
     the Diff summary's header and fallback line, tests/dom/git-panel-behavior.js the hover
     card, and tests/test_changed_file_rows_chrome.py and tests/dom/git-commit-summary-chrome.mjs
-    read their inks in Chrome.
+    read their inks, weights, and contrast in Chrome.
     """
 
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "`.summary-punctuation`" in doc
-    assert "test_count_summaries_mute_their_punctuation_and_ink_their_status_letters" in doc
+    assert "test_count_summaries_mute_their_punctuation_and_ink_their_status_counts" in doc
     shell = dict(_rules_of(STATIC / "styles.css"))
     assert shell[".summary-punctuation"] == {"color": "var(--muted)"}
+    assert shell[".summary-status-count"] == {"font-weight": "var(--count-numeral-weight)"}
     for sheet in _stylesheets():
         for selector, _ in _rules_of(sheet):
             assert selector == ".summary-punctuation" or "summary-punctuation" not in selector, (
+                sheet,
+                selector,
+            )
+            assert selector == ".summary-status-count" or "summary-status-count" not in selector, (
                 sheet,
                 selector,
             )
@@ -3152,8 +3165,11 @@ def test_file_status_ink_is_shared_and_legible() -> None:
         for role in ("added", "deleted", "modified", "renamed"):
             # A literal, never a ref color: a ref kind's hue is chosen for the chips.
             color = _declared(block, f"--git-status-{role}")
-            for ground in ("--bg", "--sidebar-bg", "--hover-bg"):
-                assert _contrast(color, _declared(block, ground)) >= 4.5
+            # A text's 4.5:1 on every ground a status is drawn on, a tooltip's among them, as
+            # a commit's hover card draws its status counts, number and letter, in the ink
+            # (mb-8iwn).
+            for ground in ("--bg", "--sidebar-bg", "--hover-bg", "--viz-surface-raised"):
+                assert _contrast(color, _declared(block, ground)) >= 4.5, (role, ground)
     for relative in (
         "static/git-panel.js",
         "builtin_plugins/diff/diff-view.js",
