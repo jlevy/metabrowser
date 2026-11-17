@@ -606,36 +606,15 @@ $ node tests/dom/github-pulls-row-lines-session.js row
                         "class": "change-line-statuses",
                         "children": [
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "3"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "A"
-                            ]
-                          },
-                          {
-                            "class": "summary-punctuation",
-                            "children": [
-                              ","
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "summary-number",
-                            "children": [
-                              "1"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "D"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "3"
+                                ]
+                              },
+                              " A"
                             ]
                           },
                           {
@@ -646,16 +625,15 @@ $ node tests/dom/github-pulls-row-lines-session.js row
                           },
                           " ",
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "243"
-                            ]
-                          },
-                          " ",
-                          {
-                            "class": "file-change-status",
-                            "children": [
-                              "M"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "1"
+                                ]
+                              },
+                              " D"
                             ]
                           },
                           {
@@ -666,16 +644,34 @@ $ node tests/dom/github-pulls-row-lines-session.js row
                           },
                           " ",
                           {
-                            "class": "summary-number",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "2"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "243"
+                                ]
+                              },
+                              " M"
+                            ]
+                          },
+                          {
+                            "class": "summary-punctuation",
+                            "children": [
+                              ","
                             ]
                           },
                           " ",
                           {
-                            "class": "file-change-status",
+                            "class": "summary-status-count file-change-status",
                             "children": [
-                              "R"
+                              {
+                                "class": "summary-number",
+                                "children": [
+                                  "2"
+                                ]
+                              },
+                              " R"
                             ]
                           }
                         ]
