@@ -8,8 +8,10 @@
 // of the server's inert HTML, rebuilt by the production static/inert-html.js -- then
 // wires the table of contents in a scrolling viewport: the entry for the section at the
 // reading line is active, a heading with no layout box is stepped past, the narrow toggle
-// opens and closes the drawer, an entry click closes it, and disposal removes every
-// listener. Paint, the real scroll, and the stylesheet's layout are the QA runbook's.
+// opens and closes the drawer, an entry click closes it, the toggle shows only once the
+// reader has reached the document (toc-toggle.js), and disposal removes every listener.
+// Paint, the real scroll, and the stylesheet's layout are the QA runbook's and
+// tests/test_overview_readme_toc_chrome.py's.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -259,8 +261,19 @@ async function main() {
   const article = render.inertArticle(target);
   assert(article, "the inert article is the render's container's child");
   const headings = article.querySelectorAll("h1, h2, h3, h4, h5, h6");
+  // Where the document starts down the viewport's scroll: at its top, as an opened file's
+  // does, until the session moves it below a folder Overview's other panels.
+  let documentTop = 0;
+  article.getBoundingClientRect = () => ({
+    top: 100 + documentTop - viewport.scrollTop,
+    bottom: 100 + documentTop - viewport.scrollTop + 10_000,
+    width: 1000,
+    height: 10_000,
+  });
   headings.forEach((heading, index) => {
-    heading.getBoundingClientRect = () => ({ top: 100 + index * 1000 - viewport.scrollTop });
+    heading.getBoundingClientRect = () => ({
+      top: 100 + documentTop + index * 1000 - viewport.scrollTop,
+    });
   });
 
   // A render KPress drew no table of contents for gets none, and entries that do not
@@ -411,6 +424,25 @@ async function main() {
   toggle.dispatch("click");
   article.querySelector(".kpress-toc-backdrop").dispatch("click");
   transcript.backdropClicked = state(article, viewport);
+
+  // A README a folder's Overview shows 1,000px down the pane: the narrow toggle waits past
+  // the threshold until the reader reaches the README's beginning, and goes above it.
+  documentTop = 1000;
+  transcript.belowOtherPanels = {};
+  for (const [label, scrollTop] of [
+    ["pastThreshold", 500],
+    ["justAbove", 980],
+    ["reached", 1005],
+    ["backAbove", 500],
+  ]) {
+    viewport.scrollTop = scrollTop;
+    viewport.dispatch("scroll");
+    flush();
+    transcript.belowOtherPanels[label] = {
+      scrollTop,
+      toggleShown: toggle.classList.contains("show-toggle"),
+    };
+  }
 
   dispose();
   const listeners = [viewport, toggle, ...article.descendants()].reduce(

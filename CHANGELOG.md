@@ -34,6 +34,16 @@ All notable changes to Metabrowser are documented here.
   comparison answers, so a failed check no longer leaves the listing’s `git diff`
   running either.
 
+- A folder Overview’s README keeps the table of contents it has opened as a file: the
+  rail beside the README in a wide pane, and in a narrower one the toggle that fades in
+  as you scroll to the README’s beginning and out above it, where it had none.
+  Its entries, and links to the README’s own headings, scroll the Overview and put the
+  heading on the folder’s address instead of opening the README as a file.
+  For plugin authors, `metabrowser.kpressInitToc(container, config)` hands KPress its
+  per-binding configuration, and the Markdown builtin’s `mountRendered` takes a
+  `pagePath`; `PLUGIN_SDK_VERSION` remains `0.7`. See
+  [Embedded Document Navigation](docs/design-system.md#embedded-document-navigation).
+
 - The Files panel’s totals no longer move the tree when the count of ignored files
   arrives. The ignored count is a line of its own under the tracked count, “+ 248,189
   ignored (10.1 GB)”, and the line is drawn from the folder’s own totals in the page’s
