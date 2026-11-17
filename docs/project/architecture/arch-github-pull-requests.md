@@ -346,6 +346,71 @@ The snapshot is bounded, a page past its bounds is omitted and marks it incomple
 membership missing from a partial or unavailable snapshot never means a pull request is
 unstacked. A failure keeps the preceding snapshot.
 
+## Stack Change Lines
+
+A stack’s heading in the Pulls tab says the stack’s change as a brief change line
+(`stack-lines.js`), which `GET stack-change?number=<stack>` answers
+(`pull_stack_change.py`). A stack is the accumulation of its pull requests, merged or
+open, so its change is theirs: each member’s cached list of changed files, the one
+`GET pull-files` serves, folded in bottom first, one list at a time, through
+`pull_change_sums.py`. A file counts once, followed across a rename, with a status
+composed from what the members did to it, and every member’s lines are summed.
+The route never asks GitHub, fetches, or runs Git.
+It keeps the accumulation by each list file’s inode, modification time, and size, so a
+repeat stats the lists and parses none, and refuses before reading lists that together
+pass `MAX_STACK_LIST_BYTES`.
+
+The envelope has `state` (`current` or `absent`), `reason` (`not_github`, `not_stacked`,
+`not_cached` for a member whose list is missing or still filling, or `too_large` for a
+list that stops short or lists past the bound), `number`, `pulls`, the members
+accumulated, `pending`, `revision`, a digest of the answer’s content, `files`,
+`additions`, `deletions`, `exact`, and `statuses`, each a pull request’s status word and
+its count. `pending` names the members not settled: with no whole list, or with one the
+files route would refresh, not `current` by its own freshness rule (`list_settled`), so
+a list from the local comparison waits on the record, as the row’s tree does.
+It names nothing but `number`, and its tag is the envelope’s, for a client that holds
+one; the Pulls tab sends none, and reads a `304` as its last answer holding.
+
+The answer has no window.
+The Pulls tab reads a stack again when its members or a member’s head, as the catalog’s
+rows report it, change, a member the list holds no row of taken as unchanged; when the
+prefetch lane reports a member’s list refreshed or a row’s own read of its list arrives;
+and, silently, while an answer names `pending` members, a minute on and doubling to half
+an hour. Its prefetch asks for the members a drawn stack’s answer names, after the
+reader’s own rows, in places kept for them (`PREFETCH_STACK_FILES`). The lines count
+their reads against a cap of their own, `STACK_LINES_PER_HOUR`, apart from the
+comparison warmer’s.
+
+## Row Change Lines
+
+A pull request’s row in the Pulls tab has a third line, its brief change line, which
+`GET pull-files-summary?numbers=<n>,<n>,...` answers for every row the list draws in one
+request (`pull_files_summary.py`, read by `row-lines.js`). It is what the pull request’s
+own cached list of changed files, the one `GET pull-files` serves, sums to, through the
+same `pull_change_sums.py` a stack’s line accumulates its members with, so a stack of
+one pull request says what its row says: a copied file is `added`, a changed or
+unchanged one `modified`, and a file the local comparison has no count for, a binary
+file, counts as none and makes `exact` false.
+It never asks GitHub, runs no Git, and reads nothing but each list’s file.
+
+The envelope has `source`, null with no `rows` on a server with no GitHub repository,
+and `rows` in the request’s order, each with `number`, `state` (`listed` or `absent`),
+`reason`, `listing`, `listed_from`, `generation`, `head`, `files`, `additions`,
+`deletions`, `exact`, and `statuses`, each a status and its count, sorted by the status.
+The reasons are `not_cached`, `schema_mismatch`, and `unreadable`, no usable list;
+`filling`, a list still being read or stopped part-way; `too_large`, a list GitHub
+capped or one an item was left out of; and `deferred`, a list past the request’s byte
+budget, which a later request reads.
+A `filling` or `too_large` answer still names its list’s `listed_from`, `generation`,
+and `head`, so a row whose tree reads that same list asks nothing more.
+`listing`, read from memory, says the list’s refresh runs in the refresh coordinator or
+the prefetch lane holds a files item for it.
+A request names `numbers` alone, 1 to `MAX_SUMMARY_NUMBERS` distinct pull-request
+numbers; anything else is refused 400 `invalid_request`. One request reads at most
+`MAX_SUMMARY_BYTES` of lists it has not summed, the first whatever its size, and a sum
+is kept by its file’s inode, modification time, and size, at most `MAX_KEPT_SUMMARIES`
+of them, the least recently used out first, so an unchanged list is read once.
+
 ## Label Sets
 
 A record carries each label’s color, but a record or a core cached before label colors
@@ -492,8 +557,10 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |
 | `pull-files-refresh` | `POST` | That list’s refresh |
+| `pull-files-summary` | `GET` | What each named pull request’s cached list of changed files sums to, for its row’s change line |
 | `stacks` | `GET` | The native stack snapshot |
 | `stacks-refresh` | `POST` | The stack job |
+| `stack-change` | `GET` | A native stack’s change line: its members’ lists accumulated |
 | `labels` | `GET` | The repository’s cached label set |
 | `labels-refresh` | `POST` | The label-set job |
 | `pulls-prefetch` | `GET`, `POST` | The background lane’s report, or a new queue for it |

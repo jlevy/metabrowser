@@ -619,7 +619,7 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
     assert result == {
         "case": "viewport-height-increase",
         "before": 43,
-        "after": 113,
+        "after": 90,
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
@@ -629,9 +629,13 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         # receipt, a new window, or going offline ends it; `beat` is alignRefreshing's one
         # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
         "titleBreathing": {
-            "admitted": {"asked": [407, 406, 405], "breathing": [407, 406, 405], "busyRows": 0},
+            "admitted": {
+                "asked": [438, 437, 436, 435],
+                "breathing": [438, 437, 436, 435],
+                "busyRows": 0,
+            },
             "settled": [],
-            "moved": {"asked": [311, 310, 309, 308], "breathing": [311, 310, 309, 308]},
+            "moved": {"asked": [372, 371, 370], "breathing": [372, 371, 370]},
             "offline": [],
             "beat": [100, 100, 50, 100],
         },
@@ -923,6 +927,10 @@ def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() 
 
     facts = run_session("github-pulls-files-prefetch-behavior.js")
     assert facts["asksBeforeDwell"] == 0
+    # A drawn stack's members whose lists its change line waits for take the last places,
+    # and each list the lane refreshes reaches the stack lines (review B of #484, B1, B2).
+    assert facts["stackAsk"][-4:] == [9001, 9002, 9003, 9004]
+    assert sorted(facts["listedForStacks"]) == sorted(facts["stackAsk"])
     assert facts["visibleAsk"]["afterMs"] == 500
     assert len(facts["visibleAsk"]["files"]) == 16
     assert facts["restedAsk"] == {"afterMs": 0, "first": 89}

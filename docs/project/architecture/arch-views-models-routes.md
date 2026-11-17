@@ -213,7 +213,8 @@ and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
 `github/pull-comparison`, `github/pull-snapshot`, `github/pull-rendered-diff`,
 `github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
 `github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
-`github/stacks`, `github/stacks-refresh`, `github/labels`, `github/labels-refresh`, and
+`github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
+`github/stack-change`, `github/labels`, `github/labels-refresh`, and
 `github/cache-clear` ([GitHub Pull Requests](arch-github-pull-requests.md)).
 
 ## Adding Something

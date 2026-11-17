@@ -774,6 +774,31 @@ async def stacks_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def stack_change_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/stack-change?number=<stack>`` — a stack's combined change.
+
+    Its members' own changed files accumulated, each file once and their lines summed, from
+    the cache alone (:mod:`.pull_stack_change`): no GitHub call, no fetch, and no Git.
+    """
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
+    from metabrowser.builtin_plugins.github.pull_stack_change import envelope_etag, stack_change
+
+    if set(request.query_params) != {"number"}:
+        return _invalid_request('a stack change names its stack by "number" alone')
+    try:
+        number = requested_number(request.query_params)
+    except PullRequestError:
+        return _invalid_request('"number" is a native stack number')
+    await _resolve(request)
+    envelope = await stack_change(served_repository(request.app), number)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
 async def stacks_refresh_handler(request: Request) -> Response:
     """Start or join optional stack work; core PR/catalog outcomes stay independent."""
     from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
@@ -940,6 +965,39 @@ async def pull_files_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def pull_files_summary_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/pull-files-summary?numbers=<n>,<n>`` — see :mod:`.pull_files_summary`.
+
+    What each named pull request's cached changed-files list sums to, for its Pulls row's
+    brief change line: from the cache alone, with no gh and no Git.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_files_summary import (
+        SummaryRequestError,
+        envelope_etag,
+        files_summary,
+        listing_numbers,
+        summary_numbers,
+    )
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+
+    # A repeated parameter would be read as its last value alone: refused, as any other shape.
+    if len(request.query_params.getlist("numbers")) > 1:
+        return _invalid_request('"numbers" is named once')
+    try:
+        numbers = summary_numbers(request.query_params)
+    except SummaryRequestError as exc:
+        return _invalid_request(str(exc))
+    await _resolve(request)
+    listing = listing_numbers(request.app, numbers)
+    envelope = await files_summary(served_repository(request.app), listing, numbers)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
 async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/pull-files-refresh`` — start or join one file list's refresh.
 
@@ -994,6 +1052,7 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
 __all__ = [
     "MAX_REFRESH_REQUEST_BYTES",
     "pull_files_handler",
+    "pull_files_summary_handler",
     "pull_files_refresh_handler",
     "pull_handler",
     "pull_markdown_handler",
@@ -1002,6 +1061,7 @@ __all__ = [
     "pull_rendered_diff_handler",
     "pulls_handler",
     "pulls_prefetch_handler",
+    "stack_change_handler",
     "stacks_handler",
     "stacks_refresh_handler",
     "labels_handler",

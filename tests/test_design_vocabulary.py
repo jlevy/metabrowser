@@ -1797,7 +1797,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
-        '"github-pulls-row disclosure-toggle collapsed"',
+        '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
     ),
     "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
@@ -1851,7 +1851,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
-        ("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),
+        ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
         ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
     ),
     "github/pull-files-view.js": (
@@ -2418,6 +2418,11 @@ _PUNCTUATION_PAINTERS = {
         'const CHECKS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });',
         'h("p", { class: "github-pull-quiet" }, mb.countPartsNodes(counted))',
     ),
+    # A stack's heading in the Pulls tab draws its change line through the SDK (mb-9ekj).
+    "builtin_plugins/github/pulls-panel.js": (
+        '...mb.countPartsNodes([{ separator: "·" }]),',
+        "...mb.changeLineNodes(said),",
+    ),
 }
 # A class only the one painter writes: no other source spells one as a class of its own.
 _PAINTED_CLASSES = re.compile(
@@ -2466,7 +2471,14 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         for text in painted:
             assert text in source, (path, text)
-    for path in ("builtin_plugins/diff/diff-view.js", "builtin_plugins/github/pull-page.js"):
+    for path in (
+        "builtin_plugins/diff/diff-view.js",
+        "builtin_plugins/github/pull-page.js",
+        "builtin_plugins/github/pulls-panel.js",
+        "builtin_plugins/github/stack-lines.js",
+        "builtin_plugins/github/row-lines.js",
+        "builtin_plugins/github/change-lines.js",
+    ):
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         assert _PAINTED_CLASSES.findall(source) == [], path
     # The Diff summary's breakdown is in its line's ink: only its marks, and the

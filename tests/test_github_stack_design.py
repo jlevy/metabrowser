@@ -73,7 +73,7 @@ def test_the_label_reads_the_shells_label_tokens_and_nothing_restyles_it() -> No
             declared = {line.split(":")[0].strip() for line in body.split(";") if ":" in line}
             assert not declared & set(REGISTER), f"{selectors} restyles the label: {declared}"
     # In a stack's row the label gives up only the menu's inset: the row's grid places it.
-    row_label = dict(rules)[".github-pulls-stack-row > .github-pull-stack-label"]
+    row_label = dict(rules)[".github-pulls-stack-heading > .github-pull-stack-label"]
     assert "padding: 0;" in row_label
 
 

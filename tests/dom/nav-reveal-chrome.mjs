@@ -554,6 +554,12 @@ try {
   await load(`${base}/pull/106`);
   await revealed("a pull request with 250 changed files", pullRow(106), "pulls");
   await evaluate(`document.querySelector(${JSON.stringify(pullRow(106))}).focus()`);
+  // Right goes to the row's change line, and Right there opens its changed files (mb-d0a3).
+  await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
+  await waitFor(
+    `document.activeElement?.matches?.('#tab-pulls .github-pulls-change[data-number="106"]') === true`,
+    "Right goes to #106's change line",
+  );
   await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
   const FILE_ROW = (name) =>
     `#tab-pulls a.github-pull-file-row[href="/pull/106/files/src/app/plugins/github/${name}"]`;
