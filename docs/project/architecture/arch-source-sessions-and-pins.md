@@ -242,12 +242,6 @@ revision; that is a limit of this design, not something View on branch adds.
 `builtin_plugins/diff/diff-view-file.js` holds the rules in its header, and the parity
 rows `diff.view-file` and `diff.view-file-sides` pin them.
 
-**Large Markdown.** A pin runs under the untrusted profile, so its Markdown’s author is
-not the reader’s to trust: a document past the render bound in
-`metabrowser/markdown_render_bound.py` opens as Source, its file envelope offering no
-rendered view and the render route refusing one, and one within it renders with its
-fenced code plain. The module records the measurements behind the bound.
-
 ## How a Mirror’s Page Names Itself
 
 A served mirror’s page is headed by its repository’s name, as a folder’s is by its own,

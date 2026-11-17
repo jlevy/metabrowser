@@ -132,8 +132,13 @@ The revision page bounded render work and drew plain code fences, answering meas
 renders of 12 s, 17 s, and 79 s (`pull_snapshot.py`, `kpress_adapter.py`). The pinned
 `/view/` viewer has neither.
 Browse code already reaches it, but View on branch puts every changed file one click
-away, so this change moves those bounds to the pinned viewer for untrusted subjects
-rather than deleting them (Q3).
+away. This change keeps only the plain fences: under the untrusted profile, which a pin
+always runs under, the pinned render route asks KPress for plain code, which looked the
+same there because the inert render drops the highlighter’s classes.
+The render-work bound is not moved (Q3, as revised): its estimate admitted multi-second
+renders at its own cap and judged another text than the render route, so a bound that
+works is a deadline on the render in the projection worker, bead `mb-273l`, in a
+separate change.
 
 ## Tests
 
@@ -142,8 +147,8 @@ rather than deleting them (Q3).
   moved, and a pin another tab changed.
 - `tests/test_github_pull_snapshot.py` shrinks to admission and images; the goldens that
   carry the route’s old name change with the rename.
-- A Chrome check that a pinned page’s `/view/` of a Markdown file bigger than the
-  measured bound renders within it.
+- `tests/test_git_revision_content_routes.py` pins that a pin’s render reaches no lexer
+  under the untrusted profile.
 
 ## Decisions
 
@@ -154,6 +159,13 @@ The owner answered on 2026-11-17:
 - **Q2.** A commit’s diff drops “View at parent” and keeps one “View file”, at the
   commit, by the same link-or-switch rule as today.
 - **Q3.** The large-file bounds move to the pinned viewer in this change.
+
+On 2026-11-17 the owner revised Q3 after the review of
+[#511](https://github.com/jlevy/metabrowser/pull/511): the render-work bound is removed
+from this change, so the pinned viewer renders Markdown as it did before, with no size
+cap, estimate, or refusal, and only the plain fences stay.
+The proper fix, rendering in the projection worker under a deadline, is bead `mb-273l`,
+in a separate pull request.
 
 ## References
 

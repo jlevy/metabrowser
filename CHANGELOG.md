@@ -1220,11 +1220,11 @@ All notable changes to Metabrowser are documented here.
   Rendered Markdown’s links to other files of the head open there only while the page
   shows the head, and its images load as before.
 
-- On a repository opened by its URL, a Markdown file larger than 64 KiB, or whose
-  rendering would cost more than a few hundred milliseconds, such as a long task list or
-  thousands of very short lines, opens in **Source**; the code blocks of one that
-  renders show as plain text, whatever language they name.
-  The content is a third party’s, and a render held the server for as long as it took.
+- On a repository opened by its URL, a Markdown file’s code blocks render as plain text
+  without running a highlighter.
+  They already looked plain there, since the page drops the highlighter’s colors, and
+  now cost a fraction as much: one 1.6 KB `console` block took 11.6 s to highlight and
+  4.9 ms plain.
 
 - A commit’s diff offers one **View file**, at the commit, and no longer **View at
   parent**.

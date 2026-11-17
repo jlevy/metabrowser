@@ -149,10 +149,6 @@ A deleted file has none, and neither does a file of an earlier head than the pul
 request’s, which no branch holds any more.
 A tab whose pin another tab switched turns its links into the switch back.
 
-A Markdown file of the pull request large or complex enough that rendering it could
-stall the server opens in **Source**: a mirror’s content is the pull request author’s,
-so its render work is bounded.
-
 ### Rendered Markdown in Changes
 
 **Rendered** shows each changed block of a Markdown file as removed and added, with the

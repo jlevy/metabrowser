@@ -357,6 +357,9 @@ It answers `/api/cache/…` with `unsupported_for_subject`, so records that name
 cached sources are never served beside acquired content, and answers the path-shaped
 `/raw/{path}` the same way, because the preview that is that form’s only consumer is
 never offered there.
+Its Markdown renders with fenced code as plain text (`plain_code` in
+`git/content_routes.py`): the inert render drops the classes highlighting writes anyway,
+and a lexer can cost far more than its input’s size (`kpress_adapter._PLAIN_CODE`).
 
 ### Borrowed Objects
 
