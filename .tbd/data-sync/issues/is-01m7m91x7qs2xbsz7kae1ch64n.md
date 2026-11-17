@@ -3,9 +3,9 @@ type: is
 id: is-01m7m91x7qs2xbsz7kae1ch64n
 title: "Flake: test_golden_pull_files_failures saw no account_changed stamp on disk in the command after it (run 44043888346)"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -15,8 +15,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T08:12:56.439Z
-updated_at: 2026-11-17T09:03:15.743Z
+updated_at: 2026-11-17T17:48:13.231Z
 started_at: 2026-11-17T08:16:02.342Z
+closed_at: 2026-11-17T17:48:13.230Z
+close_reason: "Fixed by #513 (review A addressed; A1 fixed with the reviewer's own verified form), merged 2026-11-17."
+resolution: null
+duplicate_of: null
 ---
 Seen once, in unit (3.13, 1/2) of CI run 44043888346 (jlevy/metabrowser#504 at e6f77bfb3; the other seven unit legs and 3 earlier runs passed it): tests/test_cli_github_pull_files_golden.py::test_golden_pull_files_failures failed its golden, cli-github-pull-files-failures.txt, at the command after the account-changed refresh (the gh-missing case, golden line 550).
 

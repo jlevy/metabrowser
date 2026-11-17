@@ -3,9 +3,9 @@ type: is
 id: is-01m7mbwaw9rhxejyx0z8t1fjby
 title: "pulls-refresh answers race the job's first write: the 202 can show the job's own outcome (latent flake in test_golden_pull_list_failures)"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m7m91x7qs2xbsz7kae1ch64n
 hold: null
 hold_until: null
 created_at: 2026-11-17T09:02:19.529Z
-updated_at: 2026-11-17T09:24:40.093Z
+updated_at: 2026-11-17T17:48:13.637Z
 started_at: 2026-11-17T09:04:47.711Z
+closed_at: 2026-11-17T17:48:13.636Z
+close_reason: "Fixed by #513 (review A addressed; A1 fixed with the reviewer's own verified form), merged 2026-11-17."
+resolution: null
+duplicate_of: null
 ---
 Found while fixing mb-kq72 (branch claude/pull-files-stamp-race). The pulls-refresh route (sidekick.pulls_refresh_handler) reads the list envelope in a worker thread after it starts the job, as pull-files-refresh did, so the 202 answer races the job's first write. With no gh, the list job writes its gh_missing stamp almost at once, and test_golden_pull_list_failures (tests/test_cli_github_pulls_golden.py, the gh_missing post near line 500, which the golden records) can then show the job's own outcome in the answer that starts it.
 
