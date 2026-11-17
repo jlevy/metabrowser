@@ -101,7 +101,8 @@ if [[ "$(fact runtime <<<"$clean_facts")$(fact runtime <<<"$runtime_facts")" == 
 else
   fail "signature_facts read: without the runtime: $clean_facts; with it: $runtime_facts"
 fi
-if developer_id_problems "$runtime_facts" app "" | grep -q "no secure timestamp"; then
+runtime_problems="$(developer_id_problems "$runtime_facts" app "")"
+if [[ "$runtime_problems" == *"no secure timestamp"* ]]; then
   pass "an ad hoc signature is not taken for a Developer ID one"
 else
   fail "developer_id_problems passed an ad hoc signature: $runtime_facts"
