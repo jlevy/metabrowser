@@ -34,9 +34,7 @@
 }
 /* A page mounted with no record in hand holds its cold header and tab column out of sight
    for the shell's quiet period, and pull-page.js lifts the hold with the first header that
-   has a record (docs/design-system.md, "Layout"). A record that lands within the quiet
-   period, and whose header waits for the conversation's held first paint, keeps them out of
-   sight until that paint (`-held`), at most DESCRIPTION_HOLD_MS. Measured 2026-11-16 in
+   has a record (docs/design-system.md, "Layout"). Measured 2026-11-16 in
    headless Chrome 152 at 560 px, at a load average of 9 to 14, three loads each: the page
    mounted with no record in hand, its pull read answered after 5, 30, 120, and 600 ms, every
    frame read to the landing. Before, a 30 ms read showed the cold header from the first

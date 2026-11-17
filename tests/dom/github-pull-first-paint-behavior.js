@@ -165,10 +165,10 @@ function host() {
  * The tabs' C, G, and E under a held first paint (review E2): a landing whose description's
  * Markdown is on its way holds the conversation over the loading page, but not the header,
  * which paints the record at once (exp-099). So the tab column is live, all three keys act,
- * and the stack's menu and keys are there while the body still waits, as after it shows. The registry
- * and facade are the production ones, loaded as the page mount session's tabKeys loads them,
- * and the hold really holds: the Markdown is answered when the session says, with the
- * allowlist in place.
+ * and the stack's menu and keys are there while the body still waits, as after it shows.
+ * The registry and facade are the production ones, loaded as the page mount session's
+ * tabKeys loads them, and the hold really holds: the Markdown is answered when the session
+ * says, with the allowlist in place.
  *
  * @param {Record<string, any>} page
  */

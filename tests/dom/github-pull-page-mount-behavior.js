@@ -916,8 +916,7 @@ async function tabKeys(page) {
   // A page whose first read fails has nothing to show, and takes the column out; the read
   // that answers puts the same links back, keys and all. The reader has gone to Changes
   // meanwhile, so the record lands with no held first paint, and paintHeader's own retarget
-  // of the returning links is what badges them at once while Shift is held. A conversation's
-  // held header wakes its column instead (github-pull-first-paint-behavior.js).
+  // of the returning links is what badges them at once while Shift is held.
   failing = true;
   ({ container, handle } = mountPage(undefined));
   await settle();
@@ -1924,9 +1923,10 @@ async function headerSummary(page) {
 // A page mounted with no record in hand holds its cold header and tab column for the shell's
 // quiet period (`github-pull-cold`), and the first header that has a record lifts the hold,
 // also while the conversation's first paint still waits for its Markdown: the header does
-// not wait for the body (exp-099). A page with its record in hand holds nothing. tests/dom/github-pull-header-chrome.mjs (`cold-landing`) measures what
-// each looks like and that a landing in the quiet period moves nothing; here, which the
-// page carries in each state, told in order for the golden.
+// not wait for the body (exp-099). A page with its record in hand holds nothing.
+// tests/dom/github-pull-header-chrome.mjs (`cold-landing`) measures what each looks like
+// and that a landing in the quiet period moves nothing; here, which the page carries in
+// each state, told in order for the golden.
 async function coldHold(page) {
   const told = [];
   const tell = (step, container) => {

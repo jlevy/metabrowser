@@ -844,9 +844,9 @@ const PENDING_EM = 14.5;
 // In the page: a pull request page mounted with no record in hand, as a direct load or a
 // reload mounts it, whose pull read the session answers (docs/design-system.md, "Layout").
 // The quiet period is set long, so where it ends is the session's to say: it finishes the
-// hold's animation itself, before the read for `slow`, and while the header waits for the
-// conversation's held first paint for `held`, whose description's Markdown never answers,
-// so that paint runs to its bound. Every frame from the mount to the landing is read: whether
+// hold's animation itself before the read for `slow`. For `held` the description's Markdown
+// never answers, so the conversation's first paint stays held while the header lands with
+// its record. Every frame from the mount to the landing is read: whether
 // the header and the tab column show, the cold header or the record's, and where the tab
 // bar is against the same record mounted in hand.
 const COLD_LANDING = `async (width, labelled, outcome) => {

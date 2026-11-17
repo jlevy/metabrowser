@@ -1662,13 +1662,12 @@ leave the row empty; so does a newer comparison on Changes until the reader take
 and a Retry, the offer, or the page’s next paint after a read that failed starts the
 wait again; a record that then names no comparison takes Changes’ diff away, and its
 wait with it (`headerSummary`). A page mounted with no record in hand holds its header
-and tab column for the quiet period, the first header with a record lifts the hold, a
-record that lands while the header waits for the conversation’s held first paint keeps
-them unseen until that paint, and a page with its record in hand holds nothing
-(`coldHold`). The tabs answer to `C`, `G`, and `E` through the production shortcut
-registry and plugin shortcut facade, with or without Shift and never with Ctrl: a tab
-the address does not show opens through the route, as a click on its link does.
-`H` is the Commits tab’s, so it does nothing here.
+and tab column for the quiet period, the first header with a record lifts the hold, also
+while the conversation’s first paint still waits for its Markdown, and a page with its
+record in hand holds nothing (`coldHold`). The tabs answer to `C`, `G`, and `E` through
+the production shortcut registry and plugin shortcut facade, with or without Shift and
+never with Ctrl: a tab the address does not show opens through the route, as a click on
+its link does. `H` is the Commits tab’s, so it does nothing here.
 The header keeps the tab column unless its first read fails: while the record is on its
 way, and for an absent record nothing is fetching, such as a server with no GitHub
 repository. So the keys are live from first paint, as the links are, and a key asks for
@@ -1680,11 +1679,10 @@ code, and on Changes `3` asks for a refresh.
 A refresh that serves the head repaints Browse code as a link, and `2` then opens the
 code instead; one with no pin drops Browse code, Refresh moves up to `2`, and `3`
 reaches nothing. The tab keys wait while the column is out of the page after a failed
-first read, and while a held first paint keeps the loading heading over the loading
-page, when the column shows but is inert; they return when the header puts it back or
-wakes it, badged at once while Shift is held, wait while the page is staged inert, and
-end with the page. The failed first read here is followed on Changes, which holds no
-first paint, so it is paintHeader’s own retarget that badges the returning links.
+first read; they return when the header puts it back, badged at once while Shift is
+held, wait while the page is staged inert, and end with the page.
+The failed first read here is followed on Changes, which holds no first paint, so it is
+paintHeader’s own retarget that badges the returning links.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
@@ -1795,8 +1793,8 @@ The first screen is the page’s own, measured from its top, not the view of a s
 page it replaces, and a text that comes into it as those above render is waited for too,
 the next few past it asked for at once (`firstScreen`); a text it never waited for that
 fails leaves the hold met.
-Over the loading page the header waits with the body, so the loading heading and any
-blocks that had shown stay where they were until both change once (`landing`,
+Over the loading page only the body waits: the header paints the record at once, and any
+loading blocks that had shown stay over the held body until it shows (`landing`,
 `landingAfterBlocksShowed`), and a page replaced while held stays out of sight
 (`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
 render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
@@ -1806,14 +1804,11 @@ badge’s first paint is the fresher of the cached record and the repository’s
 screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page that goes while it waits
 keeps it out of sight and records the wait as cancelled (`changes`). The kept renders
 are bounded by count and by characters, descriptions apart from other parts (`bounded`).
-Under a held first paint over the loading page no tab key is live: the header waits with
-the body, and its tab column, which shows from first paint, is inert and badges nothing
-while Shift is held.
-At release it wakes, badged at once while Shift is held, all three keys are live, and a
-link that had focus has it again (`tabKeysWhileHeld`). The stack keys wait with the
-header too: a stack that arrives during the hold paints its menu at release, and until
-then Control-N and Control-P are neither live nor in the Shift strip; at release the
-strip shows them and they walk the stack, while N alone opens nothing.
+Under a held first paint over the loading page the header does not wait: its tab column
+is live and badged while Shift is held, all three keys act, and a link that has focus
+keeps it, as at release (`tabKeysWhileHeld`). A stack that arrives during the hold
+paints its menu at once, and Control-N and Control-P are live and in the Shift strip and
+walk the stack, while N alone opens nothing.
 
 ```console
 $ node tests/dom/github-pull-first-paint-behavior.js

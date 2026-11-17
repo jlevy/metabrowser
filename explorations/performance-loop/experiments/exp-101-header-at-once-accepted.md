@@ -184,8 +184,10 @@ Each cell is median [range], n=5 per side; “after the record” is from the fi
 
 - **The deciding metric** moved in every pair, and the candidate’s 33 ms is a few ms
   above v0.12.0’s 24 to 30 ms (exp-099, another series on the same machine).
-- **The body did not move:** the description final and complete stayed within 1.1x in
-  every pair, since the conversation still waits for its Markdown as before.
+- **The body did not move:** the description final and complete were no slower than
+  1.09x in any pair (0.85 to 1.09), since the conversation still waits for its Markdown
+  as before. It shows 194 to 228 ms after the title now; exp-100 traces that wait to the
+  browser after the Markdown answers.
 - **The cold-record path did not move:** pr-fresh and pr-store wait on GitHub, and their
   title was within 1.14x in every pair.
 - No guard passed 1.3x in any pair.
@@ -194,7 +196,9 @@ Each cell is median [range], n=5 per side; “after the record” is from the fi
 
 This series does not measure layout.
 The real-Chrome header test (`tests/dom/github-pull-header-chrome.mjs`, `cold-landing`)
-checks it, at 560 and 360 px, labelled and unlabelled.
+checks it, at 560 and 360 px, labelled and unlabelled; at the candidate,
+`uv --config-file uv.toml run --frozen pytest tests/test_github_pull_header_chrome.py`
+passed in headless Chrome 152, and CI runs it on the pull request.
 A record that lands within the quiet period shows its header at once, with the
 conversation still held, and its tab bar never moves.
 A slower read still shows the cold header, rows held, and an unlabelled pull request
@@ -207,6 +211,9 @@ The difference is that this now happens before the body shows, rather than with 
   metric’s 7x change, not small guard movements.
 - **One pull request**, with four texts on its first screen.
 - **Headless Chrome only.**
+- **Direct navigations only.** An open from inside the app, which keeps the page it
+  replaces on screen until the new one is ready, still shows the new title at the hold’s
+  release; this round did not measure it.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

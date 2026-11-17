@@ -6067,8 +6067,6 @@ export function mountPullPage(container, ctx, mb) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
     }
-    // The conversation's first paint is decided first, so a page leaving the conversation
-    // releases its hold before the header paints.
     const conversation = model.pull !== null && model.tab !== "files" && model.tab !== "checks";
     const key = conversation ? conversationKey(model) : null;
     const action =
