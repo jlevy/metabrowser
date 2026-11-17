@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 from devtools import ci_report
 from devtools.check_goldens import recipe
 from devtools.ci_report import CHECK_FRACTION, GITHUB_DEFAULT_TIMEOUT_MINUTES, WORKFLOW
+from tests.required_tools import require_git
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_TEXT = """
@@ -268,3 +270,48 @@ def test_the_make_target_passes_its_flags() -> None:
     assert recipe(makefile, "ci-report") == (
         "\t$(UV_RUN) python -m devtools.ci_report $(CI_REPORT_FLAGS)"
     )
+
+
+def _headed(runs: Sequence[Json]) -> list[Json]:
+    """*runs*, each with a head commit named after its id."""
+
+    return [run | {"head_sha": f"head-{run['id']}"} for run in runs]
+
+
+def test_containing_leaves_out_the_runs_before_a_commit(
+    tmp_path: Path,
+    workflow: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The four newest runs are after the commit; the two oldest are before it.
+    after = {"head-6", "head-5", "head-4", "head-3"}
+    monkeypatch.setattr(ci_report, "contains", lambda head, commit: head in after)
+    saved = tmp_path / "saved"
+    ci_report.save(saved, _headed(RUNS), JOBS)
+    gh = _fake_gh(tmp_path / "gh", _headed(RUNS), JOBS)
+    monkeypatch.setenv("PATH", f"{gh}{os.pathsep}{os.environ['PATH']}")
+
+    arguments = ["--workflow", str(workflow), "--containing", "c0ffee"]
+    assert ci_report.main(["--from", str(saved), *arguments]) == 0
+    assert capsys.readouterr().out.startswith("4 runs, 5 attempts")
+    assert ci_report.main(arguments) == 0
+    assert capsys.readouterr().out.startswith("4 runs, 5 attempts")
+    calls = (gh / "calls.log").read_text(encoding="utf-8").splitlines()
+    assert not any("/runs/2/" in call or "/runs/1/" in call for call in calls)
+
+
+def test_a_head_contains_its_ancestors_and_not_its_descendants() -> None:
+    require_git()
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD", "HEAD~1"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    ).stdout.split()
+
+    assert ci_report.contains(head[0], head[1])
+    assert not ci_report.contains(head[1], head[0])
+    assert not ci_report.contains("0" * 40, head[1])

@@ -9,6 +9,7 @@ fast CI plan is verified the same way, and no baseline has to be kept in prose:
     python -m devtools.ci_report --save attic/ci-runs    # and keep the data it read
     python -m devtools.ci_report --from attic/ci-runs    # read kept data, not the network
     python -m devtools.ci_report --check                 # fail on a job near its limit
+    python -m devtools.ci_report --containing <commit>   # only runs whose head has it
 
 The data is ``gh api``'s: the workflow's runs, newest first, and the jobs of every
 attempt of each. What it reports:
@@ -24,6 +25,9 @@ attempt of each. What it reports:
   newest attempt is green.
 - With ``--check``, a failure when a job's 90th percentile passes ``CHECK_FRACTION`` of the
   ``timeout-minutes`` the workflow gives it, or of GitHub's default where it gives none.
+- With ``--containing``, only the runs whose head contains a commit, such as the last one
+  that changed the workflow: a job's older runs may have done other work under its name,
+  and would be judged against a limit set for the new.
 """
 
 from __future__ import annotations
@@ -220,10 +224,35 @@ def gh_api(path: str) -> Json:
         raise ReportError(f"gh api {path} answered with no JSON: {error}") from error
 
 
+def contains(head: object, commit: str) -> bool:
+    """Whether the commit *head* contains *commit*; one the clone lacks cannot show it."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, str(head)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            timeout=GH_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ReportError(f"git merge-base did not answer: {error}") from error
+    return completed.returncode == 0
+
+
 def fetch(
-    count: int, *, workflow: str, branch: str | None, event: str | None
+    count: int,
+    *,
+    workflow: str,
+    branch: str | None,
+    event: str | None,
+    containing: str | None = None,
 ) -> tuple[list[Json], dict[tuple[int, int], list[Json]]]:
-    """The newest *count* runs, and the jobs of each of their attempts."""
+    """The newest *count* runs, and the jobs of each of their attempts.
+
+    With *containing*, only the runs whose head contains that commit. The runs come
+    newest first, so the first that does not ends the reading.
+    """
 
     runs: list[Json] = []
     page = 1
@@ -233,7 +262,13 @@ def fetch(
         query += f"&event={event}" if event else ""
         answer = gh_api(f"repos/{{owner}}/{{repo}}/actions/workflows/{workflow}/runs?{query}")
         listed = cast("list[Json]", answer.get("workflow_runs") or [])
-        runs += listed
+        if containing is not None:
+            kept = [run for run in listed if contains(run.get("head_sha"), containing)]
+            runs += kept
+            if len(kept) < len(listed):
+                break
+        else:
+            runs += listed
         if len(listed) < 100:
             break
         page += 1
@@ -496,6 +531,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--save", type=Path, help="write the data read to this folder")
     parser.add_argument("--from", dest="source", type=Path, help="read saved data, not gh")
     parser.add_argument("--steps", action="store_true", help="also list each job's steps")
+    parser.add_argument("--containing", help="only runs whose head contains this commit")
     parser.add_argument(
         "--check",
         action="store_true",
@@ -506,9 +542,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
     try:
         if args.source is not None:
             raw_runs, raw_jobs = load(args.source)
+            if args.containing is not None:
+                raw_runs = [
+                    run for run in raw_runs if contains(run.get("head_sha"), args.containing)
+                ]
         else:
             raw_runs, raw_jobs = fetch(
-                args.runs, workflow=args.workflow.name, branch=args.branch, event=args.event
+                args.runs,
+                workflow=args.workflow.name,
+                branch=args.branch,
+                event=args.event,
+                containing=args.containing,
             )
         if args.save is not None:
             save(args.save, raw_runs, raw_jobs)

@@ -295,3 +295,18 @@ def test_a_trusted_expression_in_a_run_line_is_fine(tmp_path: Path) -> None:
     workflow = _workflow("push", run='echo "${{ github.sha }} ${{ matrix.shard }}"')
 
     assert verify(_repository(tmp_path, other=workflow)) == []
+
+
+def test_the_nightly_report_alone_may_read_runs(tmp_path: Path) -> None:
+    nightly = (ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
+    widened = nightly.replace("  serial:\n", "  serial:\n    permissions:\n      actions: read\n")
+    wrote = nightly.replace("      actions: read\n", "      actions: write\n")
+
+    assert verify(_repository(tmp_path / "real", nightly=nightly)) == []
+    assert verify(_repository(tmp_path / "widened", nightly=widened)) == [
+        "nightly.yml job serial's permissions {'actions': 'read'} must be the workflow's"
+    ]
+    assert verify(_repository(tmp_path / "wrote", nightly=wrote)) == [
+        "nightly.yml job time-limits's permissions {'contents': 'read', 'actions': 'write'} "
+        "must be {'contents': 'read', 'actions': 'read'}"
+    ]

@@ -24,8 +24,8 @@ And of every workflow file:
 - nothing runs on ``pull_request_target``, which would run with the base repository's
   token; every checkout sets ``persist-credentials: false``; and no ``run:`` line
   interpolates the event or the head branch, which a pull request's author controls;
-- ``ci.yml`` gives ``contents: read``, and ``actions: read`` only to the jobs
-  ``JOB_PERMISSIONS`` names.
+- ``ci.yml`` and ``nightly.yml`` give ``contents: read``, and ``actions: read`` only to
+  the jobs ``JOB_PERMISSIONS`` names.
 
 ``devtools/check_supply_chain.py`` holds the ``admitted-git`` matrix to both Git floors,
 and ``tests/test_ci_plan.py`` holds that a push to main, and a pull request while main is
@@ -64,10 +64,11 @@ STACK_TARGETS: Final = ("lint-check", *TIER_TARGETS)
 WORKFLOW_PERMISSIONS: Final = {"contents": "read"}
 READ_RUNS: Final = {"contents": "read", "actions": "read"}
 # The workflows whose permissions this holds, and the jobs among them that read other
-# runs: the plan job reads main's state (SUPPLY-CHAIN-SECURITY.md, "CI Workflows").
-# publish.yml's are check_supply_chain.py's.
+# runs: the plan job reads main's state, and the nightly report reads job times
+# (SUPPLY-CHAIN-SECURITY.md, "CI Workflows"). publish.yml's are check_supply_chain.py's.
 JOB_PERMISSIONS: Final = {
     "ci.yml": {PLAN_JOB: READ_RUNS},
+    "nightly.yml": {"time-limits": READ_RUNS},
 }
 CANCEL_IN_PROGRESS: Final = "${{ github.event_name == 'pull_request' }}"
 VERDICT_IF: Final = frozenset({"always()", "${{ always() }}"})

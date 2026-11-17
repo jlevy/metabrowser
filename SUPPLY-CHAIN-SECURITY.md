@@ -208,12 +208,13 @@ fixture. Moving a floor therefore means pinning and reviewing the new release he
 
 ## CI Workflows
 
-`ci.yml` gives every job `contents: read`, and one job one permission more, reviewed on
-November 17, 2026:
+`ci.yml` and `nightly.yml` give every job `contents: read`, and two jobs one permission
+more, reviewed on November 17, 2026:
 
 | Workflow | Job | Permission | What it reads |
 | --- | --- | --- | --- |
 | `ci.yml` | `plan` | `actions: read` | One page of `ci.yml`’s push runs on `main`, and the earlier attempt of a rerun, to learn whether `main` is red (`devtools/ci_plan.sh`) |
+| `nightly.yml` | `time-limits` | `actions: read` | `ci.yml`’s push runs on `main` and their jobs, for `make ci-report` |
 
 - **Reach.** `actions: read` reads this repository’s workflow runs, jobs, logs, and
   artifacts, and writes nothing.
@@ -224,6 +225,7 @@ November 17, 2026:
   `pull_request_target`. A pull request’s run therefore gets a read-only token, and its
   workflow and the `devtools/ci_plan.sh` and `devtools/ci_verdict.sh` it runs come from
   the pull request’s own merge commit, so a change to the gate is reviewed as a change.
+  `nightly.yml` runs on a schedule and by hand.
 - **Untrusted input.** A branch name or a pull request’s title or body reaches a step
   only through `env:`, quoted in the shell; no `run:` line interpolates the event.
 - **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache

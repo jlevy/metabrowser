@@ -320,6 +320,12 @@ whose shards are not `1` through `N`, a tier no job runs, an interpreter list th
 differs from `pyproject.toml`’s classifiers and the free-threaded build, and a
 permission, trigger, or `run:` line that widens what a pull request can reach.
 
+**The nightly soak.** `.github/workflows/nightly.yml` repeats the serial and Chrome
+tiers on the interpreter a pull request draws the Chrome tier on, so that a flake is
+found away from a pull request, then runs `make ci-report` with `--check`
+([Measuring CI](#measuring-ci)). It finds flakes; the runs on each commit of `main` are
+the coverage.
+
 ### Skips
 
 `make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
@@ -492,6 +498,9 @@ make ci-report CI_REPORT_FLAGS="--from attic/ci-runs"
 
 With `--check` it fails when a job’s 90th percentile passes `CHECK_FRACTION` of the
 `timeout-minutes` the workflow gives that job, before the limit itself trips.
+`--containing` keeps only the runs whose head contains a commit, and the nightly soak
+runs `--check` over `main`’s push runs since `ci.yml` last changed, since an older run
+may have done other work under a job’s name.
 Quote the runs a number came from, as for a suite run.
 
 ## Adding Coverage
