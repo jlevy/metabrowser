@@ -46,7 +46,8 @@ uses 84 today.
   24.4.
 - Every check that runs today runs on every commit that reaches `main`, and before the
   merge for all but one, which [How Coverage Is Kept](#how-coverage-is-kept) argues.
-- A failure of that one check on `main` stops the next merge until it is fixed.
+- While that one check is red on `main`, a pull request merges only by passing `main`’s
+  whole matrix on a tree that contains the failure.
 - A flake costs the rerun of one job of a few minutes and leaves the evidence that it
   was a flake.
 - CI time has a limit that a growing suite meets as a failure with a stated remedy.
@@ -162,17 +163,17 @@ For a pull request to `main`:
 | `plan` | 1 | reads whether `main` is red, and decides the Chrome tier’s interpreters and whether `stack-integration` is needed | 0.2 (est.) |
 | `lint` | 1 | `make lint-check audit` | 1.5 (measured) |
 | `distribution` | 1 | `make build` | 0.7 (measured) |
-| `unit` | 4 | `make test-parallel` on 3.12, 3.13, 3.14, and 3.14t | 3.3 to 4.0 on 3.13; 4.0 to 5.0 on 3.14t (est.) |
+| `unit` | 4 | `make test-parallel` on 3.12, 3.13, 3.14, and 3.14t | 3.3 to 4.4 on 3.12, 3.1 to 4.0 on 3.13, 3.5 to 4.6 on 3.14, and 3.8 to 5.0 on 3.14t (est.) |
 | `goldens` | 4 | `make test-goldens`, then `make test-serial`, on the same four | 2.5 to 3.2 (est.) |
 | `chrome` | 4 | `make test-chrome SHARD=I/4` on 3.13 | 1.9 to 2.4 (est.) |
 | `admitted-git` | 2 | `make test-admitted-git` on Git 2.43.7 and 2.50.1 | 2.5 to 3.0 (est.) |
 | `ci-ok` | 1 | fails unless every job above succeeded | 0.1 (est.) |
 
-That is 18 jobs and 39 to 49 runner minutes (est.), the sum of each leg’s estimate,
-against 9 jobs and 84 today.
-The wall clock is the `unit (3.14t)` job’s 4 to 5 minutes (est.). Splitting each `unit`
-job in two with `SHARD=I/2` brings it to about 3 minutes; the phase’s measurement
-decides, by the rule in [Time Limits](#time-limits).
+That is 18 jobs and 39 to 49 runner minutes (est.), the sum of the rows, against 9 jobs
+and 84 today.
+The wall clock is the `unit (3.14t)` job’s 4 to 5 minutes (est.). Splitting
+each `unit` job in two with `SHARD=I/2` brings it to about 3 minutes; the phase’s
+measurement decides, by the rule in [Time Limits](#time-limits).
 
 The estimates divide the measured serial seconds by an assumed 2.5 to 3.2 for four
 workers and add 0.4 to 0.6 minutes of setup and worker start.
@@ -236,7 +237,8 @@ It fails unless:
 - every interpreter list in `ci.yml` matches the classifiers in `pyproject.toml` and the
   free-threaded build: the `unit` and `goldens` matrices and the `plan` job’s `PYTHONS`,
   and `PR_CHROME_PYTHON` is one of them;
-- the `chrome` matrix is the `plan` job’s output.
+- the `chrome` matrix is the `plan` job’s output;
+- no workflow runs on `pull_request_target`.
 
 The tests of `devtools/ci_plan.sh` hold that a push to `main`, and a pull request while
 `main` is red, get all of `PYTHONS`. `devtools/check_supply_chain.py` already holds the
@@ -248,33 +250,43 @@ With the Chrome tier on one interpreter before the merge, a regression on anothe
 reaches `main`. A required `ci-ok` (Q5) alone would not stop the next pull request from
 merging on top of it, since that pull request checks the tier on 3.13 only, and a second
 regression on the same interpreter would add no new signal.
-Two mechanisms close that (Q6):
+Two mechanisms close that for every merge an agent makes (Q6):
 
-- **`ci-ok` fails while `main` is red.** The `plan` job of a pull request to `main`
-  reads `main`’s state from the Actions API, with `actions: read` on that one job.
-  The state is the conclusion of the newest `ci.yml` run of a push to `main`. While that
-  run is still going, it is the conclusion of the attempt before it, for a rerun, or of
-  the run before it, for a first attempt.
-  Only `success` is green; any other conclusion, or no answer, is red.
+- **A red `main` widens the next pull request’s run.** The `plan` job of a pull request
+  to `main` reads `main`’s state from the Actions API, with `actions: read` on that one
+  job. It reads one page of `ci.yml`’s push runs on `main`, newest first, and the first
+  run with a finished attempt gives the state.
+  A run whose latest attempt is still going or queued counts by the attempt before it,
+  for a rerun, and is passed over, for a first attempt.
+  Only `success` is green; any other conclusion, or no finished attempt in the page, is
+  red.
   - While `main` is red, the `plan` job gives the run `main`’s whole matrix, the Chrome
-    tier on all four interpreters, and `ci-ok` names `main`’s red run in its verdict.
-  - A pull request whose merge with `main` carries `main`’s failure therefore fails
-    `ci-ok`. Only one that repairs it passes, which is how `main` is fixed under a
-    required check.
+    tier on all four interpreters.
+  - `ci-ok` still fails only when one of the run’s own jobs fails.
+    A pull request whose merge with `main` carries a lasting failure fails it, and only
+    one that repairs it passes, which is how `main` is fixed under a required check.
+  - The `plan` job also checks whether the merge commit the run tests contains `main`’s
+    red head (`git merge-base --is-ancestor`). `ci-ok`’s verdict names `main`’s red run
+    and says whether it does, which is what the merge procedure reads.
   - Not knowing the state costs runner minutes, never coverage.
 
-- **The merging agent watches `main` after each merge.** It follows the `ci.yml` run of
-  the merge commit to its end (`gh run watch`).
-  - While that run is red, the agent merges only a pull request whose `ci-ok` ran
-    `main`’s whole matrix.
+- **The merging agent merges by `main`’s state.** Phase 2 adds this procedure to the Git
+  section of [Agent Instructions](../../../../AGENTS.md#git):
+  - After each merge, it watches that commit’s `ci.yml` run to its end (`gh run watch`),
+    and it merges into `main` only when the newest push run on `main` has finished.
+  - While that run is red, it merges only a pull request whose latest `ci-ok` run was
+    triggered after the red commit landed and ran `main`’s whole matrix, so that the
+    merge commit it tested contains `main`’s current red head; the verdict names that
+    head. A rerun of an older run does not qualify, since a rerun reuses the merge commit
+    its first trigger built.
   - It reruns a failure that a bead names as a known flake once, which turns the run
     green if it was the flake.
     Any other failure gets a bead and a fix or a revert.
-  - This covers what `ci-ok` cannot: a pull request whose `ci-ok` went green before
-    `main` turned red still reads green.
+  - It never arms auto-merge: agents merge directly, so every merge they make passes
+    these rules.
 
-  Phase 2 adds this procedure, with that reason, to the Git section of
-  [Agent Instructions](../../../../AGENTS.md#git).
+  Its reason, which the procedure states: `ci-ok` cannot see a pull request whose run
+  went green before `main` turned red, or a `main` run that has not finished.
 
 A stacked pull request does not read `main`’s state.
 It merges into its base branch, and it reaches `main` through a run whose base is
@@ -290,7 +302,7 @@ compares its tree with the tree of the merge commit the other jobs check out:
   Nothing more runs, and the `plan` job’s summary names the tree.
 - **Different:** seven jobs run on the head merged with that exact `main` commit, on
   Python 3.13 as today: `make lint-check`, `make test-parallel`,
-  `make test-goldens test-serial`, and the four Chrome shards.
+  `make -k test-goldens test-serial`, and the four Chrome shards.
   Each is 1.5 to 4 minutes (est.), where the single job takes 19.4 today.
 - **Conflict:** `ci-ok` fails with today’s message, and the other jobs still run.
 
@@ -426,6 +438,8 @@ jobs:
       main-sha: ${{ steps.decide.outputs.main-sha }}
       main-state: ${{ steps.decide.outputs.main-state }}
       main-run: ${{ steps.decide.outputs.main-run }}
+      red-sha: ${{ steps.decide.outputs.red-sha }}
+      tests-red: ${{ steps.decide.outputs.tests-red }}
     steps:
       - setup: checkout only
       - id: decide
@@ -500,7 +514,7 @@ jobs:
         part:
           - lint-check
           - test-parallel
-          - test-goldens test-serial
+          - -k test-goldens test-serial # -k reports both, as the goldens job does
           - test-chrome SHARD=1/4
           - test-chrome SHARD=2/4
           - test-chrome SHARD=3/4
@@ -527,17 +541,23 @@ jobs:
           INTEGRATION: ${{ needs.plan.outputs.integration }}
           MAIN_STATE: ${{ needs.plan.outputs.main-state }}
           MAIN_RUN: ${{ needs.plan.outputs.main-run }}
+          RED_SHA: ${{ needs.plan.outputs.red-sha }}
+          TESTS_RED: ${{ needs.plan.outputs.tests-red }}
         run: bash devtools/ci_verdict.sh
 ```
 
 `devtools/ci_plan.sh` holds the decision, so that it has tests:
 
 ```bash
-main_state=none
+main_state=none tests_red=no
 if [ "$EVENT" = pull_request ] && [ "$BASE" = main ]; then
-  # "green <run>" or "red <run>", by the rule in A Red main. A failed read is red.
-  main=$(main_state_from_api) || main="red unknown"
-  main_state=${main%% *} main_run=${main#* }
+  # "<green|red> <run> <head sha>", by the rule in A Red main. A failed read is red.
+  main=$(main_state_from_api) || main="red unknown unknown"
+  read -r main_state main_run red_sha <<<"$main"
+  # Whether the merge commit this run tests contains main's red head.
+  if [ "$main_state" = red ] && git merge-base --is-ancestor "$red_sha" HEAD 2>/dev/null; then
+    tests_red=yes
+  fi
 fi
 if [ "$EVENT" = pull_request ] && [ "$main_state" != red ]; then
   chrome="[\"$PR_CHROME_PYTHON\"]"
@@ -560,8 +580,15 @@ fi
 `devtools/ci_verdict.sh` fails unless every needed job’s result is `success`. It accepts
 `skipped` only for `stack-integration`, and only when `integration` is `none` or
 `identical`; `conflict` fails with today’s message.
-While `MAIN_STATE` is `red`, it names `MAIN_RUN` in its verdict, so a red `ci-ok` says
-whether `main` was already red.
+While `MAIN_STATE` is `red`, its verdict names `MAIN_RUN` and `RED_SHA` and says, from
+`TESTS_RED`, whether this run tested that head, which the merge procedure reads.
+It never fails on `MAIN_STATE` alone, which would deadlock a red `main`.
+
+Under `pull_request`, the workflow, `ci_plan.sh`, and `ci_verdict.sh` come from the pull
+request’s own merge commit, so the `main`-state read and `ci-ok` bind an honest pull
+request, and a change to any of the three is reviewed as a change to the gate.
+The workflow stays on `pull_request` and never uses `pull_request_target`, which would
+run with the base repository’s token; `check_ci.py` holds that.
 
 No new action is used, and `gh` is the runner’s own.
 The `plan` job is the only one with a permission beyond `contents: read`. The scheduled
@@ -656,14 +683,15 @@ brief’s methodology and, once it exists, `make ci-report`.
 | The markers and `--shard` | `pytest --collect-only` counts for the three tier expressions and for every shard | The three tiers sum to the whole collection, and the shards of each to the tier, at `N` from 1 to 5 |
 | The marker gates | A test for each gate with a module that breaks it | Each fails with the gate’s reason |
 | xdist | The pull request’s own `test` jobs, rerun until there are 10 runs | No failure that a serial run does not have; the parallel tier at least 2.3 times faster than the 510 to 661 seconds measured. Below that, Phase 2 splits `unit` in two from the start |
-| A test that fails only under xdist | The same 10 runs | Fixed, or marked `serial` with the failure as the marker’s reason, which keeps it on every interpreter |
+| A test that fails only under xdist | The same 10 runs | Fixed, or marked `serial` with the failure as the marker’s reason, which keeps it on every interpreter. A module in `ADMITTED_GIT_TESTS` is fixed, not marked |
 | `make test-admitted-git` under xdist | The pull request’s `admitted-git` jobs over the same 10 runs | Both Git legs green in all 10, with the test count of a serial run of `ADMITTED_GIT_TESTS` on the same commit |
 | Concurrent goldens | 10 runs | The 453 commands pass, and each file’s verdict equals a run with `GOLDEN_JOBS=1` |
 | The `gh` guard’s summary | A test that makes a guarded `gh` call in a worker | The summary names it |
 | Split jobs | 20 pull request runs after the merge | Median push to green at or under 5 minutes, 90th percentile at or under 6, and `unit`, the serial tier, and `chrome` together collecting the tests today’s `test` job collects on the same commit |
 | `ci-ok` | A pull request with one deliberately failing shard, closed unmerged | `ci-ok` is red and names it; the other jobs finish |
-| `main`’s state | `devtools/ci_plan.sh`’s tests over recorded API answers: success, failure, cancelled, no run, a failed read, a first attempt in progress, and a rerun in progress | Only `success`, read by the rule in [A Red `main`](#a-red-main), keeps the Chrome tier on `PR_CHROME_PYTHON`; every other answer gives it all of `PYTHONS` |
-| A red `main` in CI | The first pull request run after `main` is next red | The run has the Chrome tier on all four, and `ci-ok`’s verdict names `main`’s run |
+| `main`’s state | `devtools/ci_plan.sh`’s tests over recorded API answers: success, failure, cancelled, no run, a failed read, a first attempt in progress, a rerun in progress, two runs in progress, a queued run, and no finished attempt in the page | Only `success`, read by the rule in [A Red `main`](#a-red-main), keeps the Chrome tier on `PR_CHROME_PYTHON`; every other answer gives it all of `PYTHONS` |
+| Whether a run tested the red head | `ci_plan.sh`’s tests with a merge commit that contains the red head, one that predates it, and a red head the clone lacks | `tests-red` is `yes` for the first only |
+| A red `main` in CI | The first pull request run after `main` is next red, and a rerun of a run from before | Both have the Chrome tier on all four; `ci-ok`’s verdict names `main`’s run and says the first tested its red head and the rerun did not |
 | Cancellation | Two pushes a minute apart | The first run is cancelled; a `main` run is never cancelled |
 | `stack-integration` | A stack behind `main`, one level with it, and one that conflicts | `needed`, `identical`, and `conflict`, each with its summary |
 | Nightly soak | One manual run by `workflow_dispatch` | 5 serial-tier jobs and 20 Chrome shard jobs run and report |
@@ -695,7 +723,9 @@ brief’s methodology and, once it exists, `make ci-report`.
   workers is found by the 10-run step, and fixed or marked `serial`, which keeps it on
   every interpreter. Two modules outside the Chrome tier, `test_cli_main.py` and
   `test_refresh_signals.py`, probe for a free port and then bind it, which two workers
-  can race.
+  can race. `test_refresh_signals.py` is in `ADMITTED_GIT_TESTS`, which runs under xdist
+  with no marker filter and whose gate refuses `serial`, so it has to be fixed, not
+  marked.
 - **A growing serial tier.** Each test marked `serial` adds its time to every `goldens`
   job. The job’s time limit reports that growth, and fixing the race is the remedy before
   marking.
@@ -715,13 +745,21 @@ brief’s methodology and, once it exists, `make ci-report`.
   Phase 2. If it costs the goal, `main`’s 16 Chrome jobs are the lever: two shards an
   interpreter would leave `unit` as `main`’s longest job (est.).
 - **The Chrome tier on three interpreters after the merge.** A regression there reaches
-  `main`. The merging agent sees it when that run ends, and until `main` is green,
-  `ci-ok` fails every pull request that does not fix it.
+  `main`. The merging agent sees it when that run ends, and until `main` is green, a
+  pull request merges only by passing `main`’s whole matrix on a tree that contains the
+  failure.
+- **Merges wait for `main`.** The agent merges only when `main`’s newest run has
+  finished, so merges are spaced by a `main` run, about 5 minutes (est.), and a stack
+  lands one layer a run.
+  That is accepted: without it, a pull request checked on one interpreter could land on
+  a `main` nobody has verified.
 - **A red `main` costs every pull request.** While `main` is red, each pull request run
   is 30 jobs, not 18, and draws the Chrome tier four times.
   A red `main` from a flake is therefore rerun when the merging agent sees it.
 - **A `ci-ok` that went green before `main` turned red** still reads green.
-  The merge procedure covers it for agents; a merge by hand is not covered.
+  The merge procedure covers it for agents.
+  A merge by hand, or by auto-merge the owner arms, is not covered, unless the owner
+  requires up-to-date branches (Q5).
 - **Growth continues.** The Chrome tier went from nothing to 6.3 minutes in five days.
   The shard count and the time limits are how the design absorbs that.
 - **A developer machine under xdist** runs one worker per processor, which is heavy
@@ -748,12 +786,21 @@ Decided:
    serial tier runs on all four before the merge.
 4. **A required check (Q5): yes.** Once Phase 2’s `ci-ok` job exists, the owner sets a
    ruleset that requires it on `main`. It is a repository setting only the owner can
-   change. It stops a pull request with a red `ci.yml` run from merging and lets
-   auto-merge wait for CI, which it cannot do while nothing is required.
+   change. It stops a pull request with a red `ci.yml` run from merging.
    `macos-app.yml` is a separate, path-filtered workflow outside `ci-ok`, so a red macOS
    job still does not block a merge.
-5. **A red `main` (Q6), 2026-11-17.** `ci-ok` fails while `main` is red, and the merging
-   agent watches `main` after each merge, as [A Red `main`](#a-red-main) describes.
+   The required check names GitHub Actions as its expected source, so no other app’s
+   status named `ci-ok` satisfies it.
+   An option for the owner, not the default: the ruleset can also require a branch to be
+   up to date with `main` before it merges.
+   Every merge then tests the tree that lands, which closes the gaps of
+   [A Red `main`](#a-red-main) for merges by hand too, at the cost of one more pull
+   request run, 18 jobs (est.), for each pull request that waits behind another merge.
+5. **A red `main` (Q6), 2026-11-17.** While `main` is red, a pull request runs `main`’s
+   whole matrix, and the merging agent merges only by the rules of
+   [A Red `main`](#a-red-main): after `main`’s newest run has finished, and while it is
+   red, only a pull request whose latest run tested `main`’s red head on that matrix.
+   Agents never arm auto-merge.
    The `plan` job gets `actions: read`; no job gets `issues: write`.
 
 Open, with the plan’s recommendation standing as a proposal:
@@ -767,7 +814,7 @@ Open, with the plan’s recommendation standing as a proposal:
   Whether a repository owned by a user account can enable one was not established, and
   with the matrix at about five minutes little is left for it to move.
 - **A red nightly soak (Q9).** Who reads it?
-  A red nightly does not make `main` red, since `ci-ok` reads only `ci.yml` runs.
+  A red nightly does not make `main` red, since the `plan` job reads only `ci.yml` runs.
   The proposal: the merging agent reads the newest nightly run when it starts merging,
   and gives each failure it names a bead.
 
@@ -778,9 +825,9 @@ Open, with the plan’s recommendation standing as a proposal:
 - [End-to-End Testing](../../../e2e-testing.md): the tiers, skips, timeouts, and
   `make test-report`
 - [Supply-Chain Security](../../../../SUPPLY-CHAIN-SECURITY.md): the rules for a
-  dependency, an action, or a permission
-- [Agent Instructions](../../../../AGENTS.md): bounds are set from measurements, a check
-  is preferred to a sentence, and the Git section holds the merge procedure
+  dependency or an action; Phase 2 adds the record of the `plan` job’s permission
+- [Agent Instructions](../../../../AGENTS.md): bounds are set from measurements, and a
+  check is preferred to a sentence; Phase 2 adds the merge procedure to its Git section
 - [Development](../../../development.md#documentation): a limit is documented beside its
   constant, with the measurement that set it
 - Beads `mb-h8zb`, and `mb-alff`, `mb-nvo0`, `mb-551m`, and `mb-zv5s` for the flakes
