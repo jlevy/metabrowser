@@ -241,9 +241,9 @@ Never inline a font-size literal at a use site.
 accompanies.** An age, an update or fetch time, a count, a size, a row’s second line, a
 note, or a caption is never set a step smaller than the text beside it: it steps back by
 its ink, muted, not by its size.
-So “Fetched just now via GitHub CLI” in a pull request’s header reads at the body size
-of the header’s other lines, and “Updated just now” in the Pulls tab at the list size of
-the rows under it, by one rule.
+So “Fetched just now via GitHub CLI” at the end of a pull request’s author’s row reads
+at the body size of the sentence before it, and “Updated just now” in the Pulls tab at
+the list size of the rows under it, by one rule.
 
 The chrome has two text sizes, and the one region set apart is the navigation column,
 which takes the smaller one throughout, its metadata and its header path included: it is
@@ -375,7 +375,7 @@ The two headers share their parts in one order, and each keeps the lines only it
 | Author | The [actor identity](#actor-identity) | The actor identity, its sentence, “wants to merge 2 commits”, and the stack chip’s slot at the end |
 | Where it lives | The revision, its copy button, and its refs | The branches, head → base |
 | Age | “Committed 3d ago”, muted, the age in its freshness ink | The state badge, then “Opened 3d ago · updated …”, View on GitHub, and Browse code |
-| Its own | None | The labels, a row of chips; the status line, its freshness and Refresh |
+| Its own | None | The labels, a row of chips; the freshness note and Refresh ending the author’s row; the status line, while it has something to say |
 | Diff summary | The last line, drawn by the commit’s diff | The last line, drawn from the comparison |
 | Under the header | The description, a card | The tab bar |
 
@@ -1746,15 +1746,16 @@ tests named beside each primitive.
 The page is a header, a [tab bar](#the-tab-bar), and a body, in that order; native stack
 navigation is part of the header.
 The header is a [page header](#page-headers), as a commit’s summary is: the title, then
-the author’s row, the branches, the row of ages, the labels, the status line, and the
-Diff summary, every line under the title at the body size and one gap under the one
-before. It shares the title, the author, the age, and the Diff summary with a commit’s
-page, in that order, and keeps the state, the branches, the labels, the stack chip, and
-the status line, which a commit does not have; the table there says where the two
-diverge and why. The author is the shell’s [actor identity](#actor-identity), its
-avatar’s box holding the person glyph where GitHub gave no usable avatar, as a commit’s
-author’s does. The header, tabs, Conversation, and Checks use `.page-reading-column` and
-start at the same pane gutter as the commit summary.
+the author’s row, which ends in the freshness note, the branches, the row of ages, the
+labels, the status line while it has something to say, and the Diff summary, every line
+under the title at the body size and one gap under the one before.
+It shares the title, the author, the age, and the Diff summary with a commit’s page, in
+that order, and keeps the state, the branches, the labels, the stack chip, and the
+status line, which a commit does not have; the table there says where the two diverge
+and why. The author is the shell’s [actor identity](#actor-identity), its avatar’s box
+holding the person glyph where GitHub gave no usable avatar, as a commit’s author’s
+does. The header, tabs, Conversation, and Checks use `.page-reading-column` and start at
+the same pane gutter as the commit summary.
 The first tab aligns with the content in narrow and wide panes.
 The column includes the card’s insets so its text can reach the same measure as the
 rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
@@ -1771,21 +1772,33 @@ labels row, which a pull request has only while it has labels: so the tab bar un
 never moves between tabs, nor between pull requests that both have labels or both have
 none, and moves when a pull request gains its first label or loses its last.
 Otherwise it is decided in every state: the author’s row is one line, the author and the
-sentence, then at its right end the stack chip’s slot (see native stack navigation
-below); where the row has no room left, the sentence is cut short at its end, the action
-first and then the author, never moved or wrapped; the branches have the line under it
-to themselves, one line in every state, their names cut short rather than wrapping it;
-the row of ages begins with the state’s badge, as wide as the widest state, then
-“Opened”, the ages, View on GitHub, and Browse code, one line cut short at its end; a
-pull request with labels has a row of them, one line at a label’s height, and one with
-none has no labels row and no gap for it; the status row, the freshness line, is the
-next metadata line, as tall as the row of ages, and ends in Refresh’s slot, held hidden
-on a tab with nothing to refresh, its text and then its offers’ sentences cut short,
-never their controls, and a rate limit’s hold on the line too; and a cold page keeps
+sentence, then the freshness note, then at its right end the stack chip’s slot (see
+native stack navigation below); where the row has no room left, the sentence is cut
+short at its end, the action first and then the author, never moved or wrapped; the
+branches have the line under it to themselves, one line in every state, their names cut
+short rather than wrapping it; the row of ages begins with the state’s badge, as wide as
+the widest state, then “Opened”, the ages, View on GitHub, and Browse code, one line cut
+short at its end; a pull request with labels has a row of them, one line at a label’s
+height, and one with none has no labels row and no gap for it; and a cold page keeps
 every row, empty, at its height.
+The freshness note is small and muted, after a muted dot: one time, the record’s own
+fetch, “jlevy wants to merge 1 commit · Fetched just now via GitHub CLI”, never a second
+time for a check that found nothing changed, since that makes what is shown no newer.
+Before a record is shown it is the page’s word on it, “Fetching the pull request…”, so
+the record landing changes no line.
+Refresh or Fetch follows it, its slot held hidden when there is nothing to refresh, and
+the note’s slot is as wide as its widest age, so neither the age ticking nor Refresh
+coming moves anything.
+On a narrow row the note is cut short first, before the sentence; Refresh never is.
+The status row is the next metadata line, as tall as the row of ages, there only while
+it has something to say: a failure and its remedy, a message about the record shown, a
+rate limit’s hold, and the offers at its end, its text and then its offers’ sentences
+cut short, never their controls.
+A pull request that cannot be shown has no author’s row, so its message and Refresh’s
+slot are on the status row.
 Only a failure, which says what to do, wraps the status row.
 Refresh or Fetch and Switch to the head are [text actions](#control-families), a line
-tall, as Browse code is, so the freshness line is no taller than its text.
+tall, as Browse code is, so the author’s row is no taller than its text.
 A cold page holds the labels row while the labels are unknown, since the record may
 bring some: a record with labels lands moving nothing, and one with none takes the row
 and its gap away in the paint that lands it, the one paint that changes the header and

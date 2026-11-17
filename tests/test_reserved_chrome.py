@@ -282,8 +282,8 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     # The author's row ends in the stack's slot, which holds a strut until a chip arrives
     # (mb-cf0l): the sentence keeps its start, and is only cut short at its end. On the row
     # that also held the merge, a late chip took its width from the sentence and the merge
-    # (review E3 on #370).
-    assert "[\n    stateDetails,\n    stackColumn,\n  ]);" in page
+    # (review E3 on #370). The freshness note sits between them, after the sentence (mb-ne91).
+    assert "[\n    stateDetails,\n    freshnessNote,\n    stackColumn,\n  ]);" in page
     # The state badge leads the row of ages (mb-4ydo), one line in every state.
     opened = _rule(css, ".github-pull-opened")
     assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
@@ -354,12 +354,40 @@ def test_the_stack_chip_ends_the_authors_row() -> None:
     assert 'h("div", { class: "github-pull-meta page-header-line" }, [\n    stateDetails,' in page
 
 
-def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
+def test_the_freshness_note_ends_the_authors_row_in_a_slot_of_its_widest_age() -> None:
+    """One time, on the author's row, then Refresh, and nothing moves as the age ticks (mb-ne91).
+
+    The note's slot is one grid cell holding the note and a hidden copy at its widest age, so
+    Refresh after it keeps its place from "just now" to "59 min ago";
+    github-pull-header-chrome.mjs measures it. The note is muted and gives way first.
+    """
+    css = _github_css()
+    note = _rule(css, ".github-pull-note")
+    assert "color: var(--muted);" in note and "flex: 0 100 auto;" in note
+    assert "display: none;" in _rule(css, ".github-pull-note[hidden]")
+    slot = _rule(css, ".github-pull-freshness-slot")
+    assert "display: inline-grid;" in slot and "minmax(0, max-content)" in slot
+    sizer = _rule(css, ".github-pull-freshness-sizer")
+    assert "grid-area: 1 / 1;" in sizer and "visibility: hidden;" in sizer
+    assert "font-variant-numeric: var(--tabular-numerals);" in sizer
+    assert "grid-area: 1 / 1;" in _rule(css, ".github-pull-freshness-slot > .github-pull-freshness")
+    page = (GITHUB / "pull-page.js").read_text(encoding="utf-8")
+    assert (
+        "placeChildren(freshnessNote, noteRow ? [freshnessSep, freshnessSlot, refresh] : []);"
+        in page
+    )
+    assert '.replace(/just now|\\d+ (?:min|h|d) ago/, "59 min ago")' in page
+    # One time, never two: no "Checked … · fetched …".
+    assert "Checked ${" not in page
+
+
+def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> None:
     css = _github_css()
     status = _rule(css, ".github-pull-status")
     assert "flex-wrap: nowrap;" in status
+    assert "display: none;" in _rule(css, ".github-pull-status[hidden]")
     assert "font-variant-numeric: var(--tabular-numerals);" in _rule(css, ".github-pull-freshness")
-    # The offers end the row with Refresh, so the freshness text's width moves none of them.
+    # The offers end the row, so a message's width moves none of them.
     end = _rule(css, ".github-pull-status-end")
     assert "margin-inline-start: auto;" in end and "flex: 0 1 auto;" in end
     # An offer's sentence gives way before its control; what that lays out to, at every
@@ -374,15 +402,16 @@ def test_the_status_row_is_one_line_ending_in_refreshs_slot() -> None:
     # mb-kisi), which its class sets (`.page-header-line`): its controls are text actions, a
     # line tall, never bordered .btn boxes, which made it 26 px against 18.
     assert "font-size" not in status
-    assert 'h("div", { class: "github-pull-status page-header-line" }, [freshnessLine])' in page
+    assert 'h("div", { class: "github-pull-status page-header-line" })' in page
+    assert "status.hidden = statusText.length === 0 && end.childElementCount === 0;" in page
     assert 'class: "github-pull-text-action github-pull-refresh"' in page
     assert 'class: "github-pull-text-action github-pull-switch"' in page
     assert "btn github-pull-refresh" not in page and "btn github-pull-switch" not in page
     assert "refresh.hidden = !model.canRefresh;" in page
     assert "if (model.canRefresh) {" not in page
-    # Refresh is always the end's last child, after any offers.
+    # With no author's row, Refresh is the end's last child, after any offers.
     assert 'h("span", { class: "github-pull-status-end" })' in page
-    assert "placeChildren(end, [...ending, refresh]);" in page
+    assert "placeChildren(end, noteRow ? ending : [...ending, refresh]);" in page
     assert 'status.append(h("span", { class: "github-pull-offer" }' not in page
     # A failure carries its remedy, so it is the one text the row lets wrap.
     failed = _rule(css, ".github-pull-status.github-pull-status-failed")

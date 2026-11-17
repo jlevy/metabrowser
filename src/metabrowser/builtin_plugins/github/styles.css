@@ -411,9 +411,56 @@
     calc((var(--github-label-l) + var(--github-label-lighten-by)) * 1%)
   );
 }
-/* One of the header's metadata lines, under the row of ages and as tall as it: one line at
-   the body size, as every line under the title is (`.page-header-line`), ending in Refresh's
-   slot on every tab; it was the small type, a step under the lines above it (mb-kisi).
+/* The author's row ends in its note (mb-ne91): a muted dot, then how fresh what is shown
+   is, one time, "Fetched just now via GitHub CLI", in muted ink, small beside the sentence
+   in text ink, then Refresh. The note's slot is a grid of one cell that holds the note and
+   a hidden copy of it at its widest age (`widestNote` in pull-page.js), so the slot is as
+   wide as the widest and the age ticking moves nothing after it. On a narrow row the note
+   is cut short first, with an ellipsis, before the sentence; Refresh never is. */
+/* Its floor is its dot and Refresh, its min-content: the text in its slot gives way to
+   nothing, and then the sentence before it does. With no floor, at 420 px with a long login,
+   Refresh ran 53 px past the header. */
+.github-pull-note {
+  display: flex;
+  flex: 0 100 auto;
+  align-items: center;
+  gap: 0.3em;
+  color: var(--muted);
+}
+.github-pull-note[hidden] {
+  display: none;
+}
+.github-pull-note-sep {
+  flex: none;
+}
+.github-pull-freshness-slot {
+  display: inline-grid;
+  flex: 0 1 auto;
+  grid-template-columns: minmax(0, max-content);
+  min-width: 0;
+  overflow: hidden;
+}
+.github-pull-freshness-slot > .github-pull-freshness {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-freshness-sizer {
+  grid-area: 1 / 1;
+  font-variant-numeric: var(--tabular-numerals);
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.github-pull-note > .github-pull-refresh {
+  margin-inline-start: 0.4em;
+}
+/* One of the header's metadata lines, under the row of ages and as tall as it, there only
+   while it has something to say beyond the note: a failure and its remedy, a message about
+   the record shown, an offer; with no author's row, a pull request that cannot be shown, it
+   also ends in Refresh's slot. One line at the body size, as every line under the title is
+   (`.page-header-line`); it was the small type, a step under the lines above it (mb-kisi).
    Refresh, Fetch, and Switch to the head are text actions (`.github-pull-text-action`), a
    line tall, as Browse code on the row of ages is (mb-2u08). As bordered `.btn`s they made
    this row 26 px where the row of ages was 18, and with the empty labels row it stood 32 px
@@ -431,6 +478,9 @@
   gap: 4px 10px;
   color: var(--muted);
   white-space: nowrap;
+}
+.github-pull-status[hidden] {
+  display: none;
 }
 .github-pull-status > :is(.github-pull-freshness, .github-pull-message, .github-pull-failure) {
   /* The row's text gives way before the offers at its end, and they before their controls. */
@@ -452,8 +502,7 @@
 .github-pull-status > a {
   flex: none;
 }
-/* The offers end the row with Refresh, so the freshness text changing width moves none of
-   them. An offer's sentence is cut short, with all of it in a tooltip, before its control
+/* The offers end the row, so a message changing width moves none of them. An offer's sentence is cut short, with all of it in a tooltip, before its control
    is: kept whole, the group ran 62 px past the header in a 560 px pane and 262 px past at
    360, and the pane scrolled sideways. */
 .github-pull-status-end {

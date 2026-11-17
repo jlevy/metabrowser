@@ -451,12 +451,13 @@ async function run() {
   assert.equal(pendingReveal.length, 1, "revealed after the quiet period");
   assert.equal(pendingReveal[0].getAttribute("role"), "status");
   assert.equal(pendingReveal[0].getAttribute("aria-label"), "Loading comments and reviews");
-  // The header keeps the description's plain age, breathing while its details are fetched.
-  const statusLine = container.querySelector(".github-pull-status");
+  // The header keeps the description's plain age, breathing while its details are fetched,
+  // in the note that ends the author's row (mb-ne91).
+  const statusLine = container.querySelector(".github-pull-note");
   const age = statusLine.querySelector(".github-pull-freshness");
   assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
   assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
-  // Busy is the age's, never the status line's, whose buttons and links stay usable.
+  // Busy is the age's, never the note's, whose Refresh stays usable.
   assert.equal(age.getAttribute("aria-busy"), "true");
   assert.equal(statusLine.getAttribute("aria-busy"), null);
   function land(tab) {

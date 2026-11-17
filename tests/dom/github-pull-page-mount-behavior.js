@@ -1235,7 +1235,7 @@ async function headerShape(page) {
       const stacks = container.querySelector(".github-pull-stacks");
       const status = container.querySelector(".github-pull-status");
       const end = status.children.at(-1);
-      const refresh = end.children.at(-1);
+      const refresh = container.querySelector(".github-pull-refresh");
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(
         meta.children.at(-1),
@@ -1303,9 +1303,12 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
+      // Refresh's slot follows the freshness note, at the author's row's sentence's end
+      // (mb-ne91), whatever the record's state.
       assert.ok(
-        refresh.classes.has("github-pull-refresh"),
-        `${name} ${tab}: Refresh's slot ends the status row`,
+        refresh.parentNode.classes.has("github-pull-note") &&
+          refresh.parentNode.parentNode === meta,
+        `${name} ${tab}: Refresh's slot follows the note on the author's row`,
       );
       // A text action, a line tall, so the status line is a metadata line (mb-2u08).
       assert.ok(
@@ -2110,13 +2113,15 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The author's row is the details, then the stack's slot at its end (mb-cf0l), which holds
-    // a strut while no stack is known: a late chip lands in the row's empty end.
-    const [details, stackSlot] = meta.children;
+    // The author's row is the details, then the freshness note and Refresh (mb-ne91), then
+    // the stack's slot at its end (mb-cf0l), which holds a strut while no stack is known: a
+    // late chip lands in the row's empty end.
+    const [details, note, stackSlot] = meta.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
+    assert.ok(note.classes.has("github-pull-note"));
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
-    assert.equal(meta.children.length, 2);
+    assert.equal(meta.children.length, 3);
     // The state's badge leads the row of ages, under the branches (mb-4ydo).
     const opened = container.querySelector(".github-pull-opened");
     assert.equal(

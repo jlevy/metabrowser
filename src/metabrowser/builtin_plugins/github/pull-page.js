@@ -423,6 +423,18 @@ export function relativeAge(iso, nowMs) {
   return hours < 48 ? `${hours} h ago` : `${Math.floor(hours / 24)} d ago`;
 }
 
+/**
+ * A freshness note as wide as its age makes it: its age put at the widest `relativeAge`
+ * says, "59 min ago", so the note's slot is that wide whatever the age reads (mb-ne91). An
+ * age wider still, "at an unknown time", sizes its own note.
+ *
+ * @param {string} note
+ */
+export function widestNote(note) {
+  const widest = note.replace(/just now|\d+ (?:min|h|d) ago/, "59 min ago");
+  return widest.length >= note.length ? widest : note;
+}
+
 /** @param {unknown} value */
 function text(value) {
   return typeof value === "string" ? value : "";
@@ -1359,19 +1371,13 @@ export function describePull(envelope, page) {
   // The plain age while a refresh runs or is due: the page breathes it, and says nothing
   // about being out of date. Offline is the one stale state named here, since no refresh
   // can run; a hold or a failure is named by `failure`.
-  // "Checked" is the repository's list of pull requests saying, since the record was read,
-  // that GitHub has not changed it; "Fetched" is the record itself. Each says its own age.
-  const checked =
-    envelope.verified_by === "catalog" &&
-    typeof envelope.verified_at === "string" &&
-    envelope.verified_at > (record.fetched_at ?? "")
-      ? relativeAge(envelope.verified_at, page.nowMs)
-      : null;
-  const fetched = checked === null ? `Fetched ${age}` : `Checked ${checked} · fetched ${age}`;
+  // One time, never two (mb-ne91): the record's own fetch, the earliest that says how fresh
+  // what is shown is. A later check of the repository's list that found nothing changed
+  // (`verified_at`) makes the record no newer, so the line does not say it.
   model.freshness =
     offline && envelope.state === "stale" && !model.revalidating
       ? `Offline · fetched ${age} via GitHub CLI`
-      : `${fetched} via GitHub CLI`;
+      : `Fetched ${age} via GitHub CLI`;
   if (envelope.head_moved === true) {
     // The diff on screen stays until the reader takes the newer one, which a refresh offers.
     model.newCommits = model.revalidating
@@ -3848,8 +3854,29 @@ export function mountPullPage(container, ctx, mb) {
   const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
+  // The author's sentence ends in a small, muted note of how fresh what is shown is, one
+  // time, then Refresh (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via
+  // GitHub CLI  Refresh". Before a record is shown the note is the page's word on it,
+  // "Fetching the pull request…", with Fetch, so the sentence landing changes no line.
+  // The note and its age are kept across paints, so the age's breathing while a refresh runs
+  // is one animation from start to end rather than one restarted at each paint. The note's
+  // slot is as wide as its widest age (`freshnessSizer`), so the age ticking from "just now"
+  // to "12 min ago" moves nothing after it, Refresh above all; Refresh holds its slot hidden
+  // when there is nothing to refresh, so it coming moves nothing either.
+  const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
+  const freshnessSizer = h("span", {
+    class: "github-pull-freshness-sizer",
+    "aria-hidden": "true",
+  });
+  const freshnessSlot = h("span", { class: "github-pull-freshness-slot" }, [
+    freshnessLine,
+    freshnessSizer,
+  ]);
+  const freshnessSep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
+  const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
   const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [
     stateDetails,
+    freshnessNote,
     stackColumn,
   ]);
   // The head and base branches, on a line of their own under the author's sentence: a line
@@ -3880,12 +3907,11 @@ export function mountPullPage(container, ctx, mb) {
     [h("span", { class: "tally-pending", "aria-hidden": "true" })],
   );
   header.append(stateRow);
-  // The status line and its age are kept across paints, so the age's breathing while a
-  // refresh runs is one animation from start to end rather than one restarted at each paint.
-  // It is one of the header's metadata lines, under the row of ages and as tall as it: its
+  // The status line: what the page has to say beyond the note, a failure and its remedy, a
+  // message about a record shown, and the offers, one of the header's metadata lines, under
+  // the row of ages and as tall as it, there only while it has something to say. Its
   // controls are text actions, a line tall (mb-2u08).
-  const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
-  const status = h("div", { class: "github-pull-status page-header-line" }, [freshnessLine]);
+  const status = h("div", { class: "github-pull-status page-header-line" });
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;
   let stackIndex = createStackIndex(null);
@@ -4923,18 +4949,30 @@ export function mountPullPage(container, ctx, mb) {
       "github-pull-status-failed",
       model.failure !== null && model.failureHold !== true,
     );
-    freshnessLine.hidden = model.freshness === null;
-    if (freshnessLine.textContent !== (model.freshness ?? "")) {
-      freshnessLine.textContent = model.freshness ?? "";
+    // The author's row ends in the note (mb-ne91): a record's one time, or, before a record
+    // is shown, the page's word on it, which the status line then does not repeat. A header
+    // with no author's row, a pull request that cannot be shown, says it on the status line.
+    const noteRow = children.includes(stateRow);
+    const noteText = noteRow ? (model.freshness ?? (pull === null ? model.message : null)) : null;
+    const message = noteRow && pull === null && model.freshness === null ? null : model.message;
+    freshnessNote.hidden = noteText === null;
+    // The dot joins the note to the author's sentence, so it is there only after one.
+    freshnessSep.hidden = pull === null;
+    if (freshnessLine.textContent !== (noteText ?? "")) {
+      freshnessLine.textContent = noteText ?? "";
+    }
+    const sizer = model.freshness === null || noteText === null ? "" : widestNote(noteText);
+    if (freshnessSizer.textContent !== sizer) {
+      freshnessSizer.textContent = sizer;
     }
     paintRefreshing(model);
-    const message = model.message;
     const failure = model.failure;
     const failureHelp = model.failureHelp;
-    // Refresh has its slot at the row's end on every tab, held hidden when there is nothing
-    // to refresh: it came and went with the tab, moving the tab bar 8 px. It is a text
-    // action, as Browse code on the row of ages is, so the line is a metadata line's height:
-    // as a bordered .btn it was 26 px where the line's text is 18 (mb-2u08).
+    // Refresh has its slot after the note, held hidden when there is nothing to refresh: it
+    // came and went with the tab, moving the tab bar 8 px. It is a text action, as Browse
+    // code on the row of ages is, so its line is a metadata line's height: as a bordered
+    // .btn it was 26 px where the line's text is 18 (mb-2u08). With no author's row it ends
+    // the status line.
     const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
     const refresh = headerPart("refresh", refreshLabel, () => {
       const button = h(
@@ -4948,8 +4986,8 @@ export function mountPullPage(container, ctx, mb) {
     if (refresh.hidden !== !model.canRefresh) {
       refresh.hidden = !model.canRefresh;
     }
-    // Offers sit at the row's end with Refresh, so the freshness text changing its width
-    // moves nothing after it: it moved an offer by 100 px.
+    // Offers end the status line, so a message or failure changing its width moves nothing
+    // after it: the freshness text before them once moved an offer by 100 px.
     /** @type {Element[]} */
     const ending = [];
     if (model.headOffer !== null) {
@@ -4988,9 +5026,10 @@ export function mountPullPage(container, ctx, mb) {
     const end = headerPart("status end", null, () =>
       h("span", { class: "github-pull-status-end" }),
     );
-    placeChildren(end, [...ending, refresh]);
-    placeChildren(status, [
-      freshnessLine,
+    placeChildren(end, noteRow ? ending : [...ending, refresh]);
+    placeChildren(freshnessNote, noteRow ? [freshnessSep, freshnessSlot, refresh] : []);
+    /** @type {Element[]} */
+    const statusText = [
       ...(message === null
         ? []
         : [
@@ -5014,8 +5053,10 @@ export function mountPullPage(container, ctx, mb) {
               ]),
             ),
           ]),
-      end,
-    ]);
+    ];
+    placeChildren(status, [...statusText, end]);
+    // The line is there only while it has something to say: the note says the rest.
+    status.hidden = statusText.length === 0 && end.childElementCount === 0;
     children.push(status);
     if (pull !== null || model.status !== "unavailable") {
       children.push(summaryRow);

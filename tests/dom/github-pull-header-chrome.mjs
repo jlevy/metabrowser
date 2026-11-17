@@ -504,15 +504,35 @@ const MEASURE = `async (name, change, tab, width) => {
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
-  // Where each row starts and ends, from the header's top, and the header's one gap between
-  // rows: the status line is one of the metadata lines under the title, as tall as the row
-  // of ages and one gap under the row before it, with no empty labels row between (mb-2u08).
-  const lines = [...header.children].map((row, at) => ({
-    row: rows[at].row,
-    top: Math.round((box(row).top - box(header).top) * 100) / 100,
-    bottom: Math.round((box(row).bottom - box(header).top) * 100) / 100,
-  }));
-  const refresh = header.querySelector(".github-pull-status .github-pull-refresh");
+  // Where each row shown starts and ends, from the header's top, and the header's one gap
+  // between rows: the status line, while it has something to say, is one of the metadata
+  // lines under the title, as tall as the row of ages and one gap under the row before it,
+  // with no empty labels row between (mb-2u08); with nothing to say it is not there (mb-ne91).
+  const lines = [...header.children]
+    .map((row, at) => ({
+      row: rows[at].row,
+      shown: !row.hidden,
+      top: Math.round((box(row).top - box(header).top) * 100) / 100,
+      bottom: Math.round((box(row).bottom - box(header).top) * 100) / 100,
+    }))
+    .filter((each) => each.shown)
+    .map(({ shown, ...each }) => each);
+  // Refresh's slot follows the freshness note at the author's row's sentence's end (mb-ne91).
+  const refresh = header.querySelector(".github-pull-meta .github-pull-note .github-pull-refresh");
+  // The age ticking moves nothing after it: Refresh's place with the note at its narrowest
+  // age and at its widest, then the note put back.
+  const ageMoves = (() => {
+    const note = header.querySelector(".github-pull-note:not([hidden]) .github-pull-freshness");
+    if (refresh === null || note === null || !/ via GitHub CLI$/.test(note.textContent)) return null;
+    const was = note.textContent;
+    const at = (text) => {
+      note.textContent = text;
+      return box(refresh).left;
+    };
+    const moved = Math.abs(at("Fetched just now via GitHub CLI") - at("Fetched 59 min ago via GitHub CLI"));
+    note.textContent = was;
+    return Math.round(moved * 100) / 100;
+  })();
   const result = {
     edges,
     header: Math.round(box(header).height * 100) / 100,
@@ -525,6 +545,7 @@ const MEASURE = `async (name, change, tab, width) => {
     refresh: refresh
       ? { shown: !refresh.hidden, height: Math.round(box(refresh).height * 100) / 100 }
       : null,
+    ageMoves,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
     strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
@@ -1593,26 +1614,33 @@ async function main() {
                 paneScrolls: shape.paneScrolls,
               }),
             );
-            // The status line is one of the header's metadata lines (mb-2u08): as tall as the
-            // row of ages above it, its Refresh, shown or held, no taller than it, and every
-            // row one gap under the row before it. As a bordered .btn, Refresh made the line
-            // 26 px against the row of ages' 18, and an empty labels row stood between them.
+            // The status line is one of the header's metadata lines (mb-2u08), there only
+            // while it has something to say: as tall as the row of ages above it, and every
+            // row one gap under the row before it. Refresh, shown or held, ends the author's
+            // row after the freshness note (mb-ne91), no taller than that row. As a bordered
+            // .btn, Refresh made its line 26 px against the row of ages' 18, and an empty
+            // labels row stood between them.
             const line = (row) => shape.lines.find((each) => each.row === row);
             const opened = line("opened");
             const statusLine = line("status");
+            const metaLine = line("meta");
             const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
             check(
-              `${where}: the status line is as tall as the row of ages`,
+              `${where}: the status line, when there, is as tall as the row of ages`,
               opened !== undefined &&
-                statusLine !== undefined &&
-                Math.abs(tall(statusLine) - tall(opened)) <= 0.5,
+                (statusLine === undefined || Math.abs(tall(statusLine) - tall(opened)) <= 0.5),
               JSON.stringify(shape.lines),
             );
             check(
-              `${where}: Refresh's slot is no taller than the status line`,
+              `${where}: the note's age ticking from "just now" to "59 min ago" moves Refresh not at all`,
+              shape.ageMoves === null || shape.ageMoves <= 0.5,
+              JSON.stringify({ ageMoves: shape.ageMoves }),
+            );
+            check(
+              `${where}: Refresh's slot ends the author's row, no taller than it`,
               shape.refresh !== null &&
-                statusLine !== undefined &&
-                shape.refresh.height <= tall(statusLine) + 0.5,
+                metaLine !== undefined &&
+                shape.refresh.height <= tall(metaLine) + 0.5,
               JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
             );
             check(
@@ -1624,12 +1652,14 @@ async function main() {
               JSON.stringify({ rowGap: shape.rowGap, lines: shape.lines }),
             );
             if (shape.recordLabels === 0) {
+              // The next row shown, the status line or the summary, is one gap under it.
+              const next = shape.lines[shape.lines.findIndex((each) => each.row === "opened") + 1];
               check(
-                `${where}: a pull request with no labels has no labels row, its status line one gap under the row of ages`,
+                `${where}: a pull request with no labels has no labels row, the next row one gap under the row of ages`,
                 line("labels") === undefined &&
                   opened !== undefined &&
-                  statusLine !== undefined &&
-                  Math.abs(statusLine.top - opened.bottom - shape.rowGap) <= 0.5,
+                  next !== undefined &&
+                  Math.abs(next.top - opened.bottom - shape.rowGap) <= 0.5,
                 JSON.stringify(shape.lines),
               );
             }
@@ -1649,9 +1679,23 @@ async function main() {
         };
         for (const [key, shape] of Object.entries(seen)) {
           const none = shape.recordLabels === 0;
-          const expected = none ? unlabelled : reference;
+          const base = none ? unlabelled : reference;
+          // The status line is there only while it has something to say (mb-ne91), an offer
+          // or a hold: then it is one line and one gap more, and moves nothing above it.
+          const status = shape.rows.find((row) => row.row === "status");
+          const extra =
+            status !== undefined && status.height > 0 ? status.height + shape.rowGap : 0;
+          const expected = {
+            header: base.header + extra,
+            tabBar: base.tabBar + extra,
+            rows: base.rows.map((row) =>
+              row.row === "status" && status !== undefined
+                ? { ...row, height: status.height }
+                : row,
+            ),
+          };
           check(
-            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}, row by row`,
+            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}${extra > 0 ? ", with its status line" : ""}, row by row`,
             Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
               Math.abs(shape.tabBar - expected.tabBar) <= (none ? 0.5 : 0) &&
               JSON.stringify(shape.rows) === JSON.stringify(expected.rows),
