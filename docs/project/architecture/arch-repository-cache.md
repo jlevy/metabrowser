@@ -175,6 +175,9 @@ inventory against isolated wheel and source installs.
 `cache/atomic.py` reads a record through `open_private_file` with a size bound
 (`MAX_RECORD_BYTES`) and writes it only through `write_private_file_atomic`, so an
 interrupted write leaves the previous record.
+A record republished while a read opens it is refused as replaced, and the read opens it
+again, judging the new record in full, up to `MAX_READ_OPENS` times, so it reads the old
+record or the new.
 
 ### Provider Records
 
