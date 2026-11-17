@@ -37,8 +37,8 @@ jobs:
       matrix:
         repetition: [1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
-    # The serial tier took 0.9 to 1.0 minutes on the eight test legs of ci.yml run
-    # 44026747033's first two attempts, with 0.4 of setup.
+    # The serial tier took 66 to 70 seconds in each goldens job of ci.yml run
+    # 44038762653, with about 0.4 minutes of setup.
     timeout-minutes: 3
     steps:
       - name: Checkout
@@ -76,7 +76,7 @@ jobs:
         shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     # As for ci.yml's chrome job.
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

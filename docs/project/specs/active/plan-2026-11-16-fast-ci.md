@@ -12,9 +12,10 @@ Bead `mb-h8zb` tracks this plan, and each implementation step below is a bead un
 it.
 Phase 1 is implemented by jlevy/metabrowser#499: the tier targets, the golden runner,
 the reports, and pytest-xdist.
-No workflow or repository setting has changed.
-The first step of each phase replaces that phase’s estimates with measurements; an
-estimate is marked “est.”
+Phase 2 is implemented by jlevy/metabrowser#504: the split workflow with `ci-ok`, the
+nightly soak, and `devtools/check_ci.py`. No repository setting has changed; the ruleset
+that requires `ci-ok` is the owner’s (Q5). The first step of each phase replaces that
+phase’s estimates with measurements; an estimate is marked “est.”
 Phase 1’s are in [Phase 1 Measurements](#phase-1-measurements): the parallel tier ran
 2.0 to 2.4 times faster on four workers, under the 2.3 the estimates assumed on three of
 the four interpreters.
@@ -728,15 +729,62 @@ attempts, each with the 1,388 tests a run in one process collects.
 Expected: a pull request wall clock of 4 to 5 minutes (est.), or about 3 with the unit
 jobs split in two. The owner approved these workflow changes on 2026-11-16 (Q1).
 
-- [ ] `mb-oz36`: Split `ci.yml` into `unit`, `goldens`, and `chrome` jobs, with the
+- [x] `mb-oz36`: Split `ci.yml` into `unit`, `goldens`, and `chrome` jobs, with the
   serial tier in `goldens` on every interpreter, and the Chrome tier on one interpreter
   for a pull request and on all four for `main` and while `main` is red.
   It also turns `fail-fast` off, cancels superseded pull request runs, and adds time
   limits, `ci-ok`, and the merge procedure in `AGENTS.md`.
-- [ ] `mb-to1c`: Add `devtools/check_ci.py` to `make lint-check`.
-- [ ] `mb-r283`: Run `stack-integration` by tree identity, as split jobs.
-- [ ] `mb-stg2`: Add the nightly workflow: the serial and Chrome tiers five times on
+- [x] `mb-to1c`: Add `devtools/check_ci.py` to `make lint-check`.
+- [x] `mb-r283`: Run `stack-integration` by tree identity, as split jobs.
+- [x] `mb-stg2`: Add the nightly workflow: the serial and Chrome tiers five times on
   `main`, and the time-limit report.
+- [ ] `mb-ohsk`: Verify Phase 2 after the merge: the rows of
+  [Testing Strategy](#testing-strategy) that need a merged workflow, and each new job’s
+  limit again, from more runs than the two that set it.
+
+#### Phase 2 Measurements
+
+Taken on 2026-11-17 from the first two CI runs of jlevy/metabrowser#504: 44037230262 at
+`3c1502d1`, and 44038762653 at `6dfc1ae5`, which went green.
+Other pull requests’ runs, on the workflow before this one, held most of the account’s
+runners throughout, so each job’s wait for a runner is given apart from its running
+time.
+
+| Job | Jobs | Running, minutes | Waiting for a runner, minutes |
+| --- | ---: | ---: | ---: |
+| `plan` | 1 | 0.1 | 10.9 |
+| `unit` | 8 | 1.9 to 3.7 | 1.9 to 10.5 |
+| `goldens and serial` | 4 | 2.9 to 4.1 | 9.3 to 10.6 |
+| `chrome` | 4 | 1.9 to 3.9 | 0.8 to 4.8 |
+| `admitted-git` | 2 | 3.6 to 3.9 | 3.2 to 8.9 |
+| `lint` | 1 | 1.5 | 1.6 |
+| `distribution` | 1 | 0.8 | 7.3 |
+| `ci-ok` | 1 | 0.1 | 0.1 |
+
+- **The critical path is 4.2 minutes of running time:** `goldens and serial (3.14t)`,
+  4.1, whose goldens took 143 seconds where the other interpreters’ took 85 to 96, then
+  `ci-ok`. `plan` and the slowest Chrome part come to 4.0, and the slowest `unit` part
+  to 3.7.
+- **Push to verdict was 19.4 minutes**, almost all of it the wait for runners.
+  The run used 56.6 runner minutes, against `main`’s median of 99.5
+  ([Phase 1 Measurements](#phase-1-measurements)).
+- **The unit parts deal whole files** (`--shard-by=file`, `tests/suite_tiers.py`). Dealt
+  by test, run 44037230262 failed every `unit` leg on two tests that rely on an earlier
+  test in their module, `test_cli_git_pin_golden.py` and `test_github_pulls.py`; one leg
+  also hung after an xdist worker went down and was stopped by its limit.
+  By file, the part with the larger files is the slower one: 2.6 to 3.3 minutes of
+  pytest against 1.5 to 2.2.
+- **Every test ran once.** On each interpreter the two `unit` parts held 3,353 and 3,352
+  tests and the serial tier 35, and the Chrome parts held 41 on 3.13: 6,781, the whole
+  collection at that commit.
+- **A formal GitHub stack already tests against `main`.** Once #504 was linked into a
+  stack with #499, GitHub’s merge ref for it merged the head into its base merged with
+  `main`, so the `plan` job found the trees identical and ran no `stack-integration`
+  job. Run 44037230262, made before the stack was linked, tested the head merged into its
+  base alone, found the trees different, and ran all eight; seven passed, and the eighth
+  failed on the two tests above.
+- **A cancelled run still runs its `ci-ok`**, which is `always()`, and the newer run
+  starts only after it: run 44038762653 waited 1.1 minutes so.
 
 ### Phase 3: Flakes, Slow Tests, and Path Classes
 

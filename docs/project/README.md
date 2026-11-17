@@ -77,8 +77,8 @@ It links each document below and the contributor standards in `docs/`.
 - [Fast CI](specs/active/plan-2026-11-16-fast-ci.md): bringing a pull request’s CI from
   20 minutes to about 5 with the same checks, by running the suite on every processor,
   splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
-  owner approved Phases 1 and 2 on 2026-11-16, and Phase 1 is implemented by
-  jlevy/metabrowser#499
+  owner approved Phases 1 and 2 on 2026-11-16, and they are implemented by
+  jlevy/metabrowser#499 and jlevy/metabrowser#504
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps
