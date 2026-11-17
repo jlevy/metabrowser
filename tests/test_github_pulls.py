@@ -1304,6 +1304,53 @@ def test_a_commit_is_pinned_under_the_head_of_any_pull_request_it_is_the_tip_of(
     assert asyncio.run(resolve_pin(target, oid=stand.origin["topic"])).ref is None
 
 
+def test_a_switch_by_commit_is_served_under_the_ref_it_names(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """View on branch switches by commit ID and names its pull request's head ref, so of two
+    pull requests that share a head the page's own is the one served. A ref the commit is
+    not the tip of names nothing, and the request refuses what no pin could be under."""
+
+    stand, client = pinned_pull
+    merged = stand.origin["merged_head"]
+    stand.refresh(8)
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(stand.published.git_dir),
+            "update-ref",
+            "refs/pull/12/head",
+            merged,
+        ],
+        check=True,
+    )
+
+    def switch(body: dict[str, str]) -> Any:
+        return client.post("/api/source/pin", json=body, headers=_JSON)
+
+    newest = switch({"oid": merged})
+    assert newest.status_code == 200, newest.text
+    assert newest.json()["status"]["ref"] == "refs/pull/12/head"
+    named = switch({"oid": merged, "under": "refs/pull/8/head", "view": "/view/"})
+    assert named.status_code == 200, named.text
+    assert (named.json()["changed"], named.json()["status"]["ref"]) == (True, "refs/pull/8/head")
+    assert named.json()["view_href"] == "/view/"
+    # The pull request's ref is elsewhere: the commit opens by the server's own rule.
+    elsewhere = switch({"oid": stand.origin["fork_head"], "under": "refs/pull/8/head"})
+    assert elsewhere.status_code == 200, elsewhere.text
+    assert elsewhere.json()["status"]["ref"] == "refs/pull/7/head"
+    for body in (
+        {"ref": "refs/pull/8/head", "under": "refs/pull/8/head"},
+        {"oid": merged, "under": "refs/pull/8/merge"},
+        {"oid": merged, "under": "refs/heads/topic"},
+        {"oid": merged, "under": 8},
+    ):
+        refused = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert refused.status_code == 400, (body, refused.text)
+        assert refused.json()["code"] == "invalid_selection"
+
+
 def test_the_refresh_route_starts_or_joins_one_job(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

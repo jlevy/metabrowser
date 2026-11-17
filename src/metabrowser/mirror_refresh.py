@@ -1152,9 +1152,14 @@ class MirrorSession:
 
     # ── Pin switching ───────────────────────────────────────────
 
-    async def switch_pin(self, *, ref: str | None, oid: str | None) -> tuple[bool, SourceSession]:
+    async def switch_pin(
+        self, *, ref: str | None, oid: str | None, under: str | None = None
+    ) -> tuple[bool, SourceSession]:
         """Serve the commit a selection names; ``False`` when it is already served.
 
+        *under* is a ref that a commit named by *oid* is served under when it is that ref's
+        tip, ahead of :meth:`_refs_to_keep`: View on branch names the pull request's head,
+        so of two pull requests that share a head, each opens as itself.
         Raises :class:`SelectionError` for a selection the mirror cannot serve. In a
         server that fetches on demand, one the mirror does not have starts one
         background fetch and raises :class:`SelectionPendingError`; asked again after
@@ -1164,10 +1169,11 @@ class MirrorSession:
         """
 
         async with self._pin_lock:
+            kept = self._refs_to_keep()
+            if under is not None:
+                kept = tuple(dict.fromkeys((under, *kept)))
             try:
-                subject = await self.mirror.open_selection(
-                    ref=ref, oid=oid, keep_refs=self._refs_to_keep()
-                )
+                subject = await self.mirror.open_selection(ref=ref, oid=oid, keep_refs=kept)
             except SelectionNotFoundError as exc:
                 if not self._fetch_on_miss:
                     raise
@@ -1201,8 +1207,8 @@ class MirrorSession:
     def _refs_to_keep(self) -> tuple[str, ...]:
         """The refs a commit pinned by ID is opened under when it is their tip.
 
-        View file on a diff switches by commit ID, to a base and back: without this the
-        way back to the head would leave the server on no ref, the selector reading
+        View file on a commit's diff switches by commit ID, to the commit and back: without
+        this the way back would leave the server on no ref, the selector reading
         "Commit: …" where it read the branch or the pull request, and freshness no
         longer following the ref. The ref last served comes first, then the attended pull
         request's head, GitHub's own ref for it.
