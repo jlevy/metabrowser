@@ -112,6 +112,32 @@ All notable changes to Metabrowser are documented here.
   See
   [A Surface Puts Away Only Its Own Tooltip](docs/design-system.md#a-surface-puts-away-only-its-own-tooltip).
 
+- Secondary metadata, such as ages, update and fetch times, counts, and sizes, is the
+  size of the text beside it, where it was a step smaller.
+  The navigation column reads at 13 px throughout, its metadata included: a file’s size
+  and age in Files, a commit’s author and age in Commits, a pull request’s author and
+  age in Pulls, and “Fetched just now” at the column’s foot, all 12 px in 0.12.0, so
+  “Updated just now” under the Pulls filters and the ages in the rows under it are one
+  size. The main view reads at the body size, 14 px, its metadata included.
+  A file’s or a folder’s header, its path, size, count, age, and mirror note, and a diff
+  file bar, its path, change letter, line counts, and note, are 14 px, where the path
+  was 13 px and the rest 12 px.
+  A commit’s files outside the served folder are 14 px, and their line counts, which
+  were 10 px, take the row’s size.
+  A pull request’s Checks summary and each check, its other quiet notes, a treemap’s
+  status line, and a byte view’s note were 12 px; a review comment’s file was 13 px.
+  A notice, such as a partly loaded file’s, is 14 px in the main view and 13 px in the
+  navigation column, where it was 12 px in both, and so is the Files tab’s “No files
+  match the filters.” A tooltip’s detail lines, a file’s size and age, are the tooltip’s
+  14 px, where they were 12 px; and Help’s descriptions, Quick Search’s status, and a
+  changed-files tree’s line counts are their lists’ 13 px, where they were 12 px.
+  In a Commits row too narrow for both, the author’s name ends in an ellipsis and the
+  age stays whole; at the narrowest navigation pane the age was cut off at its end.
+  Chips, badges, buttons, menus, keycaps, labels, and code keep their sizes.
+  For plugin authors, an age from `metabrowser.formatAge` and a `.notice` set no size of
+  their own, so they read at their container’s size, where both were 12 px.
+  See [Type Scale](docs/design-system.md#type-scale).
+
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
   The disclosure appeared above every document ending in the guideline footer comment,
