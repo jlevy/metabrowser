@@ -138,6 +138,10 @@ class PullEnvelope(TypedDict):
     fresh_for_s: float
     refreshing: bool
     preparing_comparison: NotRequired[Literal[True]]
+    # The server has no Git store to compare in, as a checkout has none until a reader's
+    # Changes asks for one, so no read brings a comparison until then: the page holds no
+    # placeholder for one (mb-30dz).
+    no_store: NotRequired[Literal[True]]
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
     snapshot_route: str | None
@@ -534,6 +538,8 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     )
     if view.preparing_comparison:
         envelope["preparing_comparison"] = True
+    if not has_store:
+        envelope["no_store"] = True
     return envelope, freshness
 
 

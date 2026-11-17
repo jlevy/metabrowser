@@ -291,6 +291,7 @@ const TRUNCATED = Object.freeze({
  *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
  *   repository_labels?: RepositoryLabel[],
  *   labels_pending?: boolean,
+ *   no_store?: true,
  * }} PullEnvelope
  */
 
@@ -1221,8 +1222,8 @@ export function rateLimitLifts(envelope) {
  * to compare in (`comparison_state: "no_store"`); and a record whose comparison is not in
  * the store and that the page asked the server to prepare, as Conversation's idle work does
  * (`preparing_comparison`) and Changes does while it fetches it. A pull request that is not
- * GitHub's, a core with no store, and a read that failed with nothing running have none
- * coming until Changes asks, so the placeholder never outlives its wait.
+ * GitHub's, a server or core with no store (`no_store`), and a read that failed with nothing
+ * running have none coming until Changes asks, so the placeholder never outlives its wait.
  *
  * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
@@ -1264,6 +1265,8 @@ export function describePull(envelope, page) {
     model.status = page.error ? "unavailable" : "loading";
     // The first read brings the record, or the core whose read prepares its comparison, so
     // the Diff summary's row waits from the first paint rather than empty until the core.
+    // Until it answers the page cannot know that the server has no store (`no_store`) or
+    // serves no GitHub repository: on such a server the placeholder ends with that answer.
     model.comparisonComing = !page.error;
     return model;
   }
@@ -1326,6 +1329,7 @@ export function describePull(envelope, page) {
     // a core read from the cache (`not_started`) has its record coming once a read runs.
     model.comparisonComing =
       preview.comparison_state !== "no_store" &&
+      envelope.no_store !== true &&
       (envelope.refreshing || page.fetching === true || page.fetchQueued === true);
     return model;
   }
@@ -1344,6 +1348,7 @@ export function describePull(envelope, page) {
     // core and then the record; nothing running after a failure brings neither.
     model.comparisonComing =
       envelope.reason !== "not_github" &&
+      envelope.no_store !== true &&
       (fetching || page.fetchQueued === true || page.waitForReader === true);
     model.canRefresh =
       !fetching &&

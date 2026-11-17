@@ -547,9 +547,22 @@ async function run() {
       ],
       ["no record, nothing running", comingFor(absentNoCore)],
       ["not GitHub's", comingFor({ ...absentNoCore, reason: "not_github" }, { fetching: true })],
+      [
+        "a server with no store, the fetch on its way",
+        comingFor({ ...absentNoCore, no_store: true }, { fetching: true }),
+      ],
+      [
+        "a poll that failed while the fetch runs",
+        comingFor(absentNoCore, { fetching: true, error: "The server did not answer." }),
+      ],
       ["a core, its read running", comingFor(pendingCore)],
       ["a core, its read running, no store", comingFor(preview)],
       ["a prepared core, the fetch still to send", comingFor(idleCore, { fetchQueued: true })],
+      ["a prepared core, a refresh running", comingFor({ ...idleCore, refreshing: true })],
+      [
+        "a core, its read running, a server with no store",
+        comingFor({ ...pendingCore, no_store: true }),
+      ],
       ["a prepared core, nothing running", comingFor(failedCore)],
     ],
     [
@@ -560,9 +573,13 @@ async function run() {
       ["no record, the reader's fetch to wait for", true],
       ["no record, nothing running", false],
       ["not GitHub's", false],
+      ["a server with no store, the fetch on its way", false],
+      ["a poll that failed while the fetch runs", true],
       ["a core, its read running", true],
       ["a core, its read running, no store", false],
       ["a prepared core, the fetch still to send", true],
+      ["a prepared core, a refresh running", true],
+      ["a core, its read running, a server with no store", false],
       ["a prepared core, nothing running", false],
     ],
   );

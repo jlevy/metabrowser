@@ -1505,12 +1505,14 @@ the read, with one quiet period and one pulse, so the row is never empty while t
 comparison is on its way.
 The wait is the read in flight: on Changes the mounted diff’s, so a newer comparison the
 record names waits until the reader takes it.
-A pull request that is not GitHub’s, a core whose read prepares no comparison, and a
-read that failed with nothing running have nothing on its way, and only Changes asks for
-its comparison. A read that draws no summary, because it failed or its comparison is not
-a valid document, leaves the place empty until a read of the same comparison starts
-again: at the page’s next paint, such as a switch of tab or a poll that repaints it, or
-a Retry, so a placeholder never outlives its wait and every wait has one.
+A pull request that is not GitHub’s, a server with no store to compare in, a core whose
+read prepares no comparison, and a read that failed with nothing running have nothing on
+their way, and only Changes asks for their comparison; before the server’s first answer
+the page cannot tell, so on such a server the placeholder ends with that answer.
+A read that draws no summary, because it failed or its comparison is not a valid
+document, leaves the place empty until a read of the same comparison starts again: at
+the page’s next paint, such as a switch of tab or a poll that repaints it, or a Retry,
+so a placeholder never outlives its wait and every wait has one.
 A summary already drawn stays while a newer comparison is read
 ([Refreshing Content](#refreshing-content)), and the newer one’s summary replaces it in
 one step. A pull request’s header shows it on every tab.

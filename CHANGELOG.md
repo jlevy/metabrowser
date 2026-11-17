@@ -8,8 +8,10 @@ All notable changes to Metabrowser are documented here.
   cached yet, shows the Diff summary’s gentle loading box from its first paint, after
   the usual short quiet period, instead of an empty row until GitHub’s first answer
   arrives, which took a second or more.
-  A pull request that is not GitHub’s, or whose refresh failed with nothing running,
-  shows no box.
+  Once the server first answers, a pull request that is not GitHub’s, one served from a
+  checkout that has no Git store yet, or one whose refresh failed with nothing running
+  shows no box. The pull request route (`/api/plugin/github/pull`) says
+  `"no_store": true` when its server has no Git store to compare in.
 
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read

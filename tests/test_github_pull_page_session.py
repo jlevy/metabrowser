@@ -596,6 +596,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "its record lands, the comparison not yet read: the pending placeholder",
             "the comparison read: the summary",
             "a direct link's first answer: not GitHub's: nothing",
+            "a direct link's first answer: a server with no store, its own fetch to be sent: nothing",
             "a direct link's first answer: its refresh failed, nothing running: nothing",
             "a direct link's first answer: a core, its refresh failed, nothing running: nothing",
             "a record that names no comparison: nothing",

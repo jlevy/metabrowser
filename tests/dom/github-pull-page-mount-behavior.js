@@ -1833,8 +1833,9 @@ async function headerSummary(page) {
   assert.deepEqual(cold.steps.summaries, ["the comparison read"]);
   tell("the comparison read", cold.row());
   cold.handle.dispose();
-  // What no read will bring has no wait: a pull request that is not GitHub's, and a refresh
-  // that failed with nothing running, on a direct link's page as with a reader's record.
+  // What no read will bring has no wait: a pull request that is not GitHub's, a server with
+  // no store to compare in, as a checkout is until Changes asks for one, and a refresh that
+  // failed with nothing running.
   const failedRefresh = {
     outcome: "network",
     message: "GitHub could not be reached.",
@@ -1845,6 +1846,10 @@ async function headerSummary(page) {
     [
       "a direct link's first answer: not GitHub's",
       { ...structuredClone(recorded.absent.body), reason: "not_github" },
+    ],
+    [
+      "a direct link's first answer: a server with no store, its own fetch to be sent",
+      { ...structuredClone(recorded.absent.body), no_store: true },
     ],
     [
       "a direct link's first answer: its refresh failed, nothing running",
