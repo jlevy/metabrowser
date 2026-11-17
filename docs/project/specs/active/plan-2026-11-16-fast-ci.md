@@ -9,10 +9,15 @@
 ([Decisions and Open Questions](#decisions-and-open-questions)); Q4, Q7, Q8, and Q9 are
 open.
 Bead `mb-h8zb` tracks this plan, and each implementation step below is a bead under
-it. Nothing here is implemented: no workflow, Makefile target, dependency, or repository
-setting has changed.
+it.
+Phase 1 is implemented by jlevy/metabrowser#499: the tier targets, the golden runner,
+the reports, and pytest-xdist.
+No workflow or repository setting has changed.
 The first step of each phase replaces that phase’s estimates with measurements; an
 estimate is marked “est.”
+Phase 1’s are in [Phase 1 Measurements](#phase-1-measurements): the parallel tier ran
+2.0 to 2.4 times faster on four workers, under the 2.3 the estimates assumed on three of
+the four interpreters.
 
 ## Overview
 
@@ -177,7 +182,9 @@ measurement decides, by the rule in [Time Limits](#time-limits).
 
 The estimates divide the measured serial seconds by an assumed 2.5 to 3.2 for four
 workers and add 0.4 to 0.6 minutes of setup and worker start.
-That factor is the plan’s main unmeasured number; Phase 1 measures it first.
+That factor was the plan’s main unmeasured number.
+Phase 1 measured 2.0 to 2.4 ([Phase 1 Measurements](#phase-1-measurements)), so the job
+times above are optimistic.
 
 The serial tier rides in the `goldens` job, after the goldens finish, so it has the
 machine to itself and adds no job.
@@ -655,16 +662,66 @@ pull requests. Phase 3 is independent of both.
 Expected: a `test` leg from 17 to 20 minutes to 10.5 to 13 (est.), with the workflow
 unchanged, since it calls `make test`.
 
-- [ ] `mb-a1le`: Add the `serial` and `chrome` markers, the `--shard` option, and their
+- [x] `mb-a1le`: Add the `serial` and `chrome` markers, the `--shard` option, and their
   gates. `make test` still runs everything in one process.
-- [ ] `mb-dz35`: Add `pytest-xdist` with its supply-chain review, make the parallel tier
+- [x] `mb-dz35`: Add `pytest-xdist` with its supply-chain review, make the parallel tier
   and `make test-admitted-git` pass under it, and split `make test` into the four
   targets. This step measures the speedup that the plan assumes.
-- [ ] `mb-4ub2`: Add `devtools/run_goldens.py` and run the goldens four files at a time.
-- [ ] `mb-tjdq`: Teach `devtools/suite_report.py` to read a run under xdist and the
+- [x] `mb-4ub2`: Add `devtools/run_goldens.py` and run the goldens four files at a time.
+- [x] `mb-tjdq`: Teach `devtools/suite_report.py` to read a run under xdist and the
   golden runner’s times, and update the testing guide.
-- [ ] `mb-f0z9`: Add `make ci-report`, which prints job medians and 90th percentiles
+- [x] `mb-f0z9`: Add `make ci-report`, which prints job medians and 90th percentiles
   from run data.
+
+#### Phase 1 Measurements
+
+Taken on 2026-11-17 from CI run 44026747033 of jlevy/metabrowser#499, its three
+attempts, at commit `d5a05e20`, against the green push runs of `main` before it.
+pytest-xdist started four workers on every leg (`PYTEST_WORKERS=logical`).
+
+The parallel tier, in seconds.
+The baseline is the same modules’ time in one process, read by
+`devtools/suite_report.py` from the logs of eight green `main` runs, 43956278180 to
+44007745684, and summed over the modules the tier selects:
+
+| Leg | Under xdist, three attempts | Median | In one process on `main`, median of 8 | Factor |
+| --- | --- | ---: | ---: | ---: |
+| 3.12 | 243, 296, 311 | 296 | 590 | 2.0 |
+| 3.13 | 194, 296, 299 | 296 | 611 | 2.1 |
+| 3.14 | 279, 198, 295 | 279 | 604 | 2.2 |
+| 3.14t | 239, 275, 344 | 275 | 663 | 2.4 |
+
+- **The factor is below the 2.3 that [Testing Strategy](#testing-strategy) sets** on
+  three of the four interpreters, so by that row Phase 2 splits the `unit` jobs in two
+  from the start.
+- **The limit is the runner, not the schedule.** The tests’ own times, summed by
+  `--file-durations`, came to 3.4 to 3.6 times each session’s wall clock, so four
+  workers were busy for most of the run.
+  The same tests took 1.1 to 1.8 times as long as their median in one process: they
+  contend for the runner’s processors, with the Git, Node, and `metab` processes they
+  start.
+- **Run-to-run variation is large.** One leg’s attempts differed by up to 54 percent, as
+  the serial baseline’s runs differed by up to 46 percent.
+  The 10 runs the Testing Strategy asks for were not taken; three were.
+
+The rest of the `test` leg, in seconds over the same three attempts: the serial tier 55
+to 57, the Chrome tier 351 to 386, and the goldens 73 to 131, against 197 to 258 one at
+a time.
+
+`make ci-report` over the same runs, in minutes:
+
+| Job | #499, median of its successful jobs | `main`, median over its last 20 push runs |
+| --- | ---: | ---: |
+| `test (3.12)` | 14.7 | 20.4 |
+| `test (3.13)` | 14.5 | 21.4 |
+| `test (3.14)` | 14.1 | 20.8 |
+| `test (3.14t)` | 13.9 | 22.2 |
+| `admitted-git (2.43.7)` | 3.1 | 6.4 |
+| `admitted-git (2.50.1)` | 3.5 | 6.7 |
+
+The first attempt reached green 14.2 minutes after its push, on 60.6 runner minutes,
+against `main`’s median of 22.9 and 99.5. Both `admitted-git` legs passed in all three
+attempts, each with the 1,388 tests a run in one process collects.
 
 ### Phase 2: Split Jobs in the Workflow
 
@@ -753,9 +810,9 @@ result the state rule gives:
 
 ## Risks
 
-- **The xdist factor is assumed.** No run under xdist was measured; the research brief
-  says why. If it is under 2.3, the `unit` jobs are split in two, which costs four more
-  jobs and no coverage.
+- **The xdist factor is under 2.3.** Phase 1 measured 2.0 to 2.4 on four workers
+  ([Phase 1 Measurements](#phase-1-measurements)), so the `unit` jobs are split in two,
+  which costs four more jobs and no coverage.
 - **Tests that are sensitive to load.** A test that passes alone and fails beside three
   workers is found by the 10-run step, and fixed or marked `serial`, which keeps it on
   every interpreter. Two modules outside the Chrome tier, `test_cli_main.py` and
