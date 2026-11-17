@@ -151,7 +151,9 @@ CHROME_TIER := chrome
 # For the same reason a SHARD of the parallel tier holds whole files (--shard-by=file).
 # Dealt by test, the CI unit jobs of run 44037230262 failed in two modules whose tests
 # rely on an earlier one in the module: tests/test_cli_git_pin_golden.py, whose first
-# test records the clone the rest reuse, and tests/test_github_pulls.py.
+# test records the clone the rest reuse (bead mb-5zkq), and tests/test_github_pulls.py.
+# Whole files stay the right deal once mb-5zkq is fixed, since a module-scoped fixture is
+# then built once; the serial and Chrome tiers still deal by test.
 test: test-parallel test-serial test-chrome test-goldens
 
 test-parallel:

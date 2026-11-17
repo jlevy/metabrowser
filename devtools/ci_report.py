@@ -64,6 +64,8 @@ GH_TIMEOUT_S: Final = 60
 FETCH_WORKERS: Final = 8
 # The most jobs one listing returns; more than this in one attempt is refused.
 JOBS_PER_PAGE: Final = 100
+# What a run's head_sha has to look like before it reaches Git.
+FULL_COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 # The runs file and the folder of jobs files that --save writes and --from reads.
 RUNS_FILE: Final = "runs.json"
 JOBS_DIR: Final = "jobs"
@@ -225,8 +227,14 @@ def gh_api(path: str) -> Json:
 
 
 def contains(head: object, commit: str) -> bool:
-    """Whether the commit *head* contains *commit*; one the clone lacks cannot show it."""
+    """Whether the commit *head* contains *commit*; one the clone lacks cannot show it.
 
+    A head that is not a full commit name, such as one that reads as an option, shows
+    nothing either, and is not passed to Git.
+    """
+
+    if not isinstance(head, str) or not FULL_COMMIT.fullmatch(head):
+        return False
     try:
         completed = subprocess.run(
             ["git", "merge-base", "--is-ancestor", commit, str(head)],

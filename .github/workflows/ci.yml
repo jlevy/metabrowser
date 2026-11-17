@@ -6,7 +6,8 @@ name: CI
 # timeout-minutes is about 1.5 times its measured 90th percentile, with the measurement
 # beside it: one that trips means a tier grew by half, and the remedy is another shard or
 # a cheaper slow test. `make ci-report` takes the times again. devtools/check_ci.py, in
-# `make lint-check`, fails a change that drops a tier, a shard, or an interpreter.
+# `make lint-check`, holds this file to the jobs, targets, interpreters, shards,
+# triggers, and permissions its docstring lists, and tests/test_check_ci.py breaks each.
 
 on:
   push:
@@ -157,9 +158,10 @@ jobs:
         python-version: ["3.12", "3.13", "3.14", "3.14t"]
         shard: [1, 2]
     runs-on: ubuntu-latest
-    # 1.9 to 4.7 minutes, 90th percentile 4.0, over the sixteen legs of runs 44038762653
-    # and 44041984874; the second part, which holds the slower files, is the longer.
-    timeout-minutes: 6
+    # The second part, which holds the slower files, sets it: 90th percentile 4.2 minutes
+    # and longest 4.7 over its 23 successful jobs in runs 44037230262 to 44046843606,
+    # stack-integration's included; the first part's is 2.6.
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -245,10 +247,10 @@ jobs:
         python-version: ${{ fromJSON(needs.plan.outputs.chrome-pythons) }}
         shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
-    # 1.6 to 4.0 minutes over the twelve successful parts of runs 44037230262,
-    # 44038762653, and 44041984874; the parts differ, since a few tests take most of the
-    # tier's time.
-    timeout-minutes: 6
+    # The second part sets it: 90th percentile 4.3 minutes and longest 4.4 over its nine
+    # successful jobs in runs 44037230262 to 44046843606, stack-integration's included.
+    # The other parts' are 2.0 to 2.7, since a few tests take most of the tier's time.
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -373,23 +375,25 @@ jobs:
         run: make test-admitted-git
 
   stack-integration:
-    # A stacked pull request is tested against the branch below it, never against
-    # main. That is the wrong question at merge time: when the branch below lands,
-    # this one's base becomes main, and the result of that merge has never been
-    # built. A whole stack can read green and still not be mergeable -- observed
-    # concretely, as a CHANGELOG conflict that every pull request in the stack was
-    # individually clean of.
+    # A pull request in an informal chain, its base another branch and no GitHub stack,
+    # is tested against the branch below it, never against main. That is the wrong
+    # question at merge time: when the branch below lands, this one's base becomes
+    # main, and the result of that merge has never been built. A whole stack can read
+    # green and still not be mergeable -- observed concretely, as a CHANGELOG conflict
+    # that every pull request in the stack was individually clean of.
     #
     # These jobs ask the question the dashboard does not: take the pull request's
     # head, merge main into it, and run the gate on the result. For the top of a
     # stack that is the whole stack against main, because the top contains every
     # branch below it.
     #
-    # They run only when that merge changes the tree. The plan job compares the tree
-    # of the merge with the tree the other jobs check, since an identical tree is
-    # identical input to every check; its summary is the record of a skipped run, and
-    # a conflict fails ci-ok. A pull request whose base is already main gets exactly
-    # this from `pull_request`, which builds the merge commit.
+    # A formal GitHub stack's merge commit already holds main: GitHub merges the head
+    # into its base merged with main (run 44038762653 of #504). The plan job then
+    # reports `contained`, and nothing more runs. Otherwise these run only when merging
+    # main changes the tree the other jobs check, since an identical tree is identical
+    # input to every check. The plan job's summary is the record of a skipped run, and a
+    # conflict fails ci-ok. A pull request whose base is main gets exactly this from
+    # `pull_request`, which builds the merge commit.
     needs: plan
     if: needs.plan.outputs.integration == 'needed'
     name: stack-integration (${{ matrix.part }})
@@ -408,9 +412,9 @@ jobs:
           - test-chrome SHARD=3/4
           - test-chrome SHARD=4/4
     runs-on: ubuntu-latest
-    # 1.2 to 4.2 minutes over the sixteen parts of runs 44037230262 and 44041984874, as
-    # for the jobs above.
-    timeout-minutes: 6
+    # As for the unit and chrome jobs, whose slowest parts these repeat: 1.2 to 4.3
+    # minutes over the 24 parts of runs 44037230262, 44041984874, and 44045094850.
+    timeout-minutes: 7
     steps:
       - name: Checkout the pull request head
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

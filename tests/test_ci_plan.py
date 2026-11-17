@@ -302,6 +302,36 @@ def test_an_answer_that_is_not_runs_is_a_failed_read(tmp_path: Path, repos: Repo
     assert "could not be read" in result.summary
 
 
+@pytest.mark.parametrize(
+    ("run_id", "sha"),
+    [("12; echo main-state=green", "c" * 40), ("601", "-" + "c" * 39), ("602", "C" * 40)],
+    ids=["an id that is not a number", "a head that starts with a dash", "an uppercase head"],
+)
+def test_an_answer_with_a_malformed_id_or_head_is_a_failed_read(
+    tmp_path: Path, repos: Repositories, run_id: str, sha: str
+) -> None:
+    """B3 of review B on #504: the id goes into a path and the outputs, the head to git."""
+
+    head = repos.commit("feature", {"feature.txt": "feature\n"}, start="main")
+    checkout = repos.check_out_merge(head, "main")
+    runs: list[Json] = [
+        {
+            "id": run_id,
+            "head_sha": sha,
+            "status": "completed",
+            "conclusion": "success",
+            "run_attempt": 1,
+        }
+    ]
+    result = plan(tmp_path, checkout, runs=runs, env=repos.env)
+
+    assert result.returncode == 0, result.log
+    assert result.outputs["main-state"] == "red"
+    assert result.outputs["main-run"] == ""
+    assert result.chrome == WIDE
+    assert "could not be read" in result.summary
+
+
 # ── Unfinished runs, each followed by the run behind it ────────────────────────────
 
 
@@ -481,15 +511,57 @@ def _stack(repos: Repositories) -> tuple[str, str]:
     return upper, "lower"
 
 
-def test_a_stack_level_with_main_needs_no_integration(tmp_path: Path, repos: Repositories) -> None:
+def test_a_stack_whose_tested_commit_contains_main_reads_main_and_needs_nothing_more(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    """A formal stack's merge ref holds main: the coordinator's decision on A3 of #504."""
+
     upper, base = _stack(repos)
+    checkout = repos.check_out_merge(upper, base)
+    main = repos.git(repos.work, "rev-parse", "main")
+    runs = [_done(501, main, "success")]
+    result = plan(tmp_path, checkout, base="lower", head_sha=upper, runs=runs, env=repos.env)
+
+    assert result.returncode == 0, result.log
+    tree = repos.git(checkout, "rev-parse", "HEAD^{tree}")
+    assert result.outputs["integration"] == "contained"
+    assert result.outputs["main-sha"] == main
+    assert result.outputs["main-state"] == "green"
+    assert result.chrome == NARROW
+    assert f"the commit this run tests (tree {tree}) already contains main ({main})" in (
+        result.summary
+    )
+
+
+def test_a_stack_that_contains_main_s_red_head_tests_it(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    upper, base = _stack(repos)
+    checkout = repos.check_out_merge(upper, base)
+    red = repos.git(repos.work, "rev-parse", "main")
+    runs = [_done(502, red, "failure")]
+    result = plan(tmp_path, checkout, base="lower", head_sha=upper, runs=runs, env=repos.env)
+
+    assert result.returncode == 0, result.log
+    assert result.outputs["main-state"] == "red"
+    assert result.outputs["main-run-sha"] == red
+    assert result.outputs["tests-red"] == "yes"
+    assert result.chrome == WIDE
+
+
+def test_a_stack_level_with_main_by_content_needs_no_integration(
+    tmp_path: Path, repos: Repositories
+) -> None:
+    """An informal chain whose merge with main changes nothing: main made the same change."""
+
+    upper, base = _stack(repos)
+    repos.commit("main", {"upper.txt": "upper\n"})
     checkout = repos.check_out_merge(upper, base)
     result = plan(tmp_path, checkout, base="lower", head_sha=upper, runs=None, env=repos.env)
 
     assert result.returncode == 0, result.log
     tree = repos.git(checkout, "rev-parse", "HEAD^{tree}")
     assert result.outputs["integration"] == "identical"
-    assert result.outputs["main-sha"] == repos.git(repos.work, "rev-parse", "main")
     assert result.outputs["main-state"] == "none"
     assert result.chrome == NARROW
     assert result.calls == []
@@ -508,6 +580,12 @@ def test_a_stack_behind_main_needs_the_integration_jobs(
     assert result.outputs["integration"] == "needed"
     assert result.outputs["main-sha"] == main
     assert "so the stack-integration jobs check it" in result.summary
+    # An informal chain's run tests no main, so it does not read main's state.
+    assert result.outputs["main-state"] == "none"
+    assert result.calls == []
+    assert f"not read: the commit this run tests does not contain main's head ({main})" in (
+        result.summary
+    )
 
 
 def test_a_stack_that_conflicts_with_main_names_the_file(
@@ -522,6 +600,16 @@ def test_a_stack_that_conflicts_with_main_names_the_file(
     assert result.returncode == 0, result.log
     assert result.outputs["integration"] == "conflict"
     assert "conflicts in: shared.txt" in result.summary
+    assert result.calls == []
+
+
+def test_a_head_that_is_not_a_commit_fails_the_plan(tmp_path: Path, repos: Repositories) -> None:
+    upper, base = _stack(repos)
+    checkout = repos.check_out_merge(upper, base)
+    result = plan(tmp_path, checkout, base="lower", head_sha="--upload-pack=x", env=repos.env)
+
+    assert result.returncode == 1
+    assert "::error::HEAD_SHA (--upload-pack=x) is not a commit" in result.log
 
 
 def test_a_pull_request_to_main_needs_no_integration(tmp_path: Path, repos: Repositories) -> None:

@@ -254,6 +254,122 @@ def test_main_runs_are_never_cancelled(tmp_path: Path) -> None:
     assert "concurrency must cancel in progress only" in errors
 
 
+# ── A1 of review A on #504: each edit that drops coverage ──────────────────────────
+
+
+def _without_job(text: str, name: str, following: str) -> str:
+    start = text.index(f"\n  {name}:\n")
+    return text[:start] + text[text.index(f"\n  {following}:\n") :]
+
+
+DROPS = {
+    "a fixed SHARD": (
+        CI_TEXT.replace(
+            "make test-parallel SHARD=${{ matrix.shard }}/2", "make test-parallel SHARD=1/2"
+        ),
+        "ci.yml job unit runs a tier with a fixed SHARD",
+    ),
+    "an excluded interpreter": (
+        CI_TEXT.replace(
+            "        shard: [1, 2]\n",
+            '        shard: [1, 2]\n        exclude:\n          - python-version: "3.14t"\n',
+        ),
+        "ci.yml job unit's matrix must have no include or exclude",
+    ),
+    "an excluded shard": (
+        CI_TEXT.replace(
+            "        shard: [1, 2, 3, 4]\n",
+            "        shard: [1, 2, 3, 4]\n        exclude:\n          - shard: 2\n",
+        ),
+        "ci.yml job chrome's matrix must have no include or exclude",
+    ),
+    "a step skipped": (
+        CI_TEXT.replace(
+            "      - name: Run the parallel tier\n",
+            "      - name: Run the parallel tier\n        if: false\n",
+        ),
+        "ci.yml job unit has a step under if: False",
+    ),
+    "a step allowed to fail": (
+        CI_TEXT.replace(
+            "      - name: Run the Chrome tier\n",
+            "      - name: Run the Chrome tier\n        continue-on-error: true\n",
+        ),
+        "ci.yml job chrome has a step with continue-on-error",
+    ),
+    "a job allowed to fail": (
+        CI_TEXT.replace(
+            "    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }}/2)\n",
+            "    name: unit (${{ matrix.python-version }}, ${{ matrix.shard }}/2)\n"
+            "    continue-on-error: true\n",
+        ),
+        "ci.yml job unit must not set continue-on-error",
+    ),
+    "the lint job deleted": (
+        _without_job(CI_TEXT, "lint", "distribution").replace(
+            "needs: [plan, lint, ", "needs: [plan, "
+        ),
+        "ci.yml has no lint job",
+    ),
+    "the distribution job deleted": (
+        _without_job(CI_TEXT, "distribution", "unit").replace("lint, distribution, ", "lint, "),
+        "ci.yml has no distribution job",
+    ),
+    "the stack-integration job deleted": (
+        _without_job(CI_TEXT, "stack-integration", "ci-ok").replace(
+            "admitted-git, stack-integration]", "admitted-git]"
+        ),
+        "ci.yml has no stack-integration job",
+    ),
+    "the audits dropped": (
+        CI_TEXT.replace("run: make lint-check audit", "run: make lint-check"),
+        "ci.yml job lint runs no `make audit`",
+    ),
+    "a stack that runs only lint": (
+        CI_TEXT.replace("run: make ${{ matrix.part }}", "run: make lint-check"),
+        "ci.yml stack-integration must run `make ${{ matrix.part }}` and no other make",
+    ),
+    "a stack checked on the merge ref": (
+        CI_TEXT.replace("          ref: ${{ github.event.pull_request.head.sha }}\n", ""),
+        "ci.yml stack-integration must check out",
+    ),
+    "a stack never run": (
+        CI_TEXT.replace("if: needs.plan.outputs.integration == 'needed'", "if: false"),
+        "ci.yml job stack-integration must not run under if: False",
+    ),
+    "the push trigger dropped": (
+        CI_TEXT.replace('  push:\n    branches: ["main"]\n', ""),
+        "ci.yml must run on a push to main and on every pull request",
+    ),
+    "a paths filter on pull requests": (
+        CI_TEXT.replace(
+            "  pull_request:\n\npermissions",
+            "  pull_request:\n    paths: ['src/**']\n\npermissions",
+        ),
+        "ci.yml must run on a push to main and on every pull request",
+    ),
+    "a tier whose failure is swallowed": (
+        CI_TEXT.replace(
+            "run: make test-parallel SHARD=${{ matrix.shard }}/2",
+            "run: make test-parallel SHARD=${{ matrix.shard }}/2 || true",
+        ),
+        "ci.yml job unit must run `make test-parallel SHARD=${{ matrix.shard }}/2 || true` alone",
+    ),
+}
+
+
+@pytest.mark.parametrize("drop", sorted(DROPS))
+def test_an_edit_that_drops_coverage_fails(tmp_path: Path, drop: str) -> None:
+    text, message = DROPS[drop]
+    assert text != CI_TEXT, drop
+
+    assert message in _errors_of(tmp_path, text)
+
+
+def _errors_of(tmp_path: Path, text: str) -> str:
+    return "\n".join(verify(_repository(tmp_path, text)))
+
+
 # ── Every workflow ─────────────────────────────────────────────────────────────────
 
 CHECKOUT = "actions/checkout@" + "0" * 40
@@ -297,16 +413,143 @@ def test_a_trusted_expression_in_a_run_line_is_fine(tmp_path: Path) -> None:
     assert verify(_repository(tmp_path, other=workflow)) == []
 
 
-def test_the_nightly_report_alone_may_read_runs(tmp_path: Path) -> None:
-    nightly = (ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
-    widened = nightly.replace("  serial:\n", "  serial:\n    permissions:\n      actions: read\n")
-    wrote = nightly.replace("      actions: read\n", "      actions: write\n")
+NIGHTLY_TEXT = (ROOT / ".github" / "workflows" / "nightly.yml").read_text(encoding="utf-8")
 
-    assert verify(_repository(tmp_path / "real", nightly=nightly)) == []
+
+def test_the_nightly_report_alone_may_read_runs(tmp_path: Path) -> None:
+    widened = NIGHTLY_TEXT.replace(
+        "  serial:\n", "  serial:\n    permissions:\n      actions: read\n"
+    )
+    wrote = NIGHTLY_TEXT.replace("      actions: read\n", "      actions: write\n")
+
+    assert verify(_repository(tmp_path / "real", nightly=NIGHTLY_TEXT)) == []
     assert verify(_repository(tmp_path / "widened", nightly=widened)) == [
         "nightly.yml job serial's permissions {'actions': 'read'} must be the workflow's"
     ]
     assert verify(_repository(tmp_path / "wrote", nightly=wrote)) == [
+        "nightly.yml job time-limits must not have write permission for actions",
         "nightly.yml job time-limits's permissions {'contents': 'read', 'actions': 'write'} "
-        "must be {'contents': 'read', 'actions': 'read'}"
+        "must be {'contents': 'read', 'actions': 'read'}",
     ]
+
+
+# B2 of review B on #504: every spelling of the event, and a step's with: inputs.
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "format('{0}', github.event.pull_request.title)",
+        "github['event'].pull_request.title",
+        "github [ 'event' ]",
+        "toJSON(github)",
+        "toJSON(github.event)",
+        "github.event",
+    ],
+)
+def test_every_spelling_of_the_event_is_untrusted(tmp_path: Path, expression: str) -> None:
+    workflow = _workflow("pull_request", run=f'echo "${{{{ {expression} }}}}"')
+
+    assert verify(_repository(tmp_path, other=workflow)) == [
+        "other.yml job job interpolates the event into a run: line; pass it through env:"
+    ]
+
+
+def test_the_event_name_and_the_repository_are_trusted(tmp_path: Path) -> None:
+    workflow = _workflow(
+        "pull_request", run='echo "${{ github.event_name }} ${{ github.repository }}"'
+    )
+
+    assert verify(_repository(tmp_path, other=workflow)) == []
+
+
+def test_a_step_input_that_reads_the_event_is_untrusted(tmp_path: Path) -> None:
+    workflow = _workflow("pull_request") + (
+        "      - uses: actions/github-script@" + "1" * 40 + "\n"
+        "        with:\n          script: console.log('${{ github.event.pull_request.title }}')\n"
+    )
+
+    assert verify(_repository(tmp_path, other=workflow)) == [
+        "other.yml job job interpolates the event into a step's with:; pass it through env:"
+    ]
+
+
+def test_a_commit_or_a_release_tag_is_a_trusted_step_input(tmp_path: Path) -> None:
+    workflow = _workflow(
+        "pull_request", checkout="ref: ${{ github.event.pull_request.head.sha }}"
+    ).replace("        with:\n", "        with:\n          persist-credentials: false\n")
+
+    assert verify(_repository(tmp_path, other=workflow)) == []
+
+
+def test_no_workflow_may_run_on_workflow_run(tmp_path: Path) -> None:
+    workflow = _workflow("{workflow_run: {workflows: [CI]}}")
+
+    assert verify(_repository(tmp_path, other=workflow)) == [
+        "other.yml must not run on workflow_run"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("permissions", "message"),
+    [
+        ("permissions:\n  contents: write\n", "must not have write permission for contents"),
+        ("permissions: write-all\n", "must not have write permission for all"),
+        ("", "must declare its permissions, or the workflow its own"),
+    ],
+)
+def test_no_unregistered_workflow_may_write_or_leave_its_permissions_undeclared(
+    tmp_path: Path, permissions: str, message: str
+) -> None:
+    workflow = _workflow("push").replace("permissions:\n  contents: read\n", permissions)
+
+    assert verify(_repository(tmp_path, other=workflow)) == [f"other.yml job job {message}"]
+
+
+def test_a_job_may_write_only_where_the_grant_is_registered(tmp_path: Path) -> None:
+    workflow = _workflow("push").replace(
+        "    runs-on: ubuntu-latest\n",
+        "    runs-on: ubuntu-latest\n    permissions:\n      pull-requests: write\n",
+    )
+
+    assert verify(_repository(tmp_path, other=workflow)) == [
+        "other.yml job job must not have write permission for pull-requests"
+    ]
+
+
+# A5 of review A on #504: the nightly keeps the values it shares with ci.yml.
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (
+            'python-version: "3.13"',
+            'python-version: "3.12"',
+            "nightly.yml job serial must install PR_CHROME_PYTHON, '3.13', not '3.12'",
+        ),
+        (
+            "    timeout-minutes: 7\n",
+            "    timeout-minutes: 9\n",
+            "nightly.yml job chrome's timeout-minutes 9 must be ci.yml's 7",
+        ),
+        (
+            "      fail-fast: false\n",
+            "      fail-fast: true\n",
+            "nightly.yml job serial must set fail-fast: false",
+        ),
+        (
+            "    timeout-minutes: 3\n",
+            "",
+            "nightly.yml job serial must set timeout-minutes to a number of minutes",
+        ),
+        (
+            "      - name: Run the serial tier\n",
+            "      - name: Run the serial tier\n        continue-on-error: true\n",
+            "nightly.yml job serial has a step with continue-on-error",
+        ),
+    ],
+)
+def test_the_nightly_keeps_ci_yml_s_interpreter_and_limit(
+    tmp_path: Path, old: str, new: str, message: str
+) -> None:
+    assert NIGHTLY_TEXT.count(old) >= 1, old
+    nightly = NIGHTLY_TEXT.replace(old, new, 1)
+
+    assert message in verify(_repository(tmp_path, nightly=nightly))

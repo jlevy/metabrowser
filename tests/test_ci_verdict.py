@@ -94,7 +94,7 @@ def _verdict_lines(lines: list[str]) -> list[str]:
     return [line for line in lines if "main-red" in line]
 
 
-@pytest.mark.parametrize("integration", ["none", "identical"])
+@pytest.mark.parametrize("integration", ["none", "identical", "contained"])
 def test_every_job_green_passes_with_no_verdict_line_while_main_is_green(
     tmp_path: Path, integration: str
 ) -> None:
@@ -104,6 +104,12 @@ def test_every_job_green_passes_with_no_verdict_line_while_main_is_green(
     assert _verdict_lines(result.lines) == []
     assert not any(line.startswith("::notice::") for line in result.lines)
     assert "| stack-integration | skipped |" in result.summary
+    # A8 of review A on #504: the required check says why it accepted the skip.
+    accepted = (
+        f"stack-integration skipped: integration={integration} (the plan job's summary says why)"
+    )
+    assert accepted in result.lines
+    assert accepted in result.summary
 
 
 def test_a_needed_integration_that_ran_passes(tmp_path: Path) -> None:

@@ -171,19 +171,27 @@ completion.
 
 Merge into `main` by `main`’s state.
 `ci-ok` cannot see a pull request whose run went green before `main` turned red, or a
-`main` run that has not completed, and a verdict line names the head that was red when
+`main` run that has not completed, and its verdict line names the head that was red when
 its run was planned, so it is current only while that is the head of `main`’s newest
 run.
 
 - Merge only when the latest attempt of the newest `ci.yml` push run on `main` has
   completed (`gh run list`).
-- If it is not green, merge only a pull request whose latest `ci-ok` passed with a
-  verdict line that says `tested=yes` and names the head SHA of that `main` run.
+- If it is not green, merge only a pull request whose latest `ci-ok` passed and wrote
+  `main-red run=<id> head=<sha> tested=yes` with the head SHA of that `main` run.
+  Read the line in the `ci-ok` job’s own log (`gh run view --job <id> --log`), since any
+  job can print one. When the diff changes `ci.yml`, `devtools/ci_plan.sh`, or
+  `devtools/ci_verdict.sh`, which write it, confirm `tested=yes` yourself: the Chrome
+  tier ran on every interpreter, and the tested merge commit contains that head.
+- A stacked pull request qualifies the same way: its run reads `main`’s state when the
+  commit it tests contains `main`’s head, as a formal GitHub stack’s does.
+  `gh stack merge` lands every layer below its target, so each must qualify.
 - A rerun never changes the commit a run tested.
   To get a qualifying run, update the branch from `main` or push to it.
-- Rerun a failure that a bead names as a known flake once; give any other failure a bead
-  and a fix or a revert.
-  Never arm auto-merge; merge directly.
+- When a `main` run fails, rerun it once if a bead names the failure as a known flake;
+  give any other failure a bead and a fix or a revert.
+- Never arm auto-merge: a merge it makes later does not pass these rules.
+  Merge directly.
 
 <!-- BEGIN TBD INTEGRATION format=f100 surface=agents-md -->
 ## tbd

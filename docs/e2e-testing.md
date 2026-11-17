@@ -302,12 +302,14 @@ says why each check runs where it does.
 | `goldens and serial` | `make test-goldens`, then `make test-serial` | the same interpreters |
 | `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
 | `admitted-git` | `make test-admitted-git` | the two admitted Git releases |
-| `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose merge with `main` changes the tree |
-| `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded | every run |
+| `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
+| `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded, and says why it accepted a skipped `stack-integration` | every run |
 
 `ci-ok` is the one check to require.
 While `main` is red it also writes a `main-red` verdict line, which
-[Git](../AGENTS.md#git) merges by.
+[Git](../AGENTS.md#git) merges by, read from the `ci-ok` job’s own log.
+The `plan` job reads `main`’s state for a pull request to `main` and for any pull
+request whose tested commit contains `main`’s head, a formal stack’s layers among them.
 A newer push to a pull request cancels its running jobs, and a push to `main` is never
 cancelled. No leg cancels its siblings, so “Re-run failed jobs” reruns only the one that
 failed, and the legs that passed stay as evidence.
@@ -318,10 +320,14 @@ A limit that trips means a tier grew by half: split its job further, or make its
 tests cheaper.
 To add a shard, raise `N` in the job’s `SHARD=${{ matrix.shard }}/N`, list
 `1` through `N` in its `shard` matrix, and deal the matching `stack-integration` parts
-the same way. `devtools/check_ci.py`, part of `make lint-check`, fails a sharded job
-whose shards are not `1` through `N`, a tier no job runs, an interpreter list that
-differs from `pyproject.toml`’s classifiers and the free-threaded build, and a
-permission, trigger, or `run:` line that widens what a pull request can reach.
+the same way.
+`devtools/check_ci.py`, part of `make lint-check`, fails an edit that drops
+a check and still goes green: a sharded job whose shards are not `1` through `N`, a
+fixed `SHARD`, a matrix `include` or `exclude`, a tier or required job no step runs, a
+step or job skipped or allowed to fail, an interpreter list that differs from
+`pyproject.toml`’s classifiers and the free-threaded build, and a lost trigger.
+It also fails a permission, trigger, or expression that widens what a pull request can
+reach. Its docstring lists every rule.
 
 **The nightly soak.** `.github/workflows/nightly.yml` repeats the serial and Chrome
 tiers on the interpreter a pull request draws the Chrome tier on, so that a flake is

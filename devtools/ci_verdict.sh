@@ -2,18 +2,22 @@
 # The `ci-ok` job of .github/workflows/ci.yml: one verdict for the whole run.
 #
 # It fails unless every job it needs succeeded. It accepts `skipped` only for
-# stack-integration, and only when the plan job found no integration to run (`none`) or
-# one the other jobs already answer (`identical`); a `conflict` fails with the message
-# the job printed before the plan job existed. It never fails on main's state alone,
-# which would keep a red main from being fixed under a required check.
+# stack-integration, and only when the plan job found no integration to run (`none`), or
+# one the other jobs already answer (`identical`, `contained`), and it says so in its log
+# and summary, which are the record of the skip with the plan job's summary; a
+# `conflict` fails with the message the job printed before the plan job existed. It
+# never fails on main's state alone, which would keep a red main from being fixed under
+# a required check.
 #
-# While main is red it writes one line, to its log and as a ::notice:: annotation, which
-# `gh run view <run id>` lists:
+# While main is red it writes one line, to its log and as a ::notice:: annotation:
 #
 #   main-red run=<id> head=<sha> tested=<yes|no>
 #
 # tested=yes means this run checked main's whole matrix on a commit that contains that
-# head. AGENTS.md (Git) merges by it, and tests/test_ci_verdict.py pins the format.
+# head. AGENTS.md (Git) merges by it, read from this job's own log (`gh run view --job
+# <ci-ok job id> --log`): any job of the run can print a line that looks like it, and
+# `gh run view <run id>` lists every job's annotations together.
+# tests/test_ci_verdict.py pins the format.
 #
 # Inputs, from the step's environment: RESULTS (`toJSON(needs)`), INTEGRATION,
 # MAIN_STATE, MAIN_RUN, MAIN_RUN_SHA, TESTS_RED, and GITHUB_STEP_SUMMARY.
@@ -24,7 +28,7 @@ set -euo pipefail
 INTEGRATION=${INTEGRATION:-}
 MAIN_STATE=${MAIN_STATE:-}
 
-failed=()
+failed=() accepted=
 rows=$(jq -r 'to_entries[] | [.key, (.value.result // "unknown")] | @tsv' <<<"$RESULTS")
 {
   echo "### ci-ok"
@@ -39,10 +43,20 @@ while IFS=$'\t' read -r job result; do
     continue
   fi
   if [ "$job" = stack-integration ] && [ "$result" = skipped ]; then
-    case $INTEGRATION in none | identical) continue ;; esac
+    case $INTEGRATION in
+      none | identical | contained)
+        accepted="stack-integration skipped: integration=$INTEGRATION (the plan job's summary says why)"
+        continue
+        ;;
+    esac
   fi
   failed+=("$job ($result)")
 done <<<"$rows"
+
+if [ -n "$accepted" ]; then
+  echo "$accepted"
+  printf '\n%s\n' "$accepted" >>"$GITHUB_STEP_SUMMARY"
+fi
 
 if [ "${#failed[@]}" -eq 0 ] && [ -z "$rows" ]; then
   failed+=("no job results")

@@ -222,19 +222,32 @@ more, reviewed on November 17, 2026:
   declared so that the token’s scope is stated, not inherited.
   No job may write issues, pull requests, or contents.
 - **Triggers.** `ci.yml` runs on a push to `main` and on `pull_request`, never on
-  `pull_request_target`. A pull request’s run therefore gets a read-only token, and its
-  workflow and the `devtools/ci_plan.sh` and `devtools/ci_verdict.sh` it runs come from
-  the pull request’s own merge commit, so a change to the gate is reviewed as a change.
+  `pull_request_target` or `workflow_run`. A pull request’s run therefore gets a
+  read-only token, and its workflow and the `devtools/ci_plan.sh` and
+  `devtools/ci_verdict.sh` it runs come from the pull request’s own merge commit, so a
+  change to the gate is reviewed as a change.
   `nightly.yml` runs on a schedule and by hand.
 - **Untrusted input.** A branch name or a pull request’s title or body reaches a step
-  only through `env:`, quoted in the shell; no `run:` line interpolates the event.
+  only through `env:`, quoted in the shell; no `run:` line or step input interpolates
+  the event. The `plan` job refuses a run id or head from the API that is not one, and
+  counts that answer as red, like a failed read.
+- **Nightly report.** The `time-limits` job installs its locked environment in a step
+  without the token, so the step that holds the token runs only `ci-report`.
 - **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache
   actions already reviewed, and the runner image’s own `gh` and `jq`. Every checkout
   sets `persist-credentials: false`.
 
-`devtools/check_ci.py`, in `make lint-check`, fails a job given a permission this table
-does not name, a `pull_request_target` trigger, a checkout that keeps its credentials,
-and a `run:` line that interpolates the event or the head branch.
+`devtools/check_ci.py`, in `make lint-check`, fails:
+
+- in any workflow, a job whose permissions are not declared, at its own level or the
+  workflow’s, or that grants any `write` but `publish.yml`’s `id-token`;
+- in `ci.yml` and `nightly.yml`, a job given a permission this table does not name;
+- a `pull_request_target` or `workflow_run` trigger, and a checkout that keeps its
+  credentials;
+- an expression in a `run:` line, or in a step’s `with:` other than a commit or a
+  release tag, that reads the event, the head branch, or the whole `github` context, in
+  any spelling: `github.event.`, `github['event']`, `toJSON(github)`, or inside
+  `format()`.
 
 ## Verification
 

@@ -75,8 +75,8 @@ jobs:
         repetition: [1, 2, 3, 4, 5]
         shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
-    # As for ci.yml's chrome job.
-    timeout-minutes: 6
+    # As for ci.yml's chrome job; check_ci.py holds the two equal.
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -133,6 +133,11 @@ jobs:
 
       - name: Set up Python
         run: uv python install
+
+      # The locked environment, installed before the step that holds the token, so no
+      # install code runs beside it.
+      - name: Install the locked environment
+        run: uv --config-file uv.toml sync --frozen
 
       # Only the runs since ci.yml last changed: an older run may have done other work
       # under a job's name, and would be judged against a limit set for the new.

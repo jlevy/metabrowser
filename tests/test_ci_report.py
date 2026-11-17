@@ -315,3 +315,6 @@ def test_a_head_contains_its_ancestors_and_not_its_descendants() -> None:
     assert ci_report.contains(head[0], head[1])
     assert not ci_report.contains(head[1], head[0])
     assert not ci_report.contains("0" * 40, head[1])
+    # A head that reads as an option, or is no commit name at all, shows nothing.
+    assert not ci_report.contains("--output=/dev/null", head[1])
+    assert not ci_report.contains(None, head[1])
