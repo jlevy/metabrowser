@@ -129,8 +129,10 @@ until a release removed it.
 The [upstream release](https://github.com/jlevy/tryscript/releases/tag/v0.4.0) replaces
 tinyglobby with tryscript’s own matcher, which builds no regular expression from a
 pattern, so 0.4.0 depends on none of the three.
-This selection removes that exception with its check, test, and fixture, so the audit
-again fails on any advisory at or above its level.
+This selection removes that exception with its check, its tests, and its fixture, so the
+audit again fails on any advisory at or above its level.
+The wrapper keeps what #523 fixed apart from the exception: a report is a finding even
+when an advisory’s title names an outage (see [Automated Checks](#automated-checks)).
 
 It was selected with `--min-release-age=0`, as 0.3.1 was, and npm applies that to the
 whole command; but the command moved no other package and added none, so no third-party
@@ -370,16 +372,25 @@ workflows, and documentation.
 executes the tests and audits, builds the package, inspects its contents, and exercises
 the installed wheel and plugin surface.
 
-CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
-lock, through `devtools/npm_audit.sh`. That wrapper exists because `npm audit` exits
-non-zero for two unrelated events: it found an advisory, or it could not reach the
-advisory endpoint. Only the first is a reason to stop.
-The wrapper retries, then reports an unreachable endpoint as **not performed** --
-loudly, and without failing the build, because a registry outage is not a finding and
-the lockfile is pinned, so the dependency set has not moved since the last run that did
-reach it. An advisory at or above the level still fails exactly as before.
-A run that reports “not performed” has not cleared the dependencies; re-run the gate
-once the registry answers before relying on it.
+CI and publishing also run `npm audit --include=dev --audit-level=moderate` after
+installing the exact lock, through `devtools/npm_audit.sh`. That wrapper exists because
+`npm audit` exits non-zero for two unrelated events: it found an advisory, or it could
+not reach the advisory endpoint.
+Only the first is a reason to stop.
+npm writes its report to stdout and its own errors to stderr, and the wrapper keeps them
+apart. A report is a finding and fails, whatever its advisories’ titles say, and even if
+npm also warned on stderr about a failed request.
+Only when there is no report does the wrapper search stderr for an unreachable endpoint.
+It retries, then reports the outage as **not performed** -- loudly, and without failing
+the build, because a registry outage is not a finding and the lockfile is pinned, so the
+dependency set has not moved since the last run that did reach it.
+Any other npm failure, such as a missing lockfile, fails, and so does an
+`NPM_AUDIT_ATTEMPTS` that is not a positive integer.
+Every npm package in this lock is a dev dependency, so `--include=dev` keeps an ambient
+`NODE_ENV=production` or `NPM_CONFIG_OMIT=dev` from reducing the audit to nothing.
+`tests/test_npm_audit.py` runs the wrapper against a stand-in `npm` for each of these
+cases. A run that reports “not performed” has not cleared the dependencies; re-run the
+gate once the registry answers before relying on it.
 
 Treat an unexpected lockfile source, install script, binary artifact, or publish-time
 change as a blocker until it is explained and reviewed.
