@@ -121,10 +121,11 @@ GOLDEN_JOBS ?= 4
 STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 
 # The default tier. -rs names every skipped test with its reason, so a skip is read
-# rather than counted, and --durations lists the slowest tests, so a run says where its
-# time went. A missing Node or Git stops the run; see tests/required_tools.py.
+# rather than counted, and --durations and --file-durations list the slowest tests and
+# test files (tests/suite_timing.py), so a run says where its time went. A missing Node or
+# Git stops the run; see tests/required_tools.py.
 test:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=25
 	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' -- $(TRYSCRIPT)
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
@@ -224,7 +225,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 $(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.

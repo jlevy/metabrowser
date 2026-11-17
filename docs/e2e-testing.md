@@ -80,6 +80,15 @@ diff line by line.
 reasons: why `--walk` and `--diff` prove a model and not the wire, what counts as
 evidence for a route, and why only what no fixture can pin is normalized.
 
+tryscript runs its files one after another, so `make test` runs them through
+`devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time; the `Makefile` holds the value
+and the measurement that chose it.
+The runner prints each file’s output whole when the file finishes, then a `golden:` line
+with its verdict and time, and fails unless every file the pattern matches printed its
+own `PASS` verdict. A file that printed no verdict fails the run, and so does a pattern
+that matches nothing.
+`make test GOLDEN_JOBS=1` runs them one at a time.
+
 ### One Harness and One Update Command
 
 `tests/golden_harness.py` is the one place an expectation is compared or rewritten, and
@@ -227,10 +236,42 @@ With the tier selected, a live test that skips for any of those fails; it may sk
 for what github.com holds that day.
 Every other test runs with a failing stand-in `gh` first on `PATH`.
 
+### Serial and Chrome Tests
+
+Within the default tier, two markers say what a test needs from the machine it runs on,
+and `tests/suite_tiers.py` holds what each means:
+
+- `chrome`: the test drives headless Chrome.
+  Every test that uses the `chrome_profile` fixture, directly or through another
+  fixture, gets it, and nothing else sets it.
+- `serial`: the test measures wall-clock time and needs the machine to itself.
+  A module sets it by hand, as `pytest.mark.serial(reason=...)` with the measurement
+  that forced it as the reason, the way a module raises its timeout.
+  `tests/test_process_group.py` is one; its one Chrome test is `chrome` as well.
+
+The three `-m` expressions in `TIERS` there, the parallel, serial, and Chrome tiers,
+cover each combination of the two markers once, so they partition the suite whatever is
+marked.
+`--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
+by node ID, so that one tier can be split across machines.
+
+`tests/suite_gates.py` holds each marker to its meaning.
+A test fails when:
+
+- it asks for Chrome through `require_chrome` and is not `chrome`;
+- it is marked `chrome` and does not use `chrome_profile`;
+- it is marked `serial` without a reason;
+- it is `serial` or `chrome` in a module that `ADMITTED_GIT_TESTS` lists.
+  `make test-admitted-git` runs that list with no marker filter, so a module there that
+  fails beside other tests is fixed, not marked.
+
+The markers are two because the properties are: a test that needs the machine to itself
+says nothing by that about the interpreters it has to pass on.
+
 ### Skips
 
 `make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
-with `--durations`, which lists the slowest tests.
+with `--durations` and `--file-durations`, which list the slowest tests and test files.
 In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
 or the test fails:
 
@@ -348,19 +389,30 @@ make test-report LOG=run.log
 
 - An **area** is the first word of a test module’s name: `tests/test_cache_update.py` is
   in `cache`.
+
 - **Lines** are counted from the files of the tree or commit alone, so they are the same
   on every machine. An image is a file with no lines.
+
 - **Test functions** are the ones pytest collects, read from each module’s syntax tree:
   `test_` functions at module level and `test_` methods of a `Test` class.
   A parametrized function is one function, so this is lower than the number of cases a
   run reports.
-- **Time** is read from a CI job log and belongs to that one run, so quote the run and
-  the job with it. A test file’s time is the gap between the timestamps of consecutive
-  progress lines: pytest ends a file’s line when the next file starts.
-  A golden’s time is the gap before tryscript printed its verdict.
-  A pytest output with no timestamps gives no time per file.
-  A developer machine under load gives other times; compare the CI `test (3.13)` job
-  with itself.
+
+- **Time** is read from a CI job log, or a run’s own output, and belongs to that one
+  run, so quote the run and the job with it.
+  Every pytest session and golden run in the job is read.
+  - A test file’s time is the one the run listed under `--file-durations`
+    (`tests/suite_timing.py`): the sum of its tests’ setup, call, and teardown, which a
+    run under pytest-xdist needs, since its progress lines name no file.
+    The section lists the slowest files and counts every one, so the report gives the
+    count and the total beside the files it names.
+  - A golden’s time is the one on its `golden:` line from `devtools/run_goldens.py`.
+  - A log from before those lines existed is read by its timestamps instead: a file’s
+    time is the gap between consecutive progress lines, and a golden’s the gap before
+    tryscript printed its verdict.
+
+  A developer machine under load gives other times; compare a CI job with itself.
+
 - **Skips** are the cases `-rs` listed in the log, counted by reason.
   [Skips](#skips) says which reason belongs to which tier.
 

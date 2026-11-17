@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import suite_gates, suite_tiers
+from tests import suite_gates, suite_tiers, suite_timing
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -58,6 +58,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         metavar="I/N",
         help="run the Ith of N disjoint parts of the selected tests (tests/suite_tiers.py)",
     )
+    suite_timing.add_option(parser)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -77,6 +78,8 @@ def pytest_configure(config: pytest.Config) -> None:
     config.pluginmanager.register(suite_gates)
     # The chrome marker and --shard; see tests/suite_tiers.py.
     config.pluginmanager.register(suite_tiers)
+    # --file-durations; see tests/suite_timing.py.
+    config.pluginmanager.register(suite_timing.FileTimes(), "suite-file-times")
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
