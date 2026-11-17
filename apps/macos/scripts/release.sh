@@ -100,3 +100,11 @@ for output in "${outputs[@]}"; do
   printf '  %-44s %s\n' "$output" "$size"
 done
 echo "  sha256 $sha256"
+if [[ "$variant" == release ]]; then
+  # The draft's assets, named where scripts/check-release.sh reads them.
+  echo "  the release's assets, to attach to its draft:"
+  while IFS= read -r asset; do
+    [[ -f "build/$asset" ]] || die "build/$asset, a release asset, was not built"
+    echo "    apps/macos/build/$asset"
+  done <<<"$(release_assets "$version" "$arch_label")"
+fi

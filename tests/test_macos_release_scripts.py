@@ -8,10 +8,12 @@ certificates. It needs bash, jq, openssl, pgrep, and shasum, and nothing from Xc
 with macOS's bash and LibreSSL. Without one of those tools the script stops and names
 it, and the test fails: a skip would drop the only Linux coverage of these scripts.
 
-The pins below hold the copies `SUPPLY-CHAIN-SECURITY.md` makes of the scripts'
-values: the SHA-256 of the committed G2 intermediate, which
-`apps/macos/scripts/signing-lib.sh` checks, and of the Apple Root CA fixture, which the
-logic tests check before they verify the intermediate's chain against it.
+The pins below hold the copies documents make of the scripts' values: the SHA-256 of
+the committed G2 intermediate, which `apps/macos/scripts/signing-lib.sh` checks, and of
+the Apple Root CA fixture, which the logic tests check before they verify the
+intermediate's chain against it, both of which `SUPPLY-CHAIN-SECURITY.md` records; and
+the release keychain's idle lock, which the runbook in `apps/macos/README.md` gives in
+the owner's command.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ LOGIC_TESTS = APP / "scripts/test-release-logic.sh"
 SIGNING_LIB = APP / "scripts/signing-lib.sh"
 ROOT_FIXTURE = APP / "scripts/fixtures/AppleIncRootCertificate.cer"
 SUPPLY_CHAIN = REPO_ROOT / "SUPPLY-CHAIN-SECURITY.md"
+RUNBOOK = APP / "README.md"
 
 # The script makes eight RSA keys, runs notarize.sh about ten times and the doctor about
 # forty, each a few dozen processes: 18 s on a loaded 4-CPU Linux container (2026-11-17),
@@ -74,4 +77,14 @@ def test_the_committed_certificates_are_the_reviewed_ones(
     assert hashlib.sha256(path.read_bytes()).hexdigest() == reviewed
     assert f"`{reviewed}`" in SUPPLY_CHAIN.read_text(), (
         f"SUPPLY-CHAIN-SECURITY.md must record the SHA-256 that {script.name} checks"
+    )
+
+
+def test_the_runbook_states_the_keychain_lock_the_doctor_requires() -> None:
+    lock = _shell_value(SIGNING_LIB, "release_keychain_lock_seconds")
+    stated = re.findall(r"set-keychain-settings -l -u -t (\d+)", RUNBOOK.read_text())
+    assert stated, "the runbook no longer gives O1's set-keychain-settings command"
+    assert set(stated) == {lock}, (
+        f"the runbook's set-keychain-settings uses {sorted(set(stated))}, and "
+        f"release_keychain_lock_seconds in signing-lib.sh is {lock}"
     )

@@ -16,15 +16,17 @@
 #   - fixtures/AppleIncRootCertificate.cer is Apple Root CA, from Apple PKI
 #     (https://www.apple.com/appleca/AppleIncRootCertificate.cer); the committed G2
 #     intermediate is checked against it with the real openssl.
-#   - The security, xcrun, and xcodebuild stand-ins print output in the form those tools
-#     print it, written for these tests rather than captured from a run; the
-#     certificates they return are generated here with openssl, with Apple's names and
-#     made-up keys, so expiry and issuer are real. Real output meets these readers in
-#     scripts/test-scripts.sh, on macOS CI (a throwaway keychain), and on the build Mac
-#     (the first run of the signing doctor).
+#   - The security, xcrun, xcodebuild, and codesign -dvvv stand-ins print output in the
+#     form those tools print it, written for these tests rather than captured from a run;
+#     the certificates they return are generated here with openssl, with Apple's names
+#     and made-up keys, so expiry and issuer are real. Real output meets these readers in
+#     scripts/test-scripts.sh, on macOS CI (ad hoc signatures, a throwaway keychain), and
+#     on the build Mac (the runbook's signing-session checks).
 #   - keychain_status stands in for scripts/keychain-status.swift, whose output this
 #     repository defines; scripts/test-scripts.sh runs the real one, in CI, on a
 #     throwaway keychain.
+#   - The gh stand-in returns releases in the shape `gh release view --json` gives them
+#     (gh 2.97, read from a public release), with made-up assets.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
@@ -33,6 +35,10 @@ source scripts/common.sh
 source scripts/signing-lib.sh
 # shellcheck source=notary-lib.sh
 source scripts/notary-lib.sh
+# shellcheck source=gatekeeper-lib.sh
+source scripts/gatekeeper-lib.sh
+# shellcheck source=check-release-lib.sh
+source scripts/check-release-lib.sh
 
 for tool in jq openssl pgrep shasum; do
   command -v "$tool" >/dev/null || die "$tool is missing; these tests need it"
@@ -745,6 +751,347 @@ case_history=1
 doctor 0 1 1 "ONLINE=1 fails when the notary service refuses" "FAIL: notarytool history failed (O2, O3)"
 unset -f security keychain_status xcodebuild xcrun
 unset ONLINE SIGN_IDENTITY
+
+# ── signature_facts and developer_id_problems ────────────────
+# `codesign -dvvv` output for a notarizable app: a Developer ID signature with the
+# hardened runtime flag, a secure timestamp (Timestamp=), a Team ID, and the chain.
+developer_id_app='Executable=/Volumes/Metabrowser 0.1.0/Metabrowser.app/Contents/MacOS/Metabrowser
+Identifier=io.github.jlevy.metabrowser
+Format=app bundle with Mach-O thin (arm64)
+CodeDirectory v=20500 size=1234 flags=0x10000(runtime) hashes=28+7 location=embedded
+Hash type=sha256 size=32
+CandidateCDHash sha256=0123456789abcdef0123456789abcdef01234567
+CandidateCDHashFull sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+Hash choices=sha256
+CMSDigest=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+CMSDigestType=2
+CDHash=0123456789abcdef0123456789abcdef01234567
+Signature size=9000
+Authority=Developer ID Application: Example Developer (A1B2C3D4E5)
+Authority=Developer ID Certification Authority
+Authority=Apple Root CA
+Timestamp=Nov 17, 2026 at 09:00:00
+Info.plist entries=24
+TeamIdentifier=A1B2C3D4E5
+Runtime Version=26.0.0
+Sealed Resources version=2 rules=13 files=2
+Internal requirements count=1 size=200'
+developer_id_image='Executable=/private/tmp/download/Metabrowser-0.1.0-arm64.dmg
+Identifier=io.github.jlevy.metabrowser.dmg
+Format=disk image
+CodeDirectory v=20100 size=200 flags=0x0(none) hashes=1+6 location=embedded
+Signature size=9000
+Authority=Developer ID Application: Example Developer (A1B2C3D4E5)
+Authority=Developer ID Certification Authority
+Authority=Apple Root CA
+Timestamp=Nov 17, 2026 at 09:05:00
+TeamIdentifier=A1B2C3D4E5'
+adhoc_app='Executable=/tmp/Metabrowser.app/Contents/MacOS/Metabrowser
+Identifier=io.github.jlevy.metabrowser.dev
+CodeDirectory v=20400 size=1234 flags=0x10002(adhoc,runtime) hashes=28+7 location=embedded
+Signature=adhoc
+Info.plist entries=24
+TeamIdentifier=not set'
+facts="$(signature_facts <<<"$developer_id_app")"
+if [[ "$(tr '\n' ' ' <<<"$facts")" == "adhoc=0 runtime=1 timestamp=secure team=A1B2C3D4E5 authorities=Developer ID Application: Example Developer (A1B2C3D4E5)|Developer ID Certification Authority|Apple Root CA " ]] &&
+  [[ -z "$(developer_id_problems "$facts" app A1B2C3D4E5)" ]]; then
+  pass "a notarizable app's signature reads as one, with nothing wrong"
+else
+  fail "a notarizable app's signature read as: $facts; problems: $(developer_id_problems "$facts" app A1B2C3D4E5)"
+fi
+if [[ -z "$(developer_id_problems "$(signature_facts <<<"$developer_id_image")" image "")" ]]; then
+  pass "a Developer ID image needs no hardened runtime, which is for code that runs"
+else
+  fail "a Developer ID image: $(developer_id_problems "$(signature_facts <<<"$developer_id_image")" image "")"
+fi
+facts="$(signature_facts <<<"$adhoc_app")"
+if [[ "$(fact adhoc <<<"$facts")$(fact runtime <<<"$facts")$(fact timestamp <<<"$facts")" == 11none && -z "$(fact team <<<"$facts")" ]]; then
+  pass "an ad hoc signature with the hardened runtime reads as both, with no Team ID or timestamp"
+else
+  fail "an ad hoc signature read as: $facts"
+fi
+expect_problem() {
+  local label="$1" text="$2" kind="$3" team="$4" want="$5" problems
+  problems="$(developer_id_problems "$(signature_facts <<<"$text")" "$kind" "$team")"
+  if [[ "$problems" == *"$want"* ]]; then
+    pass "$label"
+  else
+    fail "$label: the problems were: ${problems:-none}"
+  fi
+}
+expect_problem "an app without the hardened runtime is refused" \
+  "${developer_id_app/flags=0x10000(runtime)/flags=0x0(none)}" app "" "no hardened runtime"
+expect_problem "a Signed Time is not a secure timestamp" \
+  "${developer_id_app/Timestamp=/Signed Time=}" app "" "no secure timestamp"
+expect_problem "another team than EXPECTED_TEAM_ID is refused" \
+  "$developer_id_app" app Z9Y8X7W6V5 "the Team ID is A1B2C3D4E5, not EXPECTED_TEAM_ID Z9Y8X7W6V5"
+expect_problem "a development certificate's chain is not a Developer ID chain" \
+  "${developer_id_app/Developer ID Application: /Apple Development: }" app "" "not Developer ID Application"
+expect_problem "an ad hoc signature is no Developer ID signature" "$adhoc_app" app "" "no Team ID"
+
+# ── describe_quarantine ──────────────────────────────────────
+described="$(describe_quarantine "0083;6735a1c4;Safari;3F1A2B3C-4D5E-6F70-8192-A3B4C5D6E7F8")"
+if [[ "$described" == "flags 0x0083, set 2024-11-14 07:07:48 UTC, by Safari, event 3F1A2B3C-4D5E-6F70-8192-A3B4C5D6E7F8" ]]; then
+  pass "a quarantine attribute is described: its flags, time, agent, and event"
+else
+  fail "a quarantine attribute was described as: $described"
+fi
+if [[ "$(describe_quarantine "01c1;zz;")" == "flags 0x01c1, set an unreadable time (zz), by no agent" ]]; then
+  pass "an unreadable quarantine attribute is described, not refused"
+else
+  fail "an unreadable quarantine attribute: $(describe_quarantine "01c1;zz;")"
+fi
+
+# ── The release's names, tag, assets, and checksum ───────────
+if [[ "$(release_assets 0.1.0 arm64 | tr '\n' ' ')" == "Metabrowser-0.1.0-arm64.dmg Metabrowser-0.1.0-arm64.dmg.sha256 " ]]; then
+  pass "a release's assets are its image and the image's checksum"
+else
+  fail "release_assets gave: $(release_assets 0.1.0 arm64 | tr '\n' ' ')"
+fi
+run version_of_tag macos-v0.1.0
+if ((status == 0)) && [[ "$(cat "$work/out")" == 0.1.0 ]]; then
+  pass "macos-v0.1.0 is version 0.1.0"
+else
+  fail "version_of_tag macos-v0.1.0: $(cat "$work/out")"
+fi
+for bad in v0.1.0 macos-v0.1 macos-v0.1.0-rc1 "macos-v0.1.0 "; do
+  run version_of_tag "$bad"
+  if ((status != 0)); then
+    pass "'$bad' is not an app release tag"
+  else
+    fail "'$bad' was taken for an app release tag"
+  fi
+done
+
+# A release as `gh release view --json tagName,isDraft,isImmutable,assets` gives it.
+version_now="$(read_version)"
+release_tag="macos-v$version_now"
+downloads="$work/downloads"
+mkdir -p "$downloads"
+image_name="Metabrowser-$version_now-arm64.dmg"
+printf 'not really an image\n' >"$downloads/$image_name"
+write_checksum "$downloads/$image_name"
+image_sha="$(cut -d' ' -f1 "$downloads/$image_name.sha256")"
+release_json() {
+  jq -n --arg tag "$1" --argjson draft "$2" --argjson immutable "$3" --arg image "$image_name" \
+    --arg digest "$4" --arg sums_digest "sha256:$(shasum -a 256 "$downloads/$image_name.sha256" | cut -d' ' -f1)" '{
+      tagName: $tag, isDraft: $draft, isImmutable: $immutable,
+      assets: [
+        {apiUrl: "https://api.github.com/repos/jlevy/metabrowser/releases/assets/1", contentType: "application/x-apple-diskimage",
+         digest: $digest, name: $image, size: 20, state: "uploaded"},
+        {apiUrl: "https://api.github.com/repos/jlevy/metabrowser/releases/assets/2", contentType: "text/plain",
+         digest: $sums_digest, name: ($image + ".sha256"), size: 96, state: "uploaded"}
+      ]}'
+}
+facts="$(release_json "$release_tag" true false "sha256:$image_sha" | release_facts "$release_tag")"
+if [[ "$facts" == *"draft=true"* && "$facts" == *"immutable=false"* && "$facts" == *"digest $image_name=sha256:$image_sha"* ]]; then
+  pass "a draft release's state and its assets' digests are read"
+else
+  fail "release_facts read: $facts"
+fi
+run bash -c 'source scripts/common.sh; source scripts/check-release-lib.sh; release_facts macos-v9.9.9' <<<"$(release_json "$release_tag" true false x)"
+if ((status != 0)) && said "is not macos-v9.9.9's"; then
+  pass "another tag's release is refused"
+else
+  fail "another tag's release: $(cat "$work/out")"
+fi
+
+if [[ -z "$(asset_problems "$downloads/$image_name" "$downloads/$image_name.sha256" "sha256:$image_sha")" ]]; then
+  pass "an image that matches its checksum file and GitHub's digest passes"
+else
+  fail "a matching image: $(asset_problems "$downloads/$image_name" "$downloads/$image_name.sha256" "sha256:$image_sha")"
+fi
+expect_asset() {
+  local label="$1" digest="$2" want="$3" problems
+  problems="$(asset_problems "$downloads/$image_name" "$downloads/$image_name.sha256" "$digest")"
+  if [[ "$problems" == *"$want"* ]]; then
+    pass "$label"
+  else
+    fail "$label: the problems were: ${problems:-none}"
+  fi
+}
+expect_asset "a digest that differs from the download fails" "sha256:$(printf '0%.0s' {1..64})" "GitHub's digest for $image_name is"
+expect_asset "an asset GitHub gives no digest for fails" "" "GitHub gives no digest"
+cp "$downloads/$image_name.sha256" "$work/sums.keep"
+sed "s/  .*/  Other.dmg/" "$work/sums.keep" >"$downloads/$image_name.sha256"
+expect_asset "a checksum file for another file fails" "sha256:$image_sha" "is not one shasum -a 256 line for $image_name"
+cp "$work/sums.keep" "$downloads/$image_name.sha256"
+printf 'changed\n' >>"$downloads/$image_name"
+expect_asset "an image changed after its checksum fails" "sha256:$image_sha" "does not match $image_name.sha256"
+printf 'not really an image\n' >"$downloads/$image_name"
+
+# ── Build provenance and publication ─────────────────────────
+# A gh stand-in: an attestation verifies only when attestation_ok is 1, and the Latest
+# release is $latest_tag.
+gh() {
+  echo "gh $*" >>"$work/gh-calls"
+  case "$1 $2" in
+    "attestation verify") ((attestation_ok)) ;;
+    "release verify" | "release verify-asset") return 0 ;;
+    "api repos/jlevy/metabrowser/releases/latest") echo "$latest_tag" ;;
+    *) return 99 ;;
+  esac
+}
+: >"$work/gh-calls"
+attestation_ok=0
+run check_build_provenance ci "$release_tag" "$downloads/$image_name"
+if ((status != 0)) && said "BUILT=ci, and $image_name has no build provenance attestation from $release_workflow"; then
+  pass "BUILT=ci fails when the image carries no build provenance attestation"
+else
+  fail "BUILT=ci without an attestation: status $status: $(cat "$work/out")"
+fi
+attestation_ok=1
+run check_build_provenance ci "$release_tag" "$downloads/$image_name"
+if ((status == 0)) &&
+  grep -qxF "gh attestation verify $downloads/$image_name --repo jlevy/metabrowser --signer-workflow jlevy/metabrowser/.github/workflows/macos-release.yml --source-ref refs/tags/$release_tag" "$work/gh-calls"; then
+  pass "BUILT=ci verifies the release workflow's attestation for the tag"
+else
+  fail "BUILT=ci with an attestation: status $status: $(cat "$work/out"); gh ran: $(cat "$work/gh-calls")"
+fi
+: >"$work/gh-calls"
+run check_build_provenance local "$release_tag" "$downloads/$image_name"
+if ((status == 0)) && said "build provenance: none, as BUILT=local says" && [[ ! -s "$work/gh-calls" ]]; then
+  pass "BUILT=local expects no attestation, and asks for none"
+else
+  fail "BUILT=local: status $status: $(cat "$work/out")"
+fi
+run check_build_provenance "" "$release_tag" "$downloads/$image_name"
+if ((status != 0)) && said "BUILT must be local or ci"; then
+  pass "a build kind left out is refused, never inferred"
+else
+  fail "no BUILT: status $status: $(cat "$work/out")"
+fi
+
+latest_tag=v0.13.0
+run check_publication "$release_tag" true false "$downloads/$image_name"
+if ((status == 0)) && said "not yet, since $release_tag is a draft"; then
+  pass "a draft has no release attestation yet, and says so"
+else
+  fail "a draft's publication: status $status: $(cat "$work/out")"
+fi
+run check_publication "$release_tag" false false "$downloads/$image_name"
+if ((status != 0)) && said "not immutable; turn on immutable releases (O5)"; then
+  pass "a published release that is not immutable fails"
+else
+  fail "a mutable published release: status $status: $(cat "$work/out")"
+fi
+run check_publication "$release_tag" false true "$downloads/$image_name"
+if ((status == 0)) && said "the Latest release is v0.13.0"; then
+  pass "a published, immutable, attested release that is not Latest passes"
+else
+  fail "a published release: status $status: $(cat "$work/out")"
+fi
+latest_tag="$release_tag"
+run check_publication "$release_tag" false true "$downloads/$image_name"
+if ((status != 0)) && said "is the repository's Latest release"; then
+  pass "an app release published as Latest fails"
+else
+  fail "an app release published as Latest: status $status: $(cat "$work/out")"
+fi
+unset -f gh
+
+# ── check-release.sh, end to end, as far as Linux goes ───────
+# With an exported gh stand-in that serves the draft above: BUILT=ci with no attestation
+# stops at the provenance step, before anything that needs a Mac.
+gh() {
+  case "$1 $2" in
+    "release view") release_json "$release_tag" true false "sha256:$image_sha" ;;
+    "release download") cp "$downloads/${*:7:1}" "${*: -1}/" ;;  # release download TAG --repo R --pattern ASSET --dir DIR
+    "attestation verify") return 1 ;;
+    *) return 99 ;;
+  esac
+}
+export -f gh release_json
+export release_tag image_sha downloads image_name
+run env TAG="$release_tag" BUILT=ci scripts/check-release.sh
+if ((status != 0)) && said "checksum: $image_name matches" &&
+  said "BUILT=ci, and $image_name has no build provenance attestation"; then
+  pass "check-release.sh with BUILT=ci checks the checksum and digest, then stops without an attestation"
+else
+  fail "check-release.sh with BUILT=ci and no attestation: status $status: $(cat "$work/out")"
+fi
+run env TAG="$release_tag" scripts/check-release.sh
+if ((status != 0)) && said "BUILT must be local or ci"; then
+  pass "check-release.sh refuses to run without BUILT"
+else
+  fail "check-release.sh without BUILT: status $status: $(cat "$work/out")"
+fi
+run env TAG=macos-v99.0.0 BUILT=local scripts/check-release.sh
+if ((status != 0)) && said "check out the release's commit"; then
+  pass "check-release.sh refuses a tag whose version this checkout does not have"
+else
+  fail "check-release.sh for another version: status $status: $(cat "$work/out")"
+fi
+unset -f gh release_json
+
+# ── The launch check's backup ────────────────────────────────
+# A defaults stand-in that keeps each domain as a file, and the release identity's
+# state: defaults, a session, and recent documents, all of which must come back as
+# they were, and nothing where there was nothing.
+defaults_store="$work/defaults"
+mkdir -p "$defaults_store"
+defaults() {
+  case "$1" in
+    read) [[ -f "$defaults_store/$2" ]] ;;
+    export) cp "$defaults_store/$2" "$3" ;;
+    import) cp "$3" "$defaults_store/$2" ;;
+    delete) rm -f "$defaults_store/$2" ;;
+    *) return 99 ;;
+  esac
+}
+release_id=io.github.jlevy.metabrowser
+session_file="$(release_session_file)"
+recents_dir="$(release_recents_dir)"
+mkdir -p "$(dirname "$session_file")" "$recents_dir"
+echo "the owner's settings" >"$defaults_store/$release_id"
+echo "the owner's session" >"$session_file"
+echo "the owner's recents" >"$recents_dir/$release_id.sfl3"
+backup_release_state "$work/backup" "$release_id"
+if [[ ! -e "$defaults_store/$release_id" && ! -e "$session_file" && ! -e "$recents_dir/$release_id.sfl3" ]]; then
+  pass "the launch check clears the release identity's state after backing it up"
+else
+  fail "the launch check left the release identity's state in place"
+fi
+echo "the launch's settings" >"$defaults_store/$release_id"
+echo "the launch's session" >"$session_file"
+echo "the launch's recents" >"$recents_dir/$release_id.sfl3"
+if restore_release_state "$work/backup" "$release_id" &&
+  [[ "$(cat "$defaults_store/$release_id")|$(cat "$session_file")|$(cat "$recents_dir/$release_id.sfl3")" == "the owner's settings|the owner's session|the owner's recents" ]]; then
+  pass "the launch check restores the owner's defaults, session, and recent documents"
+else
+  fail "the launch check restored: $(cat "$defaults_store/$release_id" "$session_file" "$recents_dir/$release_id.sfl3" 2>&1 | tr '\n' '|')"
+fi
+rm -rf "$work/backup" "$defaults_store/$release_id" "$session_file" "$recents_dir/$release_id.sfl3"
+backup_release_state "$work/backup" "$release_id"
+echo "the launch's settings" >"$defaults_store/$release_id"
+echo "the launch's session" >"$session_file"
+echo "the launch's recents" >"$recents_dir/$release_id.sfl3"
+if restore_release_state "$work/backup" "$release_id" &&
+  [[ ! -e "$defaults_store/$release_id" && ! -e "$session_file" && ! -e "$recents_dir/$release_id.sfl3" ]]; then
+  pass "where the owner had no state, the launch check leaves none"
+else
+  fail "where the owner had no state, the launch check left some"
+fi
+if restore_release_state "$work/no-backup" "$release_id"; then
+  fail "a restore without a complete backup reported success"
+else
+  pass "a restore without a complete backup fails, so the script keeps what it has"
+fi
+unset -f defaults
+for path in "/private/var/folders/xy/abc/T/AppTranslocation/0A1B2C3D/d/Metabrowser.app/Contents/MacOS/Metabrowser" \
+  "/Applications/Metabrowser.app/Contents/MacOS/Metabrowser"; do
+  if is_translocated_path "$path"; then
+    verdict=translocated
+  else
+    verdict=installed
+  fi
+  echo "$verdict" >>"$work/translocation"
+done
+if [[ "$(tr '\n' ' ' <"$work/translocation")" == "translocated installed " ]]; then
+  pass "a path under AppTranslocation is translocated, and one in Applications is not"
+else
+  fail "is_translocated_path judged: $(tr '\n' ' ' <"$work/translocation")"
+fi
 
 # ── parse_identities on an unusual listing ───────────────────
 listing='  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Developer ID Application: A "quoted" name (A1B2C3D4E5)" (CSSMERR_TP_CERT_EXPIRED)

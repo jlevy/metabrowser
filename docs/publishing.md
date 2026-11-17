@@ -167,6 +167,8 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
     the fresh-install evidence.
 
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
+The macOS app releases on its own, under its own tags, with the
+[App Release Checklist](#app-release-checklist).
 
 ## macOS App Releases
 
@@ -213,8 +215,29 @@ One rule covers every app release:
 
 Never push a tag from a clone: session git credentials are branch-scoped, and the API
 call takes the approved SHA itself, so nothing local resolves it.
-Whether the agent or the owner runs these commands is open question Q8 of the
-[macOS publishing plan](project/specs/active/plan-2026-11-16-macos-app-publishing.md#open-questions).
+The agent runs these commands once the owner has approved `RELEASE_COMMIT`, as it
+creates the Python package’s tag; the owner decided that on November 17, 2026 (Q8 of the
+[macOS publishing plan](project/specs/active/plan-2026-11-16-macos-app-publishing.md#open-questions)).
+
+### App Release Checklist
+
+The app’s releases follow
+[the release runbook](../apps/macos/README.md#building-a-release), whose steps this
+checklist names in order; the runbook has the commands.
+
+1. The owner’s setup is done: `make macos-signing-check` on the build Mac reports
+   nothing missing, and O5’s repository settings are on.
+2. The version change is on `main`, and the owner approved `RELEASE_COMMIT`.
+3. The tag is created at `RELEASE_COMMIT`, as above.
+4. The owner unlocked the release keychain, and `make macos-release` built, signed,
+   notarized, and checked the image; the owner locked the keychain again.
+5. The draft holds the image and its checksum, with the notes, not as Latest.
+6. `make macos-check-release` with `BUILT=local` passes on the draft, and the owner ran
+   it with `LAUNCH=1`.
+7. The owner opened the draft’s download on a Mac or VM that has not run the app.
+8. The owner approved the image’s SHA-256 and the notes; the draft is published with
+   `--latest=false`, and the check passes again on the published release.
+9. The release’s approval record holds what the runbook lists.
 
 ## Release Notes
 

@@ -296,6 +296,24 @@ bounded() {
   wait "$pid"
 }
 
+# A Unix time as a UTC date ("2026-11-17 09:00:00 UTC"), with BSD or GNU date.
+date_of_epoch() {
+  if [[ "$(uname -s)" == Darwin ]]; then
+    date -u -r "$1" '+%Y-%m-%d %H:%M:%S UTC'
+  else
+    date -u -d "@$1" '+%Y-%m-%d %H:%M:%S UTC'
+  fi
+}
+
+# The files a release of version "$1" for the architecture label "$2" publishes, one per
+# line: the image and its checksum. scripts/release.sh names them for the owner to
+# attach, and scripts/check-release.sh downloads and checks exactly these.
+release_assets() {
+  local image
+  image="$(basename "$(dmg_path release "$1" "$2")")"
+  printf '%s\n' "$image" "$image.sha256"
+}
+
 # Detaches a mounted image, retrying while Spotlight or Finder still holds it.
 detach_image() {
   local tries=0

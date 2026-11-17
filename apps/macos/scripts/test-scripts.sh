@@ -11,6 +11,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
 source scripts/common.sh
+# shellcheck source=gatekeeper-lib.sh
+source scripts/gatekeeper-lib.sh
 
 work="$(mktemp -d -t metabrowser-script-tests)"
 trap 'rm -rf "$work"' EXIT
@@ -84,6 +86,25 @@ elif grep -q "has entitlements" "$work/out"; then
   pass "a signature with entitlements stops the check"
 else
   fail "a signature with entitlements stopped the check for another reason: $(cat "$work/out")"
+fi
+
+# signature_facts, on real ad hoc signatures of copies of a system binary, with and
+# without the hardened runtime: what check-dmg.sh requires of every build's app.
+cp /usr/bin/true "$work/runtime"
+quietly codesign --force --sign - --options runtime "$work/runtime"
+clean_facts="$(signature_facts <<<"$(codesign -dvvv "$work/clean" 2>&1)")"
+runtime_facts="$(signature_facts <<<"$(codesign -dvvv "$work/runtime" 2>&1)")"
+if [[ "$(fact runtime <<<"$clean_facts")$(fact runtime <<<"$runtime_facts")" == 01 &&
+  "$(fact adhoc <<<"$clean_facts")$(fact adhoc <<<"$runtime_facts")" == 11 &&
+  "$(fact timestamp <<<"$runtime_facts")" == none && -z "$(fact team <<<"$runtime_facts")" ]]; then
+  pass "signature_facts reads an ad hoc signature, and its hardened runtime flag only when it has one"
+else
+  fail "signature_facts read: without the runtime: $clean_facts; with it: $runtime_facts"
+fi
+if developer_id_problems "$runtime_facts" app "" | grep -q "no secure timestamp"; then
+  pass "an ad hoc signature is not taken for a Developer ID one"
+else
+  fail "developer_id_problems passed an ad hoc signature: $runtime_facts"
 fi
 
 # The app's minimum macOS:
@@ -327,6 +348,21 @@ if ! stops refuse_ambient old-metab "$globbed" && grep -qF "$work/ambient/g[l]ob
   pass "a metab in a directory with glob characters in its name stops every case"
 else
   fail "a metab in a directory with glob characters in its name: $(cat "$work/out")"
+fi
+
+# ── The quarantine helper ──────────────────────────────────────
+# scripts/quarantine.swift, on a scratch file: it quarantines a file that is not, through
+# the supported interface, leaves one that is, and describe_quarantine reads what it set.
+quietly swiftc -O scripts/quarantine.swift -o "$work/quarantine"
+printf x >"$work/download"
+first="$("$work/quarantine" "$work/download" 2>&1)" || true
+second="$("$work/quarantine" "$work/download" 2>&1)" || true
+attribute="$(xattr -p com.apple.quarantine "$work/download" 2>/dev/null)" || attribute=""
+if [[ "$first $second" == "simulated already" &&
+  "$(describe_quarantine "$attribute")" == *"by Metabrowser check-release (simulated download)"* ]]; then
+  pass "the quarantine helper quarantines a file once: $(describe_quarantine "$attribute")"
+else
+  fail "the quarantine helper said '$first', then '$second', and left: $attribute"
 fi
 
 # ── The release scripts' decisions ─────────────────────────────

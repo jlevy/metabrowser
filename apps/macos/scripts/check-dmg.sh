@@ -2,16 +2,22 @@
 # Checks a disk image as a downloader meets it: the image verifies and is signed, mounts
 # read-only, holds only the app, the Applications link, and the volume icon, and the app
 # inside is intact and carries its variant's icon: never the canary icon in a release.
-# A Developer ID build must also pass Gatekeeper, and with NOTARIZE=1 the image and the
-# app must carry stapled notarization tickets. Works on a downloaded image too, and
-# reports whether it is quarantined.
+# The app is signed with the hardened runtime, ad hoc or not. A Developer ID build must
+# also carry a secure timestamp, a Team ID (EXPECTED_TEAM_ID when set), and the chain to
+# Apple Root CA on the app and the image, and pass Gatekeeper: stapled tickets,
+# `syspolicy_check distribution` on the app, `codesign --check-notarization` on both,
+# and `spctl` on both. With NOTARIZE=1 every one of those is required; otherwise the
+# notarization checks run once the image is stapled. Works on a downloaded image too,
+# and describes its quarantine attribute, for information only.
 #
 #   scripts/check-dmg.sh build/Metabrowser-0.1.0-arm64.dmg
-#   NOTARIZE=1 scripts/check-dmg.sh ~/Downloads/Metabrowser-0.1.0-arm64.dmg
+#   NOTARIZE=1 EXPECTED_TEAM_ID=TEAMID scripts/check-dmg.sh ~/Downloads/Metabrowser-0.1.0-arm64.dmg
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
 source scripts/common.sh
+# shellcheck source=gatekeeper-lib.sh
+source scripts/gatekeeper-lib.sh
 
 dmg="${1:?usage: scripts/check-dmg.sh DMG}"
 [[ -f "$dmg" ]] || die "$dmg does not exist"
@@ -38,7 +44,7 @@ ok "hdiutil verify"
 codesign --verify --strict "$dmg"
 ok "the image's signature is valid"
 if quarantine="$(xattr -p com.apple.quarantine "$dmg" 2>/dev/null)"; then
-  note "quarantined ($quarantine): Gatekeeper assesses it when it is opened"
+  note "quarantined: $(describe_quarantine "$quarantine") (for information: the attribute's format is not API); Gatekeeper assesses it when it is opened"
 else
   note "not quarantined: a browser download is, a local build or a curl download is not"
 fi
@@ -102,14 +108,44 @@ else
   ok "$name has the canary icon"
 fi
 
+# The hardened runtime, which build-app.sh signs with whatever the identity: notarization
+# requires it, and an ad hoc build without it would hide that until a release.
+app_facts="$(codesign -dvvv "$app" 2>&1)" || die "codesign could not read the signature of $name: $app_facts"
+app_facts="$(signature_facts <<<"$app_facts")"
+[[ "$(fact runtime <<<"$app_facts")" == 1 ]] || die "$name is not signed with the hardened runtime"
+ok "$name is signed with the hardened runtime"
+
+# Runs one of Gatekeeper's checks, and stops with its output when it refuses.
+gatekeeper() {
+  local output
+  output="$("$@" 2>&1)" || die "$* refused: $output"
+}
+
 if is_developer_id_signed "$app"; then
-  ok "$name: $(codesign -dvv "$app" 2>&1 | grep -m1 '^Authority=')"
+  image_facts="$(codesign -dvvv "$dmg" 2>&1)" || die "codesign could not read the image's signature: $image_facts"
+  image_facts="$(signature_facts <<<"$image_facts")"
+  for kind in app image; do
+    if [[ "$kind" == app ]]; then facts="$app_facts"; else facts="$image_facts"; fi
+    problems="$(developer_id_problems "$facts" "$kind" "${EXPECTED_TEAM_ID:-}")"
+    [[ -z "$problems" ]] || die "the $kind's Developer ID signature has:"$'\n'"$problems"
+  done
+  [[ "$(fact team <<<"$app_facts")" == "$(fact team <<<"$image_facts")" ]] ||
+    die "the app and the image are signed by different teams"
+  ok "$name and the image: $(fact authorities <<<"$app_facts" | cut -d'|' -f1), team $(fact team <<<"$app_facts")${EXPECTED_TEAM_ID:+, as EXPECTED_TEAM_ID says}, a secure timestamp, and the chain to Apple Root CA"
   if ((require_tickets)) || xcrun stapler validate "$dmg" >/dev/null 2>&1; then
     check_ticket "$app"
     check_ticket "$dmg"
-    spctl --assess --type open --context context:primary-signature -vv "$dmg"
-    spctl --assess --type execute -vv "$app"
-    ok "Gatekeeper accepts the image and the app"
+    gatekeeper spctl --assess --type open --context context:primary-signature -vv "$dmg"
+    gatekeeper spctl --assess --type execute -vv "$app"
+    ok "Gatekeeper accepts the image and the app (spctl)"
+    # Apple DTS's check for an app on macOS 14 and later.
+    gatekeeper syspolicy_check distribution "$app"
+    ok "$name passes syspolicy_check distribution"
+    # DTS gives this for code other than an app; on an app and an image it is this
+    # repository's own check, which only a signed release can prove.
+    gatekeeper codesign -vvvv -R="notarized" --check-notarization "$app"
+    gatekeeper codesign -vvvv -R="notarized" --check-notarization "$dmg"
+    ok "codesign --check-notarization finds the app and the image notarized"
   else
     note "the image is not notarized, so Gatekeeper refuses it until it is (make release)"
   fi

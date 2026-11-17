@@ -9,9 +9,11 @@ Bead `mb-hl2i`, under the 0.13 release epic `mb-wzsl`, tracks this design; each
 agent-implementable step below is a bead under it.
 It details the open items of `mb-e9fm` (Developer ID signing, notarization, a DMG, and a
 Homebrew cask) in the [native macOS app plan](plan-2026-11-10-native-macos-app.md).
-The owner answered Q1, Q2, Q3, and Q5 on 2026-11-16; Q4, Q6, Q7, and Q8 are open
-([Open Questions](#open-questions)). Nothing here has been implemented, and no Developer
-ID build has been made.
+The owner answered Q1, Q2, Q3, and Q5 on 2026-11-16 and Q6, Q7, and Q8 on 2026-11-17; Q4
+is open ([Open Questions](#open-questions)). Phase 1’s tooling is implemented, in two
+stacked pull requests (`mb-qu6j` and `mb-tfap`, then `mb-4hwg`, `mb-xd4o`, `mb-u36j`,
+and `mb-63cx`), and no Developer ID build has been made, so nothing that needs one is
+verified: the runbook’s signing-session checks list what the first release confirms.
 
 ## Overview
 
@@ -862,20 +864,27 @@ owner’s Mac.
   burden. The decision sets `mb-fl72`’s scope.
 - **Q5. The cask.** Decided 2026-11-16: no cask with 0.1.0; the tap and the cask follow
   the alpha’s first round of feedback (O6). The lint (`mb-eoez`) can land before then.
-- **Q6. Architectures** (open): arm64 only, as now?
-  Recommendation: yes for the alpha; `ARCHES="arm64 x86_64"` builds a universal image if
-  feedback asks for Intel Macs.
-- **Q7. Notarize twice or once** (open): keep notarizing the app before packaging, so a
-  dragged-out copy launches offline, or notarize only the DMG, as Apple’s simplest path
-  does? The ZIP and manifest the native plan puts beside the DMG (`mb-5jr9`), from which
+- **Q6. Architectures.** Decided 2026-11-17: arm64 only, the recommendation, for the
+  alpha; `ARCHES="arm64 x86_64"` builds a universal image if feedback asks for Intel
+  Macs.
+- **Q7. Notarize twice or once.** Decided 2026-11-17: twice, the recommendation.
+  The question was whether to keep notarizing the app before packaging, so a dragged-out
+  copy launches offline, or notarize only the DMG, as Apple’s simplest path does?
+  The ZIP and manifest the native plan puts beside the DMG (`mb-5jr9`), from which
   `metab` would install the app (`mb-92d9`), bear on it: a ZIP cannot carry a ticket, so
   an app in one launches offline only if the app itself was stapled.
-  Recommendation: keep both submissions.
-- **Q8. Who creates the tag** (open): after the owner approves `RELEASE_COMMIT`, does
-  the agent or the owner run the `gh api` command that creates the `macos-v*` tag
-  ([macOS App Releases](../../../publishing.md#macos-app-releases))? Recommendation: the
-  agent, as it creates the Python package’s tag; from Phase 2 that command starts the
-  release workflow, whose deployment only the owner approves, in the web UI.
+  The recommendation was to keep both submissions.
+- **Q8. Who creates the tag.** Decided 2026-11-17: the agent, as recommended.
+  The question was whether, after the owner approves `RELEASE_COMMIT`, the agent or the
+  owner runs the `gh api` command that creates the `macos-v*` tag
+  ([macOS App Releases](../../../publishing.md#macos-app-releases)). The recommendation
+  was the agent, as it creates the Python package’s tag; from Phase 2 that command
+  starts the release workflow, whose deployment only the owner approves, in the web UI.
+  The decision as relayed has the agent create the tag after the owner approves the
+  image’s SHA-256 and notes, which is later than step 2 of
+  [Release Flow](#release-flow), where the tag comes before the build and the draft
+  (`gh release create --verify-tag` refuses a missing tag).
+  Until the owner settles which, the runbook follows Release Flow.
 
 ## References
 
