@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Final, cast
+from urllib.parse import quote, urlencode
 
 import yaml
 
@@ -228,10 +229,14 @@ def fetch(
     runs: list[Json] = []
     page = 1
     while len(runs) < count:
-        query = f"per_page=100&page={page}"
-        query += f"&branch={branch}" if branch else ""
-        query += f"&event={event}" if event else ""
-        answer = gh_api(f"repos/{{owner}}/{{repo}}/actions/workflows/{workflow}/runs?{query}")
+        # A branch may hold `&`, `#`, or `/`, so each value is encoded into the query.
+        query = urlencode(
+            {"per_page": 100, "page": page}
+            | ({"branch": branch} if branch else {})
+            | ({"event": event} if event else {})
+        )
+        runs_path = f"repos/{{owner}}/{{repo}}/actions/workflows/{quote(workflow)}/runs"
+        answer = gh_api(f"{runs_path}?{query}")
         listed = cast("list[Json]", answer.get("workflow_runs") or [])
         runs += listed
         if len(listed) < 100:

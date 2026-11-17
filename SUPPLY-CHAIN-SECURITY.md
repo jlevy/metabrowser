@@ -293,17 +293,27 @@ this one on 2026-11-16.
   Both wheels are pure Python, `py3-none-any`, and hold no `.pth` file, console script,
   or compiled module, so installing them runs no code.
   The sdists build with setuptools and hatchling; uv installs the wheels.
+  PyPI holds a Trusted Publishing attestation for each of the four files, naming the
+  `deploy.yml` workflow and `deploy` environment of `pytest-dev/pytest-xdist` and
+  `pytest-dev/execnet`.
 - **Import.** The xdist wheel registers two `pytest11` entry points, `xdist.plugin` and
   `xdist.looponfail`, so every pytest run in this environment imports them and gains
-  their options. Without `-n` or `--dist` they start nothing.
-  execnet is imported when xdist starts workers.
+  their options, the serial and Chrome tiers’ runs too.
+  `xdist.looponfail` imports `execnet` at module level, so every run imports that as
+  well. The imports open no socket and start no process; without `-n` or `--dist` nothing
+  starts.
 - **Runtime.** With `-n`, xdist starts each worker through execnet’s `popen` gateway: a
   new `sys.executable` that reads execnet’s bootstrap from a pipe and sends its reports
   back over the same pipes.
   execnet’s `ssh`, `socket`, and `rsync` gateways open network connections, and nothing
-  here asks for them. `-n auto` counts physical cores through psutil, which this project
-  already installs, so `PYTEST_WORKERS` in the `Makefile` asks for `logical` instead and
-  says why.
+  here asks for them. execnet also ships scripts under `execnet/script/`, and
+  `socketserver.py` among them listens on a TCP port and runs what a client sends.
+  Three of them act only when run as a program; `shell.py` and `quitserver.py` connect
+  to the address their command line names when imported.
+  Nothing runs or imports them: the wheel gives them no console script, and the one
+  import, of `socketserver`, is in the `socket` gateway’s start.
+  `-n auto` counts physical cores through psutil, which this project already installs,
+  so `PYTEST_WORKERS` in the `Makefile` asks for `logical` instead and says why.
 - **Lock delta.** The two packages, and `pytest-xdist` among the `dev` group’s
   requirements, and nothing else; pytest, xdist’s other requirement, is already locked.
 - **Reach.** Development only: neither is a runtime requirement, in the wheel, or used

@@ -239,6 +239,11 @@ def test_runs_are_read_through_gh_and_saved_as_they_were_read(
     ]
     first = capsys.readouterr().out
     assert first.startswith("3 runs, 4 attempts")
+    # A branch's `&`, `#`, and `/` reach GitHub as part of its value, not of the query.
+    assert ci_report.main(["--runs", "1", "--branch", "a/b&c#d", "--workflow", str(workflow)]) == 0
+    calls = (gh / "calls.log").read_text(encoding="utf-8").splitlines()
+    assert calls[-2].endswith("runs?per_page=100&page=1&branch=a%2Fb%26c%23d")
+    capsys.readouterr()
     assert ci_report.main(["--from", str(saved), "--workflow", str(workflow)]) == 0
     assert capsys.readouterr().out == first
 
