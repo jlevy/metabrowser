@@ -1,19 +1,19 @@
 ---
 type: is
 id: is-01m7kpncy9xzk6a0rhv0vxd4db
-title: "CI speed 2.4: add a nightly workflow that runs the serial tier five times on main and reports each job's time against its limit"
+title: "CI speed 2.4: add a nightly workflow that runs the serial and Chrome tiers five times on main and reports each job's time against its limit"
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 labels: []
 dependencies: []
 parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 created_at: 2026-11-17T02:51:32.168Z
-updated_at: 2026-11-17T03:05:26.696Z
+updated_at: 2026-11-17T04:07:46.859Z
 ---
-Phase 2 of plan-2026-11-16-fast-ci.md, Flakes and Time Limits; needs the owner's answer to Q1. schedule and workflow_dispatch, the same pinned actions, contents: read. Five repetitions of the four serial shards on main: any failure fails the run and names the test, so a Chrome flake is found away from a pull request. Then make ci-report --check, which fails when a job's 90th percentile passes 80 percent of its timeout-minutes. Who is told of a red nightly or a red main is Q6.
+Phase 2 of plan-2026-11-16-fast-ci.md, Flakes and Time Limits; the owner approved it (Q1). schedule and workflow_dispatch, the same pinned actions, contents: read. Five repetitions of make test-serial and of the four test-chrome shards on main, on Python 3.13, the interpreter a pull request draws on: any failure fails the run and names the test, so a flake is found away from a pull request. It finds flakes; the runs on each commit of main are the coverage. Then make ci-report --check, which fails when a job's 90th percentile passes 80 percent of its timeout-minutes. Accept on one workflow_dispatch run: 5 serial-tier jobs and 20 Chrome shard jobs run and report. A red main is decided (Q6, 2026-11-17: ci-ok and the merge procedure, mb-oz36). Who reads a red nightly is Q9, open; the proposal is that the merging agent reads the newest nightly run when it starts merging and gives each failure a bead. Add no issues: write permission.
 
 ## Notes
 
