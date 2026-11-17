@@ -3,9 +3,9 @@ type: is
 id: is-01m7k4tntv9my4ynk41w81g0sj
 title: The Files nav panel's '+ N ignored' summary line is laid out from first paint, holding the pending placeholder while its count fills in, so nothing below it moves
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 21
+version: 22
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -28,10 +28,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:39:50.746Z
-updated_at: 2026-11-17T04:06:54.876Z
+updated_at: 2026-11-17T06:21:13.493Z
 started_at: 2026-11-16T21:40:37.650Z
-closed_at: null
-close_reason: null
+closed_at: 2026-11-17T06:21:13.492Z
+close_reason: "PR #490 merged at 2c4692bd7: the Files nav's ignored-files line is laid out from first paint, so the tally row holds its settled shape while counts fill in (tests/test_files_totals_stable_chrome.py: 0 px movement after first paint across all loads). Reviews A, B, C dispositioned; CI green at 64aa838ab."
 resolution: null
 duplicate_of: null
 ---
