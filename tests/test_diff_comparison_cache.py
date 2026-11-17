@@ -31,6 +31,7 @@ from metabrowser.http_caching import BUILD_TAG, store_tag
 from tests.diff_fixture_repo import build_diff_fixture, git
 from tests.git_pin_harness import pinned_client
 from tests.golden_harness import check_golden
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 
 pytestmark = needs_git
@@ -788,7 +789,7 @@ def test_late_route_work_cannot_publish_a_body_after_invalidation(
 
         async def paused_async(*args: Any, **kwargs: Any) -> Any:
             entered.set()
-            assert await asyncio.to_thread(release.wait, 10), "request barrier timed out"
+            assert await held_until(release, 10), "request barrier timed out"
             return await original(*args, **kwargs)
 
         def paused_thread(*args: Any, **kwargs: Any) -> Any:
