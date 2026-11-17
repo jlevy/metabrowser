@@ -4444,9 +4444,16 @@ a.tab-btn {
    about design, not about restating a ratio KPress already owns.
 
    The caps-label size stays: matching app chrome labels is a real divergence.
-   Document colors use KPress's public direct-token seam on both the fragment
-   and tooltips KPress portals to document.body. */
-.metabrowser-kpress-host .kpress,
+
+   Document colors use KPress's public direct-token seam, and the app owns the
+   palette of every KPress fragment in the page, not only a document under this
+   host: a rendered Markdown diff mounts its `article.kpress` in the diff
+   plugin's host (builtin_plugins/diff/diff-markdown.js), and KPress portals
+   tooltips to document.body. Keyed on the host, the diff drew KPress's own
+   palette: its text and link colors, its border and muted tones on quoted text
+   and code, and in the dark theme a darker ground than the page's. So this and
+   the corner bridge below key on `.kpress` anywhere under `:root`. */
+:root .kpress,
 :root .kpress-tooltip {
   --kpress-doc-bg: var(--bg);
   --kpress-doc-text: var(--text);
@@ -4469,10 +4476,11 @@ a.tab-btn {
 
    KPress declares these on `.kpress` itself (style-tokens.css lists
    `:root, .kpress, .kpress-page-main, .kpress-tooltip`), so the override has
-   to land on the same element and win on specificity — two classes beats one.
-   Tooltips ride along for the same reason the color bridge above names them:
-   KPress portals them to document.body, outside the host. */
-.metabrowser-kpress-host .kpress,
+   to land on the same element and win on specificity — `:root` and a class
+   beats a class alone. The selectors are the color bridge's, for its reason:
+   every KPress fragment in the page, a rendered diff and body-portaled
+   tooltips included, is square. */
+:root .kpress,
 :root .kpress-tooltip {
   --kpress-radius-sm: var(--radius-document);
   --kpress-radius-md: var(--radius-document);

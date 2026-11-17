@@ -183,6 +183,50 @@ def test_pinned_kpress_owns_the_inline_code_base_style() -> None:
     assert "padding: 0.1em 0.25em;" in inline_block
 
 
+def test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment() -> None:
+    """Every KPress fragment in the page takes the app's color and corner tokens.
+
+    A rendered Markdown diff mounts its `article.kpress` in the diff plugin's host, not
+    under `.metabrowser-kpress-host`, so a bridge keyed on that host left it in KPress's
+    own palette: with 0.3.8, KPress's border and muted tones on its quote rule, quoted
+    text, and code edges, KPress's text and link colors, and a darker ground than the
+    page's in the dark theme. The bridge keys on `.kpress` anywhere in the page, in one place.
+    `tests/test_diff_markdown_fold_chrome.py` measures the diff's quote and code against a
+    document's in both themes.
+    """
+
+    bridged = {
+        "--kpress-doc-bg",
+        "--kpress-doc-text",
+        "--kpress-doc-muted",
+        "--kpress-doc-border",
+        "--kpress-doc-link",
+        "--kpress-code-border",
+        "--kpress-radius-sm",
+        "--kpress-radius-md",
+        "--kpress-radius-lg",
+        "--kpress-code-radius",
+    }
+    keyed: dict[str, set[str]] = {}
+    for selector, declarations in _rules_of(SOURCE_DIR / "static" / "styles.css"):
+        for token in bridged & declarations.keys():
+            keyed.setdefault(token, set()).add(selector)
+    elsewhere = [
+        f"{path.relative_to(PROJECT_FILE.parent)}: {token}"
+        for path in sorted(SOURCE_DIR.rglob("*.css"))
+        if path != SOURCE_DIR / "static" / "styles.css"
+        for token in sorted(bridged)
+        if re.search(rf"{re.escape(token)}\s*:", path.read_text(encoding="utf-8"))
+    ]
+    diff = (SOURCE_DIR / "builtin_plugins" / "diff" / "diff-markdown.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert keyed == {token: {":root .kpress", ":root .kpress-tooltip"} for token in bridged}
+    assert elsewhere == []
+    assert 'rendered.className = "kpress kpress-inert diff-markdown";' in diff
+
+
 def test_host_bridges_one_mono_stack_into_kpress_documents() -> None:
     """Shell code and document code draw in one face.
 

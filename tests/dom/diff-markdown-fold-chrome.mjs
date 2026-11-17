@@ -7,7 +7,7 @@
 //     KPRESS_STATIC=/dir/with/kpress/css/and/fonts FOLD_INPUT=/path/to/input.json \
 //     [FOLD_SHOTS=/dir/for/screenshots] node tests/dom/diff-markdown-fold-chrome.mjs
 //
-// tests/test_diff_markdown_fold_chrome.py writes FOLD_INPUT ({sheets, blocks}), copies
+// tests/test_diff_markdown_fold_chrome.py writes FOLD_INPUT ({sheets, blocks, quoted}), copies
 // KPress's stylesheets and faces out of the installed package, owns the profile, and runs
 // this in a process group of its own. FOLD_SHOTS, when set, receives a screenshot of the
 // comparison closed and open.
@@ -18,6 +18,12 @@
 // stand where they stood, laid out as the blocks around them are, and nothing else moves.
 // Its label brightens to the text colour under the pointer, as the shell's document
 // disclosures do. A document's own `<details>` keeps KPress's box.
+//
+// Last, a comparison of a quote holding inline code and of a code block (FOLD_INPUT's
+// `quoted` blocks) is mounted beside a document holding the same blocks: in the light and
+// the dark theme, its quote and code draw as the document's do, in the app's tokens. The
+// comparison's article sits outside `.metabrowser-kpress-host`, so a token bridge keyed on
+// that host left it in KPress's own palette.
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -200,6 +206,87 @@ const COLOR = `new Promise((resolve) => {
   };
   requestAnimationFrame(frame);
 })`;
+// In the page: a comparison of a quote and a code block, mounted as the fold's is, beside a
+// document holding the same blocks.
+const MOUNT_QUOTED = `(blocks) => {
+  const inert = window.MetabrowserInertHtml;
+  const { appendBlocks, sanitizeBlock } = window.diffFold;
+  const el = (tag, className, children = []) => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    node.append(...children);
+    return node;
+  };
+  const scratch = document.implementation.createHTMLDocument("");
+  const template = document.createElement("template");
+  const content = document.createDocumentFragment();
+  appendBlocks(content, blocks, (html) =>
+    sanitizeBlock(html, inert, template, scratch, () => false),
+  );
+  const rendered = el("article", "kpress kpress-inert diff-markdown", [content]);
+  const quote = el("blockquote", "", [
+    el("p", "", ["Quoted text with ", el("code", "", ["inline code"]), "."]),
+  ]);
+  const documentArticle = el("article", "kpress kpress-doc kpress-inert", [
+    el("div", "kpress-doc-layout", [
+      el("div", "kpress-prose", [quote, el("pre", "kpress-code", [el("code", "", ["make test"])])]),
+    ]),
+  ]);
+  document.getElementById("preview-pane").replaceChildren(
+    el("div", "github-pull-diff metabrowser-diff-host", [el("section", "diff-file", [rendered])]),
+    el("div", "metabrowser-kpress-host", [documentArticle]),
+  );
+  return ["blockquote code", "pre.kpress-code"].every(
+    (selector) => rendered.querySelectorAll(selector).length === 1,
+  );
+}`;
+// The computed style of the comparison's quote and code and of the document's, once they
+// keep one value for five frames, with the app's border and muted tokens resolved where
+// the comparison is.
+const QUOTED = `new Promise((resolve) => {
+  const parts = {
+    blockquote: ["border-left-width", "border-left-style", "border-left-color", "color"],
+    "blockquote code": ["border-top-color", "border-top-left-radius", "padding-top",
+      "padding-left", "color", "background-color"],
+    "pre.kpress-code": ["border-top-color", "border-top-left-radius", "color",
+      "background-color"],
+  };
+  const read = (root) => Object.fromEntries(Object.entries(parts).map(([selector, names]) => {
+    const style = getComputedStyle(root.querySelector(selector));
+    return [selector, Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)]))];
+  }));
+  const comparison = document.querySelector(".diff-markdown");
+  const token = (name) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(" + name + ")";
+    comparison.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  };
+  let last = "";
+  let still = 0;
+  const frame = () => {
+    const value = JSON.stringify({
+      comparison: read(comparison),
+      document: read(document.querySelector(".kpress-doc")),
+    });
+    still = value === last ? still + 1 : 0;
+    last = value;
+    if (still >= 5) {
+      resolve({ ...JSON.parse(value), border: token("--border"), muted: token("--muted") });
+    } else {
+      requestAnimationFrame(frame);
+    }
+  };
+  requestAnimationFrame(frame);
+})`;
+/** @param {"light" | "dark"} theme The app's resolved theme, set on the root as it sets it. */
+const THEME = (theme) => `(() => {
+  document.documentElement.setAttribute("data-theme", "${theme}");
+  document.documentElement.setAttribute("data-kpress-resolved-theme", "${theme}");
+  return true;
+})()`;
 // Rounded to hundredths for the record; the checks take the unrounded values.
 const rounded = (/** @type {string} */ _key, /** @type {unknown} */ value) =>
   typeof value === "number" ? Math.round(value * 100) / 100 : value;
@@ -253,8 +340,16 @@ try {
     y: resting.y,
   });
   const hovered = await chrome.evaluate(COLOR);
+  const quotedMounted = await chrome.evaluate(`(${MOUNT_QUOTED})(${JSON.stringify(INPUT.quoted)})`);
+  await chrome.evaluate("document.fonts.ready.then(() => true)");
+  /** @type {Record<string, any>} */
+  const quoted = {};
+  for (const theme of /** @type {const} */ (["light", "dark"])) {
+    await chrome.evaluate(THEME(theme));
+    quoted[theme] = await chrome.evaluate(QUOTED);
+  }
   process.stderr.write(
-    `${JSON.stringify({ closed, opened, reclosed, resting, hovered }, rounded)}\n`,
+    `${JSON.stringify({ closed, opened, reclosed, resting, hovered, quoted }, rounded)}\n`,
   );
 
   // Closed: one quiet line, the summary, between the blocks around it.
@@ -410,6 +505,39 @@ try {
     "a document's own details keeps its border",
     closed.own.border === "1px 1px 1px 1px",
     closed.own.border,
+  );
+
+  // A comparison's quote and code draw as a document's do, in the app's tokens, in either
+  // theme; the theme switch has to move them for the comparison to mean anything.
+  check("the quoted comparison has a quote with code and a code block", quotedMounted === true);
+  for (const [theme, measured] of Object.entries(quoted)) {
+    for (const [part, properties] of Object.entries(measured.document)) {
+      for (const [property, value] of Object.entries(/** @type {object} */ (properties))) {
+        const drawn = measured.comparison[part][property];
+        check(
+          `${theme}, the comparison's ${part} ${property} is the document's`,
+          drawn === value,
+          `${drawn} against ${value}`,
+        );
+      }
+    }
+    const quote = measured.comparison.blockquote;
+    check(
+      `${theme}, the comparison's quote rule is the app's border`,
+      quote["border-left-color"] === measured.border,
+      `${quote["border-left-color"]} against ${measured.border}`,
+    );
+    check(
+      `${theme}, the comparison's quoted text is the app's muted tone`,
+      quote.color === measured.muted,
+      `${quote.color} against ${measured.muted}`,
+    );
+  }
+  check(
+    "the dark theme moves the comparison's quote rule",
+    quoted.light.comparison.blockquote["border-left-color"] !==
+      quoted.dark.comparison.blockquote["border-left-color"],
+    quoted.dark.comparison.blockquote["border-left-color"],
   );
 } finally {
   await chrome?.close();
