@@ -149,7 +149,11 @@ from metabrowser.inventory_engine.contract import (
     native_inventory_path,
     parse_inventory_path,
 )
-from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
+from metabrowser.inventory_engine.coordinator import (
+    CoordinatedRead,
+    DiscoveryRecord,
+    HostVersion,
+)
 from metabrowser.inventory_engine.runtime import InventoryRuntime
 from metabrowser.inventory_engine.tree_page_assembly import (
     GroupedTreeAssembly,
@@ -4774,8 +4778,31 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
     )
 
 
+def _discovery_payload(discovery: DiscoveryRecord | None) -> dict[str, object] | None:
+    """The host's record of the served root's first discovery, or None while it runs."""
+
+    if discovery is None:
+        return None
+    state = discovery.state
+    return {
+        "status": _index_status_from_state(
+            state.phase,
+            complete=state.coverage.complete,
+            budget=any(issue.code.value == "resource_budget" for issue in state.issues),
+        ),
+        "phase": state.phase.value,
+        "open_ms": discovery.open_ns // 1_000_000,
+        "elapsed_ms": discovery.elapsed_ns // 1_000_000,
+    }
+
+
 async def _debug_inventory(request: Request) -> JSONResponse:
-    """Provider identity and cumulative contract work for performance runs."""
+    """Provider identity, discovery, and cumulative contract work for performance runs.
+
+    ``discovery`` is the host's provider-neutral record of when discovery ended
+    (`DiscoveryRecord`), which the serving benchmark and the performance loop read
+    instead of a provider's own log line.
+    """
 
     if os.environ.get("METABROWSER_DEBUG", "").strip() not in ("1", "true", "yes"):
         return JSONResponse({"error": "set METABROWSER_DEBUG=1 to enable"}, status_code=404)
@@ -4800,6 +4827,8 @@ async def _debug_inventory(request: Request) -> JSONResponse:
             "phase": coordinated.result.state.phase.value,
             "complete": coordinated.result.state.coverage.complete,
             "version": coordinated.version.engine.sequence,
+            "files_indexed": diagnostics.files_indexed,
+            "discovery": _discovery_payload(runtime.coordinator.discovery()),
             "work": {
                 "read_requests": diagnostics.read_requests,
                 "observations": work.observations,

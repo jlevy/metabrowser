@@ -154,6 +154,18 @@ enforcing the completeness and equal-work checks above.
 The per-entry rule these measure is in the
 [Engine Performance Model](engine-performance-model.md).
 
+Comparing two inventory providers runs one build with the provider as the axis, and adds
+two tools. `devtools/inventory_digest.py` runs first: it digests the inventory-backed
+routes through the in-process `--api` transport for each provider and exits non-zero
+when any answer differs, because a provider that answered differently did different
+work. `devtools/bench_engine.py` is the engine layer: it opens each provider’s handle
+alone in a fresh process, waits on the handle’s change stream for discovery to end, and
+times the folder view’s queries, so an engine difference is told apart from a host one.
+Both docstrings have the commands.
+The serving benchmark, the performance loop, and the engine harness all take the end of
+discovery from one definition, `DISCOVERY_PHASES` in `inventory_engine/coordinator.py`,
+which the server reports through `/_debug/inventory`.
+
 ### Comparing File Navigation Without a Browser
 
 `devtools/bench_navigation.py` runs baseline, candidate, candidate, baseline on one

@@ -696,6 +696,9 @@ def _resolve_version_commit(token: str) -> str:
     return resolved
 
 
+# The Python provider's completion line, which builds that predate the host's discovery
+# record (`_discovery_facts`) report the walk by. A current build is read from the
+# record instead, whichever provider it serves.
 _WALK_LINE = re.compile(
     r"inventory walker complete: provider=(?P<provider>[\w-]+) "
     r"contract=(?P<contract>[\w-]+) status=(?P<status>\w+) files=(?P<files>\d+) "
@@ -724,15 +727,54 @@ _SERVER_REPORTED_FIELDS = frozenset(
 )
 
 
+def _discovery_facts(port: int) -> dict[str, Any] | None:
+    """What that run's discovery did, from the host's record, or None without one.
+
+    `/_debug/inventory` reports the record (`DiscoveryRecord` in
+    `inventory_engine/coordinator.py`) once discovery has ended, with the same meaning
+    for every provider. A build that predates it answers without the field, and a run
+    whose discovery has not ended answers it as null; both are None here.
+    """
+
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/_debug/inventory",
+            timeout=30,
+        ) as response:
+            loaded: Any = json.loads(response.read())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    payload = cast("dict[str, Any]", loaded)
+    discovery = payload.get("discovery")
+    if not isinstance(discovery, dict):
+        return None
+    record = cast("dict[str, Any]", discovery)
+    facts: dict[str, Any] = {
+        "walk_status": record.get("status"),
+        "walk_elapsed_ms": record.get("elapsed_ms"),
+        "walk_files": payload.get("files_indexed"),
+        "inventory_provider": payload.get("provider"),
+        "inventory_contract": payload.get("contract"),
+    }
+    return {key: value for key, value in facts.items() if value is not None}
+
+
 def _walk_facts(port: int, identity_declaration: object = None) -> dict[str, Any]:
-    """What that run's own walk did, read back out of its server log.
+    """What that run's own walk did, read back from the server.
 
     The scan regime decides almost every number in this loop -- root
     `/api/tree` is 15 ms settled and over a second while walking -- and it is
-    not visible in anything the browser can see. Slow scans retain exact elapsed
-    time in the log. Fast scans deliberately log completion at DEBUG, so the
-    authoritative progress route supplies their status and file count instead.
+    not visible in anything the browser can see. A current build reports it in
+    the host's discovery record (`_discovery_facts`). An older build is read from
+    its log: slow scans retain exact elapsed time there, and fast scans
+    deliberately log completion at DEBUG, so the authoritative progress route
+    supplies their status and file count instead.
     """
+    discovery = _discovery_facts(port)
+    if discovery is not None:
+        return discovery
     log = HERE / "results" / f"server-{port}.log"
     text = ""
     if log.is_file():

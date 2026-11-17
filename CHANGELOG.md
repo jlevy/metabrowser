@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- `/_debug/inventory` reports `discovery`, when the served root’s first discovery ended
+  as the server observed it: its index status and phase, and how long the inventory
+  provider’s open and then its discovery took, along with `files_indexed`.
+  `devtools/bench_serving.py` and the performance loop time discovery from it instead of
+  the Python provider’s log line, so any provider is timed the same way, and the
+  benchmark’s cold-scan row is now “cold scan, discovery (ms)”.
+
 - Each pull request’s row in the Pulls tab has a third line, its brief change line, “21
   A, 7 D, 15 M · +1,234 −567”, in the coloring of the Diff summary’s, with no file
   total, so walking the list shows the size of each change.

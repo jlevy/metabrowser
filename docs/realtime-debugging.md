@@ -42,8 +42,10 @@ METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./path/to/direct
 
 With `METABROWSER_DEBUG` set, `/_debug/tasks` lists the running asyncio tasks and
 `/_debug/inventory` reports the provider and contract, lifecycle phase, coverage,
-version, read count, and cumulative work: entries and directories visited, rows
-returned, binding-copy bytes, lock wait, CPU time, and wall time.
+version, files indexed, read count, and cumulative work: entries and directories
+visited, rows returned, binding-copy bytes, lock wait, CPU time, and wall time.
+Once the first discovery has ended, `discovery` says when: its index status and phase,
+and the milliseconds the provider’s open and then its discovery took.
 A task count that grows during a stall suggests queueing or a producer that is not
 applying backpressure.
 Compare the work counters before and after one slow request to separate provider work

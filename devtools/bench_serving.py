@@ -7,7 +7,7 @@ foreground requests take CPU from each other under the GIL. A mean hides all
 of that. So this harness reports the shape of each cost rather than one
 number, and separates the paths that only look alike:
 
-* A cold scan with nothing attached is walker throughput alone. It is not the
+* A cold scan with nothing attached is discovery throughput alone. It is not the
   number a reader experiences, and it is not the number that regressed
   historically -- a client polling during the crawl slows the crawl down.
 * A settled rollup has three distinct paths -- a real aggregation, a retained
@@ -111,14 +111,16 @@ BUILD_VERSION_TIMEOUT_S = 10.0
 # settled on -- it picks another when the requested one is busy, so parsing
 # this is more reliable than assuming the port we asked for.
 _BANNER_RE = re.compile(r"http://(?P<host>[^:/]+):(?P<port>\d+)/view/")
-# Emitted by the selected provider when the boot crawl finishes. This is the walker's
-# own elapsed time, which is what a cold scan has to be measured by: polling
-# for it would make it a scan with a client attached.
-_WALK_DONE_RE = re.compile(
-    r"inventory walker complete: provider=(?P<provider>[\w-]+) "
-    r"contract=(?P<contract>[\w-]+) status=(?P<status>\w+) "
-    r"files=(?P<files>\d+) entries=\d+ elapsed=(?P<ms>\d+)ms"
-)
+# How often a phase asks whether discovery has ended. The answer is the host's own
+# record (`DiscoveryRecord` in `inventory_engine/coordinator.py`), which
+# `/_debug/inventory` reports with the time discovery took, so the interval decides
+# only how soon the harness notices, never the time it records, and the record means
+# the same for every provider. Each poll is one constant-work diagnostics read. On the
+# 100,000-file `build_corpus` tree (Linux x86_64, 4 CPUs, 2026-11-17) one took a median
+# 3.9 ms of wall time while discovery ran and 0.9 ms after it, so polling at this
+# interval holds the server for under 2% of a scan; the record timed that discovery at
+# 3,272 ms, against the 3,271 ms the Python provider logged for its own walk.
+DISCOVERY_POLL_S = 0.25
 
 
 def _cpu_seconds(value: str) -> float | None:
@@ -569,10 +571,9 @@ class Server:
         with self._log_path.open("wb") as handle:
             environment = os.environ.copy()
             environment["METABROWSER_INVENTORY_PROVIDER"] = self._provider
+            # `/_debug/inventory` reports the provider, its work, and the discovery
+            # record every phase reads.
             environment["METABROWSER_DEBUG"] = "1"
-            # Fast scans report completion at DEBUG. Waiting for an INFO-only
-            # transcript otherwise turns a finished small scan into a 600s timeout.
-            environment["METABROWSER_LOG_LEVEL"] = "DEBUG"
             self._process = subprocess.Popen(
                 [
                     str(self._build.executable),
@@ -617,20 +618,31 @@ class Server:
             return ""
 
     def walk_result(self) -> dict[str, Any] | None:
-        """The walker's own completion record, or None while it is still crawling."""
-        match = _WALK_DONE_RE.search(self._log_text())
-        if match is None:
+        """The host's record of discovery, or None while discovery runs.
+
+        ``walk_ms`` runs from the provider's ``open()`` returning to the first state
+        past discovery, and ``open_ms`` is the ``open()`` itself.
+        """
+        status, _etag, body, _elapsed_ms = _http(f"{self.base_url}/_debug/inventory", timeout=30)
+        if status != 200:
             return None
-        # ``await_walk`` polls this method every 50 ms. Sampling with ``ps`` on
-        # every miss materially slows the process being measured; the retained
-        # index makes completion RSS the representative high-water sample.
+        loaded: Any = json.loads(body)
+        payload = cast("dict[str, Any]", loaded) if isinstance(loaded, dict) else {}
+        discovery = payload.get("discovery")
+        if not isinstance(discovery, dict):
+            return None
+        record = cast("dict[str, Any]", discovery)
+        # ``await_walk`` polls this method. Sampling with ``ps`` on every miss
+        # materially slows the process being measured; the retained index makes
+        # completion RSS the representative high-water sample.
         self._sample_process_resources()
         return {
-            "provider": match["provider"],
-            "contract": match["contract"],
-            "status": match["status"],
-            "files": int(match["files"]),
-            "walk_ms": int(match["ms"]),
+            "provider": payload.get("provider"),
+            "contract": payload.get("contract"),
+            "status": record.get("status"),
+            "files": payload.get("files_indexed"),
+            "walk_ms": record.get("elapsed_ms"),
+            "open_ms": record.get("open_ms"),
         }
 
     def await_walk(self, timeout_s: float = SCAN_TIMEOUT_S) -> dict[str, Any] | None:
@@ -639,7 +651,7 @@ class Server:
             result = self.walk_result()
             if result is not None:
                 return result
-            time.sleep(0.05)
+            time.sleep(DISCOVERY_POLL_S)
         return None
 
     def diagnostics(self) -> dict[str, Any]:
@@ -964,10 +976,11 @@ def phase_cold_scan(
     build: MetabBuild,
     provider: str,
 ) -> dict[str, Any]:
-    """Walker throughput with nothing attached.
+    """Discovery throughput with nothing attached.
 
-    Read from the walker's own log record rather than by polling, because
-    polling is exactly what the next phase deliberately does.
+    Read from the host's discovery record, which a cheap poll fetches
+    (`DISCOVERY_POLL_S`), rather than timed by the poll, because polling the
+    folder's own routes is exactly what the next phase deliberately does.
     """
     with Server(root, log_dir / "cold.log", build, provider=provider) as server:
         result = server.await_walk()
@@ -1315,7 +1328,7 @@ def _rows(result: dict[str, Any]) -> list[tuple[str, Any]]:
     attached_work = attached_diagnostics.get("work", {})
     settled_work = settled_diagnostics.get("work", {})
     rows: list[tuple[str, Any]] = [
-        ("cold scan, walker only (ms)", result.get("cold_scan", {}).get("walk_ms")),
+        ("cold scan, discovery (ms)", result.get("cold_scan", {}).get("walk_ms")),
         ("cold scan process CPU (s)", cold_process.get("cpu_seconds")),
         ("cold scan peak RSS (KiB)", cold_process.get("peak_rss_kb")),
         ("scan with a client attached (s)", attached.get("wall_s")),

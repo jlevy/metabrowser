@@ -407,8 +407,11 @@ def test_fast_walk_uses_the_progress_route_when_no_info_log_exists(
             self.close()
 
     def read_progress(url: str, *, timeout: int) -> ProgressResponse:
-        assert url == "http://127.0.0.1:8765/api/index/progress"
         assert timeout == 30
+        if url == "http://127.0.0.1:8765/_debug/inventory":
+            # A build that predates the discovery record answers without one.
+            return ProgressResponse(json.dumps({"provider": "python"}).encode())
+        assert url == "http://127.0.0.1:8765/api/index/progress"
         return ProgressResponse(
             json.dumps(
                 {
@@ -424,6 +427,58 @@ def test_fast_walk_uses_the_progress_route_when_no_info_log_exists(
 
     assert module._walk_facts(8765) == {
         "walk_status": "done",
+        "walk_files": 60_000,
+        "inventory_provider": "python",
+        "inventory_contract": "inventory-provider-v1",
+    }
+
+
+def test_a_current_build_reports_its_walk_through_the_discovery_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The host's record is read in place of any provider's log line."""
+
+    module = _runner()
+    monkeypatch.setattr(module, "HERE", tmp_path)
+    (tmp_path / "results").mkdir()
+    # The Python provider still logs its own line; the record is preferred to it.
+    (tmp_path / "results" / "server-8765.log").write_text(
+        "INFO inventory walker complete: provider=python contract=inventory-provider-v1 "
+        "status=done files=9 entries=10 elapsed=999ms\n",
+        encoding="utf-8",
+    )
+
+    class DebugResponse(io.BytesIO):
+        def __enter__(self) -> DebugResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.close()
+
+    def read_debug(url: str, *, timeout: int) -> DebugResponse:
+        assert url == "http://127.0.0.1:8765/_debug/inventory"
+        assert timeout == 30
+        return DebugResponse(
+            json.dumps(
+                {
+                    "provider": "python",
+                    "contract": "inventory-provider-v1",
+                    "files_indexed": 60_000,
+                    "discovery": {
+                        "status": "done",
+                        "phase": "watching",
+                        "open_ms": 12,
+                        "elapsed_ms": 4_321,
+                    },
+                }
+            ).encode()
+        )
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", read_debug)
+
+    assert module._walk_facts(8765) == {
+        "walk_status": "done",
+        "walk_elapsed_ms": 4_321,
         "walk_files": 60_000,
         "inventory_provider": "python",
         "inventory_contract": "inventory-provider-v1",
@@ -1452,7 +1507,9 @@ def test_pre_contract_walk_line_is_read_only_under_its_declaration(
         encoding="utf-8",
     )
 
-    def unreachable(_url: str, *, timeout: int) -> None:
+    def unreachable(url: str, *, timeout: int) -> None:
+        if url.endswith("/_debug/inventory"):
+            raise OSError("the release predates the discovery record")
         raise AssertionError("a logged walk must not fall back to the progress route")
 
     monkeypatch.setattr(module.urllib.request, "urlopen", unreachable)
