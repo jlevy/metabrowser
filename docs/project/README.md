@@ -66,14 +66,13 @@ It links each document below and the contributor standards in `docs/`.
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
-- [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md):
-  the owner’s requests of 2026-11-15, from Files Group by, a Diff summary, Pulls stack
-  groups, and the conversation timeline to the pull request header, the keys, tooltips,
-  titles, label colors, and a design-system consistency pass, as one stack of pull
-  requests
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
+- [Fast CI](specs/active/plan-2026-11-16-fast-ci.md): bringing a pull request’s CI from
+  20 minutes to about 5 with the same checks, by running the suite on every processor,
+  splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
+  owner approved Phases 1 and 2 on 2026-11-16, and nothing is implemented
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps
@@ -124,6 +123,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Done Plans
 
+- [Files grouping, a diff summary, pull stack groups, and the conversation timeline](specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md):
+  the owner’s requests of 2026-11-15, as one stack of pull requests and three of their
+  own on `main`, merged after 0.12.0
 - [Event-based pull-request freshness and budgeted prefetch](specs/done/plan-2026-11-11-pr-freshness-and-prefetch.md):
   merged after 0.12.0
 - [Shift key reveal and a systematic keymap](specs/done/plan-2026-11-11-shift-key-reveal-and-keymap.md)
@@ -159,6 +161,9 @@ A research record stays here while it informs open work, and moves to
 - [fdu as the inventory backend, revisited on fdu 0.6](research/research-2026-11-17-fdu-backend-revisited.md):
   the Linux spike, decisions, fdu changes, and Metabrowser refactors for a swappable
   Python and Rust inventory backend
+- [Why CI takes twenty minutes](research/research-2026-11-16-ci-speed.md): where a CI
+  run’s minutes go by job, step, and test, what flakes cost, and the options for the
+  fast CI plan
 - [What eager startup JavaScript costs](research/research-2026-11-12-eager-startup-script-cost.md):
   measured cost of the scripts a folder page loads before `DOMContentLoaded`
 - [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md):
@@ -236,6 +241,8 @@ The first two are current checklists; the dated runs after them are records.
   in a real browser can judge, run before each release on the public-safe manual corpus
 - [macOS app hand checks](qa/qa-macos-app-hand-checks.md): what AppKit, WebKit, and
   macOS decide, checked against a built app after a change to the behavior they cover
+- [Files totals layout, 2026-11-16](qa/qa-2026-11-16-files-totals-layout.md): the
+  measurements behind the Files totals’ layout rule, before and after, in Chrome
 - [WebKit measurement gate, 2026-11-11](qa/qa-2026-11-11-webkit-measurement-gate.md):
   the app’s WebKit run against Chrome’s large-content bounds, which failed, with every
   figure and the print and drop checks

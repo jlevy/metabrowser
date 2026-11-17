@@ -13,13 +13,53 @@
 // links. The entry titles are the document's text; they only ever become text nodes.
 
 import { findElementById } from "./dom-traversal.js";
-import { selectTocTargetAtReadingLine } from "./toc-intersection-fallback.js";
 
 /** KPress's reading line: the bottom of the top quarter of the scroll viewport. */
 const READING_LINE = 0.25;
 /** How far the reader scrolls before the narrow toggle shows, as in KPress. */
 const TOGGLE_SCROLL_THRESHOLD_PX = 100;
 const ANCHOR_HREF = "#user-content-";
+
+/**
+ * The section at the reading line: the last heading at or above it. Keeping passed
+ * headings in the candidate set makes a long section stay active until its successor
+ * reaches the same line. Headings are in document order, which is also their vertical
+ * order, so a binary search keeps each update's layout reads logarithmic even for an
+ * unusually large table of contents.
+ *
+ * A heading with no layout box, such as one inside a closed `<details>`, reports an
+ * all-zero rectangle whose `top` says nothing about where the reader is, so the search
+ * steps past it to the next laid-out heading rather than selecting it, as KPress's toc.js
+ * does for a trusted render.
+ *
+ * @param {ReadonlyArray<Element>} targets
+ * @param {number} readingLine
+ * @returns {Element | null}
+ */
+function targetAtReadingLine(targets, readingLine) {
+  /** @type {Element | null} */
+  let selected = null;
+  let low = 0;
+  let high = targets.length - 1;
+  while (low <= high) {
+    const index = low + Math.floor((high - low) / 2);
+    let probe = index;
+    let rect = targets[probe].getBoundingClientRect();
+    while (rect.width === 0 && rect.height === 0 && probe < high) {
+      probe += 1;
+      rect = targets[probe].getBoundingClientRect();
+    }
+    if (rect.width === 0 && rect.height === 0) {
+      high = index - 1;
+    } else if (rect.top <= readingLine) {
+      selected = targets[probe];
+      low = probe + 1;
+    } else {
+      high = index - 1;
+    }
+  }
+  return selected;
+}
 
 /**
  * The entries of *headings* whose target is in *root*: KPress's depth, title, and the
@@ -168,11 +208,11 @@ export function wireInertToc(article, options = {}) {
   };
   const update = () => {
     toggle.classList.toggle("show-toggle", scrollTop() > TOGGLE_SCROLL_THRESHOLD_PX);
-    const selected = selectTocTargetAtReadingLine(
+    const selected = targetAtReadingLine(
       targets.map(({ target }) => target),
       readingLine(),
     );
-    const current = targets.find(({ target }) => target === selected?.target);
+    const current = targets.find(({ target }) => target === selected);
     setActive((current ?? targets[0])?.link);
   };
 
