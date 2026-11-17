@@ -82,12 +82,18 @@ check_build_provenance() {
 
 # Checks what only a published release has: that it is immutable, its release
 # attestation and each asset's ("$4" onward), and that it is not the repository's Latest
-# release, which stays the Python package's. A draft has none of these yet, and says so.
+# release, which stays the Python package's. A draft has none of these yet; for one, it
+# checks that the repository's immutable releases are on, so that publishing it makes it
+# immutable (O5), and says the rest waits for publication.
 check_publication() {
   local tag="$1" draft="$2" immutable="$3" output latest file
   shift 3
   if [[ "$draft" == true ]]; then
-    echo "release attestation: not yet, since $tag is a draft; run this again once it is published"
+    output="$(gh api "repos/$release_repository/immutable-releases" --jq .enabled 2>&1)" ||
+      die "could not read whether immutable releases are on: $output"
+    [[ "$output" == true ]] ||
+      die "immutable releases are off for $release_repository, so publishing $tag would leave it mutable; turn them on first (O5)"
+    echo "release attestation: not yet, since $tag is a draft; immutable releases are on, so publishing makes it immutable; run this again once it is published"
     return 0
   fi
   [[ "$immutable" == true ]] || die "$tag is published but not immutable; turn on immutable releases (O5) before publishing"
@@ -104,12 +110,48 @@ check_publication() {
   echo "release attestation: verified for $tag and each asset; the Latest release is $latest"
 }
 
+# The commit a release tag points at, as GitHub has it: the agent creates app tags with
+# `gh api .../git/refs`, which makes a lightweight tag, and an annotated one is followed
+# to its commit.
+tag_commit() {
+  local tag="$1" object
+  object="$(gh api "repos/$release_repository/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>&1)" ||
+    die "could not read the tag $tag: $object"
+  if [[ "$object" == "tag "* ]]; then
+    object="$(gh api "repos/$release_repository/git/tags/${object#tag }" --jq '.object.type + " " + .object.sha' 2>&1)" ||
+      die "could not read the annotated tag $tag: $object"
+  fi
+  [[ "$object" =~ ^commit\ [0-9a-f]{40}$ ]] || die "$tag does not point at a commit: $object"
+  echo "${object#commit }"
+}
+
 # ── The launch check ─────────────────────────────────────────
 
 # Whether a running copy's path is a translocated one: the rule LaunchLocation in
 # ShellCore applies, since macOS offers no API to detect it.
 is_translocated_path() {
   [[ "$1" == */AppTranslocation/* ]]
+}
+
+# Whether a copy that ran from "$1" ran where this launch must: "$2" is translocated, for
+# a first launch from Downloads, or installed, after a move in Finder.
+ran_as_expected() {
+  if is_translocated_path "$1"; then
+    [[ "$2" == translocated ]]
+  else
+    [[ "$2" == installed ]]
+  fi
+}
+
+# The launch checks whose backups are still in the folder "$1" (apps/macos/build), one
+# per line: each ended before it restored the release identity's state, which is still
+# cleared, so the backup is the only copy of it.
+leftover_launch_checks() {
+  local marker
+  for marker in "$1"/launch-check-*/backup/complete; do
+    [[ -e "$marker" ]] && echo "${marker%/backup/complete}"
+  done
+  return 0
 }
 
 # What a launch of the release identity "$2" reads and changes: its user defaults, the

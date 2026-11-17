@@ -71,16 +71,51 @@ developer_id_problems() {
   return 0
 }
 
+# Replaces each \xHH in "$1" with the character it names: macOS stores a quarantine
+# agent's name with its spaces as \x20 ("Metabrowser\x20check-release", macOS 26 on CI).
+# Anything else, a lone backslash included, is kept as it is.
+decode_hex_escapes() {
+  local text="$1" out="" prefix char
+  while [[ "$text" == *'\x'[0-9a-fA-F][0-9a-fA-F]* ]]; do
+    prefix="${text%%\\x[0-9a-fA-F][0-9a-fA-F]*}"
+    text="${text:${#prefix}}"
+    printf -v char "\\x${text:2:2}"
+    out="$out$prefix$char"
+    text="${text:4}"
+  done
+  echo "$out$text"
+}
+
 # Describes a com.apple.quarantine value, "FLAGS;TIME;AGENT;EVENT" with the flags and
-# the time in hex, for information only: Apple DTS says its on-disk format is not API,
-# so nothing passes or fails on it.
+# the time in hex and the agent's name escaped, for information only: Apple DTS says its
+# on-disk format is not API, so nothing passes or fails on it.
 describe_quarantine() {
   local flags time agent event when
   IFS=';' read -r flags time agent event <<<"$1"
+  agent="$(decode_hex_escapes "$agent")"
   if [[ "$time" =~ ^[0-9a-fA-F]+$ ]] && when="$(date_of_epoch "$((16#$time))" 2>/dev/null)"; then
     :
   else
     when="an unreadable time ($time)"
   fi
   echo "flags 0x$flags, set $when, by ${agent:-no agent}${event:+, event $event}"
+}
+
+# Prints, one per line, what is wrong with an app's identity for a release: it must be
+# the release variant ("$1" is its bundle identifier), the version "$4" ("$2" is its
+# CFBundleShortVersionString), and built from the commit "$5", the tag's full SHA, with
+# nothing uncommitted ("$3" is its MetabrowserSourceCommit, a short hash that
+# scripts/build-app.sh records, with -dirty for uncommitted changes).
+release_identity_problems() {
+  local id="$1" version="$2" commit="$3" want_version="$4" want_commit="$5"
+  [[ "$(variant_of_bundle_id "$id")" == release ]] || echo "the app is $id, not the release variant"
+  [[ "$version" == "$want_version" ]] || echo "the app is version ${version:-unknown}, not $want_version"
+  if [[ -z "$commit" ]]; then
+    echo "the app records no source commit (MetabrowserSourceCommit)"
+  elif [[ "$commit" == *-dirty ]]; then
+    echo "the app was built from $commit, with uncommitted changes"
+  elif ((${#commit} < 7)) || [[ "$want_commit" != "$commit"* ]]; then
+    echo "the app was built from $commit, not from $want_commit, the tag's commit"
+  fi
+  return 0
 }

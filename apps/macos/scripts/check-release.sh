@@ -3,11 +3,14 @@
 # provenance it verified. Run it from a checkout of the release's commit, whose icons
 # scripts/check-dmg.sh compares the image's with.
 #
-#   TAG=macos-v0.1.0 BUILT=local scripts/check-release.sh  # make check-release TAG=... BUILT=...
-#   TAG=macos-v0.1.0 BUILT=local LAUNCH=1 scripts/check-release.sh
+#   TAG=macos-v0.1.0 BUILT=local EXPECTED_TEAM_ID=TEAMID scripts/check-release.sh
+#   TAG=macos-v0.1.0 BUILT=local EXPECTED_TEAM_ID=TEAMID LAUNCH=1 scripts/check-release.sh
+#   make check-release TAG=... BUILT=... EXPECTED_TEAM_ID=... [LAUNCH=1]
 #
-# In order, stopping at the first failure:
-#   1. reads the release with gh: the tag's own release, a draft or published;
+# EXPECTED_TEAM_ID, the publisher's Team ID, is required: for a local build there is no
+# attestation, so the Developer ID team is what ties the image to the owner. In order,
+# stopping at the first failure:
+#   1. reads the release with gh, a draft or published, and the commit its tag points at;
 #   2. downloads its assets (release_assets in common.sh) into a scratch folder;
 #   3. checks each against its .sha256 file with `shasum -a 256 -c`, and against the
 #      SHA-256 digest GitHub gives for it;
@@ -15,12 +18,16 @@
 #      attestation for the tag, which `gh attestation verify` must accept; with
 #      BUILT=local, none. BUILT is an input, never inferred, so a CI build that lost its
 #      attestation cannot pass as a local one;
-#   5. once published, checks that the release is immutable, its release attestation
-#      (`gh release verify`, `gh release verify-asset`), and that it is not the
-#      repository's Latest release;
-#   6. quarantines the image if it is not (scripts/quarantine.swift), saying that this
-#      simulates a browser download, since gh does not quarantine;
-#   7. runs NOTARIZE=1 scripts/check-dmg.sh on it, with EXPECTED_TEAM_ID when set;
+#   5. for a draft, that the repository's immutable releases are on; once published, that
+#      the release is immutable, its release attestation (`gh release verify`,
+#      `gh release verify-asset`), and that it is not the repository's Latest release;
+#   6. quarantines the image if it is not (scripts/quarantine.swift), which simulates a
+#      browser download, since gh does not quarantine. Only the launch check depends on
+#      it: none of check-dmg.sh's tools judges a file differently for its quarantine, and
+#      Gatekeeper's check of a browser download is the owner's, O8;
+#   7. runs NOTARIZE=1 scripts/check-dmg.sh on it, with EXPECTED_TEAM_ID, and requires
+#      the app to be the release variant, the tag's version, and built from the tag's
+#      commit (EXPECTED_VERSION, EXPECTED_COMMIT);
 #   8. with LAUNCH=1, at the Mac and never in CI, launches the downloaded app
 #      translocated, relaunches it, and moves it (scripts/launch-release.sh).
 #
@@ -34,8 +41,11 @@ source scripts/check-release-lib.sh
 
 tag="${TAG:-}"
 built="${BUILT:-}"
+team="${EXPECTED_TEAM_ID:-}"
 [[ -n "$tag" ]] || die "TAG is required: TAG=macos-vMAJOR.MINOR.PATCH"
 [[ "$built" == local || "$built" == ci ]] || die "BUILT must be local or ci, which says who built the release; it is never inferred"
+[[ "$team" =~ ^[A-Z0-9]{10}$ ]] ||
+  die "EXPECTED_TEAM_ID must be the publisher's 10-character Team ID, which ties the image to the owner; it is '${team}'"
 release_version="$(version_of_tag "$tag")"
 variant_settings release
 [[ "$release_version" == "$version" ]] ||
@@ -49,13 +59,14 @@ assets="$(release_assets "$version" "$arch_label")"
 image="$(head -n 1 <<<"$assets")"
 sums="$(sed -n 2p <<<"$assets")"
 
-# 1. The release.
+# 1. The release, and its tag's commit.
 json="$(gh release view "$tag" --repo "$release_repository" --json tagName,isDraft,isImmutable,assets)" ||
   die "could not read the release $tag"
 facts="$(release_facts "$tag" <<<"$json")"
 draft="$(sed -n 's/^draft=//p' <<<"$facts")"
 immutable="$(sed -n 's/^immutable=//p' <<<"$facts")"
-echo "Release $tag: $([[ "$draft" == true ]] && echo draft || echo published), $([[ "$immutable" == true ]] && echo immutable || echo "not immutable")"
+commit="$(tag_commit "$tag")"
+echo "Release $tag: $([[ "$draft" == true ]] && echo draft || echo published), $([[ "$immutable" == true ]] && echo immutable || echo "not immutable"), at $commit"
 
 # 2. The assets, and nothing else expected of it.
 mkdir -p "$work/download"
@@ -77,26 +88,27 @@ echo "$build_provenance"
 release_provenance="$(check_publication "$tag" "$draft" "$immutable" "$work/download/$image" "$work/download/$sums")"
 echo "$release_provenance"
 
-# 6. Quarantine, as a browser download has.
+# 6. Quarantine, for the launch check.
 swiftc -O scripts/quarantine.swift -o "$work/quarantine" 2>"$work/swiftc.log" ||
   die "could not build scripts/quarantine.swift, which needs Xcode: $(cat "$work/swiftc.log")"
 case "$("$work/quarantine" "$work/download/$image")" in
   already) quarantine="the download was quarantined already" ;;
-  simulated) quarantine="simulated: gh does not quarantine, so the image was quarantined as a browser download is" ;;
+  simulated) quarantine="simulated, for the launch check: gh does not quarantine, so the image was quarantined as a browser download is" ;;
   *) die "could not quarantine $image" ;;
 esac
 echo "quarantine: $quarantine"
 
-# 7. The image, as a downloader meets it.
-NOTARIZE=1 scripts/check-dmg.sh "$work/download/$image"
+# 7. The image, as a downloader meets it, and the app in it, as the tag names it.
+NOTARIZE=1 EXPECTED_TEAM_ID="$team" EXPECTED_VERSION="$version" EXPECTED_COMMIT="$commit" \
+  scripts/check-dmg.sh "$work/download/$image"
 
 echo
 echo "Checked $tag (BUILT=$built), as downloaded:"
 echo "  checksum and digest: sha256:$(cut -d' ' -f1 "$work/download/$sums")"
 echo "  $build_provenance"
 echo "  $release_provenance"
-echo "  quarantine: $quarantine"
-echo "  check-dmg.sh with NOTARIZE=1: passed"
+echo "  check-dmg.sh with NOTARIZE=1: passed, team $team, the release variant $version from $commit"
+echo "  quarantine: $quarantine; Gatekeeper's check of a browser download is O8's"
 
 # 8. The launch.
 if [[ "${LAUNCH:-0}" == 1 ]]; then

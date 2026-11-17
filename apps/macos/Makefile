@@ -86,5 +86,14 @@ check-release:
 webkit-gate:
 	node webkit-gate/run.mjs $(if $(PAIRS),--pairs $(PAIRS)) $(if $(CASES),--cases $(CASES))
 
+# A launch check that ended before restoring the release identity's state left the only
+# copy of it in build/launch-check-*/backup (scripts/launch-release.sh), so clean keeps
+# build/ until that is restored.
 clean:
+	@set -e; source scripts/common.sh; source scripts/check-release-lib.sh; \
+	leftover="$$(leftover_launch_checks "$(CURDIR)/build")"; \
+	if [[ -n "$$leftover" ]]; then \
+	  echo "error: $$leftover holds a launch check's backup, the only copy of the release identity's state; restore it first: scripts/launch-release.sh --restore $$leftover" >&2; \
+	  exit 1; \
+	fi
 	rm -rf .build build

@@ -227,13 +227,16 @@ checklist names in order; the runbook has the commands.
 
 1. The owner’s setup is done: `make macos-signing-check` on the build Mac reports
    nothing missing, and O5’s repository settings are on.
-2. The version change is on `main`, and the owner approved `RELEASE_COMMIT`.
+2. The `metab` release that `MetabRequirement.minimumRelease` names is published and
+   verified on PyPI, and the commit that sets `MetabRequirement.isReleased` to true is
+   on `main`. The version change is on `main` after it, and the owner approved
+   `RELEASE_COMMIT`, which contains both.
 3. The tag is created at `RELEASE_COMMIT`, as above.
 4. The owner unlocked the release keychain, and `make macos-release` built, signed,
    notarized, and checked the image; the owner locked the keychain again.
 5. The draft holds the image and its checksum, with the notes, not as Latest.
-6. `make macos-check-release` with `BUILT=local` passes on the draft, and the owner ran
-   it with `LAUNCH=1`.
+6. `make macos-check-release` with `BUILT=local` and `EXPECTED_TEAM_ID` passes on the
+   draft, and passes with `LAUNCH=1` at the Mac.
 7. The owner opened the draft’s download on a Mac or VM that has not run the app.
 8. The owner approved the image’s SHA-256 and the notes; the draft is published with
    `--latest=false`, and the check passes again on the published release.

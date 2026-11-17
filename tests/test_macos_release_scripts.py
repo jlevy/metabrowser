@@ -12,8 +12,8 @@ The pins below hold the copies documents make of the scripts' values: the SHA-25
 the committed G2 intermediate, which `apps/macos/scripts/signing-lib.sh` checks, and of
 the Apple Root CA fixture, which the logic tests check before they verify the
 intermediate's chain against it, both of which `SUPPLY-CHAIN-SECURITY.md` records; and
-the release keychain's idle lock, which the runbook in `apps/macos/README.md` gives in
-the owner's command.
+what the runbook in `apps/macos/README.md` gives in the owner's commands: the release
+keychain's idle lock, its path, and the notary profile's name.
 """
 
 from __future__ import annotations
@@ -87,4 +87,23 @@ def test_the_runbook_states_the_keychain_lock_the_doctor_requires() -> None:
     assert set(stated) == {lock}, (
         f"the runbook's set-keychain-settings uses {sorted(set(stated))}, and "
         f"release_keychain_lock_seconds in signing-lib.sh is {lock}"
+    )
+
+
+def test_the_runbook_names_the_keychain_and_profile_the_scripts_default_to() -> None:
+    runbook = RUNBOOK.read_text()
+    common = (APP / "scripts/common.sh").read_text()
+    default = re.search(r"\$\{SIGN_KEYCHAIN:-\$HOME/([^}]+)\}", common)
+    assert default, "release_keychain in common.sh no longer defaults SIGN_KEYCHAIN under $HOME"
+    stated = re.findall(r"^KEYCHAIN=~/(\S+)$", runbook, re.MULTILINE)
+    assert stated == [default.group(1)], (
+        f"the runbook's KEYCHAIN is {stated}, and release_keychain's default is ~/{default.group(1)}"
+    )
+    profile = _shell_value(SIGNING_LIB, "default_notary_profile")
+    named = set(
+        re.findall(r"(?:store-credentials |APPLE_KEYCHAIN_PROFILE=)([A-Za-z0-9._-]+)", runbook)
+    )
+    assert named == {profile}, (
+        f"the runbook names the notary profile {sorted(named)}, and signing-lib.sh's "
+        f"default_notary_profile is {profile}"
     )

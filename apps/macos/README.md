@@ -188,7 +188,7 @@ its matrix: the toolchain the app is built with, on the oldest macOS it supports
    The step fails unless `LiveMetabTests` ran and passed.
 3. `make macos-app`.
 4. `make macos-dmg` and `make macos-release NOTARIZE=0`, then `scripts/check-dmg.sh` on
-   both images.
+   both images, the rehearsal’s also against this checkout’s version and commit.
 5. The development app, zipped with `ditto`, and the development image, uploaded as
    artifacts kept for the workflow’s `retention-days`. The rehearsal’s image carries the
    published icon on an ad hoc signature, so it is checked and never uploaded.
@@ -250,8 +250,10 @@ KEYCHAIN=~/Library/Keychains/metabrowser-release.keychain-db
      `security import packaging/DeveloperIDG2CA.cer -k ~/Library/Keychains/login.keychain-db`.
      codesign builds an identity’s chain only from keychains on the search list.
   2. Create the release keychain, typing its password at the prompt, never with `-p`:
-     `security create-keychain "$KEYCHAIN"`. Keep it on the user search list, which
-     `security list-keychains -d user` shows, and make it lock on sleep and when idle:
+     `security create-keychain "$KEYCHAIN"`. It does not add the keychain to the user
+     search list (macOS 26), so add it, keeping the keychains on it: the doctor prints
+     the `security list-keychains -d user -s` command with them.
+     Make it lock on sleep and when idle:
      `security set-keychain-settings -l -u -t 900 "$KEYCHAIN"`. The doctor requires an
      idle lock of at most `release_keychain_lock_seconds` (`scripts/signing-lib.sh`).
   3. Move the Developer ID Application identity into it: export it from the login
@@ -330,7 +332,11 @@ In this order. The owner’s approvals, O7, come at steps 1, 3, and 8, and O8 is
 
 1. **The commit, O7 (Owner approves).** `echo "$V" > apps/macos/VERSION` in a reviewed
    pull request, landed on `main`, and that commit’s full SHA recorded as
-   `RELEASE_COMMIT`. The owner approves that exact SHA.
+   `RELEASE_COMMIT`. The owner approves that exact SHA. Before it, the `metab` release
+   that `MetabRequirement.minimumRelease` names is published and verified on PyPI, and
+   `RELEASE_COMMIT` contains the commit that sets `MetabRequirement.isReleased` to true
+   (`Sources/ShellCore/Setup/MetabVersion.swift`): without it no downloader’s `metab`
+   runs the app, and `make macos-release` refuses the build.
 
 2. **The tag.** The agent creates `macos-v$V` on GitHub at `RELEASE_COMMIT`, as
    [macOS App Releases](../../docs/publishing.md#macos-app-releases) describes, never by
@@ -420,10 +426,19 @@ In this order. The owner’s approvals, O7, come at steps 1, 3, and 8, and O8 is
    hand:
 
    ```shell
-   make macos-check-release TAG="macos-v$V" BUILT=local EXPECTED_TEAM_ID=TEAMID \
-     2>&1 | tee "build/check-release-macos-v$V.log"
-   make macos-check-release TAG="macos-v$V" BUILT=local LAUNCH=1
+   make macos-check-release TAG="macos-v$V" BUILT=local EXPECTED_TEAM_ID=TEAMID
+   make macos-check-release TAG="macos-v$V" BUILT=local EXPECTED_TEAM_ID=TEAMID LAUNCH=1
    ```
+
+   Each output goes into the approval record.
+   `EXPECTED_TEAM_ID` is required: without an attestation, the Team ID is what ties the
+   image to the owner. `LAUNCH=1` exits nonzero on a miss, and an answer other than `y`
+   is one. If a `LAUNCH=1` run is interrupted, the release identity’s defaults, session,
+   and recent documents stay cleared and its backup in
+   `apps/macos/build/launch-check-TIME` is their only copy: the next run, and
+   `make macos-clean`, refuse until
+   `scripts/launch-release.sh --restore build/launch-check-TIME`, run in `apps/macos`,
+   puts them back.
 
 7. **O8, the owner’s download (Owner).** On a Mac or VM that has not run the app, the
    owner downloads the draft’s image in a browser, opens it, answers Gatekeeper’s
@@ -472,8 +487,8 @@ Each script’s header lists what it checks.
 | `scripts/check-signing.sh` (`make macos-signing-check`) | The release keychain, the identity, its expiry and issuer, the G2 intermediate, Xcode and notarytool, and the notary credentials; read-only | The build Mac, and each release’s preflight; macOS CI against a throwaway keychain |
 | `scripts/notarize.sh` | `syspolicy_check notary-submission` before each submission, and the notary log after it | Each submission |
 | `scripts/check-dmg.sh` | The image and its contents, the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
-| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the checksum, GitHub’s digest, the build provenance `BUILT` names, the immutable release and Latest once published, a quarantine it simulates when the download has none, and `check-dmg.sh` with `NOTARIZE=1` | Step 6 and step 8 of each release |
-| `scripts/launch-release.sh` (`LAUNCH=1`) | The first launch, translocated, the relaunch, and launches after a move from Terminal and a move in Finder | At the Mac only, never in CI |
+| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the checksum, GitHub’s digest, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
+| `scripts/launch-release.sh` (`LAUNCH=1`) | The first launch, which must be translocated, the relaunch and a move from Terminal, recorded, and a move in Finder, after which it must not be; the person’s confirmations | At the Mac only, never in CI |
 
 `scripts/test-release-logic.sh` runs what these scripts decide on stand-ins for Apple’s
 tools, in `make test` on Linux and in `make macos-test`.
@@ -564,8 +579,14 @@ changes, and each result goes in the approval record:
 10. `LAUNCH=1`: the first launch is translocated and shows the launch notice; whether
     the relaunch stays translocated; whether a move from Terminal ends it; and that a
     move in Finder does.
-11. O8 agrees with the download check’s simulated quarantine: a browser download is
+11. After `LAUNCH=1` on an account with the release identity’s own state, its defaults,
+    session, and recent documents are as they were.
+    The run does not back up or clear the identity’s WebKit data, caches, or saved
+    window state, or the server logs.
+12. O8 agrees with the download check’s simulated quarantine: a browser download is
     quarantined, and Gatekeeper asks once.
+    The simulation matters only to `LAUNCH=1`; none of `check-dmg.sh`’s tools judges a
+    file differently for its quarantine.
 
 ### Ad Hoc Builds
 

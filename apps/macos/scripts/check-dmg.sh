@@ -8,7 +8,10 @@
 # `syspolicy_check distribution` on the app, `codesign --check-notarization` on both,
 # and `spctl` on both. With NOTARIZE=1 every one of those is required; otherwise the
 # notarization checks run once the image is stapled. Works on a downloaded image too,
-# and describes its quarantine attribute, for information only.
+# and describes its quarantine attribute, for information only. With EXPECTED_VERSION
+# and EXPECTED_COMMIT (a full SHA), which scripts/check-release.sh sets from the tag, the
+# app must also be the release variant, that version, and built from that commit with
+# nothing uncommitted.
 #
 #   scripts/check-dmg.sh build/Metabrowser-0.1.0-arm64.dmg
 #   NOTARIZE=1 EXPECTED_TEAM_ID=TEAMID scripts/check-dmg.sh ~/Downloads/Metabrowser-0.1.0-arm64.dmg
@@ -81,6 +84,15 @@ plist="$app/Contents/Info.plist"
 ok "$name: $(plutil -extract CFBundleIdentifier raw -o - "$plist")" \
   "$(plutil -extract CFBundleShortVersionString raw -o - "$plist")" \
   "($(plutil -extract CFBundleVersion raw -o - "$plist")), signature valid"
+if [[ -n "${EXPECTED_VERSION:-}${EXPECTED_COMMIT:-}" ]]; then
+  [[ -n "${EXPECTED_VERSION:-}" && -n "${EXPECTED_COMMIT:-}" ]] || die "EXPECTED_VERSION and EXPECTED_COMMIT go together"
+  problems="$(release_identity_problems "$(plutil -extract CFBundleIdentifier raw -o - "$plist")" \
+    "$(plutil -extract CFBundleShortVersionString raw -o - "$plist")" \
+    "$(plutil -extract MetabrowserSourceCommit raw -o - "$plist" 2>/dev/null || true)" \
+    "$EXPECTED_VERSION" "$EXPECTED_COMMIT")"
+  [[ -z "$problems" ]] || die "$name is not the release it is checked as:"$'\n'"$problems"
+  ok "$name is the release variant, version $EXPECTED_VERSION, built from $EXPECTED_COMMIT"
+fi
 # The canary icon marks development builds and never ships in a release, and a release
 # carries the published icon. The icons compared are this checkout's, so check an image
 # from the commit that built it.

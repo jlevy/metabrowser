@@ -828,6 +828,12 @@ expect_problem "another team than EXPECTED_TEAM_ID is refused" \
 expect_problem "a development certificate's chain is not a Developer ID chain" \
   "${developer_id_app/Developer ID Application: /Apple Development: }" app "" "not Developer ID Application"
 expect_problem "an ad hoc signature is no Developer ID signature" "$adhoc_app" app "" "no Team ID"
+expect_problem "a chain without Apple Root CA is refused" \
+  "${developer_id_app/$'\n'Authority=Apple Root CA/}" app "" "not Developer ID Application"
+expect_problem "a chain without the Developer ID intermediate is refused" \
+  "${developer_id_app/$'\n'Authority=Developer ID Certification Authority/}" app "" "not Developer ID Application"
+expect_problem "an image with a Signed Time, not a secure timestamp, is refused" \
+  "${developer_id_image/Timestamp=/Signed Time=}" image "" "no secure timestamp"
 
 # ── describe_quarantine ──────────────────────────────────────
 described="$(describe_quarantine "0083;6735a1c4;Safari;3F1A2B3C-4D5E-6F70-8192-A3B4C5D6E7F8")"
@@ -840,6 +846,19 @@ if [[ "$(describe_quarantine "01c1;zz;")" == "flags 0x01c1, set an unreadable ti
   pass "an unreadable quarantine attribute is described, not refused"
 else
   fail "an unreadable quarantine attribute: $(describe_quarantine "01c1;zz;")"
+fi
+# What macOS 26 stored for scripts/quarantine.swift on CI: the agent's spaces as \x20.
+# The flags, time, and agent are the capture's; the event ID is made up.
+described="$(describe_quarantine '0081;6afc0e31;Metabrowser\x20check-release\x20(simulated\x20download);3A5B7E4F-1C2D-4E5F-8A9B-0C1D2E3F4A5B')"
+if [[ "$described" == "flags 0x0081, set 2026-11-17 08:20:01 UTC, by Metabrowser check-release (simulated download), event 3A5B7E4F-1C2D-4E5F-8A9B-0C1D2E3F4A5B" ]]; then
+  pass "an agent name macOS stored with \\x20 for its spaces is described with its spaces"
+else
+  fail "the stored agent name was described as: $described"
+fi
+if [[ "$(decode_hex_escapes 'a\b\x41c\x')" == 'a\bAc\x' ]]; then
+  pass "only a backslash, x, and two hex digits is decoded"
+else
+  fail "decode_hex_escapes gave: $(decode_hex_escapes 'a\b\x41c\x')"
 fi
 
 # ── The release's names, tag, assets, and checksum ───────────
@@ -963,24 +982,67 @@ else
 fi
 
 latest_tag=v0.13.0
+immutable_on=true
+verify_ok=1
+verify_asset_ok=1
+gh() {
+  echo "gh $*" >>"$work/gh-calls"
+  case "$1 $2" in
+    "attestation verify") ((attestation_ok)) ;;
+    "release verify") ((verify_ok)) ;;
+    "release verify-asset") ((verify_asset_ok)) ;;
+    "api repos/jlevy/metabrowser/releases/latest") echo "$latest_tag" ;;
+    "api repos/jlevy/metabrowser/immutable-releases") echo "$immutable_on" ;;
+    *) return 99 ;;
+  esac
+}
+: >"$work/gh-calls"
 run check_publication "$release_tag" true false "$downloads/$image_name"
-if ((status == 0)) && said "not yet, since $release_tag is a draft"; then
-  pass "a draft has no release attestation yet, and says so"
+if ((status == 0)) && said "not yet, since $release_tag is a draft; immutable releases are on"; then
+  pass "a draft has no release attestation yet, and immutable releases are on, and it says both"
 else
   fail "a draft's publication: status $status: $(cat "$work/out")"
 fi
+immutable_on=false
+run check_publication "$release_tag" true false "$downloads/$image_name"
+if ((status != 0)) && said "immutable releases are off for jlevy/metabrowser, so publishing $release_tag would leave it mutable"; then
+  pass "a draft fails while the repository's immutable releases are off, before it is published"
+else
+  fail "a draft with immutable releases off: status $status: $(cat "$work/out")"
+fi
+immutable_on=true
 run check_publication "$release_tag" false false "$downloads/$image_name"
 if ((status != 0)) && said "not immutable; turn on immutable releases (O5)"; then
   pass "a published release that is not immutable fails"
 else
   fail "a mutable published release: status $status: $(cat "$work/out")"
 fi
-run check_publication "$release_tag" false true "$downloads/$image_name"
-if ((status == 0)) && said "the Latest release is v0.13.0"; then
-  pass "a published, immutable, attested release that is not Latest passes"
+: >"$work/gh-calls"
+run check_publication "$release_tag" false true "$downloads/$image_name" "$downloads/$image_name.sha256"
+if ((status == 0)) && said "the Latest release is v0.13.0" &&
+  grep -qxF "gh release verify $release_tag --repo jlevy/metabrowser" "$work/gh-calls" &&
+  grep -qxF "gh release verify-asset $release_tag $downloads/$image_name --repo jlevy/metabrowser" "$work/gh-calls" &&
+  grep -qxF "gh release verify-asset $release_tag $downloads/$image_name.sha256 --repo jlevy/metabrowser" "$work/gh-calls"; then
+  pass "a published, immutable, attested release that is not Latest passes, with the release and each asset verified"
 else
-  fail "a published release: status $status: $(cat "$work/out")"
+  fail "a published release: status $status: $(cat "$work/out"); gh ran: $(cat "$work/gh-calls")"
 fi
+verify_ok=0
+run check_publication "$release_tag" false true "$downloads/$image_name"
+if ((status != 0)) && said "gh release verify $release_tag failed"; then
+  pass "a published release whose release attestation does not verify fails"
+else
+  fail "a release attestation that does not verify: status $status: $(cat "$work/out")"
+fi
+verify_ok=1
+verify_asset_ok=0
+run check_publication "$release_tag" false true "$downloads/$image_name"
+if ((status != 0)) && said "gh release verify-asset $release_tag $image_name failed"; then
+  pass "a published release whose asset does not verify fails"
+else
+  fail "an asset that does not verify: status $status: $(cat "$work/out")"
+fi
+verify_asset_ok=1
 latest_tag="$release_tag"
 run check_publication "$release_tag" false true "$downloads/$image_name"
 if ((status != 0)) && said "is the repository's Latest release"; then
@@ -990,39 +1052,140 @@ else
 fi
 unset -f gh
 
+# tag_commit, for a lightweight tag, an annotated one, and a tag on something else.
+tag_sha=0123456789abcdef0123456789abcdef01234567
+gh() {
+  case "$*" in
+    *"git/ref/tags/macos-v1.0.0 "*) echo "commit $tag_sha" ;;
+    *"git/ref/tags/macos-v1.0.1 "*) echo "tag fedcba9876543210fedcba9876543210fedcba98" ;;
+    *"git/tags/fedcba9876543210fedcba9876543210fedcba98 "*) echo "commit $tag_sha" ;;
+    *"git/ref/tags/macos-v1.0.2 "*) echo "tree $tag_sha" ;;
+    *) return 1 ;;
+  esac
+}
+if [[ "$(tag_commit macos-v1.0.0)|$(tag_commit macos-v1.0.1)" == "$tag_sha|$tag_sha" ]]; then
+  pass "a lightweight tag and an annotated one both name their commit"
+else
+  fail "tag_commit gave: $(tag_commit macos-v1.0.0 2>&1)|$(tag_commit macos-v1.0.1 2>&1)"
+fi
+for bad in macos-v1.0.2 macos-v1.0.3; do
+  run tag_commit "$bad"
+  if ((status != 0)); then
+    pass "tag_commit stops for $bad, a tag on no commit or no tag"
+  else
+    fail "tag_commit accepted $bad: $(cat "$work/out")"
+  fi
+done
+unset -f gh
+
+# ── The app's identity against the tag ───────────────────────
+expect_identity() {
+  local label="$1" want="$2" problems
+  shift 2
+  problems="$(release_identity_problems "$@" "$version_now" "$tag_sha")"
+  if [[ -z "$want" && -z "$problems" ]] || [[ -n "$want" && "$problems" == *"$want"* ]]; then
+    pass "$label"
+  else
+    fail "$label: the problems were: ${problems:-none}"
+  fi
+}
+expect_identity "the release variant, version, and commit pass" "" \
+  io.github.jlevy.metabrowser "$version_now" "${tag_sha:0:7}"
+expect_identity "a development build is not the release" "not the release variant" \
+  io.github.jlevy.metabrowser.dev "$version_now" "${tag_sha:0:7}"
+expect_identity "another version is not the release" "not $version_now" \
+  io.github.jlevy.metabrowser 9.9.9 "${tag_sha:0:7}"
+expect_identity "another commit, with the same VERSION, is not the release" "not from $tag_sha" \
+  io.github.jlevy.metabrowser "$version_now" 89abcde
+expect_identity "a build with uncommitted changes is not the release" "with uncommitted changes" \
+  io.github.jlevy.metabrowser "$version_now" "${tag_sha:0:7}-dirty"
+expect_identity "a build that records no commit is not the release" "records no source commit" \
+  io.github.jlevy.metabrowser "$version_now" ""
+expect_identity "a commit shorter than git's short hash is not taken as a match" "not from $tag_sha" \
+  io.github.jlevy.metabrowser "$version_now" 0123
+
 # ── check-release.sh, end to end, as far as Linux goes ───────
-# With an exported gh stand-in that serves the draft above: BUILT=ci with no attestation
-# stops at the provenance step, before anything that needs a Mac.
+# With an exported gh stand-in that serves the release above, as a draft or, with
+# stub_published=1, published: each case stops at the step it is about, and a good
+# release reaches step 6, the quarantine helper, which needs a Mac's swiftc.
 gh() {
   case "$1 $2" in
-    "release view") release_json "$release_tag" true false "sha256:$image_sha" ;;
+    "release view")
+      if [[ "${stub_published:-0}" == 1 ]]; then
+        release_json "$release_tag" false true "${stub_digest:-sha256:$image_sha}"
+      else
+        release_json "$release_tag" true false "${stub_digest:-sha256:$image_sha}"
+      fi
+      ;;
     "release download") cp "$downloads/${*:7:1}" "${*: -1}/" ;;  # release download TAG --repo R --pattern ASSET --dir DIR
     "attestation verify") return 1 ;;
+    "release verify") [[ "${stub_verify:-ok}" == ok ]] ;;
+    "release verify-asset") return 0 ;;
+    "api repos/jlevy/metabrowser/git/ref/tags/$release_tag") echo "commit 0123456789abcdef0123456789abcdef01234567" ;;
+    "api repos/jlevy/metabrowser/immutable-releases") echo true ;;
+    "api repos/jlevy/metabrowser/releases/latest") echo v0.13.0 ;;
     *) return 99 ;;
   esac
 }
-export -f gh release_json
+swiftc() {
+  echo "swiftc is not here" >&2
+  return 1
+}
+export -f gh release_json swiftc
 export release_tag image_sha downloads image_name
-run env TAG="$release_tag" BUILT=ci scripts/check-release.sh
+team=A1B2C3D4E5
+run env TAG="$release_tag" BUILT=ci EXPECTED_TEAM_ID="$team" scripts/check-release.sh
 if ((status != 0)) && said "checksum: $image_name matches" &&
   said "BUILT=ci, and $image_name has no build provenance attestation"; then
   pass "check-release.sh with BUILT=ci checks the checksum and digest, then stops without an attestation"
 else
   fail "check-release.sh with BUILT=ci and no attestation: status $status: $(cat "$work/out")"
 fi
-run env TAG="$release_tag" scripts/check-release.sh
+run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team" stub_digest="sha256:$(printf '0%.0s' {1..64})" scripts/check-release.sh
+if ((status != 0)) && said "GitHub's digest for $image_name is" && ! said "checksum: $image_name matches"; then
+  pass "check-release.sh stops at the checksum step when GitHub's digest differs from the download"
+else
+  fail "check-release.sh with a wrong digest: status $status: $(cat "$work/out")"
+fi
+run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team" stub_published=1 stub_verify=fail scripts/check-release.sh
+if ((status != 0)) && said "build provenance: none" && said "gh release verify $release_tag failed"; then
+  pass "check-release.sh stops at the publication step when a published release's attestation does not verify"
+else
+  fail "check-release.sh with an unverified release: status $status: $(cat "$work/out")"
+fi
+run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team" stub_published=1 scripts/check-release.sh
+if ((status != 0)) && said "release attestation: verified for $release_tag" && said "could not build scripts/quarantine.swift"; then
+  pass "check-release.sh runs every check before the quarantine on a good published release, and stops only for swiftc"
+else
+  fail "check-release.sh on a good published release: status $status: $(cat "$work/out")"
+fi
+run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team" scripts/check-release.sh
+if ((status != 0)) && said "immutable releases are on, so publishing makes it immutable" && said "could not build scripts/quarantine.swift"; then
+  pass "check-release.sh checks a draft's immutable releases before the quarantine"
+else
+  fail "check-release.sh on a good draft: status $status: $(cat "$work/out")"
+fi
+for team_case in "" "a1b2c3d4e5" "TOO-LONG-TEAM"; do
+  run env TAG="$release_tag" BUILT=local EXPECTED_TEAM_ID="$team_case" scripts/check-release.sh
+  if ((status != 0)) && said "EXPECTED_TEAM_ID must be the publisher's 10-character Team ID"; then
+    pass "check-release.sh refuses EXPECTED_TEAM_ID '$team_case'"
+  else
+    fail "check-release.sh with EXPECTED_TEAM_ID '$team_case': status $status: $(cat "$work/out")"
+  fi
+done
+run env TAG="$release_tag" EXPECTED_TEAM_ID="$team" scripts/check-release.sh
 if ((status != 0)) && said "BUILT must be local or ci"; then
   pass "check-release.sh refuses to run without BUILT"
 else
   fail "check-release.sh without BUILT: status $status: $(cat "$work/out")"
 fi
-run env TAG=macos-v99.0.0 BUILT=local scripts/check-release.sh
+run env TAG=macos-v99.0.0 BUILT=local EXPECTED_TEAM_ID="$team" scripts/check-release.sh
 if ((status != 0)) && said "check out the release's commit"; then
   pass "check-release.sh refuses a tag whose version this checkout does not have"
 else
   fail "check-release.sh for another version: status $status: $(cat "$work/out")"
 fi
-unset -f gh release_json
+unset -f gh release_json swiftc
 
 # ── The launch check's backup ────────────────────────────────
 # A defaults stand-in that keeps each domain as a file, and the release identity's
@@ -1091,6 +1254,97 @@ if [[ "$(tr '\n' ' ' <"$work/translocation")" == "translocated installed " ]]; t
   pass "a path under AppTranslocation is translocated, and one in Applications is not"
 else
   fail "is_translocated_path judged: $(tr '\n' ' ' <"$work/translocation")"
+fi
+
+translocated_path="/private/var/folders/xy/abc/T/AppTranslocation/0A1B2C3D/d/Metabrowser.app/Contents/MacOS/Metabrowser"
+moved_path="/Applications/Metabrowser.app/Contents/MacOS/Metabrowser"
+if ran_as_expected "$translocated_path" translocated && ran_as_expected "$moved_path" installed &&
+  ! ran_as_expected "$moved_path" translocated && ! ran_as_expected "$translocated_path" installed; then
+  pass "the launch check fails a first launch that is not translocated, and a moved copy that still is"
+else
+  fail "ran_as_expected judged a launch wrongly"
+fi
+
+# A launch check that ended before restoring: the next run, and make clean, find it.
+leftovers="$work/leftovers"
+mkdir -p "$leftovers/launch-check-20261117T090000Z/backup" "$leftovers/launch-check-20261117T100000Z/backup"
+: >"$leftovers/launch-check-20261117T090000Z/backup/complete"
+if [[ "$(leftover_launch_checks "$leftovers")" == "$leftovers/launch-check-20261117T090000Z" &&
+  -z "$(leftover_launch_checks "$work/no-such-build")" ]]; then
+  pass "a launch check's complete backup is found, and an incomplete one, which cleared nothing, is not"
+else
+  fail "leftover_launch_checks found: $(leftover_launch_checks "$leftovers")"
+fi
+mkdir -p "$work/clean/scripts" "$work/clean/build/launch-check-20261117T090000Z/backup" "$work/clean/.build"
+cp Makefile "$work/clean/"
+cp scripts/common.sh scripts/check-release-lib.sh "$work/clean/scripts/"
+: >"$work/clean/build/launch-check-20261117T090000Z/backup/complete"
+if ! make -s -C "$work/clean" clean >"$work/out" 2>&1 && [[ -f "$work/clean/build/launch-check-20261117T090000Z/backup/complete" ]] &&
+  said "scripts/launch-release.sh --restore"; then
+  pass "make clean keeps build/ while it holds a launch check's backup, and names the restore"
+else
+  fail "make clean with a launch check's backup: $(cat "$work/out")"
+fi
+rm -rf "$work/clean/build/launch-check-20261117T090000Z"
+if make -s -C "$work/clean" clean >"$work/out" 2>&1 && [[ ! -e "$work/clean/build" && ! -e "$work/clean/.build" ]]; then
+  pass "make clean removes build/ and .build when no backup is left"
+else
+  fail "make clean without a backup: $(cat "$work/out")"
+fi
+
+# --restore, end to end, with the defaults stand-in exported.
+defaults() {
+  case "$1" in
+    read) [[ -f "$defaults_store/$2" ]] ;;
+    export) cp "$defaults_store/$2" "$3" ;;
+    import) cp "$3" "$defaults_store/$2" ;;
+    delete) rm -f "$defaults_store/$2" ;;
+    *) return 99 ;;
+  esac
+}
+echo "the owner's settings" >"$defaults_store/$release_id"
+echo "the owner's session" >"$session_file"
+backup_release_state "$work/interrupted/backup" "$release_id"
+export defaults_store
+export -f defaults
+run scripts/launch-release.sh --restore "$work/interrupted"
+if ((status == 0)) && [[ ! -e "$work/interrupted" ]] &&
+  [[ "$(cat "$defaults_store/$release_id")|$(cat "$session_file")" == "the owner's settings|the owner's session" ]]; then
+  pass "launch-release.sh --restore puts back an interrupted run's state and removes its folder"
+else
+  fail "launch-release.sh --restore: status $status: $(cat "$work/out")"
+fi
+run scripts/launch-release.sh --restore "$work/interrupted"
+if ((status != 0)) && said "could not restore"; then
+  pass "launch-release.sh --restore without a backup fails"
+else
+  fail "launch-release.sh --restore without a backup: status $status: $(cat "$work/out")"
+fi
+unset -f defaults
+rm -f "$defaults_store/$release_id" "$session_file"
+
+# ── The metab floor ──────────────────────────────────────────
+mkdir -p "$work/floor/Sources/ShellCore/Setup"
+run metab_floor_released
+if said "no longer declares"; then
+  fail "metab_floor_released cannot read this checkout's declaration: $(cat "$work/out")"
+else
+  pass "metab_floor_released reads this checkout's MetabRequirement.isReleased (released: $( ((status == 0)) && echo yes || echo no))"
+fi
+sed 's/public static let isReleased = false/public static let isReleased = true/' Sources/ShellCore/Setup/MetabVersion.swift \
+  >"$work/floor/Sources/ShellCore/Setup/MetabVersion.swift"
+if (cd "$work/floor" && metab_floor_released); then
+  pass "an official release goes ahead once MetabRequirement.isReleased is true"
+else
+  fail "metab_floor_released refused isReleased = true"
+fi
+sed 's/public static let isReleased = .*/public static var isReleased: Bool { true }/' Sources/ShellCore/Setup/MetabVersion.swift \
+  >"$work/floor/Sources/ShellCore/Setup/MetabVersion.swift"
+run bash -c 'cd "$1" && source "$2/scripts/common.sh" && metab_floor_released' _ "$work/floor" "$PWD"
+if ((status != 0)) && said "no longer declares MetabRequirement.isReleased"; then
+  pass "a declaration of isReleased this does not read stops the release, rather than passing it"
+else
+  fail "a changed isReleased declaration: status $status: $(cat "$work/out")"
 fi
 
 # ── parse_identities on an unusual listing ───────────────────

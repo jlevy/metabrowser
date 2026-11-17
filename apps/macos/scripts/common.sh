@@ -305,6 +305,17 @@ date_of_epoch() {
   fi
 }
 
+# Whether the metab release the app requires is on PyPI: MetabRequirement.isReleased in
+# Sources/ShellCore/Setup/MetabVersion.swift, which the commit that publishes the floor
+# sets. Until it is, no downloader's installed metab meets the app's floor, so an
+# official release waits for it. Stops when the declaration is no longer the one read.
+metab_floor_released() {
+  local line
+  line="$(grep -E '^ *public static let isReleased = (true|false)$' Sources/ShellCore/Setup/MetabVersion.swift)" ||
+    die "Sources/ShellCore/Setup/MetabVersion.swift no longer declares MetabRequirement.isReleased as scripts/common.sh reads it"
+  [[ "$line" == *true ]]
+}
+
 # The files a release of version "$1" for the architecture label "$2" publishes, one per
 # line: the image and its checksum. scripts/release.sh names them for the owner to
 # attach, and scripts/check-release.sh downloads and checks exactly these.

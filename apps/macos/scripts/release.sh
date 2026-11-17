@@ -51,6 +51,9 @@ if [[ "$NOTARIZE" == 1 ]]; then
   if [[ -z "${APPLE_KEYCHAIN_PROFILE:-}" && -z "${APPLE_API_KEY:-}" ]]; then
     problems+=("no notary credentials: set APPLE_KEYCHAIN_PROFILE, or APPLE_API_KEY and APPLE_API_KEY_ID")
   fi
+  if [[ "$variant" == release ]] && ! metab_floor_released; then
+    problems+=("MetabRequirement.isReleased is false: the metab release the app requires is not on PyPI yet, so no downloader's metab would run it; publish and verify that release, then land the commit that sets isReleased, and release from a commit that has it")
+  fi
   if [[ "$variant" == release && ! -f "$icon_source" ]]; then
     problems+=("$icon_source does not exist; an official build carries the published icon")
   fi

@@ -1,21 +1,30 @@
 #!/usr/bin/env bash
-# Launches a downloaded release as its downloader would, at the Mac, and records what
+# Launches a downloaded release as its downloader would, at the Mac, and checks what
 # macOS did: the app copied out of the image into a scratch Downloads folder, still
-# quarantined; a first launch, through Gatekeeper's prompt, which App Translocation runs
-# from a randomized path; a relaunch; a move from Terminal; and a move in Finder.
-# Interactive by design, and never run in CI. scripts/check-release.sh runs it with
-# LAUNCH=1, after its other checks pass:
+# quarantined; a first launch, through Gatekeeper's prompt, which App Translocation must
+# run from a randomized path; a relaunch; a move from Terminal; and a move in Finder,
+# after which it must not be translocated. Interactive by design, and never run in CI.
+# scripts/check-release.sh runs it with LAUNCH=1, after its other checks pass:
 #
-#   make macos-check-release TAG=macos-vX.Y.Z BUILT=local LAUNCH=1
+#   make macos-check-release TAG=macos-vX.Y.Z BUILT=local EXPECTED_TEAM_ID=TEAMID LAUNCH=1
 #   scripts/launch-release.sh DMG
+#   scripts/launch-release.sh --restore build/launch-check-TIME   # after an interrupted run
+#
+# It exits nonzero on any miss: a first launch that is not translocated, a launch after
+# the Finder move that is, a copy out of the image that is not quarantined, and any
+# confirmation not answered y. The relaunch and the Terminal move are recorded, not
+# judged: their outcome is what the run measures.
 #
 # It runs the unmodified release bundle, whose identity is an installed release's, so it
-# refuses while any Metabrowser runs, backs up that identity's defaults, the session
-# both variants share, and its recent documents into build/, clears them so the launch
-# is a first launch, and restores them when it ends; a backup it could not restore stays
-# in build/, and the script says where. Each scratch copy is unregistered from
-# LaunchServices afterwards, as scripts/check-setup-flows.sh does. On a VM or another
-# account, which the runbook prefers, none of that state is the owner's.
+# refuses while any Metabrowser runs, backs up that identity's defaults, the session both
+# variants share, and its recent documents into build/launch-check-TIME/backup, clears
+# them so the launch is a first launch, and restores them when it ends. A run that ends
+# before restoring (killed, or the Mac off) leaves the backup as the only copy: the next
+# run refuses until `--restore` puts it back, and `make clean` refuses to delete it. It
+# does not back up or clear the identity's WebKit data, caches, HTTP storage, or saved
+# window state, or the server logs, which a launch also writes. Each scratch copy is
+# unregistered from LaunchServices afterwards, as scripts/check-setup-flows.sh does. On a
+# VM or another account, which the runbook prefers, none of that state is the owner's.
 #
 # Its last lines are the record of the run for the release record (README.md, Building a
 # Release).
@@ -26,11 +35,24 @@ source scripts/common.sh
 # shellcheck source=check-release-lib.sh
 source scripts/check-release-lib.sh
 
-dmg="${1:?usage: scripts/launch-release.sh DMG}"
+variant_settings release
+
+if [[ "${1:-}" == --restore ]]; then
+  folder="${2:?usage: scripts/launch-release.sh --restore build/launch-check-TIME}"
+  restore_release_state "$folder/backup" "$bundle_id" ||
+    die "could not restore $bundle_id's state from $folder/backup, which is kept"
+  rm -rf "$folder"
+  echo "Restored $bundle_id's defaults, session, and recent documents, and removed $folder"
+  exit 0
+fi
+
+dmg="${1:?usage: scripts/launch-release.sh DMG, or --restore FOLDER}"
+leftover="$(leftover_launch_checks "$PWD/build")"
+[[ -z "$leftover" ]] ||
+  die "an earlier launch check ended before restoring $bundle_id's state, and its backup is the only copy; restore it first: scripts/launch-release.sh --restore $(head -n 1 <<<"$leftover")"
 [[ -f "$dmg" ]] || die "$dmg does not exist"
 [[ "${CI:-}" != true ]] || die "the launch check is interactive and never runs in CI"
 [[ -t 0 ]] || die "the launch check is interactive: run it in Terminal at the Mac"
-variant_settings release
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
 running_pids() {
@@ -61,10 +83,13 @@ cleanup() {
     "$lsregister" -u "$copy" 2>/dev/null || note "could not unregister $copy"
   done
   [[ ! -d "$mounted/$product.app" ]] || detach_image "$mounted"
-  if restore_release_state "$state/backup" "$bundle_id"; then
+  if [[ ! -f "$state/backup/complete" ]]; then
+    note "the backup did not complete, so nothing of $bundle_id's was cleared"
+    rm -rf "$state"
+  elif restore_release_state "$state/backup" "$bundle_id"; then
     rm -rf "$state"
   else
-    check_fail "could not restore $bundle_id's defaults, session, and recent documents; the backup is in $state/backup"
+    check_fail "could not restore $bundle_id's defaults, session, and recent documents, which are cleared; the backup is in $state/backup: scripts/launch-release.sh --restore $state"
   fi
   exit "$(check_status "$status")"
 }
@@ -79,20 +104,23 @@ step() {
   read -r -p "   Press Return when done. " _
 }
 
-# Asks a yes-or-no question and records the answer.
+# Asks a yes-or-no question and records the answer; anything but y is a failed check.
 ask() {
   local answer
   read -r -p "   $1 [y/n] " answer
   record+=("$1 ${answer:-no answer}")
+  [[ "$answer" == y ]] || check_fail "$1 The answer was '${answer:-none}'."
 }
 
 # Launches the copy at "$1" as a double-click in Finder does, waits for the person at the
-# Mac, then records the path it runs from and whether that is translocated.
+# Mac, then records the path it runs from and whether that is translocated. "$3" is
+# translocated or installed, where it must run (ran_as_expected), or measure, to record
+# it only.
 launch() {
-  local copy="$1" label="$2" pid path
+  local copy="$1" label="$2" expect="$3" pid path where
   registered+=("$copy")
   open "$copy"
-  step "$label" "${@:3}"
+  step "$label" "${@:4}"
   pid="$(running_pids | head -n 1)"
   if [[ -z "$pid" ]]; then
     check_fail "$label: no Metabrowser is running"
@@ -100,12 +128,12 @@ launch() {
     return
   fi
   path="$(ps -o command= -p "$pid")"
-  if is_translocated_path "$path"; then
-    record+=("$label: translocated ($path)")
-  else
-    record+=("$label: not translocated ($path)")
-  fi
+  if is_translocated_path "$path"; then where=translocated; else where="not translocated"; fi
+  record+=("$label: $where ($path)")
   echo "   runs from: $path"
+  if [[ "$expect" != measure ]] && ! ran_as_expected "$path" "$expect"; then
+    check_fail "$label: it ran $where, and it must run $expect"
+  fi
 }
 
 backup_release_state "$state/backup" "$bundle_id"
@@ -117,27 +145,28 @@ detach_image "$mounted"
 if xattr -p com.apple.quarantine "$downloads/$product.app" >/dev/null 2>&1; then
   record+=("the copy in Downloads is quarantined, as the image's contents are")
 else
-  # Recorded, since it means a copy out of a quarantined image is not quarantined here.
+  # A failed check, and quarantined anyway, so the launches still measure something.
+  check_fail "the app copied out of the quarantined image is not quarantined"
   swiftc -O scripts/quarantine.swift -o "$state/quarantine" 2>/dev/null ||
     die "could not build scripts/quarantine.swift, which needs Xcode"
   "$state/quarantine" "$downloads/$product.app" >/dev/null || die "could not quarantine the copy"
   record+=("the copy in Downloads was not quarantined, so it was quarantined as a download is (simulated)")
 fi
 
-launch "$downloads/$product.app" "First launch, from the Downloads folder" \
+launch "$downloads/$product.app" "First launch, from the Downloads folder" translocated \
   "Gatekeeper asks whether to open Metabrowser, downloaded from the internet: choose Open." \
   "Then the launch notice: \"Move Metabrowser to Applications\", saying macOS runs it from" \
   "a temporary, read-only copy. Leave it open."
 ask "Did Gatekeeper ask once, and the launch notice say it runs from a temporary copy?"
 quit_app
 
-launch "$downloads/$product.app" "Relaunch, from the same place" \
+launch "$downloads/$product.app" "Relaunch, from the same place" measure \
   "Gatekeeper should not ask again. Note whether the launch notice appears."
 ask "Did it open without Gatekeeper asking?"
 quit_app
 
 mv "$downloads/$product.app" "$moved/$product.app"
-launch "$moved/$product.app" "After a move from Terminal (mv)" \
+launch "$moved/$product.app" "After a move from Terminal (mv)" measure \
   "Note whether the launch notice appears: a move in Finder is what Apple says ends translocation."
 quit_app
 
@@ -145,10 +174,14 @@ open "$moved"
 open "$finder"
 step "Move it in Finder" \
   "Drag Metabrowser.app from \"$(basename "$moved")\" to \"$(basename "$finder")\" in Finder."
-[[ -d "$finder/$product.app" ]] || check_fail "$finder/$product.app is not there; was it dragged?"
-launch "$finder/$product.app" "After a move in Finder" \
-  "The launch notice should not appear: a copy moved in Finder is not translocated."
-quit_app
+if [[ -d "$finder/$product.app" ]]; then
+  launch "$finder/$product.app" "After a move in Finder" installed \
+    "The launch notice should not appear: a copy moved in Finder is not translocated."
+  ask "Did it open without the launch notice?"
+  quit_app
+else
+  check_fail "$finder/$product.app is not there; was it dragged?"
+fi
 
 echo
 echo "Launch record for $(basename "$dmg") on macOS $(sw_vers -productVersion), $(date -u '+%Y-%m-%d %H:%M UTC'):"

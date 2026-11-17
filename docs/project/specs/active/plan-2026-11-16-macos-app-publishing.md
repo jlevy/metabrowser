@@ -526,8 +526,10 @@ approves `macos-release` deployments only in the web UI ([Who Can Sign](#who-can
     certificate, and `codesign` builds the chain only from keychains on the search list.
   - Create the release keychain with
     `security create-keychain ~/Library/Keychains/metabrowser-release.keychain-db`,
-    typing its password at the prompt (never `-p`); keep it on the user search list; and
-    make it lock on sleep and after 15 minutes idle with
+    typing its password at the prompt (never `-p`); add it to the user search list,
+    which `create-keychain` does not do on macOS 26, with the
+    `security list-keychains -d user -s` command the doctor prints, which keeps the
+    keychains already on it; and make it lock on sleep and after 15 minutes idle with
     `security set-keychain-settings -l -u -t 900` on it.
   - Move the Developer ID Application identity into it: export it from the login
     keychain as a `.p12`; import it with `security import FILE -k KEYCHAIN -x`, with
@@ -880,11 +882,10 @@ owner’s Mac.
   ([macOS App Releases](../../../publishing.md#macos-app-releases)). The recommendation
   was the agent, as it creates the Python package’s tag; from Phase 2 that command
   starts the release workflow, whose deployment only the owner approves, in the web UI.
-  The decision as relayed has the agent create the tag after the owner approves the
-  image’s SHA-256 and notes, which is later than step 2 of
-  [Release Flow](#release-flow), where the tag comes before the build and the draft
-  (`gh release create --verify-tag` refuses a missing tag).
-  Until the owner settles which, the runbook follows Release Flow.
+  The order is Release Flow’s: the agent creates the tag after the owner approves
+  `RELEASE_COMMIT`, at its step 2, before the build and the draft
+  (`gh release create --verify-tag` refuses a missing tag), and the owner approves the
+  image’s SHA-256 and the notes before the draft is published.
 
 ## References
 
