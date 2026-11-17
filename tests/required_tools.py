@@ -63,6 +63,8 @@ def require_git() -> str:
 MAC_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 CHROME_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
 
+_chrome_asked = False
+
 
 def require_chrome() -> str:
     """Return a Chrome for the tests that measure paint in a real browser, or skip.
@@ -70,8 +72,14 @@ def require_chrome() -> str:
     Chrome is not a prerequisite of the repository, so its absence skips, with the reason
     ``docs/e2e-testing.md`` lists; strict mode turns that skip into a failure in CI, whose
     runners have Chrome. ``CHROME_BIN`` names one explicitly.
+
+    Every test that drives Chrome comes through here, so this is where the request is
+    noted: ``tests/suite_gates.py`` fails one that is not in the Chrome tier, which would
+    otherwise run beside other workers.
     """
 
+    global _chrome_asked
+    _chrome_asked = True
     named = os.environ.get("CHROME_BIN")
     if named:
         return named
@@ -82,6 +90,14 @@ def require_chrome() -> str:
         if found is not None:
             return found
     pytest.skip("Chrome is not installed")
+
+
+def take_chrome_request() -> bool:
+    """Whether a test asked for Chrome since the last call; asking again resets it."""
+
+    global _chrome_asked
+    asked, _chrome_asked = _chrome_asked, False
+    return asked
 
 
 # For a whole module or a parametrized case, where no test body is at hand to call the

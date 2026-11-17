@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import suite_gates
+from tests import suite_gates, suite_tiers
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -50,6 +50,16 @@ exit 1
 GH_GUARD_LOG_ENV = "METABROWSER_TEST_GH_LOG"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--shard",
+        type=suite_tiers.parse_shard,
+        default=None,
+        metavar="I/N",
+        help="run the Ith of N disjoint parts of the selected tests (tests/suite_tiers.py)",
+    )
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live_github: an opt-in test that talks to github.com with the real gh"
@@ -60,8 +70,13 @@ def pytest_configure(config: pytest.Config) -> None:
         "file system, or Apple's git shim; `make test-macos` runs these alone and fails "
         "if one skips",
     )
-    # The hooks that judge a skip against its tier; see tests/suite_gates.py.
+    for marker, meaning in suite_tiers.MARKER_HELP.items():
+        config.addinivalue_line("markers", f"{marker}: {meaning}")
+    # The hooks that judge a skip against its tier, and a marker against its meaning; see
+    # tests/suite_gates.py.
     config.pluginmanager.register(suite_gates)
+    # The chrome marker and --shard; see tests/suite_tiers.py.
+    config.pluginmanager.register(suite_tiers)
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
