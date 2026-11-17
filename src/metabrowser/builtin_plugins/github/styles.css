@@ -1479,9 +1479,9 @@
    type (docs/design-system.md, "Stacks"). The label is never cut for the line or covered by
    it. Where the line has no room, its statuses and their dot give way first, whole, never
    cut short with an ellipsis, and its totals stay; where even the totals have none, the
-   whole line goes. That is the wrap below:
-   the line's own floor, its smallest width (`min-width: min-content`, which the statuses'
-   track adds nothing to), is all it asks of the heading's first line, and a line that
+   whole line goes. That is the wrap below: the line's own floor, its smallest width
+   (`min-width: min-content`, the dot and the totals, to which the statuses and the note add
+   nothing), is all it asks of the heading's first line, and a line that
    cannot have it wraps to a second line, which the heading's height leaves out of view.
    Every item is a box of the heading's one line height, so its first line is exactly that
    tall and nothing of the second shows. Measured in headless Chrome 152 in both themes by
@@ -1507,29 +1507,52 @@
   padding: 0;
   text-overflow: ellipsis;
 }
+/* The muted dot, then the line, then "(estimated)" when its totals are not exact. The line
+   and the note are one line of a box that wraps: the note, the later item, wraps whole onto
+   a second line, which the box's height leaves out of view, before the line gives anything
+   up, and the line, never wider than the box, never wraps. The dot stands outside that flow
+   in the box's leading padding, so the box's floor is the dot and the line's totals. It is
+   the box's first child, which the SDK draws hidden from assistive technology; the shell
+   alone styles its punctuation class.
+   `--github-pulls-stack-dot` is the dot's width: measured in Chrome 152 in the nav's type,
+   "·" is 3.24 px of its 13 px, 0.25 em. */
 .github-pulls-stack-change {
+  --github-pulls-stack-dot: 0.25em;
   display: flex;
+  position: relative;
   flex: 1 1 0;
+  flex-wrap: wrap;
   align-items: baseline;
   min-width: min-content;
   height: var(--github-pulls-stack-line);
+  overflow: hidden;
   column-gap: 6px;
+  padding-inline-start: calc(var(--github-pulls-stack-dot) + 6px);
   font-size: var(--nav-font-size);
   white-space: nowrap;
 }
+.github-pulls-stack-change > [aria-hidden="true"]:first-child {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  inline-size: var(--github-pulls-stack-dot);
+  text-align: center;
+}
 /* Its statuses are shown whole or not at all, as a row's are (`.github-pulls-change-line`). */
 .github-pulls-stack-heading > .github-pulls-stack-change > .change-line {
+  max-width: 100%;
   height: var(--github-pulls-stack-line);
 }
 /* "(estimated)" after totals that are not exact, muted as the Diff summary's is, a qualifier
-   of the totals. It gives way first, before the statuses, and never takes the totals' room:
-   its floor is nothing. */
+   of the totals. It gives way first, whole, before the statuses, and never takes the totals'
+   room: it may break anywhere, which no line shows, so its floor is a character and the
+   line's floor is its totals. Before, it shrank first but took a share of every squeeze, so
+   the statuses went at the first pixel short and left a blank run where they had been. */
 .github-pulls-stack-change-note {
-  flex: 0 1000 auto;
-  min-width: 0;
-  overflow: hidden;
+  flex: none;
   color: var(--muted);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 /* While the line is read, the heading holds the shell's pending placeholder where it will
    be: the navigation tally's gray block and slow pulse (`.tally-pending`), shown after the
@@ -1586,7 +1609,7 @@
    Above it the name ends in an ellipsis. The avatar's share is its size and the identity's
    gap (`.actor-avatar`, `.actor-identity`); a failed avatar gives its box to the person
    glyph, so the name's share is still there. */
-/* A Pulls row's avatar is a tenth smaller than the shell's (`--actor-avatar-size`, 18 px):
+/* A Pulls row's avatar is a tenth smaller than the shell's `--actor-avatar-size`, rounded:
    the number's line is secondary to the title above it. */
 .github-pulls-by {
   --actor-avatar-size: 16px;

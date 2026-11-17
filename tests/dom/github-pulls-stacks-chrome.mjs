@@ -177,7 +177,7 @@ const LIST = `(() => {
         textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
         // The state icon is on the title's line, centred on it, above the number's line; the
         // link holds no chevron.
-        withTitle: icon.bottom <= meta.top + 0.5,
+        withTitle: icon.top >= title.top - 0.5 && icon.bottom <= title.bottom + 0.5 && icon.bottom <= meta.top + 0.5,
         iconOffTitle: round((icon.top + icon.bottom) / 2 - (title.top + title.bottom) / 2),
         iconFromInset: round(icon.left - inset),
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
@@ -633,7 +633,7 @@ try {
           Math.abs(row.titleToEnd) < 0.5 &&
           Math.abs(row.titleFromInset - row.textColumn) < 0.5 &&
           row.withTitle &&
-          Math.abs(row.iconOffTitle) < 1 &&
+          Math.abs(row.iconOffTitle) < 0.5 &&
           row.linkToggles === 0 &&
           row.changeUnder &&
           row.threeLines &&

@@ -231,6 +231,7 @@ const READ = `(() => {
       label: box(label), labelCut: label.scrollWidth > label.clientWidth + 0.5,
       change: box(change), pending: box(pending), pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(line), stats: box(stats),
+      group: box(change.querySelector(".change-line-group")), statusesBox: box(statuses),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
       // Statuses are whole or out of view, on the line's hidden second line, never cut short.
@@ -461,6 +462,19 @@ async function main() {
             now.statsWhole && now.stats.right <= now.heading.right + TOLERANCE_PX,
             JSON.stringify(now.stats),
           );
+          // Statuses shown are whole on the line, its totals 6 px after them; with none
+          // shown, the totals start the line, with no blank run before them.
+          check(
+            `${at}: its totals follow its whole statuses, or start the line alone`,
+            now.statusesBox === null
+              ? near(now.stats.left, now.line.left)
+              : now.statusesShown
+                ? now.statusesBox.bottom <= now.line.bottom + TOLERANCE_PX &&
+                  now.group.right <= now.heading.right + TOLERANCE_PX &&
+                  near(now.stats.left, now.group.right + 6)
+                : near(now.stats.left, now.line.left),
+            JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
+          );
           check(
             `${at}: the name says the line in words`,
             now.name.startsWith("Stack #286: 1 added, 1 modified; 5 lines added, 0 deleted; "),
@@ -523,6 +537,11 @@ async function main() {
       "the line shows whole at the widest pane",
       measured["420 px light"]?.shown === "whole",
       JSON.stringify(measured["420 px light"]?.shown),
+    );
+    check(
+      "a narrow pane shows the line's totals alone, its statuses out of view",
+      Object.values(measured).some((at) => at?.shown === "totals only"),
+      JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.shown]))),
     );
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
     check("no page error", errors.length === 0, errors.join("\n"));

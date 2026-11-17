@@ -416,8 +416,8 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # The number's line and the age share the first line, and the title runs under the age to
-    # the row's end on the second (mb-lkkt).
+    # The title runs to the row's end on the first line, and the number's line and the age
+    # share the second (mb-lkkt; the title first since 2026-11-17).
     # The chevron and the icon are each the tree's one icon slot (mb-hmv7).
     assert (
         " ".join(columns.group(1).split())

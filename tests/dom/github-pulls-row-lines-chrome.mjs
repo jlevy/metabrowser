@@ -306,6 +306,7 @@ const READ = `(() => {
       changeLine: box(line), pending: box(pending), block: box(pending?.querySelector(".tally-pending")),
       pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(said), stats: box(stats),
+      group: box(said?.querySelector(".change-line-group") ?? null), statusesBox: box(statuses),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
       // Statuses are whole or out of view, on the line's hidden second line, never cut short.
@@ -677,6 +678,19 @@ async function main() {
                 now.changeLine.right <= now.change.right + TOLERANCE_PX,
               JSON.stringify({ stats: now.stats, line: now.changeLine }),
             );
+            // Statuses shown are whole on the line, its totals 6 px after them; with none
+            // shown, the totals start the line, with no blank run before them.
+            check(
+              `${at}: #${number}'s totals follow its whole statuses, or start the line alone`,
+              now.statusesBox === null
+                ? near(now.stats.left, now.line.left)
+                : now.statusesShown
+                  ? now.statusesBox.bottom <= now.line.bottom + TOLERANCE_PX &&
+                    now.group.right <= now.changeLine.right + TOLERANCE_PX &&
+                    near(now.stats.left, now.group.right + 6)
+                  : near(now.stats.left, now.line.left),
+              JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
+            );
           }
         }
         check(
@@ -740,6 +754,11 @@ async function main() {
       "the line shows whole at the widest pane",
       measured["420 px light"]?.[106] === "whole",
       JSON.stringify(measured["420 px light"]?.[106]),
+    );
+    check(
+      "a narrow pane shows the line's totals alone, its statuses out of view",
+      Object.values(measured).some((at) => at?.[106] === "totals only"),
+      JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.[106]]))),
     );
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
     check(
