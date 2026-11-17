@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- KPress moves to 0.3.7. The table of contents now follows the section you are reading
+  in webviews without `IntersectionObserver` through KPress’s own fallback, which
+  replaces Metabrowser’s, and a reader-pane reload on a URL with a fragment returns to
+  the saved position in WebKit.
+  Inline code, code blocks, blockquotes, and the table of contents look the same as
+  before; the styles Metabrowser added for them are now KPress’s defaults.
+  For plugin authors: `--kpress-code-border` and `--kpress-code-radius` set the edge and
+  corners of inline and block code, and KPress’s inline code is square by default.
+
 - A rendered document no longer shows a Diagnostics disclosure because KPress’s
   sanitizer removed raw HTML from it.
   The disclosure appeared above every document ending in the guideline footer comment,

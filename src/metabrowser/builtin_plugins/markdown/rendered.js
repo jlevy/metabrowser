@@ -1,7 +1,6 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { placeRendered } from "./place-rendered.js";
-import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { transclusionKey } from "./transclusion.js";
 
 let mountSequence = 0;
@@ -229,7 +228,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
                 }
               },
             })
-          : initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
+          : mb.kpressInitToc(container);
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {
         container.innerHTML = renderKpressError(error, mb);

@@ -8,14 +8,15 @@ env:
 
 This browserless session calls the exact production `mountRenderedMarkdown` path, which
 runs the Markdown link enhancer over KPress’s authored same-document TOC links before it
-initializes the installed KPress TOC module through the production observation fallback.
+initializes the installed KPress TOC module.
+The runtime has no `IntersectionObserver`, so KPress’s own scroll-listener fallback
+drives the active section.
 It pins the fragment-only link contract KPress consumes, delegated Metabrowser
 navigation, and canonical embedded-document fragment links used by modified clicks, new
 tabs, and Copy Link.
 It also pins the active section across a long heading interval, one update per animation
 frame, zero catalog reads for fragment-only links, expand-all state and accessible
-labels, complete listener disposal, and preservation of a native observer when one
-exists.
+labels, and complete listener disposal.
 
 ```console
 $ node tests/dom/markdown-toc-scrollspy-session.js
@@ -34,7 +35,6 @@ $ node tests/dom/markdown-toc-scrollspy-session.js
     "pendingFramesAfterDispose": 0,
     "tocBindingDisposed": true
   },
-  "fallbackWasScoped": true,
   "links": {
     "authoredHref": "#implementation-plan",
     "delegatedClickPrevented": true,
@@ -53,12 +53,10 @@ $ node tests/dom/markdown-toc-scrollspy-session.js
     "enhancedHref": "#implementation-plan"
   },
   "maxHeadingGeometryReadsPerUpdate": 6,
-  "nativeRuntimePreserved": true,
   "passiveScrollListener": true,
   "productionModules": {
     "kpressToc": true,
-    "renderedMarkdownMount": true,
-    "tocIntersectionFallback": true
+    "renderedMarkdownMount": true
   },
   "productionOrder": {
     "tocMountedWithoutCatalogSnapshot": true,
@@ -114,6 +112,7 @@ $ node tests/dom/markdown-toc-scrollspy-session.js
     }
   }
 }
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

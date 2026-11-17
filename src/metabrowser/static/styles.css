@@ -4517,25 +4517,6 @@ a.tab-btn {
   --kpress-measure: var(--doc-measure);
 }
 
-/* Inline and block code are two sizes of the same document surface. Give both
-   the same quiet, explicitly solid edge and square, host-adjustable geometry;
-   prose blockquotes, tables, callouts, and code-copy controls keep their own
-   independent borders. The public code tokens above carry this decision once
-   KPress ships them; these explicit selectors are the corresponding bridge for
-   the currently pinned KPress 0.3.5 and can leave with that pin. */
-.metabrowser-kpress-host .kpress code:not(pre code),
-.metabrowser-kpress-host .kpress .kpress-code {
-  border: 1px solid var(--code-border);
-  border-radius: var(--radius-document);
-}
-
-.metabrowser-kpress-host .kpress code:not(pre code) {
-  /* Tighter than KPress's default: with a quieter edge the box no longer needs
-     to stand off the glyphs, and less padding keeps inline code on the prose
-     baseline rhythm when a line carries several of them. */
-  padding: 0.1em 0.25em;
-}
-
 /* MetaBrowser's content wrapper already supplies the outer document gutter,
    and KPress's content card supplies its own breathing room. Avoid stacking
    those with KPress's standalone-page spacing at the top of the embed. */
@@ -4588,22 +4569,6 @@ a.tab-btn {
   margin-block-start: 1rem;
 }
 
-/* Blockquotes are the one place the embed deliberately adds to KPress rather
-   than deferring to it. KPress styles a blockquote with indentation alone
-   (`margin` + `padding-inline-start`, no rule and no color), which reads as an
-   ordinary indented paragraph in a dense file browser. This restores the
-   accent bar and muted text the rest of the app uses for quoted material.
-
-   It is stated here, scoped to the embed, rather than inherited from the
-   `.md-body` chrome rules below — those are scoped away from the KPress host
-   precisely so nothing reaches the document by accident. A divergence worth
-   keeping is worth naming. */
-.metabrowser-kpress-host .kpress blockquote {
-  border-left: 3px solid var(--border);
-  padding-inline-start: 1rem;
-  color: var(--muted);
-}
-
 /* The docked TOC is a quiet navigation rail beside the document, not another
    panel. Keep it scrollable without box chrome; KPress's narrow overlay drawer
    stays bordered and retains its scrollbar for definition. */
@@ -4617,21 +4582,6 @@ a.tab-btn {
   }
 }
 
-/* KPress's TOC pulls each entry's first line back by 1em (text-indent:
-   -1em against ~1.3rem of link padding), which lands the text ~5px from
-   the active-marker bar — it reads as flush against the highlight box.
-   Drop the hanging indent so wrapped lines align under the first, and
-   re-set the per-level insets from a moderate 0.75rem base (KPress's
-   full 1.3rem reads as too deep once the indent is gone), keeping the
-   upstream 0.7rem step per level. The CONTENTS title gets the same base
-   inset so it stays aligned with the level-1 entry text. */
-.metabrowser-kpress-host .kpress-toc a {
-  text-indent: 0;
-}
-.metabrowser-kpress-host .kpress-toc-title,
-.metabrowser-kpress-host .kpress-toc-level-1 > a {
-  padding-left: 0.75rem;
-}
 /* The CONTENTS title joins the app's single label tier (size arrives
    via the overridden --kpress-caps-label-size): same weight, color, and
    tracking as tabs, DIAGNOSTICS, FRONTMATTER, and table headers,
@@ -4642,21 +4592,6 @@ a.tab-btn {
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
   font-variant-caps: normal;
-}
-.metabrowser-kpress-host .kpress-toc-level-2 > a {
-  padding-left: 1.45rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-3 > a {
-  padding-left: 2.15rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-4 > a {
-  padding-left: 2.85rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-5 > a {
-  padding-left: 3.55rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-6 > a {
-  padding-left: 4.25rem;
 }
 
 /* Disclosure controls use the same label system as unselected tabs. */

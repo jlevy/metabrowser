@@ -31,23 +31,28 @@ function installedKpressTocPath() {
 async function loadProductionModules() {
   const overlayUrl = dataUrl("export function toggleBackdrop(){}");
   const runtimeUrl = dataUrl("export const behaviors={register(){}};");
+  // These follow KPress's viewport.js for a pane that is its own scroll container: its
+  // bounds are the pane's rect, and with no ResizeObserver in Node it hears only window
+  // resizes, which the disposal counts below cover.
   const viewportUrl = dataUrl(
     "export function resolveKpressViewport(){return globalThis.__tocViewport;}" +
-      "export function viewportScrollContext(){return globalThis.__tocViewportContext;}",
+      "export function viewportScrollContext(){return globalThis.__tocViewportContext;}" +
+      "export function viewportBounds(viewport){return viewport.getBoundingClientRect();}" +
+      "export function addViewportResizeListener(viewport,callback){" +
+      'window.addEventListener("resize",callback);' +
+      'return()=>window.removeEventListener("resize",callback);}',
   );
   const tocSource = fs
     .readFileSync(installedKpressTocPath(), "utf8")
     .replace('"./overlay.js"', JSON.stringify(overlayUrl))
     .replace('"./runtime.js"', JSON.stringify(runtimeUrl))
     .replace('"./viewport.js"', JSON.stringify(viewportUrl));
-  const [rendered, fallback, kpressToc, linkEnhancer] = await Promise.all([
+  const [rendered, kpressToc, linkEnhancer] = await Promise.all([
     import(pathToFileURL(path.join(markdownModuleRoot, "rendered.js")).href),
-    import(pathToFileURL(path.join(markdownModuleRoot, "toc-intersection-fallback.js")).href),
     import(dataUrl(tocSource)),
     import(pathToFileURL(path.join(markdownModuleRoot, "link-enhancer.js")).href),
   ]);
   return {
-    fallback,
     kpressToc,
     linkEnhancer,
     rendered,
@@ -182,9 +187,8 @@ function plainClick(target) {
 }
 
 (async () => {
-  const { fallback, kpressToc, linkEnhancer, rendered } = await loadProductionModules();
+  const { kpressToc, linkEnhancer, rendered } = await loadProductionModules();
   const { enhanceRenderedLinks } = linkEnhancer;
-  const { initTocWithIntersectionFallback } = fallback;
   const { initKpressToc } = kpressToc;
   const { mountRenderedMarkdown } = rendered;
   const viewport = new ElementShim("main");
@@ -236,7 +240,7 @@ function plainClick(target) {
   toc.closestMatches = new Map([[".kpress-content-with-toc", scope]]);
   toc.queryOne.set("ol", list);
   toc.queryOne.set("[data-kpress-toc-expand-all]", expandAllButton);
-  toc.queryMany.set('ol a[href^="#"]', links);
+  toc.queryMany.set("ol a[href]", links);
   const container = new ElementShim("article");
   // The render is placed through a template (place-rendered.js); the document it places
   // is the one built above, so placing it keeps the container's children.
@@ -285,6 +289,7 @@ function plainClick(target) {
     }
   };
   const viewportContext = {
+    el: viewport,
     lock() {},
     observerRoot: () => viewport,
     offScroll: (listener) => viewport.removeEventListener("scroll", listener),
@@ -329,6 +334,11 @@ function plainClick(target) {
     },
     repository: null,
   };
+  // KPress chooses its observation path when the TOC binds, so the runtime has to lack
+  // IntersectionObserver before the mount for this session to drive KPress's fallback.
+  if ("IntersectionObserver" in globalThis) {
+    throw new Error("session requires a runtime without IntersectionObserver");
+  }
   const mountHandle = mountRenderedMarkdown(
     container,
     { path: sourcePath, raw: { content: "# Plan", content_truncated: false } },
@@ -396,11 +406,6 @@ function plainClick(target) {
   embeddedContainer.dispatch("click", embeddedNewTabClick);
   embeddedHandle.dispose();
 
-  const runtime = globalThis;
-  if ("IntersectionObserver" in runtime) {
-    throw new Error("session requires a runtime without native IntersectionObserver");
-  }
-  const fallbackWasScoped = !("IntersectionObserver" in runtime);
   const passiveScrollListener = viewport.listenerOptions("scroll")[0]?.passive === true;
   flush();
   const catalogSnapshotsAfterFirstFlush = catalogSnapshots;
@@ -458,25 +463,9 @@ function plainClick(target) {
     label: expandAllButton.getAttribute("aria-label"),
   };
 
-  class NativeIntersectionObserver {}
-  runtime.IntersectionObserver = NativeIntersectionObserver;
-  let nativeSeen = false;
-  const nativeDispose = initTocWithIntersectionFallback(
-    () => {
-      nativeSeen = runtime.IntersectionObserver === NativeIntersectionObserver;
-      return () => {};
-    },
-    { cancel, runtime, schedule, windowTarget },
-  );
-  nativeDispose();
-  const nativeRuntimePreserved =
-    nativeSeen && runtime.IntersectionObserver === NativeIntersectionObserver;
-  delete runtime.IntersectionObserver;
-
   const result = {
     coalescedFrames,
     dispose: { listenersAfterDispose, pendingFramesAfterDispose, tocBindingDisposed },
-    fallbackWasScoped,
     links: {
       authoredHref,
       delegatedClickPrevented: delegatedClick.defaultPrevented,
@@ -489,12 +478,10 @@ function plainClick(target) {
       enhancedHref,
     },
     maxHeadingGeometryReadsPerUpdate: Math.max(...geometryReadsPerUpdate),
-    nativeRuntimePreserved,
     passiveScrollListener,
     productionModules: {
       kpressToc: true,
       renderedMarkdownMount: true,
-      tocIntersectionFallback: true,
     },
     productionOrder: {
       tocMountedWithoutCatalogSnapshot,
@@ -527,12 +514,10 @@ function plainClick(target) {
     opened.length !== 2 ||
     JSON.stringify(actualActive) !== JSON.stringify(expectedActive) ||
     coalescedFrames !== 1 ||
-    !fallbackWasScoped ||
     !tocMountedWithoutCatalogSnapshot ||
     catalogSnapshotsAfterFirstFlush !== 0 ||
     result.maxHeadingGeometryReadsPerUpdate > Math.ceil(Math.log2(headings.length)) + 1 ||
     !passiveScrollListener ||
-    !nativeRuntimePreserved ||
     tocExpansion.beforeExpand.collapsedRows !== 65 ||
     tocExpansion.afterExpand.collapsedRows !== 0 ||
     tocExpansion.afterExpand.expanded !== "true" ||

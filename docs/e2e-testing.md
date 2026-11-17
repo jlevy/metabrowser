@@ -57,8 +57,8 @@ identifies the responsible transform.
 `cli-ui-markdown-scrollspy.tryscript.md` applies the same pattern to rendered Markdown
 in one composed command.
 It enters through the production rendered-Markdown mount, which runs the link enhancer
-over authored same-document TOC anchors before passing them to the installed KPress TOC
-through the production observation fallback.
+over authored same-document TOC anchors before passing them to the installed KPress TOC,
+in a runtime without `IntersectionObserver` so KPress’s own scroll fallback runs.
 The transcript records the delegated target and active section through a long document,
 including frame coalescing and lifecycle disposal.
 

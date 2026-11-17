@@ -9,7 +9,7 @@ exclude-newer-span = "P14D"
 [options.exclude-newer-package]
 flowmark-rs = "2026-07-16T00:00:00Z"
 softschema = "2026-09-11T06:03:53Z"
-kpress = "2026-11-16T20:05:00Z"
+kpress = "2026-11-17T00:00:00Z"
 
 [[package]]
 name = "annotated-doc"
@@ -275,7 +275,7 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.3.6"
+version = "0.3.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frontmatter-format" },
@@ -287,9 +287,9 @@ dependencies = [
     { name = "pygments" },
     { name = "strif" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bd/73/a2fd572692c92514f177e9c8fc77e4e3118a05d89bc7697ac6d66427f56f/kpress-0.3.6.tar.gz", hash = "sha256:c2668a018613318b81fcd1731730149051b72a44f1cd500dafc4c4de1db5e350", size = 1740546, upload-time = "2026-11-16T20:04:21.744Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/1a/774ad3d015206d96fd536eb46e09b71e797c997e6463aa38b6988e2465ab/kpress-0.3.7.tar.gz", hash = "sha256:21c3f73d8d1a370aa9747a889f717b04e595b87dfcf1a1f05ea90f138a2bb1d2", size = 1744606, upload-time = "2026-11-16T23:55:23.694Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/23/f98edf70e8b56785076565bc814356994b5bff9ed0388afdc99a2be6c7d7/kpress-0.3.6-py3-none-any.whl", hash = "sha256:f34fa6044a214cb5faae0d7930c2179bb3a4d8abf7b04a20ba4e51b7958986b4", size = 1145019, upload-time = "2026-11-16T20:04:19.783Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/1f/84122e609fd86a0bd1acc91abab8d883d7ecfba289b4c5ce91e004f41f48/kpress-0.3.7-py3-none-any.whl", hash = "sha256:121b21e93e6e938de1798b9ffe8708953df4181f810541ac6e16746fe0372ad4", size = 1146553, upload-time = "2026-11-16T23:55:21.971Z" },
 ]
 
 [[package]]
@@ -447,7 +447,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.15.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "kpress", specifier = "==0.3.6" },
+    { name = "kpress", specifier = "==0.3.7" },
     { name = "markdown-it-py", specifier = "==4.2.0" },
     { name = "pathspec", specifier = ">=1.1.1" },
     { name = "prettyfmt", specifier = ">=0.4.1" },
