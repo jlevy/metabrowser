@@ -11,9 +11,8 @@ contract is consolidated as
 [File Rollup Format v0.1](../../architecture/file-rollup-format/file-rollup-format.md).
 This dated plan retains the implementation history and downstream adoption rationale;
 the format document owns the current application-independent standard, and the
-[development guide](../../../development.md#file-rollup-format-maintenance) owns the
-reference implementation’s edit, regeneration, validation, export, and verification
-workflow.
+[development guide](../../architecture/file-rollup-format/README.md) owns the reference
+implementation’s edit, regeneration, validation, export, and verification workflow.
 
 **Compatibility addendum (2026-08-14):** The transition-cycle plan below was wrong about
 its own premise. Metabrowser serves an uncached page whose asset URLs carry

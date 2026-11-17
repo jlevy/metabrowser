@@ -2,8 +2,9 @@
 
 Every data surface the browser consumes should be reachable from ``metab`` and
 pinned by a golden transcript. A table nobody checks is worse than no table, so
-this reads the parity table in the views/models/routes map and compares it to
-what the code actually registers. Kind coverage is read from executable console
+this reads the route table in the parity registry
+(``docs/project/architecture/arch-parity-registry.md``) and compares it to what the
+code actually registers. Kind coverage is read from executable console
 blocks, so mentioning a kind in surrounding prose cannot satisfy the gate.
 
 Gap rows were permitted while the debt was paid down, and are not any more:
@@ -34,7 +35,7 @@ from urllib.request import url2pathname
 from devtools import tryscript_blocks
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MAP_DOC = REPO_ROOT / "docs/project/architecture/arch-views-models-routes.md"
+REGISTRY_DOC = REPO_ROOT / "docs/project/architecture/arch-parity-registry.md"
 BUILTIN_PLUGINS = REPO_ROOT / "src/metabrowser/builtin_plugins"
 SOURCE_ROOT = REPO_ROOT / "src/metabrowser"
 GOLDEN_DIR = REPO_ROOT / "tests/golden"
@@ -492,7 +493,7 @@ def _check_functional_parity(doc: str) -> list[str]:
 
     rows = functional_parity_rows(doc)
     if not rows:
-        return ["the functional UI parity table is missing from the map document"]
+        return ["the functional UI parity table is missing from the parity registry"]
 
     problems: list[str] = []
     seen: set[str] = set()
@@ -716,10 +717,10 @@ def _check_functional_parity(doc: str) -> list[str]:
 
 def check() -> list[str]:
     problems: list[str] = []
-    doc = MAP_DOC.read_text(encoding="utf-8")
+    doc = REGISTRY_DOC.read_text(encoding="utf-8")
     rows = parity_rows(doc)
     if not rows:
-        return ["the parity table is missing from the map document"]
+        return ["the parity table is missing from the parity registry"]
 
     listed = {row.surface for row in rows}
     registered = registered_surfaces()
@@ -768,11 +769,11 @@ def main() -> int:
         for problem in problems:
             print(f"  {problem}", file=sys.stderr)
         return 1
-    rows = parity_rows(MAP_DOC.read_text(encoding="utf-8"))
+    rows = parity_rows(REGISTRY_DOC.read_text(encoding="utf-8"))
     exempt = sum(1 for row in rows if row.status == "exempt")
     covered = sum(1 for row in rows if row.status == "covered")
     kinds = len(registered_kinds())
-    functional_rows = functional_parity_rows(MAP_DOC.read_text(encoding="utf-8"))
+    functional_rows = functional_parity_rows(REGISTRY_DOC.read_text(encoding="utf-8"))
     paint_exempt = sum(row.tier == "paint-exempt" for row in functional_rows)
     print(
         f"Parity checks passed: {covered} routes covered, {exempt} exempt; "

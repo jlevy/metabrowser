@@ -2,7 +2,10 @@
 
 A Metabrowser plugin is a directory with a `manifest.toml` and an `index.js`. The
 manifest declares file kinds, preview views, optional assets, and optional Python data
-hooks. The JavaScript entry point registers renderers with the browser SDK.
+hooks. The JavaScript entry point registers renderers with the browser SDK. Every
+built-in view is a plugin of this shape;
+[Plugin System](project/architecture/arch-plugin-system.md) describes how the host loads
+them and walks through adding a file type.
 
 ## Trust Model and Discovery
 
@@ -12,9 +15,10 @@ Metabrowser discovers plugins in this order:
 2. installed Python entry points in the `metabrowser.plugins` group;
 3. directories explicitly supplied with `--plugins-dir` or `METABROWSER_PLUGINS_DIRS` in
    the process environment.
-   A `.env` file never supplies that name, nor any other but the two log names: the
-   chain walks up from the working directory, so a repository browsed from inside itself
-   would otherwise become an automatic plugin source, which is the boundary below.
+   A `.env` file cannot supply that variable: the `.env` chain walks up from the working
+   directory, so a repository browsed from inside itself would otherwise become a plugin
+   source. [Command Line](command-line.md#environment-variables) lists the variables a
+   `.env` file may set.
 
 Later plugins win plugin-name collisions.
 Kind classifiers use explicit priorities and stable discovery order as a tiebreaker.
@@ -35,44 +39,32 @@ Inspect discovery without starting the server:
 
 ```shell
 metab --plugins
-metab --plugins --json
 metab --plugin markdown
-metab --plugin markdown --json
 metab --doctor
-metab --doctor --json
 metab --doctor --plugins-dir ./examples
 ```
 
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
-operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
-It also checks that the packaged repository-cache record schemas are intact.
-It exits nonzero when any problem is found.
-All three modes support `--json` for machine-readable output.
-Discovery errors preserve any plugins that loaded successfully but make the command exit
-nonzero, so scripts cannot mistake a partial registry for a complete one.
-Human-readable data goes to standard output, while human-readable errors go to standard
-error.
+operator-directory JavaScript-only boundaries, view keys, and high-priority kind
+conflicts, and checks that the packaged repository-cache record schemas are intact.
+All three modes take `--json`, write data to standard output and errors to standard
+error, and exit nonzero on any problem, including a discovery error beside plugins that
+loaded, so a script cannot mistake a partial registry for a complete one.
 
 ## Path Identity
 
-Since SDK 0.6, the SDK uses the inventory’s escaped relative paths in API requests,
-browser navigation and catalog records.
+The SDK uses the inventory’s escaped relative paths in API requests, browser navigation,
+and catalog records.
 Keep a received `path` unchanged when passing it to another API. A literal percent sign
 in a native filename is `%25` in its identity; for example, `100%.md` has identity
 `100%25.md`. On POSIX a backslash in a filename is `%5C`, and undecodable platform bytes
 also have lossless escapes.
-The browser’s navigation API converts these identities to human-facing `/view/` URLs.
-
-Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity
-to the filesystem, and `relativize_path()` to convert a native path back to an identity.
-Those helpers, and `open_content()`, stay filesystem-only: on a subject with no
-filesystem root they raise `UnsupportedSourceCapabilityError` rather than pretending a
-path exists. A hook that only needs bytes uses the [content reader](#reading-content)
-instead, which answers on every source kind.
-`source_capabilities()` and `require_source_capability()` report what the active subject
-can do at all. Do not join an API path directly onto the served root.
-The [inventory contract](project/architecture/arch-inventory-provider.md) specifies the
-encoding and scope. `/commit/` comparison paths belong to Git’s separate address space.
+The browser’s navigation API converts these identities to human-facing `/view/` URLs,
+and a sidekick crosses to the filesystem only through the
+[Python Sidekick API](#python-sidekick-api), never by joining an API path onto the
+served root. The [inventory contract](project/architecture/arch-inventory-provider.md)
+specifies the encoding and scope.
+`/commit/` comparison paths belong to Git’s separate address space.
 
 ## Minimal Plugin
 
@@ -92,7 +84,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.7"
+sdk_version = "X.Y" # this Metabrowser's PLUGIN_SDK_VERSION
 
 [[kind]]
 id = "hello-document"
@@ -105,6 +97,11 @@ id = "card"
 label = "Hello"
 default = true
 ```
+
+Set `sdk_version` to the host’s `PLUGIN_SDK_VERSION`, from
+`src/metabrowser/plugin_loader/manifest.py`: `metab --plugin markdown` prints it as the
+built-in plugin’s `sdk_version`, and `metab --doctor` names it when a plugin declares
+another.
 
 `index.js`:
 
@@ -143,7 +140,7 @@ The `[plugin]` table supports:
 | `name` | yes | Stable lowercase URL and registry identifier. |
 | `display_name` | no | Human-readable diagnostics label. |
 | `version` | no | Plugin version string. |
-| `sdk_version` | no | Strongly recommended. Omission means the original SDK `0.1`, not the host’s current version. The resolved value must equal `PLUGIN_SDK_VERSION`. |
+| `sdk_version` | no | Strongly recommended. It must equal `PLUGIN_SDK_VERSION`; an omitted value targets the original SDK, not the host’s current one, and is refused. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
 | `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
 
@@ -158,38 +155,30 @@ Plugin CSS and module side effects therefore do not exist on an unrelated page.
 For one plugin, the host loads its automatically detected `styles.css` and every
 `extra_styles` entry in parallel and waits for them to settle.
 It then loads `extra_scripts` sequentially in manifest order and evaluates `index.js`
-last. `index.js` is fetched while the stylesheets are, and evaluated in its turn.
-Every documented `window.metabrowser` function is in place before any of a plugin’s code
-runs: while `index.js` evaluates, in a view’s `render`, and in a handler.
-The host waits for Mustache before evaluating plugin code, so `render(template, data)`
-remains synchronous even on direct navigation before idle prefetch runs.
-When several plugins declare the same kind, complete plugin descriptors load
-sequentially in stable discovery order.
-A later plugin therefore wins a duplicate `registerView` key deterministically, matching
-the manifest view registry.
+last, having fetched it beside the stylesheets.
+Every documented `window.metabrowser` function, and Mustache, is in place before any of
+a plugin’s code runs, so `render(template, data)` stays synchronous even before idle
+prefetch. When several plugins declare the same kind, they load in stable discovery
+order, so a later plugin wins a duplicate `registerView` key, matching the manifest view
+registry.
 
 The shell addresses a plugin’s files as `/plugin-static/<name>/@<stamp>/<file>`, where
 the stamp names the contents of the plugin’s directory, and a browser keeps them without
 asking until the stamp changes.
 Reach your plugin’s other files with relative URLs (`import "./part.js"`,
 `new URL("./worker.js", import.meta.url)`, `url(icon.svg)` in CSS), which inherit the
-stamp. An absolute `/plugin-static/<name>/<file>` URL still works, but is revalidated on
-every use, and a module reached both that way and by a relative URL is two module
-instances, each with its own module-level state, so use one form for a module.
-A relative URL that climbs out of your plugin moved one level: from a stamped module,
-`../other/x.js` resolves inside your own plugin’s namespace and is not found, while
-`../../other/x.js` reaches another plugin’s file at its unstamped, revalidated address.
-Plugins are not isolated from each other; reach another plugin through the SDK
-(`ensureKindAssets`), not by URL. A top-level directory named `@` and sixteen
-hexadecimal digits cannot be addressed.
+stamp. An absolute `/plugin-static/<name>/<file>` URL is revalidated on every use, and a
+module reached both ways is two instances with separate module state, so use one form.
+From a stamped module, `../other/x.js` stays inside your own plugin and is not found,
+while `../../other/x.js` reaches another plugin at its unstamped address; reach another
+plugin through `ensureKindAssets` instead, since plugins are not isolated from each
+other. A top-level directory whose name has a stamp’s form cannot be addressed.
 `src/metabrowser/asset_stamps.py` documents the policy.
 
 ### Kind Rules
 
 Each `[[kind]]` declares a stable `id`, a `match` table, and an optional `priority`.
 Multiple rules may share an ID; they act as alternatives for the same kind.
-
-Supported match fields include:
 
 | Field | Meaning |
 | --- | --- |
@@ -207,17 +196,21 @@ Supported match fields include:
 | `path_glob` | Gitignore-style pattern for the served-root-relative path. |
 
 Fields within one rule combine with AND. Rules with the same kind ID combine with OR. At
-least one match field is required.
+least one match field is required, and `ext` and `exts` are exclusive.
 Built-ins normally use priority `0`; a specialized plugin can use a higher priority to
 claim a narrower format.
-Specialized binary stores belong in installed plugins so their native readers and value
-decoders do not become mandatory Metabrowser dependencies.
 
-Content-based classification is deliberately bounded.
-JSON predicates parse only a complete document of at most 256 KiB; YAML predicates
-inspect at most the first 16 KiB. An oversized or truncated document does not match that
-content predicate, so use `basename`, `ext`, or `path_glob` when large files must be
-claimed without reading their contents.
+Kind rules apply to files Metabrowser reads as text and to JSONL streams.
+A file whose bytes sniff as binary, or whose extension is an image extension, keeps the
+built-in `binary` or `image` kind; a plugin can add a view to that kind instead.
+A format whose reader needs a native library belongs in an installed plugin, so the
+dependency is never Metabrowser’s.
+
+Content predicates are bounded: JSON predicates parse only a complete document within
+`_JSON_CLASSIFICATION_MAX_BYTES`, and YAML predicates a prefix of `_YAML_PREFIX_BYTES`,
+both in `src/metabrowser/plugin_loader/classify.py`. An oversized or truncated document
+does not match, so claim large files by `basename`, `ext`, or `path_glob`. On a Git
+revision, `path_glob` rules never match, since a blob has no served-root path.
 
 ### Views
 
@@ -238,30 +231,23 @@ render_runtime = "client"
 View order in the manifest is tab order.
 At most one view per kind may set `default = true`. A plugin may register a view for a
 kind declared by another plugin, which is useful for composing generic renderers.
+`render_runtime` documents whether the client or KPress renders the view, and a
+printable view declares a `print_profile` suited to documents or source code.
 
-`key` declares a one-letter keyboard key for the view’s tab.
-It is optional; a kind with more than one view should give each view one: `v` for a
-rendered view, `s` for a source view, and otherwise a letter of the label, as
+`key` is an optional one-letter key for the view’s tab.
+A kind with more than one view should give each view one: `v` for a rendered view, `s`
+for a source view, and otherwise a letter of the label, as
 [Keyboard Shortcuts](design-system.md#keyboard-shortcuts) in the design system sets out.
-Write it in either case: it is stored and served lowercase, as `views[].key` in the
-`/api/file` envelope, and compared without case.
+It is stored and served lowercase, as `views[].key` in the `/api/file` envelope.
 The manifest loader refuses a key that is not one ASCII letter, or that the shell
-reserves: `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`, in every kind.
-A key belongs to one view of a kind.
-When two views of one kind declare the same key, as two plugins that add views to one
-kind can, the first view in tab order keeps it, the later view is served without a key,
-and `metab --doctor` reports both plugins: the one whose view lost the key, and the one
-whose view holds it.
-A view that overrides another by id takes its place in tab order, and the report names
-the overriding plugin for it.
-A key is served only when the kind’s list has two or more views, since a single view has
-no other tab to switch to: HTML served without active content keeps Source alone, and
-serves it without `S`. `metab --show PATH` prints each view’s key, and
-`src/metabrowser/keymap.py` holds the reserved keys and the rule.
-
-`render_runtime` documents whether the view is rendered by the client or by KPress.
-Printable views should also declare a `print_profile` appropriate to documents or source
-code.
+reserves in every kind: the letters in `RESERVED_SHELL_KEYS` in
+`src/metabrowser/keymap.py`. When two views of one kind declare the same key, as two
+plugins that add views to one kind can, the first view in tab order keeps it, and
+`metab --doctor` reports both plugins.
+A view that overrides another by id takes its place in tab order.
+A key is served only when the kind’s list has two or more views: HTML served without
+active content keeps Source alone, and serves it without `S`. `metab --show PATH` prints
+each view’s key.
 
 ### Python Data Hooks
 
@@ -271,12 +257,13 @@ Installed entry-point plugins may declare HTTP data hooks:
 [[data_hook]]
 route = "summary"
 sidekick = "example_plugin.sidekick:summary_handler"
+methods = ["GET"]
 ```
 
 The handler receives a Starlette `Request` and may return a response or JSON-compatible
-data according to the route adapter.
-Each `route` must be a unique single path segment within its plugin manifest.
-The route is mounted at:
+data.
+`methods` lists `GET`, `POST`, or both, and defaults to `GET`. Each `route` must be
+a unique single path segment within its plugin manifest, mounted at:
 
 ```text
 /api/plugin/<plugin-name>/<route>
@@ -290,22 +277,21 @@ Keep handlers defensive:
 - avoid blocking the event loop with synchronous filesystem work;
 - keep domain imports inside the plugin package.
 
-A synchronous `def` handler already runs off the event loop: the dispatcher sends it
-through Starlette’s threadpool, the same way Starlette offloads its own sync endpoints.
-Reach for `async def` only when the handler awaits something.
-
-A hook may serve a large resource in bounded pieces rather than refusing it.
-The built-in binary plugin’s `chunk` route is the worked example: it reads a bounded
-window of a file’s logical bytes, reports `next_offset`, `has_more`, and the ceiling
-that applied, and carries a fingerprint so its view can tell a continued read from a
-changed file. See
-[Bounded binary byte preview](project/specs/done/plan-2026-08-11-binary-byte-preview.md)
-for the size policy and the reasoning behind the compressed-artifact bound.
+A synchronous `def` handler already runs off the event loop, in Starlette’s threadpool;
+reach for `async def` only when the handler awaits something.
+A handler that raises, or returns a status of 500 or more, is logged with its traceback,
+and the client receives a `200` response whose JSON has `type: "plugin_error"` and a
+`detail`; a view that calls a hook should recognize that shape and show a local failure.
 
 Explain a refusal in the response body, not only in the status code.
 `fetchPluginData` rejects with an `Error` carrying `status` and the parsed `payload`, so
 a view can turn `413` plus a `max_preview_bytes` field into a state naming the exact
 cutoff instead of hard-coding the limit in JavaScript.
+A hook may also serve a large resource in bounded pieces: the built-in binary plugin’s
+`chunk` route reads a bounded window, reports `next_offset`, `has_more`, and the ceiling
+that applied, and carries a fingerprint so its view can tell a continued read from a
+changed file
+([bounded binary byte preview](project/specs/done/plan-2026-08-11-binary-byte-preview.md)).
 
 #### Reading Content
 
@@ -347,56 +333,42 @@ async def summary_handler(request):
 ```
 
 - Pass back the `path` the client sent.
-  It is an inventory identity under a folder and a `GitPath` wire on a pin; either way
-  it is opaque to the hook, and `ref.identity` is the canonical spelling to echo in the
-  response.
-- `ref.fingerprint` changes exactly when the bytes can have, so it is the key for a
-  hook’s own cache and for an `ETag`. A hook never needs to know whether it is an mtime
-  hash or a blob object id.
-- `max_bytes` is required, and it bounds **bytes**, not a decoded string.
-  Decode `window.data` afterwards if the content is text; decoding first would put the
-  bound on the wrong quantity.
-  `window.has_more` reports that content continues past the window, which is how to tell
-  truncation from a short file — and it is the only trustworthy answer for a compressed
-  artifact, whose declared length lives in a trailer nothing verifies until the stream
-  is decoded.
-- `ref.stored_size` is the size the source stores: a file’s size on disk, which for a
-  compressed artifact is its compressed size, and a blob’s length on a pin.
-  Resolution already has it, so it costs no read.
-  It is `None` only for a blob a pin’s store does not hold, which no read returns
-  either. The structured plugin’s `parsed` route reports it as `size`.
-- `stat_content(ref)` is the separate call for a validated logical size, which differs
-  from the stored size exactly for a compressed artifact.
-  It can cost a full decode and can fail, so reach for it only when the response
-  genuinely needs a total, the way the binary plugin’s view needs one for its scrollbar.
+  It is an inventory identity under a folder and a `GitPath` wire on a pin, opaque to
+  the hook either way; `ref.identity` is the canonical spelling to echo.
+- `ref.fingerprint` changes exactly when the bytes can have, so it keys a hook’s own
+  cache and an `ETag`, whether it is an mtime hash or a blob object id.
+- `max_bytes` is required, and it bounds **bytes**, not a decoded string, so decode
+  `window.data` afterwards.
+  `window.has_more` reports that content continues past the window; it is the only
+  trustworthy truncation answer for a compressed artifact, whose declared length lives
+  in a trailer nothing verifies until the stream is decoded.
+- `ref.stored_size` is the size the source stores, compressed for a compressed artifact,
+  and costs no read. It is `None` only for a blob a pin’s store does not hold, which no
+  read returns either.
+- `stat_content(ref)` returns the validated logical size, which differs from the stored
+  size exactly for a compressed artifact.
+  It can cost a full decode and can fail, so use it only when the response needs a
+  total, as the binary plugin’s scrollbar does.
 - `resolve_content_container(identity, suffixes=(".patch",))` resolves a
   `<content>/<inner>` address for a container kind, scoped to the suffixes the hook
-  claims. It returns the content and the inner path, with the same bounded depth rule the
-  server’s own walk uses.
-- Every failure is a `ContentReadError`, so one `except` covers a missing object, an
+  claims, with the server’s own depth bound, `MAX_CONTAINER_INNER_DEPTH`.
+- Every failure is a `ContentReadError` with a stable `code` and the `http_status`
+  Metabrowser’s own routes answer with, so one `except` covers a missing object, an
   oversized blob, an unreadable compressed stream, a timeout, and a subject that cannot
-  read content at all.
-  Each carries a stable `code` and the `http_status` Metabrowser’s own routes answer
-  with; branch on those rather than on exception classes.
+  read content; branch on `code`, not on exception classes.
 
 Reads run off the event loop on both kinds, so an `async def` handler stays responsive
 without arranging that itself.
 
 ## Browser SDK
 
-The supported API is available as `window.metabrowser`. It is also the one
-browser-console entry point: diagnostics extend this object instead of creating
-additional window globals.
-
-`metabrowser.perf` is the active performance recorder.
-Use `report()` for readable tables, `responsiveness()` for the current responsiveness
-summary, and `copy()` or `download()` for a complete JSON profile suitable for a bug
-report. `metabrowser.debug` contains narrow shell troubleshooting helpers after the
-application script loads, including `clearFileCache(path?)` and `selectFile(path)`. The
-serving benchmark installs `metabrowser.bench` only after its browser probe is
-evaluated. The `debug` and `bench` tools are for interactive diagnosis, not plugin
-dependencies; plugins may use `perf.measure` and `perf.measureAsync` to contribute
-bounded, stable operation labels to the shared profile.
+The supported API is available as `window.metabrowser`. Use only the surface documented
+here and in `static/plugin-sdk.js`; variables in `app.js` are implementation details
+with no plugin compatibility guarantee.
+The object also carries console diagnostics, which
+[Browser Shell](project/architecture/arch-browser-shell.md#the-sdk-boundary) describes;
+a plugin may use `perf.measure` and `perf.measureAsync` to add bounded, stable operation
+labels to the shared profile, and does not depend on the others.
 
 ### Registration and Lifecycle
 
@@ -417,112 +389,88 @@ mb.registerView(kind, viewId, {
 });
 ```
 
-`render` runs when the view is first mounted.
-Nondefault tabs mount lazily.
-`dispose` runs when the preview pane is replaced by another file, an error, or a reload.
-It does not run for an ordinary tab switch.
-The shell passes the same `container` that was supplied to `render`, so shared renderers
-can keep state per mounted view instead of using one module-wide slot.
-`render` may return an instance handle with an idempotent `dispose()` method, directly
-or through a promise.
-Prefer that form when one renderer can have multiple mounts.
-The handle may also expose `ready: Promise<void>` when `render` must return before a
-concrete initial useful-content pass finishes.
-The shell awaits the active view’s direct render promise and optional `ready` promise
-before it records painted readiness and restores a pending preview to full opacity.
-Rejecting either path renders the standard view failure state.
-Resolve `ready` after useful initial content or a handled local error is visible; do not
-include polling, live updates, deferred offscreen work, or other progressive enhancement
-that should continue after the view is usable.
+`render` runs when the view is first mounted, and nondefault tabs mount lazily.
+`dispose` runs when the preview pane is replaced by another file, an error, or a reload,
+not on an ordinary tab switch, and receives the same `container`, so a shared renderer
+can keep state per mount.
+`render` may instead return an instance handle with an idempotent `dispose()`, directly
+or through a promise; prefer that form when one renderer can have several mounts.
+The handle may expose `ready: Promise<void>` when `render` returns before its first
+useful content.
+The shell awaits the render promise and `ready` before it shows the view,
+and a rejection renders the standard view failure state.
+Resolve `ready` once useful content or a handled local error is visible, not after
+polling, live updates, or other enhancement that continues while the view is usable.
 
-A handle may expose an idempotent `cancelPending()` when it can stop requests, timers,
-observers and progressive rendering while leaving its DOM intact.
-A retained PR-page handoff uses this phase before final `dispose()`: the old subtree
-becomes inert while the next view prepares.
-Final disposal follows actual content replacement, including a file, Git selection,
-failure, or another PR. Cancelling a pending mount disposes it immediately.
-Keep `dispose()` complete and safe after `cancelPending()`.
+A handle may expose an idempotent `cancelPending()` that stops requests, timers,
+observers, and progressive rendering while leaving its DOM intact.
+A retained pull-request page calls it while the next view prepares, and calls
+`dispose()` once the content is actually replaced; keep `dispose()` complete and safe
+after `cancelPending()`.
 
-The supplied container is connected to the live preview.
-Renderers may use layout and observers from that fact; they are not required to support
-detached mounting. During retained file-to-file navigation, the next connected container
-lives in a transparent, inert staging subtree while the previous useful surface remains
-visible. After the active renderer and optional `ready` promise settle, the shell
-transfers the staged content and its disposal ownership into the preview atomically.
-Renderers must scope DOM access and event ownership to the supplied container; the
-temporary stage is deliberately not an independently interactive or accessible view.
+The supplied container is connected to the live page, so a renderer may use layout and
+observers. During file-to-file navigation it may sit in a transparent, inert stage while
+the previous view stays visible
+([Staged Handoff](project/architecture/arch-browser-shell.md#staged-handoff)), so scope
+DOM access and events to the container, and do not move focus while rendering.
 The built-in diff view has one exception: a host that passes `summaryHost` in the render
 context, as a commit’s page does for the place under its commit summary, has the diff
 draw its Diff summary in that element, outside the container.
 The host owns the element, and the diff’s `dispose()` releases the summary’s listeners
-and state ([Diff Summary](design-system.md#diff-summary)). Initial rendering must not
-move focus. Focus changes belong to user interaction after the view is installed.
-If navigation disposes the view before its direct or declared readiness settles, the
-shell immediately invokes the staged disposer, disposes a late handle when it arrives,
-and does not let that mount regain ownership.
-Nondefault tabs retain their lazy mounting behavior.
+and state ([Diff Summary](design-system.md#diff-summary)). A mount that navigation
+abandons is disposed even if its readiness never settles.
 
 The context contains the served-root-relative `path`, selected `kind`, logical `ext`,
 size, frontmatter, body text where applicable, and the raw `/api/file` envelope.
+Use `mb.getRegisteredView` and `mb.listViewsForKind` for diagnostics, not the registry’s
+private storage.
 
-Use `mb.getRegisteredView` and `mb.listViewsForKind` for diagnostics.
-Do not inspect the registry’s private storage.
+### Render-Time-Only Namespace Rule
+
+A built-in plugin may publish helpers for others on `mb.builtins.<name>`, as Markdown
+publishes `mb.builtins.markdown` and structured data `mb.builtins.structured`. Read
+another plugin’s namespace only at render time, inside `render` or a handler, never
+while your `index.js` evaluates: plugins load on demand, so the other plugin may not
+have run yet. Await `ensureKindAssets(kind)` for that plugin’s kind first.
+`tests/test_plugin_e2e_render.py` fails when a plugin reads a missing namespace at load
+time.
 
 ### Rendering and Formatting
 
 Useful helpers include:
 
-- `render(template, data)` for auto-escaped Mustache templates;
-- `escapeHtml(value)` for carefully constructed HTML strings;
-- `wrapWithCopy(html)` for a standard copy-button frame;
+- `render(template, data)` for auto-escaped Mustache templates, and `escapeHtml(value)`
+  for carefully constructed HTML strings;
+- `wrapWithCopy(html)` for a standard copy-button frame, and `ownDelegate(element)` with
+  `delegateOwnerAttribute()` to stamp a copy control built without it: the shared copy
+  listener ignores an unstamped `data-mb-copy`, because a trusted folder’s Markdown can
+  write the same markup;
 - `decorateExternalLink(anchor, {icon, position})` for the shared external GitHub
-  destination treatment.
-  General destinations use the GitHub mark; canonical issue/PR addresses use neutral
-  entity glyphs when state is unknown.
-  A caller with matching metadata may supply its existing state icon.
-  For an explicit GitHub action, `icon: "github"` chooses the brand mark and
-  `position: "before"` places it before the label; the default position is after.
-  Decorate after localization and sanitization; the helper keeps link labels and
-  navigation attributes and makes no provider requests;
-- `refChipHtml(name, options)` and `refChip(name, options)` for the shared Git ref chip
-  as escaped markup or a DOM element.
-  `name` is the complete copy value; `label` may display an owner or shortened name.
-  Options also select `kind` (`local`, `remote`, or `tag`), `trunk`, and `head`. Use
-  inline copying for a standalone chip.
-  A chip is slightly smaller than the text it sits in, by one ratio, so a plugin places
-  it in text of the size it wants, never restyles it, and passes `trunk` and `head` only
-  from a Git ref’s `is_trunk` and `is_head`; see
-  [Branch Chips](design-system.md#branch-chips).
-  Inside a primary link or button, choose `copy: "sibling"` and call
-  `mountRefCopies(primary, host)` to put secondary controls outside it; call the
-  returned disposer when the row unmounts or its owner closes.
-  `copy: false` renders a passive chip;
-- `mergeRefs(source, target, options)` for a merge between two branches, as the design
-  system’s one notation: the source chip, an arrow named “merges into”, then the target
-  chip, left to right in any text direction.
-  Each side is `{name, label}`, and `options` takes the chip’s `kind` and `copy`. See
-  [Merge Direction](design-system.md#merge-direction);
-- `ownDelegate(element)` and `delegateOwnerAttribute()` to stamp a copy control built
-  without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
-  carrying the page’s owner mark, because a trusted folder’s Markdown can write the same
-  `data-mb-copy` markup, and it ignores an unstamped one without an error;
+  treatment: the GitHub mark, or neutral entity glyphs for an issue or pull-request
+  address whose state is unknown; `icon: "github"` and `position: "before"` mark an
+  explicit GitHub action.
+  Decorate after localization and sanitization;
+- `refChipHtml(name, options)` and `refChip(name, options)` for the shared Git ref chip,
+  where `name` is the copy value, `label` the display, and `kind` is `local`, `remote`,
+  or `tag`; pass `trunk` and `head` only from a Git ref’s `is_trunk` and `is_head`, and
+  never restyle the chip ([Branch Chips](design-system.md#branch-chips)). Inside a link
+  or button, use `copy: "sibling"` with `mountRefCopies(primary, host)` and call its
+  disposer on unmount; `copy: false` is passive;
+- `mergeRefs(source, target, options)` for a merge between two branches, the design
+  system’s one notation ([Merge Direction](design-system.md#merge-direction));
 - `renderSourceView(container, data, options)` for the standard bounded, copyable Source
-  surface, including truncation controls, the shared language mapping, a line-number
-  gutter, and `#L10`-style line anchors that the mouse and the keyboard set;
-  `options.parts`, a list of `{text, language}` that joins to the content and whose
-  every part but the last ends with a newline, shows the text as consecutive code blocks
-  under one gutter, each in its own language, as the Markdown Source tab does for front
-  matter; a file too large to highlight, or only partly loaded, shows as one block;
-- `langForExtension(ext)` for the language ID backed by the host’s vendored grammar
-  registry, or an empty string when the source should remain plain;
-- `langForPath(pathOrName, ext)` for the same decision with extensionless names such as
-  `Makefile` and compressed logical names included;
+  surface, with truncation controls, the shared language mapping, a line-number gutter,
+  and `#L10`-style line anchors; `options.parts`, a list of `{text, language}` that
+  joins to the content, shows consecutive code blocks under one gutter, as the Markdown
+  Source tab does for front matter;
+- `langForExtension(ext)` and `langForPath(pathOrName, ext)` for the language ID backed
+  by the host’s vendored grammar registry, or an empty string for plain text, the second
+  including names such as `Makefile` and compressed logical names;
 - `highlightSyntax(source, language, options)` for bounded DOM-free token runs when a
-  custom renderer, such as a diff, must project tokens itself;
+  renderer, such as a diff, projects tokens itself;
 - `formatSize`, `formatInteger`, `formatFileCount`, `formatAge`, `formatTimestamp`, and
-  `sizeHtml`. `formatAge(epochSeconds, {style: "relative"})` returns labels such as
-  `2h ago`, `just now`, or `in 2h`; its default compact style suits dense navigation.
-  Both styles return the same freshness-class vocabulary;
+  `sizeHtml`; `formatAge(epochSeconds, {style: "relative"})` returns labels such as
+  `2h ago`, while its default compact style suits dense navigation;
 - `titleNodes(title)` for a commit’s or a pull request’s title, as the nodes its element
   holds: a conventional-commit prefix such as `feat(ledger):` in a `span.title-prefix`,
   which the host draws at regular weight, then the rest, which keeps the element’s
@@ -543,43 +491,34 @@ Useful helpers include:
   `label` in words; `changeLineNodes` paints it as the nodes of one `span.change-line`,
   with `{spoken: ", "}` on a line whose name does not say it in words
   ([Brief Change Line](design-system.md#brief-change-line));
-- `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
-  classes used by core numeric readouts;
+- `countClass(value)` and `sizeClass(value)` for the magnitude-driven emphasis classes
+  of core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
   `fileTypeIcon(pathOrName)` for its host-owned SVG plus `className`;
-- `fileTypes` for the immutable semantic type catalog.
-  `schema`, `schemaVersion`, `revision`, `fingerprint`, `maxExtensionComponents`, and
-  `registryIdentity` identify the loaded File Rollup Format type definitions; ordered
-  `groups`, `families`, and `kinds` expose their immutable descriptors.
-  `displayGroups` holds the same groups in the order the app lists them for a reader,
-  Documentation first; a view that lists groups uses it, and `groups` keeps the
-  registry’s order. `classify(name, ext)` returns registry identities and evidence for
-  one file. `matchExtension(ext)` returns the matching family and canonical suffix,
-  `canonicalExtension(ext)` preserves unknown extensions, `groupForFile(name, ext)`
-  includes whole-filename evidence, and `distributionKeyForExtension(ext)` returns the
-  shared family or raw palette key.
-  Compare a file rollup’s `registry` identity before combining it with labels or colors
-  from this projection;
+- `fileTypes` for the immutable File Rollup Format type catalog: its identity (`schema`,
+  `schemaVersion`, `revision`, `fingerprint`, `registryIdentity`), its ordered `groups`,
+  `families`, and `kinds`, and `classify`, `matchExtension`, `canonicalExtension`,
+  `groupForFile`, and `distributionKeyForExtension`, plus `displayGroups`, the same
+  groups in the order the app lists them for a reader, Documentation first, which a view
+  that lists groups uses; compare a rollup’s `registry` identity before combining it
+  with labels or colors from here;
 - `icons` and `icons.withClass`;
 - `filterControls` for the host’s accessible filter chips and menus, and for any
-  exclusive choice among labelled values, a filter or not;
-- `shortcuts.attach(element, spec)` for a letter key on one of a view’s controls, or
-  with `numbered: true` a positional number, listed in Help and badged while the reader
-  holds Shift; see [Keyboard Shortcuts](#keyboard-shortcuts);
-- `chart(container, type, data, options)`;
-- `ensureAsset(name)`;
-- `ensureKindAssets(kind)`;
+  exclusive choice among labelled values;
+- `shortcuts.attach(element, spec)`; see [Keyboard Shortcuts](#keyboard-shortcuts);
+- `chart(container, type, data, options)`, `ensureAsset(name)`, and
+  `ensureKindAssets(kind)`, below;
 - `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
-  than `timeout` milliseconds, and returns a function that cancels it; in an engine
-  without `requestIdleCallback`, as the app’s WebKit is, free means the first view has
-  settled and input has paused (see [Idle Work](development.md#idle-work));
-- `sourceKind()` for the served source (`filesystem` or `git_revision`);
-- `perf.measure` and `perf.measureAsync`.
+  than `timeout` milliseconds, and returns a canceller
+  ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
+- `sourceKind()` for the served source (`filesystem` or `git_revision`).
 
-A view that draws tabs of its own uses the host’s primitive, `.tab-btn` in a `.tab-bar`,
-and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet may
-position them but does not restyle them; see
-[The Tab Bar](design-system.md#the-tab-bar).
+A view that draws tabs of its own uses the host’s `.tab-btn` in a `.tab-bar`, with
+`<a class="tab-btn" href>` for a tab that is an address, and positions but does not
+restyle them ([The Tab Bar](design-system.md#the-tab-bar)). A control that shows or
+hides content carries the host’s `disclosure-toggle` class so clicking it never selects
+text; a native `summary` needs nothing
+([Disclosure Toggles Never Select Text](design-system.md#disclosure-toggles-never-select-text)).
 
 A menu a view draws on the host’s `.menu` surface heads each group of its rows with the
 host’s pattern: a `.menu-group` with `role="group"` and `aria-labelledby` naming its
@@ -623,113 +562,87 @@ never on its page, and sets no face of its own: chrome prose is sans under eithe
 reading font, and a document shown beside it keeps the reader’s reading font.
 A view whose container carries `md-body` gets the reading font on its Markdown’s
 headings, paragraphs, lists, and quotes only, so anything else it draws, such as a
-toolbar or an empty state, keeps the chrome face without a face of its own.
-See [Serif Is for Documents](design-system.md#serif-is-for-documents).
+toolbar or an empty state, keeps the chrome face without a face of its own
+([Serif Is for Documents](design-system.md#serif-is-for-documents)).
 
-A control in a view that shows or hides content, such as a row with the `icons.toggle`
-chevron, a fold, or a section trigger, carries the host’s `disclosure-toggle` class, so
-clicking it never selects text; a native `summary` needs nothing.
-See
-[Disclosure Toggles Never Select Text](design-system.md#disclosure-toggles-never-select-text).
-
-`ensureAsset(name)` loads a vendored library that the shell does not put on every page,
-and resolves once its globals are present.
+`ensureAsset(name)` loads a vendored library the shell does not put on every page, and
+resolves once its globals are present.
 Await it before touching the library: a loaded bundle resolves immediately, simultaneous
-callers share one load, and it rejects for an unknown name or a script that fails, so a
-view can say so instead of rendering into a surface that will not work.
-The bundles the host publishes are named in `server.py`; `"chart"` is Chart.js with its
-annotation plugin and date adapter.
-See [Asset Loading Tiers](development.md#asset-loading-tiers) for which tier an asset
-belongs in.
+callers share one load, and it rejects for an unknown name or a failed script, so a view
+can say so.
+The bundles are named in `on_demand_script_bundles` in `server.py`; `"chart"`
+is Chart.js with its annotation plugin and date adapter.
+[Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)
+says which tier an asset belongs in.
 
-`ensureKindAssets(kind)` loads the plugins that declare a view for a file kind.
+`ensureKindAssets(kind)` loads the plugins that declare a view for a kind.
 Await it before embedding one kind’s renderer inside another plugin, then read the
-renderer from the SDK. Already-loaded plugins resolve immediately, and simultaneous
-callers share one load.
-It rejects only when the SDK’s own view helpers or template library could not be
-fetched; no plugin’s code has run then, and calling it again tries again.
-A plugin whose own assets fail to load is logged and skipped.
-This keeps cross-kind renderers off the eager shell path without exposing the private
-plugin host.
+renderer from the SDK. It rejects only when the SDK’s own view helpers or template
+library could not be fetched, before any plugin code ran, and a retry tries again; a
+plugin whose own assets fail is logged and skipped.
 
-Use `renderSourceView` when several kinds need the same raw-source presentation; do not
-depend on another kind’s plugin having loaded.
-The shell runs ordinary `<code>` syntax enhancement after both default and lazy-mounted
-renderers settle, and repeats the pass when the prefetched grammar asset arrives.
-A custom Source renderer should preserve exact text, use `langForPath`, and add
-`no-highlight` only when it deliberately applies a host-provided degradation decision.
+Use `renderSourceView` when several kinds need the same raw-source presentation, rather
+than depending on another kind’s plugin.
+The shell runs `<code>` syntax enhancement after default and lazy-mounted renderers
+settle, and again when the prefetched grammars arrive.
+A custom Source renderer preserves exact text, uses `langForPath`, and adds
+`no-highlight` only to apply a host-provided degradation decision.
 Plugins do not read `METABROWSER_SETTINGS` or call the Highlight.js global directly.
 
-`chart(container, type, data, options)` requires that bundle:
-`await metabrowser.ensureAsset("chart")` first, or the call throws.
-Chart color fields may use host design-token references such as
-`var(--chart-series-info)`. The SDK resolves them for the current palette and updates
-the chart when the resolved theme changes.
-Retain the returned instance and call `destroy()` from the view’s `dispose` handler to
-release both Chart.js resources and the theme subscription.
+`chart(container, type, data, options)` throws unless
+`await metabrowser.ensureAsset("chart")` ran first.
+Chart color fields may use design-token references such as `var(--chart-series-info)`,
+which the SDK resolves for the current palette and updates when the theme changes.
+Call the returned instance’s `destroy()` from `dispose` to release Chart.js and the
+theme subscription.
 
-Avoid inline event-handler strings when possible.
-Build DOM elements, attach listeners, and keep cleanup handles in the renderer closure.
-When a view displays a file or exact extension, place the result of `fileTypeIcon()` in
-the shared `.file-identity-icon` alignment box and mark it decorative.
-The returned SVG is trusted host chrome; never pass user-provided markup through this
-path.
+Build DOM elements and attach listeners rather than writing inline handler strings, and
+keep cleanup handles in the renderer closure.
+Place `fileTypeIcon()` output in the shared `.file-identity-icon` box, marked
+decorative; it is trusted host chrome, so never pass user-provided markup through it.
 
 ### Data and Navigation
 
-- `fetchPluginData(plugin, route, params, options?)` calls a declared data hook.
-  Pass `{ signal }` so a disposed view aborts its request.
-  A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`,
-  so a hook’s structured refusal stays readable by its caller.
+- `fetchPluginData(plugin, route, params, options?)` calls a declared data hook with
+  `GET`; pass `{ signal }` so a disposed view aborts its request.
+  A non-ok response rejects with an `Error` carrying `status` and the parsed `payload`.
+  Call a `POST` hook with `fetch`.
 - `fetchJsonl(path, options)` requests a normalized JSONL envelope.
 - `fetchCompleteText(ctx, options)` retrieves a bounded complete source after an initial
-  text envelope reports truncation.
-- `fetchText(target, options)` retrieves bounded complete source for a canonical
-  navigation target and forwards an optional abort signal.
-- `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view.
-- `loadKpressAssets()` loads the KPress browser assets once.
+  text envelope reports truncation, and `fetchText(target, options)` does the same for a
+  navigation target, forwarding an optional abort signal.
+- `fetchKpressRender(ctx, view, options)` requests a KPress-rendered view, and
+  `loadKpressAssets()` loads the KPress browser assets once.
 - `loadChangedFilesTree()` loads the shell’s tree of a change set’s files once, on
-  demand, and resolves with it: folders built from paths with their line counts rolled
-  up, the visible rows with a chain of single folders as one row, which folders are
-  open, a change set’s header text, and `displayPath`, the server’s display rule for a
-  path whose list carries no display of its own.
-  A diff’s Diff summary and the Pulls tab’s changed files both draw with it;
+  demand: folders built from paths with their line counts rolled up, the visible rows,
+  which folders are open, a change set’s header text, and `displayPath`. A diff’s Diff
+  summary and the Pulls tab’s changed files both draw with it;
   `static/changed-files-tree.js` documents each function.
 - `renderTextTruncationWarning(data)` preserves visible truncation warnings.
 - `navigation.href(target)` returns the canonical `/view/` URL for a
-  `{ path, query?, fragment? }` target.
-  Paths are served-root-relative, use `/` separators, and have no leading slash; the
-  empty path selects the served root.
+  `{ path, query?, fragment? }` target, whose path is served-root-relative with `/`
+  separators and no leading slash; the empty path selects the served root.
 - `navigation.open(target, options?)` performs normal user navigation and returns a
-  promise. Pass `{ viewId }` to prefer a view declared by the destination; the shell uses
-  the destination’s default when that view is unavailable.
-  The preference is transient and does not change the target URL.
-- `navigation.current()` returns the current target or `null` on the landing URL.
-- `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
-  known to the shell. Every entry in `files` is a canonical, safe logical-file path,
-  ordered by ascending UTF-16 code units.
-  The catalog has no global path-length ceiling; a plugin may apply a documented bound
-  only to paths it actually processes.
-  Two flags describe coverage, and they are never both true.
-  `complete` means the inventory walk finished without reaching its file cap, so the
-  catalog lists every file under the root.
-  `truncated` means the walk finished at the cap: the walk adds no more files, but files
-  past the cap were never indexed, so a missing path is not proof of absence.
-  While both are false the walk is still running.
-  A plugin that waits for a final catalog should stop waiting on either flag; the
-  Markdown built-in reports such unresolved links as `catalog-truncated`. A later walk
-  can still complete, for example after a restart with a higher file cap, so keep the
-  subscription if a complete catalog would change a result.
+  promise. `{ viewId }` prefers a view the destination declares, falling back to its
+  default, without changing the URL.
+- `navigation.current()` returns the current target, or `null` on the landing URL.
+- `fileCatalog.snapshot()` returns an immutable view of the files the shell knows, as
+  canonical logical-file paths ordered by UTF-16 code units, with no global path-length
+  ceiling. `complete` means the walk finished under its file cap, so the catalog lists
+  every file; `truncated` means it stopped at the cap, so a missing path is not proof of
+  absence; while both are false the walk is running.
+  A plugin waiting for a final catalog stops on either flag, as the Markdown built-in
+  reports unresolved links as `catalog-truncated`, and keeps its subscription, since a
+  restart with a higher cap can still complete a walk.
 - `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
-  returns an unsubscribe function that the view must call from its disposer.
-- `repository` is either `null` or frozen public-safe GitHub identity for the served
-  tree: host, owner, repository name, exact revision, current branch, and served
-  subdirectory prefix.
-  It never contains a local filesystem path.
+  returns an unsubscribe function for the view’s disposer.
+- `repository` is `null` or the served tree’s frozen, public-safe GitHub identity: host,
+  owner, repository, exact revision, current branch, and served subdirectory, never a
+  local path.
 
-Use `navigation.href()` for real anchor `href` values so browser status previews,
-copy-link, modifier clicks, new tabs, and reloads retain native behavior.
-An unmodified in-app activation may then call `navigation.open()`:
+Use `navigation.href()` for real anchor `href` values so status previews, copy-link,
+modifier clicks, new tabs, and reloads keep native behavior, and call
+`navigation.open()` only for an unmodified in-app activation:
 
 ```javascript
 const target = { path: "docs/guide.md", fragment: "setup" };
@@ -749,37 +662,35 @@ Folder aggregate views can use these bounded inventory helpers:
 
 - `fetchRollup(path, options)` reads the in-memory subtree rollup.
   `depth`, `top`, `ext_top`, `filename_top`, `remaining_top`, and `ext_rank` map to
-  `/api/rollup`; use `depth: 0`, `top: 0`, and `ext_rank: "dual"` for a tally-only
+  `/api/rollup`; `depth: 0`, `top: 0`, and `ext_rank: "dual"` give a tally-only
   count-and-byte summary.
-  Both file-type child limits default to 20 and cannot exceed 20.
-- `watchRollup(path, options, onUpdate)` performs the initial fetch and refreshes after
-  relevant inventory changes.
-  Supply `active` to gate hidden views and `onError` for a local failure state.
-  Always call the returned handle’s `dispose()`; when `stale()` is true after
-  activation, call `refresh()`.
-- `onInventoryChange(listener)` calls *listener* with each filesystem change the shell
-  observes, and returns an unsubscribe function to call when the view is disposed.
-  The listener receives the change’s inventory paths: each changed entry with every
-  ancestor whose totals it moved, down to the depth the shell watches, so a deeper
-  change arrives as its deepest watched ancestor.
-  It receives `null` when anything may have changed: the event stream reconnected,
-  whether or not its snapshot changed, or resynchronized, or the first crawl finished.
-  In a host with no event target, which has no inventory stream, the listener is never
-  called.
+  `filename_top` and `remaining_top` default to, and cannot exceed,
+  `ROLLUP_FILE_TYPE_FILENAME_LIMIT` and `ROLLUP_FILE_TYPE_REMAINING_LIMIT` in
+  `src/metabrowser/settings.py`.
+- `watchRollup(path, options, onUpdate)` fetches and then refreshes after relevant
+  inventory changes. Supply `active` to gate hidden views and `onError` for a local
+  failure state; always call the handle’s `dispose()`, and call `refresh()` when
+  `stale()` is true after activation.
+- `directoryTotals.get(path)` and `directoryTotals.subscribe(path, listener)` read the
+  shell’s live directory totals without a request.
+- `onInventoryChange(listener)` passes each observed change’s inventory paths, every
+  changed entry with each ancestor whose totals it moved down to the depth the shell
+  watches, and returns an unsubscribe function.
+  It passes `null` when anything may have changed: the stream reconnected or
+  resynchronized, or the first crawl finished.
+  A host with no inventory stream never calls it.
 - Each `ext_tallies` row is
   `[extension, all_files, all_bytes, unignored_files, unignored_bytes]`. The empty
-  extension is the aggregate **Other** tail; `(none)` is the distinct extensionless
-  category.
-- `file_type_breakdown` is the native File Rollup Format result.
-  It carries matching registry identity, exact `all` and `unignored` populations,
-  ordered nonempty group and family rows, complete canonical-extension children, and
-  bounded No extension and `remaining_types` children with exact Others remainders; the
-  latter is presented as **Other types** in the built-in UI.
+  extension is the aggregate **Other** tail; `(none)` is the extensionless category.
+- `file_type_breakdown` is the File Rollup Format result: registry identity, exact `all`
+  and `unignored` populations, ordered group and family rows, canonical-extension
+  children, and bounded No extension and `remaining_types` children with exact
+  remainders, shown as **Other types**.
 
 ### Keyboard Shortcuts
 
-`shortcuts.attach(element, spec)` gives one of a view’s controls a letter key (SDK 0.7)
-or, with `numbered: true`, a positional number.
+`shortcuts.attach(element, spec)` gives one of a view’s controls a letter key or, with
+`numbered: true`, a positional number.
 The key does what the control does, Help lists it, and while the reader holds Shift a
 keycap badge sits on the control.
 Which kind of key a control should have, and which letter, follows
@@ -800,12 +711,7 @@ const handle = mb.shortcuts?.attach(toggle, {
 });
 handle?.retarget(nextToggle); // the control was rebuilt as another element
 handle?.detach(); // idempotent; call it from dispose()
-```
 
-A situational control, such as a link or a one-off action that depends on what the view
-shows, takes a number instead:
-
-```javascript
 const refresh = mb.shortcuts?.attach(refreshButton, {
   id: "example.refresh",
   numbered: true, // its number is its place among the screen's numbered controls
@@ -815,55 +721,43 @@ const refresh = mb.shortcuts?.attach(refreshButton, {
 ```
 
 A numbered control’s number is its place, in document order, among the live numbered
-controls on the screen, the shell’s and every plugin’s, from `1` to `9`. The number is
-read when a digit is pressed or the reveal shows, so it can change as controls appear
-and go, and a tenth or later control has none.
-Help lists the numbers once, as one row, and not each numbered control.
-A numbered spec takes only `id`, `numbered`, `activate`, and `signal`; `key`, `group`,
-`order`, and `copy` are malformed beside it, since its place decides them.
-The handle, lifetime, and liveness rules below apply to it as to a letter.
+controls on the screen, the shell’s and every plugin’s, from `1` to `9`; it is read when
+a digit is pressed or the reveal shows, so it changes as controls come and go, and a
+tenth control has none.
+Help lists the numbers once, as one row.
+A numbered spec takes only `id`, `numbered`, `activate`, and `signal`.
 
 - A view may attach at any time, even before the shell’s keyboard support has loaded:
-  the key takes effect once it has, and keeps working when the shell rebuilds it.
+  the key takes effect once it has, and survives the shell rebuilding it.
 - The key is live only while its element is connected, visible, enabled, and outside an
-  `inert` subtree, which the shell reads when the key is pressed.
-  A view staged by a retained navigation is inert, so its keys wait for the view to be
-  shown. Taking the element out of the page does not end the attachment: put back, it has
-  its key again. When a rebuild replaces the element, call `retarget()` with the new one;
-  called with the same element after putting it back, it moves the badge at once while
-  Shift is held.
-- The SDK decides everything else about the key: Shift does not change it, Ctrl, Alt,
-  and Meta are never part of it, and it does not fire in a text field or on key repeat.
+  `inert` subtree, so a staged view’s keys wait for it to be shown.
+  Removing the element does not end the attachment; when a rebuild replaces it, call
+  `retarget()` with the new one.
+- Shift does not change the key, Ctrl, Alt, and Meta are never part of it, and it does
+  not fire in a text field or on key repeat.
   Every shell key outranks it, and Help and Quick Search silence it while open.
-  Help lists it while it is attached; the shortcut strip does not.
-- Malformed input throws an error whose message starts with `shortcuts.attach:`: an
-  element that is not an `HTMLElement`, a key that is not one letter, an unknown group,
-  a missing `activate`, a `numbered` that is not `true`, a letter option beside
-  `numbered: true`, an option the SDK decides, such as `bindings`, or an id attached
-  already with another key, group, copy, or numbering.
-  An attachment made before the shell’s keyboard support loads is checked when it loads,
-  and a malformed one is then logged with `console.error`, under the same prefix,
-  instead of thrown.
-- A letter the shell reserves is refused without an error, so a view keeps working if
-  the shell reserves another letter later.
-  The reserved letters are the ones manifest view keys may not take (see
-  [Views](#views)): `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`. The digits `1` to `9`
-  are reserved too, and only `numbered: true` reaches them.
-  A refused control has no key, and the browser console shows one warning for its id.
-- A letter that two shown controls hold is settled when it is pressed: a shell key wins
-  over a plugin key, and between plugins the one attached earlier wins.
-  Only the winner runs and has a badge, and the console warns once for the id that lost.
+- Malformed input throws an error whose message starts with `shortcuts.attach:`, such as
+  an element that is not an `HTMLElement`, a key that is not one letter, an unknown
+  group, a missing `activate`, a letter option beside `numbered: true`, or an id
+  attached already with other settings.
+  An attachment made before the keyboard support loads is checked then, and a malformed
+  one is logged with `console.error` instead.
+- A letter in `RESERVED_SHELL_KEYS` in `src/metabrowser/keymap.py` is refused with one
+  console warning and no error, so a view keeps working if the shell reserves another
+  letter later. Digits are reserved for `numbered: true`.
+- When two shown controls hold one letter, a shell key beats a plugin key, and between
+  plugins the earlier attachment wins and the console warns once for the loser.
   Two mounts of one id are one command, and the first shown in document order runs.
-- Detach every attachment from `dispose()`, or pass the view’s `AbortSignal`. As a
-  safety net, the shell also releases the keys inside a view container it disposes, but
-  a view that a host mounts by calling its renderer directly, as three hosts mount the
-  diff view, has only its own `dispose()`.
+- Detach every attachment from `dispose()`, or pass the view’s `AbortSignal`. The shell
+  also releases the keys inside a view container it disposes, but a view a host mounts
+  by calling its renderer directly, as three hosts mount the diff view, has only its own
+  `dispose()`.
 
 ### Folder Overview Contributions
 
 The built-in folder plugin publishes `mb.folderOverview` before installed plugins load.
-Use it when a capability summarizes a folder inside **Overview**. A primary working mode
-such as a future Files listing remains a normal `registerView("folder", ...)` tab.
+Use it when a capability summarizes a folder inside **Overview**; a primary working mode
+remains a normal `registerView("folder", ...)` tab.
 
 ```javascript
 const unregister = mb.folderOverview.registerPanel("hello.license", {
@@ -896,76 +790,45 @@ const unregister = mb.folderOverview.registerPanel("hello.license", {
 ```
 
 Panel IDs must be plugin-qualified.
-`placement` is `summary`, `content`, or `supplemental`; fixed placement order and then
-the panel ID determine layout.
+`placement` is `summary`, `content`, or `supplemental`; placement order and then the
+panel ID determine layout.
 `presentation` is `surface` for a flat host-rendered panel body or `document` when the
-renderer owns its normal document surface.
-The Overview composer supplies the same visible section heading and responsive
-Markdown-text alignment for both presentations; panel mounts must not repeat that
-heading or add an Overview-level disclosure.
+renderer owns its document surface.
+The Overview composer supplies the section heading and text alignment for both, so a
+mount does not repeat the heading or add a disclosure.
 Set `required: true` only when returning null is a contract error.
-A resolver returns `{key, data}` or null; matching keys preserve a mounted panel and
-call its optional `update(ctx, data)` method.
-Resolvers and mounts receive abort signals, one failure remains local to its panel, and
-every returned disposer must be idempotent.
-`listPanels()` returns the frozen deterministic descriptor list.
+A resolver returns `{key, data}` or null; a matching key keeps a mounted panel and calls
+its optional `update(ctx, data)`. Resolvers and mounts receive abort signals, a failure
+stays local to its panel, and every disposer must be idempotent.
+`listPanels()` returns the frozen descriptor list.
 
-The surrounding folder envelope is available through
-`mb.folderContext.subscribe(path, onUpdate)`. The shell seeds and multiplexes that
-context, so subscribers do not start parallel `/api/file` refreshes.
-Unsubscribe on disposal.
+`mb.folderContext.subscribe(path, onUpdate)` gives the folder envelope, which the shell
+seeds and multiplexes so subscribers start no parallel `/api/file` refreshes;
+unsubscribe on disposal.
 `mb.viewState.isActive(container)` and `subscribeActive(container, listener)` let a lazy
-view defer hidden work.
-A composite renderer calls `mb.setViewPrintState(container, state)` when its effective
-printability changes.
+view defer hidden work, and a composite renderer calls
+`mb.setViewPrintState(container, state)` when its printability changes.
 
-The Markdown built-in exposes
-`mb.builtins.markdown.mountRendered(container, ctx, {signal})` for a document panel.
-It uses the ordinary KPress Markdown presentation and returns an instance-specific
-handle that aborts its request and disposes its own table of contents, enhanced-link
-listeners, pending fragment work, and any nested Obsidian transclusions.
-Every mounted document on the page, including its nested transclusions, shares one
-lazily constructed preprocessing Worker.
-Each handle holds a reference to it: disposal cancels only that handle’s pending
-preprocessing, and the Worker terminates when the last mounted document is disposed.
-The Worker runs one request at a time, and a document’s primary preparation runs before
-queued transclusions, so a newly opened document does not wait for the embeds of the
-document it replaces.
-A fatal Worker failure, such as a module that cannot load, rejects the pending
-preprocessing of every mounted document; each renders its authored Markdown with a
-diagnostic, and the next request starts a new Worker.
-Note, heading, and named-block transclusions share depth, document, source-byte, cycle,
-abort, and disposal limits across the mounted document.
-Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose
-catalog resolution arrives late still receives its full allowance.
-The SDK does not expose Markdown graph analysis.
-Parsing Markdown a second time in the browser can diverge from KPress’s rendered
-document; a future graph surface therefore requires a server data route backed by a
-KPress-owned link-intent manifest.
-Do not copy Markdown DOM or TOC behavior into a folder contribution.
+`mb.builtins.markdown.mountRendered(container, ctx, {signal})` mounts a Markdown
+document panel with the ordinary KPress presentation.
+Its handle aborts its request and disposes its table of contents, enhanced-link
+listeners, pending fragment work, and nested Obsidian transclusions.
+Transclusions share depth, document, source-byte, cycle, abort, and disposal limits
+across the mounted document, and each embed’s time limit starts when that embed begins
+loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
 
-Use only the SDK surface documented here and in `static/plugin-sdk.js`. Variables in
-`app.js` are implementation details and may change without a plugin compatibility
-guarantee.
+### The SDK Version
 
-The SDK is versioned with the release, not independently, and the version is enforced
-rather than advisory.
+The SDK is versioned with the release, and the version is enforced.
 `PLUGIN_SDK_VERSION` in `plugin_loader/manifest.py` is the contract this host provides.
-A manifest should declare `sdk_version`. A manifest that omits it targets the original
-SDK `0.1` and nothing later, so omission never silently follows the host forward onto a
-contract the plugin was not written against; once the host moves past `0.1`, an omitted
-value is refused like any other stale one.
-A different resolved value is refused when it loads, with a message naming the required
-version, and `metab --doctor` reports the same problem before it reaches a user.
-There is no negotiation and no shim for an older surface.
-
-That gate is deliberately strict because the alternative is worse.
-A method that moves or changes shape does so in one commit across core and every
-built-in plugin; the constant is bumped only when the contract actually breaks, and the
-break is recorded in `CHANGELOG.md`. An external plugin updates against the release it
-targets and sets its `sdk_version` to match.
-A young plugin ecosystem is cheaper to upgrade than to carry.
-See [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
+A manifest whose resolved `sdk_version` differs, including one that omits the field, is
+refused when it loads, with a message naming the required version, and `metab --doctor`
+reports the same problem first.
+There is no negotiation and no shim for an older surface: update the plugin against the
+release it targets and set `sdk_version` to match.
+A break is recorded in `CHANGELOG.md`;
+[Compatibility and Legacy Code](development.md#compatibility-and-legacy-code) explains
+the policy.
 
 ## Packaging a Python Plugin
 
@@ -985,6 +848,10 @@ Register it in `pyproject.toml`:
 [project.entry-points."metabrowser.plugins"]
 example = "example_plugin:plugin_dir"
 ```
+
+Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets, and test
+the built wheel in an isolated environment, since an editable checkout can conceal
+missing package data.
 
 ### Plugin-Owned JSONL Adapters
 
@@ -1018,75 +885,53 @@ register_log_adapter(
 )
 ```
 
-The detector receives parsed objects from the beginning of the stream.
-Registering the same detector and factory more than once is idempotent, while a second
-plugin attempting to claim an existing adapter name raises an error.
-A detector failure is logged and skipped so one third-party adapter cannot break
-detection for every JSONL file.
-Keep it fast, deterministic, and free of filesystem or network work.
-The factory must return a fresh parser for each file or live stream.
-Built-in adapter names cannot be replaced.
+The detector receives parsed objects from the beginning of the stream; keep it fast,
+deterministic, and free of filesystem or network work.
+A detector failure is logged and skipped, so one adapter cannot break detection for
+every JSONL file.
+Registering the same detector and factory again is idempotent; claiming
+another plugin’s adapter name raises an error, and built-in names cannot be replaced.
+The factory returns a fresh parser for each file or live stream.
+A `[[kind]]` rule with `match = { ext = ".jsonl", adapter = "example" }` then claims the
+files the detector recognizes.
 
 ### Python Sidekick API
 
-Import server-integrated helpers from `metabrowser`, not private package modules:
+Import server-integrated helpers from `metabrowser`, not private package modules.
+`metabrowser.plugin_api.__all__` lists them, and `metabrowser.__all__` adds `CLIError`,
+which a CLI integration can catch to keep a command’s message and exit code, and
+`__version__`.
 
-```python
-from metabrowser import (
-    ArtifactCompressionError,
-    ArtifactPath,
-    JsonlParseLimitError,
-    relativize_path,
-    resolve_directory,
-    resolve_path,
-)
-```
+- **Content:** `resolve_content`, `resolve_content_container`, `stat_content`, and
+  `read_content_window`, returning `ContentRef`, `ContentStat`, and `ContentWindow`, are
+  the source-agnostic reader under [Reading Content](#reading-content).
+  Every read takes an explicit byte maximum.
+  They raise `ContentReadError`, with `ContentUnavailableError` for content that
+  resolved and then could not be read.
+- **Filesystem:** `resolve_path(value)` resolves a served-root-relative identity and
+  rejects traversal; the empty string is the served root.
+  `resolve_directory(value)` also requires a directory, `served_root()` returns the
+  root, and `relativize_path(value)` turns a native path under it back into an identity.
+  These and `open_content` are filesystem-only: on a subject with no filesystem root
+  they raise `UnsupportedSourceCapabilityError`, and `source_capabilities()` and
+  `require_source_capability()` report what the subject can do.
+- **Compressed artifacts:** `ArtifactPath` reads supported single-file compression
+  transparently, within decompression limits, and raises `ArtifactCompressionError`,
+  `ArtifactDecompressionLimitError`, or `ArtifactDecompressionTimeoutError` to separate
+  malformed data from size and time limits.
+- **JSONL:** `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
+  `register_log_adapter` are the adapter contract above.
+  `extract_agent_charts_cached(path)` reuses the agent-log chart projection, returning
+  `None` for an absent file and raising `JsonlParseLimitError` past the parser’s input
+  limit.
+- **Lifecycle:** `register_root_callback(callback)` invalidates plugin caches when the
+  served root changes.
+  Do not cache the resolved root, or import underscored helpers from
+  `metabrowser.paths_safe`.
 
-- `resolve_content(identity)`, `resolve_content_container(identity, suffixes=...)`,
-  `stat_content(ref)`, and `read_content_window(ref, offset=..., max_bytes=...)` are the
-  source-agnostic content reader described under [Reading Content](#reading-content),
-  returning `ContentRef`, `ContentStat`, and `ContentWindow`. Every read takes an
-  explicit byte maximum; there is no unbounded variant.
-- `ContentReadError` is the one family those calls raise, with `ContentUnavailableError`
-  for content that resolved and then could not be read.
-  Each carries a `code` and an `http_status`.
-- `resolve_path(value)` resolves a served-root-relative path and rejects traversal.
-  An empty string returns the served root, and any successful result may be a file or
-  directory. Filesystem-only, like `resolve_directory`, `served_root`, and
-  `open_content`: a subject with no filesystem root raises
-  `UnsupportedSourceCapabilityError`.
-- `resolve_directory(value)` applies the same containment rule and requires a directory.
-- `relativize_path(value)` converts an absolute path under the served root to a client
-  path.
-- `ArtifactPath` reads supported single-file compression formats transparently and with
-  decompression limits.
-- `register_root_callback(callback)` invalidates plugin caches when the served root
-  changes.
-- `LogEvent`, `LogParser`, `detect_adapter(lines)`, and
-  `register_log_adapter(name, detector, parser_factory)` define the JSONL adapter
-  contract described above.
-- `extract_agent_charts_cached(path)` reuses the generic agent-log chart projection and
-  returns `None` if the file is absent.
-- `ArtifactCompressionError`, `ArtifactDecompressionLimitError`, and
-  `ArtifactDecompressionTimeoutError` let sidekicks distinguish malformed compressed
-  data from resource-limit and CPU-time failures.
-  `ArtifactPath` and chart extraction can raise them.
-- `JsonlParseLimitError` is raised when chart extraction exceeds the JSONL parser’s
-  decompressed-input limit.
-
-These helpers share the server’s active root and lifecycle.
-Do not cache the resolved root or import underscored helpers from
-`metabrowser.paths_safe`. The sidekick surface is provisional during the 0.x series;
-release notes will identify changes before 1.0. `metabrowser.plugin_api.__all__`
-contains the sidekick names above, and `metabrowser.__all__` adds `CLIError` and
-`__version__`. CLI integrations can catch `CLIError` to preserve the command’s
-user-facing message and exit code.
-Plugin-loader and manifest implementation types remain available from their defining
-modules but are not part of this compatibility contract.
-
-Ensure the wheel includes the manifest, JavaScript, CSS, and any extra assets.
-Test the built wheel in an isolated environment; an editable source checkout can conceal
-missing package data.
+The sidekick surface is provisional during the 0.x series, and release notes identify
+its changes. Plugin-loader and manifest types are available from their defining modules
+but are not part of this contract.
 
 ## Testing Checklist
 

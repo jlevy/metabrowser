@@ -16,7 +16,7 @@ The procedure is the manual matrix in the
 [alpha testing plan](../specs/done/plan-2026-09-22-v012-alpha-testing.md), adapted to
 the scope of the [thin-mirror plan](../specs/done/plan-2026-09-23-v012-thin-mirror.md).
 The step-by-step checks come from the
-[repository library QA runbook](../../qa-v012-repository-library.md).
+[repository library QA runbook](qa-2026-09-19-v012-repository-library.md).
 
 ## Build
 
@@ -689,8 +689,8 @@ Three observations qualify the browser evidence:
 ## Addendum (2026-10-01)
 
 Verification of the stack’s tip after its last functional pull requests, #251 to #258,
-and of the steps the [runbook](../../qa-v012-repository-library.md) gained the same day.
-No row of the manual matrix was run again, so the results above stand as recorded.
+and of the steps the [runbook](qa-2026-09-19-v012-repository-library.md) gained the same
+day. No row of the manual matrix was run again, so the results above stand as recorded.
 
 | Item | Value |
 | --- | --- |

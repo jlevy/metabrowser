@@ -57,8 +57,9 @@ This plan only orders them and names what blocks each one.
 
 - **The loop.** [The runbook](../../../../explorations/performance-loop/README.md) holds
   the round steps, the accept rule with its four clauses, pre-registration, and where a
-  round’s files live. [Durable Storage](../../../development.md#durable-storage) says
-  where each kind of file and lock belongs.
+  round’s files live.
+  [Durable Storage](../../../../explorations/performance-loop/README.md#durable-storage)
+  says where each kind of file and lock belongs.
 - **The instrument.** The transition scenario at revision 5, frozen at `3a1ff25e`, with
   the `empty`, `newest`, and `restored` Commits landings.
 - **The corpus.** Corpus v2, checked out at `7a02fed4`, trunk `083e78e4`, refs digest
@@ -186,7 +187,7 @@ and commit clicks).
 
 1. Read the runbook’s “Running a round”, “Where a round’s files live”, “A judged
    series”, and “The accept rule”, then
-   [Durable Storage](../../../development.md#durable-storage).
+   [Durable Storage](../../../../explorations/performance-loop/README.md#durable-storage).
 2. Read the hypothesis’s registry row and its bead, then the records it cites.
 3. Write the protocol as
    `explorations/performance-loop/experiments/exp-NNN-protocol.txt` with the analysis

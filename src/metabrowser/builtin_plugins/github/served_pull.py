@@ -72,6 +72,9 @@ MAX_ISSUED_COMPARISONS: Final = 8
 # A measured selected-core path is about 1.7 s. This bounds only the POST's wait,
 # never the provider job; a late core remains available through the ordinary GET.
 CORE_WAIT_TIMEOUT_S: Final = 2.0
+# How long one ``GET pull`` with ``wait_full_after`` waits for that preview's full record or
+# its revocation. It is shorter than the page's fast poll interval (``FAST_POLL_MS`` in
+# ``pull-page.js``), which the page counts from the read's start.
 FULL_WAIT_TIMEOUT_S: Final = 0.9
 
 

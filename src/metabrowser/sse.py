@@ -1,11 +1,11 @@
-"""Server-Sent Events endpoint for live JSONL log + chart updates.
+"""Server-Sent Events endpoint for live JSONL log updates.
 
-The browser polls ``/api/activity`` every 5 s for tree decoration. That
-remains the right shape for "is anything alive across the whole tree".
-But for a tab the user is *looking at* — an open log, an open chart —
-poll-then-refetch turns "live" into a sluggish flicker. SSE pushes
-incremental events to the focused tab instead, eliminating polling for
-the active view while leaving the activity poll alone.
+Tree decoration and active-file badges arrive on ``/api/events``. This
+stream serves the one log a tab is *looking at*: it pushes the records
+appended to that file, so the open Log view grows without refetching the
+file. Charts do not grow; they show the events there were when they
+loaded. ``docs/project/architecture/arch-live-delivery.md`` describes
+both channels.
 
 Wire format
 -----------
@@ -15,13 +15,14 @@ The endpoint emits standard ``text/event-stream`` frames:
 * ``event: append`` — one JSON object containing a batch of newly
   appended events (parsed with the same single-pass parser as
   ``_parse_jsonl_file``) plus the new byte cursor. The client appends
-  to the rendered log and extends in-memory chart series. The same
+  them to its cached event list and to the visible Log view. The same
   complete-line cursor is the SSE event ID, so automatic reconnects
   continue from the last acknowledged record through ``Last-Event-ID``.
-* ``event: heartbeat`` — empty frames every ~10 s to keep proxies
-  happy and detect dead clients.
-* ``event: closed`` — final frame when the writer rotates the file
-  or the file disappears. Client surfaces a "Run ended" badge.
+* ``: heartbeat`` — a comment frame after ``_HEARTBEAT_INTERVAL_S``
+  without an ``append``, to keep proxies happy and detect dead clients.
+* ``event: closed`` — final frame, with a ``reason``, when the writer
+  rotates or truncates the file, the file disappears, or it grows past
+  ``_LARGE_FILE_BYTES``. Client surfaces a "Run ended" badge.
 
 Only files with the ``.jsonl`` extension and below
 ``_LARGE_FILE_BYTES`` are streamable; oversized logs return 413 and
@@ -51,8 +52,9 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
 # How long a single ``stat``+``read`` cycle waits before re-checking.
-# Faster than the 5 s activity poll because the client is actively
-# watching this file; slower than zero so we don't busy-spin.
+# Faster than the active tracker's cadence (``ACTIVE_TRACKER_INTERVAL_S``)
+# because the client is actively watching this file; slower than zero so
+# we don't busy-spin.
 _TAIL_POLL_INTERVAL_S = 0.5
 # Heartbeat cadence — proxies and load balancers commonly drop idle
 # connections after 30–60 s, and a reverse-proxy SSE stream needs to
@@ -261,7 +263,7 @@ def _prime_parser_to_cursor(filepath: Path, cursor: int) -> tuple[str, Any]:
 
     Browser SSE normally starts at the byte count returned by ``/api/file``.
     Without priming, the stream would wait for 20 *new* lines before it
-    can detect an adapter. Files eligible for SSE are capped at 2 MiB, so
+    can detect an adapter. Files eligible for SSE are under ``_LARGE_FILE_BYTES``, so
     replaying the prefix is bounded and preserves parser behavior.
     """
     prefix_lines: list[str] = []
@@ -290,7 +292,7 @@ def _complete_line_cursor(filepath: Path, requested_cursor: int) -> int:
     """Rewind a requested cursor to the last complete JSONL record.
 
     Initial `/api/file` reads can race a writer and report an EOF cursor in the
-    middle of a line. Streamable files are capped at 2 MiB, so inspecting the
+    middle of a line. Streamable files are under ``_LARGE_FILE_BYTES``, so inspecting the
     bounded prefix avoids dropping that partial record when it later completes.
     """
     if requested_cursor <= 0:

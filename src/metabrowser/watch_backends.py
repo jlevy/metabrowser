@@ -5,27 +5,29 @@ typed, bounded ``RefreshRequest`` values whenever the filesystem under the
 served root reports an mtime, create, or delete event. The selected provider
 verifies each hint and owns all retained-state mutation.
 
-Debugging a "no live updates" report? See
-``docs/realtime-debugging.md`` — it walks the
-producer/consumer chain layer by layer and tells you which DEBUG
-log line proves which layer is healthy.
+Debugging a "no live updates" report? See ``docs/realtime-debugging.md``, which walks
+the producer/consumer chain layer by layer and names the DEBUG log line that proves each
+layer is healthy. ``docs/project/architecture/arch-inventory-engine-python.md`` describes
+this watcher.
 
 Backend selection is by **filesystem type** at startup:
 
-* Native-eligible (apfs, ext4, btrfs, xfs, zfs, hfs, hfsplus,
-  tmpfs) → ``watchfiles.awatch`` with the platform's native
-  inotify / FSEvents / kqueue driver. Sub-second update
-  latency.
-* Polling-required (nfs, nfs4, cifs, smbfs, fuse.gcsfuse, …) →
-  ``watchfiles.awatch(force_polling=True, poll_delay_ms=2000)``.
-  Slower but works on remote mounts where native watchers don't
-  see remote writes, so polling is the correctness fallback.
-* Unknown fs type → polling, with a ``log.warning`` naming the
-  type so unrecognized mounts surface in logs.
+* ``_NATIVE_FS_TYPES`` → ``watchfiles.awatch`` with the platform's native inotify,
+  FSEvents, or kqueue driver.
+* ``_POLLING_FS_TYPES`` → ``watchfiles.awatch(force_polling=True)``, at the poll delay
+  :func:`run_watcher` sets. Slower, but it works on remote mounts where native watchers
+  do not see remote writes, so polling is the correctness fallback.
+* An unknown or unrecognized type → polling, with a warning naming an unrecognized type
+  so such mounts surface in logs.
 
 We do not branch by OS; ``watchfiles`` handles the per-platform
 native-driver choice. Only the local-vs-polling distinction
 lives here.
+
+``awatch`` runs with the library's default batching (``debounce`` and ``step``) and its
+default filter, ``watchfiles.DefaultFilter``, which drops changes under directories such
+as ``node_modules`` and ``__pycache__`` that the walker does index; those paths are not
+observed live.
 
 Output: each detected batch resolves to bounded, deduplicated relative paths and
 observation labels. Watch labels are hints, not truth: the owning provider must stat and
@@ -337,6 +339,9 @@ async def run_watcher(
         LOG.debug("watcher starting at %s mode=%s (override)", root, mode)
 
     force_polling = mode == "polling"
+    # How often polling rescans the tree, which is how late a change on a polled mount
+    # can arrive. watchfiles reads ``poll_delay_ms`` only when polling, so the native
+    # value is inert.
     poll_delay_ms = 2000 if force_polling else 50
 
     # Keep cancellation out of watchfiles' Rust-backed iterator. On free-threaded

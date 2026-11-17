@@ -4,7 +4,8 @@ Geometry is the browser's, so these pin the rules that decide it: the slot a reg
 keeps while its content is absent, in line units where text sets the height, so the
 same rule holds in WebKit, whose font metrics differ from Chrome's. Each region named
 here moved the content beside or below it when it appeared or disappeared; the
-measurements are in docs/design-system.md and the rules' comments.
+measurements are in explorations/performance-loop/design-rule-measurements.md and the
+rules' comments.
 """
 
 from __future__ import annotations

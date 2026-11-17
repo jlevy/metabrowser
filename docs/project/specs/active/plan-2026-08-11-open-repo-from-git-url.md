@@ -66,14 +66,14 @@ Provider records describe hosted state and refer to immutable Git object IDs; th
 not replace the object database.
 
 The
-[repository-cache research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+[repository-cache research](../../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
 contains the acquisition measurements and prior-art survey.
 Its 2026-08-26 addendum separates dated evidence from the current design after Git diff
 and revision navigation shipped; the 2026-09-14 refresh rebases the plan on the v0.10.0
 inventory, identity, lifecycle, and parity contracts.
 The 2026-09-16 correction replaces the pinned-checkout and detached-worktree proposal
 with the shared repository-subject and provider-mirror architecture in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md).
 The
 [design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
 records the changes that produced this phased plan.
@@ -104,7 +104,7 @@ It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, immu
 revision subjects, the narrow provider job and selected-ref foundation in `mb-jlon`, the
 bounded `gh api` transport and auth work in `mb-p4sw`, the broker-pinned Git credential
 bridge in `mb-s123`, and the common hosted-review and GitHub work in the
-[provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+[provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md).
 
 Full generic cache management, the in-app chooser, GitHub issues, stacked pull requests,
 and very-large-repository acquisition remain in their existing later phases.
@@ -505,7 +505,7 @@ and referring aliases.
 `tests/fixtures/repository-cache/state-machines.json` freezes this order, the side
 locks, and the startup sweep’s state machine.
 The acquisition and refresh machines are tables in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines).
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition).
 The reclamation, lease, maintenance, purge, quarantine, and repointing machines went
 with the operations they described, which the thin-mirror Simplify step removed.
 Purge and quarantine move the alias before the store, under the alias and store locks.
@@ -545,7 +545,7 @@ The implementation’s concurrent refresh/read/purge/reclaim tests replay those 
 The approved v0.12 layout separates cache and configuration, following uv and fdu on
 both macOS and Linux.
 Resolution, lifecycle, and safety rules are specified in
-[Cache and Configuration Directories](../../architecture/arch-repository-sources-and-provider-mirrors.md#cache-and-configuration-directories).
+[Cache and Configuration Directories](../../architecture/arch-repository-cache.md#cache-and-configuration-directories).
 
 ```text
 ~/.config/metabrowser/
@@ -1134,7 +1134,7 @@ classify source
 ```
 
 The acquisition machine in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines)
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition)
 names each step’s locks, network work, visibility, and crash recovery.
 A remote that ignores the filter produces a store with every reachable object, recorded
 as strategy full and object state complete, never as partial.
@@ -1163,7 +1163,7 @@ Background convergence is the one piece that may want the streaming seam, and if
 takes it, the lifecycle rules that continuous history established apply in full: bound
 the count, bound the storage, expire on idle, release on shutdown, and drain output
 before reaping. See
-[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md#long-lived-walks).
+[Git and comparison sources](../../architecture/arch-git.md#history-sessions).
 Every policy retains fixed arguments, no shell, bounded output, cancellation cleanup,
 and scrubbed repository-pinning environment variables.
 Acquisition also sets `stdin=DEVNULL`, disables terminal and credential-manager prompts,
@@ -1446,10 +1446,11 @@ size, last open, last fetch, integrity, attachments, and any quarantine state.
 
 Provider-neutral hosted-review modeling, GitHub acquisition, snapshot storage, plugin
 views, virtual PR navigation, and stacked-change projections moved to
-[the hosted-review and GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+[the hosted-review and GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md).
 That document and the
-[hosted-review architecture](../../architecture/arch-hosted-review-model.md) own the
-record families, storage layout, provider port, activity projection, and view boundary.
+[hosted-review architecture](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md)
+own the record families, storage layout, provider port, activity projection, and view
+boundary.
 
 What stays here is the part the generic cache owes a provider, and it is deliberately
 small: a stable source attachment, an optional shared repository store, atomic
@@ -1460,9 +1461,9 @@ provider-specific — it does not import a provider schema, branch on a provider
 kind, or let provider state redefine generic source identity.
 
 The one thing that is not deferred is the boundary itself, which is recorded in
-[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md): Git
-stays authoritative for content, history, and diffs, and provider records refer to
-immutable Git object ids rather than replacing them.
+[Git and comparison sources](../../architecture/arch-git.md#providers): Git stays
+authoritative for content, history, and diffs, and provider records refer to immutable
+Git object ids rather than replacing them.
 
 ## Security and Trust
 
@@ -1610,7 +1611,7 @@ replay against production functions when they land.
 | Version floors | One acquisition floor, which is both the security floor and the lazy-fetch floor; [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes, and `promisor-remote.c` and `diffcore-rename.c` read at each relevant tag; only 2.50.1 was available to run |
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
-| Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
+| Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
 | Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
 
 Store and alias rules follow from those identities.
@@ -2058,7 +2059,7 @@ will not be done.
   valid lease fails with `git_credentials_unavailable` before Git starts, so no ambient
   credential can be used.
   The broker and projection arrive in Phase 3A under the isolation rules in
-  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
+  [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#transports-and-credentials).
 - [ ] Persist a non-secret `StagedFetch` job record, take the store lease with no
   ordered lock held, verify the configuration snapshot, and fetch from a promisor remote
   recorded in it — never a URL — directly into the store under
@@ -2183,10 +2184,10 @@ is on `main`. URL serving in 2A and 2C must verify it on the new entry points; f
 acquisition, and immutable-source tests can proceed independently.
 
 **Outbound, depending on the extracted Phase 2B selected-ref foundation:**
-[the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
-stable source attachment, shared repository-store service when content is requested,
-atomic publication, the documented lock hierarchy, owner-only storage, job progress and
-cancellation, and core-side ref fetching.
+[the GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md)
+needs a stable source attachment, shared repository-store service when content is
+requested, atomic publication, the documented lock hierarchy, owner-only storage, job
+progress and cancellation, and core-side ref fetching.
 Provider metadata for a user-owned checkout does **not** require a published Git store,
 catalog, chooser, purge, or size accounting.
 That extracted Phase 2B service is `mb-jlon`; the full generic catalog and management
@@ -2300,8 +2301,8 @@ above.
   convergence, and recorded the evidence it could not supply and who owns it, in
   [Phase 0 decisions](#phase-0-decisions).
 - Snapshot sharding and transport selection moved with
-  [the provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) and are
-  deferred there rather than here.
+  [the provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md) and
+  are deferred there rather than here.
 - Automatic eviction waits for measured size data from later cache operations and
   remains absent unless a defensible default follows.
 - A live session retains its immutable subject until explicit navigation; background
@@ -2339,7 +2340,7 @@ The first usable repository URL and branch phases are complete when:
 
 ## References
 
-- [Repository cache and open from a Git URL](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+- [Repository cache and open from a Git URL](../../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
   — acquisition measurements, prior art, and the dated research record
 - [Repository-library and GitHub-model design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
   — findings resolved by this rewrite
@@ -2348,7 +2349,7 @@ The first usable repository URL and branch phases are complete when:
 - [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — shared
   comparison pipeline and its boundaries with durable acquisition and immutable revision
   subjects
-- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-cache.md)
   — shared Git store, attached checkout, provider mirror, and multi-client contract
 - [Git revision navigation performance](../done/plan-2026-08-25-git-revision-navigation-performance.md)
   — current revision loading and comparison behavior

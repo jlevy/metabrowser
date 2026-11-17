@@ -16,9 +16,7 @@ from metabrowser.plugin_loader.artifact_inventory import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ARCHITECTURE_DOC = (
-    REPO_ROOT / "docs/project/architecture/arch-repository-sources-and-provider-mirrors.md"
-)
+ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-repository-cache.md"
 
 _CONTRACT_HEADER = (
     "Contract ID",

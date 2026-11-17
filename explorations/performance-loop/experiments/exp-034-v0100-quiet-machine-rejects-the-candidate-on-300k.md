@@ -316,7 +316,7 @@ Three of these need reading rather than quoting.
 **Root `/api/tree` server time is 1 ms against 39 ms.** Every pair exceeds the
 tolerance, and `load_tree_ms` — the same fetch plus its render — follows at 16-28 ms
 against 22-69 ms. The mechanism is the one
-[Python inventory cost](../../../docs/project/architecture/arch-python-inventory-cost.md#passes-that-overlap-the-walk)
+[Python inventory cost](../../../docs/project/architecture/arch-inventory-engine-python.md#concurrency-and-the-interpreter-lock)
 already states: a provider read through the coordinator is eight loop iterations and a
 worker hop, and while the walker holds the GIL in bounded slices each hop waits up to
 the 5 ms switch interval.

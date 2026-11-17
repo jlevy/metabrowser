@@ -1,8 +1,11 @@
-# Architecture: VS Code Extension Host
+# Research: VS Code Extension Host
+
+**Date:** 2026-07-17
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Archived.
+A draft design for a VS Code extension host that no plan has adopted.
 
 ## Overview
 
@@ -299,9 +302,9 @@ artifacts.
 
 ## References
 
-- [Core architecture](../../architecture.md)
-- [Plugin authoring](../../plugins.md)
-- [Supply-chain security](../../../SUPPLY-CHAIN-SECURITY.md)
+- [Core architecture](../../../architecture.md)
+- [Plugin authoring](../../../plugins.md)
+- [Supply-chain security](../../../../SUPPLY-CHAIN-SECURITY.md)
 - [uv tools](https://docs.astral.sh/uv/concepts/tools/)
 - [uv-managed Python](https://docs.astral.sh/uv/guides/install-python/)
 - [VS Code Tree View API](https://code.visualstudio.com/api/extension-guides/tree-view)

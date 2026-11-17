@@ -1267,7 +1267,7 @@
     }
   }
 
-  // "Idle Work" in docs/development.md.
+  // "Idle Work" in docs/project/architecture/arch-browser-shell.md.
   const IDLE_INPUT_QUIET_MS = 250;
   let _lastInput = -Infinity;
   const _viewSettled = new Promise((resolve) =>

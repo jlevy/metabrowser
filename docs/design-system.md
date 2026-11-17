@@ -22,8 +22,8 @@ keyboard-sized controls, and consistent status cues over decorative chrome.
 6. **Everything is effortlessly fast.** Speed is a product requirement, not an
    optimization to get to later, and a visible loading state is a failure to plan rather
    than a neutral way to spend time.
-   Prefetch whatever the reader is plausibly about to ask for — the subfolders in view,
-   the next surface of the selected file — unless the cost is real and known.
+   Prefetch whatever the reader is plausibly about to ask for (the subfolders in view,
+   or the next surface of the selected file) unless the cost is real and known.
    Where waiting is unavoidable, [Motion](#motion) governs what may appear and when.
 
 ## Token Layers
@@ -51,29 +51,28 @@ domain tokens, rather than in core `styles.css`.
 
 ## Color and Theming
 
-**Every color is declared in `oklch`** — there are no hex, `hsl`, or `rgb` literals, and
+**Every color is declared in `oklch`**: there are no hex, `hsl`, or `rgb` literals, and
 `tests/test_design_vocabulary.py` rejects new ones.
 One notation is not a style preference: `oklch` separates the three things a theme has
-to reason about — lightness, chroma, and hue — so they can be compared across tokens and
-across themes. In `hsl` they cannot, which is how a chip ground came to carry four times
-its neighbours’ chroma, and how thirty-five tokens came to shift hue between themes
-without anyone choosing that.
+to reason about, lightness, chroma, and hue, so they can be compared across tokens and
+across themes. In `hsl` they cannot, so a token’s chroma or hue can drift between themes
+without anyone choosing it.
 
 > A token defined in both themes names **one color seen against two backgrounds**: its
 > **hue is the invariant**, while lightness and chroma are tuned for the background it
-> sits on — dark surfaces generally want less chroma, not more.
+> sits on: dark surfaces generally want less chroma, not more.
 
-Near-neutrals are the one exemption: below about `0.02` chroma the hue is not
-perceptible, so requiring it to match would constrain a number nobody can see — and
-would force the dark theme’s cool grays to adopt the light theme’s warm ones.
+Near-neutrals are the one exemption: below the near-neutral chroma (`_NEUTRAL_CHROMA` in
+`tests/test_design_vocabulary.py`) the hue is not perceptible, so requiring it to match
+would constrain a number nobody can see, and would force the dark theme’s cool grays to
+adopt the light theme’s warm ones.
 
 Consequences worth knowing:
 
 - A token that needs a different hue in one theme is two different colors and should be
   two tokens with names that say so.
 - A token defined in one theme only is a bug in waiting: a literal tuned for a light
-  background is unreadable on a dark one, which is exactly how `--git-ref-local` broke
-  when it stopped inheriting a themed token.
+  background is unreadable on a dark one.
 - The graph lane colors are the documented exception, and the reason is in the
   stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
   from one another, and that property belongs to the set rather than to any member, so
@@ -96,21 +95,18 @@ Each state owns two parallel OKLCH tokens in `static/styles.css`:
 - `--file-age-fill-<state>` is a translucent surface or area fill
 
 Live is an activity state, not an elapsed-age bucket, but it shares the freshest
-reddish-orange token and bold weight with the under-one-minute tier.
-That warm family remains distinct from the deeper destructive red and from success
-green. The six elapsed-age buckets retain the existing thresholds: under one minute,
-under one hour, under one day, under one week, under one month, and older.
-They move from gold through yellow-green while chroma and prominence fall monotonically
-toward a warm neutral.
+reddish-orange token and bold weight with the freshest tier.
+That warm family stays distinct from the deeper destructive red and from success green.
+The elapsed-age tiers are `AGE_TIERS` in `static/formatters.js`. They move from gold
+through yellow-green while chroma and prominence fall monotonically toward a warm
+neutral.
 
 Text color is the sole age hue signal; dates and Live labels never gain a dot, swatch,
 or adjacent color cue.
-Light-theme text derives from the visible swatches in the approved reference ramp:
-reddish orange for Live and under one minute, then high-saturation yellow followed by
-progressively quieter yellow-green and neutral endpoints.
-After the adjacent dots were removed, the text retained those swatch hues, lowered
-lightness modestly, and raised chroma so the labels remain dark enough for the UI while
-carrying the vivid color themselves.
+Light-theme text takes the hues of the approved reference ramp, reddish orange for Live
+and the freshest tier, then a high-saturation yellow followed by progressively quieter
+yellow-green and neutral endpoints, at a lightness dark enough to read as UI text and a
+chroma high enough to carry the color in the text alone.
 The `.age-live` and `.age-*` classes select tokens only, so new consumers reuse the
 primitive rather than reconstructing colors.
 The navigation age menu’s Live entry and under-one-minute labels in file rows therefore
@@ -149,7 +145,7 @@ KPress typography for rendered Markdown.
 
 The dividing line is what the text *is*, not how technical it looks.
 
-Chrome — everything the application itself says — uses `--font-sans`. That includes file
+Chrome (everything the application itself says) uses `--font-sans`. That includes file
 paths, and it includes the parent path and every ancestor segment: a path is navigation,
 not code, so it reads in the same face as the navigation row it points at.
 Key names, shortcut hints, labels, metadata, chips, tooltips, counts, and status text
@@ -157,7 +153,7 @@ are chrome too.
 
 Monospace is for the user’s own content, where column alignment carries meaning:
 highlighted source, code blocks, Markdown inline code, and raw log payloads.
-Numeric alignment on its own does not justify monospace — byte counts, durations, and
+Numeric alignment on its own does not justify monospace: byte counts, durations, and
 timestamps stay sans and use `--tabular-numerals`.
 
 One stack, `--app-mono`, serves all of it: `--font-mono` and KPress’s
@@ -233,167 +229,61 @@ rule answers named only h2s. The `md-body` fallback sets no italic in either fac
 mark chrome prose. `tests/test_prose_faces_chrome.py` reads the faces they draw in, and
 each Markdown text’s h2 style, in Chrome, under both reading fonts and both font sets.
 
-### Keyboard Keys
-
-Every keyboard key rendered anywhere in the app uses the `.kbd` component: always all
-caps, bold, with one thin border.
-Never hand-set a key’s type or border at a use site, and never write a key as plain text
-inside a sentence.
-
-Write the key in its natural case in markup — the caps treatment is presentational, so
-the accessible name stays what the markup says.
-For alternative keys, emit one `.kbd` per key, joined by the word “or,” so each keeps
-its own border.
-
-The component, its tokens, and its markup contract are documented in the
-`── Keyboard keys ──` blocks of `static/styles.css`. The Shift reveal’s badges are
-keycaps too: the `.kbd-badge` modifier changes only their paint, as
-[Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) describes.
-
-#### Canonical Key Names
-
-Event matching, visible keycaps, spoken names, and `aria-keyshortcuts` are different
-representations. The shared shortcut formatter derives every applicable representation
-from one semantic binding; a caller never abbreviates a key or substitutes an arrow
-glyph itself.
-
-| Semantic key | Markup label | Spoken name | ARIA key token |
-| --- | --- | --- | --- |
-| `?` | `?` | Question mark | Omitted when matched as a produced character |
-| `/` | `/` | Slash | Omitted when matched as a produced character |
-| Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
-| Digit key | The digit | The digit | The digit |
-| `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
-| `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
-| `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
-| `ArrowRight` | `→` | Right arrow | `ArrowRight` |
-| `Enter` | `Enter` | Enter | `Enter` |
-| Space (`KeyboardEvent.key === " "`) | `Space` | Space | `Space` |
-| `Escape` | `Esc` | Escape | `Escape` |
-| `Home` | `Home` | Home | `Home` |
-| `End` | `End` | End | `End` |
-| `Delete` | `Delete` | Delete | `Delete` |
-| `F2` | `F2` | F2 | `F2` |
-| `Shift`, a single key only | `Shift` | Shift | `Shift` |
-| Control with `N` or `P`, on macOS and iOS | `⌃N` | Control N | `Control+N` |
-
-`Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
-`appendKey()`, which renders a key that is not a binding, such as one named in a
-sentence. No binding may use it.
-A [Control chord](#control-chords) is bound only on macOS and iOS, so it is one keycap
-written as they write it.
-Alone or among alternatives, it is spoken as a visually hidden phrase, “Control N”, with
-the keycap hidden from assistive technology, since a screen reader may name `⌃` by its
-Unicode name rather than as Control.
-
-The `.kbd` text transform produces the visible caps treatment; source markup keeps the
-mixed-case label in this table.
-The
-[WAI-ARIA definition of `aria-keyshortcuts`](https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts)
-describes physical keys, not generated characters.
-ARIA serialization is therefore a separate, optional formatter output: it uses `Escape`
-instead of the visible `Esc` and `ArrowUp` instead of `↑`, but omits a character-matched
-punctuation binding when the physical chord varies by keyboard layout.
-Do not guess `Shift+/` for a `?` binding that intentionally works on any layout
-producing that character.
-Adding a key that is not in this vocabulary requires adding its display, spoken, and
-ARIA policy together with formatter tests.
-
-#### Main Tab Shortcuts
-
-The sidebar orders Files, Pulls, and Commits in that order, and their keys are `F`, `P`,
-and `H` ([Keyboard Shortcuts](#keyboard-shortcuts)): Files and Pulls take the first
-letter of their label, and Commits takes `H`, for commit History: `C` is Charts’ and
-Conversation’s, view tabs that a shell letter, reserved everywhere, would leave without
-a key. The letters work outside text fields and dialogs, with or without Shift.
-A letter opens its tab, or keeps the tab already shown, and moves focus to the panel’s
-roving row, so `F` then `↓` walks the file tree; while the panel has no rows yet, the
-tab button takes focus.
-A missing tab has no target, so its letter does nothing and stays reserved.
-
-#### Binding Grammar and Accessibility
-
-- Every shortcut is a single key, but for the two [Control chords](#control-chords),
-  Control-N and Control-P, bound only on macOS and iOS. A binding declares Control with
-  `control: true`, and the registry rejects it with any other key or on any other
-  platform. No binding uses Alt or Meta, and the registry rejects a binding that states
-  any other modifier policy, Shift included.
-- Shift never changes what a key means: a letter matches in either case, a named key
-  such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
-  matches the digit typed or, failing that, its key on the digit row, so Shift+`1` is
-  `1`, and Shift+`0`, which types `)` on a US keyboard, is `0`. A character that is
-  another binding’s key keeps it: German Shift+`7` types `/` and is Quick Search.
-- Punctuation matches the character typed, so `?` and `/` stay distinct even where they
-  share a key, and `/` works on layouts that type it with Shift.
-- Alternative bindings use the word “or”: `T` or `/`.
-- Ordered key sequences are not supported and must not be implied by adjacent keycaps.
-- Direction pairs use “or,” not a slash or unexplained adjacency: `↑` or `↓`.
-
-The visual and spoken forms are both generated.
-An isolated key may use its natural-case `<kbd>` text as its accessible name.
-A group of alternatives exposes one visually hidden phrase such as “T or slash” or “Down
-arrow or J” and hides its visual punctuation and keycaps from assistive technology,
-avoiding duplicate or ambiguous announcements.
-An actionable control keeps its action as the accessible name and receives the
-formatter’s `aria-keyshortcuts` value separately when the formatter can represent the
-physical shortcut accurately.
-
 ### Type Scale
 
-Every font size in the app comes from the type-scale tokens defined in
-`static/styles.css` (see the `── Type scale ──` block in `:root`). Never inline a
-font-size literal at a use site.
+Every font size in the app comes from the type-scale tokens in the `── Type scale ──`
+block of `static/styles.css`, which holds each token’s value and role.
+Never inline a font-size literal at a use site.
 
 Chrome (interface) sizes:
 
-- `--body-font-size` (14px): primary chrome text — body default, inputs, empty states,
-  stat values.
-- `--nav-font-size` (13px): dense navigation rows and path breadcrumbs — tree items,
-  header path, file-header path — and the
+- `--body-font-size`: primary chrome text, such as the body default, inputs, empty
+  states, and stat values.
+- `--nav-font-size`: dense navigation rows and path breadcrumbs, such as tree items, the
+  header path, and the file-header path, and the
   [navigation metadata line](#navigation-metadata-line) that states their totals.
-- `--ui-small-font-size` (12px): secondary chrome — metadata, chips, tooltips, notes,
-  filters, summaries.
-- `--label-font-size` (= ui-small): all-caps section labels — tabs, panel and table
-  headers, stat labels.
-  Labels differ by caps treatment, not by another size.
-- `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
-  views, split and unified diffs, review hunks, logs, raw JSON.
-- `--micro-font-size` (10px): deliberately minimized marks — the brand line.
-- `--page-title-font-size` (24px): the title of a page no file stands behind, a pull
-  request’s. It sits above the 25.5px regular first heading of the text below by its
-  bold weight, not by its size.
-- `--git-ref-font-size` (`--git-ref-font-scale`, 0.9, of the inherited size): a ref
-  chip, slightly smaller than the text it sits in.
-  The ramp’s one relative size, because a chip sits in text of several sizes and reads
-  as part of it; see [Branch Chips](#branch-chips).
+- `--ui-small-font-size`: secondary chrome, such as metadata, chips, tooltips, notes,
+  filters, and summaries.
+- `--label-font-size`: all-caps section labels, such as tabs, panel and table headers,
+  and stat labels. It is the same size as `--ui-small-font-size`, because labels differ
+  by caps treatment, not by another size.
+- `--mono-block-font-size`: monospaced blocks in chrome contexts, such as source views,
+  split and unified diffs, review hunks, logs, and raw JSON.
+- `--micro-font-size`: deliberately minimized marks, such as the brand line.
+- `--page-title-font-size`: the title of a page no file stands behind, a pull request’s.
+  It stands above the regular first heading of the text below by its bold weight, not by
+  its size.
+- `--git-ref-font-size`: a ref chip, `--git-ref-font-scale` of the size it inherits, so
+  slightly smaller than the text it sits in.
+  It is the ramp’s one relative size, because a chip sits in text of several sizes and
+  reads as part of it; see [Branch Chips](#branch-chips).
 
 Document (rendered prose) sizes are a single token:
 
-- `--document-body-font-size` (15px): prose, one size step above the 14px app body.
+- `--document-body-font-size`: prose, one step above the app body.
   Anything a reader reads as prose takes it, a pull request’s description and comments
   as much as a README, so the same text is the same size wherever it appears.
 
-Everything else inside a rendered document — secondary text, table cells, captions,
-footnotes, and code at every tier — belongs to KPress’s ramp, which it derives from this
-one value through `--kpress-host-font-size-base` on `:root`. Chrome-context monospace is
-a separate concern and uses `--mono-block-font-size`. Diff row reservation uses the same
-token and line-height as the rendered rows, so deferred mounting reserves the height the
-code actually occupies.
+Everything else inside a rendered document, such as secondary text, table cells,
+captions, footnotes, and code at every tier, belongs to KPress’s ramp, which it derives
+from this one value through `--kpress-host-font-size-base` on `:root`. Chrome-context
+monospace is a separate concern and uses `--mono-block-font-size`. Diff row reservation
+uses the same token and line-height as the rendered rows, so deferred mounting reserves
+the height the code occupies.
 Browser zoom scales the whole interface; changing the browser’s root font preference
 does not selectively enlarge diff code.
 
 Do not add a host token that restates a ratio KPress already owns.
-KPress ships *graded families* — secondary text at `small`/`smaller`/`tiny` and code at
-`mono`/`mono-small`/`mono-tiny` — and steps each by context, because the smaller tiers
-land where the surrounding text is already reduced.
-A host token collapses the whole family onto one size, and the failures are not subtle:
-a flat 0.9× mono token once rendered inline code in a table at 13.5px inside a 12.75px
-cell, larger than the prose around it, while a flat 0.85× secondary token shrank table
-text to 12.75px against 15px prose — well under the 14.25px KPress intends.
+KPress ships *graded families*, secondary text at `small`, `smaller`, and `tiny` and
+code at `mono`, `mono-small`, and `mono-tiny`, and steps each by context, because the
+smaller tiers land where the surrounding text is already reduced.
+A host token collapses the whole family onto one size: a flat mono ratio sets inline
+code in a table cell larger than the cell’s prose, and a flat secondary ratio shrinks
+table text well under the size KPress intends.
 
-The bridge keeps one size override, and only because it is a real design difference: the
-CONTENTS label uses `--label-font-size` so it matches app labels.
-When adding a size, extend the ramp and its documentation; do not create a one-off.
+The bridge keeps one size override, because it is a real design difference: the CONTENTS
+label uses `--label-font-size` so it matches app labels.
+When adding a size, extend the ramp and its comment; do not create a one-off.
 
 `test_font_sizes_come_from_the_type_scale` in `tests/test_design_vocabulary.py` holds
 every stylesheet the app ships to this, plugins included.
@@ -578,7 +468,8 @@ Prose reads at a width the reader sets, in **characters**, through “Max text w
 the Metabrowser menu.
 Characters rather than a length because that is the decision a reader has: 45–75 is the
 classic range for a single column, and a browser pane is wide enough to sit above it.
-The default is 102. Choose 80 for a narrower reading target in the same control.
+The default is `DOC_MAX_CHARS_DEFAULT` in `settings.py`, and a reader can choose a
+narrower target in the same control.
 That adjustable target follows
 [WCAG 2.2 SC 1.4.8, Visual Presentation (Level AAA)](https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html).
 
@@ -605,19 +496,19 @@ classes the allowlist removed, so it reaches the same rules.
 `:root, .kpress, …` from a stylesheet that loads after the app’s, so on `:root` the
 app’s value is overwritten and on `.kpress` it is shadowed on the element that consumes
 it. Host CSS outside a `.kpress` scope therefore resolves KPress’s default rather than
-the reader’s setting — which is exactly how the Overview’s README came to render at a
-different width from the same file opened on its own.
+the reader’s setting, and a README on Overview would read at a different width from the
+same file opened on its own.
 `--doc-measure` is app-owned and cannot be shadowed.
 One bridge, `.metabrowser-kpress-host .kpress { --kpress-measure: var(--doc-measure) }`,
 carries it into the document.
 
-The advance ratio is measured, not assumed, over 507 characters of representative
-English prose: 0.4335 em/char for PT Serif and 0.4039 for Source Sans 3, so the sans
-reading mode swaps the ratio and the same character count still holds.
-This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
-overstates a proportional face by roughly 23%. KPress ships no per-face constants
-because a host may swap the face; Metabrowser pins its own faces, so it owns the
-conversion. Size and character-count changes are CSS inputs.
+The advance ratio is measured, not assumed, for each reading face, and the sans reading
+mode swaps the ratio so the same character count still holds; the measurement and its
+procedure are beside `--doc-char-advance` in `static/styles.css`. It is the average
+advance, not the CSS `ch` unit, which is the advance of “0” and overstates a
+proportional face. KPress ships no per-face constants because a host may swap the face;
+Metabrowser pins its own faces, so it owns the conversion.
+Size and character-count changes are CSS inputs.
 
 Verify a width change by measuring the *text* box with padding excluded, in both the
 single-column and wide bands, and against the same file opened on its own.
@@ -627,18 +518,18 @@ A card can be the right width while the text inside it is an inset-pair too narr
 
 Document and Source keep the same outer pane gutter, `--content-padding-x`. Card borders
 and source surfaces start at the first tab’s outer edge.
-KPress keeps its normal padding inside the card: 4 rem in the single-column band and 2.5
-rem in the wide band, with its compact prose gutter on narrow panes.
+KPress keeps its normal padding inside the card, wider in the single-column band than in
+the wide band, with its compact prose gutter on narrow panes.
 Source and Raw keep their code-block padding and line-number columns inside the shared
 outer gutter. KPress’s card and `--doc-measure` cap the reading column.
-At a preview width of 75 rem or more, a document with a table of contents puts the
-sticky KPress rail to the right, with a 3 rem gap.
+In KPress’s wide document band, a document with a table of contents puts the sticky
+KPress rail to the right of the prose.
 A thumbnail sits above the prose.
 A wide table scrolls inside the column beside a rail.
 In a single column it can use available space to the right of the text.
 
-Below 75 rem, KPress’s icon opens the existing overlay from the trailing gutter to keep
-the beginning of each line clear.
+Below that band, KPress’s icon opens the overlay from the trailing gutter to keep the
+beginning of each line clear.
 The Folder Overview README shares the same prose edge and maximum measure.
 Its panel headings and bodies follow the document card’s outer edge.
 Their text starts on the active tab’s label rather than at the README’s responsive inner
@@ -794,16 +685,17 @@ that arrived while the Files panel was inactive.
 
 ### Container Rows
 
-A file whose kind declares the container capability keeps its file identity — icon,
-name, size, selection — and additionally leads with the tree’s disclosure chevron in the
-same slot a folder uses, `--tree-icon-slot` ([One Glyph Size](#one-glyph-size)), so
-names stay aligned at every indent.
+A file whose kind declares the container capability keeps its file identity (icon, name,
+size, selection) and additionally leads with the tree’s disclosure chevron in the same
+slot a folder uses, `--tree-icon-slot` ([One Glyph Size](#one-glyph-size)), so names
+stay aligned at every indent.
 Its children are ordinary rows carrying a one-letter change badge in place of the file
 icon. Clicking is one gesture, as on a folder row: it opens the file *and* toggles its
 children. The keyboard splits them the same way, and every disclosure affordance in the
-tree — ARIA state, arrow keys, filtering — asks whether a row owns a child group, never
+tree (ARIA state, arrow keys, filtering) asks whether a row owns a child group, never
 what kind of row it is.
-See [nav containers](project/architecture/arch-nav-containers.md).
+See
+[navigation containers](project/architecture/arch-plugin-system.md#navigation-containers).
 
 ### Section Disclosure Headers
 
@@ -862,8 +754,8 @@ unsettled rather than consistently offset.
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
 baseline, so no opt-in selector may match one.
-Where a text slot can hold a box instead — a loading skeleton, or an age the activity
-spinner replaces — the opt-in selector excludes it with `:not()` rather than a later
+Where a text slot can hold a box instead (a loading skeleton, or an age the activity
+spinner replaces), the opt-in selector excludes it with `:not()` rather than a later
 rule overriding it, so neither rule order nor specificity decides where a box sits.
 
 Baseline alignment places the text group at the top of the row’s content box, so the
@@ -882,20 +774,16 @@ checks both in Chrome.
 
 The diff file bar’s View file controls are boxes beside the toggle, not text inside it,
 so they are set at the path’s own size: text of one size centers onto one baseline.
-At `--ui-small-font-size` a link sat 0.75px above the path’s baseline and a button
-0.5px, measured in Chromium at a device pixel ratio of 2.
 
-A mirror’s location note at the far end of the file header is deliberately not in the
-table.
-It is whole or absent, by wrapping inside a box of its own one line tall, so it is
-centered rather than baseline-aligned, and sits 0.25px above the path at a device pixel
-ratio of 1, with the rest of the row between them.
-
-The Git commit summary’s metadata line also sets two sizes and is deliberately not in
-the table.
-Its revision is monospace at `--nav-font-size` beside body-size sans text, and
-aligning the two faces on one baseline grows that line by 1.25px at a device pixel ratio
-of 2, so it stays centered.
+Two rows that set two sizes are deliberately not in the table.
+A mirror’s location note at the far end of the file header is whole or absent, by
+wrapping inside a box of its own one line tall, so it is centered rather than
+baseline-aligned, with the rest of the row between it and the path.
+The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
+beside body-size sans text, and aligning the two faces on one baseline would grow the
+line, so it stays centered.
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#row-baselines)
+has the offsets behind these three decisions.
 
 `test_row_text_shares_one_baseline` in `tests/test_design_vocabulary.py` checks this
 table against the stylesheets: every text slot opts in, and no rule that aligns to the
@@ -903,8 +791,8 @@ baseline matches a box, including a text slot in its box state.
 
 ### Fold Expanders
 
-A run of content withheld until asked for — a long stretch of changed lines in a diff —
-sits behind a full-width control at `--ui-row-height` carrying the same registry
+A run of content withheld until asked for, such as a long stretch of changed lines in a
+diff, sits behind a full-width control at `--ui-row-height` carrying the same registry
 chevron, in `--highlight-bg`, hovering with `--hover-bg`. The label states the count it
 holds (`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`),
 because a control that hides its size is a control the reader cannot judge.
@@ -914,23 +802,21 @@ or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives`
 it.
 
 One fold is not a row: a rendered Markdown diff’s fold of unchanged blocks (“6 unchanged
-blocks”) is a line in the document, because the user asked that it have no borders and
-expand in place in the rendered document.
-It has no box, fill, or rules, closed or open; its chevron starts on the blocks’ text
-edge; its label brightens from muted to `--text` under the pointer, as a document’s own
-disclosures in the shell do; and opening it sets the blocks it holds exactly as the
-unchanged blocks around them.
+blocks”) is a line in the document, with no borders, that expands in place in the
+rendered document. It has no box, fill, or rules, closed or open; its chevron starts on
+the blocks’ text edge; its label brightens from muted to `--text` under the pointer, as
+a document’s own disclosures in the shell do; and opening it sets the blocks it holds
+exactly as the unchanged blocks around them.
 `tests/test_diff_markdown_fold_chrome.py` measures it in Chrome.
 
 ### Disclosure Motion
 
 Every toggle travels the same way: the body animates `height` between `auto` and `0` on
-`var(--transition-fast)` — the same duration its chevron rotates with — with
+`var(--transition-fast)` (the same duration its chevron rotates with), with
 `overflow: hidden` during travel and `visibility: hidden` at rest so collapsed content
 leaves the tab order and the accessibility tree.
 `interpolate-size: allow-keywords` is scoped to each animated body; engines without it
-swap instantly, which was the prior behavior.
-Collapse is always class-driven (`.tree-children-collapsed`,
+swap instantly. Collapse is always class-driven (`.tree-children-collapsed`,
 `.diff-file-body-collapsed`, `.diff-fold-collapsed`,
 `.folder-overview-panel-body-collapsed`), never inline `display`, so the stylesheet owns
 the motion, and reduced-motion drops every travel to 1ms while keeping the state change.
@@ -940,18 +826,19 @@ A native `details` keeps its state in `open` and takes the same recipe on
 
 Only a toggle the reader asked for travels.
 When navigation reveals a path, as a link, Back, or Quick Search does, the tree opens
-the folders on the way with `.tree-children-instant`, which lands them in place.
-Animated, a deep reveal moved the rows below it 43–131 px a frame with no input.
+the folders on the way with `.tree-children-instant`, which lands them in place, because
+an animated deep reveal moves the rows below it with no input
+([measured](../explorations/performance-loop/design-rule-measurements.md#disclosure-motion)).
 The reader’s next toggle of that folder travels again.
 Such a reveal is the reader’s own doing, so it then scrolls the new selection into view
 in the same frame. A landing within the inline’s bounds needs no reveal: the server
 inlines the folders of the address’s path, open, and the tree’s first paint selects and
 shows its row, so nothing is fetched, opened, or scrolled after it.
-Opening them after the first paint had moved the tree with no input.
-The bounds are each folder’s whole listing (200 entries at most), 300 rows for the
-path’s folders in all, and 8 folders, and the inventory’s discovery complete.
+The bounds are a folder’s whole listing within `_INLINE_INITIAL_TREE_ROWS`, the path’s
+folders within `_INLINE_LANDING_ROWS` rows and `_INLINE_LANDING_DEPTH` folders, all in
+`server.py`, and the inventory’s discovery complete.
 A landing outside them inlines the root alone, and the page reveals its path after the
-first paint, its folders travelling, as before: that still moves the tree with no input.
+first paint with its folders travelling, which still moves the tree with no input.
 
 ### Disclosure Toggles Never Select Text
 
@@ -971,19 +858,14 @@ itself, in a README or a pull request’s description, behaves the same.
 Plugins use the same class; `plugin-sdk.js` lists it with the SDK’s visual helpers.
 
 A click on a toggle is a command, not a reading gesture, so it must never leave a
-selection behind. Before this rule, a triple click on a rendered Markdown diff’s **5
-unchanged blocks** fold selected its label and every paragraph it revealed, in Chrome;
-in WebKit, which is the macOS app’s engine, a double click on a folder row selected the
-folder’s name. WebKit reads only the prefixed `-webkit-user-select`, so the unprefixed
-rule the tree rows had was never applied there.
-Declare the prefixed property beside every `user-select`, not only on toggles.
+selection behind: a double or triple click on a fold or a folder row would otherwise
+select its label and the content it reveals.
+WebKit, the macOS app’s engine, reads only the prefixed `-webkit-user-select`, so
+declare the prefixed property beside every `user-select`, not only on toggles.
 
-The rule is enough on its own.
-Measured on 2026-11-13 with real double and triple clicks, in headless Chrome on a
-folder row’s name, padding, and size and on the fold’s label and padding, and in a
-`WKWebView` on a folder row’s name and a section trigger: nothing was selected, and a
-`mousedown` handler that prevented the default of the second and third presses changed
-nothing in either engine, so there is none.
+The rule is enough on its own, with no `mousedown` handler, in Chrome and in a
+`WKWebView`
+([measurements](../explorations/performance-loop/design-rule-measurements.md#disclosure-toggle-selection)).
 A drag that starts in content still selects it, because the rule applies to the toggle
 alone.
 What a toggle reveals is its sibling, never its child, and stays selectable; never
@@ -1013,25 +895,22 @@ A **notice** is any box the app draws to say something *about* the content it is
 showing: that a file is only partly loaded, that a document could not be rendered.
 They are one primitive, `.notice` in `static/styles.css`, in core and in plugins alike.
 
-Its fill is always the ordinary surface — `var(--bg)`, white in the light theme — and
+Its fill is always the ordinary surface (`var(--bg)`, white in the light theme), and
 **severity is carried by the border alone**, as one `[data-severity]` override:
 
 | Severity | Border | Means |
 | --- | --- | --- |
 | (none) | `var(--border)` | Neutral; the box is a container, not a signal |
-| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded — the content is fine as far as it goes |
+| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded: the content is fine as far as it goes |
 | `error` | `var(--status-error)` | The thing could not be done at all |
 
 One tone per box, and it is the one on the edge.
-Tinting the fill is how these drifted, twice: the partial-content banner wore an
-info-blue fill with a warning border while the byte view announced the same condition
-with no box at all, and the KPress render error wore that same blue under an orange
-border — an error announcing itself in the color of an aside, beneath a border naming
-the wrong severity. A tint token such as `--status-info-bg` exists for surfaces that
-genuinely mean “informational”; it is never a message box’s fill.
+A tinted fill under a border of another severity says two things at once, so a tint
+token such as `--status-info-bg` exists for surfaces that mean “informational” and is
+never a message box’s fill.
 
 A use site carries `.notice` in the markup alongside its own class, and owns only
-**layout and position** — how it arranges its contents and where it sits.
+**layout and position**: how it arranges its contents and where it sits.
 It never restates the fill, border, or type, the same rule the
 [control families](#control-families) follow, for the same reason.
 Layout is deliberately not shared: a one-line notice with a button and a stacked render
@@ -1054,7 +933,7 @@ of the content**, above it and below it, whenever more remains.
 The reader who most wants the next chunk is the one who just finished the current one,
 and they are at the bottom.
 A single control in the pane header is out of view by then, so continuing means
-scrolling back through everything already read to reach it — the longer the content, the
+scrolling back through everything already read to reach it: the longer the content, the
 worse the cost, which is exactly backwards.
 Both controls carry the same label, act on the same state, and appear and retire
 together.
@@ -1062,10 +941,8 @@ together.
 ### State Progress Once
 
 The notice is the only place a view reports how much of a file is loaded.
-
-Both views used to carry a second readout in their pane chrome — “1.0 MB / 6.0 MB” above
-a notice reading “Showing 1.0 MB of 6.0 MB” — which is the same sentence twice in two
-boxes, and gives a reader two things to reconcile where there is only one fact.
+A second readout in the pane chrome would say the same sentence twice in two boxes and
+give a reader two things to reconcile where there is one fact.
 The file header states the file’s **size**, which is identity; the notice states
 **progress**, which is state.
 The two controls at the ends of the content are not a second statement: they bracket the
@@ -1084,9 +961,7 @@ Three supporting rules follow from the same reasoning:
   drops the control, and says the limit was reached.
   “No control” and “you are seeing the whole file” look identical otherwise, and a
   reader who cannot see the rest needs telling either way.
-  The byte view previously refused any file above its 32 MiB ceiling outright, which
-  meant the view existed for binaries and declined the large ones with nothing to look
-  at.
+  The byte view opens a binary above its preview ceiling this way.
 
 Core provides both halves through `mb.renderTextTruncationWarning` and
 `mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and
@@ -1098,10 +973,9 @@ the chunk sizes these controls request.
 ## Git History
 
 The history panel has its own vocabulary because it shows a structure nothing else in
-the product shows — a graph of commits — but it borrows every general element it can:
-ages come from [Age](#age), change counts from
-[Inline Change Stats](#inline-change-stats), and rows follow the shared
-[row height and hover](#one-chevron-one-row-contract).
+the product shows, a graph of commits, but it borrows every general element it can: ages
+come from [Age](#age), change counts from [Inline Change Stats](#inline-change-stats),
+and rows follow the shared [row height and hover](#one-chevron-one-row-contract).
 [Branch Chips](#branch-chips), defined here, is the reference for a ref chip on every
 surface: a pull request’s header and the ref selector as much as a history row.
 
@@ -1110,8 +984,8 @@ surface: a pull request’s header and the ref selector as much as a history row
 Five lane colors, `--git-lane-1` through `--git-lane-5`, assigned round-robin as lanes
 open. They are **one set, not five independent choices**: the property that matters is
 that the five stay distinguishable from one another, which belongs to the set, so a lane
-color is never adjusted on its own and the set is identical in both themes — thin
-strokes carry on either background.
+color is never adjusted on its own and the set is identical in both themes: thin strokes
+carry on either background.
 This is the documented exception to the hue rule in
 [Color and Theming](#color-and-theming).
 
@@ -1124,14 +998,12 @@ five.
 ### Commit Nodes
 
 **Every vertex is the same solid dot.** Shape carries no state.
-
-Rings and ring-plus-dot variants encoded HEAD and merges once, and the encoding failed
-twice over: at this radius the variants read as noise rather than meaning, and the
-hollow center had to be painted with a copy of the row’s background, so every row state
-— hover, selection, anything added later — had to restate that color or the node changed
-shape under the highlight.
-What matters stays legible where it already was: `HEAD` by its lane color and its chip,
-a merge by the arcs converging on it.
+At this radius a ring or a ring-and-dot reads as noise rather than meaning, and a hollow
+center has to be painted with a copy of the row’s background, so every row state, hover
+and selection included, would have to restate that color or the node would change shape
+under the highlight.
+What matters stays legible where it already is: `HEAD` by its lane color and its chip, a
+merge by the arcs converging on it.
 
 ### History Rows
 
@@ -1147,8 +1019,8 @@ A row is the graph, then the commit, then who and when:
 When a row cannot fit everything, the order it gives way in is **subject, then chips,
 never the age**: an age pushed off the row is information lost, an ellipsized message
 still reads, and a halved branch name does not.
-Rows are independent — no shared column — which is also what lets a new page of history
-be appended to the list instead of rebuilding every row above it.
+Rows are independent, with no shared column, which is also what lets a new page of
+history be appended to the list instead of rebuilding every row above it.
 The subject and the smaller author and age share a baseline; see
 [Row Text Shares a Baseline](#row-text-shares-a-baseline).
 
@@ -1181,16 +1053,14 @@ and painted as a diff’s line is where its tree did not load, “35 files chang
 −3,423”; a failed comparison says so in the diff’s place.
 A detail with no count of files leaves the place empty, and it takes no room.
 The commit hands the diff its own totals, which the server counts over the whole commit
-before it caps the list of files, and for a list cut short at the comparison’s bound of
-2,000 files the summary’s header says those ([Diff Summary](#diff-summary)). Measured in
-Chrome 152 at 980 to 320 px, the summary sits 6 px under the identity and 16 px over the
-description, its place on the subject’s edge and its toggle hung 4 px into the gutter,
-as every Diff summary’s is; for “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” its
-header is one 24 px row at 420 px and wider and wraps to two lines at 320 px, breaking
-after a dot, all before the page is shown; opened, its tree is under it and above the
-description; with no diff the totals line is one row under the identity; and an empty
-place takes no room.
-`tests/test_git_commit_summary_chrome.py` holds it.
+before it caps the list of files, and for a list cut short at the comparison’s bound
+(`MAX_MANIFEST_FILES` in `diff/adapters/git.py`) the summary’s header says those
+([Diff Summary](#diff-summary)). The summary’s place is on the subject’s edge with its
+toggle hung into the gutter, as every Diff summary’s is; its header wraps in a narrow
+pane, breaking after a dot, before the page is shown; opened, its tree is under it and
+above the description; and with no diff the totals line is one row under the identity.
+`tests/test_git_commit_summary_chrome.py` holds it, and its measurements are in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#git-commit-summary).
 The compact summary, in a tooltip, has no diff: its `.git-commit-change-stats` child
 sits below the identity metadata and says the commit’s changes in the Diff summary’s
 words and paint, through the same parts and painters (`changeSummary`, `countPartsHtml`,
@@ -1216,7 +1086,7 @@ The compact subject, author, age, and change line use `--body-font-size`. The re
 are chips, slightly smaller than that text, by the [chip ratio](#one-ratio).
 Among the row’s text the revision is the one deliberate exception: it is monospace, and
 mono at body size renders optically larger than the sans text beside it, so it uses
-`--nav-font-size` — one step down the ramp — to sit level with its row.
+`--nav-font-size` (one step down the ramp) to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description is chrome prose, as a PR description
 is (`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`.
@@ -1261,34 +1131,29 @@ ref it is, whether it is trunk, and whether `HEAD` is on it.
 #### One Ratio
 
 A chip is slightly smaller than the text around it, wherever it appears: one ratio, not
-one size. Its size is `--git-ref-font-size`, `--git-ref-font-scale` (0.9) of the size it
-inherits, so a chip in a 14px header line is 12.6px and one in the 12px ref selector is
-10.8px. One rule on `.git-ref` sets its type and box.
-No context overrides them, and the box a chip sits in — a merge’s grid, a history row’s
-ref group, a summary’s identity group, the ref selector’s label — sets no size of its
-own, so the chip scales from the text beside it.
+one size. Its size is `--git-ref-font-size`, `--git-ref-font-scale` of the size it
+inherits, so a chip in a header line is larger than one in the ref selector, and both
+read as part of their line.
+One rule on `.git-ref` in `static/styles.css` sets its type and box, and its comment
+holds the figures.
+No context overrides them, and the box a chip sits in, a merge’s grid,
+a history row’s ref group, a summary’s identity group, or the ref selector’s label, sets
+no size of its own, so the chip scales from the text beside it.
 
-Measured in Chrome, light theme, the text each context sets and the chip it gets:
-
-| Context | Text around the chip | Chip | Chip before the ratio |
-| --- | --- | --- | --- |
-| A Git history row | 13px subject | 11.7px | 12px |
-| A commit’s summary and its tooltip | 14px metadata | 12.6px | 12px |
-| A pull request’s header | 14px branch line | 12.6px | 12px |
-| The ref selector’s button and list | 12px | 10.8px | 12px |
-
-| Property | Value | Why |
+| Property | Rule | Why |
 | --- | --- | --- |
-| Size | `--git-ref-font-size` | Slightly smaller than its text, so a branch name reads as a tag on that text rather than the text itself. The smallest context gives 10.8px bold, above the 10px of `--micro-font-size`, so the ratio needs no floor |
+| Size | `--git-ref-font-size` | Slightly smaller than its text, so a branch name reads as a tag on that text rather than the text itself. The smallest context stays above `--micro-font-size`, so the ratio needs no floor |
 | Weight | `--weight-bold` | The name carries the meaning |
-| Line height | `1.333` | The chip’s box scales with its text: 16px at 12px, as before, and at most 16.8px. A 13px history row’s 15.6px chip keeps the `HEAD` ring inside its 22px row |
+| Line height | A ratio of the chip’s size | The box scales with its text and keeps a `HEAD` ring inside a history row |
 | Corner | `--radius-tag` | Square-ish, so a ref and a filter never read as the same control |
-| Padding | `0 5px` | Room around the name, not text, so it stays in px. A tag adds 4px on the left for its notch, and a copyable chip reserves 19px on the right for its copy control, a fixed-size icon ([One Glyph Size](#one-glyph-size)) |
-| Width | At most `22em`, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it in `styles.css` |
+| Padding | In px | Room around the name, not text. A tag adds room on the left for its notch, and a copyable chip reserves a slot on the right for its copy control, a fixed-size icon ([One Glyph Size](#one-glyph-size)) |
+| Width | A maximum in em, ellipsized, with the full name in its tooltip | In em so the bound keeps its meaning at any chip size; the measurement is beside it |
 
 `test_branch_chips_scale_with_their_text` in `tests/test_design_vocabulary.py` holds the
 ratio: it fails on a rule in any shipped stylesheet that sets a chip’s type or box from
 a context, or that gives a box a chip sits in a size of its own.
+The size each context’s chip gets is in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#branch-chip-sizes).
 
 #### Kinds and Forms
 
@@ -1442,13 +1307,13 @@ share these rules wherever they appear.
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
 size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
 always in that order, using the true minus sign, at the local small-text size, and
-always `--weight-bold` — the pair is data, and it must read at a glance.
+always `--weight-bold`: the pair is data, and it must read at a glance.
 The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and weight
 rule but use the commit summary’s standard body size.
 The same pair is the [Diff summary](#diff-summary)’s vocabulary, so a change set, its
 folders, and its files read identically.
-Kind letters reuse the same mapping — added is `--status-success`, deleted is
-`--status-error` — and no diff surface introduces a local green or red.
+Kind letters reuse the same mapping (added is `--status-success`, deleted is
+`--status-error`), and no diff surface introduces a local green or red.
 
 ### Brief Change Line
 
@@ -1463,7 +1328,7 @@ reaches both through the SDK, `metabrowser.changeLine` and `metabrowser.changeLi
 `.change-line` in the shell’s stylesheet: each status a status count, the commas and the
 dot muted, and the totals the [inline change stats](#inline-change-stats).
 The statuses and the dot after them are one item (`.change-line-group`), so a line that
-wraps breaks after the dot and no line starts with one, and its 6 px gap is the Diff
+wraps breaks after the dot and no line starts with one, and its gap is the Diff
 summary’s. A change set of no statuses is its totals alone, “+0 −0”, and a count it does
 not know is “?”. Its `label` says it in words for a screen reader, “10 added, 5 deleted,
 4 modified; 1,234 lines added, 567 deleted”, and on a line whose name does not, its
@@ -1510,22 +1375,18 @@ A summary already drawn stays while a newer comparison is read
 one step. A pull request’s header shows it on every tab.
 A commit’s page never shows it: the shell stages that page out of sight until its diff
 has drawn the summary, so its place does not wait in view.
-Measured in Chrome 152 at 560, 420, and 360 px in both themes, the block is 188.5 by
-11.05 px (14.5 em of the header’s type), at the row’s start and centred on its line, the
-row is 24 px before and after the summary arrives, and the tab bar under it does not
-move. A summary of one status, from “1 file changed · 1 M · +3 −1” to “8 files changed ·
-8 M · +120 −30”, ends 13.91 to 15.92 em from the row’s start, its text 13.45 to 15.46
-em, and the block ends between the two; one of three statuses, “35 files changed · 2 A,
-3 D, 30 M · +1,234 −3,423”, ends its text at 22.26 em.
-`tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds that, and
-`tests/dom/github-pull-page-mount-behavior.js` which of them the row holds in each
-state. Its header is one row-like disclosure toggle that leads with the registry’s
-chevron in the tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M
-· +1,234 −3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
+The row keeps its height from the placeholder to the summary, and the tab bar under it
+does not move: `tests/test_github_pull_header_chrome.py`’s `summary-wait` part holds
+that, and `tests/dom/github-pull-page-mount-behavior.js` which of the two the row holds
+in each state; the block’s measured size is in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#diff-summary).
+Its header is one row-like disclosure toggle that leads with the registry’s chevron in
+the tree’s icon slot, `--tree-icon-slot`: “35 files changed · 2 A, 3 D, 30 M · +1,234
+−3,423”, “1 file changed · 1 R · +5 −2” for one renamed file.
 It is its file count, “35 files changed”, and a muted dot, then the
 [brief change line](#brief-change-line), the one component for the statuses and the line
 totals, “2 A, 3 D, 30 M · +1,234 −3,423”; each dot is one item with the group before it,
-so a header that wraps breaks after a dot and no line starts with one, and one 6 px gap
+so a header that wraps breaks after a dot and no line starts with one, and one gap
 spaces it on both sides, on a toggle and on a line alike.
 The statuses are only those some file has, in one order (added, deleted, modified,
 renamed, then copied, type changed, unmerged, and any other), each a status count, its
@@ -1579,16 +1440,13 @@ toolbar, under a commit’s identity, and in a pull request’s header.
 The rows give back where the header starts, `--diff-summary-header-inset`, the toolbar’s
 padding in a diff and nothing at a page’s top, less its pull to the left,
 `--diff-summary-toggle-pull`, which lets its hover ground reach past its chevron.
-Before, a diff’s toolbar started the first level 4 px in from the header.
 Opened, the tree sits under its header, below the toolbar in a diff, as tall as its
 rows, in the page’s flow, with no scroll bar of its own: the page scrolls past it.
-It has no bound on its length beyond the comparison’s, at most 2,000 files, and the
+It has no bound on its length beyond the comparison’s (`MAX_MANIFEST_FILES`), and the
 document holds only the rows in the window’s view of it and `SUMMARY_ROWS_OVERSCAN` more
-each way, as the Pulls tab’s tree does.
-On synthetic patches of 106, 600, and 2,000 files (3,197, 23,237, and 54,965 px tall) in
-Chrome the rows showed 8 to 57 ms after a press, the document held at most 116 rows, and
-scrolling the page through the tree kept its frames; the numbers are beside the constant
-in `diff-summary.js`. Nothing of it is mounted until the header first opens it.
+each way, as the Pulls tab’s tree does, so a tree at that bound shows its rows soon
+after a press and scrolls with the page frame by frame; the measurement is beside the
+constant in `diff-summary.js`. Nothing of it is mounted until the header first opens it.
 The keys are a tree’s: the arrows move one tab stop, Right and Left open, close, and
 step into or out of a folder, and Home and End go to the ends.
 Only Enter, Space, or a press on a file jumps the diff to that file, because the tree
@@ -1598,13 +1456,15 @@ On a pull request’s page the jump goes through the file’s address,
 so the address names it and Back returns; a path the address cannot spell, such as one
 with a backslash, opens Changes at the page’s own address and the diff goes to it once
 it mounts; a patch file has no address for a place in its diff, so there the diff moves
-in place and the address stays the file’s. A path is its author’s text: a row shows it
-by the server’s display rule, with a control, format, or invisible character, such as a
-right-to-left override or a zero-width space, as U+FFFD, as the Pulls tab shows the same
-path, and the file bar the row goes to shows it the same way
-([Diff File Bar](#diff-file-bar)). `tests/dom/diff-summary-session.js` holds the words,
-the rows, and the keys, and the paint’s measurement is in the views, models, and routes
-map (`diff.summary-paint`).
+in place and the address stays the file’s.
+
+A path is its author’s text: a row shows it by the server’s display rule, with a
+control, format, or invisible character, such as a right-to-left override or a
+zero-width space, as U+FFFD, as the Pulls tab shows the same path, and the file bar the
+row goes to shows it the same way ([Diff File Bar](#diff-file-bar)).
+`tests/dom/diff-summary-session.js` holds the words, the rows, and the keys, and the
+paint’s measurement is in the
+[Parity Registry](project/architecture/arch-parity-registry.md) (`diff.summary-paint`).
 
 A pull request’s page reads its comparison once for the page’s session, until a reload,
 not once a visit: what it reads is kept for the document (`createComparisonKeep` in
@@ -1618,23 +1478,17 @@ The summary is drawn once for each comparison and kept across the page’s tabs.
 A page opened out of sight reads a comparison the document does not hold once it is
 shown. A record whose head or base moved names another route, which is read anew.
 The keep is bounded (`KEPT_COMPARISON_CHARS`): a comparison it no longer holds, or one
-too large to keep, is read as before, once the browser is idle, from the browser’s
-cache. The first screen’s rendered Markdown is the page’s own to ask for, apart from the
+too large to keep, is read once the browser is idle, from the browser’s cache.
+The first screen’s rendered Markdown is the page’s own to ask for, apart from the
 comparison, so a page that goes stops it.
 The Pulls tab reads ahead the comparisons of the pull requests a reader is likely to
 open next ([The Pulls Tab](#the-pulls-tab)), so a first visit to one of them draws it at
-once too. Before, every visit read the comparison again once the browser was idle, and a
-page is not idle while it draws its record: measured in headless Chrome 152 on the
-GitHub stand-in at a load average of 9 to 12, moving between pull requests of 26 to 121
-files from the Pulls tab, a revisit’s summary arrived 22 to 50 ms after the click, and
-175 to 238 ms at four times slower CPU, most of it the wait for idle; with no
-`requestIdleCallback`, as the app’s WebKit has none, the wait is for 250 ms with no
-input after a press (docs/development.md, “Idle Work”), and a revisit’s arrived 253 to
-256 ms after it. Now a revisit’s summary arrives with its record, measured again after
-review at a load average of 19 to 47: 16 to 27 ms after the click, 46 to 63 ms at four
-times slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull request first
-opened on Changes included; and a first visit to a row the pointer rested on for 250 ms,
-9 to 12 ms after the click, where it was 283 to 343 ms.
+once too. A read that waits for the browser to be idle arrives late, because a page is
+not idle while it draws its record, and in the app’s WebKit, which has no
+`requestIdleCallback`, the wait is the quiet after a press
+([Idle Work](project/architecture/arch-browser-shell.md#idle-work)). The timings that
+set this are beside `createComparisonKeep` and in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#diff-summary).
 `tests/dom/github-pull-prefetch-session.js` holds that a second visit sends no request,
 and the `summary-wait` part of `tests/test_github_pull_header_chrome.py` that a
 revisit’s summary is in the frame that paints its record.
@@ -1648,13 +1502,13 @@ control copies the path as it is.
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
 `expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
-`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus — the
+`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus: the
 file-header copy affordance, present wherever a filename is.
-Its content is left-aligned reading order — chevron, kind letter, filename in the
-shell’s file-path typography, then the stat pair beside the name — and the whole bar is
-one activation surface, the folder-row rule applied to a section header: clicking
-anywhere toggles, with only the copy control, the View file controls, and a Markdown
-file’s **Rendered** | **Source** chooser opting out.
+Its content is left-aligned reading order (chevron, kind letter, filename in the shell’s
+file-path typography, then the stat pair beside the name), and the whole bar is one
+activation surface, the folder-row rule applied to a section header: clicking anywhere
+toggles, with only the copy control, the View file controls, and a Markdown file’s
+**Rendered** | **Source** chooser opting out.
 On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
 joined chip pair, after the chevron, and beside it a small spinner that keeps its place
 in the bar and appears only after the loading-state delay while the rendered view is on
@@ -1685,10 +1539,11 @@ A changed diff line has three visual layers with separate jobs:
    every added or deleted line, including whole-line and unrefined changes.
 
 The backgrounds form three perceived depths.
-An unrefined whole-line change uses the medium 9% status-token mix.
-A refined pair uses only the lightest 3% mix for unchanged text and a 20% overlay for
-the changed intraline ranges, producing the darkest 22.4% composite depth; it does not
-also show the medium depth.
+An unrefined whole-line change uses the medium mix (`--diff-add-row-bg` and
+`--diff-del-row-bg` in the diff plugin’s `styles.css`). A refined pair uses only the
+lightest mix (`--diff-add-refined-row-bg`) for unchanged text and the intraline overlay
+(`--diff-add-inner-bg`) for the changed ranges, which composite to the darkest depth; it
+does not also show the medium depth.
 The changed range uses the standard text foreground because several syntax accents do
 not retain 4.5:1 contrast over the darkest light-theme surface.
 
@@ -1788,7 +1643,7 @@ and its gap away in the paint that lands it, the one paint that changes the head
 the body together. A record’s labels come with it or its core, and a label’s color and
 tooltip, which the repository’s label set may bring later, change no chip’s box.
 A refreshed record that gains a pull request’s first label, or loses its last, adds or
-takes away the row and its gap on a loaded page, and the tab bar moves 26 px; only
+takes away the row and its gap on a loaded page, and the tab bar moves with them; only
 GitHub changing the labels does that, so the header follows it rather than hold an empty
 row for every pull request.
 A page mounted with no record in hand, as a direct load or a reload mounts it, keeps its
@@ -1800,16 +1655,13 @@ conversation’s first paint then waits for its description (`DESCRIPTION_HOLD_M
 header waits with it, and the page stays unseen until that paint, as the body does.
 So the one move left on a cold page is a slow read of a pull request with no labels:
 past the quiet period the cold page shows, rows held, rather than a blank pane, and the
-record that lands later takes the labels row and its gap away, moving the tab bar up 26
-px. A pull request with labels lands moving nothing.
+record that lands later takes the labels row and its gap away, moving the tab bar up by
+their height. A pull request with labels lands moving nothing.
 A Pulls open whose read answers within its wait hands the page its record, and a
 retained navigation keeps the page out of sight until it has one, so neither shows a
-cold page. Measured in Chrome 152 at 560, 420, and 360 px in both themes, every row is 6
-px under the one before it and the freshness line is 18 px, the row of ages’ height; the
-header is 229 px with no labels and 255 px with labels or while its record is on its
-way. Before, Refresh was a bordered `.btn` that made the line 26 px, an empty 20 px
-labels row stood between it and the row of ages, 32 px under that row, and the header
-was 263 px in every state.
+cold page. The header’s rows are one gap apart (`.github-pull-header`), whatever its
+state
+([measurements](../explorations/performance-loop/design-rule-measurements.md#the-pull-request-header)).
 A cold landing measured in place, read by read, is recorded beside `.github-pull-cold`
 in `builtin_plugins/github/styles.css`, and `tests/test_github_pull_header_chrome.py`’s
 `cold-landing` part holds it.
@@ -1821,14 +1673,12 @@ header is one line, its breakdown cut short at its end, so the summary that arri
 moves nothing; opened, its tree pushes the tabs down, as the reader asked.
 How the page reads the comparison the row is drawn from, what the row holds while it
 waits, and what a read that fails leaves there are the [Diff Summary](#diff-summary)’s
-rules. Measured in Chrome 152 at 980 to 320 px on every tab, the row is 24 px from first
-paint; a summary of “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423” arriving moved
-no row and not the tab bar, and kept its row’s 24 px on one line, its breakdown cut
-short at 320 px with the whole header as its tooltip; the row starts on the header’s
-content edge, and its toggle hangs 4 px into the gutter, as every Diff summary’s does.
-The row adds its 24 px and one 6 px gap to the header.
-`tests/dom/github-pull-header-chrome.mjs` holds the measurement, and
-`tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
+rules.
+The row starts on the header’s content edge, and its toggle hangs into the gutter,
+as every Diff summary’s does; a breakdown cut short carries the whole header in its
+tooltip. `tests/dom/github-pull-header-chrome.mjs` holds its geometry
+([measurements](../explorations/performance-loop/design-rule-measurements.md#the-pull-request-header)),
+and `tests/dom/github-pull-page-mount-behavior.js` the row’s order, reads, failures, and
 disposal. A tab switch or a poll builds again only the header’s parts whose inputs
 changed: the title, the badge, the author, the branch chips, the row of ages, the
 labels, and each status control are kept while what they show is the same, so a repaint
@@ -1882,13 +1732,10 @@ Membership has its slot at the right end of the author’s row, under the end of
 title, so its chip, which arrives from its own answer after the page, lands in the row’s
 empty end and moves nothing; where the row has no room left for it, the sentence is cut
 short at its end. Its menu hangs from the chip’s end of the row.
-Measured in Chrome 152 at 980 to 320 px, one stack’s chip, “⧉2/3”, is 54.75 px and two
-stacks’ named chips, “⧉286 4/4” and “⧉300 2/2”, 156.31 px; a late chip moved no part’s
-start and no row, kept 8 px from the sentence, and cut the sentence only where it needed
-the room: at 560 px two stacks cut a long author’s sentence by 77.69 px, and at 360 px
-two stacks cut “forker wants to merge 2 commits” by 80.85 px.
 Its `details` is no taller than the strut it replaces there, since the slot sets the
-chip’s own size.
+chip’s own size. `tests/dom/github-pull-header-chrome.mjs` holds, in Chrome, that a late
+chip moves nothing in the header, shows whole, ends on the header’s content edge, and
+does not overlap the sentence.
 
 ### Text
 
@@ -1904,23 +1751,21 @@ The one rule the page adds removes the first and last block’s outer margin, be
 card’s padding is the space around a text.
 
 A heading belongs to the section it opens, so it sits nearer what follows it than what
-precedes it. Inside a text that space is KPress’s, exactly as in a document in either
-reading font: 2 rem above an h1 or h2 and 1 rem below, 1.4 rem above an h3 and a
-paragraph’s 0.75 rem below.
+precedes it. Inside a text that space is KPress’s heading spacing, exactly as in a
+document in either reading font.
 A heading’s top margin collapses with the block before it, so the space after a
 paragraph, list, code block, or blockquote is the heading’s own, or the block’s when
-that is larger, as a blockquote’s 1.5 rem is above an h3. The page adds no heading rule.
+that is larger. The page adds no heading rule.
 
 The top of a text is where a message departs from a document.
-A document’s card has 2.5 rem of top padding in KPress’s bands from 48 rem up, and only
-an opening h1 gives up its margin to it (`static/styles.css`); any other first block’s
-top margin adds to that padding.
-A message card is denser, like the comment body on GitHub, which pads 16 px and trims
-the first and last margins.
-The text’s padding is `--content-padding-y` above and below, and the card head’s inset
-at the sides. Since the trim leaves a heading that opens a text only that padding above
-it, the padding is at least any heading’s space below.
-A header row’s 8 px put an opening h2 nearer the card head than its own paragraph.
+A document’s card has KPress’s top padding, and only an opening h1 gives up its margin
+to it (`static/styles.css`); any other first block’s top margin adds to that padding.
+A message card is denser, like a comment body on GitHub, which trims the first and last
+margins.
+The text’s padding is `--content-padding-y` above and below, and the card head’s
+inset at the sides. Since the trim leaves a heading that opens a text only that padding
+above it, the padding is at least any heading’s space below, so an opening heading is
+never nearer the card head than its own paragraph.
 `test_a_heading_is_nearer_its_section_than_what_precedes_it` holds the rule, and
 `tests/test_github_pull_text_chrome.py` measures it in Chrome against a document’s
 frame.
@@ -1977,9 +1822,8 @@ a commit. It is said the way a card head says a comment:
   12 px between cards read as crowded.
   The rhythm is the Conversation’s alone, the space above each of its events, whatever
   stands before it. The Files and Checks tabs keep `--github-pull-gap` (12 px) between
-  their notices and what they show, and a section or note below an event keeps that gap
-  and its own margin, so Review comments stands 28 px below a card, as it did before the
-  rhythm.
+  their notices and what they show, and a section or note below an event, such as Review
+  comments, keeps that gap and its own margin.
 
 - **The line:** one 2 px line in `--border` joins every two adjacent events, down the
   center of the card heads’ avatars and their empty slots.
@@ -1999,35 +1843,8 @@ size and the identity’s gap, and the rest of its geometry is the card head’s
 `tests/test_github_pull_timeline_chrome.py` measures it in headless Chrome, in both
 places the page puts commits, in both themes and a narrow pane, from the boxes laid out
 and the pixels painted, with one head drawn with only its slot.
-In Chrome 152 every two events’ boxes are 20 px apart, in both themes and at 980 and 420
-px, and their text 20 to 21 px apart, a commit’s read from its text nodes.
-At 420 px a commit row that wraps so that its hash ends it on a line of its own shows
-22.5 px below it: the hash’s smaller monospace face leaves 2.5 px of its line under its
-glyphs.
-Review comments stands 28 px below a card, which that test holds; with the rhythm
-as the body’s gap it stood 36 px below.
-Measured once outside that test, in Chrome 152, the Files and Checks tabs’ notices are
-12 px from what they show, as before the rhythm; with the rhythm as the body’s gap they
-were 20 px. Before the rhythm, two cards were 12 px apart, a card and a commit 23.5 px,
-and two commits 20 px; before a run of commits kept a room outside it, a card and a
-commit were 16 px apart.
-Before this rule, a commit was set at 12 px against the head’s 14 px, its glyphs sat 13
-px below the event above, 1 px under its row’s top and 6 px over its bottom, and nothing
-joined the events.
-
-In the macOS app’s web view (WebKit 21624.2.5.11.8 on macOS 26.5.2), run through the
-WebKit gate’s `webkit-driver measure` (`apps/macos/webkit-gate`) on the same page and
-layouts at the commit that added the rhythm (4a46ec4), that test’s type, spacing, and
-line checks as they were then pass in both themes, apart from its pixel reads, which the
-driver cannot make: an event card computes to `overflow-x: clip` and
-`overflow-y: visible`, and in every gap between joined events WebKit hit-tests the
-line’s x to the following event’s connector, which it would not do for a clipped one,
-and 9 px beside it to the page.
-Each node sits 0.5 px below its first line’s middle there, as in Chrome, and every pair
-of events is 20 px apart, as in Chrome.
-What the test holds since has not run in WebKit: the heading checks, the spacing read
-from a commit’s text nodes, the break above Review comments, and the rhythm as a margin
-above each event rather than the body’s gap.
+Its measurements in Chrome and the app’s WebKit are in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#pull-request-stacks-and-the-timeline).
 
 ### Chrome
 
@@ -2049,7 +1866,7 @@ above each event rather than the body’s gap.
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
-| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall; a bordered `.btn` made the line 26 px against the row of ages’ 18 |
+| Refresh, Fetch, Switch to the head | [Text action](#control-families): `.github-pull-text-action` on a button | The status row is one of the header’s metadata lines, among links such as Browse the checkout, so its controls look as links do and are a line tall, where a bordered `.btn` is taller than the row of ages |
 
 Author, action, and relative age share one metadata size and baseline in a header or
 discussion card. The bold username uses the normal text ink wherever it names an actor.
@@ -2210,13 +2027,13 @@ A tree waits up to `FILES_OPEN_HOLD_MS` for the cached list before it paints ope
 cached list opens in one step at its height; past that, it shows its loading line,
 “Listing changed files…” with the shared delayed spinner, until the files arrive, and
 draws its first rows whenever they come.
-Once rows are drawn, a change to them — a list’s further pages, or a refresh that
-changes it — that comes `LATE_ROWS_MS` after the reader’s last press or key is offered
-rather than drawn: **Show N more files** or **Show the updated list of N files**, on the
-tree’s line, or floating over its top when the line is hidden, so drawn rows never move
-without input. A refresh that lists no files is offered as **Show the updated list (no
-files)**, and the rows drawn meanwhile keep no line saying there are none; once the
-reader asks for the empty list, the tree says “No changed files.”
+Once rows are drawn, a change to them (a list’s further pages, or a refresh that changes
+it) that comes `LATE_ROWS_MS` after the reader’s last press or key is offered rather
+than drawn: **Show N more files** or **Show the updated list of N files**, on the tree’s
+line, or floating over its top when the line is hidden, so drawn rows never move without
+input. A refresh that lists no files is offered as **Show the updated list (no files)**,
+and the rows drawn meanwhile keep no line saying there are none; once the reader asks
+for the empty list, the tree says “No changed files.”
 A read or a refresh that answers that the server no longer holds the list is offered as
 **Show the updated list (not listed)**: the drawn rows stay as the files last listed,
 breathing while the list is listed again rather than sitting under the loading line.
@@ -2372,26 +2189,8 @@ the state icon’s label, and then the title, before the number’s line.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
 text is text: GitHub’s users write it, and none of it reaches markup or a style.
 
-New pull requests use the [shared arrival highlight](#live-row-arrivals).
-
-### Keys
-
-The rows are a [Navigational Row Collection](#navigational-row-collections), with this
-one difference from what the file tree does.
-Moving is immediate and opening waits for a key to stop, because a pull request’s page
-can cost a fetch where a file cannot: each move changes two rows, a press opens at once,
-and a key held down opens only the row it stops on.
-History follows the rule all three collections share: a key’s open replaces the entry,
-as the file tree’s arrow keys and Git’s K and J do.
-Clicking a different row or pressing Enter on it pushes a history entry.
-Space toggles the focused pull request’s changed files in place.
-Grouped by stack, a stack’s row is a stop of its own that opens nothing, and Enter,
-Space, Right, and Left open, close, enter, and leave it as a folder’s
-([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)). `J` and `K` move the
-rows with or without Shift; walking a pull request’s stack is Control-N and Control-P on
-macOS and iOS ([The Pull Request Page](#the-pull-request-page)). Help reads the
-`pull-requests` and `pull-stack` groups of the shortcut registry, and no surface here
-names a key.
+New pull requests use the [shared arrival highlight](#live-row-arrivals), and the rows’
+keys are under [Navigational Row Collections](#navigational-row-collections).
 
 ## Stacks
 
@@ -2421,7 +2220,7 @@ surface keeps a copy of either.
   shows each position, separated by a middle dot, and names every stack but its own by
   the Layers glyph and its number before its position, `.github-pull-stack-other` at the
   text’s size: “3/4 · ⧉300 2/2”, where ⧉ is the glyph.
-  A number alone, “#300”, read as the pull request number on the same row.
+  A number alone, “#300”, would read as the pull request number on the same row.
   Its own stack is its only stack, the one a group places it under, or else the first
   GitHub lists. On the page a pull request in more than one stack has a stack button for
   each, and each names its stack, “⧉286 4/4” and “⧉300 2/2”, since no button is the
@@ -2460,10 +2259,9 @@ surface keeps a copy of either.
 ### Stack Groups in the Pulls Tab
 
 **The Pulls tab always groups by stack** once the repository’s stacks are known; there
-is no option to turn it off.
-A Group by stack chip in the toolbar fit in no form: at the default pane width, 299 px,
-the worded chip reached 36 px past the pane and a glyph-only one 7 to 17 px, where the
-toolbar, the Show group and Reload, has 23 px to spare.
+is no option to turn it off, because a Group by stack chip, worded or a glyph alone,
+does not fit the Pulls toolbar beside the Show group and Reload at the default pane
+width.
 
 - **Rows.** Each stack with a pull request in the list has a row, open by default, and
   under it, one tree level in, the stack’s pull requests that the list holds, in the
@@ -2480,9 +2278,9 @@ toolbar, the Show group and Reload, has 23 px to spare.
 - **Unknown stacks.** Stacks are optional and arrive on their own; nothing waits for
   them. Until a snapshot is known for the list’s own GitHub account, while none of the
   list’s pull requests is in a stack, or when the stacks cannot be read, the list stays
-  flat, as it was before stacks: the rows and the pull request page say nothing of
-  stacks either. A snapshot kept through a failed or expired refresh still groups, as the
-  places and the stack menu still show it.
+  flat: the rows and the pull request page say nothing of stacks either.
+  A snapshot kept through a failed or expired refresh still groups, as the places and
+  the stack menu still show it.
 - **Keys.** A stack’s row is a row of the tree, as a folder is: `J` and `K` stop on it
   and open nothing; Enter and Space open or close it; Right opens it, or goes to its
   first pull request; Left closes it, or from a pull request in it whose files are
@@ -2499,43 +2297,33 @@ toolbar, the Show group and Reload, has 23 px to spare.
   stack’s row passed over, and the first pull requests drawn.
 
 `tests/dom/github-pulls-stack-groups-session.js` runs the grouping, the keys, and what
-an open reads ahead against the production code on the server’s recorded answers; mounts
-the panel to drive its handle’s Space, Right, and Left and a press on a stack’s row, and
-print the tree’s roles and places; and mounts the page’s stack menu to hold that the
-groups list its order.
-`tests/test_github_pulls_stacks_chrome.py` measures in headless Chrome, against a
-running server with two native stacks, that a stack row’s header and the stack menu’s
-heading resolve to the same label tokens, that a stack’s row shows its label alone, with
-its size in its accessible name, where a stack’s row and its pull requests start, that
-the two kinds of row hover and focus alike, that the toolbar fits the default pane with
-room to spare, that real keys and a press move focus and open and close a stack, that a
-member’s changed files are a level further in, that the first stack’s row is in view
-after grouping arrives and after Left then Right, that a pull request’s row is two
-lines, the chevron and the state icon centered on its one-line number’s line and the
-title under it from the text column to the row’s end, that a member’s place is on its
-number’s line, before the number, in the number’s ink, and names another stack by its
-glyph, that a member’s row draws no stack icon and its title has a first-level row’s
-room less its indent, and that the menu lists the group’s order with its positions in
-text ink.
-`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width
-from 420 px to the 180 px minimum and holds that a place arriving moves nothing else in
-its row, not the chevron, the icon, the age, or the title, that it sits before the
-number, which shows whole, that nothing ends past the row and nothing scrolls sideways,
-that one stack’s place shows whole, that the number’s line stays one line and the row
-two, that the title runs from the text column to the row’s end, that the chevron and the
-icon sit on the number’s line, centered on it, and that the author keeps its floor with
-its name inside the line, or leaves the line whole.
+an open reads ahead against the production code on the server’s recorded answers, and
+mounts the panel and the page’s stack menu to hold the tree’s roles, places, and order.
+`tests/test_github_pulls_stacks_chrome.py` measures the same design in headless Chrome
+against a running server with two native stacks: the shared label tokens, a stack’s row
+that shows its label alone with its size in its accessible name, where rows start, hover
+and focus, the toolbar’s fit, real keys and presses, the scroll, a pull request’s row of
+two lines with the chevron and the state icon centered on its number’s line and the
+title under it, a member’s place and its missing icon, and the menu’s order and ink.
+`tests/dom/github-pull-header-chrome.mjs` lays out members’ rows at every width down to
+the pane’s minimum and holds that a place arriving moves nothing else in its row, sits
+before the number, and ends inside the row with nothing scrolling sideways; that one
+stack’s place shows whole; that the number’s line stays one line and the row two, the
+title from the text column to the row’s end and the chevron and the icon centered on the
+number’s line; and that the author keeps its floor with its name inside the line, or
+leaves the line whole.
 `tests/test_github_stack_design.py` holds the source to one label class and one place
 for every stack word.
 
 ## Keyboard Shortcuts
 
-This section is the one reference for which key does what, and why.
-Help, the Shift reveal, the other documents, and the code’s comments link here rather
-than restate it. `tests/test_keymap.py` holds the table below to the keys the registry,
-the manifests, and the built-in plugins bind, so the two cannot drift.
-How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) and
-[Keyboard Commands and Help](#keyboard-commands-and-help).
+These are the rules every key follows: which key a meaning gets, how a key is matched,
+named, and drawn, and how a command reaches what it acts on.
+The reference of which key does what is [Keyboard Shortcuts](keyboard-shortcuts.md), and
+`tests/test_keymap.py` holds its table to the keys the registry, the manifests, and the
+built-in plugins bind.
+Help, the Shift reveal, the other documents, and the code’s comments link to the two
+rather than restate them.
 
 ### The Rules
 
@@ -2547,7 +2335,7 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   as Vim’s motions do.
   `J` and `K` move down and up a row in every row list.
   Control-N and Control-P, on macOS and iOS, go to the next and previous item one level
-  up: today the pull requests of a stack, and on any later page with its own next and
+  up: the pull requests of a stack, and on any later page with its own next and
   previous, that page’s. `V` and `S` switch a file between its rendered view and its
   source, whatever its tabs are called.
   A page with a natural next and previous uses Control-N and Control-P, a rendered view
@@ -2570,7 +2358,8 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   per-file affordance, such as a changed file’s View file or its Rendered | Source
   chooser, of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
-  A key goes on a major tab or a major button.
+  A key goes on a major tab or a major button, and a rare one, such as the Metabrowser
+  menu, print, retry, or the freshness row’s Reload, goes without.
 - **One key, and Control only for next and previous.** Every shortcut is a single key
   but Control-N and Control-P on macOS and iOS ([Control Chords](#control-chords)),
   Shift changes nothing, and Command, Option, and every other Control chord stay the
@@ -2578,21 +2367,21 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
 
 ### Scopes and Collisions
 
-- **Shell keys are reserved everywhere.** `F`, `P`, `H`, `T`, `J`, `K`, `U`, and `W`,
-  and `0`, keep their meaning even where they do nothing, so a letter never means one
-  thing on one screen and another elsewhere; only an open menu with focus puts its rows’
-  letters ahead of them ([Keys in a Menu](#keys-in-a-menu)). Control-N and Control-P
-  reserve no letter: a view’s key is one letter alone.
+- **Shell keys are reserved everywhere.** The keys in `RESERVED_SHELL_KEYS` in
+  `src/metabrowser/keymap.py`, its letters and `0`, keep their meaning even where they
+  do nothing, so a letter never means one thing on one screen and another elsewhere;
+  only an open menu with focus puts its rows’ letters ahead of them
+  ([Keys in a Menu](#keys-in-a-menu)). Control-N and Control-P reserve no letter: a
+  view’s key is one letter alone.
   A manifest whose view takes one is refused: the loader rejects it, the plugin does not
   load, and `metab --doctor` reports why.
   The plugin shortcut surface refuses one too, with a console warning, and the control
   works without a key.
-  A different case is two views of one kind declaring the same free letter, in one
-  manifest or across two: both load, the first in tab order keeps the letter, the later
-  view is served without it, and `metab --doctor` reports the lost key.
-  `src/metabrowser/keymap.py` holds the table, and also reserves `1` to `9`, which only
-  the numbering hands out.
-  A view’s key is one letter, so no view can take a digit.
+  Two views of one kind declaring the same free letter, in one manifest or across two,
+  both load: the first in tab order keeps the letter, the later view is served without
+  it, and `metab --doctor` reports the lost key.
+  The same table reserves `1` to `9`, which only the numbering hands out, and a view’s
+  key is one letter, so no view can take a digit.
 - **Tab letters are scoped to their tab bar.** A tab with a reusable meaning takes its
   letter, `V` or `S`. Any other tab takes the first letter of its label, or when that is
   taken, the next distinctive free letter of its label, never a shell letter (a menu
@@ -2601,58 +2390,25 @@ How a key is matched, named, and drawn is under [Keyboard Keys](#keyboard-keys) 
   Two tabs on one screen never share a letter; two bars never shown together may, as
   Charts and Conversation share `C`.
 - **A collision is settled by the newcomer.** It takes the next free letter of its own
-  label. Checks took `E` this way: `C` is Conversation’s, `H` is History, `K` moves a row
-  up, and `S` is Source.
+  label, as Checks takes `E`: `C` is Conversation’s, `H` is History, `K` moves a row up,
+  and `S` is Source.
 - **Numbers are scoped to the screen.** The live numbered controls, the navigation
   pane’s before the main pane’s, top to bottom, are `1` to `9` in that order.
 - **An open menu’s letters are scoped to it.** While a menu whose rows have letters is
   open and has focus, those letters choose its rows, the one exception to the rules
   above ([Keys in a Menu](#keys-in-a-menu)).
 
-### The Keymap
+### Main Tabs
 
-| Key | Meaning | Live while | Kind |
-| --- | --- | --- | --- |
-| `?` | Help | Always | Punctuation, by convention |
-| `T` or `/` | Quick Search, the file finder | Always | Letter |
-| `0` | Home: the served folder’s home view, every tab at its first | Always | Digit, its one fixed meaning |
-| `F` | The Files tab | Always | Letter, main tab |
-| `P` | The Pulls tab | The tab is drawn: a hosted origin | Letter, main tab |
-| `H` | The Commits tab: commit History | Git discovery found a repository | Letter, main tab |
-| `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus | Reusable |
-| `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS | Reusable, Control chord |
-| `U` | Up: the parent folder | A file, or a folder below the root, is shown | Letter |
-| `W` | The branch or tag switcher | A mirror’s pin is served | Letter, GitHub’s convention |
-| `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown | Reusable, view tab |
-| `S` | The source: Source, or Raw JSON | A file’s tab bar is shown | Reusable, view tab |
-| `C` | Charts | An agent log is shown | View tab |
-| `O` | Overview | A folder is shown | View tab |
-| `M` | Treemap, from its map | A folder is shown | View tab |
-| `C` | Conversation | A pull request page is shown | Page tab |
-| `G` | Changes, from chan-*g*es | A pull request page is shown | Page tab |
-| `E` | Checks, from ch-*e*-cks | A pull request page is shown | Page tab |
-| `L` | Diff layout: Split or Unified | A diff with a layout control is shown | Letter |
-| `1`–`9` | The numbered links and actions on this screen, in reading order | A numbered control is shown | Number |
-
-A menu’s row letters are live only while that menu is open and has focus, so they are
-not in the table: Group by’s `N`, `A`, and `T` choose No grouping, By age, and By file
-type ([Keys in a Menu](#keys-in-a-menu)).
-
-What is numbered, in reading order, each only while it is shown:
-
-| Screen | Numbered controls |
-| --- | --- |
-| The Files tab | Group by, Modified within (Any age), and File type (Any type), open or closed as the filter drawer is; a Git pin has no Modified within |
-| The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
-| A pull request page | View on GitHub, Browse code, Refresh or Fetch, Switch to the head, and Browse the checkout |
-
-The navigation pane’s numbers come first, so a pull request page’s numbers start at `5`
-beside the Pulls tab and at `4` beside the Files tab, its drawer open or closed (`3` on
-a Git pin).
-
-The keys and buttons that have no key, and why: every copy control, ancillary; a changed
-file’s disclosure, View at base, View file, and Rendered | Source chooser, per-file; the
-Metabrowser menu, print, retry, and the freshness row’s Reload, rare.
+The sidebar orders Files, Pulls, and Commits in that order, under `F`, `P`, and `H`:
+Files and Pulls take the first letter of their label, and Commits takes `H`, for commit
+History, because `C` is Charts’ and Conversation’s, view tabs that a shell letter,
+reserved everywhere, would leave without a key.
+The letters work outside text fields and dialogs, with or without Shift.
+A letter opens its tab, or keeps the tab already shown, and moves focus to the panel’s
+roving row, so `F` then `↓` walks the file tree; while the panel has no rows yet, the
+tab button takes focus.
+A missing tab has no target, so its letter does nothing and stays reserved.
 
 ### Browser and App Keys
 
@@ -2665,20 +2421,10 @@ every key to the page before its menus.
 in it. The other exception is Option-Tab inside a dialog or an open menu: its focus trap
 keeps it, because Safari moves focus with Option-Tab.
 
-| Key | Meaning | Where |
-| --- | --- | --- |
-| Command-R (Control-R or F5 elsewhere) | Reload | Everywhere, whatever has focus |
-
-Command-R always reloads.
-In a browser it is the browser’s own Reload, in the page, a tree row, Quick Search’s
-field, Help, or an open menu alike; the `modified` part of
-`tests/dom/key-reveal-session.js` presses it in each of those places.
-In the macOS app it is View > Reload Page, which is never disabled in a folder window:
-while the status view covers the page it loads the page again, starts the server or
-waits for the start under way, or, after the server failed, restarts it as Retry does
-([apps/macos/README.md](../apps/macos/README.md#the-window) has each case).
-The app’s other keys are the standard ones of its menus: Back and Forward are Command-\[
-and Command-\], and Restart Server is Command-Option-R.
+So Command-R always reloads, whatever has focus: the `modified` part of
+`tests/dom/key-reveal-session.js` presses it in each place the shell puts focus.
+[Keyboard Shortcuts](keyboard-shortcuts.md#browser-and-app-keys) is the user reference,
+with the app’s menu keys.
 
 ### Control Chords
 
@@ -2721,39 +2467,100 @@ Held, a chord walks once, and its repeats are consumed without walking.
   or the platform where it is bound.
   Command and Option stay the browser’s and the app’s.
 
-### Help and the Reveal
+### Keyboard Keys
 
-Help lists the letters by meaning, group by group, and the numbers once, in an “On this
-screen” group: `1`–`9`, “Numbered links and actions,” with the note that the numbers are
-not fixed. It gives no number a fixed meaning; `0`, Home, is listed under Anywhere with
-Help and Quick Search.
-The registry marks the numbers’ command `situational`, so every surface renders them as
-that one run, and no surface special cases them.
+Every keyboard key rendered anywhere in the app uses the `.kbd` component: always all
+caps, bold, with one thin border.
+Never hand-set a key’s type or border at a use site, and never write a key as plain text
+inside a sentence.
 
-Holding Shift reveals the keys in place: each live letter’s control and each numbered
-control carries its keycap, and the strip lists the common letters.
-The keycaps ease in on the [reveal motion](#reveals) and go at once when Shift is
-released. [Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) has
-the mechanism.
+Write the key in its natural case in markup: the caps treatment is presentational, so
+the accessible name stays what the markup says.
+For alternative keys, emit one `.kbd` per key, joined by the word “or,” so each keeps
+its own border.
 
-### Plugin Keys
+The component, its tokens, and its markup contract are documented in the
+`── Keyboard keys ──` blocks of `static/styles.css`. The Shift reveal’s badges are
+keycaps too: the `.kbd-badge` modifier changes only their paint, as
+[Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) describes.
 
-Plugins follow the same rules, through two declarations:
+#### Canonical Key Names
 
-- A view of a multi-view kind declares its tab’s letter as `key` in its manifest
-  `[[view]]`: `v` for a rendered view, `s` for a source view, and otherwise a letter of
-  its label.
-- A plugin control takes a key through `metabrowser.shortcuts.attach()`: a letter for a
-  known meaning, or `numbered: true` for a situational link or action, which then takes
-  its number from its place on screen with the shell’s numbered controls.
+Event matching, visible keycaps, spoken names, and `aria-keyshortcuts` are different
+representations. The shared shortcut formatter derives every applicable representation
+from one semantic binding; a caller never abbreviates a key or substitutes an arrow
+glyph itself.
 
-A manifest view key that takes a reserved letter keeps the whole plugin from loading,
-while a letter already held by an earlier view of the kind only costs the later view its
-key ([Scopes and Collisions](#scopes-and-collisions)). A reserved letter passed to
-`metabrowser.shortcuts.attach()` is refused with a warning.
-[Keyboard Shortcuts in docs/plugins.md](plugins.md#keyboard-shortcuts) has the API.
+| Semantic key | Markup label | Spoken name | ARIA key token |
+| --- | --- | --- | --- |
+| `?` | `?` | Question mark | Omitted when matched as a produced character |
+| `/` | `/` | Slash | Omitted when matched as a produced character |
+| Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
+| Digit key | The digit | The digit | The digit |
+| `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
+| `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
+| `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
+| `ArrowRight` | `→` | Right arrow | `ArrowRight` |
+| `Enter` | `Enter` | Enter | `Enter` |
+| Space (`KeyboardEvent.key === " "`) | `Space` | Space | `Space` |
+| `Escape` | `Esc` | Escape | `Escape` |
+| `Home` | `Home` | Home | `Home` |
+| `End` | `End` | End | `End` |
+| `Delete` | `Delete` | Delete | `Delete` |
+| `F2` | `F2` | F2 | `F2` |
+| `Shift`, a single key only | `Shift` | Shift | `Shift` |
+| Control with `N` or `P`, on macOS and iOS | `⌃N` | Control N | `Control+N` |
 
-## Keyboard Commands and Help
+`Shift` is a name for the formatter’s single-key entry point, `describeKey()` with
+`appendKey()`, which renders a key that is not a binding, such as one named in a
+sentence. No binding may use it.
+A [Control chord](#control-chords) is bound only on macOS and iOS, so it is one keycap
+written as they write it.
+Alone or among alternatives, it is spoken as a visually hidden phrase, “Control N”, with
+the keycap hidden from assistive technology, since a screen reader may name `⌃` by its
+Unicode name rather than as Control.
+
+The `.kbd` text transform produces the visible caps treatment; source markup keeps the
+mixed-case label in this table.
+The
+[WAI-ARIA definition of `aria-keyshortcuts`](https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts)
+describes physical keys, not generated characters.
+ARIA serialization is therefore a separate, optional formatter output: it uses `Escape`
+instead of the visible `Esc` and `ArrowUp` instead of `↑`, but omits a character-matched
+punctuation binding when the physical chord varies by keyboard layout.
+Do not guess `Shift+/` for a `?` binding that intentionally works on any layout
+producing that character.
+Adding a key that is not in this vocabulary requires adding its display, spoken, and
+ARIA policy together with formatter tests.
+
+#### Binding Grammar and Accessibility
+
+- Every shortcut is a single key, but for the two [Control chords](#control-chords),
+  Control-N and Control-P, bound only on macOS and iOS. A binding declares Control with
+  `control: true`, and the registry rejects it with any other key or on any other
+  platform. No binding uses Alt or Meta, and the registry rejects a binding that states
+  any other modifier policy, Shift included.
+- Shift never changes what a key means: a letter matches in either case, a named key
+  such as `↓` or `Home` matches with or without Shift outside a text field, and a digit
+  matches the digit typed or, failing that, its key on the digit row, so Shift+`1` is
+  `1`, and Shift+`0`, which types `)` on a US keyboard, is `0`. A character that is
+  another binding’s key keeps it: German Shift+`7` types `/` and is Quick Search.
+- Punctuation matches the character typed, so `?` and `/` stay distinct even where they
+  share a key, and `/` works on layouts that type it with Shift.
+- Alternative bindings use the word “or”: `T` or `/`.
+- Ordered key sequences are not supported and must not be implied by adjacent keycaps.
+- Direction pairs use “or,” not a slash or unexplained adjacency: `↑` or `↓`.
+
+The visual and spoken forms are both generated.
+An isolated key may use its natural-case `<kbd>` text as its accessible name.
+A group of alternatives exposes one visually hidden phrase such as “T or slash” or “Down
+arrow or J” and hides its visual punctuation and keycaps from assistive technology,
+avoiding duplicate or ambiguous announcements.
+An actionable control keeps its action as the accessible name and receives the
+formatter’s `aria-keyshortcuts` value separately when the formatter can represent the
+physical shortcut accurately.
+
+### Keyboard Commands and Help
 
 Application commands have one registry and one document-level dispatcher.
 The same descriptors drive matching, the full Help list, compact hints,
@@ -2782,20 +2589,28 @@ while plain `↑` and `↓` move through results and `Enter` and `Esc` act with 
 Shift. When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
 
+Help lists the letters by meaning, group by group, and the numbers once, in an “On this
+screen” group: `1`–`9`, “Numbered links and actions,” with the note that the numbers are
+not fixed. It gives no number a fixed meaning; `0`, Home, is listed under Anywhere with
+Help and Quick Search.
+The registry marks the numbers’ command `situational`, so every surface renders them as
+that one run, and no surface special cases them.
+
+Holding Shift reveals the keys in place: each live letter’s control and each numbered
+control carries its keycap, and the strip lists the common letters.
+The keycaps ease in on the [reveal motion](#reveals) and go at once when Shift is
+released. [Badge Targets and the Shift Reveal](#badge-targets-and-the-shift-reveal) has
+the mechanism.
+
 ### Badge Targets and the Shift Reveal
 
-A command whose key acts on a control on screen attaches that control as its target with
-the registry’s `attachTarget()`, which returns `retarget()` for a rebuilt control and an
-idempotent `detach()`. While attached, the control carries the command’s
-`aria-keyshortcuts`, so the key is announced at rest.
-A command marked `targeted` is live only while one of its targets is: connected, not
-`disabled`, outside any `inert` subtree, and visible by `checkVisibility()` or, without
-it, by computed style.
-The registry reads that at dispatch, so a key whose control is hidden, staged, or behind
-a modal leaves the event to the browser.
-The first live target in document order runs the command, as `context.target`, and
-carries its badge. A component that rebuilds its markup calls `retarget()` after each
-rebuild.
+A command whose key acts on a control on screen attaches that control as its target
+(`attachTarget()`), and the control then carries the command’s `aria-keyshortcuts`, so
+the key is announced at rest.
+A command marked `targeted` is live only while one of its targets is connected, enabled,
+outside any `inert` subtree, and visible, so a key whose control is hidden, staged, or
+behind a modal leaves the event to the browser; the first live target runs the command
+and carries its badge.
 
 Every key runs a named activation path, the one its control’s click runs, plus the focus
 a keyboard user needs next; no command synthesizes a click.
@@ -2808,14 +2623,11 @@ View tab letters are commands in a permanent `view-tabs` scope below `global`, o
 letter, held for the bar the main pane commits and never for one still staged; the
 keymap check keeps them off the shell’s letters.
 
-A situational control is numbered with `attachNumbered(element, {activate})` instead of
-a letter. Its number is its place among the live numbered controls in document order,
-which the shell’s layout makes reading order, read when a number is pressed or shown;
-the first nine are `1` to `9`, and the rest have none.
-The numbers are one command, `numbered`, in `global`, registered while any control is
-numbered and marked `situational`, so its presentation is the run `1`–`9` and Help
-renders it as such. A numbered control carries no `aria-keyshortcuts`, since its number
-is not its own.
+A situational control is numbered (`attachNumbered()`) instead of given a letter: its
+number is its place among the live numbered controls in reading order, the first nine
+only. The numbers are one `situational` command, so Help and every other surface show
+them as the run `1`–`9`. The docstrings of both calls in `static/keyboard-shortcuts.js`
+give the handles, ranks, and lifecycles.
 
 Holding Shift alone outside a text field for the hold threshold reveals the keys: the
 root gains `data-key-reveal`, each live command’s first live target carries one
@@ -2837,8 +2649,8 @@ The reveal is drawn in the live-row yellow, `--row-flash-bg`, which `--key-revea
 names for it:
 
 - **A badge is a keycap.** It is a `.kbd` with the `.kbd-badge` modifier, which keeps
-  the keycap’s type, caps, padding, and radius and changes only its paint: the yellow at
-  60% opacity (`--kbd-badge-bg`), a deeper border of the same hue
+  the keycap’s type, caps, padding, and radius and changes only its paint: the yellow,
+  translucent (`--kbd-badge-bg`), a deeper border of the same hue
   (`--kbd-badge-border`), the body text (`--kbd-badge-color`), and the small elevation.
   It is absolutely positioned and ignores the pointer, so it moves no box and a click
   reaches the target beneath it.
@@ -2893,9 +2705,12 @@ meaning. In the file tree, the first-row and last-row keys are Home and End alon
 Key repeat remains enabled for fast traversal.
 In the file tree, as in the Pulls tab, a held key selects each row and replaces the
 address as it reaches it, but opens only the row it stops on: when the key is let go, or
-120 ms after its last repeat.
-In the file tree a repeat slower than that opens each row as it reaches it, for the rest
-of the hold. A single press opens its row at once.
+`WALK_SETTLE_MS` after its last repeat (`static/tree-keyboard-navigation.js`, and the
+GitHub plugin’s `pulls-panel.js`). In the Pulls tab that matters most, because a pull
+request’s page can cost a fetch where a file cannot.
+In the file tree a repeat slower than the settle time opens each row as it reaches it,
+for the rest of the hold.
+A single press opens its row at once.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
@@ -2916,9 +2731,16 @@ it passed. The collections differ in the rest:
   On a file tree row, both keys toggle a folder or container file or show the next page
   and leave history alone.
   On a commit row, both keys select it again, replacing the entry.
+- **A stack’s row** in the Pulls tab, grouped by stack, is a stop of its own that opens
+  nothing: Enter, Space, Right, and Left open, close, enter, and leave it as a folder’s
+  ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)).
+- **The other keys** in the Pulls tab are `J` and `K`, with or without Shift, for its
+  rows, and Control-N and Control-P on macOS and iOS for a pull request’s stack
+  ([The Pull Request Page](#the-pull-request-page)). Help reads the `pull-requests` and
+  `pull-stack` groups of the shortcut registry, and no surface there names a key.
 
-The file tree and Git do here what they did in `v0.11.0`, so a change that makes one
-conform to another changes a plain folder’s Back.
+These differences are deliberate: making one collection conform to another changes a
+plain folder’s Back.
 
 Interaction work is proportional to the change, not the collection size.
 Moving or selecting mutates only the prior and next anchor or selected row; a mounted
@@ -2941,42 +2763,13 @@ its Tab order and vertical navigation cannot silently fork this contract.
 
 ### Descriptor Contract
 
-Every presented command declares:
-
-- a stable identifier and scope;
-- semantic bindings, each one key, or a [Control chord](#control-chords) declared with
-  `control: true`, with no other modifier policy, and an explicit repeat policy;
-- a group identifier whose heading, context sentence, and order come from one group
-  registry;
-- one sentence-case action label with no terminal punctuation;
-- one active-voice Help description ending in a period;
-- a compact hint of one to three words when the full label will not fit; and
-- the surfaces where it appears and when those surfaces may show it.
-
-A command rendered as a control that opens a managed surface also supplies a control
-binding from that surface.
-The binding connects a rendered trigger to its stable controlled-element ID, popup role
-when applicable, and current expanded state, then restores any prior state when
-disconnected.
-The registry snapshot carries the binding to the renderer; a call site does
-not hand-author `aria-controls`, `aria-haspopup`, or `aria-expanded`. Pointer invocation
-carries the trigger element to the command so an overlay can restore focus even in
-browsers that do not focus a clicked button.
-
-The key formatter, not the descriptor, supplies visible abbreviations and glyphs.
-The registry rejects duplicate normalized bindings within one scope and incomplete copy
-for any requested surface.
-Equivalent keys for one command are aliases in one descriptor.
-Separate commands may share a compact hint; the renderer then coalesces adjacent
-commands with the same hint and joins their bindings with “or.”
-
-Full Help includes registered contextual commands even when their scope is inactive and
-states when each group applies.
-Compact hints include descriptors explicitly selected for that surface: persistent
-global commands plus selected commands available in the active scope.
-They are a high-value subset, not a second exhaustive Help list, and disappear when
-their scope is unavailable rather than looking disabled.
-Changing contextual hints is not a live-region announcement.
+Every presented command is one descriptor: an identifier and scope, bindings that are
+each one key or a [Control chord](#control-chords) declared with `control: true`, a
+group, its copy, and the surfaces it appears on.
+Equivalent keys are aliases of one descriptor, no call site hand-writes the ARIA a
+control binding sets, and compact hints are a selected subset of Help, not a second
+list. `ShortcutCommand` in `static/keyboard-shortcuts.js` holds the whole contract, and
+the registry enforces it.
 
 ### Shortcut and Help Copy
 
@@ -3005,31 +2798,26 @@ The project link identifies GitHub and announces that it opens a new tab.
 Help has a visible labelled trigger, so learning the `?` shortcut is never a
 prerequisite for opening it.
 The shortcut groups end with one note, “Press `Shift` to see relevant shortcut
-reminders.”, its `Shift` a keycap from the registry’s single-key `appendKey()`. The View
-tabs, Controls, and Filters groups say “Available while the tabs are shown.”, “Available
-while the control is shown.”, and “Available while the Files tab is shown.”
+reminders.”, its `Shift` a keycap from the registry’s single-key `appendKey()`. Each
+group says when its keys apply, in the `context` that `GROUP_DEFINITIONS` in
+`static/keyboard-shortcuts.js` gives it.
 
-### Quick Search Results
+### Plugin Keys
 
-Quick Search uses one option list for files and pull requests.
-File rows show the filename and path.
-Pull request rows show the title first, with the PR number, bold
-([Pull Request Numbers](#pull-request-numbers)), and state below it.
-The accessible option name includes that context.
-In a GitHub repository, a leading `#` scopes results to PRs.
-The empty prefix lists recent PRs, digits match number prefixes, and words match titles.
+Plugins follow the same rules, through two declarations:
 
-Use the same arrow, Enter, and Escape behavior for every result type.
-Keep the active option selected by identity as providers return, and open the result
-through its normal navigation route.
+- A view of a multi-view kind declares its tab’s letter as `key` in its manifest
+  `[[view]]`: `v` for a rendered view, `s` for a source view, and otherwise a letter of
+  its label.
+- A plugin control takes a key through `metabrowser.shortcuts.attach()`: a letter for a
+  known meaning, or `numbered: true` for a situational link or action, which then takes
+  its number from its place on screen with the shell’s numbered controls.
 
-File results lead, and pull requests follow as their own group.
-Files answer from memory and pull requests from the server about 110 ms later, so the
-later group is appended below the painted rows instead of ranked in among them, and a
-late answer never moves a file row or the selection.
-Files keep the whole result cap, and pull requests have twenty rows of their own after
-them, so a full file group does not crowd out pull requests and a file search is not cut
-short for a group that matches nothing.
+A manifest view key that takes a reserved letter keeps the whole plugin from loading,
+while a letter already held by an earlier view of the kind only costs the later view its
+key ([Scopes and Collisions](#scopes-and-collisions)). A reserved letter passed to
+`metabrowser.shortcuts.attach()` is refused with a warning.
+[Keyboard Shortcuts in docs/plugins.md](plugins.md#keyboard-shortcuts) has the API.
 
 ## Icons and Icon Buttons
 
@@ -3046,19 +2834,17 @@ Every icon in the chrome is drawn at `--icon-glyph`, whether it is a button, a f
 mark on a tree or palette row, or a menu row’s leading mark.
 Never inline a pixel size at a use site.
 Where an icon reserves a column in a palette or menu row, or a file identity’s, the
-alignment box around it is `--icon-box`, 16px — one step wider than the glyph, so the
-mark sits optically centered.
+alignment box around it is `--icon-box`, one step wider than the glyph, so the mark sits
+optically centered.
 
 A tree row’s leading slot is the glyph’s own width, `--tree-icon-slot`, which is
-`--icon-glyph`, 14px: a folder’s or a container’s chevron, a file’s type icon, a change
+`--icon-glyph`: a folder’s or a container’s chevron, a file’s type icon, a change
 letter, and a Pulls row’s chevron, state icon, and a stack’s Layers icon all take it, so
 chevrons and icons make one column and the names after them line up.
-The chevron is `--toggle-chevron-size`, 12px, and sits 1px in, and a file icon fills the
-slot, the row’s 6px gap from its name.
-At 16px a Files name started 22px from the row’s content edge and a Pulls title 44px,
-past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
-wider. `tests/test_files_tab_chrome.py` and `tests/test_github_pulls_stacks_chrome.py`
-measure the slots and where the names start in Chrome.
+The chevron, `--toggle-chevron-size`, is narrower than the slot and centered in it, and
+a file icon fills the slot, the row’s gap from its name.
+`tests/test_files_tab_chrome.py` and `tests/test_github_pulls_stacks_chrome.py` measure
+the slots and where the names start in Chrome.
 
 Files and exact file extensions use the `.file-identity-icon` alignment-box primitive.
 Resolve its host-owned SVG and subtype class with `window.metabrowser.fileTypeIcon()`;
@@ -3085,8 +2871,9 @@ a menu open; hover, keyboard focus, and “my menu is open” are one visual sta
 Do not give an icon button a resting border or background.
 A permanent box around one icon makes it read as a heavier, more primary control than
 the unboxed icon beside it, and two icons of equal standing stop looking like the same
-kind of thing. The hover surface is what signals “this is clickable” — a static frame
-adds weight without adding information.
+kind of thing.
+The hover surface is what signals “this is clickable”: a static frame adds
+weight without adding information.
 
 The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
 above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
@@ -3111,9 +2898,9 @@ element, or `mb.delegateOwnerAttribute()` spliced into markup (`wrapWithCopy` an
 The delegate ignores an unstamped control, silently, because a trusted folder’s Markdown
 keeps `data-*` and can write the same attributes; the stamp is a value drawn when the
 page loads, which no document can carry.
-This has been required since plugin SDK 0.7. The shared delegate owns successful,
-failed, and reset feedback, while the containing row owns when an `.icon-btn-reveal`
-becomes visible. Keep the button in the Tab order even while it is visually quiet.
+The shared delegate owns successful, failed, and reset feedback, while the containing
+row owns when an `.icon-btn-reveal` becomes visible.
+Keep the button in the Tab order even while it is visually quiet.
 
 `test_copyable_identifiers_share_the_copy_contract` maintains the registered path,
 diff-file, and Git-revision consumers.
@@ -3147,7 +2934,7 @@ A button that shows only on hover is ancillary, so it takes no shortcut
 Every filter in the app is built from one chip family, documented in the
 `── Filter controls ──` block of `static/styles.css` and rendered by
 `static/filter-controls.js`. A surface that needs a filter reaches for these rather than
-inventing a pill of its own; four near-identical pills is what this family replaced.
+inventing a pill of its own.
 [Choosing Among Values](#choosing-among-values) says where the family fits among the
 other controls that offer a choice.
 
@@ -3167,14 +2954,13 @@ with consistent gaps, so the set can wrap without drawing one frame around sever
 `.chip-menu` is a chip that opens a dropdown, single- or multi-select.
 `.chip-badge` carries a count, and `.chip-clear` is the quiet reset.
 
-A `.chip-menu` composes the existing floating `.menu` surface rather than introducing a
-second menu look — the app had a single-choice `.menu` and a native `.menu-select`, and
-neither can pick several things.
-Its trigger summarises the selection the way a select does (`Any age`, `Past week`,
-`.md +2`) so the closed control still answers “what is filtered?”. Dismissal follows the
-same rule as every other floating menu: Escape or outside interaction.
-Opening one puts focus on its checked row, and closing it gives focus back to the
-trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
+A `.chip-menu` composes the floating `.menu` surface rather than introducing a second
+menu look, and adds what `.menu` and the native `.menu-select` lack: picking several
+things. Its trigger summarises the selection the way a select does (`Any age`,
+`Past week`, `.md +2`) so the closed control still answers “what is filtered?”.
+Dismissal follows the same rule as every other floating menu: Escape or outside
+interaction. Opening one puts focus on its checked row, and closing it gives focus back
+to the trigger ([Keys in a Menu](#keys-in-a-menu)). The trigger uses the shared Lucide
 disclosure chevron at the standard chrome glyph size, rotated downward; do not
 substitute a text caret or shrink it to fit the label.
 
@@ -3183,7 +2969,7 @@ gives `role="menuitemradio"` rows and closes on pick; `many` gives `menuitemchec
 rows and stays open, because picking several is the point of it.
 Only one dropdown is open at a time.
 The list always leads with an any-row naming the dimension’s default (`Any type`), so
-clearing one dimension is a pick rather than a separate control — and the option list
+clearing one dimension is a pick rather than a separate control, and the option list
 must not repeat that value under another name.
 
 ### Groups Or Dropdowns
@@ -3203,8 +2989,8 @@ is how it asks for the cluster; the Pulls tab’s Show group is one
 see the options but stays one trigger wide however many there are, so use it when the
 set is unbounded or the pane cannot afford the full group.
 
-The nav filter bar uses dropdowns throughout: six age windows and six size steps as
-segmented ramps left no room for anything else in a 300px pane.
+The nav filter bar uses dropdowns throughout, because its age windows and size steps as
+segmented ramps would leave no room for anything else in a navigation pane.
 The groups stay part of the family for surfaces with fewer, shorter values.
 
 Age and file-type rows carry right-aligned file tallies in tabular numerals.
@@ -3212,7 +2998,7 @@ Fixed age windows remain in chronological order and show cumulative counts.
 Open-ended type values are ranked by frequency and capped, so the menu cuts the long
 tail rather than an arbitrary alphabetical slice.
 
-A dropdown may lead with ordered named **preset sections** — shorthands standing for the
+A dropdown may lead with ordered named **preset sections**: shorthands standing for the
 full set of values beneath them.
 Each nonempty section is a menu group ([Groups in a Menu](#groups-in-a-menu)): a
 `.group-heading` at the menu’s row inset naming a `.menu-group`, which draws the divider
@@ -3247,8 +3033,8 @@ A group declares its kind in `data-select`, and the two kinds look different:
 
 | Kind | ARIA | Selected fill |
 | --- | --- | --- |
-| `data-select="one"` — exclusive | `role="radiogroup"`, `aria-checked` | `--highlight-bg` / `--link` |
-| `data-select="many"` — additive | `role="group"`, `aria-pressed` | `--hover-bg` / `--text` |
+| `data-select="one"`: exclusive | `role="radiogroup"`, `aria-checked` | `--highlight-bg` / `--link` |
+| `data-select="many"`: additive | `role="group"`, `aria-pressed` | `--hover-bg` / `--text` |
 
 The accent fill for exclusive choices is the same treatment `.menu-seg[aria-checked]`
 uses for the theme and font pickers, so “accent means one of these” already means that
@@ -3268,9 +3054,9 @@ different ways depending on which control you picked.
 
 The exception is a boolean whose *polarity* has to be legible, which takes a real
 labelled checkbox (`.filter-check`). A pressed pill reading “Gitignored” does not say
-whether pressed means those rows are shown or filtered away — the user has to click it
-to find out. “Show ignored” with a tick states its own direction, uses the control
-everyone already knows for that, and is visibly lighter than a pill sitting beside one.
+whether pressed means those rows are shown or filtered away: the user has to click it to
+find out. “Show ignored” with a tick states its own direction, uses the control everyone
+already knows for that, and is visibly lighter than a pill sitting beside one.
 Reach for it when the label has to name the *on* state; reach for a chip when the label
 names a value.
 
@@ -3305,9 +3091,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
 - **Sections.** Each section is a group heading in the menu group pattern, the group’s
   name with its file count beside it ([Heading Tallies](#heading-tallies)), over a full
   tree of the group’s members after the filters.
-  The heading starts on the tree’s row inset, 12 px, as a menu’s starts on its rows’,
-  and names the section and its tree; sections after the first draw the divider above
-  themselves. A folder opened inside a section lists only that group’s members.
+  The heading starts on the tree’s row inset, as a menu’s starts on its rows’, and names
+  the section and its tree; sections after the first draw the divider above themselves.
+  A folder opened inside a section lists only that group’s members.
   A section is a fixed heading that never closes, where the Pulls tab’s
   [stack group](#stack-groups-in-the-pulls-tab) is a row that opens and closes, and the
   difference is deliberate: a grouping splits the whole tree into sections, while a
@@ -3351,9 +3137,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
   A newer choice, a filter change, or No grouping cancels the load on its way at once,
   and its answer is never painted.
   Pressing a grouping’s row asks for that grouping ahead of the choice, and so does
-  resting on it with the arrow keys for 300 ms (`GROUPS_PREFETCH_DWELL_MS` in `app.js`,
-  where its reasoning is); a row the keys pass over on the way to another asks for
-  nothing, since the server runs one grouped pass at a time and a pass for that row
+  resting on it with the arrow keys for the dwell `GROUPS_PREFETCH_DWELL_MS` sets in
+  `app.js`, where its reasoning is; a row the keys pass over on the way to another asks
+  for nothing, since the server runs one grouped pass at a time and a pass for that row
   would hold up the one chosen.
   Opening the menu asks for nothing, since a reader chooses at most one grouping and
   often none. A file change keeps an answer asked for ahead rather than dropping it: the
@@ -3369,8 +3155,8 @@ it resets them all, Show ignored back on, and keeps the grouping.
   A refresh asked for while a choice’s first sections are on their way waits for them
   and runs once they paint; started at once, it would discard them and begin again, and
   on a folder whose files keep changing each refresh would restart the wait.
-- **Width.** The row fits the default 299 px pane at its widest, “No grouping” with
-  Clear and the badge showing, in the default font set.
+- **Width.** The row fits the default pane width at its widest, “No grouping” with Clear
+  and the badge showing, in the default font set.
   The badge sits against the chevron to make that room; the measurements are beside
   `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane, or in the
   system font set, the row wraps: Show ignored moves down, then Clear and the chevron
@@ -3388,29 +3174,13 @@ choice’s frame, the dimmed tree and the scan row’s words, a refresh that wai
 cancelling, and the arrow keys asking only for a row they rest on, in Chrome.
 
 The server reads every group from one pass over the index, at one index version
-(`GroupedTreeQuery` in `inventory_engine/contract.py`). Measured in process, warm, on
-2026-11-15, against the read per group it replaced, with identical answers:
-
-| Folder | Ungrouped rows | By file type | By age |
-| --- | --- | --- | --- |
-| 100,000 files (the bench corpus) | 2 ms | 92–96 ms, was 622–688 ms | 72–98 ms, was 404–505 ms |
-| 270,000 files and 110,000 folders | 3–4 ms | 0.42–0.48 s, was 4.0–4.5 s | 0.34–0.47 s, was 3.3–3.6 s |
-
-In headless Chrome on the 100,000-file corpus, a click on By file type painted its
-sections 130–132 ms later when the press asked for nothing ahead, and 27–47 ms later
-after a 100 ms press had asked for it; By age took 98–116 ms and 29–32 ms; No grouping
-painted its tree in 29–49 ms.
-On the larger folder By file type took 0.50–0.53 s, or 0.39–0.48 s after a 100 ms press,
-and No grouping 41–95 ms.
-Two groupings asked for at once each took twice as long there, 0.86 s against about 0.42
-s, which is why opening the menu asks for neither and the keyboard asks only for a row
-it rests on.
-Opening a folder inside a section took 24 to 32 ms, the same as outside one,
-with no spinner shown.
-On a folder of 112 files, a file written every 250 ms for 6 s into a folder open one or
-two levels down gave four paced refreshes of at most 8 ms of paint each, and the scroll
-position, the focused row inside that folder, and the open folders held through all of
-them.
+(`GroupedTreeQuery` in `inventory_engine/contract.py`), so a grouped tree costs about
+one pass whatever the number of groups.
+Two groupings asked for at once each take about twice as long, which is why opening the
+menu asks for neither and the keyboard asks only for a row it rests on; opening a folder
+inside a section costs what it does outside one.
+The measurements are in
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#grouping-cost).
 
 ### Filters Say What They Do Not Know
 
@@ -3438,55 +3208,64 @@ a file.
 Add new file types through the declarative matcher and token triplet.
 Do not add filename-specific CSS selectors.
 
-### Aggregate Distributions
+### File-Type Colors
 
-The shipped
-[Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
-defines the first instance of this component contract.
-An aggregate distribution relates exact categories through one selected metric column in
-a semantic table. The metric cell presents an absolute value, a track normalized to that
-metric’s population total, and a percentage.
-A nearby exclusive control switches the entire table atomically between Files and Bytes;
-it never leaves parallel metric columns competing with that control.
-This keeps large category sets vertically scannable and lets the selected measure use
-the available width.
-It is distinct from the broad `ft-*` identity system: several exact extensions may
-intentionally share one file icon, while semantic families such as JavaScript and YAML
-need stable distribution identities of their own.
+A file-type family has one color wherever the app draws it: the File types table, the
+Overview’s tracks and legend, and the Treemap.
 
-The component uses a declared categorical palette, a neutral **Other** token, a track
-token, and a named track-height token.
-Consumers apply the palette through `category-palette.js`; they do not copy color
-literals or compose colors themselves.
-Inline percentage widths are allowed because they encode data rather than theme.
-
-#### The categorical palette
-
-A file-type family’s hue is declared in the type registry (see
-[Family Fields](project/architecture/file-rollup-format/file-rollup-format.md#family-fields)).
+**The registry names only the hue.** A family’s hue is declared in the type registry
+([Family Fields](project/architecture/file-rollup-format/file-rollup-format.md#family-fields)).
+A hue is tool-neutral and a color is not: lightness and chroma belong to the surface a
+consumer paints on, a light background wanting one range and a dark one another, so a
+registry that named finished colors would be naming one theme.
 Where GitHub’s linguist names a color for the language, the hue is that color’s,
-unchanged; families GitHub names no color for take a hue clear of every other.
-That is what makes the palette recognizable — Ruby is red because Ruby is red
-everywhere. A family departs from GitHub only by a deviation declared beside it in the
-registry. TypeScript is the one that leaves GitHub’s color for another: GitHub makes it
-and Python both blue, so TypeScript is a saturated yellow and Python keeps GitHub’s
-blue.
+converted to oklch and unchanged, including where two of GitHub’s colors are close
+together: moving a familiar hue to win a distance metric costs more than the collision
+does. That is what makes the palette recognizable: Ruby is red because Ruby is red
+everywhere. A family GitHub names no color for takes a hue whose painted color clears
+every other family’s by the perceptual floor.
 
-Each theme defines a `ToneBand` in `color_oklch.py`, with a lightness band and a chroma
-target band. The registry derives each family’s lightness rank and chroma ratio from the
-set of upstream colors; a family without an upstream color sits at the band’s center.
-An explicit registry lightness-rank or chroma-ratio override changes that axis while
-retaining the other one as derived.
-Families therefore differ in lightness and chroma as well as hue, within the theme’s
-band unless a documented lightness override places one outside it.
+**Lightness and chroma are a band each theme owns.** Hue alone cannot separate a palette
+this size, and GitHub’s own colors are told apart mostly by lightness and chroma, so
+`linguist_color` is more than provenance.
+Each theme paints inside a `ToneBand`, `LIGHT_THEME` and `DARK_THEME` in
+`color_oklch.py`, and each family’s place in it is a lightness rank and a chroma ratio
+derived from its upstream color; a family without one sits at the band’s center.
+The module’s docstrings hold the derivation, the measured spreads, and what a band gives
+up against a constant tone.
 
-Chroma is a target rather than a guarantee: the Python color function reduces it only as
-needed to fit sRGB, preserving the assigned hue and lightness.
-That pullback happens in Python, not in CSS, because a browser handed an out-of-gamut
-`oklch()` clips it — moving lightness and hue by as much as nine degrees, more than the
-separation the palette is built on.
+**Chroma is a target, not a guarantee.** The color function reduces chroma only as far
+as sRGB needs, keeping the hue and the lightness, because a browser handed an
+out-of-gamut `oklch()` clips it and moves both (`ToneBand.at`).
 
-The server therefore ships finished colors.
+#### Declared Deviations
+
+A family departs from where its upstream color puts it only by a declaration beside it
+in the registry, never by a silent edit.
+A deviating family keeps `linguist` and `linguist_color`, so its provenance stays
+auditable, and adds `deviation`: prose saying why it left.
+It may also set `lightness_rank`, which replaces its derived rank and may fall outside
+`[0, 1]` to leave the band, and `chroma_ratio`, which replaces its derived ratio and
+stays inside `[0, 1]`. Either one changes its own axis and leaves the other derived, and
+either without `deviation` is refused, because moving a family’s place in the band is
+the change that should never read as a typo.
+
+Most deviations nudge a hue out of a collision and keep the color a reader knows: Swift
+stays orange and Markdown stays blue.
+TypeScript is the exception and leaves GitHub’s color for another: GitHub makes
+TypeScript and Python both blue, a shade apart, so TypeScript is a saturated yellow and
+Python keeps GitHub’s blue.
+It declares a rank above the band, because a yellow at the band’s lightness is mustard,
+and the top of the chroma band.
+`devtools/check_file_type_colors.py` names TypeScript as the one family whose deviation
+may leave its color rather than nudge it, and fails a deviation that moves a hue that
+far without being named.
+A deviating family keeps the rule a house hue has: its painted color clears every other
+family’s by the perceptual floor, in every theme.
+
+#### Finished Colors
+
+The server ships finished colors.
 `METABROWSER_SETTINGS.DISTRIBUTION_COLORS` carries each family’s distribution key with
 its color on both themes, and `category-palette.js` writes both onto the element as
 `--mb-distribution-color-light` and `--mb-distribution-color-dark`.
@@ -3496,9 +3275,9 @@ The remaining tokens are `--mb-distribution-other`, `--mb-distribution-track`,
 `--mb-distribution-track-height`, and `--mb-distribution-segment-gap`. Core owns these
 tokens and utilities; the folder plugin owns File types and Treemap layout selectors.
 
-Segments that sit beside one another are separated by a hairline of the page ground —
-`--mb-distribution-segment-gap` wide, in `--viz-surface` — so two families of similar
-hue read as two rather than as one wide band.
+Segments that sit beside one another are separated by a hairline of the page ground,
+`--mb-distribution-segment-gap` wide, in `--viz-surface`, so two families of similar hue
+read as two rather than as one wide band.
 It is drawn as an inset shadow rather than a gap or a border, because the widths are
 percentages that sum to 100 and anything occupying layout would push the last segment
 past the end of the track.
@@ -3511,186 +3290,79 @@ correspondence, the separation floor, and the tone.
 Adding a family GitHub has no color for starts with `--suggest`, which prints the widest
 free hue.
 
-When a selected metric changes, the table keeps the same category set and colors.
-The active measure controls values, percentage widths, emphasis classes, and row order
-as one update, and Other stays last and neutral.
-A family’s color does not depend on which folder is open or which views are mounted, so
-a related visualization such as the Treemap agrees with the table without coordinating.
+### Aggregate Distributions
+
+An aggregate distribution relates exact categories through one selected metric column in
+a semantic table; the shipped
+[Folder Overview plan](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
+defines its first instance.
+The metric cell presents an absolute value, a track normalized to that metric’s
+population total, and a percentage.
+A nearby exclusive control switches the entire table atomically between Files and Bytes;
+it never leaves parallel metric columns competing with that control.
+It is distinct from the broad `ft-*` identity system: several exact extensions may share
+one file icon, while semantic families such as JavaScript and YAML need stable
+distribution identities of their own.
+
+The component uses the declared categorical palette
+([File-Type Colors](#file-type-colors)), a neutral **Other** token, a track token, and a
+named track-height token, applied through `category-palette.js`; no consumer copies or
+composes a color. Inline percentage widths are allowed because they encode data rather
+than theme. When the measure changes, the category set and colors stay; values, widths,
+emphasis, and row order change as one update, and Other stays last and neutral.
+A family’s color does not depend on which folder is open, so the Treemap agrees with the
+table without coordinating.
 
 The semantic table is the source of exact values, and a compact summary above it is what
-a folder shows first.
-That summary follows GitHub’s Languages box in this palette: directly under the
-population bars, a legend of the largest file-type families, each a dot in its color,
-its bold name, and its muted share.
-A caption naming the population the shares are of, such as “Share of Total (9,169
-files)”, labels the legend and the table for assistive technology only; on screen the
-bars and the Show ignored checkbox already say which population it is.
-Which families the legend names is data, so `/api/rollup` decides it, as
-`file_type_legend`, for every measure and population at once; the browser picks the one
-its controls select and only names, paints, and formats it.
-The legend names at most five families (`LEGEND_TYPE_LIMIT` in `file_type_legend.py`),
-from every group, ranked by the selected measure in the population the caption names,
-and only above the 1% share floor at which the table folds a row into **N more**, so
-every named family is also a row the table shows unfolded.
-It never names **No extension** or **Other types**, which are the files no family
-claims.
-Whatever the named families leave is one neutral **Other** entry, so the legend’s
-shares add up to the caption’s population.
-The dot is as tall as the population tracks above it and serves as their color key, and
-legend items wrap whole, so a dot never ends a line without its name.
-The table, with every group, family, and **N more** row, sits behind a **Details**
-toggle: the same section-disclosure trigger and bold label as an **N more** row.
-Details starts closed on each mount, keeps its state through every repaint of that
-mount, and is not saved as a preference.
-Every table row names its category and reports absolute values and percentages.
-Detailed breakdown fills do not become tab stops or add duplicate tooltips and are
-hidden from the accessibility tree.
-Labels never rely on color or place text on a category fill.
-
-File types uses non-subtotaling row groups in the server registry’s order: Code,
-Documentation, Data, Archives, Media, and Other.
-Empty groups are omitted.
-Membership comes from the same recommended File Rollup Format type definitions used by
-rollups, navigation filters, and Treemap colors; surfaces never maintain local extension
-lists. Known canonical suffixes roll up into readable family parents such as
-**JavaScript**, **TypeScript**, **CSS**, **YAML**, **Log files**, **Archives**, and
-**Images**. Log files is a semantic family within Other rather than a separate group.
-Compound extensions inherit the longest declared suffix: `.min.js` contributes to
-JavaScript’s `.js` child without rewriting the file’s exact logical extension.
-Indexed logical extensions contain at most two suffix components, so source maps remain
-useful `.js.map` or `.ts.map` rows without fragmenting the table into filename-specific
-`.umd.min.js.map` and `.d.ts.map` variants.
-
-Family parents are aggregate identities, so they are text-only.
-Every nonempty family places the shared gray trailing chevron after its label, starts
-collapsed, and reveals its indented extension rows without changing denominators or
-colors. A singleton such as Rust therefore still expands to `.rs`, preserving one
-consistent interaction and leaving room for future exact-extension filtering.
-Canonical children retain exact extension icons and share their parent’s `family:<id>`
-palette key. Unknown and deliberately ambiguous extensions remain raw rows; they are not
-assigned a confident name merely to shorten the table.
-**No extension** and **Other types** are disclosable special parents under Other.
-No extension reveals exact basenames; Other types reveals raw logical extensions.
-Each serialized fallback list is independently capped at 20 and adds a neutral
-**Others** row whose file and byte metrics exactly conserve children omitted by the
-producer. Presentation applies a second, consistent bound to every direct child list:
-show the first 10 rows and add one neutral **N more** aggregate row.
-Activating that row reveals its exact children in place.
-The same grammar applies recursively to family, special-parent, and fallback lists,
-including lists with only 11 entries.
-Expansion does not refetch or change denominators, and remains stable across live
-updates while its row still exists.
-A group heading is shown only when it has rows and carries no subtotal.
-Type labels use the bold design-system weight as the row’s scan anchor.
-Each raw or disclosed canonical extension row leads with the shared file-identity icon
-resolved from a synthetic filename, and each basename child resolves from the basename,
-so both match navigation without weakening the text label.
-Special parents and Others stay iconless because they describe aggregates rather than
-exact files or extensions.
-An unknown exact extension such as `.bin` uses the generic blank-page identity.
-Family parents, Files, and Ignored are likewise iconless.
-Every exact Files value uses the shared `.count` and `.count-large` convention, and
-every exact byte value uses `.size` and `.size-large`. The stronger weight therefore
-appears at the same count and byte thresholds as the navigation panel, including on
-Files and Ignored; a row role never forces a different numeric weight.
-
-Rows within each subsection sort by the active Bytes or Files measure, descending.
-The other measure is the deterministic secondary key and the stable row identity is the
-final tie-breaker. Group order remains registry-defined.
-Changing the metric therefore reveals the relevant skew without making equal rows jump
-unpredictably.
+a folder shows first: in the manner of GitHub’s Languages box, a legend of the largest
+families under the population bars, each a dot in its color as tall as the tracks above
+it, its bold name, and its muted share, with one neutral **Other** for the rest.
+Which families it names is data, decided on the route by `file_type_legend.py`, whose
+docstring has the rule.
+A caption naming the population labels the legend and the table for assistive technology
+only. Legend items wrap whole.
+The table sits behind a **Details** toggle, the same trigger and bold label as an **N
+more** row, which starts closed on each mount and keeps its state through repaints.
+Every row names its category and reports absolute values and percentages; fills are not
+tab stops, carry no duplicate tooltips, and are hidden from the accessibility tree, and
+no label relies on color or sits on a fill.
+Membership comes from the File Rollup Format type definitions that rollups, filters, and
+Treemap colors also use, by the format’s
+[Logical Extension](project/architecture/file-rollup-format/file-rollup-format.md#logical-extension)
+rule, and the row grammar, from family parents to **N more**, is in
+`builtin_plugins/folder/file-type-summary-model.js` beside
+`VISIBLE_ROWS_PER_SUBSECTION`. Type labels are bold as the row’s scan anchor.
 
 Overview renders the README at the same measure a reader gets opening that file on its
-own. Both use the same Markdown mount and pane gutter.
-The panel’s width includes the document inset so the card border, section rules, and
-surface panels share an edge.
-`test_one_document_surface_has_one_set_of_breakpoints` holds this contract.
+own, with the same Markdown mount and pane gutter, and the panel’s width includes the
+document inset so the card border, section rules, and surface panels share an edge;
+`test_one_document_surface_has_one_set_of_breakpoints` holds this.
 
-The **File Overview** section begins expanded.
-It opens with one control row carrying the shared Files / Bytes measure and the **Show
-ignored** checkbox side by side, then a fixed three-row composition table, then the
-compact type summary beneath it, with the full type distribution behind its Details
-toggle. **Files** comes first and reports the unignored population immediately from the
-inventory snapshot. **Ignored** follows with the excluded population.
-Those two are disjoint.
-**Total** follows them, set off by a hairline, and is their sum.
+The **File Overview** section begins expanded: one control row with the Files / Bytes
+measure and the `.filter-check` **Show ignored** checkbox, the same as navigation’s,
+then three tally rows, **Files**, **Ignored**, and **Total** set off by a hairline, then
+the legend and the Details table, under no heading of their own, since they ask the same
+question at a finer resolution.
+Each tally shows one absolute value and a track segmented by the top-level families in
+their colors, in one order across the three rows; `buildFolderTotalsComposition` in
+`folder-totals.js` explains the three rows, the order, and the pending fill.
+Show ignored begins checked without a saved preference and changes only the population
+the distribution counts.
+There is one chooser and one checkbox, because both act on the same numbers.
+A segment’s hover tooltip, the shared body-portaled one, gives the family name in bold
+and its file count and byte size, and a tooltip-bearing mark brightens by
+`--viz-data-mark-hover-filter`, as a Treemap cell does, and grows
+([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
+These tooltips add no tab stops; the distribution stays the accessible source.
+The Ignored row dims through `--dimmed-content-opacity`, as ignored navigation and
+Treemap entries do. The table keeps screen-reader-only headers and updates the metric
+header between Files and Bytes, so assistive technology gets the relationships alignment
+gives sighted readers.
 
-Each row displays one absolute selected-metric tally and treats its own population as
-100%, so no percentage column appears.
-Total earns its place despite being derivable: the type distribution below counts
-against the whole directory whenever Show ignored is on, so without a Total track none
-of its percentages corresponds to any bar on screen — a family reading 40% there would
-be some other share of both bars above it.
-With Total present, one of the three tracks always matches the distribution: Total while
-Show ignored is on, Files while it is off.
-Its full-width track is segmented by the top-level semantic file types in the type
-distribution below and carries their declared colors.
-The segments follow registry group order and then descend by the selected Files or Bytes
-measure within each group.
-Sorting uses the combined population, which is the one basis all three rows share and
-the only one that does not move when Show ignored does.
-All three tracks keep that same order so they stay comparable column by column.
-Hovering a colored segment uses the shared body-portaled navigation tooltip: the bold
-semantic family name is the first line, followed by the exact file count and byte size
-for that row’s disjoint population.
-Tooltip-bearing categorical marks use `--viz-data-mark-hover-filter`, the same subtle
-whole-mark brightness change used by Treemap cells.
-The filter preserves the mark’s hue and the contrast between its fill, border, and
-nested content.
-
-A tally segment also grows, as
-[Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)
-says; a Treemap cell takes the lift alone.
-These supplemental hover tooltips do not create tab stops; the type distribution remains
-the accessible source for the same values.
-The Ignored row dims its label, tally, track, and colors through
-`--dimmed-content-opacity`, the same token used by ignored navigation and Treemap
-entries.
-
-Inventory totals render first.
-Until a compatible terminal file-type projection is available, each nonzero population
-uses one neutral full-width fill.
-The projection replaces that fill atomically with exact segments; it never changes the
-inventory-backed tally.
-A zero population renders no fill.
-If a stale projection does not conserve the current tally, the row stays neutral rather
-than showing a misleading composition.
-
-The type distribution follows the tallies inside the same section, under no heading of
-its own: it is the same question at a finer resolution, and a reader should not have to
-get past one to reach the other.
-
-The control row uses the same labelled `.filter-check` **Show ignored** checkbox as
-navigation, beside the measure chooser.
-Show ignored begins checked when there is no saved preference and changes the population
-the distribution counts, and nothing else.
-
-The three tally rows are fixed populations, so the checkbox cannot move their values,
-their segments, or their order.
-It once decided the shared segment order, which meant toggling it silently reordered
-every track — the Ignored row included, whose contents the checkbox has nothing to do
-with. `buildFolderTotalsComposition` no longer accepts the flag, so this is structural
-rather than a convention.
-There is exactly one chooser and one checkbox: the two controls act on the same numbers,
-and while they sat in separate sections each silently moved what the other reported.
-Both bodies observe the same state object, so either control atomically updates the
-totals and the complete distribution.
-
-Visual Type and metric column labels are unnecessary when every metric cell keeps the
-same aligned grammar.
-The type distribution uses value, track, and percentage; the tallies use value and
-composition track. The semantic table retains screen-reader-only headers and updates the
-selected metric header between Files and Bytes, so assistive technology receives the
-relationships that sighted users get from alignment.
-
-Zero totals do not produce a colored fill, division artifact, or header-only table.
-If one metric is zero while another is not, the zero metric uses the neutral track and
-the populated metric remains meaningful.
-If the whole population is empty, the parent surface renders its explicit empty state
-instead of the distribution body.
-If the selected scope contains only ignored files, the distribution body stays empty:
-the adjacent **Show ignored** checkbox already exposes the relevant action, so the body
-does not repeat it as passive instructions.
+Zero totals produce no colored fill, division artifact, or header-only table: a zero
+metric uses the neutral track while the other stays meaningful, an empty population
+shows the parent surface’s empty state, and a scope of only ignored files leaves the
+distribution body empty, since the adjacent Show ignored already offers the action.
 
 ### Folder Treemap
 
@@ -3743,10 +3415,11 @@ buttons.
 Cell typography grows continuously with usable rectangle geometry.
 The scale combines the short side with the square root of area, which lets a genuinely
 large box grow while preventing a long, thin sliver from claiming display type.
-Folder/file labels stay between 11px and 24px; value labels stay between 10px and 18px.
-Geometry-derived inline custom properties are allowed here because they encode layout
-data, just as inline bar widths encode percentages; theme colors still come only from
-tokens and shared utility classes.
+Folder and file labels, and value labels, stay between the bounds in
+`TYPOGRAPHY_DEFAULTS` (`builtin_plugins/folder/treemap-layout.js`). Geometry-derived
+inline custom properties are allowed here because they encode layout data, just as
+inline bar widths encode percentages; theme colors still come only from tokens and
+shared utility classes.
 
 Large nested folders place their formatted aggregate value in the reserved header row.
 Non-nested cells place the value below the name when both lines fit.
@@ -4011,9 +3684,9 @@ navigation.
 ### Navigation Toolbars Wrap
 
 **A navigation toolbar that its pane is too narrow for wraps between its controls.
-Nothing in it is cut, scrolled out of reach, or cut short.** The pane drags down to 180
-px, which leaves its toolbars 179 px, and the system font set’s face is wider than the
-default one’s, so no toolbar can promise one line.
+Nothing in it is cut, scrolled out of reach, or cut short.** The pane drags down to its
+narrowest supported width, and the system font set’s face is wider than the default
+one’s, so no toolbar can promise one line.
 
 The rule covers every toolbar in the navigation: the Files filter row, the Pulls
 filters, the Commits tally, which stands in the toolbar slot, and the tab bar over them.
@@ -4021,8 +3694,8 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
 `static/styles.css`, which a plugin whose toolbar stands in the slot gives its row.
 
 - **One line while it fits.** A toolbar whose controls fit one line is that line, and
-  the toolbar slot’s height, `--nav-toolbar-height`, as it was before the rule.
-  A toolbar wraps only when its controls do not fit, and never adds space when they do.
+  the toolbar slot’s height, `--nav-toolbar-height`. A toolbar wraps only when its
+  controls do not fit, and never adds space when they do.
 - **Where it breaks.** Between controls, in their order, each line as full as it can be,
   so a control moves down only when it must.
   The leading controls stay first.
@@ -4039,7 +3712,7 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   That is also the gap between controls along a line and above the first line and below
   the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
   it grows by a line and a gap for each line it adds.
-  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centred in
+  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centered in
   a line’s height, and a taller one, a `.btn` such as Reload, is held to it, so no line
   is cramped and none stands taller than the rest.
   An open drawer’s menus wrap on the same gap, and a closed drawer adds nothing under
@@ -4056,30 +3729,16 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
 - **Keys.** Wrapping keeps the controls’ order, so reading the lines top to bottom meets
   them in their Tab order, and their keyboard numbers stay theirs.
 
-Measured in headless Chrome on 2026-11-15, the widths each toolbar is one line from,
-default font set / system font set:
-
-| Toolbar | One line from |
-| --- | --- |
-| Tab bar: Files, Pulls, Commits | 196 / 216 px |
-| Files, no filter set | 246 / 262 px |
-| Files, a filter set, “No grouping”, its widest | 298 / 317 px |
-| Pulls: Show and Reload; Open 100, Closed 2, All 102 | 276 / 308 px |
-| Pulls: Show and Reload; four-digit tallies | 303 / 341 px |
-| Commits: “5 commits begun 3mo ago” | 179 / 186 px |
-| Commits: “123,456 commits begun 12mo ago”, its count bold | 214 / 242 px |
-
-The Pulls Show group is joined from 218 / 245 px with three-digit tallies (Open 100,
-Closed 200, All 300) and from 244 / 278 px with four (1,234, 5,678, 6,912), and the
-cluster below. At the narrowest pane, 179 px, with a filter set, the Files row is three
-lines: Group by, then Show ignored, then Clear and the chevron.
-The measurements are beside the rules in `styles.css`. `tests/dom/nav-toolbar-wrap.mjs`
-holds a toolbar to this rule at every width from 179 to 420 px, in both font sets:
-`tests/test_files_tab_chrome.py` the Files row in four Group by and filter states, no
-filter and a size filter under each Group by value, with its numbers, Tab order, and
-drawer at the narrowest; `tests/test_github_pulls_stacks_chrome.py` the Pulls filters
-with three- and four-digit tallies, and the Show group’s two layouts, its observers, the
-tab shown again after the pane narrowed behind it, and their disposal; and
+The width from which each toolbar is one line, in both font sets, and the widths at
+which the Pulls Show group is joined, are measured beside the rules in `styles.css`. At
+the narrowest pane, with a filter set, the Files row is three lines: Group by, then Show
+ignored, then Clear and the chevron.
+`tests/dom/nav-toolbar-wrap.mjs` holds a toolbar to this rule at every width from the
+narrowest pane up, in both font sets: `tests/test_files_tab_chrome.py` the Files row in
+each Group by and filter state, with its numbers, Tab order, and drawer at the
+narrowest; `tests/test_github_pulls_stacks_chrome.py` the Pulls filters with three- and
+four-digit tallies, and the Show group’s two layouts, its observers, the tab shown again
+after the pane narrowed behind it, and their disposal; and
 `tests/test_nav_metadata_chrome.py` the Commits tally and the tab bar.
 `tests/dom/filter-controls-behavior.js` holds the fit and its observers’ lifecycle
 without a browser.
@@ -4098,8 +3757,8 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **Type.** `--nav-font-size` in regular weight and `--text` ink, line height
   `--nav-metadata-line-height`, and tabular numerals, so a count that grows while it is
   counted does not jitter.
-  A remark on the line above it — a filter’s count, a connection’s state or remedy —
-  adds `.nav-metadata-note`, which mutes it and changes nothing else.
+  A remark on the line above it, such as a filter’s count or a connection’s state or
+  remedy, adds `.nav-metadata-note`, which mutes it and changes nothing else.
   Inside a line, spans carry only what they mean: the gitignored half is muted, an age
   is the [age primitive](#age), a repository name is `.repository-name`, and a count’s
   number is bold, `.summary-number`
@@ -4225,9 +3884,8 @@ heading’s label, and a surface body’s controls, rows, and toggles such as **
 start `--file-tab-padding-x` in from the card edge, under the active tab’s label.
 The README’s prose keeps KPress’s responsive inset inside its card, as a standalone file
 does, so it is not that edge.
-The inset is declared once, outside any container query.
-When it followed the README’s inset, the labels moved from 0.75 to 4 to 2.5 rem in from
-the card edge as the window widened.
+The inset is declared once, outside any container query, because an inset that followed
+the README’s would move the labels as the window widened.
 `tests/test_folder_overview_alignment.py` measures the edge in Chrome at widths in all
 three document bands.
 
@@ -4288,11 +3946,11 @@ is not a tooltip or menu.
 
 The app has its own tooltip: anchored to the element it describes, styled, themed, and
 on the app’s timer. The browser’s native `title` is a second tooltip system, and a
-surface carrying both shows the reader two tooltips side by side on different timers.
-That happened on the navigation heading, so the rule is enforced rather than remembered.
+surface carrying both shows the reader two tooltips side by side on different timers, so
+the rule is enforced rather than remembered.
 
 **No `title` attribute, no `.title =` assignment, and no `setAttribute("title", …)`,
-anywhere the app owns the markup** — browser sources, built-in plugins, and the HTML the
+anywhere the app owns the markup**: browser sources, built-in plugins, and the HTML the
 server renders. `devtools/check_tooltips.py` fails the build on one, and runs in
 `make lint`. Its exemption list names each exception and why: an iframe’s accessible
 name, and a rendered document’s own links and embeds.
@@ -4300,12 +3958,13 @@ name, and a rendered document’s own links and embeds.
 | Need | Use |
 | --- | --- |
 | A short string | `data-tip-text="…"` |
-| Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+| Rich content: counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
 
 **A tooltip reads at body size**, `--tooltip-font-size`, with subordinate lines one step
 down at `--tooltip-detail-font-size`. Neither may be spelled as another token or as a
-literal. Pointing a tooltip at `--ui-small-font-size` — the size of chips, counts, and
-row metadata — makes its size a side effect of a decision about chrome, so the next
+literal.
+Pointing a tooltip at `--ui-small-font-size` (the size of chips, counts, and row
+metadata) makes its size a side effect of a decision about chrome, so the next
 adjustment to small chrome text moves every tooltip with it.
 A tooltip is prose the reader has stopped to read.
 `devtools/check_tooltips.py` holds this alongside the rule above.
@@ -4385,15 +4044,15 @@ or state.
   A rebuild that replaces the focused control focuses its replacement, as the Files
   filter bar does when new tallies arrive.
   When the element that last had focus has left the document, and no key or pointer
-  press of the reader’s has come since, the focus that follows is that repair (mb-alff).
+  press of the reader’s has come since, the focus that follows is that repair.
   A rebuild that removes the focused control and focuses nothing, as pressing the bar’s
   Clear does, leaves focus on the page, so the focus the reader’s next Tab or click
   gives is focus moving and puts the tooltip away.
   The repair still puts away a tooltip whose own anchor the rebuild removed, since that
   tooltip would never hear the pointer leave.
-  Before this rule, the filter bar’s rebuild put away a tree row’s tooltip, waiting or
-  shown, under a pointer that had not moved, and nothing brought the tooltip back until
-  the pointer left the row.
+  Without the rule, the filter bar’s rebuild would put away a tree row’s tooltip,
+  waiting or shown, under a pointer that had not moved, and nothing would bring it back
+  until the pointer left the row.
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -4414,7 +4073,7 @@ Two reasons, and the second is the important one.
 A tooltip that tracks the cursor jitters, because it re-renders on every mousemove while
 the reader is trying to read it.
 And a tooltip placed where the pointer happened to be says nothing about *which* thing
-it describes — in a stacked bar or a treemap, where the annotated elements are adjacent
+it describes: in a stacked bar or a treemap, where the annotated elements are adjacent
 and small, that is the only question the tooltip exists to answer.
 
 `mb.tooltip.show(html, anchor)` takes the element, and there is deliberately no
@@ -4439,10 +4098,9 @@ which no view draws, so a view’s hide never takes the folder’s name’s tool
 ([Home](#home)).
 
 The page has one tooltip, so a surface that calls `hide()` to clear its own puts away
-another surface’s too.
-The folder view’s totals drew again whenever the folder’s sums arrived, and each draw
-called `hide()`. A reader hovering a Files tree row then saw the row’s tooltip vanish,
-or never appear, when the folder view beside it updated (mb-alff).
+another surface’s too: the folder view’s totals draw again whenever the folder’s sums
+arrive, and a bare `hide()` there would take away a hovered Files tree row’s tooltip, or
+keep it from appearing, each time the folder view beside it updated.
 The folder view’s totals and treemap and the Commits history hide within their own
 element when they repaint or are disposed.
 `tests/dom/tooltip-anchor-session.js` holds the rule on the shell’s own code, and
@@ -4524,9 +4182,8 @@ and a plugin’s use the same markup:
   It is not indented to the rows’ labels: a heading on the label column reads as a row
   of its group rather than its name.
 - **Separator.** A `.menu-group` draws its own divider as its top edge, in the
-  `.menu-separator` geometry (4 px, a 1 px rule, 4 px), unless it is the menu’s first
-  child, where the menu’s edge already sets it off, or follows a `.menu-separator`,
-  which already draws the rule.
+  `.menu-separator` geometry, unless it is the menu’s first child, where the menu’s edge
+  already sets it off, or follows a `.menu-separator`, which already draws the rule.
   So a heading never lacks a divider or gets two.
   Rows that no heading names, such as the type filter’s raw extensions after its groups,
   are set off with a plain `.menu-separator`.
@@ -4617,10 +4274,11 @@ alone.
 
 ### Menu Height
 
-**A filter dropdown takes its rows’ natural height, up to 16 rows, and never reaches
-past the window.** Its `max-height` is the smaller of 16 rendered rows plus its padding
-and border, and the room from its top edge to the window’s bottom edge less 8 px, the
-tooltip’s viewport margin.
+**A filter dropdown takes its rows’ natural height, up to a fixed number of rows, and
+never reaches past the window.** Its `max-height` is the smaller of `MENU_MAX_ROWS`
+rendered rows plus its padding and border, and the room from its top edge to the
+window’s bottom edge less `MENU_WINDOW_MARGIN`, the tooltip’s viewport margin; both
+constants are in `static/filter-controls.js`, with the measurement beside them.
 Past that it scrolls inside itself.
 The rule is stated from the rendered row, not in pixels, so it follows the row if the
 row’s type or padding changes.
@@ -4635,14 +4293,11 @@ open filter menu when it is hidden.
 
 The rule applies to every filter dropdown, not only the type filter.
 A dropdown with few rows, such as Modified within or Minimum file size, keeps its
-natural height unless the window is shorter than its top, plus that height, plus the 8
-px margin; then it scrolls like the others.
-Other menus are out of scope and keep their own caps: a pull request’s stack menu at
-`min(60vh, 480px)`, the branch and tag list at `min(50vh, 320px)`, and Quick Search at
-`min(70vh, 640px)`.
+natural height unless the window is shorter than its top, plus that height, plus the
+margin; then it scrolls like the others.
+Other menus are out of scope and keep the caps their stylesheets set: a pull request’s
+stack menu, the branch and tag list, and Quick Search (`--search-palette-max-height`).
 
-Measured in headless Chrome on the Files type filter: every row is 29 px and the frame
-10 px, so the cap is 474 px.
 `menuMaxHeight` is checked without a browser in `tests/dom/filter-controls-behavior.js`,
 and `tests/test_files_tab_chrome.py` measures the type menu at a tall and a short
 window, through a resize and a reopen, and the age menu at both.
@@ -4709,6 +4364,29 @@ surfaces show. `tests/test_files_tab_chrome.py` reads `document.activeElement` i
 after each number, `↓` and Enter on a trigger, each letter, Escape, and a pick in File
 type as the bar rebuilds.
 
+### Quick Search Results
+
+Quick Search is a modal dialog whose results are one option list for files and pull
+requests. File rows show the filename and path.
+Pull request rows show the title first, with the PR number, bold
+([Pull Request Numbers](#pull-request-numbers)), and state below it.
+The accessible option name includes that context.
+In a GitHub repository, a leading `#` scopes results to PRs.
+The empty prefix lists recent PRs, digits match number prefixes, and words match titles.
+
+Use the same arrow, Enter, and Escape behavior for every result type.
+Keep the active option selected by identity as providers return, and open the result
+through its normal navigation route.
+
+File results lead, and pull requests follow as their own group.
+Files answer from memory and pull requests from the server, later, so the later group is
+appended below the painted rows instead of ranked in among them, and a late answer never
+moves a file row or the selection.
+Files keep the whole result cap, and pull requests have `PULL_RESULT_LIMIT`
+(`static/search-controller.js`) rows of their own after them, so a full file group does
+not crowd out pull requests and a file search is not cut short for a group that matches
+nothing.
+
 ## Structured Data and Tables
 
 Use structured rows rather than syntax-colored walls of punctuation when the user is
@@ -4765,51 +4443,48 @@ can point at:
 
 **Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
 meant to point at, it competes with whatever separators the component already has
-between marks, and on a short mark it is a large fraction of the height — two pixels of
-ring is a quarter of an eight-pixel track.
+between marks, and on a short mark it is a large fraction of the height.
 Growth says the same thing and covers nothing, and the eye is already good at finding
 the one thing that moved.
-This was tried as a translucent ring and then as an opaque grey one before landing here;
-neither is the instrument.
 
 **Grow the axis that carries no data.** This is the part that is easy to get backwards.
 On a horizontal bar the *width* is the value, so it is the one dimension that must not
 move: growing it states a share the mark does not have, and every mark after it appears
-to shift. Thickness means nothing there, which is exactly what frees it — so a bar
-segment grows *taller*, centered on the baseline the eye follows along the row.
+to shift.
+Thickness means nothing there, which is exactly what frees it, so a bar segment
+grows *taller*, centered on the baseline the eye follows along the row.
 
 It also makes the answer uniform.
-A proportional width grew a wide segment by fifteen pixels and a three-pixel segment by
-nothing, so the marks hardest to point at were the ones that answered least.
-Every segment shares one height, so every segment now answers the same.
+Growing a width in proportion would move a wide segment far and a narrow one not at all,
+so the marks hardest to point at would answer least; every segment shares one height, so
+every segment answers the same.
 
-Because the axis is small, the factor is large: an eight-pixel bar at 1.5 is twelve, and
-the overshoot carries it past thirteen before it settles.
-A few percent would be a fraction of a pixel.
+Because the axis is small, the factor, `--viz-hover-grow`, is large: a few percent of a
+thin track would be a fraction of a pixel.
 
 **Grow with a transform, never with layout**, so the row does not reflow under the
 pointer.
 
 **The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
 target and settles back, so the mark goes further than it ends up and returns.
-At around 190ms that is a flick; the same distance on a plain ease reads as the layout
-being sluggish.
+At `--viz-hover-grow-duration` that is a flick; the same distance on a plain ease reads
+as the layout being sluggish.
 
 Growth is proportional, so a wide mark moves further than a narrow one.
 That is the right way round: a one-pixel segment has almost no color to lift either, and
 its tooltip is what identifies it.
 
 The lift darkens on light and brightens on dark, and it is relative to the mark’s own
-color rather than a fixed overlay — file-type families no longer share one lightness,
-they sit in a band and a deviating family sits outside it, so a fixed delta lands
-differently on a pale family than on a dark one.
-See [color and theming](#color-and-theming).
+color rather than a fixed overlay: file-type families sit at different lightnesses in a
+band, and a deviating family outside it, so a fixed delta lands differently on a pale
+family than on a dark one.
+See [File-Type Colors](#file-type-colors).
 
 Under `prefers-reduced-motion` the growth is dropped rather than made instant: an
 instant jump is worse than no growth, and the color lift still answers the hover.
 
-**Where growth does not apply.** Two conditions rule it out, and the treemap meets both
-— it takes the lift alone.
+**Where growth does not apply.** Two conditions rule it out, and the treemap meets both,
+so it takes the lift alone.
 
 - *The mark’s area is its value in two dimensions.* A bar segment’s width encodes its
   share and the overshoot settles back to it, so nothing is misstated once the motion
@@ -4836,16 +4511,15 @@ transitions are disabled.
 ### Reveals
 
 Chrome that appears because the reader asked to see it eases in on one token,
-`--motion-reveal`: a 180 ms decelerating curve, `cubic-bezier(0.2, 0, 0, 1)`, so it
-settles rather than pops.
-The Shift reveal is its user: each key badge fades in and grows from 85% of its size,
-and the revealed strip fades in.
+`--motion-reveal`, a short decelerating curve, so it settles rather than pops.
+The Shift reveal is its user: each key badge fades in and grows from slightly smaller
+than its size, and the revealed strip fades in.
 A reveal never animates out.
 It ends at once, because the reader has let go and is about to act on what was under it,
 and a fading badge would cover the label they reach for or point at a state a key has
-already changed.
-The duration is under the 200 ms hold that starts the Shift reveal, so a
-held Shift reads as one gesture, and a quick Shift-tap still never starts it.
+already changed. The duration is under the hold that starts the Shift reveal
+(`REVEAL_HOLD_MS` in `static/key-reveal.js`), so a held Shift reads as one gesture, and
+a quick Shift-tap still never starts it.
 Under `prefers-reduced-motion: reduce` a reveal appears at once.
 WebKit, the macOS app’s engine, runs the reveal unprefixed: `@keyframes`, `animation`,
 and the `scale` property need no `-webkit-` form there, unlike `user-select`. A new
@@ -4854,8 +4528,8 @@ reveal uses `--motion-reveal` rather than a duration of its own.
 ### Live Row Arrivals
 
 The Files tree and Pulls apply `.tree-item-flash-in` to a newly arrived row.
-The shared `--row-flash-bg` tint fades to transparent in 900 ms and uses the
-near-instant reduced-motion treatment.
+The shared `--row-flash-bg` tint fades to transparent on the `.tree-item-flash-in`
+rule’s animation and uses the near-instant reduced-motion treatment.
 The highlight leaves the row’s size and controls in place.
 
 Initial snapshots, older rows revealed by paging, and edits to existing rows use their
@@ -4871,10 +4545,9 @@ The new catalog row still appears with its regular controls and selection behavi
 ### Regions Keep Their Boxes
 
 Every region’s box is decided by the first paint and does not depend on data that
-arrives later, except a navigation toolbar in a pane too narrow for it (below).
-Chrome that comes and goes moved more than content did: the filter bar 37 px on every
-main-tab switch, the view tab bar 30 px between files, a scrollbar 11 px, the Commits
-tab 78 px on every landing.
+arrives later, except a navigation toolbar in a pane too narrow for it (below), because
+chrome that comes and goes moves the content beside or below it
+([measurements](../explorations/performance-loop/design-rule-measurements.md#regions-that-moved)).
 So a region keeps its slot while its content is absent, and holds the height it will
 have: one toolbar slot at the top of the navigation that every main tab fills with its
 own toolbar at one height while each is one line (the Files filters, the Commits tally,
@@ -4923,14 +4596,10 @@ It adds no sheet, filter, cursor, per-element styling, or animation while work i
 pending. The state ends at the selected view’s painted-readiness boundary.
 A stale claim cannot clear or retain it.
 
-An asynchronously rendered replacement mounts in a connected, transparent, inert stage
-while the prior useful surface remains visible.
-After the active renderer and its declared readiness settle, the shell transfers the
-staged content into the preview in one replacement and transfers disposal ownership with
-it. This preserves the connected-container plugin contract without exposing an empty
-active container, duplicate interaction surface, or intermediate blank frame.
-A newer preview claim immediately disposes and removes a stale stage without touching
-the current preview.
+An asynchronously rendered replacement mounts in a transparent, inert stage while the
+prior useful surface stays visible, and replaces it in one step once its renderer is
+ready, so no empty container, duplicate surface, or blank frame shows; the
+[browser shell](project/architecture/arch-browser-shell.md) holds the staging mechanism.
 
 An empty or error preview has no useful surface to retain.
 It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
@@ -4944,20 +4613,19 @@ The prompt to select a file appears only when nothing is selected and nothing is
 loading, and switching navigation tabs changes neither.
 
 After a successful atomic replacement, `animatePreviewContentArrival` applies one
-compositor opacity animation to the incoming foreground content root, from 0.98 to 1
-over 50 ms with `ease-out`. The preview pane’s theme background never animates, so the
-handoff cannot pulse white in light mode or flash pale in dark mode.
+compositor opacity animation to the incoming foreground content root, from
+`PREVIEW_ARRIVAL_START_OPACITY` to full over `PREVIEW_ARRIVAL_DURATION_MS`
+(`static/app.js`) with `ease-out`. The preview pane’s theme background never animates,
+so the handoff cannot pulse white in light mode or flash pale in dark mode.
 The old preview never fades out, the new preview is usable immediately, and the shell
 does not traverse or restyle the rendered document.
 This small incoming-view treatment softens the paint boundary without reading as a
 loading effect. `prefers-reduced-motion` skips it entirely.
 
-Navigation implementations measure this acknowledgement separately from content
-readiness. The synchronous selection-feedback span contains only the claim-owned busy
-state, route, and old/new selected-row mutations; it does not include cancellation,
-roving Tab order, network, parsing, syntax work, or rendering.
-The standard headed scenario requires that span and pending onset/clearance, while
-browser Event Timing remains the authority for the next painted response.
+The acknowledgement is measured separately from content readiness, as the performance
+loop’s
+[Attributing Stateful-Navigation Delay](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay)
+describes.
 
 High-churn navigational rows update hover, focus, and selection backgrounds without a
 transition so the visible answer does not ease in behind the input.
@@ -4981,13 +4649,13 @@ them reads as a page in trouble rather than a page working.
 
 Two forms, and the choice between them is about whether the shape is known:
 
-- **Skeleton blocks are the default.** When the layout is known before the data — rows,
-  cells, a tally, a list — draw that layout as neutral blocks carrying the slow pulse
+- **Skeleton blocks are the default.** When the layout is known before the data (rows,
+  cells, a tally, a list), draw that layout as neutral blocks carrying the slow pulse
   used by the navigation tally (`.tally-pending`, `tally-pending-pulse`). The block
   reserves the real geometry, so arriving content replaces it without reflow, and the
   pulse reads as “loading” rather than “blinking”.
 - **A spinner is for an indeterminate wait whose shape is unknown.** A document about to
-  render, a comparison whose file count is not yet known — a skeleton there would invent
+  render, a comparison whose file count is not yet known: a skeleton there would invent
   a structure the result may not have.
   The spinner says only that work is happening, which is all that is honestly known.
 
@@ -4999,8 +4667,8 @@ A spinner or a skeleton is invisible to a screen reader, so it carries an `sr-on
 label or an `aria-label` naming what is loading.
 That text is not visible copy; the rule is about what is painted.
 
-Visible copy is for a state neither form can express — a scan still running behind an
-empty result, an index that failed — and it says what that state is rather than that
+Visible copy is for a state neither form can express (a scan still running behind an
+empty result, an index that failed), and it says what that state is rather than that
 something is loading.
 A background refresh of content already shown is neither form: it is
 [Refreshing Content](#refreshing-content).
@@ -5008,17 +4676,17 @@ A background refresh of content already shown is neither form: it is
 ### Refreshing Content
 
 **Content already rendered is never covered by progress.** When a refresh checks data
-the reader can already see — a cached pull request, its changed files, a Pulls list —
-the content stays as it is, at full size and in place, with no spinner and no progress
-or staleness sentence beside it.
+the reader can already see, such as a cached pull request, its changed files, or a Pulls
+list, the content stays as it is, at full size and in place, with no spinner and no
+progress or staleness sentence beside it.
 A spinner over rendered content is the strongest loading signal pointed at something
 that is not loading, and it drew the eye to a wait the reader was not making.
 
 Instead, the text a refresh is checking **breathes**: its opacity eases down and back
-once every `--refreshing-text-period` (2.4 s), starting only after
-`--loading-state-delay`, so a refresh that lands within the quiet period shows nothing.
-A status text that breathes — a page’s age line, the Pulls connection row’s text —
-carries `aria-busy="true"` while it does.
+once every `--refreshing-text-period`, starting only after `--loading-state-delay`, so a
+refresh that lands within the quiet period shows nothing.
+A status text that breathes, such as a page’s age line or the Pulls connection row’s
+text, carries `aria-busy="true"` while it does.
 Names and titles that breathe sit in rows that stay usable links and tree items, so
 their breathing is paint alone and nothing marks them busy.
 
@@ -5027,26 +4695,23 @@ their breathing is paint alone and nothing marks them busy.
   list toggles one container and a row drawn into it later joins.
   A view that draws rows into a breathing list brings them to the same beat
   (`alignRefreshing` in the GitHub plugin).
-- **Primary ink only.** Primary ink dims to `--refreshing-text-dim-opacity` (0.8), 9.2:1
-  in light and 9.8:1 in dark at its dimmest.
-  Muted ink cannot dim and keep 4.5:1 (it rests at 4.62:1 in light), so a muted line
-  takes `.mb-refreshing-muted` as well: it is drawn in `--text` at the opacity that
-  reproduces `--muted` (`--refreshing-muted-rest-opacity`, an OKLab difference under a
-  just-noticeable one) and lifts toward full ink instead.
-  Status inks — change badges, line stats, state icons — never breathe.
+- **Primary ink only.** Primary ink dims to `--refreshing-text-dim-opacity` and keeps
+  4.5:1 at its dimmest in both themes.
+  Muted ink cannot dim and keep 4.5:1, so a muted line takes `.mb-refreshing-muted` as
+  well: it is drawn in `--text` at the opacity that reproduces `--muted`
+  (`--refreshing-muted-rest-opacity`, an OKLab difference under a just-noticeable one)
+  and lifts toward full ink instead.
+  Status inks (change badges, line stats, state icons) never breathe.
 - **One container per surface:** the pull request page’s age line, a changed-files
   tree’s folder and file names, the Pulls connection row’s age, and the titles of the
   rows whose own data GitHub is being read for.
   A tree’s file that the comparison does not hold is muted, and its name breathes as a
   muted line does.
-- **Opacity only**, so the compositor runs it.
-  Measured in headless Chrome 152 on 2026-11-11 with the real stylesheets: no
-  compositing failure, and in the 2.7 s after the class went on, no style, layout,
-  pre-paint, or paint on the main thread while the compositor drew 165 frames, in both
-  themes. Starting it costs one style recalculation per breathing element: 2.5 ms for the
-  120 a windowed tree and list draw, and 51 ms for 3,009 if every row of a 3,000-file
-  tree were drawn, which the tree’s window never does.
-  The numbers are beside the tokens in `static/styles.css`.
+- **Opacity only**, so the compositor runs it with no main-thread style, layout, or
+  paint, and starting it costs one style recalculation per breathing element, which the
+  tree’s window bounds.
+  The measurements and the contrast figures are beside the tokens in
+  `static/styles.css`.
 - `prefers-reduced-motion: reduce` stops it: the text stays as it rests, and a status
   text’s `aria-busy` still says a refresh runs.
 
@@ -5082,45 +4747,24 @@ row’s avatar, which the list mounts again as it scrolls back.
 The conversation’s avatars stay `loading="lazy"`, as a long document’s figures do, so
 neither is asked for until the reader nears it.
 
-A lazy image waits for layout before it asks for its bytes, and WebKit, the macOS app’s
-engine, then asks the network again rather than use the copy it holds.
-Measured in the app’s WKWebView (WebKit 21624, macOS 26.5) on 2026-11-13, when the
-header built its actor on every tab switch, with the avatar served locally after 80 ms,
-by reading the header’s avatar at each animation frame and counting requests at the
-server: on each of 9 tab switches the rebuilt lazy avatar was requested again, and its
-`complete` was false and its `naturalWidth` 0 for 3 frames, 100 ms at that window’s 30
-frames a second.
-Eager, it made no request, and `complete` and `naturalWidth` were set in
-its first frame on all 9. That the eager avatar then paints in that frame is an
-inference: a page cannot read WebKit’s decoding or paint.
-Pixels were read only in headless Chrome 152, whose screencast showed no blank avatar
-frame in 9 switches either way; Chrome had the lazy image complete in its first frame
-too, so the blank was WebKit’s.
-
+The reason is WebKit, the macOS app’s engine: a lazy image waits for layout before it
+asks for its bytes, and WebKit then asks the network again rather than use the copy it
+holds, leaving the image blank for several frames; an eager one takes the copy in its
+first frame. Chrome reuses the copy either way.
 An image whose address does change is a new image, and its slot keeps its size, so its
 arrival moves nothing.
+A node replaced under a still pointer is also a new target for hover and focus: the
+tooltip restarts its delay and a focused control’s focus goes to the body, which is the
+other reason the header keeps its parts.
 `test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement` checks, in a
 browserless DOM, each avatar’s loading by placement and which of the header’s nodes a
 repaint keeps or builds: their attributes and node lifecycle, not their paint.
-
-A node replaced under a still pointer is also a new target for hover and focus.
-Measured in headless Chrome 152 on 2026-11-13, with the pointer resting on the header’s
-head branch chip while the page switched tabs: when the header built its parts again,
-the new chip was not hovered and its copy button was hidden in the task that replaced
-it, and read at the next animation frame Chrome had hovered it again and fired
-`mouseenter` on it again.
-That no frame painted the button hidden is an inference from those readings.
-That `mouseenter` gives the shell’s tooltip a new anchor and restarts its delay
-(`showTooltip` in `static/app.js`). Keyboard focus on the chip’s copy button went to the
-document body on each tab switch.
-With the header keeping its parts, the chip is the same node, no `mouseenter` fires, and
-the focus stays. WebKit’s hover after such a replacement was not measured.
 
 A Markdown document is built again each time its file is entered; switching between its
 Document and Source views keeps it.
 KPress writes its images lazy, and one far down a long document should wait for the
 reader. So an image the page has already loaded, at an address that names its bytes, is
-made eager, and takes the copy the page holds; an image the page has not loaded stays
+made eager and takes the copy the page holds; an image the page has not loaded stays
 lazy.
 
 A served file’s address names its bytes by a version.
@@ -5129,21 +4773,22 @@ embeds, a token of the file’s resolved path, size, modification and change tim
 and device, of the trust profile and its sandbox policy, and of the build, read when the
 render is asked for, which is on every entry.
 The link enhancer puts the version in the file’s `/raw` address, so a replaced file is a
-new address. `/raw` keeps a raster image’s answer for a year at the version the file has
-now, and revalidates every other, an SVG’s included, since its sandbox differs by trust
-profile (`SECURITY.md`); a revalidated image the page holds is still taken from its
-copy. So the page reuses what it holds at an address without asking whether the file
+new address.
+`/raw` keeps a raster image’s answer for a long time at the version the file
+has now, and revalidates every other, an SVG’s included, since its sandbox differs by
+trust profile (`SECURITY.md`); a revalidated image the page holds is still taken from
+its copy. So the page reuses what it holds at an address without asking whether the file
 changed: an image whose file changed has a new address, which the page does not hold,
 and loads lazily there.
-That is true of a hidden file, a file behind a link, a file deeper than the shell’s
-event stream watches, and a replacement that keeps the file’s size and time, because the
+That holds for a hidden file, a file behind a link, a file deeper than the shell’s event
+stream watches, and a replacement that keeps the file’s size and time, because the
 version is read from the file, not heard from the shell.
 On a pinned revision a file never changes at its address, and an image from another
 origin, a scheme-relative `//host/badge.svg` on another host included, is that host’s to
-keep fresh, as Chrome reuses one anyway, so both are held too.
-A served address without a version, which is any past the render’s first 256 files, and
-an absolute or scheme-relative address on the page’s own origin can change under the
-page, and are never held.
+keep fresh, so both are held too.
+A served address without a version, which is any past `_MAX_RAW_VERSIONS` files of a
+render (`server.py`), and an absolute or scheme-relative address on the page’s own
+origin can change under the page, and are never held.
 
 A held served image is made eager before its address is set, its authored address
 removed first: an eager image asks for its address at once, and the authored one,
@@ -5151,62 +4796,18 @@ relative to the document, is not where the image is served.
 A held image from another origin keeps the address its author wrote, so it has to be
 eager before the page adopts it: a trusted render is parsed in a template, whose
 document loads nothing, and the template’s images the page holds are made eager there.
-The page remembers `MAX_HELD_IMAGES`, 1,024, and past that forgets the image loaded
-least recently. The costs behind that number are beside the constant in the plugin’s
-`place-rendered.js`, and the cost of a version beside `_MAX_RAW_VERSIONS` in
-`server.py`.
-
-Measured in the same WKWebView on 2026-11-13, on a document with three images in its
-first screen and one 4,800 px down, served by Metabrowser behind a proxy that delayed
-each image 80 ms and counted requests, and reading each of the three at each animation
-frame and again after layout.
-Leaving for another file and coming back, each of 5 returns asked for all three images
-again and left each without its image for 3 frames, 100 ms at 30 frames a second.
-With the held images eager, the returns asked for none, and each image was complete,
-with its width, in its first frame.
-Making the shown images eager in the first frame, after they had been created lazy,
-changed nothing: each return still asked for all three, and each was blank for 3 or 4
-frames. So WebKit had given up the copy when it deferred them, an inference from the
-counts. Without removing the authored address first, each return also asked the server
-for the three images at their authored addresses.
-Switching to Source and back built nothing, before and after: no request and no blank
-frame. Headless Chrome 152 asked for nothing and had every image complete in its first
-frame, before and after, and neither engine asked for the image far down.
-
-Measured again on 2026-11-14, in the same WKWebView (WebKit 21624.2.5.11.8, macOS
-26.5.2) and in headless Chrome 152, against the code before versions (7e27e32b), with
-the same document and an image from another origin added to its first screen, served
-with `max-age=300` and delayed 80 ms like the rest.
-Each return was read the same way, and the replaced image, 240 by 120 and red, became
-360 by 90 and magenta at the same path, told apart by its natural size and by a pixel
-drawn from it:
-
-| Engine | Code | 5 returns, nothing changed | Return after editing the document | Return after replacing the image | Reload after that |
-| --- | --- | --- | --- | --- | --- |
-| WKWebView | before | served images: no request, no blank frame; outside image: asked again each time, 3 or 4 blank frames | asked again, 3 blank frames | asked again, 3 blank frames, new image | new image |
-| WKWebView | versions | no request, no blank frame, outside image included | no request, no blank frame | asked at its new address, 3 or 4 blank frames, new image | new image |
-| Chrome 152 | before | no request, no blank frame | no request | no request, old image | asked again, new image |
-| Chrome 152 | versions | no request, no blank frame | no request | asked at its new address, 6 blank frames at 60 a second, new image | no request, new image |
-
-Before versions, Chrome showed the old image on the return without asking, because it
-reuses an image the page has loaded at the same address whatever its headers say; its
-reload asked again because `/raw` was `no-cache`. With versions a change to the document
-no longer costs its images a round trip in WebKit, since nothing forgets them, and a
-replaced image is asked for once, at its new address, in both engines.
-After the reload Chrome kept the new image from its cache without asking, the PNG’s
-answer at the current version being kept for a year; WebKit asked for it again.
-With an SVG added to the first screen, whose answer is revalidated, and an image from
-another origin at a scheme-relative address, each of 5 returns in WKWebView asked for
-neither and had both complete in their first frame, as Chrome did for the SVG.
+The page remembers `MAX_HELD_IMAGES` images (the Markdown plugin’s `place-rendered.js`)
+and past that forgets the one loaded least recently; the costs behind both bounds are
+beside their constants.
 
 The rule has its limits.
 A version is read when the document is rendered, so a document on screen keeps the image
-it has until it is entered again, as it did before.
+it has until it is entered again.
 Which file an address names is decided in the page (`builtin_plugins/markdown/links.js`)
 and predicted by the server (`embedded_resources.py`); an address the prediction misses
 is left unversioned, and its image is not held.
 An image from another origin is held while the page lives, so a change on that host
-shows after a reload, as it already did in Chrome.
+shows after a reload.
 
 `test_a_reentered_document_takes_the_images_the_page_holds` checks, in a browserless
 DOM, with the production placement and link enhancer running as a mount runs them, which
@@ -5218,12 +4819,14 @@ loading or paint. `tests/golden/cli-ui-markdown-image-reentry.tryscript.md` is i
 transcript. `tests/test_raw_versions.py` checks which files a render versions, that a
 replaced file gets a new version, and which `/raw` answers are kept and which
 revalidated.
+[Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#a-repaint-keeps-its-images)
+has the WebKit and Chrome frame counts behind each part of this rule.
 
 ## Text Selection
 
 Text selection is content behavior.
-Informational text—including errors, logs, file contents, status explanations, and
-labels—must remain selectable for search and debugging.
+Informational text, including errors, logs, file contents, status explanations, and
+labels, must remain selectable for search and debugging.
 Disable selection only on controls whose primary behavior is clicking, dragging,
 toggling, or navigation.
 Never put `user-select: none` on a container whose descendants include content.
