@@ -583,6 +583,9 @@
   display: none;
 }
 
+/* The comparison's article is a KPress fragment outside the document host; the shell's
+   bridge (static/styles.css) gives every `.kpress` the app's colors and corners, so its
+   quotes and code draw as a document's do. */
 .metabrowser-diff-host .diff-markdown {
   max-inline-size: calc(var(--doc-measure) + 2 * var(--content-padding-x));
   padding-block: 4px;
