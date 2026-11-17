@@ -5,8 +5,8 @@ title: "Menus: a key that opens a menu moves keyboard focus into it"
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:18:51.139Z
-updated_at: 2026-11-16T18:47:25.043Z
+updated_at: 2026-11-17T05:58:58.014Z
 started_at: 2026-11-15T18:20:08.387Z
 closed_at: 2026-11-16T18:47:25.042Z
 close_reason: "Merged into main with #459."

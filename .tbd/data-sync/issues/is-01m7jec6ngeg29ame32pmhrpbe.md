@@ -5,13 +5,13 @@ title: "PR header: 'Fetched just now via GitHub CLI' sits in the metadata lines'
 kind: bug
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-16T15:07:27.779Z
-updated_at: 2026-11-16T20:03:34.846Z
+updated_at: 2026-11-17T05:58:00.879Z
 closed_at: 2026-11-16T20:03:34.844Z
 close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
 resolution: null

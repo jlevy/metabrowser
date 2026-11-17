@@ -5,8 +5,8 @@ title: "Rendered Markdown diff: the unchanged-blocks fold has a border; expand i
 kind: bug
 status: closed
 priority: 2
-version: 8
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T06:22:08.437Z
-updated_at: 2026-11-16T16:30:46.907Z
+updated_at: 2026-11-17T05:58:19.223Z
 started_at: 2026-11-15T06:23:09.404Z
 closed_at: 2026-11-16T16:30:46.906Z
 close_reason: "Merged into main at afda3599f (stack #446 lower layers)."

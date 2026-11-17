@@ -5,13 +5,13 @@ title: "Diff summary reads '19 files changed · 10 A, 5 D, 4 M · +1,234 −567'
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-16T15:53:13.991Z
-updated_at: 2026-11-16T21:04:55.788Z
+updated_at: 2026-11-17T05:58:08.850Z
 closed_at: 2026-11-16T21:04:55.787Z
 close_reason: "Merged in #479 (7da81ab57)"
 resolution: null

@@ -3,17 +3,17 @@ type: is
 id: is-01m0pfhemn9y4t6qeky8kgz202
 title: "H54: the tally row's reservation cannot cover a row that wraps"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-08-23T04:54:53.332Z
-updated_at: 2026-11-17T02:34:06.368Z
-closed_at: null
-close_reason: null
+updated_at: 2026-11-17T06:21:13.503Z
+closed_at: 2026-11-17T06:21:13.503Z
+close_reason: "PR #490 merged at 2c4692bd7: the Files nav's ignored-files line is laid out from first paint, so the tally row holds its settled shape while counts fill in (tests/test_files_totals_stable_chrome.py: 0 px movement after first paint across all loads). Reviews A, B, C dispositioned; CI green at 64aa838ab."
 resolution: null
 duplicate_of: null
 ---

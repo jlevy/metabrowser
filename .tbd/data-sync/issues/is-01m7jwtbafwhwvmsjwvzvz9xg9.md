@@ -5,8 +5,8 @@ title: "The brief change line '10 A, 5 D, 4 M · +1,234 −567' is one component
 kind: feature
 status: closed
 priority: 1
-version: 24
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 25
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
@@ -34,7 +34,7 @@ child_order_hints:
   - is-01m7kfte0m3g6k2npawtja05ha
   - is-01m7kftf3s1vj6a9ssenmpht89
 created_at: 2026-11-16T19:19:51.374Z
-updated_at: 2026-11-17T02:31:35.729Z
+updated_at: 2026-11-17T05:58:10.731Z
 closed_at: 2026-11-17T02:31:35.727Z
 close_reason: "Stack headings' change line merged in #484 (accumulation of member PRs)"
 resolution: null

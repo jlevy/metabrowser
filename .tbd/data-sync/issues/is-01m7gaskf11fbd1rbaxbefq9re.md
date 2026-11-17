@@ -5,8 +5,8 @@ title: "Conversation: one vertical rhythm between comments and commits, roomier 
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:26:23.712Z
-updated_at: 2026-11-16T19:05:41.458Z
+updated_at: 2026-11-17T05:59:03.841Z
 started_at: 2026-11-15T19:27:14.339Z
 closed_at: 2026-11-16T19:05:41.457Z
 close_reason: "Merged into main (stack #446) after the gate."

@@ -5,8 +5,8 @@ title: "Group by: a choice shows at once and the tree shows it is regrouping, ev
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T20:10:16.323Z
-updated_at: 2026-11-16T20:03:32.096Z
+updated_at: 2026-11-17T05:57:54.951Z
 started_at: 2026-11-15T20:11:19.440Z
 closed_at: 2026-11-16T20:03:32.095Z
 close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."

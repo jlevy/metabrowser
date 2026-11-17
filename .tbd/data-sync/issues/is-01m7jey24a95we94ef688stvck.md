@@ -5,13 +5,13 @@ title: "PR header: the Diff summary's place shows the shared pending shimmer whi
 kind: feature
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-16T15:17:12.952Z
-updated_at: 2026-11-16T20:03:35.249Z
+updated_at: 2026-11-17T05:58:04.987Z
 closed_at: 2026-11-16T20:03:35.248Z
 close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."
 resolution: null

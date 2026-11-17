@@ -5,8 +5,8 @@ title: "Consistency fixes: code (mb-r5jr review A1-A10, B4, C2, C4, C6, C8, C9)"
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7g5yrx2z5bck8g4p1y4g6rx
 hold: null
 hold_until: null
 created_at: 2026-11-15T22:45:14.111Z
-updated_at: 2026-11-16T20:03:32.483Z
+updated_at: 2026-11-17T05:59:15.134Z
 started_at: 2026-11-15T22:46:17.289Z
 closed_at: 2026-11-16T20:03:32.483Z
 close_reason: "Merged into main at 1dcbe93 (stack #446 #464-#478) after the gate and the whole-stack review."

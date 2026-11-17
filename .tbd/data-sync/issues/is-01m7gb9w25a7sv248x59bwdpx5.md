@@ -5,8 +5,8 @@ title: "Titles: a conventional-commit prefix is regular weight and the rest bold
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T19:35:16.804Z
-updated_at: 2026-11-16T19:05:42.226Z
+updated_at: 2026-11-17T05:59:07.715Z
 started_at: 2026-11-15T19:36:06.774Z
 closed_at: 2026-11-16T19:05:42.225Z
 close_reason: "Merged into main (stack #446) after the gate."

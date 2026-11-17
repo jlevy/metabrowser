@@ -5,13 +5,13 @@ title: "Filter triggers: an active trigger reads 4.15:1 in light, below 4.5:1"
 kind: bug
 status: open
 priority: 2
-version: 1
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 2
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 labels: []
 dependencies: []
 parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 created_at: 2026-11-15T23:46:33.398Z
-updated_at: 2026-11-15T23:46:33.398Z
+updated_at: 2026-11-17T05:59:15.835Z
 ---
 Found by the mb-xlla (design-system consistency code fixes) agent, 2026-11-15, measured in headless Chrome at claude/ds-consistency-code (cfe2d2ed9).
 

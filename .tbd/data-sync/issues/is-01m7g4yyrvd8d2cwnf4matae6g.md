@@ -3,10 +3,10 @@ type: is
 id: is-01m7g4yyrvd8d2cwnf4matae6g
 title: "PR Conversation: the gap above a comment's first commit is at least the gap between commits"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T17:44:27.674Z
-updated_at: 2026-11-15T17:52:22.360Z
+updated_at: 2026-11-17T06:01:39.007Z
 started_at: 2026-11-15T17:45:04.884Z
+closed_at: 2026-11-17T06:01:39.007Z
+close_reason: "Shipped in PR #451 (merged 2026-11-16T16:30Z, in afda3599f); the beads were left in_progress by an earlier session. Found during plan-2026-11-15 currency (PR #500)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 

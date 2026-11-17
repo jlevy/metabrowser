@@ -3,10 +3,10 @@ type: is
 id: is-01m7g5w1s215b0mdajt1bbg57r
 title: "PR page: the branches get their own line under the author's sentence"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-11-15-files-grouping-diff-summary-and-pull-stacks.md
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,8 +14,12 @@ parent_id: is-01m7dm3az28qmj39y5hmdq2k0v
 hold: null
 hold_until: null
 created_at: 2026-11-15T18:00:21.025Z
-updated_at: 2026-11-15T18:15:01.253Z
+updated_at: 2026-11-17T06:01:39.012Z
 started_at: 2026-11-15T18:00:52.876Z
+closed_at: 2026-11-17T06:01:39.012Z
+close_reason: "Shipped in PR #451 (merged 2026-11-16T16:30Z, in afda3599f); the beads were left in_progress by an earlier session. Found during plan-2026-11-15 currency (PR #500)."
+resolution: null
+duplicate_of: null
 ---
 The user's request (2026-11-15), verbatim:
 
