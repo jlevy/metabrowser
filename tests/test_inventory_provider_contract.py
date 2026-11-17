@@ -8,6 +8,7 @@ import functools
 import inspect
 import itertools
 import os
+import re
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from dataclasses import replace
 from pathlib import Path
@@ -98,7 +99,19 @@ from tests.inventory_harness import selected_inventory_provider
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
+RESEARCH_DOC = REPO_ROOT / "docs/project/research/research-2026-11-17-fdu-backend-revisited.md"
 GOLDEN_DIR = REPO_ROOT / "tests/golden"
+# The statuses the architecture document's decisions table defines; an open one links
+# the proposal that asks fdu to agree.
+_FDU_PROPOSAL = "[jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)"
+_DECISION_STATUSES = frozenset(
+    {
+        "Decided",
+        "Method decided; values pending measurement",
+        f"Intent decided; profile open, pending fdu ({_FDU_PROPOSAL})",
+        f"Open, pending fdu ({_FDU_PROPOSAL})",
+    }
+)
 # Bound transient watcher churn so this conformance case cannot hang.
 _PROVIDER_PAGE_ATTEMPTS = 3
 
@@ -241,6 +254,49 @@ def test_architecture_document_registers_every_provider_conformance_case() -> No
     }
     assert parametrized - PROVIDER_CONFORMANCE_TESTS == set(), "unregistered conformance cases"
     assert _documented_conformance_cases(document) == PROVIDER_CONFORMANCE_TESTS
+
+
+def _decision_rows(document: str, heading: str) -> list[tuple[str, ...]]:
+    """The cells of each `D<n>` row in the table under *heading*, up to the next heading."""
+
+    lines = document.splitlines()
+    rows: list[tuple[str, ...]] = []
+    for line in lines[lines.index(heading) + 1 :]:
+        if line.startswith("#"):
+            break
+        if line.startswith("| D"):
+            rows.append(tuple(cell.strip() for cell in line.strip().strip("|").split(" | ")))
+    return rows
+
+
+def test_architecture_document_records_every_decision() -> None:
+    """The decisions table records each decision the research names, once and in order.
+
+    Each row has one of the statuses the document defines, so every open one links the
+    fdu proposal, and every test or test module the table names exists, so renaming one
+    cannot leave a decision held by nothing.
+    """
+
+    research = _decision_rows(
+        RESEARCH_DOC.read_text(encoding="utf-8"), "### Decisions Needed Before Parity Runs"
+    )
+    recorded = _decision_rows(
+        ARCHITECTURE_DOC.read_text(encoding="utf-8"), "## Decisions for a Second Provider"
+    )
+    assert [row[0] for row in recorded] == [row[0] for row in research]
+    test_sources = [path.read_text(encoding="utf-8") for path in (REPO_ROOT / "tests").glob("*.py")]
+    defined = {
+        name
+        for source in test_sources
+        for name in re.findall(r"^\s*(?:async )?def (test_\w+)\(", source, flags=re.MULTILINE)
+    }
+    for row in recorded:
+        decision, _rule, status, held_by = row
+        assert status in _DECISION_STATUSES, (decision, status)
+        named_tests = set(re.findall(r"`(test_\w+)`", held_by))
+        assert named_tests <= defined, (decision, named_tests - defined)
+        for module in re.findall(r"`(tests/[\w/.-]+\.py)`", held_by):
+            assert (REPO_ROOT / module).is_file(), (decision, module)
 
 
 def _provider_pin_golden(provider: InventoryProvider) -> Path:
@@ -2062,20 +2118,21 @@ def test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session(
             InventoryConfig(watch_mode="off"),
         )
         try:
-            phases: list[LifecyclePhase] = []
+            states: list[IndexState] = []
             sessions: set[str] = set()
             for _attempt in range(500):
                 result = await handle.read(ReadRequest())
                 sessions.add(result.version.session)
-                if not phases or result.state.phase is not phases[-1]:
-                    phases.append(result.state.phase)
+                if not states or result.state.phase is not states[-1].phase:
+                    states.append(result.state)
                 if result.state.phase in {LifecyclePhase.READY, LifecyclePhase.FAILED}:
                     break
                 await asyncio.sleep(0.005)
-            assert phases[-1] is LifecyclePhase.READY
+            assert states[-1].phase is LifecyclePhase.READY
             assert len(sessions) == 1
-            for before, after in itertools.pairwise(phases):
-                assert after in ALLOWED_PHASE_TRANSITIONS[before]
+            # The contract's own check, which nothing applies at run time.
+            for before, after in itertools.pairwise(states):
+                assert before.can_transition_to(after), (before.phase, after.phase)
         finally:
             await handle.close()
 

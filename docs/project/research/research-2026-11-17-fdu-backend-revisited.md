@@ -1003,8 +1003,9 @@ Revisit only if F14 and R20 together leave the catalog bound by conversion.
 
 - [ ] Validate this spike on macOS using its README (`mb-6xfh`; the pull request
   carrying this research leaves the checklist open).
-- [ ] Record decisions D1 to D22 in the inventory-provider architecture document, each
-  marked decided or open pending fdu (`mb-54tl`).
+- [x] Record decisions D1 to D22 in the inventory-provider architecture document, each
+  marked decided or open pending fdu (`mb-54tl`;
+  [Decisions for a Second Provider](../architecture/arch-inventory-provider.md#decisions-for-a-second-provider)).
 - [x] Track R1 to R31 as Metabrowser beads under `mb-hej8`, linking the existing beads
   each one absorbs; the table below maps them.
 - [x] Propose the fdu changes to the fdu project in one issue: the joint decisions, F1
