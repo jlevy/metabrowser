@@ -20,17 +20,23 @@ the format, the bounds, and the reason beside each.
 ``mode`` with ``root`` is the key of the macOS app's session for the root, so one entry
 is one window. A root never comes from an argument as typed, so no credential is stored.
 
-**The file.** ``{"version": 1, "targets": [...]}`` as JSON, most recently opened first,
-one entry per root. JSON rather than the cache's YAML records because every server
-reads and writes the file as it starts, and a folder's server loads no schema library
-(``tests/test_plugin_public_api.py``). The list names the user's folders, so it is read
-and written only through :mod:`metabrowser.home`'s owner-only helpers.
+**The file.** ``recent-targets.yml``: YAML, as ``config.yml`` and ``layout.yml`` are, so a
+person can read it, with a ``format`` string and the ``targets``, most recently opened
+first, one entry per root. The format string follows the application home's convention
+(``cache/layout.py``): a short self-describing string, here ``mf`` and a number, an
+append-only :data:`FORMAT_HISTORY`, a :data:`MIGRATIONS` step from each format to the
+next, and a refusal of a format newer than this release reads. It is raised only for a
+change an older reader would misread; a compatible change keeps it. The file is read
+with PyYAML's base loader, which makes every scalar a string and builds no object, and
+not with the schema library the cache's records use, which a folder's server never
+loads (``tests/test_plugin_public_api.py``). The list names the user's folders, so it is
+read and written only through :mod:`metabrowser.home`'s owner-only helpers.
 
 **What can go wrong, and what happens.**
 
 - *A file from a newer release* is left as it is: :func:`read` lists nothing and says
   to upgrade, and :func:`record` raises :class:`NewerFormatError`.
-- *A damaged file* (not JSON, not this shape, or over a bound) lists as empty with the
+- *A damaged file* (not YAML, not this shape, or over a bound) lists as empty with the
   reason, and the next :func:`record` replaces it. Nothing else depends on the list.
 - *A folder that is gone* stays listed. Nothing here looks at a listed path: on macOS a
   look can raise a privacy prompt, and on a dead network volume it can hang. A shell
@@ -47,17 +53,18 @@ from __future__ import annotations
 
 import contextlib
 import errno
-import json
 import logging
 import os
 import re
 import sys
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Final, Literal, cast
+from typing import Any, Final, Literal, cast
+
+import yaml
 
 from metabrowser.home import (
     PrivateFileTooLargeError,
@@ -77,11 +84,24 @@ except ImportError:  # Windows: the owner-only helpers refuse first, as unverifi
 
 log = logging.getLogger(__name__)
 
-STORE_FILE: Final = "recent-targets.json"
+STORE_FILE: Final = "recent-targets.yml"
 LOCK_FILE: Final = "recent-targets.lock"
-# The one format this release reads and writes. A change to the file raises it, and no
-# reader of an older one is kept (docs/development.md, Standing Compatibility Answers).
-FORMAT_VERSION: Final = 1
+# The format this release writes: ``mf`` for a Metabrowser format, then its number, so
+# the string says what it is wherever it turns up. The number rises only for a change an
+# older reader would misread; a compatible change keeps the string.
+FORMAT: Final = "mf01"
+# Every format a released Metabrowser has written, oldest first, ending with the current
+# one. Adding a format appends it here and adds the migration from its predecessor.
+FORMAT_HISTORY: Final[tuple[str, ...]] = (FORMAT,)
+
+type Migration = Callable[[dict[str, Any]], dict[str, Any]]
+# The step from each historical format's document to the next format's in FORMAT_HISTORY.
+MIGRATIONS: Final[Mapping[str, Migration]] = {}
+_FORMAT_PATTERN: Final = re.compile(r"mf([0-9]{2,})")
+_HEADER: Final = (
+    "# Metabrowser's recent targets: the folders and repositories opened lately, newest\n"
+    "# first. metab writes this file as it serves; `metab --recent` lists it.\n"
+)
 
 # How many entries the list keeps; the oldest falls off. It is the longest list macOS
 # itself offers for an app's recent documents (System Settings > Desktop & Dock > Recent
@@ -92,17 +112,19 @@ MAX_RECENT_TARGETS: Final = 50
 # The longest root recorded, in UTF-8 bytes: Linux's PATH_MAX, four times macOS's. No
 # folder a server can open has a longer path, and a normalized address is far shorter.
 MAX_ROOT_BYTES: Final = 4096
-# The largest file read. A root holds no control character, so JSON at most doubles it
-# (a path made only of quotes): 50 such roots of 4,096 bytes are a 405 KiB file, and
-# :func:`_serialize` drops the oldest entries of a list that would still exceed this, so
-# no writer publishes a file a reader refuses. Measured 2026-11-18 on an Apple-silicon
-# Mac at load average 21, 200 timed calls each: a list of 50 ordinary roots was 7.0 KiB
-# and :func:`read` took a median 0.38 ms (p95 0.51 ms); the 405 KiB file took a median
-# 11.0 ms (p95 11.3 ms).
+# The largest file read. A root holds no control character, and YAML at most doubles what
+# is left to escape (a quote, or a character it writes as ``\xNN``), so 50 roots of 4,096
+# bytes stay under this, and :func:`_serialize` drops the oldest entries of a list that
+# would still exceed it and reads back what it wrote, so no writer publishes a file a
+# reader refuses. Measured 2026-11-18 on an Apple-silicon Mac at load average 16, 200
+# timed calls each, with libyaml: a list of 50 ordinary roots was 5.3 KiB and
+# :func:`read` took a median 0.88 ms (p95 0.93 ms); a list of 50 roots of 4,096 quote
+# characters was 203 KiB and took a median 11.9 ms (p95 12.2 ms). PyYAML's own parser,
+# its fallback without libyaml, parsed the two files in 5 ms and 57 ms.
 MAX_STORE_BYTES: Final = 512 * 1024
 # How long a writer waits for another writer's lock before it gives up. In the same
 # measurement one :func:`record` into a full list, which holds the lock across its read,
-# its atomic write, and both fsyncs, took a median 1.6 ms (p95 1.9 ms, slowest 2.1 ms),
+# its atomic write, and both fsyncs, took a median 3.3 ms (p95 3.7 ms, slowest 5.3 ms),
 # so this covers hundreds of servers starting at once and still bounds what a wedged
 # holder can cost a server's start.
 LOCK_WAIT_S: Final = 2.0
@@ -160,12 +182,12 @@ class RecentTargetsError(Exception):
 class NewerFormatError(RecentTargetsError):
     """The file was written by a newer release, so this one leaves it alone."""
 
-    def __init__(self, found: int) -> None:
+    def __init__(self, found: str) -> None:
         super().__init__(
-            f"the recent targets file uses format {found}, and this release reads format "
-            f"{FORMAT_VERSION}. Upgrade Metabrowser to list or record recent targets"
+            f"the recent targets file uses format {found}, and this release reads formats "
+            f"up to {FORMAT}. Upgrade Metabrowser to list or record recent targets"
         )
-        self.found: int = found
+        self.found: str = found
 
 
 class UnrecordableRootError(ValueError):
@@ -230,23 +252,46 @@ def _checked_root(mode: str, root: str) -> str | None:
 # ── Reading ────────────────────────────────────────────────────────
 
 
-def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
-    """The entries of a file this release wrote; anything else is :class:`_Damaged`."""
+def format_number(value: str) -> int | None:
+    """The ordinal of a format spelling such as ``mf01``, or ``None`` for anything else."""
 
+    match = _FORMAT_PATTERN.fullmatch(value)
+    return None if match is None else int(match.group(1))
+
+
+def _current_document(document: dict[str, Any]) -> dict[str, Any]:
+    """*document* stepped to this release's format, or the refusal its format earns."""
+
+    found = document.get("format")
+    number = format_number(found) if isinstance(found, str) else None
+    if not isinstance(found, str) or number is None:
+        raise _Damaged("it names no format")
+    if number > cast(int, format_number(FORMAT)):
+        raise NewerFormatError(found)
+    if found not in FORMAT_HISTORY:
+        raise _Damaged(f"it names format {found}, which no Metabrowser release wrote")
+    for older in FORMAT_HISTORY[FORMAT_HISTORY.index(found) : -1]:
+        document = MIGRATIONS[older](document)
+    return document
+
+
+def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
+    """The entries of a file a release wrote; anything else is :class:`_Damaged`.
+
+    The base loader makes every scalar a string, so a root that reads as a number, a
+    date, or ``yes`` stays the text it is, and a tag constructs nothing.
+    """
+
+    loader = getattr(yaml, "CBaseLoader", yaml.BaseLoader)
     try:
-        document = json.loads(payload)
-    except (UnicodeDecodeError, ValueError, RecursionError) as error:
-        raise _Damaged("it is not JSON") from error
-    if not isinstance(document, dict):
-        raise _Damaged("it is not a JSON object")
-    fields = cast(dict[str, object], document)
-    version = fields.get("version")
-    if isinstance(version, bool) or not isinstance(version, int):
-        raise _Damaged("it names no format version")
-    if version > FORMAT_VERSION:
-        raise NewerFormatError(version)
-    if version != FORMAT_VERSION or set(fields) != {"version", "targets"}:
-        raise _Damaged(f"it is not format {FORMAT_VERSION}")
+        loaded = yaml.load(payload.decode("utf-8"), Loader=loader)
+    except (UnicodeDecodeError, yaml.YAMLError, RecursionError) as error:
+        raise _Damaged("it is not YAML") from error
+    if not isinstance(loaded, dict):
+        raise _Damaged("it is not a YAML mapping")
+    fields = _current_document(cast(dict[str, Any], loaded))
+    if set(fields) != {"format", "targets"}:
+        raise _Damaged("it does not hold exactly a format and its targets")
     entries = fields["targets"]
     if not isinstance(entries, list):
         raise _Damaged("its targets are not a list")
@@ -302,7 +347,8 @@ def read(directory: Path | None = None) -> Listing:
     try:
         return Listing(_load(home, shared="refuse"))
     except NewerFormatError as error:
-        return Listing((), f"{error}.")
+        message = str(error)
+        return Listing((), f"{message[0].upper()}{message[1:]}.")
     except _Damaged as error:
         return Listing(
             (),
@@ -325,14 +371,31 @@ def _why(error: OSError) -> str:
 
 
 def _serialize(targets: list[RecentTarget]) -> bytes:
-    """The file for *targets*, dropping the oldest of a list too large to read back."""
+    """The file for *targets*, dropping the oldest of a list too large to read back.
 
+    What is written is read back before it is returned, so a root YAML would not hand
+    back unchanged is found here and never published.
+    """
+
+    dumper = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
     while True:
-        document = {"version": FORMAT_VERSION, "targets": [target.as_json() for target in targets]}
-        payload = (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        document = {"format": FORMAT, "targets": [target.as_json() for target in targets]}
+        text = yaml.dump(
+            document,
+            Dumper=dumper,
+            sort_keys=False,
+            allow_unicode=True,
+            default_flow_style=False,
+            # One line to an entry's root, however long: a folded path is hard to read.
+            width=2 * MAX_ROOT_BYTES + 64,
+        )
+        payload = (_HEADER + text).encode("utf-8")
         if len(payload) <= MAX_STORE_BYTES or not targets:
-            return payload
+            break
         targets = targets[:-1]
+    if _parse(payload) != tuple(targets):
+        raise RecentTargetsError("the recent targets list does not survive being written")
+    return payload
 
 
 @contextlib.contextmanager
@@ -474,12 +537,14 @@ def record_quietly(mode: TargetMode, root: str) -> None:
 
 
 __all__ = [
-    "FORMAT_VERSION",
+    "FORMAT",
+    "FORMAT_HISTORY",
     "LOCK_FILE",
     "LOCK_WAIT_S",
     "MAX_RECENT_TARGETS",
     "MAX_ROOT_BYTES",
     "MAX_STORE_BYTES",
+    "MIGRATIONS",
     "MODES",
     "STORE_FILE",
     "Listing",
@@ -491,6 +556,7 @@ __all__ = [
     "clear",
     "folder_root",
     "forget",
+    "format_number",
     "now",
     "read",
     "record",

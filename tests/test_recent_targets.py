@@ -1,0 +1,562 @@
+"""The recent targets store: order, one entry per root, the cap, damage, and writers at once.
+
+``metabrowser.recent_targets`` keeps the one list of folders and repositories opened
+lately, which ``metab --recent`` and the macOS app's File > Open Recent show. Every test
+here names its own configuration directory, so none touches the list a developer's own
+``metab`` keeps; ``tests/conftest.py`` also points ``METABROWSER_CONFIG_DIR`` at a
+temporary directory for every test.
+"""
+
+from __future__ import annotations
+
+import fcntl
+import logging
+import os
+import stat
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+
+import pytest
+import yaml
+
+from metabrowser import recent_targets
+from metabrowser.recent_targets import (
+    FORMAT,
+    FORMAT_HISTORY,
+    LOCK_FILE,
+    MAX_RECENT_TARGETS,
+    MAX_ROOT_BYTES,
+    MIGRATIONS,
+    STORE_FILE,
+    NewerFormatError,
+    RecentTargetsError,
+    UnrecordableRootError,
+    clear,
+    folder_root,
+    forget,
+    format_number,
+    read,
+    record,
+    record_quietly,
+)
+from tests.child_io import read_line
+
+_STAMP = "2026-11-18T03:14:15Z"
+
+
+@pytest.fixture
+def home(tmp_path: Path) -> Path:
+    """A configuration directory that does not exist yet, as on a first run."""
+
+    return tmp_path / "config" / "metabrowser"
+
+
+def _roots(home: Path) -> list[str]:
+    listing = read(home)
+    assert listing.problem is None
+    return [target.root for target in listing.targets]
+
+
+def _store(home: Path, text: str) -> None:
+    home.mkdir(parents=True, mode=0o700, exist_ok=True)
+    path = home / STORE_FILE
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o600)
+
+
+# ── Order, one entry per root, and the cap ─────────────────────────
+
+
+def test_a_missing_list_is_empty_and_reading_creates_nothing(home: Path) -> None:
+    assert read(home) == recent_targets.Listing(())
+    assert not home.exists()
+
+
+def test_the_most_recently_opened_is_first(home: Path) -> None:
+    for root in ("/work/a", "/work/b", "/work/c"):
+        record("folder", root, directory=home)
+
+    assert _roots(home) == ["/work/c", "/work/b", "/work/a"]
+
+
+def test_opening_a_root_again_moves_its_one_entry_to_the_front(home: Path) -> None:
+    record("folder", "/work/a", directory=home, opened_at="2026-11-01T00:00:00Z")
+    record("folder", "/work/b", directory=home)
+    record("folder", "/work/a", directory=home, opened_at=_STAMP)
+
+    listing = read(home)
+    assert [target.root for target in listing.targets] == ["/work/a", "/work/b"]
+    assert listing.targets[0].opened_at == _STAMP
+
+
+def test_a_folder_and_a_mirror_are_different_targets(home: Path) -> None:
+    record("mirror", "https://github.com/jlevy/tbd", directory=home)
+    record("folder", "/work/tbd", directory=home)
+
+    assert [(target.mode, target.root) for target in read(home).targets] == [
+        ("folder", "/work/tbd"),
+        ("mirror", "https://github.com/jlevy/tbd"),
+    ]
+
+
+def test_the_oldest_entry_falls_off_past_the_cap(home: Path) -> None:
+    for index in range(MAX_RECENT_TARGETS + 3):
+        record("folder", f"/work/{index}", directory=home)
+
+    roots = _roots(home)
+    assert len(roots) == MAX_RECENT_TARGETS
+    assert roots[0] == f"/work/{MAX_RECENT_TARGETS + 2}"
+    assert roots[-1] == "/work/3"
+
+
+def test_a_list_too_large_to_read_back_loses_its_oldest_entries(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer never publishes a file a reader would refuse as too large."""
+
+    monkeypatch.setattr(recent_targets, "MAX_STORE_BYTES", 600)
+    for index in range(12):
+        record("folder", f"/work/a-rather-long-folder-name-{index:02d}", directory=home)
+
+    assert (home / STORE_FILE).stat().st_size <= 600
+    roots = _roots(home)
+    assert 1 <= len(roots) < 12
+    assert roots[0] == "/work/a-rather-long-folder-name-11"
+
+
+def test_forgetting_removes_one_entry_and_clearing_removes_all(home: Path) -> None:
+    for root in ("/work/a", "/work/b", "/work/c"):
+        record("folder", root, directory=home)
+
+    assert forget(frozenset({("folder", "/work/b")}), directory=home) == 1
+    assert forget(frozenset({("folder", "/work/b")}), directory=home) == 0
+    assert _roots(home) == ["/work/c", "/work/a"]
+    assert clear(directory=home) == 2
+    assert clear(directory=home) == 0
+    assert _roots(home) == []
+
+
+# ── Roots ──────────────────────────────────────────────────────────
+
+
+def test_a_folder_is_one_root_however_it_is_reached(tmp_path: Path, home: Path) -> None:
+    """Two paths to one folder are one entry: symbolic links are resolved."""
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+
+    record("folder", folder_root(real), directory=home)
+    record("folder", folder_root(link), directory=home)
+
+    assert _roots(home) == [folder_root(real)]
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS volumes that ignore case")
+def test_on_macos_a_folder_is_spelled_as_the_volume_spells_it(tmp_path: Path) -> None:
+    """``realpath(3)``'s spelling, which the macOS app keys a folder's session by."""
+
+    real = tmp_path / "MixedCase"
+    real.mkdir()
+    other = tmp_path / "mixedcase"
+    if not other.exists():
+        pytest.skip("this volume tells MixedCase from mixedcase")
+
+    assert folder_root(other) == folder_root(real)
+    assert folder_root(other).endswith("/MixedCase")
+
+
+def test_a_folder_that_cannot_be_opened_keeps_its_resolved_path(tmp_path: Path) -> None:
+    gone = tmp_path / "gone"
+
+    assert folder_root(gone) == os.path.realpath(gone)
+
+
+@pytest.mark.parametrize(
+    "root",
+    [
+        "/work/plain",
+        "/work/with space/and: colon/# hash/- dash",
+        "/work/yes",
+        "/work/123",
+        "/work/café/日本語",
+        "/work/quote\"s/and 'single'",
+        "/work/line separator/next\u0085line",
+        "/",
+        "/work/" + "x" * (MAX_ROOT_BYTES - len("/work/")),
+    ],
+    ids=[
+        "plain",
+        "punctuation",
+        "yes",
+        "number",
+        "unicode",
+        "quotes",
+        "separators",
+        "root",
+        "longest",
+    ],
+)
+def test_a_root_is_read_back_exactly_as_recorded(home: Path, root: str) -> None:
+    record("folder", root, directory=home)
+
+    assert _roots(home) == [root]
+
+
+@pytest.mark.parametrize(
+    ("mode", "root", "reason"),
+    [
+        ("folder", "", "empty"),
+        ("folder", "relative/path", "absolute path"),
+        ("folder", "/work/line\nbreak", "control character"),
+        ("folder", "/work/bell\x07", "control character"),
+        ("folder", "/" + "x" * MAX_ROOT_BYTES, "longer than"),
+        ("folder", "/work/\udcff", "UTF-8"),
+        ("mirror", "/a/path", "repository address"),
+        ("mirror", "https://example.com/a b", "repository address"),
+        ("window", "/work/a", "not a mode"),
+    ],
+)
+def test_a_root_the_list_cannot_hold_is_refused(
+    home: Path, mode: str, root: str, reason: str
+) -> None:
+    with pytest.raises(UnrecordableRootError, match=reason):
+        record(mode, root, directory=home)  # pyright: ignore[reportArgumentType]
+
+    assert not home.exists()
+
+
+# ── Folders that are gone ──────────────────────────────────────────
+
+
+def test_a_folder_that_is_gone_stays_listed_and_is_never_looked_at(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Listing touches no listed path: a look can prompt on macOS, or hang on a volume."""
+
+    gone = tmp_path / "unplugged" / "project"
+    record("folder", str(gone), directory=home)
+    looked: list[str] = []
+    real_stat, real_open = os.stat, os.open
+
+    def watching_stat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+        looked.append(str(path))
+        return real_stat(path, *args, **kwargs)  # pyright: ignore[reportArgumentType, reportCallIssue]
+
+    def watching_open(path: object, *args: object, **kwargs: object) -> int:
+        looked.append(str(path))
+        return real_open(path, *args, **kwargs)  # pyright: ignore[reportArgumentType, reportCallIssue]
+
+    monkeypatch.setattr(os, "stat", watching_stat)
+    monkeypatch.setattr(os, "lstat", watching_stat)
+    monkeypatch.setattr(os, "open", watching_open)
+
+    assert _roots(home) == [str(gone)]
+    assert not [path for path in looked if "unplugged" in path]
+
+
+# ── The file ───────────────────────────────────────────────────────
+
+
+def test_the_file_is_private_yaml_with_its_format_first(home: Path) -> None:
+    record("folder", "/work/a", directory=home, opened_at=_STAMP)
+    record("mirror", "https://github.com/jlevy/tbd", directory=home, opened_at=_STAMP)
+
+    text = (home / STORE_FILE).read_text(encoding="utf-8")
+    assert text.startswith("# Metabrowser's recent targets")
+    assert yaml.safe_load(text) == {
+        "format": FORMAT,
+        "targets": [
+            {"mode": "mirror", "root": "https://github.com/jlevy/tbd", "opened_at": _STAMP},
+            {"mode": "folder", "root": "/work/a", "opened_at": _STAMP},
+        ],
+    }
+    assert stat.S_IMODE(home.stat().st_mode) == 0o700
+    for name in (STORE_FILE, LOCK_FILE):
+        assert stat.S_IMODE((home / name).stat().st_mode) == 0o600
+    assert sorted(entry.name for entry in home.iterdir()) == [LOCK_FILE, STORE_FILE]
+
+
+def test_the_format_is_the_last_of_its_history_with_a_step_from_each_older_one() -> None:
+    """The application home's convention: an append-only history and a migration per step."""
+
+    assert FORMAT_HISTORY[-1] == FORMAT
+    numbers = [format_number(name) for name in FORMAT_HISTORY]
+    assert None not in numbers
+    assert numbers == sorted(set(numbers))  # pyright: ignore[reportArgumentType]
+    assert set(MIGRATIONS) == set(FORMAT_HISTORY[:-1])
+    assert format_number("mf01") == 1
+    assert format_number("mf123") == 123
+    for not_a_format in ("f01", "mf1", "mf", "MF01", "mf01 ", ""):
+        assert format_number(not_a_format) is None
+
+
+def test_a_file_from_a_newer_release_is_left_alone(home: Path) -> None:
+    newer = "format: mf02\ntargets: []\nsomething_new: true\n"
+    _store(home, newer)
+
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None
+    assert "format mf02" in listing.problem and "Upgrade Metabrowser" in listing.problem
+    with pytest.raises(NewerFormatError) as refused:
+        record("folder", "/work/a", directory=home)
+    assert refused.value.found == "mf02"
+    with pytest.raises(NewerFormatError):
+        clear(directory=home)
+    assert (home / STORE_FILE).read_text(encoding="utf-8") == newer
+
+
+_ENTRY = "- mode: folder\n  root: /work/a\n  opened_at: '2026-11-18T03:14:15Z'\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "reason"),
+    [
+        ("{not yaml", "not YAML"),
+        ("- a\n- b\n", "not a YAML mapping"),
+        ("", "not a YAML mapping"),
+        ("targets: []\n", "names no format"),
+        ("format: 1\ntargets: []\n", "names no format"),
+        ("format: mf00\ntargets: []\n", "no Metabrowser release wrote"),
+        ("format: mf01\ntargets: []\nextra: 1\n", "exactly a format"),
+        ("format: mf01\n", "exactly a format"),
+        ("format: mf01\ntargets: nothing\n", "not a list"),
+        ("format: mf01\ntargets:\n- just a string\n", "entry 1 is not"),
+        ("format: mf01\ntargets:\n- mode: folder\n  root: /work/a\n", "entry 1 is not"),
+        (
+            "format: mf01\ntargets:\n- mode: window\n  root: /work/a\n  opened_at: x\n",
+            "entry 1 cannot be a target",
+        ),
+        (
+            "format: mf01\ntargets:\n- mode: folder\n  root: work/a\n  opened_at: x\n",
+            "entry 1 cannot be a target",
+        ),
+        (
+            "format: mf01\ntargets:\n- mode: folder\n  root: /work/a\n  opened_at: yesterday\n",
+            "entry 1 has no time",
+        ),
+        ("format: mf01\ntargets:\n" + _ENTRY + _ENTRY, "entry 2 repeats"),
+        (
+            "format: mf01\ntargets:\n"
+            + "".join(
+                f"- mode: folder\n  root: /work/{index}\n  opened_at: '{_STAMP}'\n"
+                for index in range(MAX_RECENT_TARGETS + 1)
+            ),
+            "more than",
+        ),
+        ("format: mf01\ntargets: []\n# " + "x" * recent_targets.MAX_STORE_BYTES, "larger than"),
+        (b"\xff\xfe not utf-8", "not YAML"),
+    ],
+    ids=[
+        "not-yaml",
+        "a-list",
+        "empty",
+        "no-format",
+        "numeric-format",
+        "unwritten-format",
+        "extra-key",
+        "no-targets",
+        "targets-not-a-list",
+        "entry-not-a-mapping",
+        "entry-missing-a-field",
+        "unknown-mode",
+        "relative-folder",
+        "bad-time",
+        "repeated-root",
+        "over-the-cap",
+        "over-the-size",
+        "not-utf-8",
+    ],
+)
+def test_a_damaged_file_lists_as_empty_and_the_next_record_replaces_it(
+    home: Path, text: str | bytes, reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    home.mkdir(parents=True, mode=0o700)
+    path = home / STORE_FILE
+    path.write_bytes(text if isinstance(text, bytes) else text.encode())
+    path.chmod(0o600)
+
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None and reason in listing.problem
+    assert "/work/" not in listing.problem, "a problem names no root"
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.recent_targets"):
+        record("folder", "/work/new", directory=home)
+    assert _roots(home) == ["/work/new"]
+    assert any("damaged" in message for message in caplog.messages)
+
+
+def test_a_hand_edited_file_with_unquoted_values_is_read(home: Path) -> None:
+    """Every scalar is read as text, so an unquoted time or a root like a number is kept."""
+
+    _store(
+        home,
+        "format: mf01\ntargets:\n- mode: folder\n  root: /2026\n  opened_at: 2026-11-18T03:14:15Z\n",
+    )
+
+    assert read(home).targets == (recent_targets.RecentTarget("folder", "/2026", _STAMP),)
+
+
+def test_a_yaml_tag_constructs_nothing(home: Path) -> None:
+    _store(home, "format: mf01\ntargets: !!python/object/apply:os.system ['true']\n")
+
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None
+
+
+# ── Owner-only storage ─────────────────────────────────────────────
+
+
+def test_a_configuration_directory_others_can_read_is_refused_and_left_as_it_is(
+    home: Path,
+) -> None:
+    record("folder", "/work/a", directory=home)
+    home.chmod(0o755)
+
+    with pytest.raises(RecentTargetsError, match="accessible to other users"):
+        read(home)
+    with pytest.raises(RecentTargetsError, match="accessible to other users"):
+        record("folder", "/work/b", directory=home)
+    assert stat.S_IMODE(home.stat().st_mode) == 0o755
+
+
+# ── Writers at once ────────────────────────────────────────────────
+
+_WRITER = textwrap.dedent(
+    """
+    import sys
+    from pathlib import Path
+    from metabrowser import recent_targets
+
+    home, writer, count = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+    for index in range(count):
+        recent_targets.record("folder", f"/work/writer-{writer}/root-{index}", directory=home)
+    """
+)
+
+
+def test_writers_at_once_lose_no_entry(home: Path) -> None:
+    """Several ``metab`` processes starting together each end up in the list.
+
+    Mutation check: without the lock, two writers read the same list and the second
+    rename drops the first's entry.
+    """
+
+    writers, each = 8, 5
+    assert writers * each <= MAX_RECENT_TARGETS
+    children = [
+        subprocess.Popen(
+            [sys.executable, "-c", _WRITER, str(home), str(writer), str(each)],
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for writer in range(writers)
+    ]
+    for child in children:
+        _, errors = child.communicate(timeout=50)
+        assert child.returncode == 0, errors
+
+    roots = _roots(home)
+    assert sorted(roots) == sorted(
+        f"/work/writer-{writer}/root-{index}" for writer in range(writers) for index in range(each)
+    )
+    for writer in range(writers):
+        # Each writer's own entries are newest first, whatever the others did between.
+        own = [root for root in roots if root.startswith(f"/work/writer-{writer}/")]
+        assert own == [f"/work/writer-{writer}/root-{index}" for index in reversed(range(each))]
+    assert sorted(entry.name for entry in home.iterdir()) == [LOCK_FILE, STORE_FILE]
+
+
+def test_a_writer_gives_up_on_a_lock_held_too_long_and_a_server_starts_anyway(
+    home: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    record("folder", "/work/a", directory=home)
+    monkeypatch.setattr(recent_targets, "LOCK_WAIT_S", 0.2)
+    holder = os.open(home / LOCK_FILE, os.O_RDONLY)
+    try:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        with pytest.raises(RecentTargetsError, match="has held the recent targets list"):
+            record("folder", "/work/b", directory=home)
+        monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(home))
+        with caplog.at_level(logging.WARNING, logger="metabrowser.recent_targets"):
+            record_quietly("folder", "/work/b")
+        assert any("not recorded as a recent target" in message for message in caplog.messages)
+        assert "/work/b" not in "".join(caplog.messages), "a log line names no root"
+        # A reader takes no lock.
+        assert _roots(home) == ["/work/a"]
+    finally:
+        os.close(holder)
+
+    record("folder", "/work/b", directory=home)
+    assert _roots(home) == ["/work/b", "/work/a"]
+
+
+def test_a_root_a_server_cannot_record_does_not_stop_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "config"))
+
+    with caplog.at_level(logging.INFO, logger="metabrowser.recent_targets"):
+        record_quietly("folder", "/work/line\nbreak")
+
+    assert any("control character" in message for message in caplog.messages)
+    assert read().targets == ()
+
+
+# ── A real serve ───────────────────────────────────────────────────
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX pipes")
+@pytest.mark.parametrize("root_is_file", [False, True], ids=["folder", "file"])
+def test_a_serve_records_its_folder_before_it_announces_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, root_is_file: bool
+) -> None:
+    """``metab ROOT`` is in the list by the time its ``Serving`` line can be read.
+
+    That is what the macOS app relies on: the server it starts for a folder records the
+    folder, and ``metab FILE`` records the file's folder, which is what it serves.
+    """
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(config))
+    served = tmp_path / "served"
+    served.mkdir()
+    (served / "a.txt").write_text("a")
+    console_script = Path(sys.executable).with_name("metab")
+    process = subprocess.Popen(
+        [
+            str(console_script),
+            str(served / "a.txt" if root_is_file else served),
+            "--no-open",
+            "--exit-on-eof",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        line = read_line(process)
+        assert line.startswith("Serving "), line
+        assert [(target.mode, target.root) for target in read(config).targets] == [
+            ("folder", folder_root(served))
+        ]
+    finally:
+        assert process.stdin is not None
+        process.stdin.close()
+        process.stdin = None
+        try:
+            process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
