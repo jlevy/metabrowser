@@ -379,9 +379,11 @@ def serve_until_interrupted(
     # Imported here, as the server is: owner-only storage is serve mode's alone.
     from metabrowser import recent_targets
 
-    recent_targets.record_quietly(
-        mode, recent_targets.folder_root(Path(served)) if mode == "folder" else served
-    )
+    if recent_targets.recording_enabled():
+        # Asked first, so a server told not to record does not resolve its root either.
+        recent_targets.record_quietly(
+            mode, recent_targets.folder_root(Path(served)) if mode == "folder" else served
+        )
 
     # A checkout says so here too. This is the line someone reads while
     # deciding which build they are looking at — during a side-by-side
