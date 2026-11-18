@@ -230,7 +230,8 @@ final class FolderWindows {
     /// `controller`'s window as a switch sees it.
     private static func switching(_ controller: BrowserWindowController) -> SwitchingWindow<ObjectIdentifier> {
         SwitchingWindow(
-            id: ObjectIdentifier(controller), isOnScreen: !isBackgroundTab(controller.window),
+            id: ObjectIdentifier(controller),
+            isOnScreen: !isBackgroundTab(controller.window) && controller.window?.isMiniaturized != true,
             hasSheet: controller.window?.attachedSheet != nil)
     }
 

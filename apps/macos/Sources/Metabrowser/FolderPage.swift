@@ -295,8 +295,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         session?.pageShown(self)
     }
 
-    /// The page is gone for good: its window closed, or its folder did (Close Folder). Nothing it started may load or call
-    /// back after this.
+    /// The page is gone for good: its window closed, or its folder did (Close Folder).
+    /// Nothing it started may load or call back after this.
     func close() {
         loads.cancelAll()
         textFinder.client = nil

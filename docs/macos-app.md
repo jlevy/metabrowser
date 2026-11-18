@@ -33,7 +33,7 @@ Closing a folder’s last window stops it, so reopening the folder starts a new 
 **File > Close Folder** closes the folder the front window shows in every window that
 shows it; each of those windows shows the folder open in the background that you looked
 at last, or closes if there is none.
-It waits while a dialog or panel is open on one of those windows.
+While a dialog or panel is open on one of those windows, it does nothing.
 If a server stops answering or fails to start, the window says so and offers Retry,
 Reveal Logs, and Runtime Settings….
 
