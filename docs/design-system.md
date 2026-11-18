@@ -372,7 +372,7 @@ a pull request, and a commit.
 | Row | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type and its name | The folder icon and its name | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 2. Heading row | The navigation row’s icon for its type, its name, and the GitHub toggle | The folder icon, its name, and the GitHub toggle | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 
@@ -409,9 +409,35 @@ file’s is its navigation row’s icon for its type, through the same function,
 request’s is its state icon.
 A file’s or a folder’s name is one line, cut short at its end with the whole name as its
 tooltip ([Tooltips Add Information](#tooltips-add-information)); a pull request’s title
-holds two lines. The far end holds the row’s controls: the planned toggle to the item’s
-page on github.com, beside which the planned folder-or-mirror indicator sits as a
-separate mark. The header has no print button ([Print](#print)).
+holds two lines. The far end holds the row’s controls: the GitHub toggle.
+The header has no print button ([Print](#print)).
+
+**The GitHub toggle** ends the heading row on a page whose repository is on github.com:
+a joined pair, as a segmented control is, of the Metabrowser mark, the app icon’s
+partial M and B in gray on the pressed segment’s fill, and the GitHub mark, a link to
+the same item’s page on github.com, a folder’s tree or a file’s blob.
+The link’s ref is the branch the page is on, when `origin` has it as of the checkout’s
+last fetch (`branch_on_origin` in the repository context, which a mirror’s branch always
+has); otherwise the page’s commit, and the tooltip says that origin had no such branch
+at the last fetch, writing the commit short so the item’s path still shows.
+Hovering the GitHub mark tints it with the accent fill, which never reads as the pressed
+segment. In a view header narrower than the container query on `.view-header` in
+`static/styles.css` names, the Metabrowser segment, which only says where the page
+already is, is left out and the GitHub mark kept, so the title keeps the row.
+Every page opens in the Metabrowser view, and a page opened next opens in it too.
+github.com refuses to be shown in a frame, so a browser cannot show the GitHub view in
+the page: its mark opens the page in a new tab, as View on GitHub does, and the macOS
+app hands it to the default browser.
+Each mark has its name for a screen reader and its tooltip, and the GitHub mark is a
+link in the tab order.
+The toggle appears exactly where the Pulls tab does: on a checkout whose `origin` is on
+github.com and on a mirror of a repository there, from the repository context the server
+writes into the page (`static/github-page.js`, which the server writes inline into those
+pages only). A plain folder, a checkout whose `origin` is on another host or that has
+none, and a mirror of a repository elsewhere have no toggle and no slot held for one:
+nothing in the row is placed by it.
+The folder-or-mirror indicator is a separate mark, not a third segment of the toggle;
+where it goes is not decided yet.
 
 **The metadata lines** sit under the title, at the body size, in muted ink, and each
 value keeps its own primitive: a size its chip, a count its count, an age its freshness

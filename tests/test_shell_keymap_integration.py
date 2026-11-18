@@ -203,7 +203,7 @@ def test_the_header_parent_is_read_from_the_committed_pane_and_anchors_its_badge
     assert '".folder-up[data-nav-dir]:not([disabled])"' in parent
     header = _builder_source(_read_view_header_js(), "viewHeaderHtml")
     assert (
-        '`<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-kbd-badge-anchor>`'
+        '`<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-path="${esc(parts.path)}" data-kbd-badge-anchor>`'
         in header
     )
     filters = _function_source(js, "renderNavFilterBar")
