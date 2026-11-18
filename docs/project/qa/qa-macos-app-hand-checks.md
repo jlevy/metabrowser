@@ -61,7 +61,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g,.hidden} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -71,7 +71,6 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one server.
    `open -a "$APP" /dev/null` shows an alert.
    File > Open Folder… chooses a file too.
-
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
    above `a`, and `metab --recent`, run with the `metab` the app uses, lists the same
    two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
@@ -91,27 +90,23 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
    order they had before the quit.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
-
 3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
    as tabs of the front window; set to Windows, opening `e` gives it a window, and
    Window > Merge All Windows then merges every folder into one window.
    With the setting on System Settings and Desktop & Dock > “Prefer tabs when opening
    documents” at Always, a new folder opens as a tab.
-
 4. **Discarded pages.** With `a` to `e` as tabs of one window, select each in turn: once
    more tabs are in the background than `TabDiscardPolicy.defaultLiveBackgroundTabs`,
    the app log says “discarding the page of background tab” for the tab shown longest
    ago, and `ps -axo pid,command | grep -c '[W]ebContent'` drops by one.
    Selecting that tab reloads its page, with no “Starting” text, at the top of the page
    and with no Back or Forward history, since a discarded tab keeps only its address.
-
 5. **Restore.** Make one window with tabs `a` and `b`, `b` selected, and a second window
    with `c`, and quit. `session.json` in `~/Library/Application Support/Metabrowser/` now
    lists them; the next launch logs “restoring 2 window(s): 3 server(s) to start”, the
    windows and tabs come back, and `grep -h 'started pid' "$LOGS"/{a,b,c}-*.log` with
    its timestamps shows `b` started first, then `c`, then `a`, each after the one before
    it was ready.
-
 6. **Protected locations.** Add `~/Documents/mb-check` as a background tab, quit, and
    launch again: that tab says Metabrowser opens it when you select it, and
    `pgrep -fl 'Documents/mb-check'` finds no server until you select the tab.
@@ -120,7 +115,6 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    (`tccutil reset SystemPolicyDocumentsFolder io.github.jlevy.metabrowser.dev`) and
    then checks that the prompt waits for the tab’s selection: the waiting tab still
    shows the folder’s name and icon, and whether reading those can prompt is untested.
-
 7. **A folder replaced by a link.** With `d` as a background tab of `a`’s window and `e`
    not open, quit, then
    `mv /tmp/mb-check/d /tmp/mb-check/d-old; ln -s /tmp/mb-check/e /tmp/mb-check/d`, and
@@ -130,17 +124,14 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    that tab forward, while `pgrep -fl 'metab /private/tmp/mb-check/[de]'` lists one
    server, for `e`. Put `d` back with
    `rm /tmp/mb-check/d; mv /tmp/mb-check/d-old /tmp/mb-check/d`.
-
 8. **Off, and empty.** With Settings > “Reopen the last session’s folders when
    Metabrowser opens” off, a launch restores nothing.
    With it on, closing every window before quitting restores nothing.
    After each quit, `pgrep -fl 'metab /private/tmp/mb-check'` finds nothing.
-
 9. **A dropped file.** Drag `/tmp/mb-check/a/notes.md` from Finder onto the window of
    `a`: it shows `notes.md`. Dragged onto another folder’s window, it opens `a` (or
    shows the file in `a`, if open).
    A drag of text or a web link is still the page’s.
-
 10. **A root above the folder picked.** This check applies once a path opens at its
     repository’s root, which is designed in
     [Open Modes](../architecture/arch-open-modes.md#resolving-a-target-to-a-root) and
@@ -151,7 +142,6 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     once access is granted.
     Repeat with the repository in `~/Desktop` and in `~/Downloads`. How macOS treats a
     served root above the folder chosen in the open panel is untested.
-
 11. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
     pushed, such as this repository, and open `README.md`. The view header ends in two
     marks, the gray Metabrowser mark pressed and the GitHub mark.
@@ -160,10 +150,10 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
     says so, and the link opens the commit.
     A folder with no GitHub remote shows no toggle.
-
-12. **Hidden folders.** File > Open Folder… opens on a panel that lists your home
-    folder’s hidden folders, such as `.claude`; choosing `~/.claude` opens it in a
-    window of its own. Command-Shift-Period hides them, and pressed again shows them.
+12. **Hidden folders.** In File > Open Folder…, press Command-Shift-G and go to
+    `/tmp/mb-check`: the panel lists `.hidden` without Command-Shift-Period, and
+    choosing it opens it.
+    Command-Shift-Period hides the hidden folders, and pressed again shows them.
 
 ## GitHub Links
 

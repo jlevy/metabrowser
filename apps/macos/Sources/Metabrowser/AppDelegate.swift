@@ -663,9 +663,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        // Hidden folders are what people come to browse, such as `~/.claude` for an
-        // agent's logs, and Finder's panel hides them unless Command-Shift-Period is
-        // pressed, which few know; that key still hides them for this panel.
+        // People often want a dot-folder, such as `~/.claude` for an agent's logs, but the
+        // open panel hides them by default and few know Command-Shift-Period, which
+        // still toggles them for this panel.
         panel.showsHiddenFiles = true
         panel.prompt = "Open"
         panel.message = "Choose a folder to browse with Metabrowser, or a file to see in its folder."
