@@ -173,11 +173,12 @@ public nonisolated enum RuntimeDiscovery {
         return env.home + "/.local/bin"
     }
 
-    /// Runs `metab --exit-on-eof --version` with the same minimal environment a server
-    /// gets, and holds the version to `MetabRequirement`.
+    /// Runs `metab --exit-on-eof --recent --version` (`probeArguments`) with the same
+    /// minimal environment a server gets, and holds the version to `MetabRequirement`.
     ///
-    /// The flag is the one every server gets (`CLIServeLaunch.exitOnEOF`), and a version
-    /// number cannot show it: a development build of the minimum from before the flag
+    /// The flags are the one every server gets (`CLIServeLaunch.exitOnEOF`) and the mode
+    /// File > Open Recent lists with (`RecentTargets.listFlag`), and a version number
+    /// cannot show either: a development build of the minimum from before one of them
     /// counts as the minimum. Click rejects an unknown option before the eager `--version`
     /// runs, so such a build exits 2 and names the flag (`rejectsServeFlag`). Only then
     /// does `--version` run alone, and a version this app reads from it makes the `metab`
@@ -219,13 +220,13 @@ public nonisolated enum RuntimeDiscovery {
             }
             return judge(version, parsed)
         }
-        let probe = await run([CLIServeLaunch.exitOnEOF, "--version"])
+        let probe = await run(probeArguments)
         if let rejection = unfinished(probe) { return rejection }
         if probe.succeeded {
             return reading(probe) { MetabRequirement.accepts($1) ? .valid(version: $0) : .tooOld(version: $0) }
         }
         guard rejectsServeFlag(probe) else {
-            return .rejected("\(CLIServeLaunch.exitOnEOF) --version printed: \(probe.output.last ?? "nothing")")
+            return .rejected("\(probeArguments.joined(separator: " ")) printed: \(probe.output.last ?? "nothing")")
         }
         if let barred = barred() { return barred }
         let plain = await run(["--version"])
@@ -233,14 +234,19 @@ public nonisolated enum RuntimeDiscovery {
         return reading(plain) { version, _ in .tooOld(version: version) }
     }
 
-    /// Whether `result` is click's rejection of `CLIServeLaunch.exitOnEOF` as an unknown
-    /// option: exit status 2, with the flag named in what it printed. The wording around
+    /// Whether `result` is click's rejection of one of `MetabRequirement.requiredFlags` as
+    /// an unknown option: exit status 2, with the flag named in what it printed. The wording around
     /// the flag is click's and is not matched. A crash, a signal, or another usage error is
     /// not one, and shows nothing about when the build was made.
     static func rejectsServeFlag(_ result: CommandResult) -> Bool {
         guard let status = result.status, ExitStatus(waitStatus: status) == .exited(2) else { return false }
-        return result.output.contains { $0.contains(CLIServeLaunch.exitOnEOF) }
+        return result.output.contains { line in MetabRequirement.requiredFlags.contains { line.contains($0) } }
     }
+
+    /// What `validate` runs first: every flag the app needs that a version number cannot
+    /// show, then `--version`. Click names the first option it does not know, so a build
+    /// from before any of them exits 2 naming one.
+    static let probeArguments = MetabRequirement.requiredFlags + ["--version"]
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.
     public static func parseVersion(_ output: [String]) -> String? {

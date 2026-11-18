@@ -334,7 +334,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         switch PageReload.route(in: windowState) {
         case .reloadPage: webView.reload()
         case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
-        case .startServer: Task { await session?.startServer() }
+        case .startServer: Task { await session?.startForReload() }
         case .restartServer: session?.retry()
         case .startAsSelected: session?.windowShown(self)
         }

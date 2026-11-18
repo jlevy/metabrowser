@@ -37,6 +37,8 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     /// Why `metab` lists nothing, when it says so: the empty menu's tooltip.
     private var problem: String?
     private var isAsking = false
+    /// Whether to ask once more when the answer under way arrives.
+    private var asksAgain = false
     private var askedAt: ContinuousClock.Instant?
     /// The Open Recent menu to redraw when an answer arrives.
     private weak var menu: NSMenu?
@@ -50,10 +52,11 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         NSDocumentController.shared.clearRecentDocuments(nil)
     }
 
-    /// `root` was asked for, by the user. Its server records it as it starts, so the app
-    /// tells `metab` itself only for a folder that `isOpen` already, which starts none.
+    /// `root` was asked for, by the user: a folder, or a repository by its address. Its
+    /// server records it as it starts, so the app tells `metab` itself only for one that
+    /// `isOpen` already, which starts none.
     func noteOpened(_ root: URL, isOpen: Bool) {
-        if isOpen { change(RecentTargets.addArguments(root.path(percentEncoded: false))) }
+        if isOpen { change(RecentTargets.addArguments(RecentTargets.target(root))) }
     }
 
     /// Asks `metab` for the list, unless an answer is on its way or is newer than
@@ -64,7 +67,12 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     }
 
     private func ask() {
-        guard !isAsking, let setup = setup() else { return }
+        guard !isAsking else {
+            // The answer on its way may predate what was just changed.
+            asksAgain = true
+            return
+        }
+        guard let setup = setup() else { return }
         isAsking = true
         let spec = RecentTargets.spec(
             RecentTargets.listArguments, with: setup, inherited: ProcessInfo.processInfo.environment)
@@ -83,13 +91,17 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
             items = RecentTargets.items(listing.targets, opensURLs: opensURLs)
             problem = listing.problem
             if let problem { AppLog.app.error("metab lists no recent targets: \(problem, privacy: .public)") }
-        case .unsupported:
-            items = []
-            problem = "This metab has no --recent; upgrade it to list recent folders."
-            AppLog.app.error("\(metab, privacy: .public) has no --recent, so Open Recent is empty")
         case .unreadable(let reason):
-            // The last list stays: one failed answer should not empty the menu.
-            AppLog.app.error("could not list recent targets: metab --recent \(reason, privacy: .public)")
+            // The last list stays: one failed answer should not empty the menu. With no
+            // list to show, the empty menu's tooltip says why, since `metab`'s reason names
+            // the remedy.
+            if items.isEmpty { problem = "metab --recent \(reason)" }
+            AppLog.app.error(
+                "could not list recent targets from \(metab, privacy: .public): metab --recent \(reason, privacy: .public)")
+        }
+        if asksAgain {
+            asksAgain = false
+            ask()
         }
         // An open menu is redrawn only for a list that changed, so its rows do not move
         // under the pointer for an answer that says what it already shows.

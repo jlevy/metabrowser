@@ -44,7 +44,7 @@ import Testing
         /// server may record, "0" when it is told not to.
         let recording = Recorder<String?>()
         private(set) var made: [FakeProcess] = []
-        let line: String
+        var line: String
         let ignoringTerm: Set<Int>
 
         init(line: String, ignoringTerm: Set<Int> = []) {
@@ -87,6 +87,41 @@ import Testing
         #expect(await subject.restart() == .launched)
         #expect(await subject.restart() == .launched)
         #expect(children.recording.all == [nil, "0", "0"])
+    }
+
+    /// An open whose first server dies before it announces itself has recorded nothing,
+    /// so the Retry that follows still carries the open; once a server is ready it does
+    /// not (review A7).
+    @Test func anOpenWhoseFirstServerDiedIsRecordedByTheRetry() async {
+        let children = Children(line: "Error: no free port")
+        let now = setup("/opt/metab", "0.12.1")
+        let subject = server(createdWith: now, accepted: { now }, children: children)
+        Task {
+            // The first child says something that is no announcement, then exits.
+            while children.made.isEmpty { await Task.yield() }
+            children.made[0].exitOnItsOwn()
+        }
+        #expect(await subject.start(recordsOpen: true) == .launched)
+        guard case .failed = subject.supervisor.state else {
+            Issue.record("expected the first start to fail, got \(subject.supervisor.state)")
+            return
+        }
+        children.line = servingLine
+        #expect(await subject.restart() == .launched)
+        #expect(await subject.restart() == .launched)
+        #expect(children.recording.all == [nil, nil, "0"])
+    }
+
+    /// A start that is not an open joins the same server and records nothing: Command-R
+    /// in a restored window still waiting its turn starts its server this way (review A6).
+    @Test func aStartThatIsNotAnOpenIsToldNotToRecord() async {
+        let children = Children(line: servingLine)
+        let now = setup("/opt/metab", "0.12.1")
+        let subject = server(createdWith: now, accepted: { now }, children: children)
+        #expect(await subject.start() == .launched)
+        #expect(await subject.start(recordsOpen: true) == .launched)  // already running: joined
+        #expect(await subject.restart() == .launched)
+        #expect(children.recording.all == ["0", "0"])
     }
 
     /// A restored folder's start is not an open, whenever its turn comes, and neither is

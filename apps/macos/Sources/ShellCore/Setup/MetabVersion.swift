@@ -51,10 +51,14 @@ public nonisolated enum MetabRequirement {
     /// Open Recent lists. 0.12.0, the latest published release, lacks all three; until a
     /// release that has them is on PyPI, only builds from a source checkout meet this, and
     /// `RuntimeDiscovery.validate` finds one built before `--exit-on-eof` too old, whatever
-    /// its number. A development build from before `--recent` still runs, since its number
-    /// cannot say which it is: it opens folders as before, and its Open Recent is empty
-    /// (`RecentTargets.Answer.unsupported`).
+    /// its number, and one built before `--recent` likewise: the check runs with both
+    /// flags (`requiredFlags`).
     public static let minimumRelease = [0, 12, 1]
+
+    /// The flags a `metab` must know that its version number cannot show, oldest first:
+    /// a development build of `minimumRelease` may predate either. `--exit-on-eof` ends a
+    /// server with the app, and `--recent` lists the recent targets.
+    public static let requiredFlags = [CLIServeLaunch.exitOnEOF, RecentTargets.listFlag]
 
     public static var minimum: String { minimumRelease.map(String.init).joined(separator: ".") }
 
@@ -82,7 +86,7 @@ public nonisolated enum MetabRequirement {
     /// than compare its number with a minimum it meets.
     public static func flagShortfall(_ version: String) -> String? {
         guard let parsed = MetabVersion(version), accepts(parsed) else { return nil }
-        return "built before \(CLIServeLaunch.exitOnEOF)"
+        return "built before \(RecentTargets.listFlag)"
     }
 
     /// Replaces an older CLI install with one this app runs. It asks for a floor, not an

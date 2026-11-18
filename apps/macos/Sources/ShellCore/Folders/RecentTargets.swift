@@ -94,12 +94,22 @@ public nonisolated enum RecentTargets {
     /// and AppKit can ask a menu to update several times for one click.
     public static let refreshInterval: Duration = .seconds(2)
 
-    public static let listArguments = ["--recent", "--json"]
+    /// The mode that lists the targets. Setup refuses a `metab` without it
+    /// (`RuntimeDiscovery.validate`), so every `metab` the app runs has the four modes.
+    public static let listFlag = "--recent"
+    public static let listArguments = [listFlag, "--json"]
     public static let clearArguments = ["--recent-clear"]
 
-    /// Records `folder` as opened, for an open that starts no server. The path is
-    /// absolute, so it cannot read as an option.
-    public static func addArguments(_ folder: String) -> [String] { [folder, "--recent-add"] }
+    /// Records `target` as opened, for an open that starts no server. A folder's path is
+    /// absolute and a repository's address starts with its scheme, so neither can read as
+    /// an option.
+    public static func addArguments(_ target: String) -> [String] { [target, "--recent-add"] }
+
+    /// What `metab` is given for `root`: a folder's path, or a repository's address whole.
+    /// A URL's path alone, `/owner/repo`, would name a folder.
+    public static func target(_ root: URL) -> String {
+        root.isFileURL ? root.path(percentEncoded: false) : root.absoluteString
+    }
 
     public static func forgetArguments(_ root: String) -> [String] { [root, "--recent-forget"] }
 
@@ -124,8 +134,6 @@ public nonisolated enum RecentTargets {
 
     public enum Answer: Equatable, Sendable {
         case listing(Listing)
-        /// This `metab` has no `--recent`: a build from before the list existed.
-        case unsupported
         /// The command failed or printed something else; the text says what.
         case unreadable(String)
     }
@@ -137,10 +145,6 @@ public nonisolated enum RecentTargets {
         if let launchError = result.launchError { return .unreadable("could not run: \(launchError)") }
         if result.timedOut { return .unreadable("did not answer within \(timeout.components.seconds) seconds") }
         guard result.succeeded else {
-            // Click's usage error for an option it does not know.
-            if result.output.contains(where: { $0.contains("No such option") && $0.contains("--recent") }) {
-                return .unsupported
-            }
             return .unreadable(result.output.last ?? "exited with a failure")
         }
         guard let first = result.output.firstIndex(of: "{"), let last = result.output.lastIndex(of: "}"), first < last

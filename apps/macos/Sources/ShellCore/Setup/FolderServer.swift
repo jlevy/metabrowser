@@ -81,8 +81,9 @@ public final class FolderServer {
     ///   - holding: whether a start that found no runtime waits in `held` for `resume()`; a
     ///     restore passes false and keeps the root in its own queue.
     ///   - recordsOpen: whether the user just opened this, so that its server records it
-    ///     as a recent target. It holds until a child is created, through a wait for a
-    ///     runtime, and a restore passes false.
+    ///     as a recent target. It holds until a server is ready, through a wait for a
+    ///     runtime and through a child that dies before it records, and a restore passes
+    ///     false.
     @discardableResult
     public func start(holding: Bool = true, recordsOpen: Bool = false) async -> Outcome {
         switch supervisor.state {
@@ -126,6 +127,10 @@ public final class FolderServer {
             launching = (attempt, setup)
             await run(command(setup))
             if launching?.attempt == attempt { launching = nil }
+            // A server records before it announces itself, so one that is ready has
+            // recorded the open. One that died first has not, and the launch that follows,
+            // a Retry among them, still carries the open.
+            if case .ready = supervisor.state { recordsOpen = false }
             guard let refused = refusal, refused.attempt == attempt else { return .launched }
             guard refused.outcome == .waitingForRuntime, let now = accepted() else { return refused.outcome }
             setup = now  // replaced while it waited: the command is built again from the new one
@@ -161,7 +166,6 @@ public final class FolderServer {
     private func spawned() {
         if let approved { startedRuntime = approved }
         approved = nil
-        recordsOpen = false  // the open is recorded by this child; a later launch is not one
     }
 
     private func waiting(_ request: Request, holding: Bool) -> Outcome {

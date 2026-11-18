@@ -101,10 +101,17 @@ struct LiveMetabTests {
         }
 
         #expect(await listed().isEmpty)
+        // Served by a spelling that differs only in case, where the volume takes one, as
+        // this job's does: the list must hold the folder as the volume spells it, which is
+        // how the app names its session (`FileChecks.canonicalPath`). The Python test of
+        // this is in the macOS tier, which CI does not run.
+        let shouted = root.deletingLastPathComponent().appending(
+            path: root.lastPathComponent.uppercased(), directoryHint: .isDirectory)
+        let served = FileManager.default.fileExists(atPath: shouted.path(percentEncoded: false)) ? shouted : root
         let launch = CLIServeLaunch()
         let subject = ServerSupervisor(
             spec: LaunchSpec(
-                executable: path, arguments: launch.arguments(serving: root), environment: environment,
+                executable: path, arguments: launch.arguments(serving: served), environment: environment,
                 workingDirectory: root.path),
             launch: launch)
         await subject.start()

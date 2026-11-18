@@ -76,12 +76,14 @@ import Testing
         #expect(listing.problem?.contains("mf02") == true)
     }
 
-    @Test func aMetabFromBeforeTheListIsToldApartFromAFailure() {
-        let usage = "Usage: metab [OPTIONS] [ROOT]\nTry 'metab --help' for help.\n│ No such option: --recent │"
-        #expect(RecentTargets.answer(result(usage, status: 2 << 8)) == .unsupported)
+    /// Setup refuses a `metab` without `--recent`, so a failure here is only ever a failure,
+    /// and its last line, which names the remedy, is what the menu can show.
+    @Test func aFailedAnswerKeepsMetabsReason() {
         #expect(
             RecentTargets.answer(result("Error: The Metabrowser storage directory is accessible to other users", status: 1 << 8))
                 == .unreadable("Error: The Metabrowser storage directory is accessible to other users"))
+        let usage = "Usage: metab [OPTIONS] [ROOT]\nTry 'metab --help' for help.\n│ No such option: --recent │"
+        #expect(RecentTargets.answer(result(usage, status: 2 << 8)) == .unreadable("│ No such option: --recent │"))
     }
 
     @Test func anAnswerThatIsNotTheListIsUnreadable() {
@@ -169,6 +171,10 @@ import Testing
         #expect(RecentTargets.clearArguments == ["--recent-clear"])
         #expect(RecentTargets.addArguments("/Volumes/Home/src/fdu") == ["/Volumes/Home/src/fdu", "--recent-add"])
         #expect(RecentTargets.forgetArguments("/Volumes/Gone/work") == ["/Volumes/Gone/work", "--recent-forget"])
+        // A repository is named by its address whole; its path alone would name a folder.
+        #expect(RecentTargets.target(URL(filePath: "/Volumes/Home/src/fdu/")) == "/Volumes/Home/src/fdu/")
+        #expect(RecentTargets.target(URL(string: "https://github.com/jlevy/tbd")!) == "https://github.com/jlevy/tbd")
+        #expect(MetabRequirement.requiredFlags.contains(RecentTargets.listFlag))
     }
 
     @Test func aCommandRunsInTheEnvironmentEveryMetabGets() {
