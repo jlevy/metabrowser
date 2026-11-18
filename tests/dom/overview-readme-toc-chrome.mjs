@@ -37,8 +37,9 @@
 // Overview grows when its rollup lands (tests/dom/folder-overview-alignment-chrome.mjs).
 // Each scroll is computed from where the README starts at that moment.
 //
-// A check named in EXPECTED_FAILURES is a known defect with a bead: it is reported, and
-// the session fails if it passes, so the fix removes it from the list.
+// A check named in EXPECTED_FAILURES is a known defect with a bead: it is reported when it
+// fails the way the defect does, and the session fails if it passes or fails another way,
+// so the fix removes it from the list and a different fault is not taken for it.
 //
 // Each step writes `phase <name> <ms since start>` to stderr. It prints
 // `overview README TOC in Chrome: <n> checks passed`, then `expected to fail (<bead>):
@@ -61,7 +62,7 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 const NARROW = 1280;
 const WIDE = 1920;
 // Narrower windows, each checked for the shared edge in the band the pane is in: 1100 puts
-// the pane just above KPress's 48 rem boundary, 49.4 rem beside the navigation pane, where
+// the pane just above KPress's 48 rem boundary, 49.3 rem beside the navigation pane, where
 // the card stopped 32 px short of the section rules; 900 puts it below the boundary.
 const EDGE_WIDTHS = [
   [1100, "regular"],
@@ -78,12 +79,20 @@ const ACTIVE_WAIT_MS = 2000;
 // top.
 const SECTION = "Section 5";
 
+// Each listed check's bead, and the symptom its failure must show.
 const EXPECTED_FAILURES = new Map([
   // KPress's toc.js finds each entry's heading with document.getElementById while the
-  // Overview is staged and the file, with the same heading ids, is still in the pane.
+  // Overview is staged and the file, with the same heading ids, is still in the pane, and
+  // watches the file's headings: the section's heading reaches the pane's top, and the
+  // highlight stays where it was at arrival, on the first entry or on none.
   [
     "trusted narrow: arriving in-app from the README's file, an entry follows the reader",
-    "mb-hpoq",
+    {
+      bead: "mb-hpoq",
+      symptom: (state) =>
+        Math.abs(state.sectionOffset) <= 2 &&
+        (state.active === null || state.active === state.first),
+    },
   ],
 ]);
 
@@ -92,10 +101,13 @@ const expected = [];
 let checks = 0;
 const check = (label, ok, detail = "") => {
   checks += 1;
-  const bead = EXPECTED_FAILURES.get(label);
-  if (bead) {
+  const known = EXPECTED_FAILURES.get(label);
+  if (known) {
+    const { bead, symptom } = known;
     if (ok) {
       failures.push(`${label}: passes, and is listed as expected to fail (${bead})`);
+    } else if (!symptom(detail)) {
+      failures.push(`${label}: fails, but not as ${bead} does: ${JSON.stringify(detail)}`);
     } else {
       expected.push(`expected to fail (${bead}): ${label}`);
       process.stderr.write(`expected failure (${bead}) ${label}: ${JSON.stringify(detail)}\n`);
@@ -205,6 +217,7 @@ const STATE = `(async () => {
     prose: [Math.round(prose.left), Math.round(prose.width)],
     rail: { position: getComputedStyle(toc).position, left: Math.round(rail.left), top: Math.round(rail.top - top) },
     active: active ? active.textContent.trim() : null,
+    first: toc.querySelector("ol a")?.textContent.trim() ?? null,
     toggle: toggle.classList.contains("show-toggle"),
     toggleDisplay: getComputedStyle(toggle).display,
     toggleOpacity: getComputedStyle(toggle).opacity,
@@ -294,21 +307,20 @@ async function scrollTo(page, scrollTop) {
 
 /**
  * Scroll the shown document's heading *id* to the pane's top, and read the state once its
- * entry is the active one or ACTIVE_WAIT_MS has passed.
+ * entry is the active one or ACTIVE_WAIT_MS has passed, with `sectionOffset`, where the
+ * heading then is below the pane's top.
  */
 async function scrollToSection(page, id) {
-  await page.evaluate(`(() => {
-    const { pane, host } = ${SHOWN};
-    const heading = host.querySelector(${JSON.stringify(`[id="${id}"]`)});
-    pane.scrollTop += heading.getBoundingClientRect().top - pane.getBoundingClientRect().top;
-    return true;
-  })()`);
+  const heading = `${SHOWN}.host.querySelector(${JSON.stringify(`[id="${id}"]`)})`;
+  const offset = `(${heading}.getBoundingClientRect().top - ${SHOWN}.pane.getBoundingClientRect().top)`;
+  await page.evaluate(`(document.getElementById("preview-pane").scrollTop += ${offset}), true`);
   await poll(
     page,
     `${SHOWN}?.host.querySelector('.kpress-toc a.active, .kpress-toc a[data-active="true"]')?.textContent.trim() === ${JSON.stringify(SECTION)}`,
     ACTIVE_WAIT_MS,
   );
-  return read(page);
+  const state = await read(page);
+  return { ...state, sectionOffset: Math.round(await page.evaluate(offset)) };
 }
 
 /** Check that the shown Overview's card, section rules, and surface bodies share an edge. */
