@@ -103,6 +103,9 @@ final class FolderSession: ManagedServer {
             }
         }
         supervisor.onChange = { [weak self] state in self?.serverChanged(state) }
+        supervisor.onStartProgress = { [weak self] progress in
+            self?.windows.forEach { $0.showStartProgress(progress) }
+        }
         // A folder waits a moment at its gate; a repository can wait out another's first clone.
         if !served.isLocal {
             supervisor.onGateWait = { [weak self] waiting in
@@ -209,6 +212,18 @@ final class FolderSession: ManagedServer {
             settle(await server.restart())
             restartsInFlight -= 1
         }
+    }
+
+    /// The app became active, most likely back from Terminal: a server whose start failed
+    /// in a way a sign-in there can fix starts again, as Retry does, so that the sign-in
+    /// clears the windows' failure (`ServerFailure.rechecksOnActivation`).
+    /// Any other session, other GitHub failures among them, is left as it is.
+    func recheckAfterActivation() {
+        guard case .failed = supervisor.state, let failure, failure.rechecksOnActivation else { return }
+        let state = failure.gitHub?.state ?? ""
+        AppLog.app.info(
+            "\(self.root.lastPathComponent, privacy: .public): starting again on activation after \(state, privacy: .public)")
+        retry()
     }
 
     /// Carries out a start or restart that waited for a runtime, now that one is accepted.
@@ -362,6 +377,7 @@ final class FolderSession: ManagedServer {
         windows.append(controller)
         defer { onLayoutChange?() }
         controller.adoptServer(endpoint)
+        controller.showStartProgress(supervisor.startProgress)
         if let failure { controller.showFailure(failure) }
         if isWaitingForRuntime, endpoint == nil { controller.showWaitingForRuntime() }
         if restartWait.isWaiting { controller.showWaitingAtGate(true) }
@@ -402,8 +418,9 @@ final class FolderSession: ManagedServer {
             if !served.isLocal { watchSelection(of: ready, authorization: authorization) }
         case .failed(let failed):
             endpoint = nil
-            failure = failed
-            windows.forEach { $0.showFailure(failed) }
+            let shown = served.isLocal ? failed : failed.diagnosingGitHub(repository: root)
+            failure = shown
+            windows.forEach { $0.showFailure(shown) }
         case .stopping, .stopped:
             break
         }
