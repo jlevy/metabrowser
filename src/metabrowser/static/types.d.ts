@@ -299,6 +299,8 @@ type MetabrowserDocumentWidthRuntime = Readonly<{
 
 type MetabrowserRepositoryContext = Readonly<{
   branch: string | null;
+  /** Whether `origin` has the branch: in the context the server writes, not the SDK's copy. */
+  branch_on_origin?: boolean;
   host: "github.com";
   name: string;
   owner: string;
@@ -2985,6 +2987,8 @@ declare global {
   type MetabrowserViewHeaderParts = {
     /** Extra classes on the header, as `folder-header`. */
     className?: string;
+    /** The item's path identity, the header's `data-path`, which the GitHub toggle reads. */
+    path: string;
     /** The eyebrow's markup; an empty eyebrow is left out of the header's rhythm. */
     eyebrow: string;
     iconHtml: string;
@@ -4125,6 +4129,20 @@ declare global {
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
+    /** static/github-page.js, which only a page with a repository on github.com carries. */
+    MetabrowserGithubPage?: Readonly<{
+      pageRef(
+        context: MetabrowserRepositoryContext,
+        onOrigin: boolean,
+      ): { ref: string; note: string };
+      pageUrl(
+        context: MetabrowserRepositoryContext | null,
+        path: string,
+        item: { folder: boolean; sourceKind: string; ref: string },
+      ): string | null;
+      sync(doc: Document): HTMLElement | null;
+      toggle(doc: Document, url: string, note?: string, shown?: string): HTMLElement;
+    }>;
     /** Present on a checkout's page, a folder that is a repository's root: on its working
      * tree (`working_tree` true) and on each revision it shows. */
     METABROWSER_SOURCE_CHECKOUT?: { working_tree: boolean };
