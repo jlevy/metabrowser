@@ -61,12 +61,43 @@ log = logging.getLogger(__name__)
 
 
 def session_git_location() -> GitLocation:
-    """The Git command location for the active repository subject."""
+    """The Git command location for the active repository subject.
+
+    A commit's view and every comparison are read here, so a revision of a checkout reads
+    them from its Git directory under the store policies, which run no program the
+    checkout's configuration names (:attr:`GitLocation.diff_driver_args`).
+    """
 
     pin = as_git_revision_subject(get_source_session().subject)
     if pin is not None:
         return GitLocation.revision(pin.command_target, pin.commit_oid)
     return GitLocation.filesystem(session_filesystem_root())
+
+
+def history_git_location() -> GitLocation:
+    """Where the Commits tab's history is read: a checkout's own, whatever Files shows.
+
+    A folder that is a repository's root shows one of its branches or tags in the Files tab
+    as a pinned revision (``checkout_revisions.py``). The chooser is the Files tab's, so its
+    Commits tab stays the checkout's history, read from the folder as its working tree's
+    page reads it: ``HEAD``, its upstream, and the trunk refs, and every ref with
+    ``scope=all``. Those reads, ``log``, ``for-each-ref``, ``rev-parse``, and
+    ``symbolic-ref``, diff nothing, so they run no diff driver, and every command sets
+    ``log.showSignature=false`` (:attr:`GitLocation.config_args`); nothing about them
+    writes. A commit's view and its diffs stay the session's (:func:`session_git_location`).
+
+    A mirror has no history but its refs', so its Commits tab walks the pin it serves.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is None:
+        return GitLocation.filesystem(session_filesystem_root())
+    from metabrowser.checkout_revisions import checkout_revisions
+
+    checkout = checkout_revisions()
+    if checkout is not None:
+        return GitLocation.filesystem(checkout.root)
+    return GitLocation.revision(pin.command_target, pin.commit_oid)
 
 
 def _negative_payload(info: GitRepoInfo) -> dict[str, object]:
@@ -115,7 +146,7 @@ async def api_git_repo(_request: Request) -> JSONResponse:
     ``is_repo`` decides whether the Git tab exists at all. TTL-cached in
     :mod:`metabrowser.git.repo`, so polling it is inexpensive.
     """
-    _context, info = await _resolve(session_git_location())
+    _context, info = await _resolve(history_git_location())
     return JSONResponse(dict(info))
 
 
@@ -124,7 +155,7 @@ async def api_git_refs(request: Request) -> Response:
 
     Kept under the ref state and the checked-out branch, which marks one ref as HEAD.
     """
-    location = session_git_location()
+    location = history_git_location()
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -159,7 +190,7 @@ async def api_git_summary(request: Request) -> Response:
     Kept under the ref state: the commits the refs reach cannot change while the refs
     do not, and ``shallow`` and ``info/grafts``, which bound the walk, are in the state.
     """
-    location = session_git_location()
+    location = history_git_location()
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -217,7 +248,7 @@ async def api_git_log(request: Request) -> Response:
     again under the same ref state is the same session's, and a client that
     holds it is answered 304.
     """
-    location = session_git_location()
+    location = history_git_location()
     context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))

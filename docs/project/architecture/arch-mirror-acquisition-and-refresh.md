@@ -327,8 +327,10 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   request’s refresh was answered.
 - **`GET /api/source/refs`** lists the mirror’s branches or tags for the ref selector
   from one `for-each-ref`, filtered and clamped (`REFS_DEFAULT_LIMIT`, `REFS_MAX_LIMIT`,
-  `REFS_MAX_QUERY_CHARS`). A folder that is a repository’s root answers it and the pin
-  route for its own checkout;
+  `REFS_MAX_QUERY_CHARS`), each with its commit, Git’s short form of it, and that
+  commit’s committer date, from which the selector shows its age.
+  A folder that is a repository’s root answers it and the pin route for its own
+  checkout;
   [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)
   says how.
 - **`POST /api/source/pin`** resolves a branch, then a tag, then a commit ID in the

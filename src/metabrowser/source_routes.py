@@ -247,12 +247,17 @@ class SourceRef(TypedDict):
     """One row of ``/api/source/refs``: a :class:`MirrorRef` and whether it is served.
 
     ``default`` marks a mirror's default branch and ``checked_out`` the branch a
-    checkout's ``HEAD`` is on; each lists first, and the other is false.
+    checkout's ``HEAD`` is on; each lists first, and the other is false. ``short_commit``
+    is Git's abbreviation of ``commit``, as a history row's ``short_id`` is, and
+    ``committed_at`` that commit's committer date in epoch seconds, from which a row
+    shows its age; ``None`` when Git printed none.
     """
 
     name: str
     ref: str
     commit: str
+    short_commit: str
+    committed_at: float | None
     default: bool
     checked_out: bool
     current: bool
@@ -263,11 +268,16 @@ class WorkingTree(TypedDict):
 
     ``current`` is whether the server serves it now. ``head`` is the full ref ``HEAD`` is
     on and ``head_name`` the branch's name, both ``None`` when ``HEAD`` is detached.
+    ``name`` is the folder's name and ``location`` its path with the home directory as
+    ``~``, as the page names the folder: display text, with any control or invisible
+    character already replaced.
     """
 
     current: bool
     head: str | None
     head_name: str | None
+    name: str
+    location: str
 
 
 class SourceRefs(TypedDict):
@@ -329,6 +339,8 @@ def source_refs(
                 name=entry.name,
                 ref=entry.ref,
                 commit=entry.commit,
+                short_commit=entry.short_commit,
+                committed_at=entry.committed_at,
                 default=entry.default and not of_checkout,
                 checked_out=entry.default and of_checkout,
                 current=served_ref is not None and entry.ref == served_ref,
@@ -380,7 +392,11 @@ async def api_source_refs(request: Request) -> JSONResponse:
             # One reading of the repository answers both: its HEAD and its refs.
             head, listed = await source.list_refs(kind)
             working_tree = WorkingTree(
-                current=subject is None, head=head, head_name=checkout_ref_name(head)
+                current=subject is None,
+                head=head,
+                head_name=checkout_ref_name(head),
+                name=source.display.name,
+                location=source.display.location,
             )
         else:
             listed = await source.mirror.list_refs(kind)

@@ -413,7 +413,19 @@ async def mirror_refs(target: RepositoryStoreTarget) -> dict[str, str]:
 # ``%(object)`` and ``%(type)`` are an annotated tag's own target, one level on every
 # Git version; both are empty for a ref that names a commit.
 # ``%(symref)`` is empty unless the ref is symbolic, as a checkout's ``origin/HEAD`` is.
-_LIST_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)%00%(symref)"
+# Then the commit's abbreviation, the one ``%h`` gives a history row, and its committer
+# date, each read from the ref's own object for a commit and from the tagged one,
+# ``%(*…)``, for an annotated tag; a row shows both (static/source-ref-selector.js). For
+# a tag whose own target is a commit, the only kind listed, the two spellings agree on
+# every Git version. The date is free: Git has parsed the object for ``%(objecttype)``.
+# The abbreviation costs a lookup per ref, measured 2026-11-18 on macOS with Git 2.50.1
+# over 528 branches, 20 runs each: 23 ms without it and 31 ms with it, about 15 µs a ref.
+_LIST_FORMAT: Final = (
+    "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)%00%(symref)"
+    "%00%(objectname:short)%00%(*objectname:short)%00%(committerdate:unix)"
+    "%00%(*committerdate:unix)"
+)
+_LIST_FIELDS: Final = 10
 _LIST_SORT: Final[Mapping[RefKind, tuple[str, ...]]] = {
     "branch": ("--sort=refname",),
     "tag": ("--sort=refname", "--sort=-creatordate"),
@@ -457,21 +469,33 @@ async def list_mirror_refs(
             fields = line.decode("utf-8").split("\0")
         except UnicodeDecodeError:
             continue
-        if len(fields) != 6 or not fields[0].startswith(prefix):
+        if len(fields) != _LIST_FIELDS or not fields[0].startswith(prefix):
             continue
-        ref, oid, object_kind, target_oid, target_kind, symbolic = fields
+        ref, oid, object_kind, target_oid, target_kind, symbolic = fields[:6]
+        own_short, tagged_short, own_date, tagged_date = fields[6:]
         if kind == "remote" and symbolic:
             continue
         if object_kind == "commit":
-            commit = oid
+            commit, short, date = oid, own_short, own_date
         elif object_kind == "tag" and target_kind == "commit":
-            commit = target_oid
+            commit, short, date = target_oid, tagged_short, tagged_date
         else:
             continue
         if not is_full_revision(commit) or not is_valid_ref_name(ref):
             continue
         name = ref.removeprefix(prefix)
-        listed.append(MirrorRef(name=name, ref=ref, commit=commit, default=ref == default_ref))
+        listed.append(
+            MirrorRef(
+                name=name,
+                ref=ref,
+                commit=commit,
+                default=ref == default_ref,
+                # Git's abbreviation is a prefix of the ID it abbreviates; anything else
+                # is not shown as one.
+                short_commit=short if short and commit.startswith(short) else commit[:12],
+                committed_at=float(date) if date.isdigit() else None,
+            )
+        )
     listed.sort(key=lambda entry: not entry.default)
     return tuple(listed)
 

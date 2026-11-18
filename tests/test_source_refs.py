@@ -121,6 +121,18 @@ def test_branches_list_the_default_first_and_mark_the_served_one(
     ]
     assert (listing["total"], listing["truncated"]) == (4, False)
     topic, release, feature, _patches = listing["refs"]
+    # Each row's commit as the history shows one: Git's abbreviation of its ID, at least
+    # seven characters, and the date it was committed, as the origin has it.
+    short = topic.pop("short_commit")
+    assert origin.second.startswith(short) and len(short) >= 7
+    committed = subprocess.run(
+        ["git", "-C", str(origin.path), "log", "-1", "--format=%ct", origin.second],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=_git_env(origin.path),
+    ).stdout
+    assert topic.pop("committed_at") == float(committed)
     assert topic == {
         "name": "topic",
         "ref": "refs/remotes/origin/topic",

@@ -323,8 +323,12 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   branches are its origin’s under `refs/remotes/origin/`, a checkout’s are
   `refs/heads/`, and its remote-tracking branches are a third list, `kind=remote`.
   `kinds` names the lists a subject has, `working_tree` is null for a mirror and
-  otherwise says whether the working tree is served and which branch `HEAD` is on, and a
-  row’s `checked_out` marks that branch, which lists first.
+  otherwise says whether the working tree is served, which branch `HEAD` is on, and the
+  folder’s `name` and `location`, as the page names the folder, and a row’s
+  `checked_out` marks that branch, which lists first.
+  Each row has its commit’s `short_commit`, Git’s abbreviation, and `committed_at`, the
+  committer date a row’s age is read from: a tag’s is its commit’s, by `for-each-ref`’s
+  `*committerdate`, in the same one process.
 - **Showing one.** `POST /api/source/pin` resolves a selection in the checkout’s refs
   with the mirror’s resolver, a branch, then a tag, then a remote-tracking branch, then
   a commit ID, never revision syntax, and `replace_owned_subject` attaches a
@@ -333,6 +337,14 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   Nothing is fetched for a selection the checkout lacks.
   The folder’s inventory and watcher are not closed, so they are current when the
   working tree is served again.
+- **The Commits tab is the checkout’s.** The chooser is the Files tab’s, so while a
+  revision is served, the history routes, `/api/git/repo`, `/api/git/refs`,
+  `/api/git/summary`, and `/api/git/log`, read the folder as its working tree’s page
+  does (`history_git_location` in `git/routes.py`): `HEAD`, its upstream, and the trunk
+  refs, or every ref with `scope=all`. Those commands diff nothing, so no driver can
+  run, and each sets `log.showSignature=false`. A commit’s page and its diffs stay at
+  the revision’s store target (`session_git_location`), under the policies below.
+  A mirror has no history but its refs’, so its Commits tab walks the pin it serves.
 - **Returning.** `{"working_tree": true}` on the same route calls
   `restore_filesystem_subject`, which attaches the folder under a new generation and
   then closes the revision’s batch readers.

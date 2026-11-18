@@ -219,13 +219,18 @@ class MirrorRef:
 
     ``name`` is the name a reader knows it by, ``ref`` the full ref a pin request names
     it with, and ``default`` marks the branch that lists first: the origin's default
-    branch in a mirror, the checked-out branch in a checkout.
+    branch in a mirror, the checked-out branch in a checkout. ``short_commit`` is the
+    abbreviation Git chose for the commit, as a history row's ``short_id`` is, and
+    ``committed_at`` the commit's committer date in epoch seconds, ``None`` when Git
+    printed none.
     """
 
     name: str
     ref: str
     commit: str
     default: bool = False
+    short_commit: str = ""
+    committed_at: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
