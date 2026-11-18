@@ -79,7 +79,6 @@ const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 // What the lifted code calls that does not branch on the subject. The tooltip is the
 // application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
-var ICONS = { print: "" };
 function showTooltip(html, anchor) {
   __shown.push({ html: html, anchor: anchor });
 }
