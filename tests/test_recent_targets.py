@@ -253,7 +253,7 @@ def test_the_file_is_the_same_with_and_without_libyaml(
         "/work/with space/and: colon/# hash/- dash",
         "/work/quote\"s/and 'single'",
         "/work/zero\u200bwidth/rtl\u202eoverride/bom\ufeff/nbsp\u00a0x/\U0001f600",
-        "/work/calf\u00e9/\u65e5\u672c\u8a9e",
+        "/work/café/日本語",
         "/work/" + "x" * (MAX_ROOT_BYTES - len("/work/")),
     ]
     for root in roots:
