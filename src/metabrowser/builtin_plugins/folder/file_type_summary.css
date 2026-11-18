@@ -75,17 +75,39 @@
   white-space: nowrap;
 }
 
-/* As tall as the bars above it, so the dot reads as their color key. */
+/* As tall as the bars above it, so the dot reads as their color key.
+   Positioned to hold the hover's shimmer. */
 .file-type-summary-legend-swatch {
+  position: relative;
   flex: none;
   width: var(--mb-distribution-track-height);
   height: var(--mb-distribution-track-height);
   border-radius: 50%;
   background: var(--mb-distribution-color);
+  transition: filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
 }
 
 .file-type-summary-legend-label {
   font-weight: var(--weight-bold);
+  transition: color var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
+}
+
+/* The entry naming the hovered family, from itself or from one of its segments,
+   answers with them: its dot lifts and shimmers as a segment does, and its name
+   takes the family's ink, the family's color pulled toward the text ink by
+   --mb-distribution-ink-share so it keeps 4.5:1 for every family in both themes
+   (static/styles.css). Colour and a filter only, so nothing in the entry moves or
+   resizes. Other is never marked (distribution-view.js, drawHover). */
+.file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch {
+  filter: var(--viz-data-mark-hover-filter);
+}
+
+.file-type-summary-legend-item[data-hovered] .file-type-summary-legend-label {
+  color: color-mix(
+    in oklab,
+    var(--mb-distribution-color) var(--mb-distribution-ink-share),
+    var(--text)
+  );
 }
 
 .file-type-summary-legend-percent {
@@ -218,13 +240,15 @@
   display: block;
   height: 100%;
   background: var(--mb-distribution-color);
-  /* Positioned so a grown segment can lift above its neighbours; see the
-     hover rule below. */
+  /* Positioned so a grown segment can lift above its neighbours, and holds its
+     shimmer; see the hover rule below. */
   position: relative;
   transform-origin: center;
+  /* The lift and the growth ease in and out together, one motion on the grow
+     tokens, which are the viz layout scale's (static/styles.css). */
   transition:
     width 140ms ease,
-    filter var(--viz-hover-duration) var(--viz-hover-ease),
+    filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease),
     transform var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
 }
 
@@ -275,13 +299,37 @@
    segment is the same height, so every segment now answers the same.
 
    An attribute rather than :hover, because the pointer may be on the legend
-   entry that names the segment rather than on the segment itself: both go
-   through one hover, which marks the segment it is drawn on
-   (distribution-hover.js). */
-.folder-totals .file-type-summary-fill[data-hovered] {
+   entry that names the segment's family rather than on the segment itself:
+   both go through one hover, which marks what its handle names
+   (distribution-hover.js). A segment names itself; an entry names its family,
+   whose segment in each tally row and whose row's bar in an open Details table
+   it marks, so the rule is not scoped to the tally rows.
+
+   While it is marked, the mark shimmers: a sheen over its colour breathes in
+   and settles, on the hover shimmer's tokens and keyframes beside the progress
+   pulse's (static/styles.css, viz-hover-shimmer), on the compositor. Inset
+   from the hairline between segments, so the sheen does not lighten it. */
+.file-type-summary-fill[data-hovered] {
   filter: var(--viz-data-mark-hover-filter);
   transform: scaleY(var(--viz-hover-grow));
   z-index: 1;
+}
+
+.file-type-summary-fill[data-hovered]::after,
+.file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--viz-hover-shimmer-sheen);
+  opacity: 0;
+  pointer-events: none;
+  animation: viz-hover-shimmer var(--viz-hover-shimmer-period) ease-in-out
+    var(--viz-hover-grow-duration) infinite;
+}
+
+.folder-totals .file-type-summary-fill[data-hovered]:not(:last-child)::after {
+  right: var(--mb-distribution-segment-gap);
 }
 
 .file-type-summary-percent {
@@ -328,13 +376,17 @@
     opacity: 0.75;
   }
 
-  .file-type-summary-fill {
+  /* The motion goes: no transition and no shimmer. The lift and the growth stay,
+     drawn at once, since a mark that is darker and thicker is a state, not a
+     movement, and the stronger highlight is what makes the hover read. */
+  .file-type-summary-fill,
+  .file-type-summary-legend-swatch,
+  .file-type-summary-legend-label {
     transition: none;
   }
 
-  /* Without the transition above the grow would be a jump, which is worse than
-     no grow. The colour lift still answers the hover. */
-  .folder-totals .file-type-summary-fill[data-hovered] {
-    transform: none;
+  .file-type-summary-fill[data-hovered]::after,
+  .file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch::after {
+    content: none;
   }
 }

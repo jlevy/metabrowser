@@ -170,6 +170,14 @@ function familyRow() {
   const view = await import(
     `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
   );
+  const { createDistributionHover } = await import(
+    `data:text/javascript;base64,${Buffer.from(
+      fs.readFileSync(
+        path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/distribution-hover.js"),
+        "utf8",
+      ),
+    ).toString("base64")}`
+  );
   const palette = {
     classFor: (key) => (key ? `slot-${key.slice(1)}` : "slot-other"),
     styleFor: () => "",
@@ -212,7 +220,14 @@ function familyRow() {
     ],
   };
   const container = new Element("div");
-  const handle = view.mountDistributionView(container, first, palette, metricClasses, fileTypeIcon);
+  const handle = view.mountDistributionView(
+    container,
+    first,
+    palette,
+    metricClasses,
+    fileTypeIcon,
+    createDistributionHover(),
+  );
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
   const originalPyMetricFill = handle.rows.get(".py").metricFill;
@@ -398,15 +413,16 @@ function familyRow() {
       pythonItem.tagName === "LI" &&
       pythonItem.dataset.legendKey === "family:python" &&
       pythonItem.children.map((child) => child.className).join(",") ===
-        "file-type-summary-legend-swatch slot-amily:python,file-type-summary-legend-label,file-type-summary-legend-percent" &&
+        "file-type-summary-legend-swatch,file-type-summary-legend-label,file-type-summary-legend-percent" &&
       pythonItem.children[0].attributes["aria-hidden"] === "true" &&
       pythonItem.children[1].textContent === "Python" &&
       pythonItem.children[2].textContent === "75%",
     pythonItem.children.map((child) => `${child.className}=${child.textContent}`).join(" | "),
   );
   check(
-    "Other's dot takes the neutral, and labels are text",
-    otherItem.children[0].className === "file-type-summary-legend-swatch slot-other" &&
+    "an entry carries its family's color, which its dot inherits, Other the neutral, and labels are text",
+    pythonItem.className === "file-type-summary-legend-item slot-amily:python" &&
+      otherItem.className === "file-type-summary-legend-item slot-other" &&
       otherItem.children[1].textContent === '<img src=x onerror="pwned">',
   );
   check(
@@ -421,41 +437,69 @@ function familyRow() {
     ) && !/#[0-9a-f]{3,8}\b|rgb\(|oklch\(/i.test(styles),
   );
 
-  // A family's entry says where the pointer is to the hover the population bars draw,
-  // naming its segment in the tally row the shares are of: Total while Show ignored is
-  // on, Files while it is off. Other names no one segment and says nothing. The entry
-  // itself is not restyled. An entry rebuilt or disposed under the pointer, which never
-  // hears it leave, lets go of the hover it entered (docs/design-system.md, "Aggregate
-  // Distributions").
+  // A family's entry is a handle on its family's marks: it says where the pointer is to
+  // the hover the population bars draw, naming its family and the segment in the tally
+  // row the shares are of (Total while Show ignored is on, Files while it is off), and the
+  // hover marks the family's own row in Details while that is open, not its extensions'.
+  // The entry is marked whichever handle holds its family's hover, itself or a segment, so
+  // its dot and name answer with the marks; a segment marks no Details row. Other names no
+  // one segment, says nothing, and is never marked. An entry rebuilt or disposed under the
+  // pointer, which never hears it leave, lets go of the hover it entered
+  // (docs/design-system.md, "Aggregate Distributions").
+  const legendHover = createDistributionHover();
   const hoverCalls = [];
-  const recordingHover = {
-    enter: (target) => hoverCalls.push(`enter ${target.population} ${target.key}`),
-    leave: (target) => hoverCalls.push(`leave ${target.population} ${target.key}`),
+  legendHover.subscribe((current) =>
+    hoverCalls.push(current ? `${current.marks} ${current.population} ${current.key}` : "none"),
+  );
+  const pythonFamily = {
+    ...row("family:python", "Python", "code", 75, 75, "75%", "75%"),
+    kind: "family",
+    paletteKey: "family:python",
+    disclosable: true,
+    children: [
+      {
+        ...row("family:python/.py", ".py", "code", 75, 75, "75%", "75%"),
+        kind: "extension",
+        child: true,
+        extension: ".py",
+        paletteKey: "family:python",
+      },
+    ],
   };
+  const hoverModel = { ...legendModel, rows: [pythonFamily, ...legendModel.rows] };
   const hoverHandle = view.mountDistributionView(
     new Element("div"),
-    legendModel,
+    hoverModel,
     palette,
     metricClasses,
     fileTypeIcon,
-    recordingHover,
+    legendHover,
   );
   const [hoverPython, hoverOther] = hoverHandle.legend.children;
   const pythonClassBefore = hoverPython.className;
+  const marked = () =>
+    [...hoverHandle.legend.children, ...[...hoverHandle.rows.values()].map((r) => r.metricFill)]
+      .filter((element) => "hovered" in element.dataset)
+      .map((element) =>
+        element.dataset.legendKey !== undefined
+          ? `legend ${element.dataset.legendKey}`
+          : `row ${[...hoverHandle.rows].find(([, r]) => r.metricFill === element)[0]}`,
+      );
   hoverPython.listeners.mouseenter();
+  const entered = marked();
   hoverPython.listeners.mouseleave();
   // It hears the pointer enter and leave it, and nothing more: moving within it changes
   // nothing, and a repaint of the bars draws its hover again without it (folder-totals.js).
   check(
-    "a family's entry enters and leaves its Total segment's hover, and stays as it was",
-    JSON.stringify(hoverCalls) ===
-      JSON.stringify(["enter all family:python", "leave all family:python"]) &&
+    "a family's entry enters and leaves its family's hover, and is marked while it holds",
+    JSON.stringify(hoverCalls) === JSON.stringify(["family all family:python", "none"]) &&
+      JSON.stringify(entered) === JSON.stringify(["legend family:python"]) &&
+      marked().length === 0 &&
       JSON.stringify(Object.keys(hoverPython.listeners)) ===
         JSON.stringify(["mouseenter", "mouseleave"]) &&
       hoverPython.className === pythonClassBefore &&
-      Object.keys(hoverPython.attributes).length === 0 &&
-      !("hovered" in hoverPython.dataset),
-    JSON.stringify(hoverCalls),
+      Object.keys(hoverPython.attributes).length === 0,
+    JSON.stringify({ hoverCalls, entered }),
   );
   check(
     "Other answers no hover and no entry is a tab stop",
@@ -463,25 +507,88 @@ function familyRow() {
       hoverHandle.legend.children.every((item) => item.attributes.tabindex === undefined),
     JSON.stringify(Object.keys(hoverOther.listeners)),
   );
+
+  // Details opened and closed under a pointer still on the entry: the family's row is
+  // marked as it appears, its extension's row never, and unmarked as Details closes.
+  hoverPython.listeners.mouseenter();
+  hoverHandle.detailsToggle.listeners.click();
+  const detailsOpened = marked();
+  hoverHandle.rows.get("family:python").disclosure.listeners.click();
+  const familyExpanded = marked();
+  hoverHandle.detailsToggle.listeners.click();
+  const detailsClosed = marked();
+  hoverHandle.detailsToggle.listeners.click();
+  hoverPython.listeners.mouseleave();
+  check(
+    "an open Details marks the family's own row for its entry, and only while open",
+    JSON.stringify(detailsOpened) ===
+      JSON.stringify(["legend family:python", "row family:python"]) &&
+      JSON.stringify(familyExpanded) === JSON.stringify(detailsOpened) &&
+      hoverHandle.rows.has("family:python/.py") &&
+      JSON.stringify(detailsClosed) === JSON.stringify(["legend family:python"]) &&
+      marked().length === 0,
+    JSON.stringify({ detailsOpened, familyExpanded, detailsClosed }),
+  );
+
+  // A segment's hover, here entered from an element standing in for one, marks its
+  // family's entry and no row, with Details open; one whose family the legend does not
+  // name marks nothing.
+  const segmentStandIn = new Element("span");
+  const fromSegment = {
+    population: "files",
+    key: "family:python",
+    anchor: segmentStandIn,
+    marks: "segment",
+  };
+  legendHover.enter(fromSegment);
+  const segmentMarks = marked();
+  legendHover.leave(fromSegment);
+  const unnamed = { ...fromSegment, key: "family:css" };
+  legendHover.enter(unnamed);
+  const unnamedMarks = marked();
+  legendHover.leave(unnamed);
+  check(
+    "a segment's hover marks its family's entry and no Details row",
+    JSON.stringify(segmentMarks) === JSON.stringify(["legend family:python"]) &&
+      unnamedMarks.length === 0,
+    JSON.stringify({ segmentMarks, unnamedMarks }),
+  );
+
   hoverCalls.length = 0;
-  view.updateDistributionView(hoverHandle, { ...legendModel, showIgnored: false });
+  view.updateDistributionView(hoverHandle, { ...hoverModel, showIgnored: false });
   hoverHandle.legend.children[0].listeners.mouseenter();
-  view.updateDistributionView(hoverHandle, { ...legendModel, showIgnored: false });
+  view.updateDistributionView(hoverHandle, { ...hoverModel, showIgnored: false });
   check(
     "without ignored files the entry names its Files segment, and a rebuild lets go of it",
-    JSON.stringify(hoverCalls) ===
-      JSON.stringify(["enter files family:python", "leave files family:python"]),
+    JSON.stringify(hoverCalls) === JSON.stringify(["family files family:python", "none"]) &&
+      marked().length === 0,
     JSON.stringify(hoverCalls),
+  );
+  // A hover held from a segment outlives the legend, so the rebuilt entry is marked.
+  legendHover.enter(fromSegment);
+  view.updateDistributionView(hoverHandle, { ...hoverModel, showIgnored: false });
+  const rebuiltUnderSegment = marked();
+  legendHover.leave(fromSegment);
+  check(
+    "a legend rebuilt under a segment's hover marks the family's new entry",
+    JSON.stringify(rebuiltUnderSegment) === JSON.stringify(["legend family:python"]) &&
+      !("hovered" in hoverHandle.legend.children[0].dataset),
+    JSON.stringify(rebuiltUnderSegment),
   );
   hoverCalls.length = 0;
   hoverHandle.legend.children[0].listeners.mouseenter();
+  const heldEntry = hoverHandle.legend.children[0];
   view.disposeDistributionView(hoverHandle);
+  legendHover.enter(fromSegment);
   check(
-    "disposal lets go of the hover an entry under the pointer entered",
+    "disposal lets go of the hover an entry under the pointer entered, and stops drawing",
     JSON.stringify(hoverCalls) ===
-      JSON.stringify(["enter files family:python", "leave files family:python"]),
+      JSON.stringify(["family files family:python", "none", "segment files family:python"]) &&
+      !("hovered" in heldEntry.dataset) &&
+      hoverHandle.hovered.length === 0,
     JSON.stringify(hoverCalls),
   );
+  legendHover.leave(fromSegment);
 
   const pyRowBeforeDetails = handle.rows.get(".py").tr;
   handle.detailsToggle.listeners.click();
@@ -801,6 +908,7 @@ function familyRow() {
     palette,
     metricClasses,
     fileTypeIcon,
+    createDistributionHover(),
   );
   disposed.detailsToggle.listeners.click();
   disposed.rows.get("family:javascript").disclosure.listeners.click();
