@@ -15,16 +15,18 @@ import path from "node:path";
 // One start's bound: from the spawn to DevToolsActivePort's whole content, an answer on
 // its port, and the page's socket open. A runner's cold first start is the run's warm-up's
 // (tests/chrome_starts.py, which has the CI measurements), so a test's start is warm: a
-// whole test that only drives Chrome took a median 1.5 to 3.2 s warm in CI, and 30 starts
+// whole test that only drives Chrome took a median 1.5 to 3.1 s warm in CI, and 30 starts
 // in a row on a 10-core Mac at a load average of 10 to 17 took 0.5 to 1.2 s each. Of the
-// 102 cold first starts measured in CI, 101 finished inside this bound, the slowest 28.8 s
+// 90 cold first starts measured in CI, 89 finished inside this bound, the slowest 28.8 s
 // slower than warm.
 export const START_BOUND_MS = 30000;
-// The starts one launch makes before it fails: one more, logged, after a start that fails.
-// No failure in CI has yet been a warm start, so this is for one that hangs or exits after
-// the warm-up; the run's summary of starts (tests/chrome_starts.py) shows each it made. It
-// does not save a cold start: one cut off at the bound left the next start in its job 13
-// to 67 s slower than warm.
+// The starts one launch makes before it fails: one more, logged, after a start whose
+// Chrome exited, which fails fast and leaves the session its time. A start cut off at
+// START_BOUND_MS is not made again. Every such start CI has shown was a cold first one,
+// and the start after it in its job ran 13 to 67 s slower than warm, so a second start
+// would run past most Chrome sessions' 40 to 48 s bounds, which stop it unrecorded.
+// Bead mb-sicb sizes a retry of a hang once a run's summary of starts
+// (tests/chrome_starts.py) shows a warm start cut off at the bound.
 export const START_ATTEMPTS = 2;
 // The end of a start's stderr kept for its failure, each chunk marked with the seconds
 // since the spawn it arrived at: about 20 of Chrome's log lines.
@@ -80,10 +82,11 @@ async function exitedWithin(exited) {
 /**
  * Kill what is left of a start that failed, then remove its profile: its browser, and any
  * helper still in this session's process group that names the profile, so a retry does
- * not share the runner with a start being abandoned. A helper left running also holds
- * the start's stderr pipe, and with it this process, open: with the browser killed and
- * no sweep, tests/dom/chrome-start-retry.mjs's `hang` case left two and never exited.
- * Processes outside the group are the caller's to find (tests/process_group.py).
+ * not share the runner with a start being abandoned. The sweep is what ends the helpers:
+ * without it, tests/dom/chrome-start-retry.mjs's `hang` case left two running. Closing
+ * the start's stderr pipe is what lets this process exit while such a helper still holds
+ * the pipe's other end. Processes outside the group are the caller's to find
+ * (tests/process_group.py).
  * @param {import("node:child_process").ChildProcess} chrome
  * @param {Promise<unknown>} exited
  * @param {string} profile
@@ -228,25 +231,29 @@ async function startChrome(bin, profiles, width, height, boundMs) {
       socket = opening;
     } else {
       opening.close();
-      failure = `opened no socket to its page on DevTools port ${port}: ${ended() ?? "still running"}`;
+      failure =
+        `opened no socket to its page on DevTools port ${port}: ` +
+        (ended() ?? `still running at ${seconds(boundMs)} s`);
     }
   }
   const ms = Date.now() - began;
   if (failure !== null || socket === null) {
+    // Only a start whose Chrome exited is made again (START_ATTEMPTS), read before the
+    // abandon kills it. A binary that cannot be spawned fails the same way every time.
+    const retryable = spawnError === null && ended() !== null;
     await abandon(chrome, exited, profile, spawnError === null);
-    // A binary that cannot be spawned fails the same way every time.
-    const retryable = spawnError === null;
     return { ok: false, failure: failure ?? "opened no socket", retryable, ms, tail };
   }
   return { ok: true, chrome, exited, profile, socket, ms };
 }
 
 /**
- * A headless Chrome with one page, started in at most `attempts` tries: a start that
- * fails is abandoned, written to stderr with the end of Chrome's, and made again, and the
- * last failure throws with every start's reason and the last one's stderr. The suite's
- * warm-up (tests/dom/chrome-warm-up.mjs) makes one long start, and the test of the retry
- * (tests/dom/chrome-start-retry.mjs) short ones; every session takes the defaults.
+ * A headless Chrome with one page, started in at most `attempts` tries: a start whose
+ * Chrome exited is abandoned, written to stderr with the end of Chrome's, and made again,
+ * and the last failure, or a start cut off at its bound, throws with every start's reason
+ * and the last one's stderr. The suite's warm-up (tests/dom/chrome-warm-up.mjs) makes one
+ * long start, and the test of the starts (tests/dom/chrome-start-retry.mjs) short ones;
+ * every session takes the defaults.
  * @param {string} bin
  * @param {{profiles: string, width?: number, height?: number, startBoundMs?: number,
  *   attempts?: number}} options
@@ -274,7 +281,8 @@ export async function launchChrome(
     const stderr = start.tail.trimEnd() || "(nothing)";
     if (!start.retryable || attempt >= attempts) {
       throw new Error(
-        `Chrome did not start in ${attempt} of ${attempts} tries: ${failures.join("; ")}\n` +
+        `Chrome did not start in ${attempt} ${attempt === 1 ? "try" : "tries"}: ` +
+          `${failures.join("; ")}\n` +
           `Chrome's stderr, the end, from start ${attempt}:\n${stderr}`,
       );
     }

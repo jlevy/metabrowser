@@ -119,8 +119,9 @@ def chrome_profile(tmp_path_factory: pytest.TempPathFactory) -> Generator[Path, 
 
     It is removed after the test. A process still naming it then escaped the test's
     process group: it is reported, failing the test, and left running; see
-    ``tests/process_group.py``. Each Chrome the test starts is noted for the run's
-    summary of starts (``tests/chrome_starts.py``).
+    ``tests/process_group.py``. Each Chrome the test starts through
+    ``tests/dom/chrome-session.mjs`` is noted for the run's summary of starts
+    (``tests/chrome_starts.py``).
     """
 
     starts = chrome_starts.log_path(tmp_path_factory.getbasetemp())
@@ -186,13 +187,26 @@ def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
 @pytest.hookimpl(wrapper=True)
 def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, object]:
     """Warm Chrome up once before a run with a test that drives it, so the runner's cold
-    first start falls outside every test's bounds (``tests/chrome_starts.py``)."""
+    first start falls outside every test's bounds, and write how that went to the
+    terminal at once (``tests/chrome_starts.py``).
 
-    if not session.config.option.collectonly and any(
-        item.get_closest_marker(suite_tiers.CHROME_MARKER) for item in session.items
+    A run that collection errors will stop, as pytest's own loop then does, is not
+    warmed: that could cost the warm-up's whole bound before the run stops."""
+
+    option = session.config.option
+    stopping = session.testsfailed and not option.continue_on_collection_errors
+    if (
+        not option.collectonly
+        and not stopping
+        and any(item.get_closest_marker(suite_tiers.CHROME_MARKER) for item in session.items)
     ):
         basetemp = session.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
-        chrome_starts.warm_up(basetemp)
+        told = chrome_starts.warm_up(basetemp)
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if isinstance(reporter, pytest.TerminalReporter):
+            for line in told:
+                reporter.write_line(line)
+            reporter.flush()
     return (yield)
 
 

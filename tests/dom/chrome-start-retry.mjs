@@ -1,10 +1,16 @@
-// launchChrome's retry (tests/dom/chrome-session.mjs), against a stand-in for Chrome's
+// launchChrome's starts (tests/dom/chrome-session.mjs), against a stand-in for Chrome's
 // binary that starts as one CASE says, with each start's bound cut to the case's BOUNDS_MS:
 //
-//   hang-once  the first start writes to stderr, leaves a helper naming its profile, and
-//              never writes a DevTools port; the second is CHROME_BIN's
-//   hang       every start does what hang-once's first does
+//   exit-once  the first start writes to stderr, leaves a helper naming its profile, and
+//              exits 3; the second is CHROME_BIN's
 //   exit       every start writes to stderr and exits 3 at once
+//   signal     every start writes to stderr and kills itself with SIGSEGV
+//   hang       the start writes to stderr, leaves a helper naming its profile, and never
+//              writes a DevTools port
+//   silent     the start writes DevToolsActivePort for a port that takes connections and
+//              never answers, then hangs
+//   socket     the start's port lists a page whose socket takes connections and never
+//              answers, then hangs
 //   missing    the binary is not there
 //
 //   CHROME_BIN=/path/to/chrome CHROME_PROFILES=/dir/the/caller/removes \
@@ -18,22 +24,56 @@ import fs from "node:fs";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
 
-// A hang lasts its whole bound, so the cases that only hang have a short one. A start that
-// is Chrome's, or a stand-in's exit, has room: 30 warm starts in a row on a 10-core Mac
-// at a load average of 10 to 17 took 0.5 to 1.2 s each.
-const BOUNDS_MS = { "hang-once": 10000, hang: 1500, exit: 10000, missing: 1500 };
-// How many of the starts hang, the rest being Chrome's.
-const HANGS = { "hang-once": 1, hang: 1000, exit: 0, missing: 0 };
+// A hang lasts its whole bound, so the cases that hang have a short one. A start that is
+// Chrome's, or a stand-in's exit, has room: 30 warm starts in a row on a 10-core Mac at a
+// load average of 10 to 17 took 0.5 to 1.2 s each.
+const BOUNDS_MS = {
+  "exit-once": 10000,
+  exit: 10000,
+  signal: 10000,
+  hang: 1500,
+  silent: 3000,
+  socket: 3000,
+  missing: 1500,
+};
 const [mode] = process.argv.slice(2);
 if (!(mode in BOUNDS_MS)) {
   throw new Error(`unknown case ${mode}`);
 }
 const bound = BOUNDS_MS[/** @type {keyof typeof BOUNDS_MS} */ (mode)];
-const hangs = HANGS[/** @type {keyof typeof HANGS} */ (mode)];
 const profiles = /** @type {string} */ (process.env.CHROME_PROFILES);
 const standIn = /** @type {string} */ (process.env.STAND_IN);
+const node = process.execPath;
 
-// Each start counts itself, records its profile, then hangs or exits, or runs Chrome.
+// The silent and socket cases' DevTools port: it writes DevToolsActivePort into the
+// profile it is given, as Chrome does, for a port that takes connections and never
+// answers (silent), or that lists one page whose socket does the same (socket).
+fs.writeFileSync(
+  path.join(standIn, "port.cjs"),
+  `const fs = require("node:fs");
+const http = require("node:http");
+const net = require("node:net");
+const path = require("node:path");
+const [mode, profile] = process.argv.slice(2);
+const publish = (port) => {
+  const file = path.join(profile, "DevToolsActivePort");
+  fs.writeFileSync(file + ".part", port + "\\n/devtools/browser/stand-in");
+  fs.renameSync(file + ".part", file);
+};
+const silent = net.createServer(() => {}).listen(0, "127.0.0.1", () => {
+  const quiet = silent.address().port;
+  if (mode === "silent") {
+    publish(quiet);
+    return;
+  }
+  const page = [{ type: "page", webSocketDebuggerUrl: "ws://127.0.0.1:" + quiet + "/page" }];
+  const list = http.createServer((request, response) => response.end(JSON.stringify(page)));
+  list.listen(0, "127.0.0.1", () => publish(list.address().port));
+});
+`,
+);
+
+// Each start counts itself, records its profile, then does as the case says.
 const binary = path.join(standIn, "chrome");
 if (mode !== "missing") {
   fs.writeFileSync(
@@ -43,18 +83,32 @@ state="$(dirname "$0")"
 n=$(( $(cat "$state/starts" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$state/starts"
 for arg in "$@"; do
-  case "$arg" in --user-data-dir=*) echo "\${arg#--user-data-dir=}" >> "$state/profiles" ;; esac
+  case "$arg" in --user-data-dir=*) profile="\${arg#--user-data-dir=}" ;; esac
 done
-if [ "${mode}" = exit ]; then
-  echo "stand-in chrome: start $n exits" >&2
-  exit 3
-fi
-if [ "$n" -le ${hangs} ]; then
-  echo "stand-in chrome: start $n hangs" >&2
-  "${process.execPath}" -e "setInterval(() => {}, 1000)" -- "$@" &
-  exec sleep 600
-fi
-exec "${process.env.CHROME_BIN}" "$@"
+echo "$profile" >> "$state/profiles"
+case "${mode}" in
+  exit-once)
+    if [ "$n" -eq 1 ]; then
+      echo "stand-in chrome: start $n exits" >&2
+      "${node}" -e "setInterval(() => {}, 1000)" -- "$@" &
+      exit 3
+    fi
+    exec "${process.env.CHROME_BIN}" "$@" ;;
+  exit)
+    echo "stand-in chrome: start $n exits" >&2
+    exit 3 ;;
+  signal)
+    echo "stand-in chrome: start $n crashes" >&2
+    kill -SEGV $$ ;;
+  hang)
+    echo "stand-in chrome: start $n hangs" >&2
+    "${node}" -e "setInterval(() => {}, 1000)" -- "$@" &
+    exec sleep 600 ;;
+  silent|socket)
+    echo "stand-in chrome: start $n answers nothing" >&2
+    "${node}" "$state/port.cjs" "${mode}" "$profile" &
+    exec sleep 600 ;;
+esac
 `,
     { mode: 0o755 },
   );
