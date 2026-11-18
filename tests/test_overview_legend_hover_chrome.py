@@ -51,10 +51,10 @@ from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_gro
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "overview-legend-hover-chrome.mjs"
-# A server start, one Chrome, a page load, and twelve readings, each taken once the
+# A server start, one Chrome, a page load, and thirteen readings, each taken once the
 # shell's tooltip appear delay or fade (TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT in
-# static/app.js) and the section's transitions have settled, took 12.4 s on a 10-core Mac
-# at a load average near 7 (2026-11-18). A cold Chrome start in CI has taken
+# static/app.js) and the section's transitions have settled, took 12.7 s on a 10-core Mac
+# at a load average near 12 (2026-11-18). A cold Chrome start in CI has taken
 # 28.2 s (the Overview alignment test, 2026-11-14), and the server's own start is bounded
 # at 30 s inside the session, so the bound leaves room for both, and fires before the
 # module's limit.
@@ -132,7 +132,12 @@ def _tooltip_on(reading: dict[str, Any], label: str, anchor: str) -> None:
 
 
 def _shimmering(reading: dict[str, Any], label: str, together: bool = True) -> None:
-    """Every marked bar and the marked entry's dot shimmer, and nothing else."""
+    """Every marked bar and the marked entry's dot shimmer, and nothing else.
+
+    Marks the hover enters together shimmer in step; one marked later, as a Details row
+    opened under a held entry, starts its own cycle (docs/design-system.md, "Hover Styles
+    the Thing Under the Pointer").
+    """
 
     marks = reading["marked"]
     assert sorted(reading["shimmer"]["on"]) == sorted(f"{mark}::after" for mark in marks), (
@@ -141,8 +146,7 @@ def _shimmering(reading: dict[str, Any], label: str, together: bool = True) -> N
     )
     assert reading["shimmer"]["running"], (label, reading)
     assert reading["shimmer"]["animates"] == ["opacity"], (label, reading)
-    if together:
-        assert reading["shimmer"]["oneStart"], (label, reading)
+    assert reading["shimmer"]["oneStart"] == together, (label, reading)
 
 
 def _nothing(reading: dict[str, Any], label: str) -> None:
@@ -217,6 +221,12 @@ def test_a_legend_entry_hovers_its_familys_marks_in_chrome(
     closed = measured["detailsClosedUnderEntry"]
     assert closed["marked"] == [*_PYTHON_BARS, _PYTHON_ENTRY], closed
     _shimmering(closed, "Details closed")
+    # Details opened by a key under the held entry: its row joins the marks, a cycle behind.
+    reopened = measured["detailsOpenedUnderEntry"]
+    assert reopened["marked"] == details["marked"], reopened
+    _bars_lifted(reopened, "Details opened under the entry")
+    _shimmering(reopened, "Details opened under the entry", together=False)
+    assert reopened["layout"] == details_rest["layout"], "Details opened under the entry"
 
     # The dark page lifts rather than deepens (--viz-data-mark-hover-filter's two values).
     dark = measured["darkEntry"]

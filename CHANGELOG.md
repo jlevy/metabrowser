@@ -9,6 +9,13 @@ All notable changes to Metabrowser are documented here.
   and the entry; pointing at a cell or a segment highlights it and its family’s entry.
   See [Folder Treemap](docs/design-system.md#folder-treemap).
 
+- A Pulls row now leads with its title, right after the state icon, on its first line,
+  and puts the stack position, number, author, and age on the second; its author’s
+  avatar is a little smaller.
+  Where a row or a stack heading is too narrow for its file status counts (“2 A, 30 M”),
+  they are left out whole, and its line totals stay, rather than being cut short with an
+  ellipsis.
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now highlights every bar of its family on screen: its segment in the Files,
   Ignored, and Total bars, and its row in Details while that is open.
