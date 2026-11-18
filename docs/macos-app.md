@@ -81,24 +81,35 @@ request and its tabs, a commit, and a file or folder at a branch, tag, or commit
 development build). `metab` reads each link first, and the app shows what `metab` makes
 of it.
 
+- **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
+  mirror in `metab`’s cache, never a checkout of it that you have open
+  ([Open Modes](project/architecture/arch-open-modes.md)).
+- **Asked once before a clone:** a link to a repository the cache does not hold yet asks
+  first, naming the repository: opening it clones the repository into the cache and
+  reads it, and its pull requests, with your `gh` sign-in.
+  A repository the cache holds opens without asking.
 - **One window per repository:** a link into a repository that has a window brings that
-  window forward at the link’s page, with no second server.
-  Otherwise a new window opens at the page, and its server clones the repository into
-  `metab`’s cache, or uses the clone it has there.
+  window forward, on the branch, commit, or pull request the link names and at its page.
+  The window never shows another revision: its server starts again on the link, which
+  takes a few seconds, its other tabs reload on that revision, and what pages kept in
+  local storage starts fresh, since the server comes back on a new port.
+  A start under way, such as a first clone, finishes first.
+  Without a window, a new one opens, and its server clones the repository, or uses the
+  clone the cache has.
 - **A first clone** of a large repository can take minutes.
   The window says it is starting meanwhile, and File > Reveal Server Log shows the
   clone’s progress. The app waits for as long as the clone keeps reporting progress, up
   to `metab`’s own bound on a clone, and gives up on one that stops; the window then
-  offers Retry. Folders you open meanwhile start at once.
-- **A link `metab` refuses**, such as an issues page, or a private repository while `gh`
-  is not signed in, shows `metab`’s message, which says what to do.
-  A link to another site, or an `http` link, shows the app’s own message.
-- **The page, not the pin:** a window shows its repository at one pin, the branch, tag,
-  or pull request its first link chose, until you switch it on the page.
-  A later link into the same repository opens its page at that pin, so a link to a file
-  on another branch shows the file as the window’s pin has it.
-- **Not kept:** a repository’s window is not listed in Open Recent and does not come
-  back with the last session.
+  offers Retry. Folders you open meanwhile start at once; another repository waits for
+  the clone, and its window says so.
+- **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
+  says what to do. A private repository that your `gh` sign-in cannot read opens a window
+  whose server fails, with its message and Retry.
+  A link to another site, an `http` link, and a link with a user name, a password, or a
+  port other than 443 show the app’s own message.
+- **Many links at once** are read one at a time, a link sent again while it waits opens
+  once, and what could not be opened is said in one message at the end.
+- **Not restored:** a repository’s window does not come back with the last session.
 
 ## Windows and Tabs
 
@@ -171,8 +182,8 @@ miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the ap
 which can take seconds.
 
 - **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
-  running `metab --exit-on-eof --version`. A build from before `--exit-on-eof` is too
-  old whatever its number says.
+  running `metab --exit-on-eof --present --version`. A build from before either flag is
+  too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
   A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings
   names each file it would not run, and why.

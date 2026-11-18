@@ -129,32 +129,66 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 
 ## GitHub Links
 
-With the development build running a `metab` that has `--present`, and `gh` signed in:
+With the development build running a `metab` from this checkout, and `gh` signed in:
 
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 APP_ID=io.github.jlevy.metabrowser.dev
-LOGS="$HOME/Library/Logs/Metabrowser"
+REPO=https://github.com/jlevy/metabrowser
+# The repository's log: its name, then 8 hex digits of its URL's SHA-256 (ServerLog).
+LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 256 | cut -c1-8).log"
 ```
 
-1. **A pull request.** `open -b "$APP_ID" https://github.com/jlevy/metabrowser/pull/517`
-   opens a window at the pull request’s page, titled for the repository until the server
-   answers and then as `metab` names the pull request.
-   `pgrep -fl -- 'metab https://github.com/jlevy/metabrowser/pull/517'` lists one
-   server, on a port from `CLIServeLaunch.repositoryBasePort` up, and
-   `"$LOGS"/metabrowser-*.log` holds its clone or cache line.
-2. **The same repository.** `open -b "$APP_ID" https://github.com/jlevy/metabrowser`
-   brings that window forward at the repository’s page, and the `pgrep` still lists one
-   server.
-3. **Refusals.** `open -b "$APP_ID" https://github.com/jlevy/metabrowser/issues/1` shows
-   `metab`’s message about issues pages; `open -b "$APP_ID" https://example.com/` shows
-   the app’s own. Neither opens a window.
-4. **A first clone.** A link to a public repository that is not cached and takes longer
+1. **A pull request.** `open -b "$APP_ID" "$REPO/pull/517"` opens a window at the pull
+   request’s page, titled for the repository until the server answers and then as
+   `metab` names the pull request.
+   If the cache did not hold the repository, a confirmation named
+   `github.com/jlevy/metabrowser` came first.
+   `pgrep -fl -- "metab $REPO/pull/517"` lists one server, on a port from
+   `CLIServeLaunch.repositoryBasePort` up, and `"$LOG"` holds its clone or cache line.
+2. **Another revision of an open repository.** `open -b "$APP_ID" "$REPO/tree/main"`
+   brings that window forward, which says it is starting and then shows `main`’s tree,
+   not the pull request’s head: `pgrep` lists one server, now started on the tree link,
+   and the ref selector names `main`.
+3. **A ref with a `/`.**
+   `open -b "$APP_ID" "$REPO/blob/claude/app-open-urls/docs/macos-app.md"` (any branch
+   whose name holds a `/` that GitHub still has) shows that file on that branch, not a
+   missing page.
+4. **Asked before a clone.** With a small public repository you have never opened, which
+   the cache does not hold, `open -b "$APP_ID" URL` shows one confirmation naming it;
+   Cancel opens nothing and starts no `metab` serving it, and sending it again asks
+   again. A repository the cache holds, as in check 2, opens with no question.
+5. **Refusals.** `open -b "$APP_ID" "$REPO/issues/1"` shows `metab`’s message about
+   issues pages; `open -b "$APP_ID" https://example.com/` and
+   `open -b "$APP_ID" "https://user:secret@github.com/jlevy/metabrowser"` show the app’s
+   own, which leaves out `user:secret@`. None opens a window, and
+   `log show --last 2m --predicate "subsystem == '$APP_ID'"` prints none of those links
+   in full.
+6. **A burst.**
+   `open -b "$APP_ID" $(for n in $(seq 1 30); do echo "$REPO/issues/$n"; done)` sends
+   thirty links at once, and one alert says that 30 links could not be opened, 9 of them
+   never read, rather than thirty alerts.
+7. **A first clone.** A link to a public repository that is not cached and takes longer
    than `SupervisorPolicy.startupTimeout` to clone keeps its window starting while the
    log grows, then opens.
-   While it clones, `open -a "$APP" "$(mktemp -d)"` opens a folder at once.
-5. **Not kept.** File > Open Recent does not list the repository, and after a quit and a
-   launch its window does not come back, while a folder window open beside it does.
+   While it clones, `open -a "$APP" "$(mktemp -d)"` opens a folder at once, and a link
+   to a second repository opens a window that says it waits for another repository’s
+   start.
+8. **Retry after a quiet start.** Start a clone of the same uncached repository with
+   `metab URL --no-serve` in Terminal, then send its link: after
+   `SupervisorPolicy.startupTimeout` the window says the server wrote nothing; once the
+   Terminal clone ends, Retry opens it from the cache.
+9. **Launched by a link.** Quit the app, then `open -b "$APP_ID" "$REPO"`: the app
+   starts and opens the repository’s window, and no Open panel appears over it.
+10. **No runtime yet.** In Settings, choose a file that is not a `metab`, then send a
+    link: Settings says no `metab` is usable and no window opens; choose this checkout’s
+    `.venv/bin/metab`, and the link opens.
+11. **A `metab` without `--present`.** Choose a `metab` built before `--present`, such
+    as one from a checkout of `main` before #540: Settings calls it too old, “built
+    before --present”, before any link is sent.
+12. **Not restored.** Merge a folder window and the repository’s window into one tab
+    group with the repository’s tab shown, quit, and launch: the group comes back in its
+    place among the windows, showing the folder’s tab, without the repository’s.
 
 ## Print and Drops
 

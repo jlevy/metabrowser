@@ -28,8 +28,9 @@
     <key>NSAllowsLocalNetworking</key>   <true/>
   </dict>
 
-  <!-- metab reads this in its present mode before it sends a GitHub link with open -b, since
-       a build without it drops links (AppDelegate.requestLink). Both variants carry it. -->
+  <!-- metab reads this in its present mode before it sends anything with open -b: a build
+       without it drops links (AppDelegate.requestLink). Both variants carry it, and
+       tests/test_macos_app_pins.py checks that it is set. -->
   <key>MetabrowserOpensURLs</key>      <true/>
 
   <!-- Folders dropped on the Dock icon or opened with Open With. Declaring them also lets

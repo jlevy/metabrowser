@@ -141,6 +141,8 @@ private nonisolated enum Fixture {
         #expect(GitHubLink.shown(long).count == GitHubLink.shownLength)
         #expect(GitHubLink.shown(long).hasPrefix("https://github.com/o/r/blob/main/"))
         #expect(GitHubLink.shown(repository) == repository.absoluteString)
+        // A user name or password, which can be a token, is not shown.
+        #expect(GitHubLink.shown(URL(string: "https://x-access-token:SECRET@github.com/o/r")!) == "https://github.com/o/r")
     }
 
     @Test func theDryRunIsTheContractsCommandRunInTheHomeFolder() {

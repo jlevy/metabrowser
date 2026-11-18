@@ -52,14 +52,15 @@ before one exists, windows, menus, the Dock, and file events.
    A GitHub link reaches one per repository, keyed by its canonical URL
    ([GitHub Links](#github-links)); `SessionRoot` names both.
 2. **Spawn.** `ServerSupervisor` runs `CLIServeLaunch`’s command,
-   `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from
-   `SessionRoot.basePort`. `SpawnedProcess` starts it with `posix_spawn` in its own
-   process group, with only the descriptors it names, default signal handling, and the
-   folder as its working directory, so `.env` lookup matches `metab .` in Terminal (a
-   repository’s server runs in the home folder, as `metab URL` in a new Terminal window
-   does). Its stderr is the server log itself, so an app that stalls cannot block it on a
-   full pipe; its stdout is a pipe the app reads for the announcement and appends to the
-   log; and its stdin is a pipe the app holds open.
+   `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from its lane’s
+   `LaunchLane.basePort` (`SessionRoot.lane`). `SpawnedProcess` starts it with
+   `posix_spawn` in its own process group, with only the descriptors it names, default
+   signal handling, and the folder as its working directory, so `.env` lookup matches
+   `metab .` in Terminal (a repository’s server runs in the home folder, as `metab URL`
+   in a new Terminal window does).
+   Its stderr is the server log itself, so an app that stalls cannot block it on a full
+   pipe; its stdout is a pipe the app reads for the announcement and appends to the log;
+   and its stdin is a pipe the app holds open.
 3. **Ready.** The server prints `Serving ROOT at URL` before its socket listens, so the
    supervisor parses that line (`CLIServeLaunch.parseServingLine`) and polls the URL for
    a 2xx (`HTTPReadiness`) before its `StartupDeadline`: for a folder,
@@ -121,28 +122,56 @@ app, or an earlier session still stopping, writes a log of its own.
 A link reaches `application(_:open:)` from `open -b`, which is how `metab URL --present`
 sends one; the app does not register for `https`, which browsers own.
 `AppDelegate.requestLink` takes an `https` link on a host of `metab`’s GitHub reducer
-(`GitHubLink`) and reads nothing else of it: it runs
-`metab LINK --present --dry-run --json` (`PresentDryRun`), which clones and fetches
-nothing, and acts on the answer (`PresentAnswer`):
+(`GitHubLink`) and reads nothing else of it.
+Links wait in a `LinkQueue` and are resolved one at a time: each runs
+`metab LINK --present --dry-run --format json` (`PresentDryRun`), which clones and
+fetches nothing, and the app acts on the answer (`PresentAnswer`):
 
 | Answer | What the app does |
 | --- | --- |
-| Exit 0 with `kind`, `root`, and `page` | Opens `page` in the session of `root` |
+| Exit 0 with `kind`, `root`, and `handoff` | Opens `root`’s session on `handoff` |
 | A nonzero exit with a `refusal` | Shows `refusal.message`, which names the fix |
-| Exit 2 from click, naming `--present` | Says the `metab` predates `--present` |
 | Anything else | Shows the reason and the command’s last lines |
 
-The command’s stdout and stderr share one pipe, so the answer is the JSON object among
-its lines. A plan’s `root` must be a canonical `https://github.com/<owner>/<repo>`
-(`PresentPlan.repositoryURL`) and its `page` a path of the server (`PageAddress`); a
-local root, which `metab` gives only for a path, is refused for a link.
+The command’s stdout and stderr share one pipe, so the answer is the one JSON object
+among its lines (`JSONAnswer`); two candidates are refused, since a line on stderr could
+otherwise stand in for the answer.
+A plan’s `kind` must be one a link resolves to, its `root` a canonical
+`https://github.com/<owner>/<repo>` (`PresentPlan.repositoryURL`), and its `handoff` one
+link into that repository on `github.com` that `GitHubLink` accepts.
+The plan’s `page` is not read: it is null where only the mirror knows where a ref ends,
+and the server, which resolves the link against its mirror, announces the right page.
 
 - **Which session.** The repository’s canonical URL keys its session
   (`SessionRoot.repository`), never the pin, which a page can switch while the server
-  runs. A link into a repository with an open session navigates its front window
-  (`FolderSession.showFrontWindow(page:)`); the page shows at the server’s current pin.
-  A new session starts `metab LINK`, the link itself, so `metab` pins what the link
-  selects and reads a pull request it names; Retry and Restart Server run it again.
+  runs, as [Open Modes](arch-open-modes.md#what-keys-on-the-root) has it.
+  A new session starts `metab HANDOFF`, so `metab` pins what the link selects and reads
+  a pull request it names, and its window loads the entry page the server announces;
+  Retry and Restart Server run the session’s latest link again.
+- **A link into an open repository.** The window may show another branch, commit, or
+  pull request’s head than the link names, and the app cannot tell, since the dry run
+  reports no ref, so it never only navigates: `FolderSession.open(link:)` starts the
+  server again on the link, and the front window loads the new entry page
+  (`NextPage.requestEntry`), as the owner decided on 2026-11-17 and
+  [Open Modes](arch-open-modes.md#the-file-menu) states for Open URL…. A start under way
+  runs to its end first, so a first clone is not thrown away; a failed one is replaced.
+  The pin switch View on branch makes (`POST /api/source/pin`) would keep the port and
+  the server, but it takes a ref or a commit, which the app does not have for a link
+  whose ref holds a `/`.
+- **Asking before a clone.** A link that would start a new session asks first unless
+  `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
+  `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s
+  support folder; a published source whose `identity.display_url` is the root, with no
+  problems, is one `metab URL` serves from without cloning.
+  An answer it cannot read asks.
+  The confirmation names the repository and says that it clones and reads with the
+  user’s `gh` sign-in, as the owner decided on 2026-11-17. A repository found or agreed
+  to is not asked about again while the app runs.
+- **A burst.** One `metab` resolves at a time, a link equal to one waiting or being
+  resolved is dropped, past `LinkQueue.limit` waiting links the rest are counted, and
+  the links that could not be opened are said in one alert once the queue is empty
+  (`LinkAlert.combined`). A link being resolved counts as something about to show, so
+  the app does not offer the Open panel meanwhile.
 - **The first clone.** A repository’s start is given up on only once its output stops
   growing for `SupervisorPolicy.startupTimeout`, or at
   `SupervisorPolicy.repositoryStartupLimit` after its spawn (`StartupDeadline`). Output
@@ -151,18 +180,42 @@ local root, which `metab` gives only for a path, is refused for a link.
   `metab` writes a line of a clone’s progress at least every
   `MetabAcquisition.progressLineInterval` when stderr is not a terminal, and the limit
   outlasts its own bound on acquiring a source (`MetabAcquisition.reservationWait`);
-  `MetabAcquisitionTests` pins each copied constant to its Python definition.
+  `tests/test_macos_app_pins.py` pins each copied constant to its Python definition in
+  the CI jobs that run on every change.
   A start waiting on another process’s acquisition of the same source writes one note
   and then nothing, so it is given up on after `startupTimeout`.
 - **Titles.** Until the server answers `/api/identity`, the window is named for the
-  repository (`FolderIdentity.repository`), a cached mirror with no path menu.
-- **Not kept.** A repository is not registered with `NSDocumentController`, whose recent
-  documents are file URLs, and `FolderWindows.snapshot` leaves its tabs out of the saved
-  session, whose roots are paths that the restore admits again (`RootAdmission`).
-- **The version floor.** `--present` came after `MetabRequirement.minimumRelease`’s
-  number and before its release, and a number cannot tell a development build that has
-  it from one that does not, so the floor stays and the app answers a `metab` without
-  `--present` when a link needs it.
+  repository (`FolderIdentity.repository`), a cached mirror.
+  Only a local folder’s window gets a path menu, whatever identity its port answers.
+- **Not restored.** `FolderWindows.snapshot` leaves a repository’s tabs out of the saved
+  session, whose roots are paths that the restore admits again (`RootAdmission`); a tab
+  group whose shown tab is a repository’s is saved showing its first folder tab.
+- **The version floor.** `RuntimeDiscovery.validate` probes `--present` with
+  `--exit-on-eof`, so a `metab` without it is too old at setup
+  ([The Version Floor](#the-version-floor)).
+
+#### The Trust Boundary
+
+A link is untrusted input: any local process can send the app one, and a web page can
+reach a link router that does.
+What stands between a link and an effect:
+
+- **The app’s checks.** `GitHubLink` reads the string it passes, not Foundation’s
+  decoded host: `https://`, a host of the reducer’s, no port but 443, no user or
+  password, and at most `GitHubLink.maximumLength` bytes.
+  The answer must name a canonical repository root, and the server starts on its
+  `handoff`, which `metab` rebuilt from what its reducer kept, so a token or other text
+  a sender put in the link never reaches the server’s arguments, its log, or the process
+  table. The link itself is logged private.
+  Every spawn is an argument array, never a shell, and alerts shorten what they show.
+- **`metab`’s checks.** Everything in the URL reducer: which pages open, the owner and
+  repository grammar, credentials, ports, encoded delimiters, and dot segments, and the
+  rule that an argument starting with a scheme is never a local path.
+- **Bounds.** The queue’s, and the question before a clone, which is the user’s consent
+  to download a repository and read it with their sign-in.
+
+A finding against this boundary is a security issue
+([SECURITY.md](../../../SECURITY.md)).
 
 ### After a Crash
 
@@ -209,12 +262,13 @@ shim and no `gh`, and nothing from a Terminal launch’s `UV_*`, `VIRTUAL_ENV`, 
 ### The Version Floor
 
 `MetabRequirement.minimumRelease` in `Sources/ShellCore/Setup/MetabVersion.swift` is the
-oldest `metab` the app runs: the first release with `GET /api/identity` and
-`--exit-on-eof`. A development build of that release counts as it, or no checkout would
-run, so the number alone does not prove the flag, and `RuntimeDiscovery.validate` runs
-`metab --exit-on-eof --version`. A printed version decides by its number; exit status 2
-naming the flag means a build that predates it, which is too old whatever its number;
-anything else rejects the `metab` with the probe’s last line.
+oldest `metab` the app runs: the first release with `GET /api/identity`,
+`--exit-on-eof`, and `--present` (`MetabRequirement.requiredFlags`). A development build
+of that release counts as it, or no checkout would run, so the number alone does not
+prove the flags, and `RuntimeDiscovery.validate` runs
+`metab --exit-on-eof --present --version`. A printed version decides by its number; exit
+status 2 naming either flag means a build that predates it, which is too old whatever
+its number; anything else rejects the `metab` with the probe’s last line.
 Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.

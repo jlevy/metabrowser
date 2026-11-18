@@ -34,9 +34,16 @@ public nonisolated enum GitHubLink {
     nonisolated(unsafe) private static let prefix =
         #/^https://([A-Za-z0-9.-]+)(?::443)?(?:[/?#]|$)/#.ignoresCase()
 
-    /// `link` for an alert: whole up to `shownLength` characters, else its start and end.
+    /// `link` for an alert: without a user name or password, which can be a token on a
+    /// shared screen, and whole up to `shownLength` characters, else its start and end.
     public static func shown(_ link: URL) -> String {
-        Self.shortened(link.absoluteString, to: shownLength)
+        var text = link.absoluteString
+        if link.user != nil || link.password != nil, var parts = URLComponents(url: link, resolvingAgainstBaseURL: false) {
+            parts.user = nil
+            parts.password = nil
+            text = parts.string ?? "(a link with a user name)"
+        }
+        return Self.shortened(text, to: shownLength)
     }
 
     /// `text` cut to at most `limit` characters, keeping its start and its end.
